@@ -27,18 +27,26 @@ dependencies = [
   "python-dotenv<2",
   "requests<3,>=2.31.0",
   "sqlalchemy<3,>=1.4.0",
-  "Flask<4",
-  "Flask-Session>=0.7.0",
+  "flask<4",
+  "flask-session>=0.7.0",
   "gunicorn<24; platform_system != 'Windows'",
   "alembic<2,!=1.10.0",
-  "Authlib<2",
-  "Flask-Caching<3"
+  "authlib<2",
+  "flask-caching<3"
 ]
 
 [project.optional-dependencies]
 full = ["mlflow<3,>=2.11.1"]
 caching-redis = ["redis[hiredis]<6"]
-dev = ["black<25", "pre-commit<5"]
+dev = [
+  "black==24.8.0",
+  "pytest==8.3.2",
+  "pre-commit==3.5.0",
+]
+test = [
+  "pytest==8.3.2",
+  "pytest-cov==5.0.0",
+]
 
 [[project.maintainers]]
 name = "Alexander Kharkevich"
@@ -74,7 +82,7 @@ include = ["mlflow_oidc_auth", "mlflow_oidc_auth.*"]
 exclude = ["tests", "tests.*"]
 
 [tool.setuptools.dynamic]
-version = { attr = "mlflow_oidc_auth.version" }
+version = {attr = "mlflow_oidc_auth.version"}
 
 [tool.black]
 line-length = 128

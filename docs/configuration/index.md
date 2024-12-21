@@ -17,7 +17,6 @@ The plugin required the following environment variables but also supported `.env
 | OIDC_TOKEN_URL         | OIDC Token URL (if discovery URL is not defined) |
 | OIDC_USER_URL          | OIDC User info URL (if discovery URL is not defined) |
 | SECRET_KEY             | Key to perform cookie encryption |
-| OAUTHLIB_INSECURE_TRANSPORT | Development only. Allow to use insecure endpoints for OIDC |
 | LOG_LEVEL                   | Application log level |
 | OIDC_USERS_DB_URI | Database connection string |
 
@@ -35,5 +34,3 @@ The plugin required the following environment variables but also supported `.env
 | REDIS_USERNAME | Redis username | None |
 | REDIS_PASSWORD | Redis password | None |
 | REDIS_SSL | Use SSL | false |
-
-

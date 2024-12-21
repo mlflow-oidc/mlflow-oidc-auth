@@ -10,6 +10,7 @@ from mlflow.server import app
 load_dotenv()  # take environment variables from .env.
 app.logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
+
 class AppConfig:
     def __init__(self):
         self.DEFAULT_MLFLOW_PERMISSION = os.environ.get("DEFAULT_MLFLOW_PERMISSION", "MANAGE")
@@ -51,5 +52,6 @@ class AppConfig:
                         setattr(self, attr, getattr(cache_module, attr))
             except ImportError:
                 app.logger.error(f"Cache module for {self.CACHE_TYPE} could not be imported.")
+
 
 config = AppConfig()

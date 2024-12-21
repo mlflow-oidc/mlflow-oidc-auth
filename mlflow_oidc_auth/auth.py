@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Optional
 
 import requests
 from authlib.integrations.flask_client import OAuth
@@ -6,21 +6,33 @@ from authlib.jose import jwt
 from flask import Response, request
 from werkzeug.datastructures import Authorization
 
-from mlflow_oidc_auth.app import app
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.store import store
-oauth = OAuth(app)
 
-oauth.register(
-    name="oidc",
-    client_id=config.OIDC_CLIENT_ID,
-    client_secret=config.OIDC_CLIENT_SECRET,
-    server_metadata_url=config.OIDC_DISCOVERY_URL,
-    client_kwargs={"scope": config.OIDC_SCOPE},
-)
+
+_oauth_instance: Optional[OAuth] = None
+
+
+def get_oauth_instance(app) -> OAuth:
+    # returns a singleton instance of OAuth
+    # to avoid circular imports
+    global _oauth_instance
+
+    if _oauth_instance is None:
+        _oauth_instance = OAuth(app)
+        _oauth_instance.register(
+            name="oidc",
+            client_id=config.OIDC_CLIENT_ID,
+            client_secret=config.OIDC_CLIENT_SECRET,
+            server_metadata_url=config.OIDC_DISCOVERY_URL,
+            client_kwargs={"scope": config.OIDC_SCOPE},
+        )
+    return _oauth_instance
+
 
 def _get_oidc_jwks():
-    from mlflow_oidc_auth.app import cache
+    from mlflow_oidc_auth.app import cache, app
+
     jwks = cache.get("jwks")
     if jwks:
         app.logger.debug("JWKS cache hit")
@@ -41,6 +53,8 @@ def validate_token(token):
 
 
 def authenticate_request_basic_auth() -> Union[Authorization, Response]:
+    from mlflow_oidc_auth.app import app
+
     username = request.authorization.username
     password = request.authorization.password
     app.logger.debug("Authenticating user %s", username)
@@ -53,6 +67,8 @@ def authenticate_request_basic_auth() -> Union[Authorization, Response]:
 
 
 def authenticate_request_bearer_token() -> Union[Authorization, Response]:
+    from mlflow_oidc_auth.app import app
+
     token = request.authorization.token
     try:
         user = validate_token(token)

@@ -3,7 +3,7 @@ import secrets
 from flask import redirect, session, url_for
 
 import mlflow_oidc_auth.utils as utils
-from mlflow_oidc_auth.auth import oauth
+from mlflow_oidc_auth.auth import get_oauth_instance
 from mlflow_oidc_auth.app import app
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.user import create_user, populate_groups, update_user
@@ -12,7 +12,7 @@ from mlflow_oidc_auth.user import create_user, populate_groups, update_user
 def login():
     state = secrets.token_urlsafe(16)
     session["oauth_state"] = state
-    return oauth.oidc.authorize_redirect(config.OIDC_REDIRECT_URI, state=state)
+    return get_oauth_instance(app).oidc.authorize_redirect(config.OIDC_REDIRECT_URI, state=state)
 
 
 def logout():
@@ -26,7 +26,7 @@ def callback():
     if "oauth_state" not in session or utils.get_request_param("state") != session["oauth_state"]:
         return "Invalid state parameter", 401
 
-    token = oauth.oidc.authorize_access_token()
+    token = get_oauth_instance(app).oidc.authorize_access_token()
     app.logger.debug(f"Token: {token}")
     session["user"] = token["userinfo"]
 
@@ -40,9 +40,7 @@ def callback():
     if config.OIDC_GROUP_DETECTION_PLUGIN:
         import importlib
 
-        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(
-            token["access_token"]
-        )
+        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
     else:
         user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
 

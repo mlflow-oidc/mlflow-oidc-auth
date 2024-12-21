@@ -4,4 +4,3 @@
 
 
 ## Permissions hierarchy
-

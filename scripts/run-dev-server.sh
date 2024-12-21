@@ -17,6 +17,29 @@ python_preconfigure() {
   fi
 }
 
+check_yarn_and_node_version() {
+  if ! command -v node &> /dev/null; then
+    echo "node is not installed. Please install node to continue."
+    exit 1
+  fi
+
+  if ! command -v yarn &> /dev/null; then
+    echo "yarn is not installed. Please install yarn to continue."
+    exit 1
+  fi
+
+  node_version=$(node --version)
+
+  major=$(echo $node_version | cut -d. -f1 | tr -d 'v')
+  minor=$(echo $node_version | cut -d. -f2)
+  patch=$(echo $node_version | cut -d. -f3)
+
+  if ! { [ "$major" -eq 14 ] && [ "$minor" -eq 15 ] && [ "$patch" -eq 0 ]; } && ! { [ "$major" -ge 16 ] && { [ "$minor" -ge 10 ] || [ "$major" -gt 16 ]; }; }; then
+    echo "Node version $node_version is not supported. Please install node version ^14.15.0 || >=16.10.0 to continue."
+    exit 1
+  fi
+}
+
 ui_preconfigure() {
   if [ ! -d "web-ui/node_modules" ]; then
     pushd web-ui
@@ -38,6 +61,7 @@ wait_server_ready() {
   return 1
 }
 
+check_yarn_and_node_version
 python_preconfigure
 source venv/bin/activate
 mlflow server --dev --app-name oidc-auth --host 0.0.0.0 --port 8080 &

@@ -113,6 +113,7 @@ class SqlAlchemyStore:
         with self.ManagedSessionMaker() as session:
             user = self._get_user(session, username)
             session.delete(user)
+            session.flush()
 
     def create_experiment_permission(self, experiment_id: str, username: str, permission: str) -> ExperimentPermission:
         _validate_permission(permission)
@@ -341,6 +342,7 @@ class SqlAlchemyStore:
         with self.ManagedSessionMaker() as session:
             perm = self._get_registered_model_permission(session, name, username)
             session.delete(perm)
+            session.flush()
 
     def list_experiment_permissions_for_experiment(self, experiment_id: str):
         with self.ManagedSessionMaker() as session:

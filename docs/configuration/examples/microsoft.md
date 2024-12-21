@@ -19,4 +19,3 @@ OIDC_SCOPE = "openid,profile,email"
 OIDC_GROUP_NAME = "mlflow_users_group_name"
 OIDC_ADMIN_GROUP_NAME = "mlflow_admins_group_name"
 ```
-
