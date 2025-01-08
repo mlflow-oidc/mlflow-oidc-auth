@@ -26,6 +26,7 @@ class AppConfig:
         self.OIDC_REDIRECT_URI = os.environ.get("OIDC_REDIRECT_URI", None)
         self.OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", None)
         self.OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", None)
+        self.OIDC_AUDIENCE = os.environ.get("OIDC_AUDIENCE", None)
 
         # session
         self.SESSION_TYPE = os.environ.get("SESSION_TYPE", "cachelib")
