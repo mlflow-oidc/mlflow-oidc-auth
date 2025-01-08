@@ -1,6 +1,6 @@
 import secrets
 
-from flask import redirect, session, url_for
+from flask import redirect, session, url_for, render_template
 
 import mlflow_oidc_auth.utils as utils
 from mlflow_oidc_auth.auth import get_oauth_instance
@@ -17,6 +17,12 @@ def login():
 
 def logout():
     session.clear()
+    if config.ENABLE_AUTOMATIC_LOGIN_REDIRECT:
+        return render_template(
+                "auth.html",
+                username=None,
+                provide_display_name=config.OIDC_PROVIDER_DISPLAY_NAME,
+    )
     return redirect("/")
 
 

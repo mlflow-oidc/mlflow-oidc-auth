@@ -1,6 +1,6 @@
 from typing import Any, Callable, Dict, Optional
 
-from flask import render_template, request, session
+from flask import render_template, request, session, redirect, url_for
 from mlflow.protos.model_registry_pb2 import (
     CreateModelVersion,
     CreateRegisteredModel,
@@ -195,6 +195,9 @@ def before_request_hook():
     else:
         if session.get("username") is None:
             session.clear()
+
+            if config.ENABLE_AUTOMATIC_LOGIN_REDIRECT:
+                return redirect(url_for("login", _external=True))
             return render_template(
                 "auth.html",
                 username=None,

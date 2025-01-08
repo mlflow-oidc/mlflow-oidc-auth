@@ -10,6 +10,9 @@ from mlflow.server import app
 load_dotenv()  # take environment variables from .env.
 app.logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
+def get_bool_env_variable(variable, default_value):
+    value = os.environ.get(variable, str(default_value))
+    return value.lower() in ["true", "1", "t"]
 
 class AppConfig:
     def __init__(self):
@@ -26,10 +29,11 @@ class AppConfig:
         self.OIDC_REDIRECT_URI = os.environ.get("OIDC_REDIRECT_URI", None)
         self.OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", None)
         self.OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", None)
+        self.ENABLE_AUTOMATIC_LOGIN_REDIRECT = get_bool_env_variable("ENABLE_AUTOMATIC_LOGIN_REDIRECT", False)
 
         # session
         self.SESSION_TYPE = os.environ.get("SESSION_TYPE", "cachelib")
-        self.SESSION_PERMANENT = os.environ.get("SESSION_PERMANENT", str(False)).lower() in ("true", "1", "t")
+        self.SESSION_PERMANENT = get_bool_env_variable("SESSION_PERMANENT", False)
         self.SESSION_KEY_PREFIX = os.environ.get("SESSION_KEY_PREFIX", "mlflow_oidc:")
         self.PERMANENT_SESSION_LIFETIME = os.environ.get("PERMANENT_SESSION_LIFETIME", 86400)
         if self.SESSION_TYPE:
