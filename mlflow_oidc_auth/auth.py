@@ -8,6 +8,8 @@ from werkzeug.datastructures import Authorization
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.user import create_user 
+from mlflow.exceptions import MlflowException
 
 
 _oauth_instance: Optional[OAuth] = None
@@ -77,3 +79,17 @@ def authenticate_request_bearer_token() -> Union[Authorization, Response]:
     except Exception as e:
         app.logger.debug("JWT auth failed")
         return False
+
+
+def login_with_trusted_header():
+    from mlflow_oidc_auth.app import app
+    
+    email = request.headers.get(config.TRUSTED_USER_ID_HEADER)
+    if not email:
+        return False
+    try:
+        create_user(username=email, display_name=email, is_admin=False)
+        app.logger.debug("User %s logged in for first time -> created", email)
+    except MlflowException as e:
+        app.logger.debug(f"User {email} logged in for first time but could no be created")
+    return True

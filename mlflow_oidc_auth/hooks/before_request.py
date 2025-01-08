@@ -51,7 +51,7 @@ from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
 import mlflow_oidc_auth.responses as responses
 from mlflow_oidc_auth import routes
-from mlflow_oidc_auth.auth import authenticate_request_basic_auth, authenticate_request_bearer_token
+from mlflow_oidc_auth.auth import authenticate_request_basic_auth, authenticate_request_bearer_token, login_with_trusted_header
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.utils import get_is_admin
 from mlflow_oidc_auth.validators import (
@@ -185,21 +185,26 @@ def before_request_hook():
     the view function for the matched route is called and returns a response"""
     if _is_unprotected_route(request.path):
         return
-    if request.authorization is not None:
+    
+    if config.USE_TRUSTED_USER_ID_HEADER:
+        if not login_with_trusted_header():
+            return responses.make_auth_required_response()
+    elif request.authorization is not None:
         if request.authorization.type == "basic":
             if not authenticate_request_basic_auth():
                 return responses.make_basic_auth_response()
         if request.authorization.type == "bearer":
             if not authenticate_request_bearer_token():
                 return responses.make_auth_required_response()
-    else:
-        if session.get("username") is None:
-            session.clear()
-            return render_template(
-                "auth.html",
-                username=None,
-                provide_display_name=config.OIDC_PROVIDER_DISPLAY_NAME,
-            )
+        else:
+            return responses.make_auth_required_response()
+    elif session.get("username") is None:
+        session.clear()
+        return render_template(
+            "auth.html",
+            username=None,
+            provide_display_name=config.OIDC_PROVIDER_DISPLAY_NAME,
+        )
     # admins don't need to be authorized
     if get_is_admin():
         return
