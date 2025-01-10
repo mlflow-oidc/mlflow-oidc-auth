@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { MatDialog } from '@angular/material/dialog';
+import { MatLegacyDialog as MatDialog } from '@angular/material/legacy-dialog';
 
 import { EntityEnum } from 'src/app/core/configs/core';
 import { PermissionEnum } from 'src/app/core/configs/permissions';
