@@ -44,6 +44,6 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.0.0",
     "rimraf": "^5.0.5",
-    "typescript": "~5.7.3"
+    "typescript": "~5.3.3"
   }
 }
