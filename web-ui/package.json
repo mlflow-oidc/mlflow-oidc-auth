@@ -30,7 +30,7 @@
     "rxjs": "~7.5.0",
     "tslib": "^2.3.0",
     "xng-breadcrumb": "^8.0.2",
-    "zone.js": "~0.14.10"
+    "zone.js": "~0.14.5"
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "^16.2.16",
@@ -44,6 +44,6 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.0.0",
     "rimraf": "^5.0.5",
-    "typescript": "~5.3.3"
+    "typescript": "5.2.2"
   }
 }
