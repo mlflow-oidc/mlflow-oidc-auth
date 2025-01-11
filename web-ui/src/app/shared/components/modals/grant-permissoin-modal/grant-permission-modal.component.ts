@@ -1,5 +1,5 @@
 import { Component, Inject, OnInit } from '@angular/core';
-import { MAT_LEGACY_DIALOG_DATA as MAT_DIALOG_DATA } from '@angular/material/legacy-dialog';
+import { MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { PermissionEnum, PERMISSIONS } from 'src/app/core/configs/permissions';
 import { GrantPermissionModalData } from './grant-permission-modal.inteface';
@@ -7,7 +7,8 @@ import { GrantPermissionModalData } from './grant-permission-modal.inteface';
 @Component({
   selector: 'ml-grant-permission-modal',
   templateUrl: './grant-permission-modal.component.html',
-  styleUrls: ['./grant-permission-modal.component.scss']
+  styleUrls: ['./grant-permission-modal.component.scss'],
+  standalone: false
 })
 export class GrantPermissionModalComponent implements OnInit {
   grantPermissionForm!: FormGroup;

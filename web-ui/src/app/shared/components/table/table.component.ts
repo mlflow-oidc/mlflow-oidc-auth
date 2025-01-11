@@ -1,11 +1,12 @@
 import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
-import { MatLegacyTableDataSource as MatTableDataSource } from '@angular/material/legacy-table';
 import { TableActionEvent, TableActionModel, TableColumnConfigModel } from './table.interface';
+import { MatTableDataSource } from '@angular/material/table';
 
 @Component({
   selector: 'ml-table',
   templateUrl: './table.component.html',
   styleUrls: ['./table.component.scss'],
+  standalone: false
 })
 export class TableComponent<T> implements OnInit, OnChanges {
   @Input() columnConfig: TableColumnConfigModel[] = [];

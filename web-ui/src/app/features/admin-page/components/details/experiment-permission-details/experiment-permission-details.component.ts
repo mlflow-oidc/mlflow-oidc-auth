@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { MatLegacyDialog as MatDialog } from '@angular/material/legacy-dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute } from '@angular/router';
 
 import { GrantUserPermissionsComponent, GrantUserPermissionsModel } from 'src/app/shared/components';
@@ -24,7 +24,8 @@ interface ExperimentModel {
 @Component({
   selector: 'ml-experiment-permission-details',
   templateUrl: './experiment-permission-details.component.html',
-  styleUrls: ['./experiment-permission-details.component.scss']
+  styleUrls: ['./experiment-permission-details.component.scss'],
+  standalone: false
 })
 export class ExperimentPermissionDetailsComponent implements OnInit {
   experimentId!: string;

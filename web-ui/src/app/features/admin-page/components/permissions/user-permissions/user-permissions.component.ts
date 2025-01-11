@@ -16,6 +16,7 @@ interface UserModel {
   selector: 'ml-user-permissions',
   templateUrl: './user-permissions.component.html',
   styleUrls: ['./user-permissions.component.scss'],
+  standalone: false
 })
 export class UserPermissionsComponent implements OnInit {
   columnConfig = USER_COLUMN_CONFIG;

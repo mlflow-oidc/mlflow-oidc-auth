@@ -25,6 +25,7 @@ import { PermissionTypeEnum } from 'src/app/core/configs/permissions';
   selector: 'ml-user-permission-details',
   templateUrl: './user-permission-details.component.html',
   styleUrls: ['./user-permission-details.component.scss'],
+  standalone: false
 })
 export class UserPermissionDetailsComponent implements OnInit {
   userId: string = '';

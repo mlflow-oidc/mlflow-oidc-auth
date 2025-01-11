@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { MatLegacyDialog as MatDialog } from '@angular/material/legacy-dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { AccessKeyModalComponent } from 'src/app/shared/components';
 import { AuthService } from 'src/app/shared/services';
 import { EXPERIMENTS_COLUMN_CONFIG, MODELS_COLUMN_CONFIG } from './home-page.config';
@@ -15,6 +15,7 @@ import {
   selector: 'ml-home-page',
   templateUrl: './home-page.component.html',
   styleUrls: ['./home-page.component.scss'],
+  standalone: false
 })
 export class HomePageComponent implements OnInit {
   currentUserInfo: CurrentUserModel | null = null;

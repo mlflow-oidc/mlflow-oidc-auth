@@ -13,6 +13,7 @@ import { finalize } from 'rxjs';
   selector: 'ml-model-permissions',
   templateUrl: './model-permissions.component.html',
   styleUrls: ['./model-permissions.component.scss'],
+  standalone: false
 })
 export class ModelPermissionsComponent implements OnInit {
   columnConfig = MODEL_COLUMN_CONFIG;

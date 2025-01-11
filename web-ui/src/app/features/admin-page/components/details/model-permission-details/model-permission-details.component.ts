@@ -14,6 +14,7 @@ import { ModelUserListModel } from 'src/app/shared/interfaces/models-data.interf
   selector: 'ml-model-permission-details',
   templateUrl: './model-permission-details.component.html',
   styleUrls: ['./model-permission-details.component.scss'],
+  standalone: false
 })
 export class ModelPermissionDetailsComponent implements OnInit {
   modelId!: string;

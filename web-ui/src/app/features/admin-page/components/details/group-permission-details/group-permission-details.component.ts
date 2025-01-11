@@ -28,7 +28,8 @@ import { EntityEnum } from 'src/app/core/configs/core';
 @Component({
   selector: 'ml-group-permission-details',
   templateUrl: './group-permission-details.component.html',
-  styleUrls: ['./group-permission-details.component.scss']
+  styleUrls: ['./group-permission-details.component.scss'],
+  standalone: false
 })
 export class GroupPermissionDetailsComponent implements OnInit {
   groupName = '';

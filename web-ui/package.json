@@ -13,18 +13,18 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/animations": "^17.3.12",
-    "@angular/cdk": "^16.2.14",
-    "@angular/common": "^17.3.12",
-    "@angular/compiler": "^17.3.12",
-    "@angular/core": "^17.3.12",
-    "@angular/forms": "^17.3.12",
-    "@angular/localize": "^17.3.12",
-    "@angular/material": "^16.2.14",
-    "@angular/platform-browser": "^17.3.12",
-    "@angular/platform-browser-dynamic": "^17.3.12",
-    "@angular/router": "^17.3.12",
-    "@ng-bootstrap/ng-bootstrap": "^15.1.2",
+    "@angular/animations": "^19.0.6",
+    "@angular/cdk": "^19.0.5",
+    "@angular/common": "^19.0.6",
+    "@angular/compiler": "^19.0.6",
+    "@angular/core": "^19.0.6",
+    "@angular/forms": "^19.0.6",
+    "@angular/localize": "^19.0.6",
+    "@angular/material": "^19.0.5",
+    "@angular/platform-browser": "^19.0.6",
+    "@angular/platform-browser-dynamic": "^19.0.6",
+    "@angular/router": "^19.0.6",
+    "@ng-bootstrap/ng-bootstrap": "^18.0.0",
     "@popperjs/core": "^2.10.2",
     "bootstrap": "^5.2.0",
     "rxjs": "~7.5.0",
@@ -33,10 +33,11 @@
     "zone.js": "~0.14.5"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^17.3.11",
-    "@angular/cli": "~17.3.11",
-    "@angular/compiler-cli": "^17.3.12",
+    "@angular-devkit/build-angular": "^19.0.7",
+    "@angular/cli": "~19.0.7",
+    "@angular/compiler-cli": "^19.0.6",
     "@types/jasmine": "~4.0.0",
+    "@types/node": "^18.0.0",
     "jasmine-core": "~4.3.0",
     "karma": "~6.4.0",
     "karma-chrome-launcher": "~3.1.0",
@@ -44,6 +45,6 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.0.0",
     "rimraf": "^5.0.5",
-    "typescript": "5.2.2"
+    "typescript": "5.6.3"
   }
 }
