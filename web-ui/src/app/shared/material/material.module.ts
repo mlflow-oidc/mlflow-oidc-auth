@@ -9,7 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatTableModule } from '@angular/material/table';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
-import { MatTabsModule } from '@angular/material/tabs';
+import { MAT_TABS_CONFIG, MatTabsModule } from '@angular/material/tabs';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -38,6 +38,12 @@ const MATERIAL_MODULES = [
   ],
   exports: [
     ...MATERIAL_MODULES,
+  ],
+  providers: [
+    {
+      provide: MAT_TABS_CONFIG,
+      useValue: { animationDuration: '0ms' }
+    }
   ],
 })
 export class MaterialModule {}

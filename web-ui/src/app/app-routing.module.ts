@@ -5,7 +5,7 @@ import { RoutePath } from './core/configs/core';
 const routes: Routes = [
   { path: RoutePath.Home,
     loadChildren: () => import('./features/home-page/home-page.module').then(m => m.HomePageModule),
-    data: { breadcrumb: 'Home' }
+    data: { breadcrumb: 'Home' },
   },
   {
     path: RoutePath.Manage,
