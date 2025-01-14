@@ -1,6 +1,6 @@
 import { AfterViewInit, Component, OnInit, ViewChild } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
-import { MatTabChangeEvent, MatTabGroup } from '@angular/material/tabs';
+import { MatTabGroup } from '@angular/material/tabs';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AccessKeyModalComponent } from 'src/app/shared/components';
@@ -13,6 +13,7 @@ import {
   ExperimentPermission,
   RegisteredModelPermission,
 } from 'src/app/shared/interfaces/user-data.interface';
+import { RoutePath } from '../../home-page-routing.module';
 
 @Component({
   selector: 'ml-home-page',
@@ -29,7 +30,7 @@ export class HomePageComponent implements OnInit, AfterViewInit {
 
   @ViewChild('userInfoTabs') userInfoTabs!: MatTabGroup;
 
-  private readonly tabIndexMapping = ['experiments', 'models'];
+  private readonly tabIndexMapping: string[] = [RoutePath.Experiments, RoutePath.Models];
 
   constructor(
     private readonly dialog: MatDialog,
@@ -67,7 +68,7 @@ export class HomePageComponent implements OnInit, AfterViewInit {
     window.location.href = '/';
   }
 
-  handleTabSelection({ index }: MatTabChangeEvent) {
+  handleTabSelection(index: number) {
     void this.router.navigate([`../${this.tabIndexMapping[index]}`], { relativeTo: this.route });
   }
 }
