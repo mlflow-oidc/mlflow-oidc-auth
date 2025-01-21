@@ -13,10 +13,10 @@ export class PermissionsComponent implements AfterViewInit {
   @ViewChild('permissionsTabs') permissionsTabs!: MatTabGroup
 
   private readonly tabIndexMapping: string[] = [
-    AdminPageRoutesEnum.PERMISSIONS + '/' + AdminPageRoutesEnum.USERS,
-    AdminPageRoutesEnum.PERMISSIONS + '/' + AdminPageRoutesEnum.EXPERIMENTS,
-    AdminPageRoutesEnum.PERMISSIONS + '/' + AdminPageRoutesEnum.MODELS,
-    AdminPageRoutesEnum.PERMISSIONS + '/' + AdminPageRoutesEnum.GROUPS,
+    AdminPageRoutesEnum.USERS,
+    AdminPageRoutesEnum.EXPERIMENTS,
+    AdminPageRoutesEnum.MODELS,
+    AdminPageRoutesEnum.GROUPS,
   ];
 
   constructor(
@@ -31,6 +31,6 @@ export class PermissionsComponent implements AfterViewInit {
   }
 
   handleTabSelection(index: number) {
-    void this.router.navigate([`../../${this.tabIndexMapping[index]}`], { relativeTo: this.route });
+    void this.router.navigate([`../${this.tabIndexMapping[index]}`], { relativeTo: this.route });
   }
 }

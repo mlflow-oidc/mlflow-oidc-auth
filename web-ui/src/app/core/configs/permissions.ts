@@ -6,9 +6,9 @@ export enum PermissionEnum {
 }
 
 export enum PermissionTypeEnum {
-  USER = 'USER',
-  GROUP = 'GROUP',
-  FALLBACK = 'FALLBACK',
+  USER = 'user',
+  GROUP = 'group',
+  FALLBACK = 'fallback',
 }
 
 export const PERMISSIONS = [
