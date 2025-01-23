@@ -29,8 +29,11 @@ def callback():
     token = get_oauth_instance(app).oidc.authorize_access_token()
     app.logger.debug(f"Token: {token}")
     session["user"] = token["userinfo"]
+    
+    # Use the email key from the userinfo response
+    email = token["userinfo"].get("email")
 
-    email = token["userinfo"]["email"]
+    #email = token["userinfo"]["email"]
     if email is None:
         return "No email provided", 401
     display_name = token["userinfo"]["name"]
