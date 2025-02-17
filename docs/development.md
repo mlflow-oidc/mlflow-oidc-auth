@@ -9,7 +9,7 @@ The following tools should be installed for local development:
 * Python
 
 ```shell
-git clone https://github.com/data-platform-hq/mlflow-oidc-auth
+git clone https://github.com/mlflow-oidc/mlflow-oidc-auth
 cd mlflow-oidc-auth
 ./scripts/run-dev-server.sh
 ```

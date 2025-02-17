@@ -9,7 +9,7 @@
 
 <div>
 
-  <mat-tab-group>
+  <mat-tab-group #userInfoTabs (selectedIndexChange)="handleTabSelection($event)">
 
     <mat-tab label="Experiments">
       <div class="my-3">

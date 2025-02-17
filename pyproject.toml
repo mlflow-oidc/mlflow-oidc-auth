@@ -56,10 +56,10 @@ email = "alexander_kharkevich@outlook.com"
 file = "LICENSE"
 
 [project.urls]
-homepage = "https://github.com/data-platform-hq/mlflow-oidc-auth"
-issues = "https://github.com/data-platform-hq/mlflow-oidc-auth/issues"
-documentation = "https://github.com/data-platform-hq/mlflow-oidc-auth/tree/main/docs/"
-repository = "https://github.com/data-platform-hq/mlflow-oidc-auth"
+homepage = "https://github.com/mlflow-oidc/mlflow-oidc-auth"
+issues = "https://github.com/mlflow-oidc/mlflow-oidc-auth/issues"
+documentation = "https://github.com/mlflow-oidc/mlflow-oidc-auth/tree/main/docs/"
+repository = "https://github.com/mlflow-oidc/mlflow-oidc-auth"
 
 [project.entry-points."mlflow.app"]
 oidc-auth = "mlflow_oidc_auth.app:app"

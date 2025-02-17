@@ -13,7 +13,7 @@ export interface ExperimentsForUserModel {
 export interface ExperimentForUserModel {
   id: string,
   name: string,
-  permissions: PermissionEnum,
+  permission: PermissionEnum,
   type: PermissionTypeEnum,
 }
 

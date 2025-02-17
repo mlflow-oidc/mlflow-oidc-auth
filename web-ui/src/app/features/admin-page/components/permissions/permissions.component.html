@@ -1,4 +1,4 @@
-<mat-tab-group>
+<mat-tab-group (selectedIndexChange)="handleTabSelection($event)" #permissionsTabs>
 
   <mat-tab label="Users permissions">
     <div class="my-3">

@@ -1,5 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { AfterViewInit, Component, OnInit, ViewChild } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
+import { MatTabGroup } from '@angular/material/tabs';
+import { ActivatedRoute, Router } from '@angular/router';
+
 import { AccessKeyModalComponent } from 'src/app/shared/components';
 import { AuthService } from 'src/app/shared/services';
 import { EXPERIMENTS_COLUMN_CONFIG, MODELS_COLUMN_CONFIG } from './home-page.config';
@@ -10,6 +13,7 @@ import {
   ExperimentPermission,
   RegisteredModelPermission,
 } from 'src/app/shared/interfaces/user-data.interface';
+import { RoutePath } from '../../home-page-routing.module';
 
 @Component({
   selector: 'ml-home-page',
@@ -17,17 +21,23 @@ import {
   styleUrls: ['./home-page.component.scss'],
   standalone: false
 })
-export class HomePageComponent implements OnInit {
+export class HomePageComponent implements OnInit, AfterViewInit {
   currentUserInfo: CurrentUserModel | null = null;
   experimentsColumnConfig = EXPERIMENTS_COLUMN_CONFIG;
   modelsColumnConfig = MODELS_COLUMN_CONFIG;
   experimentsDataSource: ExperimentPermission[] = [];
   modelsDataSource: RegisteredModelPermission[] = [];
 
+  @ViewChild('userInfoTabs') userInfoTabs!: MatTabGroup;
+
+  private readonly tabIndexMapping: string[] = [RoutePath.Experiments, RoutePath.Models];
+
   constructor(
     private readonly dialog: MatDialog,
     private readonly authService: AuthService,
     private readonly userDataService: UserDataService,
+    private readonly router: Router,
+    private readonly route: ActivatedRoute,
   ) {
   }
 
@@ -42,6 +52,10 @@ export class HomePageComponent implements OnInit {
     }
   }
 
+  ngAfterViewInit(): void {
+    this.userInfoTabs.selectedIndex = this.tabIndexMapping.indexOf(this.route.snapshot.url[0].path);
+  }
+
   showAccessKeyModal() {
     this.userDataService.getAccessKey()
       .subscribe(({ token }) => {
@@ -52,5 +66,9 @@ export class HomePageComponent implements OnInit {
 
   redirectToMLFlow() {
     window.location.href = '/';
+  }
+
+  handleTabSelection(index: number) {
+    void this.router.navigate([`../${this.tabIndexMapping[index]}`], { relativeTo: this.route });
   }
 }

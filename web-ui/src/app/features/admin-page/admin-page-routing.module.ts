@@ -1,7 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
+
 import {
-  AdminPageComponent,
   ExperimentPermissionDetailsComponent,
   GroupPermissionDetailsComponent,
   ModelPermissionDetailsComponent,
@@ -11,57 +11,81 @@ import {
 import { AdminPageRoutesEnum } from './config';
 
 const getBreadcrumb = (route: string) => {
-  const [entity, id] = route.split('/')
-  return `${entity.charAt(0).toUpperCase() + entity.slice(1)} / ${id}`;
+  const [entity, id] = route.split('/');
+  return `${entity} / ${id}`;
 };
 
 const routes: Routes = [
   {
-    path: '',
-    component: AdminPageComponent,
-    children: [
-      {
-        path: AdminPageRoutesEnum.PERMISSIONS,
-        component: PermissionsComponent,
-        data: {
-          breadcrumb: {
-            skip: true,
-          }
-        },
-      },
-      {
-        path: `${AdminPageRoutesEnum.USER}/:id`,
-        component: UserPermissionDetailsComponent,
-        data: {
-          breadcrumb:  getBreadcrumb,
-        },
-      },
-      {
-        path: `${AdminPageRoutesEnum.EXPERIMENT}/:id`,
-        component: ExperimentPermissionDetailsComponent,
-        data: {
-          breadcrumb: getBreadcrumb,
-        },
-      },
-      {
-        path: `${AdminPageRoutesEnum.MODEL}/:id`,
-        component: ModelPermissionDetailsComponent,
-        data: {
-          breadcrumb: getBreadcrumb,
-        },
-      },
-      {
-        path: `${AdminPageRoutesEnum.GROUP}/:id`,
-        component: GroupPermissionDetailsComponent,
-        data: {
-          breadcrumb: getBreadcrumb,
-        },
-      },
-      {
-        path: '**',
-        redirectTo: AdminPageRoutesEnum.PERMISSIONS,
-      },
-    ],
+    path: `${AdminPageRoutesEnum.USERS}`,
+    component: PermissionsComponent,
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id/experiments`,
+    component: UserPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id/models`,
+    component: UserPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id`,
+    redirectTo: `${AdminPageRoutesEnum.USER}/:id/experiments`,
+  },
+  {
+    path: `${AdminPageRoutesEnum.EXPERIMENTS}`,
+    component: PermissionsComponent,
+  },
+  {
+    path: `${AdminPageRoutesEnum.EXPERIMENT}/:id`,
+    component: ExperimentPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.MODELS}`,
+    component: PermissionsComponent,
+  },
+  {
+    path: `${AdminPageRoutesEnum.MODEL}/:id`,
+    component: ModelPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUPS}`,
+    component: PermissionsComponent,
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/experiments`,
+    component: GroupPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/models`,
+    component: GroupPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id`,
+    pathMatch: 'full',
+    redirectTo: `${AdminPageRoutesEnum.GROUP}/:id/experiments`,
+  },
+  {
+    path: '**',
+    redirectTo: `${AdminPageRoutesEnum.USERS}`,
   },
 ];
 
