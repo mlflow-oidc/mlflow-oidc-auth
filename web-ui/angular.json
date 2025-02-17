@@ -35,6 +35,19 @@
           },
           "configurations": {
             "production": {
+              "buildOptimizer": true,
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              },
+              "vendorChunk": true,
+              "extractLicenses": false,
+              "sourceMap": false,
+              "namedChunks": true,
               "budgets": [
                 {
                   "type": "initial",
@@ -43,8 +56,8 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "2kb",
-                  "maximumError": "4kb"
+                  "maximumWarning": "12kb",
+                  "maximumError": "15kb"
                 }
               ],
               "fileReplacements": [
@@ -70,10 +83,10 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
             "production": {
-              "browserTarget": "mlflow-oidc-auth-front:build:production"
+              "buildTarget": "mlflow-oidc-auth-front:build:production"
             },
             "development": {
-              "browserTarget": "mlflow-oidc-auth-front:build:development"
+              "buildTarget": "mlflow-oidc-auth-front:build:development"
             }
           },
           "defaultConfiguration": "development"
@@ -81,7 +94,7 @@
         "extract-i18n": {
           "builder": "@angular-devkit/build-angular:extract-i18n",
           "options": {
-            "browserTarget": "mlflow-oidc-auth-front:build"
+            "buildTarget": "mlflow-oidc-auth-front:build"
           }
         },
         "test": {

@@ -16,7 +16,8 @@ interface GroupModel {
 @Component({
   selector: 'ml-group-permissions',
   templateUrl: './group-permissions.component.html',
-  styleUrls: ['./group-permissions.component.scss']
+  styleUrls: ['./group-permissions.component.scss'],
+  standalone: false
 })
 export class GroupPermissionsComponent implements OnInit {
 

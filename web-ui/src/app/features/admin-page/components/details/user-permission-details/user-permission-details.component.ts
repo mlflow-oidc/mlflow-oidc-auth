@@ -1,6 +1,6 @@
-import { Component, OnInit } from '@angular/core';
+import { AfterViewInit, Component, OnInit, ViewChild } from '@angular/core';
 import { filter, forkJoin, map, switchMap, tap } from 'rxjs';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   ExperimentsDataService,
   ModelsDataService,
@@ -20,13 +20,15 @@ import { TableActionEnum } from 'src/app/shared/components/table/table.config';
 import { ModelPermissionModel } from 'src/app/shared/interfaces/models-data.interface';
 import { ExperimentForUserModel } from 'src/app/shared/interfaces/experiments-data.interface';
 import { PermissionTypeEnum } from 'src/app/core/configs/permissions';
+import { MatTabGroup } from '@angular/material/tabs';
 
 @Component({
   selector: 'ml-user-permission-details',
   templateUrl: './user-permission-details.component.html',
   styleUrls: ['./user-permission-details.component.scss'],
+  standalone: false
 })
-export class UserPermissionDetailsComponent implements OnInit {
+export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
   userId: string = '';
   experimentsColumnConfig = EXPERIMENT_COLUMN_CONFIG;
   modelsColumnConfig = MODEL_COLUMN_CONFIG;
@@ -36,13 +38,21 @@ export class UserPermissionDetailsComponent implements OnInit {
   experimentsActions: TableActionModel[] = EXPERIMENT_ACTIONS;
   modelsActions: TableActionModel[] = MODEL_ACTIONS;
 
+  @ViewChild('userTabs') permissionsTabs!: MatTabGroup;
+
+  private readonly tabIndexMapping: string[] = [
+    'experiments',
+    'models',
+  ];
+
   constructor(
     private readonly expDataService: ExperimentsDataService,
     private readonly modelDataService: ModelsDataService,
     private readonly permissionDataService: PermissionDataService,
     private readonly route: ActivatedRoute,
     private readonly permissionModalService: PermissionModalService,
-    private readonly snackBarService: SnackBarService
+    private readonly snackBarService: SnackBarService,
+    private readonly router: Router,
   ) {
   }
 
@@ -58,6 +68,11 @@ export class UserPermissionDetailsComponent implements OnInit {
         this.modelsDataSource = models;
       });
 
+  }
+
+  ngAfterViewInit(): void {
+    const routePath = String(this.route.snapshot.url[2]);
+    this.permissionsTabs.selectedIndex = routePath ? this.tabIndexMapping.indexOf(routePath) : 0;
   }
 
   addModelPermissionToUser() {
@@ -110,29 +125,31 @@ export class UserPermissionDetailsComponent implements OnInit {
   }
 
   revokeExperimentPermissionForUser(item: {id: string, type: PermissionTypeEnum}) {
-    if (item.type.toUpperCase() === PermissionTypeEnum.USER) {
-      this.permissionDataService.deleteExperimentPermission({experiment_id: item.id, user_name: this.userId})
-        .pipe(
-          tap(() => this.snackBarService.openSnackBar('Permission revoked successfully')),
-          switchMap(() => this.expDataService.getExperimentsForUser(this.userId)),
-        )
-        .subscribe((experiments) => this.experimentsDataSource = experiments);
-    } else {
+    if (item.type !== PermissionTypeEnum.USER) {
       this.snackBarService.openSnackBar('Nothing to reset');
+      return;
     }
+
+    this.permissionDataService.deleteExperimentPermission({experiment_id: item.id, user_name: this.userId})
+      .pipe(
+        tap(() => this.snackBarService.openSnackBar('Permission revoked successfully')),
+        switchMap(() => this.expDataService.getExperimentsForUser(this.userId)),
+      )
+      .subscribe((experiments) => this.experimentsDataSource = experiments);
   }
 
   revokeModelPermissionForUser({name, type}: ModelPermissionModel) {
-    if (type.toUpperCase() === PermissionTypeEnum.USER) {
-      this.permissionDataService.deleteModelPermission({name: name, user_name: this.userId})
-        .pipe(
-          tap(() => this.snackBarService.openSnackBar('Permission revoked successfully')),
-          switchMap(() => this.modelDataService.getModelsForUser(this.userId)),
-        )
-        .subscribe((models) => this.modelsDataSource = models);
-    } else {
+    if (type !== PermissionTypeEnum.USER) {
       this.snackBarService.openSnackBar('Nothing to reset');
+      return;
     }
+
+    this.permissionDataService.deleteModelPermission({name: name, user_name: this.userId})
+      .pipe(
+        tap(() => this.snackBarService.openSnackBar('Permission revoked successfully')),
+        switchMap(() => this.modelDataService.getModelsForUser(this.userId)),
+      )
+      .subscribe((models) => this.modelsDataSource = models);
   }
 
   handleModelActions({ action, item }: TableActionEvent<ModelPermissionModel>) {
@@ -152,19 +169,15 @@ export class UserPermissionDetailsComponent implements OnInit {
       .pipe(
         filter(Boolean),
         switchMap((permission) => {
-          if (type.toUpperCase() !== PermissionTypeEnum.USER) {
-            return this.permissionDataService.createModelPermission({
-              name,
-              permission,
-              user_name: this.userId,
-            });
-          } else {
-            return this.permissionDataService.updateModelPermission({
-              name,
-              permission,
-              user_name: this.userId,
-            });
-          }
+          const permissionData = {
+            name,
+            permission,
+            user_name: this.userId,
+          };
+
+          return type !== PermissionTypeEnum.FALLBACK
+            ? this.permissionDataService.createModelPermission(permissionData)
+            : this.permissionDataService.updateModelPermission(permissionData);
         }),
         tap(() => this.snackBarService.openSnackBar('Permissions updated successfully')),
         switchMap(() => this.modelDataService.getModelsForUser(this.userId)),
@@ -172,28 +185,27 @@ export class UserPermissionDetailsComponent implements OnInit {
       .subscribe((models) => this.modelsDataSource = models);
   }
 
-  handleEditUserPermissionForExperiment({ id, permissions, type }: ExperimentForUserModel) {
-    this.permissionModalService.openEditPermissionsModal(id, this.userId, permissions)
+  handleEditUserPermissionForExperiment({ id, permission, type }: ExperimentForUserModel) {
+    this.permissionModalService.openEditPermissionsModal(id, this.userId, permission)
       .pipe(
         filter(Boolean),
         switchMap((permission) => {
-          if (type.toUpperCase() !== PermissionTypeEnum.USER) {
-            return this.permissionDataService.createExperimentPermission({
-              experiment_id: id,
-              permission,
-              user_name: this.userId,
-            });
-          } else {
-            return this.permissionDataService.updateExperimentPermission({
-              experiment_id: id,
-              permission,
-              user_name: this.userId,
-            });
-          }
+          const permissionData = {
+            experiment_id: id,
+            permission,
+            user_name: this.userId,
+          };
+          return type !== PermissionTypeEnum.USER
+            ? this.permissionDataService.createExperimentPermission(permissionData)
+            : this.permissionDataService.updateExperimentPermission(permissionData);
         }),
         tap(() => this.snackBarService.openSnackBar('Permissions updated successfully')),
         switchMap(() => this.expDataService.getExperimentsForUser(this.userId)),
       )
       .subscribe((experiments) => this.experimentsDataSource = experiments);
+  }
+
+  handleTabSelection(index: number) {
+    void this.router.navigate([`../${this.tabIndexMapping[index]}`], { relativeTo: this.route });
   }
 }

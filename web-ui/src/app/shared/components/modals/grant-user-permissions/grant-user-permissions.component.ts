@@ -11,7 +11,8 @@ export interface GrantUserPermissionsModel {
 @Component({
   selector: 'ml-grant-user-permissions',
   templateUrl: './grant-user-permissions.component.html',
-  styleUrls: ['./grant-user-permissions.component.scss']
+  styleUrls: ['./grant-user-permissions.component.scss'],
+  standalone: false
 })
 export class GrantUserPermissionsComponent implements OnInit {
   form!: FormGroup;

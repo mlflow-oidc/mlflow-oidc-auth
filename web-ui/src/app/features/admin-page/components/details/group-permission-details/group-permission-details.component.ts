@@ -1,5 +1,5 @@
-import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { Component, OnInit, ViewChild } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { filter, map, switchMap, tap } from 'rxjs';
 
 import {
@@ -24,11 +24,13 @@ import {
 import { PermissionModalService } from 'src/app/shared/services/permission-modal.service';
 import { TableActionEnum } from 'src/app/shared/components/table/table.config';
 import { EntityEnum } from 'src/app/core/configs/core';
+import { MatTabGroup } from '@angular/material/tabs';
 
 @Component({
   selector: 'ml-group-permission-details',
   templateUrl: './group-permission-details.component.html',
-  styleUrls: ['./group-permission-details.component.scss']
+  styleUrls: ['./group-permission-details.component.scss'],
+  standalone: false
 })
 export class GroupPermissionDetailsComponent implements OnInit {
   groupName = '';
@@ -41,6 +43,13 @@ export class GroupPermissionDetailsComponent implements OnInit {
   modelDataSource: ModelModel[] = [];
   modelActions: TableActionModel[] = MODELS_ACTIONS;
 
+  @ViewChild('permissionsTabs') permissionsTabs!: MatTabGroup;
+
+  private readonly tabIndexMapping: string[] = [
+    'experiments',
+    'models',
+  ]
+
   constructor(
     private readonly groupDataService: GroupDataService,
     private readonly route: ActivatedRoute,
@@ -49,6 +58,7 @@ export class GroupPermissionDetailsComponent implements OnInit {
     private readonly experimentsDataService: ExperimentsDataService,
     private readonly snackBarService: SnackBarService,
     private readonly modelDataService: ModelsDataService,
+    private readonly router: Router,
   ) { }
 
   ngOnInit(): void {
@@ -58,6 +68,11 @@ export class GroupPermissionDetailsComponent implements OnInit {
       .subscribe((experiments) => this.experimentDataSource = experiments);
     this.groupDataService.getAllRegisteredModelsForGroup(this.groupName)
       .subscribe((models) => this.modelDataSource = models);
+  }
+
+  ngAfterViewInit(): void {
+    const routePath = String(this.route.snapshot.url[2]);
+    this.permissionsTabs.selectedIndex = routePath ? this.tabIndexMapping.indexOf(routePath) : 0;
   }
 
   openModalAddExperimentPermissionToGroup() {
@@ -153,5 +168,9 @@ export class GroupPermissionDetailsComponent implements OnInit {
         switchMap(() => this.groupDataService.getAllRegisteredModelsForGroup(this.groupName)),
       )
       .subscribe((models) => this.modelDataSource = models);
+  }
+
+  handleTabSelection(index: number) {
+    this.router.navigate([`../${this.tabIndexMapping[index]}`], { relativeTo: this.route });
   }
 }
