@@ -5,7 +5,8 @@ import { AccessKeyDialogData } from './access-key-modal.interface';
 @Component({
   selector: 'ml-access-key-modal',
   templateUrl: './access-key-modal.component.html',
-  styleUrls: ['./access-key-modal.component.scss']
+  styleUrls: ['./access-key-modal.component.scss'],
+  standalone: false
 })
 export class AccessKeyModalComponent implements OnInit {
   token: string = '';

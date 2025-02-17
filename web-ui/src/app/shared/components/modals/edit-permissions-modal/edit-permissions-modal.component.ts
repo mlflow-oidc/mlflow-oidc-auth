@@ -8,7 +8,8 @@ import { PermissionsDialogData } from './edit-permissions-modal.interface';
 @Component({
   selector: 'ml-edit-permissions-modal',
   templateUrl: './edit-permissions-modal.component.html',
-  styleUrls: ['./edit-permissions-modal.component.scss']
+  styleUrls: ['./edit-permissions-modal.component.scss'],
+  standalone: false
 })
 export class EditPermissionsModalComponent implements OnInit {
   permissions = PERMISSIONS;

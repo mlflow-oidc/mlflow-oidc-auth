@@ -7,7 +7,8 @@ import { GrantPermissionModalData } from './grant-permission-modal.inteface';
 @Component({
   selector: 'ml-grant-permission-modal',
   templateUrl: './grant-permission-modal.component.html',
-  styleUrls: ['./grant-permission-modal.component.scss']
+  styleUrls: ['./grant-permission-modal.component.scss'],
+  standalone: false
 })
 export class GrantPermissionModalComponent implements OnInit {
   grantPermissionForm!: FormGroup;

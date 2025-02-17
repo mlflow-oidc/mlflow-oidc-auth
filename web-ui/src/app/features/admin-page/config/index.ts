@@ -4,4 +4,8 @@ export enum AdminPageRoutesEnum {
   EXPERIMENT = 'experiment',
   MODEL = 'model',
   GROUP = 'group',
+  USERS = 'users',
+  EXPERIMENTS = 'experiments',
+  MODELS = 'models',
+  GROUPS = 'groups',
 }

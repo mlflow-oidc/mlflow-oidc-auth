@@ -24,7 +24,8 @@ interface ExperimentModel {
 @Component({
   selector: 'ml-experiment-permission-details',
   templateUrl: './experiment-permission-details.component.html',
-  styleUrls: ['./experiment-permission-details.component.scss']
+  styleUrls: ['./experiment-permission-details.component.scss'],
+  standalone: false
 })
 export class ExperimentPermissionDetailsComponent implements OnInit {
   experimentId!: string;

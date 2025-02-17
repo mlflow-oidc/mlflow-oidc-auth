@@ -13,7 +13,8 @@ import { finalize } from 'rxjs';
 @Component({
   selector: 'ml-experiment-permissions',
   templateUrl: './experiment-permissions.component.html',
-  styleUrls: ['./experiment-permissions.component.scss']
+  styleUrls: ['./experiment-permissions.component.scss'],
+  standalone: false
 })
 export class ExperimentPermissionsComponent implements OnInit {
   columnConfig = COLUMN_CONFIG;

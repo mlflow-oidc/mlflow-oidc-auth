@@ -1,4 +1,4 @@
-<mat-tab-group>
+<mat-tab-group #userTabs (selectedIndexChange)="handleTabSelection($event)">
   <!--  Experiments-->
   <mat-tab label="Experiments">
     <div class="my-3">
