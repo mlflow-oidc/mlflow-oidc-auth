@@ -1,6 +1,7 @@
 import secrets
 
 from flask import redirect, session, url_for
+import jwt 
 
 import mlflow_oidc_auth.utils as utils
 from mlflow_oidc_auth.auth import get_oauth_instance
@@ -42,7 +43,13 @@ def callback():
 
         user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
     else:
-        user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
+        group_attr = config.OIDC_GROUPS_ATTRIBUTE
+        user_info = token["userinfo"]
+        decoded_access_token = jwt.decode(token["access_token"], audience=config.OIDC_AUDIENCE, options={"verify_signature": False})
+        if group_attr in decoded_access_token:
+            user_groups = decoded_access_token[group_attr]
+        if group_attr in user_info:
+            user_groups = user_info[group_attr]
 
     app.logger.debug(f"User groups: {user_groups}")
 
