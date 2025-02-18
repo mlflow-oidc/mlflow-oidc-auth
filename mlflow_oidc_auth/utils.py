@@ -49,6 +49,10 @@ def get_username():
             username = validate_token(request.authorization.token).get("email")
             app.logger.debug(f"Username from bearer token: {username}")
             return username
+        if config.TRUSTED_USER_ID_HEADER:
+            username = request.headers.get(config.TRUSTED_USER_ID_HEADER)
+            app.logger.debug(f"Username from trusted header {config.TRUSTED_USER_ID_HEADER}: {username}")
+            return username
     return None
 
 
