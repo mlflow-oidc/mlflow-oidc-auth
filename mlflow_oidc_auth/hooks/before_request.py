@@ -196,7 +196,7 @@ def before_request_hook():
         if session.get("username") is None:
             session.clear()
 
-            if config.ENABLE_AUTOMATIC_LOGIN_REDIRECT:
+            if config.AUTOMATIC_LOGIN_REDIRECT:
                 return redirect(url_for("login", _external=True))
             return render_template(
                 "auth.html",

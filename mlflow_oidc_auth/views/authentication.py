@@ -17,7 +17,7 @@ def login():
 
 def logout():
     session.clear()
-    if config.ENABLE_AUTOMATIC_LOGIN_REDIRECT:
+    if config.AUTOMATIC_LOGIN_REDIRECT:
         return render_template(
                 "auth.html",
                 username=None,
