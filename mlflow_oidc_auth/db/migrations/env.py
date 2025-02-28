@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from mlflow_oidc_auth.config import config as app_config
 from mlflow_oidc_auth.db.models import Base
 
 # this is the Alembic Config object, which provides
@@ -45,7 +46,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table=os.environ.get("OIDC_ALEMBIC_VERSION_TABLE", "alembic_version"),
+        version_table=app_config.OIDC_ALEMBIC_VERSION_TABLE,
     )
 
     with context.begin_transaction():
@@ -69,9 +70,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            version_table=os.environ.get(
-                "OIDC_ALEMBIC_VERSION_TABLE", "alembic_version"
-            ),
+            version_table=app_config.OIDC_ALEMBIC_VERSION_TABLE,
         )
 
         with context.begin_transaction():
