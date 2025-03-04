@@ -28,7 +28,7 @@ The plugin required the following environment variables but also supported `.env
 | OIDC_PROVIDER_DISPLAY_NAME | any text to display |
 | OIDC_SCOPE | OIDC scope |
 | OIDC_GROUP_NAME | User group name to be allowed login to MLFlow, currently supported groups in OIDC claims and Microsoft Entra ID groups |
-| OIDC_ADMIN_GROUP_NAME | User group name to be allowed login to MLFlow manage and define permissions, currently supported groups in OIDC claims and Microsoft Entra ID groups |
+| OIDC_GROUP_PATTERN_FILTER | List of fnmatch patterns that will be considered relevant to login to MLFlow. Any groups coming from the currently supported groups in OIDC claims and Microsoft Entra ID groups not matching any of the patterns will be ignored |
 | OIDC_AUTHORIZATION_URL | OIDC Auth URL (if discovery URL is not defined) |
 | OIDC_TOKEN_URL         | OIDC Token URL (if discovery URL is not defined) |
 | OIDC_USER_URL          | OIDC User info URL (if discovery URL is not defined) |
