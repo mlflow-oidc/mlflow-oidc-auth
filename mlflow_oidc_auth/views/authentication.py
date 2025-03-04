@@ -105,29 +105,13 @@ def callback():
     if email is None:
         return "No email provided", 401
     display_name = token["userinfo"]["name"]
-    is_admin = False
-    user_groups = []
 
-    if config.OIDC_GROUP_DETECTION_PLUGIN:
-        import importlib
+    # Get groups and admin status
+    user_groups = get_user_groups(token)
+    is_admin = get_is_admin(user_groups)
 
-        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
-    else:
-        user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
-
-    app.logger.debug(f"All user groups: {user_groups}")
-
-    # Now filter the user groups to keep only those matching the pattern
-    user_groups = sorted(
-        set([x for p in config.OIDC_GROUP_FILTER_PATTERNS for x in [g for g in user_groups if fnmatch.fnmatch(g, p)]])
-    )
-
-    app.logger.debug(f"Filtered user groups: {user_groups}")
-
-    if config.OIDC_ADMIN_GROUP_NAME in user_groups:
-        app.logger.debug(f"User is in admin group {config.OIDC_ADMIN_GROUP_NAME}")
-        is_admin = True
-    elif not len(user_groups):
+    # If there are no user_groups (including the admin group) that allow login to server, give 401
+    if not len(user_groups):
         return "User is not allowed to login", 401
 
     create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
