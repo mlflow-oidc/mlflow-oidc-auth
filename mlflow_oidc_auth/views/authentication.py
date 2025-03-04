@@ -63,7 +63,15 @@ def callback():
 
     if config.OIDC_ADMIN_GROUP_NAME in user_groups:
         is_admin = True
-    elif not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+
+    # Now filter the user groups to keep only those matching the pattern
+    user_groups = sorted(
+        set([x for p in config.OIDC_GROUP_FILTER_PATTERNS for x in [g for g in user_groups if fnmatch.fnmatch(g, p)]])
+    )
+
+    app.logger.debug(f"Filtered user groups: {user_groups}")
+
+    if not len(user_groups):
         return "User is not allowed to login", 401
 
     create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
