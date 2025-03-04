@@ -62,7 +62,7 @@ OIDC_CLIENT_SECRET ='<super_secret>'
 OIDC_CLIENT_ID ='<client_id>'
 OIDC_PROVIDER_DISPLAY_NAME = "Login with Okta"
 OIDC_SCOPE = "openid,profile,email,groups"
-OIDC_GROUP_NAME = "mlflow-users-group-name"
+OIDC_GROUP_FILTER_PATTERN = "mlflow-users-group-name"
 OIDC_ADMIN_GROUP_NAME = "mlflow-admin-group-name"
 ```
 
@@ -75,7 +75,20 @@ OIDC_CLIENT_ID = '<client_id>'
 OIDC_PROVIDER_DISPLAY_NAME = "Login with Microsoft"
 OIDC_GROUP_DETECTION_PLUGIN = 'mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id'
 OIDC_SCOPE = "openid,profile,email"
-OIDC_GROUP_NAME = "mlflow_users_group_name"
+OIDC_GROUP_FILTER_PATTERN = "mlflow_users_group_name"
+OIDC_ADMIN_GROUP_NAME = "mlflow_admins_group_name"
+```
+
+Alternatively, if you want to give access to every group starting with `mlflow_users_` or `mlflow_viewers_` you can use the following configuration:
+
+```bash
+OIDC_DISCOVERY_URL = 'https://login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration'
+OIDC_CLIENT_SECRET = '<super_secret>'
+OIDC_CLIENT_ID = '<client_id>'
+OIDC_PROVIDER_DISPLAY_NAME = "Login with Microsoft"
+OIDC_GROUP_DETECTION_PLUGIN = 'mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id'
+OIDC_SCOPE = "openid,profile,email"
+OIDC_GROUP_FILTER_PATTERN = "mlflow_users_* mlflow_viewers_*"
 OIDC_ADMIN_GROUP_NAME = "mlflow_admins_group_name"
 ```
 
