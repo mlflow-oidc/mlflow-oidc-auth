@@ -67,6 +67,26 @@ def get_user_groups(token: dict) -> list[str]:
     return user_groups
 
 
+def get_is_admin(user_groups: list[str]):
+    """Check if the admin group is included in the user_groups. In that case
+    it means that the user is an admin user
+
+    Args:
+        user_groups (list[str]): list of the groups the current user belongs to
+
+    Returns:
+        True if the admin group is in the list of the groups of the current user, False otherwise
+
+    """
+    is_admin = False
+
+    if config.OIDC_ADMIN_GROUP_NAME in user_groups:
+        app.logger.debug(f"User is in admin group {config.OIDC_ADMIN_GROUP_NAME}")
+        is_admin = True
+
+    return is_admin
+
+
 def callback():
     """Validate the state to protect against CSRF"""
 
