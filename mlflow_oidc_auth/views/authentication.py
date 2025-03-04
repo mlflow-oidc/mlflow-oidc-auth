@@ -59,7 +59,7 @@ def callback():
     else:
         user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
 
-    app.logger.debug(f"User groups: {user_groups}")
+    app.logger.debug(f"All user groups: {user_groups}")
 
     if config.OIDC_ADMIN_GROUP_NAME in user_groups:
         is_admin = True
