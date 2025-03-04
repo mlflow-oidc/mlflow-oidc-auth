@@ -31,6 +31,42 @@ def logout():
     return redirect("/")
 
 
+def get_user_groups(token: dict) -> list[str]:
+    """Retrieve the list of groups this user (based on the provided token) is a member of
+
+    Args:
+        token: dictionary holding the oidc token information
+
+    Returns:
+        list of all the groups this user is a member of
+    """
+    user_groups = []
+
+    if config.OIDC_GROUP_DETECTION_PLUGIN:
+        import importlib
+
+        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
+    else:
+        user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
+
+    app.logger.debug(f"All user groups: {user_groups}")
+
+    # Now filter the user groups to keep only those matching the pattern or the ADMIN group
+    user_groups = sorted(
+        set(
+            [
+                x
+                for p in config.OIDC_GROUP_FILTER_PATTERNS
+                for x in [g for g in user_groups if (fnmatch.fnmatch(g, p) or (g == config.OIDC_ADMIN_GROUP_NAME))]
+            ]
+        )
+    )
+
+    app.logger.debug(f"Filtered user groups: {user_groups}")
+
+    return user_groups
+
+
 def callback():
     """Validate the state to protect against CSRF"""
 
