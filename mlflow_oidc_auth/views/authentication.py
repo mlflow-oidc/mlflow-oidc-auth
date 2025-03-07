@@ -1,4 +1,3 @@
-import fnmatch
 import secrets
 
 from flask import redirect, render_template, session, url_for
@@ -8,6 +7,7 @@ import mlflow_oidc_auth.utils as utils
 from mlflow_oidc_auth.auth import get_oauth_instance
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.user import create_user, populate_groups, update_user
+from mlflow_oidc_auth.token_utils import token_get_user_is_admin, token_get_user_groups
 
 
 def login():
@@ -31,62 +31,6 @@ def logout():
     return redirect("/")
 
 
-def get_user_groups(token: dict) -> list[str]:
-    """Retrieve the list of groups this user (based on the provided token) is a member of
-
-    Args:
-        token: dictionary holding the oidc token information
-
-    Returns:
-        list of all the groups this user is a member of
-    """
-    user_groups = []
-
-    if config.OIDC_GROUP_DETECTION_PLUGIN:
-        import importlib
-
-        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
-    else:
-        user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
-
-    app.logger.debug(f"All user groups: {user_groups}")
-
-    # Now filter the user groups to keep only those matching the pattern or the ADMIN group
-    user_groups = sorted(
-        set(
-            [
-                x
-                for p in config.OIDC_GROUP_FILTER_PATTERNS
-                for x in [g for g in user_groups if (fnmatch.fnmatch(g, p) or (g == config.OIDC_ADMIN_GROUP_NAME))]
-            ]
-        )
-    )
-
-    app.logger.debug(f"Filtered user groups: {user_groups}")
-
-    return user_groups
-
-
-def get_is_admin(user_groups: list[str]):
-    """Check if the admin group is included in the user_groups. In that case
-    it means that the user is an admin user
-
-    Args:
-        user_groups (list[str]): list of the groups the current user belongs to
-
-    Returns:
-        True if the admin group is in the list of the groups of the current user, False otherwise
-
-    """
-    is_admin = False
-
-    if config.OIDC_ADMIN_GROUP_NAME in user_groups:
-        app.logger.debug(f"User is in admin group {config.OIDC_ADMIN_GROUP_NAME}")
-        is_admin = True
-
-    return is_admin
-
-
 def callback():
     """Validate the state to protect against CSRF"""
 
@@ -107,8 +51,10 @@ def callback():
     display_name = token["userinfo"]["name"]
 
     # Get groups and admin status
-    user_groups = get_user_groups(token)
-    is_admin = get_is_admin(user_groups)
+    user_groups = token_get_user_groups(token)
+    app.logger.debug(f"Filtered user groups the user belongs to: {user_groups}")
+    is_admin = token_get_user_is_admin(user_groups)
+    app.logger.debug(f"User is an admin user: {is_admin}")
 
     # If there are no user_groups (including the admin group) that allow login to server, give 401
     if not len(user_groups):
