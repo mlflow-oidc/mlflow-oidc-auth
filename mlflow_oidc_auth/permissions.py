@@ -70,7 +70,7 @@ def _validate_permission(permission: str):
         )
 
 
-def compare_permissions(permission1: str, permission2: str) -> bool:
+def compare_permissions(permission1: str, permission2: str, strict: bool=False) -> bool:
     _validate_permission(permission1)
     _validate_permission(permission2)
     return ALL_PERMISSIONS[permission1].priority <= ALL_PERMISSIONS[permission2].priority
