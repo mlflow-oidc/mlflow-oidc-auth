@@ -43,7 +43,7 @@ MANAGE = Permission(
 
 NO_PERMISSIONS = Permission(
     name="NO_PERMISSIONS",
-    priority=100,
+    priority=0,
     can_read=False,
     can_update=False,
     can_delete=False,
