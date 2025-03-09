@@ -19,10 +19,10 @@ def logout():
     session.clear()
     if config.AUTOMATIC_LOGIN_REDIRECT:
         return render_template(
-                "auth.html",
-                username=None,
-                provide_display_name=config.OIDC_PROVIDER_DISPLAY_NAME,
-    )
+            "auth.html",
+            username=None,
+            provide_display_name=config.OIDC_PROVIDER_DISPLAY_NAME,
+        )
     return redirect("/")
 
 
