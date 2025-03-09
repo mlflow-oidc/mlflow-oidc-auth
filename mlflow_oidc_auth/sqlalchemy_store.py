@@ -179,11 +179,13 @@ class SqlAlchemyStore:
     def get_user_groups_experiment_permission(self, experiment_id: str, username: str) -> ExperimentPermission:
         with self.ManagedSessionMaker() as session:
             user_groups = self.get_groups_for_user(username)
-            user_perms: ExperimentPermission
+            user_perms: ExperimentPermission = None
             for ug in user_groups:
                 perms = self._get_experiment_group_permission(session, experiment_id, ug)
+                if perms is None:
+                    continue
                 try:
-                    if perms.permission.priority > user_perms.permission.priority:
+                    if compare_permissions(user_perms.permission, perms.permission):
                         user_perms = perms
                 except AttributeError:
                     user_perms = perms
@@ -298,11 +300,13 @@ class SqlAlchemyStore:
     def get_user_groups_registered_model_permission(self, name: str, username: str) -> RegisteredModelPermission:
         with self.ManagedSessionMaker() as session:
             user_groups = self.get_groups_for_user(username)
-            user_perms: RegisteredModelPermission
+            user_perms: RegisteredModelPermission = None
             for ug in user_groups:
                 perms = self._get_registered_model_group_permission(session, name, ug)
+                if perms is None:
+                    continue            
                 try:
-                    if perms.permission.priority > user_perms.permission.priority:
+                    if compare_permissions(user_perms.permission, perms.permission):
                         user_perms = perms
                 except AttributeError:
                     user_perms = perms
