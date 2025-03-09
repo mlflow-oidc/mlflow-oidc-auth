@@ -304,7 +304,7 @@ class SqlAlchemyStore:
             for ug in user_groups:
                 perms = self._get_registered_model_group_permission(session, name, ug)
                 if perms is None:
-                    continue            
+                    continue
                 try:
                     if compare_permissions(user_perms.permission, perms.permission):
                         user_perms = perms
