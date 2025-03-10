@@ -18,7 +18,7 @@ from mlflow.utils.search_utils import SearchUtils
 from mlflow_oidc_auth.app import config
 from mlflow_oidc_auth.permissions import MANAGE, get_permission
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import get_is_admin, get_request_param, get_username
+from mlflow_oidc_auth.utils import get_is_admin, get_request_param, get_username, get_user_groups
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -27,14 +27,23 @@ def _set_can_manage_experiment_permission(resp: Response):
     experiment_id = response_message.experiment_id
     username = get_username()
     store.create_experiment_permission(experiment_id, username, MANAGE.name)
+    user_groups = get_user_groups()
+    if permission := config.DEFAULT_MLFLOW_GROUP_PERMISSION:
+        for group_name in user_groups:
+            store.create_group_experiment_permission(group_name, experiment_id, permission)
 
 
 def _set_can_manage_registered_model_permission(resp: Response):
     response_message = CreateRegisteredModel.Response()
     parse_dict(resp.json, response_message)
-    name = response_message.registered_model.name
+    model_name = response_message.registered_model.name
     username = get_username()
-    store.create_registered_model_permission(name, username, MANAGE.name)
+    store.create_registered_model_permission(model_name, username, MANAGE.name)
+    user_groups = get_user_groups()
+    if permission := config.DEFAULT_MLFLOW_GROUP_PERMISSION:
+        for group_name in user_groups:
+            store.create_group_model_permission(group_name, model_name, permission)
+
 
 
 def _delete_can_manage_registered_model_permission(resp: Response):
