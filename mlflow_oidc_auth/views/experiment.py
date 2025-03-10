@@ -4,6 +4,7 @@ from mlflow.server.handlers import _get_tracking_store, catch_mlflow_exception
 from mlflow_oidc_auth.responses.client_error import make_forbidden_response
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
+    check_experiment_permission,
     get_experiment_id,
     get_is_admin,
     get_permission_from_store_or_default,
@@ -13,6 +14,7 @@ from mlflow_oidc_auth.utils import (
 
 
 @catch_mlflow_exception
+@check_experiment_permission
 def create_experiment_permission():
     store.create_experiment_permission(
         get_experiment_id(),
@@ -23,14 +25,14 @@ def create_experiment_permission():
 
 
 @catch_mlflow_exception
+@check_experiment_permission
 def get_experiment_permission():
-    experiment_id = get_request_param("experiment_id")
-    username = get_request_param("user_name")
-    ep = store.get_experiment_permission(experiment_id, username)
+    ep = store.get_experiment_permission(get_experiment_id(), get_request_param("user_name"))
     return make_response({"experiment_permission": ep.to_json()})
 
 
 @catch_mlflow_exception
+@check_experiment_permission
 def update_experiment_permission():
     store.update_experiment_permission(
         get_experiment_id(),
@@ -41,6 +43,7 @@ def update_experiment_permission():
 
 
 @catch_mlflow_exception
+@check_experiment_permission
 def delete_experiment_permission():
     store.delete_experiment_permission(
         get_experiment_id(),
@@ -51,11 +54,10 @@ def delete_experiment_permission():
 
 @catch_mlflow_exception
 def get_experiments():
-    current_user = store.get_user(get_username())
-    is_admin = get_is_admin()
-    if is_admin:
+    if get_is_admin():
         list_experiments = _get_tracking_store().search_experiments()
     else:
+        current_user = store.get_user(get_username())
         list_experiments = []
         for experiment in _get_tracking_store().search_experiments():
             permission = get_permission_from_store_or_default(
@@ -78,9 +80,8 @@ def get_experiments():
 @catch_mlflow_exception
 def get_experiment_users(experiment_id: str):
     experiment_id = str(experiment_id)
-    current_user = store.get_user(get_username())
-    is_admin = get_is_admin()
-    if not is_admin:
+    if not get_is_admin():
+        current_user = store.get_user(get_username())
         permission = get_permission_from_store_or_default(
             lambda: store.get_experiment_permission(experiment_id, current_user.username).permission,
             lambda: store.get_user_groups_experiment_permission(experiment_id, current_user.username).permission,

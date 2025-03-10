@@ -3,50 +3,53 @@ from mlflow.server.handlers import _get_model_registry_store, catch_mlflow_excep
 
 from mlflow_oidc_auth.responses.client_error import make_forbidden_response
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import get_is_admin, get_permission_from_store_or_default, get_request_param, get_username
+from mlflow_oidc_auth.utils import (
+    check_registered_model_permission,
+    get_is_admin,
+    get_permission_from_store_or_default,
+    get_request_param,
+    get_username,
+)
 
 
 @catch_mlflow_exception
+@check_registered_model_permission
 def create_registered_model_permission():
-    name = get_request_param("name")
-    username = get_request_param("user_name")
-    permission = get_request_param("permission")
-    rmp = store.create_registered_model_permission(name, username, permission)
-    return make_response({"registered_model_permission": rmp.to_json()})
+    store.create_registered_model_permission(
+        get_request_param("name"), get_request_param("user_name"), get_request_param("permission")
+    )
+    return jsonify({"message": "Model permission has been created."})
 
 
 @catch_mlflow_exception
+@check_registered_model_permission
 def get_registered_model_permission():
-    name = get_request_param("name")
-    username = get_request_param("user_name")
-    rmp = store.get_registered_model_permission(name, username)
+    rmp = store.get_registered_model_permission(get_request_param("name"), get_request_param("user_name"))
     return make_response({"registered_model_permission": rmp.to_json()})
 
 
 @catch_mlflow_exception
+@check_registered_model_permission
 def update_registered_model_permission():
-    name = get_request_param("name")
-    username = get_request_param("user_name")
-    permission = get_request_param("permission")
-    store.update_registered_model_permission(name, username, permission)
+    store.update_registered_model_permission(
+        get_request_param("name"), get_request_param("user_name"), get_request_param("permission")
+    )
     return make_response(jsonify({"message": "Model permission has been changed"}))
 
 
 @catch_mlflow_exception
+@check_registered_model_permission
 def delete_registered_model_permission():
-    name = get_request_param("name")
-    username = get_request_param("user_name")
-    store.delete_registered_model_permission(name, username)
+    store.delete_registered_model_permission(get_request_param("name"), get_request_param("user_name"))
     return make_response(jsonify({"message": "Model permission has been deleted"}))
 
 
 @catch_mlflow_exception
 def get_registered_models():
-    current_user = store.get_user(get_username())
-    is_admin = get_is_admin()
-    if is_admin:
+    if get_is_admin():
         registered_models = _get_model_registry_store().search_registered_models(max_results=1000)
     else:
+        current_user = store.get_user(get_username())
         registered_models = []
         for model in _get_model_registry_store().search_registered_models(max_results=1000):
             permission = get_permission_from_store_or_default(
@@ -69,9 +72,8 @@ def get_registered_models():
 
 @catch_mlflow_exception
 def get_registered_model_users(model_name):
-    current_user = store.get_user(get_username())
-    is_admin = get_is_admin()
-    if not is_admin:
+    if not get_is_admin():
+        current_user = store.get_user(get_username())
         permission = get_permission_from_store_or_default(
             lambda: store.get_registered_model_permission(model_name, current_user.username).permission,
             lambda: store.get_user_groups_registered_model_permission(model_name, current_user.username).permission,

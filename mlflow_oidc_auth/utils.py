@@ -1,3 +1,4 @@
+from functools import wraps
 from typing import Callable, NamedTuple
 
 from flask import request, session
@@ -10,6 +11,7 @@ from mlflow_oidc_auth.app import app
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission
+from mlflow_oidc_auth.responses.client_error import make_forbidden_response
 from mlflow_oidc_auth.store import store
 
 
@@ -105,3 +107,43 @@ def get_permission_from_store_or_default(
                     app.logger.debug("Default permission used")
                     perm_type = "fallback"
     return PermissionResult(get_permission(perm), perm_type)
+
+
+def check_experiment_permission(f) -> Callable:
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user = store.get_user(get_username())
+        if not get_is_admin():
+            app.logger.debug(f"Not Admin. Checking permission for {current_user.username}")
+            experiment_id = get_experiment_id()
+            permission = get_permission_from_store_or_default(
+                lambda: store.get_experiment_permission(experiment_id, current_user.username).permission,
+                lambda: store.get_user_groups_experiment_permission(experiment_id, current_user.username).permission,
+            ).permission
+            if not permission.can_manage:
+                app.logger.warning(f"Permission denied for {current_user.username} on experiment {experiment_id}")
+                return make_forbidden_response()
+        app.logger.debug(f"Permission granted for {current_user.username}")
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def check_registered_model_permission(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user = store.get_user(get_username())
+        if not get_is_admin():
+            app.logger.debug(f"Not Admin. Checking permission for {current_user.username}")
+            model_name = get_request_param("model_name")
+            permission = get_permission_from_store_or_default(
+                lambda: store.get_registered_model_permission(model_name, current_user.username).permission,
+                lambda: store.get_user_groups_registered_model_permission(model_name, current_user.username).permission,
+            ).permission
+            if not permission.can_manage:
+                app.logger.warning(f"Permission denied for {current_user.username} on model {model_name}")
+                return make_forbidden_response()
+        app.logger.debug(f"Permission granted for {current_user.username}")
+        return f(*args, **kwargs)
+
+    return decorated_function
