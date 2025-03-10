@@ -57,7 +57,11 @@ def get_user_groups() -> list[str] | None:
     if user_groups:
         app.logger.debug(f"Groups from session: {user_groups}")
         return user_groups
-    elif request.authorization and request.authorization.type == "bearer":
+    else:
+        app.logger.debug("Groups not found in session.")
+        app.logger.debug("Trying to get groups now from the token.")
+        app.logger.debug(f"Token: {request.authorization}")
+    if request.authorization and request.authorization.type == "bearer":
         token = validate_token(request.authorization.token)
         if config.OIDC_GROUP_DETECTION_PLUGIN:
             import importlib
