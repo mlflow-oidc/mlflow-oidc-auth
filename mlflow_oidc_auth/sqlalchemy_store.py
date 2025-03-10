@@ -10,6 +10,7 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_ALREADY_EXISTS,
     RESOURCE_DOES_NOT_EXIST,
 )
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.db import utils as dbutils
 from mlflow_oidc_auth.db.models import (
     SqlExperimentPermission,
@@ -179,21 +180,19 @@ class SqlAlchemyStore:
     def get_user_groups_experiment_permission(self, experiment_id: str, username: str) -> ExperimentPermission:
         with self.ManagedSessionMaker() as session:
             user_groups = self.get_groups_for_user(username)
-            user_perms: ExperimentPermission
+
+            # Start with default and check if there is anything better than default
+            group_permission = config.DEFAULT_MLFLOW_PERMISSION
+
             for ug in user_groups:
                 perms = self._get_experiment_group_permission(session, experiment_id, ug)
-                try:
-                    if perms.permission.priority > user_perms.permission.priority:
-                        user_perms = perms
-                except AttributeError:
-                    user_perms = perms
-            try:
-                return user_perms.to_mlflow_entity()
-            except AttributeError:
-                raise MlflowException(
-                    f"Experiment permission with experiment_id={experiment_id} and username={username} not found",
-                    RESOURCE_DOES_NOT_EXIST,
-                )
+
+                if perms is not None:
+                    # If the ug permission is >= current group permission, we use that one
+                    if compare_permissions(group_permission, perms.permission):
+                        group_permission = perms.permission
+
+            return ExperimentPermission(experiment_id, group_permission, username)
 
     def list_experiment_permissions(self, username: str) -> List[ExperimentPermission]:
         with self.ManagedSessionMaker() as session:
@@ -298,21 +297,19 @@ class SqlAlchemyStore:
     def get_user_groups_registered_model_permission(self, name: str, username: str) -> RegisteredModelPermission:
         with self.ManagedSessionMaker() as session:
             user_groups = self.get_groups_for_user(username)
-            user_perms: RegisteredModelPermission
+
+            # Start with default and check if there is anything better than default
+            group_permission = config.DEFAULT_MLFLOW_PERMISSION
+
             for ug in user_groups:
                 perms = self._get_registered_model_group_permission(session, name, ug)
-                try:
-                    if perms.permission.priority > user_perms.permission.priority:
-                        user_perms = perms
-                except AttributeError:
-                    user_perms = perms
-            try:
-                return user_perms.to_mlflow_entity()
-            except AttributeError:
-                raise MlflowException(
-                    f"Registered model permission with name={name} and username={username} not found",
-                    RESOURCE_DOES_NOT_EXIST,
-                )
+
+                if perms is not None:
+                    # If the ug permission is >= current group permission, we use that one
+                    if compare_permissions(group_permission, perms.permission):
+                        group_permission = perms.permission
+
+            return RegisteredModelPermission(name, group_permission, username)
 
     def list_registered_model_permissions(self, username: str) -> List[RegisteredModelPermission]:
         with self.ManagedSessionMaker() as session:
