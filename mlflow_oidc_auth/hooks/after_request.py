@@ -21,7 +21,7 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_request_param, get_username, get_user_groups
 
 
-def _set_can_manage_experiment_permission(resp: Response):
+def _set_initial_experiment_permission(resp: Response):
     response_message = CreateExperiment.Response()
     parse_dict(resp.json, response_message)
     experiment_id = response_message.experiment_id
@@ -33,7 +33,7 @@ def _set_can_manage_experiment_permission(resp: Response):
             store.create_group_experiment_permission(group_name, experiment_id, permission)
 
 
-def _set_can_manage_registered_model_permission(resp: Response):
+def _set_initial_registered_model_permission(resp: Response):
     response_message = CreateRegisteredModel.Response()
     parse_dict(resp.json, response_message)
     model_name = response_message.registered_model.name
@@ -45,10 +45,10 @@ def _set_can_manage_registered_model_permission(resp: Response):
             store.create_group_model_permission(group_name, model_name, permission)
 
 
-# TODO: Should a _delete_can_manage_experiment_permission be added?
+# TODO: Should a _delete_experiment_permission be added?
 
 
-def _delete_can_manage_registered_model_permission(resp: Response):
+def _delete_registered_model_permission(resp: Response):
     """
     Delete registered model permission when the model is deleted.
 
@@ -162,9 +162,9 @@ def _filter_search_registered_models(resp: Response):
 
 
 AFTER_REQUEST_PATH_HANDLERS = {
-    CreateExperiment: _set_can_manage_experiment_permission,
-    CreateRegisteredModel: _set_can_manage_registered_model_permission,
-    DeleteRegisteredModel: _delete_can_manage_registered_model_permission,
+    CreateExperiment: _set_initial_experiment_permission,
+    CreateRegisteredModel: _set_initial_registered_model_permission,
+    DeleteRegisteredModel: _delete_registered_model_permission,
     SearchExperiments: _filter_search_experiments,
     SearchRegisteredModels: _filter_search_registered_models,
 }
