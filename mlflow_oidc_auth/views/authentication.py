@@ -61,5 +61,9 @@ def callback():
     populate_groups(group_names=user_groups)
     update_user(email.lower(), user_groups)
     session["username"] = email.lower()
+    # TODO: Need to revisit if we want to do this
+    # as this may lead to problems if the user is added
+    # to a group
+    session[config.OIDC_GROUP_NAME] = user_groups
 
     return redirect(url_for("oidc_ui"))
