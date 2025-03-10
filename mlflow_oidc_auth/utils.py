@@ -53,7 +53,7 @@ def get_username() -> str | None:
 
 
 def get_user_groups() -> list[str] | None:
-    user_groups = session.get("group")
+    user_groups = session.get(config.OIDC_GROUPS_ATTRIBUTE)
     if user_groups:
         app.logger.debug(f"Groups from session: {user_groups}")
         return user_groups
