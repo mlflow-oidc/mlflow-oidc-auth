@@ -17,6 +17,7 @@ def get_bool_env_variable(variable, default_value):
 class AppConfig:
     def __init__(self):
         self.DEFAULT_MLFLOW_PERMISSION = os.environ.get("DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        self.DEFAULT_MLFLOW_GROUP_PERMISSION = os.environ.get("DEFAULT_MLFLOW_GROUP_PERMISSION", None)
         self.SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(16))
         self.OIDC_USERS_DB_URI = os.environ.get("OIDC_USERS_DB_URI", "sqlite:///auth.db")
         self.OIDC_GROUP_NAME = [group.strip() for group in os.environ.get("OIDC_GROUP_NAME", "mlflow").split(",")]
