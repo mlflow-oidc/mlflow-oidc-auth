@@ -7,6 +7,7 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { SharedModule } from './shared/shared.module';
 import { HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ErrorHandlerInterceptor } from './shared/interceptors/error-handler.interceptor';
+import { BasePrefixInterceptor } from './shared/interceptors/base-prefix.interceptor';
 
 @NgModule({
   declarations: [
@@ -19,7 +20,8 @@ import { ErrorHandlerInterceptor } from './shared/interceptors/error-handler.int
     SharedModule,
   ],
   providers: [
-    { provide: HTTP_INTERCEPTORS, useClass: ErrorHandlerInterceptor, multi: true }
+    { provide: HTTP_INTERCEPTORS, useClass: ErrorHandlerInterceptor, multi: true },
+    { provide: HTTP_INTERCEPTORS, useClass: BasePrefixInterceptor, multi: true }
   ],
   bootstrap: [AppComponent]
 })

@@ -65,7 +65,11 @@ export class HomePageComponent implements OnInit, AfterViewInit {
   }
 
   redirectToMLFlow() {
-    window.location.href = '/';
+    // /models/oidc/ui -> /models
+    // /oidc/ui -> /
+    const paths = location.pathname.split("/").filter(function(f) {return f != ''})
+    const basePath = paths.splice(0, paths.indexOf("oidc")).join("/")
+    window.location.href = '/'+ basePath
   }
 
   handleTabSelection(index: number) {

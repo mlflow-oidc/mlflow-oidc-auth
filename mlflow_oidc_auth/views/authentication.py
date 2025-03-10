@@ -8,7 +8,6 @@ from mlflow_oidc_auth.app import app
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.user import create_user, populate_groups, update_user
 
-
 def login():
     state = secrets.token_urlsafe(16)
     session["oauth_state"] = state
