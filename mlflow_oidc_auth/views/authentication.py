@@ -52,9 +52,10 @@ def callback():
 
     app.logger.debug(f"User groups: {user_groups}")
 
+    filtered_user_groups = list(set(user_groups) | set(config.OIDC_GROUP_NAME))
     if config.OIDC_ADMIN_GROUP_NAME in user_groups:
         is_admin = True
-    elif not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+    elif len(filtered_user_groups) == 0:
         return "User is not allowed to login", 401
 
     create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
@@ -64,6 +65,6 @@ def callback():
     # TODO: Need to revisit if we want to do this
     # as this may lead to problems if the user is added
     # to a group
-    session[config.OIDC_GROUPS_ATTRIBUTE] = user_groups
+    session[config.OIDC_GROUPS_ATTRIBUTE] = filtered_user_groups
 
     return redirect(url_for("oidc_ui"))
