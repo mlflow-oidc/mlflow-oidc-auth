@@ -45,6 +45,8 @@ def _set_can_manage_registered_model_permission(resp: Response):
             store.create_group_model_permission(group_name, model_name, permission)
 
 
+# TODO: Should a _delete_can_manage_experiment_permission be added?
+
 
 def _delete_can_manage_registered_model_permission(resp: Response):
     """
@@ -59,6 +61,9 @@ def _delete_can_manage_registered_model_permission(resp: Response):
     model_name = get_request_param("name")
     username = get_request_param("user_name")
     store.delete_registered_model_permission(model_name, username)
+    user_groups = get_user_groups()
+    for group_name in user_groups:
+        store.delete_group_model_permission(group_name, model_name)
 
 
 def _get_after_request_handler(request_class):
