@@ -52,6 +52,24 @@ def get_username():
     return None
 
 
+def get_user_groups():
+    user_groups = session.get("group")
+    if user_groups:
+        app.logger.debug(f"Groups from session: {user_groups}")
+        return user_groups
+    elif request.authorization and request.authorization.type == "bearer":
+        token = validate_token(request.authorization.token)
+        if config.OIDC_GROUP_DETECTION_PLUGIN:
+            import importlib
+
+            user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
+        else:
+            user_groups = token["access_token"].get(config.OIDC_GROUPS_ATTRIBUTE)
+        app.logger.debug(f"Groups from bearer token: {user_groups}")
+        return user_groups
+    return None
+
+
 def get_is_admin() -> bool:
     return bool(store.get_user(get_username()).is_admin)
 
