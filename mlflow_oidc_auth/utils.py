@@ -36,7 +36,7 @@ def get_request_param(param: str) -> str:
     return args[param]
 
 
-def get_username():
+def get_username() -> str | None:
     username = session.get("username")
     if username:
         app.logger.debug(f"Username from session: {username}")
@@ -52,7 +52,7 @@ def get_username():
     return None
 
 
-def get_user_groups():
+def get_user_groups() -> list[str] | None:
     user_groups = session.get("group")
     if user_groups:
         app.logger.debug(f"Groups from session: {user_groups}")
