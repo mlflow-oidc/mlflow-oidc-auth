@@ -64,6 +64,6 @@ def callback():
     # TODO: Need to revisit if we want to do this
     # as this may lead to problems if the user is added
     # to a group
-    session[config.OIDC_GROUP_NAME] = user_groups
+    session[config.OIDC_GROUPS_ATTRIBUTE] = user_groups
 
     return redirect(url_for("oidc_ui"))
