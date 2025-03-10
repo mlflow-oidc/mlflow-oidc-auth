@@ -84,24 +84,52 @@ class PermissionResult(NamedTuple):
 def get_permission_from_store_or_default(
     store_permission_user_func: Callable[[], str], store_permission_group_func: Callable[[], str]
 ) -> PermissionResult:
+    """Calculate the permissions based on the two functions with arguments provided and the default permission.
+
+    The function will return the highest permission as well as the type (user/group/fallback) that lead to this
+    permission. This is done by starting out with the default permission and checking if the user permission
+    is strictly better. After that, we check for each of the group-permissions if they are strictly better
+
+    Args:
+        store_permission_user_func: function that will give us the permissions based on the current user
+        store_permission_group_func: function that will give us the permissions based on the groups of user
+
+    Returns:
+        PermissionResult holding both the permission as well as the type of the highest permission (i.e.
+        whether it was fallback/user/group)
     """
-    Attempts to get permission from store,
-    and returns default permission if no record is found.
-    user permission takes precedence over group permission
-    """
+
+    # Start out with the default mlflow permission and type fallback
+    perm = config.DEFAULT_MLFLOW_PERMISSION
+    perm_type = "fallback"
+
     try:
-        perm = store_permission_user_func()
-        app.logger.debug("User permission found")
-        perm_type = "user"
+        perm_user = store_permission_user_func()
+
+        # Do a strict comparison, only if user permission is higher do we consider it
+        if compare_permissions(perm, perm_user, True):
+            app.logger.debug("User permission found with better priority")
+            perm = perm_user
+            perm_type = "user"
+        else:
+            app.logger.debug("User permission found, but with lower or equal priority")
     except MlflowException as e:
         if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
-            try:
-                perm = store_permission_group_func()
-                app.logger.debug("Group permission found")
-                perm_type = "group"
-            except MlflowException as e:
-                if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
-                    perm = config.DEFAULT_MLFLOW_PERMISSION
-                    app.logger.debug("Default permission used")
-                    perm_type = "fallback"
+            app.logger.debug("No user permission found")
+
+    try:
+        perm_group = store_permission_group_func()
+
+        # Do a strict comparison, only if the group permission is higher do we consider it
+        if compare_permissions(perm, perm_group, True):
+            app.logger.debug("Group permission found with better priority")
+            perm = perm_group
+            perm_type = "group"
+        else:
+            app.logger.debug("Group permission found, but with lower or equal priority")
+
+    except MlflowException as e:
+        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            app.logger.debug("No group permission found")
+
     return PermissionResult(get_permission(perm), perm_type)
