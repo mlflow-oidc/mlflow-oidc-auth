@@ -3,11 +3,12 @@ from mlflow.server.handlers import _get_tracking_store, catch_mlflow_exception
 
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
+    can_manage_experiment,
+    can_manage_registered_model,
     check_experiment_permission,
     check_registered_model_permission,
     get_experiment_id,
     get_is_admin,
-    get_permission_from_store_or_default,
     get_request_param,
     get_username,
 )
@@ -88,10 +89,10 @@ def get_group_experiments(group_name):
                 "permission": experiment.permission,
             }
             for experiment in experiments
-            if get_permission_from_store_or_default(
-                lambda: store.get_experiment_permission(experiment.experiment_id, current_user.username).permission,
-                lambda: store.get_user_groups_experiment_permission(experiment.experiment_id, current_user.username).permission,
-            ).permission.can_manage
+            if can_manage_experiment(
+                experiment.experiment_id,
+                current_user.username,
+            )
         ]
     )
 
@@ -117,9 +118,9 @@ def get_group_models(group_name):
                 "permission": model.permission,
             }
             for model in models
-            if get_permission_from_store_or_default(
-                lambda: store.get_registered_model_permission(model.name, current_user.username).permission,
-                lambda: store.get_user_groups_registered_model_permission(model.name, current_user.username).permission,
-            ).permission.can_manage
+            if can_manage_registered_model(
+                model.name,
+                current_user.username,
+            )
         ]
     )

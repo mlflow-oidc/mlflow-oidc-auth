@@ -4,10 +4,10 @@ from mlflow.server.handlers import _get_tracking_store, catch_mlflow_exception
 from mlflow_oidc_auth.responses.client_error import make_forbidden_response
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
+    can_manage_experiment,
     check_experiment_permission,
     get_experiment_id,
     get_is_admin,
-    get_permission_from_store_or_default,
     get_request_param,
     get_username,
 )
@@ -60,11 +60,7 @@ def get_experiments():
         current_user = store.get_user(get_username())
         list_experiments = []
         for experiment in _get_tracking_store().search_experiments():
-            permission = get_permission_from_store_or_default(
-                lambda: store.get_experiment_permission(experiment.experiment_id, current_user.username).permission,
-                lambda: store.get_user_groups_experiment_permission(experiment.experiment_id, current_user.username).permission,
-            ).permission
-            if permission.can_manage:
+            if can_manage_experiment(experiment.experiment_id, current_user.username):
                 list_experiments.append(experiment)
     experiments = [
         {
@@ -82,11 +78,7 @@ def get_experiment_users(experiment_id: str):
     experiment_id = str(experiment_id)
     if not get_is_admin():
         current_user = store.get_user(get_username())
-        permission = get_permission_from_store_or_default(
-            lambda: store.get_experiment_permission(experiment_id, current_user.username).permission,
-            lambda: store.get_user_groups_experiment_permission(experiment_id, current_user.username).permission,
-        ).permission
-        if not permission.can_manage:
+        if not can_manage_experiment(experiment_id, current_user.username):
             return make_forbidden_response()
     list_users = store.list_users()
     # Filter users who are associated with the given experiment

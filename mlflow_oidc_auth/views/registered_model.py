@@ -4,9 +4,9 @@ from mlflow.server.handlers import _get_model_registry_store, catch_mlflow_excep
 from mlflow_oidc_auth.responses.client_error import make_forbidden_response
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
+    can_manage_registered_model,
     check_registered_model_permission,
     get_is_admin,
-    get_permission_from_store_or_default,
     get_request_param,
     get_username,
 )
@@ -52,11 +52,7 @@ def get_registered_models():
         current_user = store.get_user(get_username())
         registered_models = []
         for model in _get_model_registry_store().search_registered_models(max_results=1000):
-            permission = get_permission_from_store_or_default(
-                lambda: store.get_registered_model_permission(model.name, current_user.username).permission,
-                lambda: store.get_user_groups_registered_model_permission(model.name, current_user.username).permission,
-            ).permission
-            if permission.can_manage:
+            if can_manage_registered_model(model.name, current_user.username):
                 registered_models.append(model)
     models = [
         {
@@ -74,11 +70,7 @@ def get_registered_models():
 def get_registered_model_users(model_name):
     if not get_is_admin():
         current_user = store.get_user(get_username())
-        permission = get_permission_from_store_or_default(
-            lambda: store.get_registered_model_permission(model_name, current_user.username).permission,
-            lambda: store.get_user_groups_registered_model_permission(model_name, current_user.username).permission,
-        ).permission
-        if not permission.can_manage:
+        if not can_manage_registered_model(model_name, current_user.username):
             return make_forbidden_response()
     list_users = store.list_users()
     # Filter users who are associated with the given model

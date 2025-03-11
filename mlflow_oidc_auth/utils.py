@@ -109,6 +109,22 @@ def get_permission_from_store_or_default(
     return PermissionResult(get_permission(perm), perm_type)
 
 
+def can_manage_experiment(experiment_id: str, user: str) -> bool:
+    permission = get_permission_from_store_or_default(
+        lambda: store.get_experiment_permission(experiment_id, user).permission,
+        lambda: store.get_user_groups_experiment_permission(experiment_id, user).permission,
+    ).permission
+    return permission.can_manage
+
+
+def can_manage_registered_model(model_name: str, user: str) -> bool:
+    permission = get_permission_from_store_or_default(
+        lambda: store.get_registered_model_permission(model_name, user).permission,
+        lambda: store.get_user_groups_registered_model_permission(model_name, user).permission,
+    ).permission
+    return permission.can_manage
+
+
 def check_experiment_permission(f) -> Callable:
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -116,32 +132,24 @@ def check_experiment_permission(f) -> Callable:
         if not get_is_admin():
             app.logger.debug(f"Not Admin. Checking permission for {current_user.username}")
             experiment_id = get_experiment_id()
-            permission = get_permission_from_store_or_default(
-                lambda: store.get_experiment_permission(experiment_id, current_user.username).permission,
-                lambda: store.get_user_groups_experiment_permission(experiment_id, current_user.username).permission,
-            ).permission
-            if not permission.can_manage:
-                app.logger.warning(f"Permission denied for {current_user.username} on experiment {experiment_id}")
+            if not can_manage_experiment(experiment_id, current_user.username):
+                app.logger.warning(f"Change permission denied for {current_user.username} on experiment {experiment_id}")
                 return make_forbidden_response()
-        app.logger.debug(f"Permission granted for {current_user.username}")
+        app.logger.debug(f"Cange permission granted for {current_user.username}")
         return f(*args, **kwargs)
 
     return decorated_function
 
 
-def check_registered_model_permission(f):
+def check_registered_model_permission(f) -> Callable:
     @wraps(f)
     def decorated_function(*args, **kwargs):
         current_user = store.get_user(get_username())
         if not get_is_admin():
             app.logger.debug(f"Not Admin. Checking permission for {current_user.username}")
             model_name = get_request_param("model_name")
-            permission = get_permission_from_store_or_default(
-                lambda: store.get_registered_model_permission(model_name, current_user.username).permission,
-                lambda: store.get_user_groups_registered_model_permission(model_name, current_user.username).permission,
-            ).permission
-            if not permission.can_manage:
-                app.logger.warning(f"Permission denied for {current_user.username} on model {model_name}")
+            if not can_manage_model(model_name, current_user.username):
+                app.logger.warning(f"Change permission denied for {current_user.username} on model {model_name}")
                 return make_forbidden_response()
         app.logger.debug(f"Permission granted for {current_user.username}")
         return f(*args, **kwargs)
