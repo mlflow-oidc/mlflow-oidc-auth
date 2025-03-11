@@ -35,12 +35,14 @@ class TestAuth:
         assert result == mock_oauth_instance
 
     @patch("mlflow_oidc_auth.auth.requests")
-    def test__get_oidc_jwks(self, mock_requests):
+    @patch("mlflow_oidc_auth.auth.config")
+    def test__get_oidc_jwks(self, mock_config, mock_requests):
         mock_cache = MagicMock()
         mock_app = MagicMock()
         mock_app.logger.debug = MagicMock()
         mock_requests.get.return_value.json.return_value = {"jwks_uri": "mock_jwks_uri"}
         mock_cache.get.return_value = None
+        mock_config.OIDC_DISCOVERY_URL = "mock_discovery_url"
 
         # cache and app are imported within the _get_oidc_jwks function
         mlflow_oidc_app = importlib.import_module("mlflow_oidc_auth.app")
