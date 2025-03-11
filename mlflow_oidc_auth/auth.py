@@ -1,14 +1,12 @@
-from typing import Union, Optional
+from typing import Optional
 
 import requests
 from authlib.integrations.flask_client import OAuth
 from authlib.jose import jwt
-from flask import Response, request
-from werkzeug.datastructures import Authorization
+from flask import request
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.store import store
-
 
 _oauth_instance: Optional[OAuth] = None
 
@@ -31,7 +29,7 @@ def get_oauth_instance(app) -> OAuth:
 
 
 def _get_oidc_jwks():
-    from mlflow_oidc_auth.app import cache, app
+    from mlflow_oidc_auth.app import app, cache
 
     jwks = cache.get("jwks")
     if jwks:
