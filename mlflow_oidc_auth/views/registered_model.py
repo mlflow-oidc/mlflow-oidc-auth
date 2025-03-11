@@ -77,7 +77,11 @@ def get_registered_model_users(model_name):
     users = []
     for user in list_users:
         # Check if the user is associated with the model
-        user_models = {model.name: model.permission for model in user.registered_model_permissions}
+        user_models = (
+            {model.name: model.permission for model in user.registered_model_permissions}
+            if user.registered_model_permissions
+            else {}
+        )
         if model_name in user_models:
             users.append({"username": user.username, "permission": user_models[model_name]})
     return jsonify(users)

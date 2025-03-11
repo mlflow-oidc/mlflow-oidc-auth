@@ -1,9 +1,8 @@
-import mlflow
-from mlflow_oidc_auth.entities import (
-    ExperimentPermission,
-    RegisteredModelPermission,
-    User,
-)
+from mlflow.exceptions import RestException
+from mlflow.utils.credentials import get_default_host_creds
+from mlflow.utils.rest_utils import http_request_safe
+
+from mlflow_oidc_auth.entities import ExperimentPermission, RegisteredModelPermission, User
 from mlflow_oidc_auth.routes import (
     CREATE_EXPERIMENT_PERMISSION,
     CREATE_REGISTERED_MODEL_PERMISSION,
@@ -19,8 +18,6 @@ from mlflow_oidc_auth.routes import (
     UPDATE_USER_ADMIN,
     UPDATE_USER_PASSWORD,
 )
-from mlflow.utils.credentials import get_default_host_creds
-from mlflow.utils.rest_utils import http_request_safe
 
 
 class AuthServiceClient:
@@ -62,7 +59,7 @@ class AuthServiceClient:
                 "POST",
                 json={"username": username, "password": password},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return User.from_json(resp["user"])
@@ -83,7 +80,7 @@ class AuthServiceClient:
                 "GET",
                 params={"username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return User.from_json(resp["user"])
@@ -107,7 +104,7 @@ class AuthServiceClient:
                 "PATCH",
                 json={"username": username, "password": password},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def update_user_admin(self, username: str, is_admin: bool):
@@ -129,7 +126,7 @@ class AuthServiceClient:
                 "PATCH",
                 json={"username": username, "is_admin": is_admin},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def delete_user(self, username: str):
@@ -148,7 +145,7 @@ class AuthServiceClient:
                 "DELETE",
                 json={"username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def create_experiment_permission(self, experiment_id: str, username: str, permission: str):
@@ -178,7 +175,7 @@ class AuthServiceClient:
                     "permission": permission,
                 },
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return ExperimentPermission.from_json(resp["experiment_permission"])
@@ -202,7 +199,7 @@ class AuthServiceClient:
                 "GET",
                 params={"experiment_id": experiment_id, "username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             # Add more specific error handling here if needed
             raise e
 
@@ -235,7 +232,7 @@ class AuthServiceClient:
                     "permission": permission,
                 },
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def delete_experiment_permission(self, experiment_id: str, username: str):
@@ -257,7 +254,7 @@ class AuthServiceClient:
                 "DELETE",
                 json={"experiment_id": experiment_id, "username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def create_registered_model_permission(self, name: str, username: str, permission: str):
@@ -283,7 +280,7 @@ class AuthServiceClient:
                 "POST",
                 json={"name": name, "username": username, "permission": permission},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return RegisteredModelPermission.from_json(resp["registered_model_permission"])
@@ -307,7 +304,7 @@ class AuthServiceClient:
                 "GET",
                 params={"name": name, "username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return RegisteredModelPermission.from_json(resp["registered_model_permission"])
@@ -335,7 +332,7 @@ class AuthServiceClient:
                 "PATCH",
                 json={"name": name, "username": username, "permission": permission},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def delete_registered_model_permission(self, name: str, username: str):
@@ -357,5 +354,5 @@ class AuthServiceClient:
                 "DELETE",
                 json={"name": name, "username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e

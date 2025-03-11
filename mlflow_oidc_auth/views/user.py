@@ -7,7 +7,7 @@ from mlflow_oidc_auth.user import create_user, generate_token
 from mlflow_oidc_auth.utils import get_is_admin, get_permission_from_store_or_default, get_request_param, get_username
 
 
-def create_user(username: str, display_name: str, is_admin: bool = False):
+def create_new_user(username: str, display_name: str, is_admin: bool = False):
     status, message = create_user(username, display_name, is_admin)
     if status:
         return (jsonify({"message": message}), 201)

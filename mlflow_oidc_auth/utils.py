@@ -2,8 +2,8 @@ from functools import wraps
 from typing import Callable, NamedTuple
 
 from flask import request, session
-from mlflow.exceptions import ErrorCode, MlflowException
-from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server import app
 from mlflow.server.handlers import _get_tracking_store
 
@@ -26,7 +26,7 @@ def get_request_param(param: str) -> str:
             BAD_REQUEST,
         )
 
-    if param not in args:
+    if not args or param not in args:
         # Special handling for run_id
         if param == "run_id":
             return get_request_param("run_uuid")
@@ -38,7 +38,7 @@ def get_request_param(param: str) -> str:
     return args[param]
 
 
-def get_username():
+def get_username() -> str:
     username = session.get("username")
     if username:
         app.logger.debug(f"Username from session: {username}")
@@ -46,12 +46,14 @@ def get_username():
     elif request.authorization is not None:
         if request.authorization.type == "basic":
             app.logger.debug(f"Username from basic auth: {request.authorization.username}")
-            return request.authorization.username
+            if request.authorization.username is not None:
+                return request.authorization.username
+            raise MlflowException("Username not found in basic auth.")
         if request.authorization.type == "bearer":
             username = validate_token(request.authorization.token).get("email")
             app.logger.debug(f"Username from bearer token: {username}")
             return username
-    return None
+    raise MlflowException("Authentication required. Please see documentation for details: ")
 
 
 def get_is_admin() -> bool:
@@ -68,9 +70,9 @@ def get_experiment_id() -> str:
             f"Unsupported HTTP method '{request.method}'",
             BAD_REQUEST,
         )
-    if "experiment_id" in args:
+    if args and "experiment_id" in args:
         return args["experiment_id"]
-    elif "experiment_name" in args:
+    elif args and "experiment_name" in args:
         return _get_tracking_store().get_experiment_by_name(args["experiment_name"]).experiment_id
     raise MlflowException(
         "Either 'experiment_id' or 'experiment_name' must be provided in the request data.",

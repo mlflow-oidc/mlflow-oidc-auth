@@ -38,6 +38,8 @@ def _get_oidc_jwks():
         app.logger.debug("JWKS cache hit")
         return jwks
     app.logger.debug("JWKS cache miss")
+    if config.OIDC_DISCOVERY_URL is None:
+        raise ValueError("OIDC_DISCOVERY_URL is not set in the configuration")
     metadata = requests.get(config.OIDC_DISCOVERY_URL).json()
     jwks_uri = metadata.get("jwks_uri")
     jwks = requests.get(jwks_uri).json()
@@ -52,13 +54,15 @@ def validate_token(token):
     return payload
 
 
-def authenticate_request_basic_auth() -> Union[Authorization, Response]:
+def authenticate_request_basic_auth() -> bool:
     from mlflow_oidc_auth.app import app
 
+    if request.authorization is None:
+        return False
     username = request.authorization.username
     password = request.authorization.password
     app.logger.debug("Authenticating user %s", username)
-    if store.authenticate_user(username.lower(), password):
+    if username is not None and password is not None and store.authenticate_user(username.lower(), password):
         app.logger.debug("User %s authenticated", username)
         return True
     else:
@@ -66,14 +70,17 @@ def authenticate_request_basic_auth() -> Union[Authorization, Response]:
         return False
 
 
-def authenticate_request_bearer_token() -> Union[Authorization, Response]:
+def authenticate_request_bearer_token() -> bool:
     from mlflow_oidc_auth.app import app
 
-    token = request.authorization.token
-    try:
-        user = validate_token(token)
-        app.logger.debug("User %s authenticated", user.get("email"))
-        return True
-    except Exception as e:
-        app.logger.debug("JWT auth failed")
+    if request.authorization and request.authorization.token:
+        token = request.authorization.token
+        try:
+            user = validate_token(token)
+            app.logger.debug("User %s authenticated", user.get("email"))
+            return True
+        except Exception as e:
+            app.logger.debug("JWT auth failed")
+            return False
+    else:
         return False

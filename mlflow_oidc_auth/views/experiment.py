@@ -85,7 +85,7 @@ def get_experiment_users(experiment_id: str):
     users = []
     for user in list_users:
         # Check if the user is associated with the experiment
-        user_experiments_details = {str(exp.experiment_id): exp.permission for exp in user.experiment_permissions}
+        user_experiments_details = {str(exp.experiment_id): exp.permission for exp in (user.experiment_permissions or [])}
         if experiment_id in user_experiments_details:
             users.append({"username": user.username, "permission": user_experiments_details[experiment_id]})
     return jsonify(users)

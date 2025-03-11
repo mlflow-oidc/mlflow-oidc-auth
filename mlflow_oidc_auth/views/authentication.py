@@ -12,7 +12,11 @@ from mlflow_oidc_auth.user import create_user, populate_groups, update_user
 def login():
     state = secrets.token_urlsafe(16)
     session["oauth_state"] = state
-    return get_oauth_instance(app).oidc.authorize_redirect(config.OIDC_REDIRECT_URI, state=state)
+    oauth_instance = get_oauth_instance(app)
+    if oauth_instance is None or oauth_instance.oidc is None:
+        app.logger.error("OAuth instance or OIDC is not properly initialized")
+        return "Internal Server Error", 500
+    return oauth_instance.oidc.authorize_redirect(config.OIDC_REDIRECT_URI, state=state)
 
 
 def logout():
@@ -32,7 +36,11 @@ def callback():
     if "oauth_state" not in session or utils.get_request_param("state") != session["oauth_state"]:
         return "Invalid state parameter", 401
 
-    token = get_oauth_instance(app).oidc.authorize_access_token()
+    oauth_instance = get_oauth_instance(app)
+    if oauth_instance is None or oauth_instance.oidc is None:
+        app.logger.error("OAuth instance or OIDC is not properly initialized")
+        return "Internal Server Error", 500
+    token = oauth_instance.oidc.authorize_access_token()
     app.logger.debug(f"Token: {token}")
     session["user"] = token["userinfo"]
 

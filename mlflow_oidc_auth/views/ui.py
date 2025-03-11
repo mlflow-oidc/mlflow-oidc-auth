@@ -21,7 +21,15 @@ def oidc_ui(filename=None):
 
 
 def index():
+    import textwrap
+
     from mlflow_oidc_auth.app import static_folder
+
+    text_notfound = textwrap.dedent("Unable to display MLflow UI - landing page not found")
+    text_notset = textwrap.dedent("Static folder is not set")
+
+    if static_folder is None:
+        return Response(text_notset, mimetype="text/plain")
 
     if os.path.exists(os.path.join(static_folder, "index.html")):
         with open(os.path.join(static_folder, "index.html"), "r") as f:
@@ -30,7 +38,5 @@ def index():
                 js_injection = js_file.read()
                 modified_html_content = html_content.replace("</body>", f"{js_injection}\n</body>")
                 return modified_html_content
-    import textwrap
 
-    text = textwrap.dedent("Unable to display MLflow UI - landing page not found")
-    return Response(text, mimetype="text/plain")
+    return Response(text_notfound, mimetype="text/plain")
