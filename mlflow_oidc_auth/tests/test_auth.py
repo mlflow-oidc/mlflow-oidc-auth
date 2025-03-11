@@ -111,3 +111,17 @@ class TestAuth:
 
             mock_validate_token.assert_called_once_with("mock_token")
             assert result == False
+
+    def test_authenticate_request_bearer_token_no_authorization(self):
+        mock_request = MagicMock()
+        mock_request.authorization = None
+        with patch("mlflow_oidc_auth.auth.request", mock_request):
+            result = authenticate_request_bearer_token()
+            assert result == False
+
+    def test_authenticate_request_bearer_token_no_token(self):
+        mock_request = MagicMock()
+        mock_request.authorization.token = None
+        with patch("mlflow_oidc_auth.auth.request", mock_request):
+            result = authenticate_request_bearer_token()
+            assert result == False

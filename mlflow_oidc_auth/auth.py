@@ -81,4 +81,5 @@ def authenticate_request_bearer_token() -> bool:
             app.logger.debug("JWT auth failed")
             return False
     else:
+        app.logger.debug("No authorization token found")
         return False
