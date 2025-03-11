@@ -148,7 +148,7 @@ def check_registered_model_permission(f) -> Callable:
         if not get_is_admin():
             app.logger.debug(f"Not Admin. Checking permission for {current_user.username}")
             model_name = get_request_param("model_name")
-            if not can_manage_model(model_name, current_user.username):
+            if not can_manage_registered_model(model_name, current_user.username):
                 app.logger.warning(f"Change permission denied for {current_user.username} on model {model_name}")
                 return make_forbidden_response()
         app.logger.debug(f"Permission granted for {current_user.username}")
