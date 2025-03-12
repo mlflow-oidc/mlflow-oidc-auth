@@ -4,6 +4,7 @@ from mlflow.exceptions import MlflowException
 from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from mlflow_oidc_auth.db.models import SqlRegisteredModelPermission
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 
 @pytest.fixture
@@ -179,3 +180,33 @@ class TestSqlAlchemyStore:
         mock_session.query.return_value.filter.return_value.first.return_value = "Group 1"
         store.populate_groups(["Group 1"])
         assert mock_session.add.call_count == 0
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore.get_groups_for_user", return_value=["group1", "group2"])
+    @patch(
+        "mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_experiment_group_permission",
+        side_effect=[MagicMock(), MagicMock()],
+    )
+    @patch("mlflow_oidc_auth.sqlalchemy_store.compare_permissions", side_effect=AttributeError)
+    def test_get_user_groups_experiment_permission_compare_permissions_error(
+        self, mock_compare_permissions, mock_get_experiment_group_permission, mock_get_groups_for_user, store
+    ):
+        result = store.get_user_groups_experiment_permission("1", "test_user")
+        assert result is not None
+        mock_get_experiment_group_permission.assert_called()
+        mock_get_groups_for_user.assert_called_once_with("test_user")
+        mock_compare_permissions.assert_called()
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore.get_groups_for_user", return_value=["group1", "group2"])
+    @patch(
+        "mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_experiment_group_permission",
+        side_effect=[MagicMock(permission="READ"), MagicMock(permission="WRITE")],
+    )
+    @patch("mlflow_oidc_auth.sqlalchemy_store.compare_permissions", return_value=True)
+    def test_get_user_groups_experiment_permission_compare_permissions(
+        self, mock_compare_permissions, mock_get_experiment_group_permission, mock_get_groups_for_user, store
+    ):
+        result = store.get_user_groups_experiment_permission("1", "test_user")
+        assert result is not None
+        mock_get_experiment_group_permission.assert_called()
+        mock_get_groups_for_user.assert_called_once_with("test_user")
+        mock_compare_permissions.assert_called()
