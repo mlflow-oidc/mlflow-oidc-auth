@@ -75,7 +75,7 @@ class TestSqlAlchemyStore:
 
     def test_create_user_existing(self, store):
         store.ManagedSessionMaker = MagicMock()
-        mock_session = MagicMock(flush=MagicMock(), add=MagicMock(side_effect=IntegrityError("", {}, Exception)))
+        mock_session = MagicMock(flush=MagicMock(), add=MagicMock(side_effect=IntegrityError("", {}, Exception())))
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
 
         with pytest.raises(MlflowException):
@@ -132,7 +132,7 @@ class TestSqlAlchemyStore:
 
     def test_create_registered_model_permission_fails_on_duplicate(self, store):
         store.ManagedSessionMaker = MagicMock()
-        mock_session = MagicMock(flush=MagicMock(), add=MagicMock(side_effect=IntegrityError("", {}, Exception)))
+        mock_session = MagicMock(flush=MagicMock(), add=MagicMock(side_effect=IntegrityError("", {}, Exception())))
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
         with pytest.raises(MlflowException):
             store.create_registered_model_permission("model", "test_user", "READ")
