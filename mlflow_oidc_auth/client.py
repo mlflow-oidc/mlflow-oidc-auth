@@ -27,6 +27,9 @@ class AuthServiceClient:
     See https://mlflow.org/docs/latest/auth.html for more information.
     """
 
+    _username_error_message = "Username must not be empty."
+    _password_error_message = "Password must not be empty."
+
     def __init__(self, tracking_uri: str):
         """
         Args:
@@ -49,9 +52,9 @@ class AuthServiceClient:
         """
         # Input validation
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if not password:
-            raise ValueError("Password must not be empty.")
+            raise ValueError(self._password_error_message)
 
         try:
             resp = self._request(
@@ -72,7 +75,7 @@ class AuthServiceClient:
             username: The username.
         """
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             resp = self._request(
@@ -94,9 +97,9 @@ class AuthServiceClient:
             password: The new password.
         """
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if not password:
-            raise ValueError("Password must not be empty.")
+            raise ValueError(self._password_error_message)
 
         try:
             self._request(
@@ -116,7 +119,7 @@ class AuthServiceClient:
             is_admin: The new admin status.
         """
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if not isinstance(is_admin, bool):
             raise ValueError("is_admin must be a boolean value.")
 
@@ -137,7 +140,7 @@ class AuthServiceClient:
             username: The username.
         """
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             self._request(
@@ -161,7 +164,7 @@ class AuthServiceClient:
         if not experiment_id:
             raise ValueError("Experiment ID must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if permission not in ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]:
             raise ValueError("Permission must be one of 'READ', 'EDIT', 'MANAGE', or 'NO_PERMISSIONS'.")
 
@@ -191,7 +194,7 @@ class AuthServiceClient:
         if not experiment_id:
             raise ValueError("Experiment ID must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             resp = self._request(
@@ -218,7 +221,7 @@ class AuthServiceClient:
         if not experiment_id:
             raise ValueError("Experiment ID must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if permission not in ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]:
             raise ValueError("Permission must be one of 'READ', 'EDIT', 'MANAGE', or 'NO_PERMISSIONS'.")
 
@@ -246,7 +249,7 @@ class AuthServiceClient:
         if not experiment_id:
             raise ValueError("Experiment ID must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             self._request(
@@ -270,7 +273,7 @@ class AuthServiceClient:
         if not name:
             raise ValueError("Name must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if permission not in ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]:
             raise ValueError("Permission must be one of 'READ', 'EDIT', 'MANAGE', or 'NO_PERMISSIONS'.")
 
@@ -296,7 +299,7 @@ class AuthServiceClient:
         if not name:
             raise ValueError("Name must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             resp = self._request(
@@ -322,7 +325,7 @@ class AuthServiceClient:
         if not name:
             raise ValueError("Name must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if permission not in ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]:
             raise ValueError("Permission must be one of 'READ', 'EDIT', 'MANAGE', or 'NO_PERMISSIONS'.")
 
@@ -346,7 +349,7 @@ class AuthServiceClient:
         if not name:
             raise ValueError("Name must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             self._request(
