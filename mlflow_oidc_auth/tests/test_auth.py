@@ -1,12 +1,15 @@
-from unittest.mock import patch, MagicMock
+import importlib
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from mlflow_oidc_auth.auth import (
-    get_oauth_instance,
     _get_oidc_jwks,
-    validate_token,
     authenticate_request_basic_auth,
     authenticate_request_bearer_token,
+    get_oauth_instance,
+    validate_token,
 )
-import importlib
 
 
 class TestAuth:
@@ -58,6 +61,23 @@ class TestAuth:
                 mock_cache.set.assert_called_once_with("jwks", mock_requests.get.return_value.json.return_value, timeout=3600)
                 assert result == mock_requests.get.return_value.json.return_value
 
+    @patch("mlflow_oidc_auth.auth.app")
+    def test__get_oidc_jwks_cache_hit(self, mock_app):
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = {"keys": "mock_keys"}
+        mock_app.logger.debug = MagicMock()
+        mlflow_oidc_app = importlib.import_module("mlflow_oidc_auth.app")
+        with patch.object(mlflow_oidc_app, "cache", mock_cache):
+            result = _get_oidc_jwks()
+            mock_app.logger.debug.assert_called_once_with("JWKS cache hit")
+            assert result == {"keys": "mock_keys"}
+
+    @patch("mlflow_oidc_auth.auth.config")
+    def test__get_oidc_jwks_no_discovery_url(self, mock_config):
+        mock_config.OIDC_DISCOVERY_URL = None
+        with pytest.raises(ValueError, match="OIDC_DISCOVERY_URL is not set in the configuration"):
+            _get_oidc_jwks()
+
     @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
     @patch("mlflow_oidc_auth.auth.jwt.decode")
     def test_validate_token(self, mock_jwt_decode, mock_get_oidc_jwks):
@@ -87,6 +107,27 @@ class TestAuth:
 
             mock_store.authenticate_user.assert_called_once_with("mock_username", "mock_password")
             assert result == True
+
+    def test_authenticate_request_basic_auth_no_authorization(self):
+        mock_request = MagicMock()
+        mock_request.authorization = None
+        with patch("mlflow_oidc_auth.auth.request", mock_request):
+            result = authenticate_request_basic_auth()
+            assert result == False
+
+    @patch("mlflow_oidc_auth.auth.store")
+    @patch("mlflow_oidc_auth.auth.app")
+    def test_authenticate_request_basic_auth_user_not_authenticated(self, mock_app, mock_store):
+        mock_request = MagicMock()
+        mock_request.authorization.username = "mock_username"
+        mock_request.authorization.password = "mock_password"
+        mock_store.authenticate_user.return_value = False
+        mock_app.logger.debug = MagicMock()
+
+        with patch("mlflow_oidc_auth.auth.request", mock_request):
+            result = authenticate_request_basic_auth()
+            mock_app.logger.debug.assert_called_with("User %s not authenticated", "mock_username")
+            assert result == False
 
     @patch("mlflow_oidc_auth.auth.validate_token")
     def test_authenticate_request_bearer_token_uses_validate_token(self, mock_validate_token):
