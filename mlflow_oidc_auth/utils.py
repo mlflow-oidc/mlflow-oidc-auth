@@ -7,7 +7,6 @@ from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, R
 from mlflow.server import app
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.app import app
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission

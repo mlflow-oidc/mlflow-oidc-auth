@@ -1,10 +1,10 @@
 import secrets
 
-from flask import redirect, session, url_for, render_template
+from flask import redirect, render_template, session, url_for
+from mlflow.server import app
 
 import mlflow_oidc_auth.utils as utils
 from mlflow_oidc_auth.auth import get_oauth_instance
-from mlflow_oidc_auth.app import app
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.user import create_user, populate_groups, update_user
 

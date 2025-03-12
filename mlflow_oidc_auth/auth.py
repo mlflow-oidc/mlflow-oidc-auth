@@ -4,6 +4,7 @@ import requests
 from authlib.integrations.flask_client import OAuth
 from authlib.jose import jwt
 from flask import request
+from mlflow.server import app
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.store import store
@@ -29,7 +30,7 @@ def get_oauth_instance(app) -> OAuth:
 
 
 def _get_oidc_jwks():
-    from mlflow_oidc_auth.app import app, cache
+    from mlflow_oidc_auth.app import cache
 
     jwks = cache.get("jwks")
     if jwks:
@@ -53,8 +54,6 @@ def validate_token(token):
 
 
 def authenticate_request_basic_auth() -> bool:
-    from mlflow_oidc_auth.app import app
-
     if request.authorization is None:
         return False
     username = request.authorization.username
@@ -69,8 +68,6 @@ def authenticate_request_basic_auth() -> bool:
 
 
 def authenticate_request_bearer_token() -> bool:
-    from mlflow_oidc_auth.app import app
-
     if request.authorization and request.authorization.token:
         token = request.authorization.token
         try:
