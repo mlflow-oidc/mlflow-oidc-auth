@@ -62,13 +62,15 @@ def get_user_groups() -> list[str] | None:
         app.logger.debug("Trying to get groups now from the token.")
         app.logger.debug(f"Token: {request.authorization}")
     if request.authorization and request.authorization.type == "bearer":
-        token = validate_token(request.authorization.token)
+        access_token = validate_token(request.authorization.token).get("access_token")
         if config.OIDC_GROUP_DETECTION_PLUGIN:
             import importlib
-
-            user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
+            groups_plugin = importlib.import_module(
+                config.OIDC_GROUP_DETECTION_PLUGIN
+                )
+            user_groups = groups_plugin.get_user_groups(access_token)
         else:
-            user_groups = token["access_token"].get(config.OIDC_GROUPS_ATTRIBUTE)
+            user_groups = access_token.get(config.OIDC_GROUPS_ATTRIBUTE)
         app.logger.debug(f"Groups from bearer token: {user_groups}")
         return user_groups
     return None
