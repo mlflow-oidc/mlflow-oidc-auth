@@ -68,4 +68,6 @@ def callback():
     # to a group
     session[config.OIDC_GROUPS_ATTRIBUTE] = filtered_user_groups
 
+    app.logger(f"Session has been set: {session}")
+
     return redirect(url_for("oidc_ui"))
