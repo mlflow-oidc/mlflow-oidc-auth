@@ -136,7 +136,7 @@ def check_experiment_permission(f) -> Callable:
             if not can_manage_experiment(experiment_id, current_user.username):
                 app.logger.warning(f"Change permission denied for {current_user.username} on experiment {experiment_id}")
                 return make_forbidden_response()
-        app.logger.debug(f"Cange permission granted for {current_user.username}")
+        app.logger.debug(f"Change permission granted for {current_user.username}")
         return f(*args, **kwargs)
 
     return decorated_function
