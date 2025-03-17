@@ -7,7 +7,9 @@ def make_auth_required_response() -> Response:
     return response
 
 
-def make_forbidden_response(msg={"message": "Permission denied"}) -> Response:
+def make_forbidden_response(msg=None) -> Response:
+    if msg is None:
+        msg = {"message": "Permission denied"}
     response = make_response(jsonify(msg))
     response.status_code = 403
     return response
