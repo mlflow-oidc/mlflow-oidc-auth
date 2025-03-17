@@ -60,8 +60,8 @@ def callback():
         return "User is not allowed to login", 401
 
     create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
-    populate_groups(group_names=user_groups)
-    update_user(email.lower(), user_groups)
+    populate_groups(group_names=filtered_user_groups)
+    update_user(email.lower(), filtered_user_groups)
     session["username"] = email.lower()
     # TODO: Need to revisit if we want to do this
     # as this may lead to problems if the user is added
