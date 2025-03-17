@@ -27,7 +27,7 @@ def _set_initial_experiment_permission(resp: Response):
     experiment_id = response_message.experiment_id
     username = get_username()
     store.create_experiment_permission(experiment_id, username, MANAGE.name)
-    user_groups = get_user_groups()
+    user_groups = get_user_groups(username)
     if permission := config.DEFAULT_MLFLOW_GROUP_PERMISSION:
         for group_name in user_groups:
             store.create_group_experiment_permission(group_name, experiment_id, permission)
@@ -39,7 +39,7 @@ def _set_initial_registered_model_permission(resp: Response):
     model_name = response_message.registered_model.name
     username = get_username()
     store.create_registered_model_permission(model_name, username, MANAGE.name)
-    user_groups = get_user_groups()
+    user_groups = get_user_groups(username)
     if permission := config.DEFAULT_MLFLOW_GROUP_PERMISSION:
         for group_name in user_groups:
             store.create_group_model_permission(group_name, model_name, permission)
@@ -61,7 +61,7 @@ def _delete_registered_model_permission(resp: Response):
     model_name = get_request_param("name")
     username = get_request_param("user_name")
     store.delete_registered_model_permission(model_name, username)
-    user_groups = get_user_groups()
+    user_groups = get_user_groups(username)
     for group_name in user_groups:
         store.delete_group_model_permission(group_name, model_name)
 

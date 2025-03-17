@@ -52,7 +52,7 @@ def get_username() -> str | None:
     return None
 
 
-def get_user_groups() -> list[str] | None:
+def get_user_groups(username: str) -> list[str] | None:
     user_groups = session.get(config.OIDC_GROUPS_ATTRIBUTE)
     if user_groups:
         app.logger.debug(f"Groups from session: {user_groups}")
@@ -69,11 +69,15 @@ def get_user_groups() -> list[str] | None:
                 config.OIDC_GROUP_DETECTION_PLUGIN
                 )
             user_groups = groups_plugin.get_user_groups(access_token)
+            app.logger.debug(f"Groups from plugin: {user_groups}")
         else:
             user_groups = access_token.get(config.OIDC_GROUPS_ATTRIBUTE)
-        app.logger.debug(f"Groups from bearer token: {user_groups}")
-        return user_groups
-    return None
+            app.logger.debug(f"Groups from bearer token: {user_groups}")
+    if user_groups is None:
+        user_groups = store.get_groups_for_user(username)
+        app.logger.debug(f"Groups from store: {user_groups}")
+    return user_groups
+
 
 
 def get_is_admin() -> bool:
