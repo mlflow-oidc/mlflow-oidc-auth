@@ -77,7 +77,7 @@ class User:
             "username": self.username,
             "is_admin": self.is_admin,
             "display_name": self.display_name,
-            "groups": [g.to_json() for g in self.groups],
+            "groups": [g.to_json() for g in self.groups] if self.groups else [],
         }
 
     @classmethod

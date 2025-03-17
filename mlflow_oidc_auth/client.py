@@ -1,9 +1,8 @@
-import mlflow
-from mlflow_oidc_auth.entities import (
-    ExperimentPermission,
-    RegisteredModelPermission,
-    User,
-)
+from mlflow.exceptions import RestException
+from mlflow.utils.credentials import get_default_host_creds
+from mlflow.utils.rest_utils import http_request_safe
+
+from mlflow_oidc_auth.entities import ExperimentPermission, RegisteredModelPermission, User
 from mlflow_oidc_auth.routes import (
     CREATE_EXPERIMENT_PERMISSION,
     CREATE_REGISTERED_MODEL_PERMISSION,
@@ -19,8 +18,6 @@ from mlflow_oidc_auth.routes import (
     UPDATE_USER_ADMIN,
     UPDATE_USER_PASSWORD,
 )
-from mlflow.utils.credentials import get_default_host_creds
-from mlflow.utils.rest_utils import http_request_safe
 
 
 class AuthServiceClient:
@@ -29,6 +26,9 @@ class AuthServiceClient:
     It is recommended to use :py:func:`mlflow.server.get_app_client()` to instantiate this class.
     See https://mlflow.org/docs/latest/auth.html for more information.
     """
+
+    _username_error_message = "Username must not be empty."
+    _password_error_message = "Password must not be empty."
 
     def __init__(self, tracking_uri: str):
         """
@@ -52,9 +52,9 @@ class AuthServiceClient:
         """
         # Input validation
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if not password:
-            raise ValueError("Password must not be empty.")
+            raise ValueError(self._password_error_message)
 
         try:
             resp = self._request(
@@ -62,7 +62,7 @@ class AuthServiceClient:
                 "POST",
                 json={"username": username, "password": password},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return User.from_json(resp["user"])
@@ -75,7 +75,7 @@ class AuthServiceClient:
             username: The username.
         """
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             resp = self._request(
@@ -83,7 +83,7 @@ class AuthServiceClient:
                 "GET",
                 params={"username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return User.from_json(resp["user"])
@@ -97,9 +97,9 @@ class AuthServiceClient:
             password: The new password.
         """
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if not password:
-            raise ValueError("Password must not be empty.")
+            raise ValueError(self._password_error_message)
 
         try:
             self._request(
@@ -107,7 +107,7 @@ class AuthServiceClient:
                 "PATCH",
                 json={"username": username, "password": password},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def update_user_admin(self, username: str, is_admin: bool):
@@ -119,7 +119,7 @@ class AuthServiceClient:
             is_admin: The new admin status.
         """
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if not isinstance(is_admin, bool):
             raise ValueError("is_admin must be a boolean value.")
 
@@ -129,7 +129,7 @@ class AuthServiceClient:
                 "PATCH",
                 json={"username": username, "is_admin": is_admin},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def delete_user(self, username: str):
@@ -140,7 +140,7 @@ class AuthServiceClient:
             username: The username.
         """
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             self._request(
@@ -148,7 +148,7 @@ class AuthServiceClient:
                 "DELETE",
                 json={"username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def create_experiment_permission(self, experiment_id: str, username: str, permission: str):
@@ -164,7 +164,7 @@ class AuthServiceClient:
         if not experiment_id:
             raise ValueError("Experiment ID must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if permission not in ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]:
             raise ValueError("Permission must be one of 'READ', 'EDIT', 'MANAGE', or 'NO_PERMISSIONS'.")
 
@@ -178,7 +178,7 @@ class AuthServiceClient:
                     "permission": permission,
                 },
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return ExperimentPermission.from_json(resp["experiment_permission"])
@@ -194,7 +194,7 @@ class AuthServiceClient:
         if not experiment_id:
             raise ValueError("Experiment ID must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             resp = self._request(
@@ -202,7 +202,7 @@ class AuthServiceClient:
                 "GET",
                 params={"experiment_id": experiment_id, "username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             # Add more specific error handling here if needed
             raise e
 
@@ -221,7 +221,7 @@ class AuthServiceClient:
         if not experiment_id:
             raise ValueError("Experiment ID must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if permission not in ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]:
             raise ValueError("Permission must be one of 'READ', 'EDIT', 'MANAGE', or 'NO_PERMISSIONS'.")
 
@@ -235,7 +235,7 @@ class AuthServiceClient:
                     "permission": permission,
                 },
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def delete_experiment_permission(self, experiment_id: str, username: str):
@@ -249,7 +249,7 @@ class AuthServiceClient:
         if not experiment_id:
             raise ValueError("Experiment ID must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             self._request(
@@ -257,7 +257,7 @@ class AuthServiceClient:
                 "DELETE",
                 json={"experiment_id": experiment_id, "username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def create_registered_model_permission(self, name: str, username: str, permission: str):
@@ -273,7 +273,7 @@ class AuthServiceClient:
         if not name:
             raise ValueError("Name must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if permission not in ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]:
             raise ValueError("Permission must be one of 'READ', 'EDIT', 'MANAGE', or 'NO_PERMISSIONS'.")
 
@@ -283,7 +283,7 @@ class AuthServiceClient:
                 "POST",
                 json={"name": name, "username": username, "permission": permission},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return RegisteredModelPermission.from_json(resp["registered_model_permission"])
@@ -299,7 +299,7 @@ class AuthServiceClient:
         if not name:
             raise ValueError("Name must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             resp = self._request(
@@ -307,7 +307,7 @@ class AuthServiceClient:
                 "GET",
                 params={"name": name, "username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
         return RegisteredModelPermission.from_json(resp["registered_model_permission"])
@@ -325,7 +325,7 @@ class AuthServiceClient:
         if not name:
             raise ValueError("Name must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
         if permission not in ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]:
             raise ValueError("Permission must be one of 'READ', 'EDIT', 'MANAGE', or 'NO_PERMISSIONS'.")
 
@@ -335,7 +335,7 @@ class AuthServiceClient:
                 "PATCH",
                 json={"name": name, "username": username, "permission": permission},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e
 
     def delete_registered_model_permission(self, name: str, username: str):
@@ -349,7 +349,7 @@ class AuthServiceClient:
         if not name:
             raise ValueError("Name must not be empty.")
         if not username:
-            raise ValueError("Username must not be empty.")
+            raise ValueError(self._username_error_message)
 
         try:
             self._request(
@@ -357,5 +357,5 @@ class AuthServiceClient:
                 "DELETE",
                 json={"name": name, "username": username},
             )
-        except mlflow.exceptions.RestException as e:
+        except RestException as e:
             raise e

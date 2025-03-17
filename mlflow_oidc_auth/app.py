@@ -44,7 +44,7 @@ app.add_url_rule(rule=routes.GET_EXPERIMENT_USERS, methods=["GET"], view_func=vi
 app.add_url_rule(rule=routes.GET_MODEL_USERS, methods=["GET"], view_func=views.get_registered_model_users)
 
 # User management
-app.add_url_rule(rule=routes.CREATE_USER, methods=["POST"], view_func=views.create_user)
+app.add_url_rule(rule=routes.CREATE_USER, methods=["POST"], view_func=views.create_new_user)
 app.add_url_rule(rule=routes.GET_USER, methods=["GET"], view_func=views.get_user)
 app.add_url_rule(rule=routes.UPDATE_USER_PASSWORD, methods=["PATCH"], view_func=views.update_username_password)
 app.add_url_rule(rule=routes.UPDATE_USER_ADMIN, methods=["PATCH"], view_func=views.update_user_admin)

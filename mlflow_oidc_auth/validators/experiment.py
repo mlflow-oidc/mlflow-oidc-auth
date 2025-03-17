@@ -5,7 +5,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.app import config
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_experiment_id, get_permission_from_store_or_default, get_request_param, get_username
@@ -24,6 +24,7 @@ def _get_permission_from_experiment_name() -> Permission:
     experiment_name = get_request_param("experiment_name")
     store_exp = _get_tracking_store().get_experiment_by_name(experiment_name)
     if store_exp is None:
+        # TODO: refactor to avoid panic during rename experiment
         raise MlflowException(
             f"Could not find experiment with name {experiment_name}",
             error_code=RESOURCE_DOES_NOT_EXIST,

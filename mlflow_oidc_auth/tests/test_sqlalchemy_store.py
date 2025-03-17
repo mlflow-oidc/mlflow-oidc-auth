@@ -1,9 +1,12 @@
+from unittest.mock import MagicMock, PropertyMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
 from mlflow.exceptions import MlflowException
-from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.exc import IntegrityError, NoResultFound
-from mlflow_oidc_auth.db.models import SqlRegisteredModelPermission
+
+from mlflow_oidc_auth.entities import ExperimentPermission, RegisteredModelPermission
+from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
 
 
 @pytest.fixture
@@ -19,7 +22,7 @@ class TestSqlAlchemyStore:
         "mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user", return_value=MagicMock(password_hash="hashed_password")
     )
     @patch("mlflow_oidc_auth.sqlalchemy_store.check_password_hash", return_value=True)
-    def test_authenticate_user(self, mock_check_password_hash, mock_get_user, store):
+    def test_authenticate_user(self, mock_check_password_hash, mock_get_user, store: SqlAlchemyStore):
         auth_result = store.authenticate_user("test_user", "password")
         mock_check_password_hash.assert_called_once()
         mock_get_user.assert_called_once()
@@ -30,7 +33,7 @@ class TestSqlAlchemyStore:
         "mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user", return_value=MagicMock(password_hash="hashed_password")
     )
     @patch("mlflow_oidc_auth.sqlalchemy_store.check_password_hash", return_value=False)
-    def test_authenticate_user_failure(self, mock_check_password_hash, mock_get_user, store):
+    def test_authenticate_user_failure(self, mock_check_password_hash, mock_get_user, store: SqlAlchemyStore):
         auth_result = store.authenticate_user("test_user", "password")
         mock_get_user.assert_called_once()
         mock_check_password_hash.assert_called_once()
@@ -38,7 +41,7 @@ class TestSqlAlchemyStore:
         assert auth_result is False
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.generate_password_hash", return_value="hashed_password")
-    def test_create_user(self, generate_password_hash, store):
+    def test_create_user(self, generate_password_hash, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(flush=MagicMock(), add=MagicMock())
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
@@ -59,7 +62,7 @@ class TestSqlAlchemyStore:
         assert user.is_admin is False
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.generate_password_hash", return_value="hashed_password")
-    def test_create_admin_user(self, _generate_password_hash, store):
+    def test_create_admin_user(self, _generate_password_hash, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(flush=MagicMock(), add=MagicMock())
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
@@ -72,15 +75,15 @@ class TestSqlAlchemyStore:
         assert mock_session.add.call_args[0][0].is_admin is True
         assert admin_user.is_admin is True
 
-    def test_create_user_existing(self, store):
+    def test_create_user_existing(self, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
-        mock_session = MagicMock(flush=MagicMock(), add=MagicMock(side_effect=IntegrityError("", {}, Exception)))
+        mock_session = MagicMock(flush=MagicMock(), add=MagicMock(side_effect=IntegrityError("", {}, Exception())))
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
 
         with pytest.raises(MlflowException):
             store.create_user("test_user", "password", "Test User")
 
-    def test_get_user_not_found(self, store):
+    def test_get_user_not_found(self, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(query=MagicMock(side_effect=NoResultFound("", {}, Exception)))
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
@@ -89,14 +92,14 @@ class TestSqlAlchemyStore:
             store.get_user("non_existent_user")
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.generate_password_hash", return_value="hashed_password")
-    def test_update_user(self, _generate_password_hash, store):
+    def test_update_user(self, _generate_password_hash, store: SqlAlchemyStore):
         retrieved_user = MagicMock(is_admin=PropertyMock(), password_hash=PropertyMock())
         store._get_user = MagicMock(return_value=retrieved_user)
         store.update_user("test_user", password="new_password", is_admin=True)
         assert retrieved_user.is_admin == True
         assert retrieved_user.password_hash == "hashed_password"
 
-    def test_delete_user(self, store):
+    def test_delete_user(self, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(flush=MagicMock(), delete=MagicMock())
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
@@ -106,12 +109,12 @@ class TestSqlAlchemyStore:
         mock_session.delete.assert_called_once()
         mock_session.flush.assert_called_once()
 
-    def test_create_experiment_permission_validates_permission(self, store):
+    def test_create_experiment_permission_validates_permission(self, store: SqlAlchemyStore):
         with pytest.raises(MlflowException):
             store.create_experiment_permission("1", "test_user", "INVALID_PERMISSION")
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
-    def test_create_experiment_permission(self, mock_get_user, store):
+    def test_create_experiment_permission(self, mock_get_user, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(flush=MagicMock(), add=MagicMock())
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
@@ -125,48 +128,408 @@ class TestSqlAlchemyStore:
         assert permission.permission == "READ"
         assert permission.user_id == 1
 
-    def test_create_registered_model_permission_validates_permission(self, store):
-        with pytest.raises(MlflowException):
-            store.create_registered_model_permission("model", "test_user", "INVALID_PERMISSION")
-
-    def test_create_registered_model_permission_fails_on_duplicate(self, store):
-        store.ManagedSessionMaker = MagicMock()
-        mock_session = MagicMock(flush=MagicMock(), add=MagicMock(side_effect=IntegrityError("", {}, Exception)))
-        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
-        with pytest.raises(MlflowException):
-            store.create_registered_model_permission("model", "test_user", "READ")
-
-    def test_update_registered_model_permission_validates_permission(self, store):
-        with pytest.raises(MlflowException):
-            store.update_registered_model_permission("model", "test_user", "INVALID_PERMISSION")
-
-    def test_update_registered_model_permission(self, store):
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
+    def test_list_group_experiment_permissions(self, mock_get_user, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock()
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
 
-        store._get_registered_model_permission = MagicMock(
-            return_value=SqlRegisteredModelPermission(name="model", user_id=1, permission=PropertyMock(return_value="READ"))
-        )
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
 
-        permission = store.update_registered_model_permission("model", "test_user", "EDIT")
-        assert permission.name == "model"
-        assert permission.permission == "EDIT"
-        assert permission.user_id == 1
+        permissions = store.list_group_experiment_permissions("group_name")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
 
-    def test_delete_registered_model_permission(self, store):
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
+    def test_list_experiment_permissions(self, mock_get_user, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        mock_get_user.return_value = mock_user
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+
+        permissions = store.list_experiment_permissions("test_user")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
+    def test_list_group_id_experiment_permissions(self, mock_get_user, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+
+        permissions = store.list_group_id_experiment_permissions(1)
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
+    def test_list_user_groups_experiment_permissions(self, mock_get_user, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        mock_get_user.return_value = mock_user
+        mock_user_groups = [MagicMock(group_id=1), MagicMock(group_id=2)]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_user_groups
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+
+        permissions = store.list_user_groups_experiment_permissions("test_user")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_experiment_permission")
+    def test_update_experiment_permission(self, mock_get_experiment_permission, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value="updated_perm"))
+        mock_get_experiment_permission.return_value = mock_perm
+
+        permission = store.update_experiment_permission("1", "test_user", "READ")
+        assert permission == "updated_perm"
+        mock_get_experiment_permission.assert_called_once_with(mock_session, "1", "test_user")
+        assert mock_perm.permission == "READ"
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_experiment_permission")
+    def test_delete_experiment_permission(self, mock_get_experiment_permission, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(flush=MagicMock(), delete=MagicMock())
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
-        store._get_registered_model_permission = MagicMock(
-            return_value=SqlRegisteredModelPermission(name="model", user_id=1, permission="READ")
-        )
 
-        store.delete_registered_model_permission("model", "test_user")
-        mock_session.delete.assert_called_once()
+        mock_perm = MagicMock()
+        mock_get_experiment_permission.return_value = mock_perm
+
+        store.delete_experiment_permission("1", "test_user")
+        mock_get_experiment_permission.assert_called_once_with(mock_session, "1", "test_user")
+        mock_session.delete.assert_called_once_with(mock_perm)
         mock_session.flush.assert_called_once()
 
-    def test_populate_groups_is_idempotent(self, store):
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
+    def test_get_registered_model_permission(self, mock_get_user, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        mock_get_user.return_value = mock_user
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value="perm"))
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_perm
+
+        permission = store.get_registered_model_permission("model", "test_user")
+        assert permission == "perm"
+        mock_get_user.assert_called_once_with(mock_session, username="test_user")
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore.get_groups_for_user", return_value=["group1", "group2"])
+    @patch(
+        "mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_registered_model_group_permission",
+        side_effect=[
+            MagicMock(to_mlflow_entity=MagicMock(return_value="READ")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="EDIT")),
+        ],
+    )
+    def test_get_user_groups_registered_model_permission(
+        self, mock_get_registered_model_group_permission, mock_get_groups_for_user, store: SqlAlchemyStore
+    ):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_get_registered_model_group_permission.side_effect = [
+            MagicMock(permission="READ", to_mlflow_entity=MagicMock(return_value="READ")),
+            MagicMock(permission="EDIT", to_mlflow_entity=MagicMock(return_value="EDIT")),
+        ]
+        permission = store.get_user_groups_registered_model_permission("model", "test_user")
+        assert permission == "EDIT"
+        mock_get_groups_for_user.assert_called_once_with("test_user")
+        mock_get_registered_model_group_permission.assert_called()
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
+    def test_list_registered_model_permissions(self, mock_get_user, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        mock_get_user.return_value = mock_user
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+
+        permissions = store.list_registered_model_permissions("test_user")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
+    def test_list_user_groups_registered_model_permissions(self, mock_get_user, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        mock_get_user.return_value = mock_user
+        mock_user_groups = [MagicMock(group_id=1), MagicMock(group_id=2)]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_user_groups
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+
+        permissions = store.list_user_groups_registered_model_permissions("test_user")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    def test_list_experiment_permissions_for_experiment(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+
+        permissions = store.list_experiment_permissions_for_experiment("1")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    def test_get_groups(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_groups = [MagicMock(group_name="group1"), MagicMock(group_name="group2")]
+        mock_session.query.return_value.all.return_value = mock_groups
+
+        groups = store.get_groups()
+        assert groups == ["group1", "group2"]
+        mock_session.query.assert_called()
+
+    def test_get_group_users(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_user_groups = [MagicMock(user_id=1), MagicMock(user_id=2)]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_user_groups
+        mock_users = [MagicMock(username="user1"), MagicMock(username="user2")]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_users
+
+        users = store.get_group_users("group_name")
+        assert users == ["user1", "user2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    def test_add_user_to_group(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        store._get_user = MagicMock(return_value=mock_user)
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+
+        store.add_user_to_group("test_user", "group_name")
+        mock_session.add.assert_called_once()
+        mock_session.flush.assert_called_once()
+
+    def test_remove_user_from_group(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        store._get_user = MagicMock(return_value=mock_user)
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_user_group = MagicMock()
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_user_group
+
+        store.remove_user_from_group("test_user", "group_name")
+        mock_session.delete.assert_called_once_with(mock_user_group)
+        mock_session.flush.assert_called_once()
+
+    def test_get_groups_for_user(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        store._get_user = MagicMock(return_value=mock_user)
+        mock_user_groups = [MagicMock(group_id=1), MagicMock(group_id=2)]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_user_groups
+        mock_groups = [MagicMock(group_name="group1"), MagicMock(group_name="group2")]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_groups
+
+        groups = store.get_groups_for_user("test_user")
+        assert groups == ["group1", "group2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    def test_get_groups_ids_for_user(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        store._get_user = MagicMock(return_value=mock_user)
+        mock_user_groups = [MagicMock(group_id=1), MagicMock(group_id=2)]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_user_groups
+
+        group_ids = store.get_groups_ids_for_user("test_user")
+        assert group_ids == [1, 2]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    def test_set_user_groups(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_user = MagicMock(id=1)
+        store._get_user = MagicMock(return_value=mock_user)
+        mock_user_groups = [MagicMock()]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_user_groups
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+
+        store.set_user_groups("test_user", ["group_name"])
+        mock_session.delete.assert_called_once_with(mock_user_groups[0])
+        mock_session.add.assert_called_once()
+        mock_session.flush.assert_called_once()
+
+    def test_get_group_experiments(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+
+        permissions = store.get_group_experiments("group_name")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    def test_create_group_experiment_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        expected_perm = ExperimentPermission(experiment_id="1", group_id=1, permission="READ")
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value=expected_perm))
+        mock_session.add.return_value = mock_perm
+        permission = store.create_group_experiment_permission("group_name", "1", "READ")
+        assert permission.experiment_id == expected_perm.experiment_id
+        assert permission.group_id == expected_perm.group_id
+        assert permission.permission == expected_perm.permission
+
+    def test_delete_group_experiment_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perm = MagicMock()
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_perm
+
+        store.delete_group_experiment_permission("group_name", "1")
+        mock_session.delete.assert_called_once_with(mock_perm)
+        mock_session.flush.assert_called_once()
+
+    def test_update_group_experiment_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value="updated_perm"))
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_perm
+
+        permission = store.update_group_experiment_permission("group_name", "1", "READ")
+        assert permission == "updated_perm"
+        assert mock_perm.permission == "READ"
+        mock_session.flush.assert_called_once()
+
+    def test_get_group_models(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+
+        permissions = store.get_group_models("group_name")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    def test_create_group_model_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        expected_perm = RegisteredModelPermission(name="model", permission="READ")
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value=expected_perm))
+        mock_session.add.return_value = mock_perm
+        permission = store.create_group_model_permission("group_name", "model", "READ")
+        assert permission.name == expected_perm.name
+        assert permission.permission == expected_perm.permission
+
+    def test_populate_groups_is_idempotent(self, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(add=MagicMock())
         mock_session.query.return_value.filter.return_value.first.return_value = None
@@ -179,3 +542,33 @@ class TestSqlAlchemyStore:
         mock_session.query.return_value.filter.return_value.first.return_value = "Group 1"
         store.populate_groups(["Group 1"])
         assert mock_session.add.call_count == 0
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore.get_groups_for_user", return_value=["group1", "group2"])
+    @patch(
+        "mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_experiment_group_permission",
+        side_effect=[MagicMock(), MagicMock()],
+    )
+    @patch("mlflow_oidc_auth.sqlalchemy_store.compare_permissions", side_effect=AttributeError)
+    def test_get_user_groups_experiment_permission_compare_permissions_error(
+        self, mock_compare_permissions, mock_get_experiment_group_permission, mock_get_groups_for_user, store
+    ):
+        result = store.get_user_groups_experiment_permission("1", "test_user")
+        assert result is not None
+        mock_get_experiment_group_permission.assert_called()
+        mock_get_groups_for_user.assert_called_once_with("test_user")
+        mock_compare_permissions.assert_called()
+
+    @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore.get_groups_for_user", return_value=["group1", "group2"])
+    @patch(
+        "mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_experiment_group_permission",
+        side_effect=[MagicMock(permission="READ"), MagicMock(permission="WRITE")],
+    )
+    @patch("mlflow_oidc_auth.sqlalchemy_store.compare_permissions", return_value=True)
+    def test_get_user_groups_experiment_permission_compare_permissions(
+        self, mock_compare_permissions, mock_get_experiment_group_permission, mock_get_groups_for_user, store
+    ):
+        result = store.get_user_groups_experiment_permission("1", "test_user")
+        assert result is not None
+        mock_get_experiment_group_permission.assert_called()
+        mock_get_groups_for_user.assert_called_once_with("test_user")
+        mock_compare_permissions.assert_called()
