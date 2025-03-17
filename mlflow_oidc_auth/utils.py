@@ -73,6 +73,9 @@ def get_user_groups(username: str) -> list[str] | None:
         else:
             user_groups = access_token.get(config.OIDC_GROUPS_ATTRIBUTE)
             app.logger.debug(f"Groups from bearer token: {user_groups}")
+        available_groups = config.OIDC_GROUP_NAME + [config.OIDC_ADMIN_GROUP_NAME]
+        filtered_user_groups = list(filter(lambda x: x in available_groups, user_groups))
+        return filtered_user_groups
     if user_groups is None:
         user_groups = store.get_groups_for_user(username)
         app.logger.debug(f"Groups from store: {user_groups}")
