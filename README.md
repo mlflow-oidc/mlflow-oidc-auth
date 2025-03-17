@@ -35,6 +35,7 @@ The plugin required the following environment variables but also supported `.env
 | SECRET_KEY             | Key to perform cookie encryption |
 | LOG_LEVEL                   | Application log level |
 | OIDC_USERS_DB_URI | Database connection string |
+| OIDC_ALEMBIC_VERSION_TABLE  | Name of the table to use for alembic versions (defaults to alembic_version if not provided)                                                          |
 
 ## Application session storage configuration
 | Parameter | Description | Default |
