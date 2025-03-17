@@ -85,7 +85,7 @@ def _is_unprotected_route(path: str) -> bool:
             "/callback",
             "/oidc/static",
             "/metrics",
-        )
+        ) or path == '/'
     )
 
 
@@ -197,7 +197,7 @@ def before_request_hook():
             session.clear()
 
             if config.AUTOMATIC_LOGIN_REDIRECT:
-                return redirect(url_for("login", _external=True))
+                return redirect(url_for("login"), _external=True)
             return render_template(
                 "auth.html",
                 username=None,

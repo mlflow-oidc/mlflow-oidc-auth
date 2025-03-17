@@ -1,5 +1,7 @@
 import os
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 from mlflow.server import app
 from flask_session import Session
 
@@ -86,6 +88,8 @@ app.add_url_rule(rule=routes.UPDATE_GROUP_MODEL_PERMISSION, methods=["PATCH"], v
 # Add new hooks
 app.before_request(before_request_hook)
 app.after_request(after_request_hook)
+
+app.wsgi_app = ProxyFix(app.wsgi_app, x_prefix=1)
 
 # Set up session
 Session(app)
