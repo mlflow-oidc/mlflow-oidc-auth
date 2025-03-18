@@ -60,11 +60,12 @@ def callback():
 
     app.logger.debug(f"User groups: {user_groups}")
 
+    is_admin = config.OIDC_ADMIN_GROUP_NAME in user_groups
     available_groups = config.OIDC_GROUP_NAME + [config.OIDC_ADMIN_GROUP_NAME]
-    filtered_user_groups = list(filter(lambda x: x in available_groups, user_groups))
-    if config.OIDC_ADMIN_GROUP_NAME in user_groups:
-        is_admin = True
-    elif len(filtered_user_groups) == 0:
+    filtered_user_groups = list(filter(lambda x: x in available_groups,
+                                       user_groups)
+                                )
+    if len(filtered_user_groups) == 0:
         return "User is not allowed to login", 401
 
     create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
