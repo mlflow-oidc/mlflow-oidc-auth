@@ -72,11 +72,6 @@ def callback():
     populate_groups(group_names=filtered_user_groups)
     update_user(email.lower(), filtered_user_groups)
     session["username"] = email.lower()
-    # TODO: Need to revisit if we want to do this
-    # as this may lead to problems if the user is added
-    # to a group
     session[config.OIDC_GROUPS_ATTRIBUTE] = filtered_user_groups
-
-    app.logger.debug(f"Session has been set: {session}")
 
     return redirect(url_for("oidc_ui"))
