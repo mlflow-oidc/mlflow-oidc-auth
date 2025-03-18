@@ -48,7 +48,6 @@ def callback():
     if email is None:
         return "No email provided", 401
     display_name = token["userinfo"]["name"]
-    is_admin = False
     user_groups = utils.get_user_groups()
     is_admin = config.OIDC_ADMIN_GROUP_NAME in user_groups
     if len(user_groups) == 0:
