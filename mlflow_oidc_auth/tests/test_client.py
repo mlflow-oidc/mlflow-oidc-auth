@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch
+from mlflow.exceptions import RestException
 from mlflow_oidc_auth.client import AuthServiceClient
 from mlflow_oidc_auth.routes import (
     CREATE_EXPERIMENT_PERMISSION,
@@ -270,3 +271,80 @@ class TestClient:
         mock_request.assert_called_once_with(
             DELETE_REGISTERED_MODEL_PERMISSION, "DELETE", json={"name": "model", "username": "test_user"}
         )
+
+    def test_request(self, mock_request, client):
+        mock_request.return_value = {"key": "value"}
+        response = client._request("endpoint", "GET")
+        assert response == {"key": "value"}
+        mock_request.assert_called_once()
+
+    def test_request_with_kwargs(self, mock_request, client):
+        mock_request.return_value = {"key": "value"}
+        response = client._request("endpoint", "POST", json={"data": "value"})
+        assert response == {"key": "value"}
+        mock_request.assert_called_once_with("endpoint", "POST", json={"data": "value"})
+
+    def test_create_user_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.create_user("test_user", "password")
+
+    def test_get_user_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.get_user("test_user")
+
+    def test_update_user_password_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.update_user_password("test_user", "new_password")
+
+    def test_update_user_admin_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.update_user_admin("test_user", True)
+
+    def test_delete_user_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.delete_user("test_user")
+
+    def test_create_experiment_permission_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.create_experiment_permission("1", "test_user", "READ")
+
+    def test_get_experiment_permission_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.get_experiment_permission("1", "test_user")
+
+    def test_update_experiment_permission_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.update_experiment_permission("1", "test_user", "READ")
+
+    def test_delete_experiment_permission_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.delete_experiment_permission("1", "test_user")
+
+    def test_create_registered_model_permission_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.create_registered_model_permission("model", "test_user", "READ")
+
+    def test_get_registered_model_permission_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.get_registered_model_permission("model", "test_user")
+
+    def test_update_registered_model_permission_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.update_registered_model_permission("model", "test_user", "READ")
+
+    def test_delete_registered_model_permission_rest_exception(self, mock_request, client):
+        mock_request.side_effect = RestException({"error_code": "INTERNAL_ERROR", "message": "Error"})
+        with pytest.raises(RestException):
+            client.delete_registered_model_permission("model", "test_user")

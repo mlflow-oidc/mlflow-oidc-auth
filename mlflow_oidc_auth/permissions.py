@@ -71,6 +71,16 @@ def _validate_permission(permission: str):
 
 
 def compare_permissions(permission1: str, permission2: str) -> bool:
+    """
+    Compare the priority of two permissions.
+
+    Args:
+        permission1 (str): The name of the first permission.
+        permission2 (str): The name of the second permission.
+
+    Returns:
+        bool: True if the priority of permission1 is less than or equal to the priority of permission2, False otherwise.
+    """
     _validate_permission(permission1)
     _validate_permission(permission2)
     return ALL_PERMISSIONS[permission1].priority <= ALL_PERMISSIONS[permission2].priority

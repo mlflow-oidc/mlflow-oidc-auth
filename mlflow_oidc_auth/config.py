@@ -1,8 +1,6 @@
+import importlib
 import os
 import secrets
-import requests
-import secrets
-import importlib
 
 from dotenv import load_dotenv
 from mlflow.server import app
@@ -10,9 +8,11 @@ from mlflow.server import app
 load_dotenv()  # take environment variables from .env.
 app.logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
+
 def get_bool_env_variable(variable, default_value):
     value = os.environ.get(variable, str(default_value))
     return value.lower() in ["true", "1", "t"]
+
 
 class AppConfig:
     def __init__(self):

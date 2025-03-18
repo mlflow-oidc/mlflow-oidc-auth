@@ -2,70 +2,85 @@ from flask import jsonify
 from mlflow.server.handlers import _get_tracking_store, catch_mlflow_exception
 
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import get_request_param
+from mlflow_oidc_auth.utils import (
+    can_manage_experiment,
+    can_manage_registered_model,
+    check_experiment_permission,
+    check_registered_model_permission,
+    get_experiment_id,
+    get_is_admin,
+    get_request_param,
+    get_username,
+)
 
 
 @catch_mlflow_exception
+@check_experiment_permission
 def create_group_experiment_permission(group_name):
-    experiment_id = get_request_param("experiment_id")
-    permission = get_request_param("permission")
-    store.create_group_experiment_permission(group_name, experiment_id, permission)
+    store.create_group_experiment_permission(group_name, get_experiment_id(), get_request_param("permission"))
     return jsonify({"message": "Group experiment permission has been created."})
 
 
 @catch_mlflow_exception
+@check_experiment_permission
 def update_group_experiment_permission(group_name):
-    experiment_id = get_request_param("experiment_id")
-    permission = get_request_param("permission")
-    store.update_group_experiment_permission(group_name, experiment_id, permission)
+    store.update_group_experiment_permission(group_name, get_experiment_id(), get_request_param("permission"))
     return jsonify({"message": "Group experiment permission has been updated."})
 
 
 @catch_mlflow_exception
+@check_experiment_permission
 def delete_group_experiment_permission(group_name):
-    experiment_id = get_request_param("experiment_id")
-    store.delete_group_experiment_permission(group_name, experiment_id)
+    store.delete_group_experiment_permission(group_name, get_experiment_id())
     return jsonify({"message": "Group experiment permission has been deleted."})
 
 
 @catch_mlflow_exception
+@check_registered_model_permission
 def create_group_model_permission(group_name):
-    model_name = get_request_param("model_name")
-    permission = get_request_param("permission")
-    store.create_group_model_permission(group_name, model_name, permission)
+    store.create_group_model_permission(group_name, get_request_param("model_name"), get_request_param("permission"))
     return jsonify({"message": "Group model permission has been created."})
 
 
 @catch_mlflow_exception
+@check_registered_model_permission
 def delete_group_model_permission(group_name):
-    model_name = get_request_param("model_name")
-    store.delete_group_model_permission(group_name, model_name)
+    store.delete_group_model_permission(group_name, get_request_param("model_name"))
     return jsonify({"message": "Group model permission has been deleted."})
 
 
 @catch_mlflow_exception
+@check_registered_model_permission
 def update_group_model_permission(group_name):
-    model_name = get_request_param("model_name")
-    permission = get_request_param("permission")
-    store.update_group_model_permission(group_name, model_name, permission)
+    store.update_group_model_permission(group_name, get_request_param("model_name"), get_request_param("permission"))
     return jsonify({"message": "Group model permission has been updated."})
 
 
 @catch_mlflow_exception
 def get_groups():
-    groups = store.get_groups()
-    return jsonify({"groups": groups})
+    return jsonify({"groups": store.get_groups()})
 
 
 @catch_mlflow_exception
 def get_group_users(group_name):
-    users = store.get_group_users(group_name)
-    return jsonify({"users": users})
+    return jsonify({"users": store.get_group_users(group_name)})
 
 
 @catch_mlflow_exception
 def get_group_experiments(group_name):
     experiments = store.get_group_experiments(group_name)
+    if get_is_admin():
+        return jsonify(
+            [
+                {
+                    "id": experiment.experiment_id,
+                    "name": _get_tracking_store().get_experiment(experiment.experiment_id).name,
+                    "permission": experiment.permission,
+                }
+                for experiment in experiments
+            ]
+        )
+    current_user = store.get_user(get_username())
     return jsonify(
         [
             {
@@ -74,6 +89,10 @@ def get_group_experiments(group_name):
                 "permission": experiment.permission,
             }
             for experiment in experiments
+            if can_manage_experiment(
+                experiment.experiment_id,
+                current_user.username,
+            )
         ]
     )
 
@@ -81,4 +100,27 @@ def get_group_experiments(group_name):
 @catch_mlflow_exception
 def get_group_models(group_name):
     models = store.get_group_models(group_name)
-    return jsonify([{"name": model.name, "permission": model.permission} for model in models])
+    if get_is_admin():
+        return jsonify(
+            [
+                {
+                    "name": model.name,
+                    "permission": model.permission,
+                }
+                for model in models
+            ]
+        )
+    current_user = store.get_user(get_username())
+    return jsonify(
+        [
+            {
+                "name": model.name,
+                "permission": model.permission,
+            }
+            for model in models
+            if can_manage_registered_model(
+                model.name,
+                current_user.username,
+            )
+        ]
+    )

@@ -9,13 +9,12 @@ from mlflow.server.handlers import (
     _get_tracking_store,
     catch_mlflow_exception,
     get_endpoints,
-    message_to_json,
 )
 from mlflow.store.entities.paged_list import PagedList
-from mlflow.utils.proto_json_utils import parse_dict
+from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
 
-from mlflow_oidc_auth.app import config
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import MANAGE, get_permission
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_request_param, get_username, get_user_groups
