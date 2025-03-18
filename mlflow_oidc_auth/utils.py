@@ -60,29 +60,31 @@ def get_user_groups(username: str) -> list[str] | None:
     if user_groups:
         app.logger.debug(f"Groups from session: {user_groups}")
         return user_groups
-    else:
-        app.logger.debug("Groups not found in session.")
-        app.logger.debug("Trying to get groups now from the token.")
-        app.logger.debug(f"Token: {request.authorization}")
+
     if request.authorization and request.authorization.type == "bearer":
         if config.OIDC_GROUP_DETECTION_PLUGIN:
             import importlib
             groups_plugin = importlib.import_module(
                 config.OIDC_GROUP_DETECTION_PLUGIN
                 )
-            user_groups = groups_plugin.get_user_groups(request.authorization.token)
+            user_groups = groups_plugin.get_user_groups(
+                request.authorization.token
+                )
             app.logger.debug(f"Groups from plugin: {user_groups}")
         else:
-            user_groups = validate_token(request.authorization.token).get(config.OIDC_GROUPS_ATTRIBUTE)
+            user_groups = validate_token(request.authorization.token).get(
+                config.OIDC_GROUPS_ATTRIBUTE
+                )
             app.logger.debug(f"Groups from bearer token: {user_groups}")
-        available_groups = config.OIDC_GROUP_NAME + [config.OIDC_ADMIN_GROUP_NAME]
-        filtered_user_groups = list(filter(lambda x: x in available_groups, user_groups))
-        return filtered_user_groups
-    if user_groups is None:
-        user_groups = store.get_groups_for_user(username)
-        app.logger.debug(f"Groups from store: {user_groups}")
-    return user_groups
 
+        available_groups = config.OIDC_GROUP_NAME + [config.OIDC_ADMIN_GROUP_NAME]
+        filtered_user_groups = list(filter(lambda x: x in available_groups,
+                                           user_groups))
+        return filtered_user_groups
+
+    user_groups = store.get_groups_for_user(username)
+    app.logger.debug(f"Groups from store: {user_groups}")
+    return user_groups
 
 
 def get_is_admin() -> bool:
