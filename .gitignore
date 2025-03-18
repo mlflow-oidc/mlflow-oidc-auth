@@ -177,3 +177,6 @@ node_modules/
 .angular/
 mlflow_oidc_auth/ui
 pytest-coverage.txt
+
+# VS Code
+.vscode
