@@ -66,12 +66,12 @@ def get_user_groups(username: Optional[str] = None) -> list[str]:
 
     Parameters
     ----------
-    username : str
+    username : str, optional
         The username of the user whose groups are being queried.
 
     Returns
     -------
-    list of str or None
+    list of str
         A list of strings representing the user's groups. Returns an empty list
         if no groups are found.
     """
