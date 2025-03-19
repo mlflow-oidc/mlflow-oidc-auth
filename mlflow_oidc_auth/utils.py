@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, NamedTuple
+from typing import Callable, NamedTuple, Optional
 
 from flask import request, session
 from mlflow.exceptions import MlflowException
@@ -55,7 +55,26 @@ def get_username() -> str:
     raise MlflowException("Authentication required. Please see documentation for details: ")
 
 
-def get_user_groups(username: str) -> list[str] | None:
+def get_user_groups(username: Optional[str] = None) -> list[str]:
+    """
+    Retrieve the groups associated with a user.
+
+    This function is designed to obtain the list of groups a user belongs to,
+    which can be used for permission and access control within the application.
+    It tries different approaches in order: session data, bearer token
+    authentication, and store query to determine the user's group memberships.
+
+    Parameters
+    ----------
+    username : str
+        The username of the user whose groups are being queried.
+
+    Returns
+    -------
+    list of str or None
+        A list of strings representing the user's groups. Returns an empty list
+        if no groups are found.
+    """
     user_groups = session.get(config.OIDC_GROUPS_ATTRIBUTE)
     if user_groups:
         app.logger.debug(f"Groups from session: {user_groups}")
