@@ -82,9 +82,12 @@ def get_user_groups(username: str) -> list[str] | None:
                                            user_groups))
         return filtered_user_groups
 
-    user_groups = store.get_groups_for_user(username)
-    app.logger.debug(f"Groups from store: {user_groups}")
-    return user_groups
+    if username:
+        user_groups = store.get_groups_for_user(username)
+        app.logger.debug(f"Groups from store: {user_groups}")
+        return user_groups
+    else:
+        return []
 
 
 def get_is_admin() -> bool:

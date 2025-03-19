@@ -47,13 +47,13 @@ def callback():
     email = token["userinfo"]["email"]
     if email is None:
         return "No email provided", 401
-    username = email.lower()
-    display_name = token["userinfo"]["name"]
-    user_groups = utils.get_user_groups(username)
+    user_groups = utils.get_user_groups()
     is_admin = config.OIDC_ADMIN_GROUP_NAME in user_groups
     if len(user_groups) == 0:
         return "User is not allowed to login", 401
 
+    username = email.lower()
+    display_name = token["userinfo"]["name"]
     create_user(username=username, display_name=display_name, is_admin=is_admin)
     populate_groups(group_names=user_groups)
     update_user(username, user_groups)
