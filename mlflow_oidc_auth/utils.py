@@ -2,6 +2,7 @@ from functools import wraps
 from typing import Callable, NamedTuple, Optional
 
 from flask import request, session
+from sqlalchemy.exc import NoResultFound
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server import app
@@ -102,11 +103,13 @@ def get_user_groups(username: Optional[str] = None) -> list[str]:
         return filtered_user_groups
 
     if username:
-        user_groups = store.get_groups_for_user(username)
-        app.logger.debug(f"Groups from store: {user_groups}")
-        return user_groups
-    else:
-        return []
+        try:
+            user_groups = store.get_groups_for_user(username)
+            app.logger.debug(f"Groups from store: {user_groups}")
+            return user_groups
+        except NoResultFound:
+            pass
+    return []
 
 
 def get_is_admin() -> bool:
