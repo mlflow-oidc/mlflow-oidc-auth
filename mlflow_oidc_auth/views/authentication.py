@@ -50,14 +50,14 @@ def callback():
 
     if config.OIDC_GROUP_DETECTION_PLUGIN:
         import importlib
-        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
+        groups_plugin = importlib.import_module(
+                config.OIDC_GROUP_DETECTION_PLUGIN
+                )
+        user_groups = groups_plugin.get_user_groups(token["access_token"])
     else:
         user_groups = token["userinfo"].get(config.OIDC_GROUPS_ATTRIBUTE, [])
     app.logger.debug(f"User groups: {user_groups}")
-    available_groups = config.OIDC_GROUP_NAME + [config.OIDC_ADMIN_GROUP_NAME]
-    user_groups = list(filter(lambda x: x in available_groups,
-                              user_groups)
-                       )
+    user_groups = utils.filter_groups(user_groups)
 
     is_admin = config.OIDC_ADMIN_GROUP_NAME in user_groups
     if len(user_groups) == 0:

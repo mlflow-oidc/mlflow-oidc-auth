@@ -96,11 +96,7 @@ def get_user_groups(username: Optional[str] = None) -> list[str]:
                 config.OIDC_GROUPS_ATTRIBUTE
                 )
             app.logger.debug(f"Groups from bearer token: {user_groups}")
-
-        available_groups = config.OIDC_GROUP_NAME + [config.OIDC_ADMIN_GROUP_NAME]
-        filtered_user_groups = list(filter(lambda x: x in available_groups,
-                                           user_groups))
-        return filtered_user_groups
+        return filter_groups(user_groups)
 
     if username:
         try:
@@ -110,6 +106,27 @@ def get_user_groups(username: Optional[str] = None) -> list[str]:
         except NoResultFound:
             pass
     return []
+
+
+def filter_groups(user_groups: list[str]) -> list[str]:
+    """
+    Filters the user groups to only include those that are allowed by the
+    application cofiguration.
+
+    Parameters
+    ----------
+    user_groups : list of str
+        A list of user group names to be filtered.
+
+    Returns
+    -------
+    list of str
+        A list containing only the user groups that are available.
+    """
+    available_groups = config.OIDC_GROUP_NAME + [config.OIDC_ADMIN_GROUP_NAME]
+    filtered_user_groups = list(filter(lambda x: x in available_groups,
+                                       user_groups))
+    return filtered_user_groups
 
 
 def get_is_admin() -> bool:
