@@ -58,8 +58,9 @@ def _delete_registered_model_permission(resp: Response):
     """
     # Get model name from request context because it's not available in the response
     model_name = get_request_param("name")
-    username = get_request_param("user_name")
+    username = get_username()
     store.delete_registered_model_permission(model_name, username)
+    # TODO: Should all permissions be deleted?
     user_groups = get_user_groups(username)
     for group_name in user_groups:
         store.delete_group_model_permission(group_name, model_name)
