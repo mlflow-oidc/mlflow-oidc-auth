@@ -17,26 +17,37 @@ from mlflow.utils.search_utils import SearchUtils
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import MANAGE, get_permission
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import get_is_admin, get_request_param, get_username
+from mlflow_oidc_auth.utils import get_is_admin, get_request_param, get_username, get_user_groups
 
 
-def _set_can_manage_experiment_permission(resp: Response):
+def _set_initial_experiment_permission(resp: Response):
     response_message = CreateExperiment.Response()
     parse_dict(resp.json, response_message)
     experiment_id = response_message.experiment_id
     username = get_username()
     store.create_experiment_permission(experiment_id, username, MANAGE.name)
+    user_groups = get_user_groups(username)
+    if permission := config.DEFAULT_MLFLOW_GROUP_PERMISSION:
+        for group_name in user_groups:
+            store.create_group_experiment_permission(group_name, experiment_id, permission)
 
 
-def _set_can_manage_registered_model_permission(resp: Response):
+def _set_initial_registered_model_permission(resp: Response):
     response_message = CreateRegisteredModel.Response()
     parse_dict(resp.json, response_message)
-    name = response_message.registered_model.name
+    model_name = response_message.registered_model.name
     username = get_username()
-    store.create_registered_model_permission(name, username, MANAGE.name)
+    store.create_registered_model_permission(model_name, username, MANAGE.name)
+    user_groups = get_user_groups(username)
+    if permission := config.DEFAULT_MLFLOW_GROUP_PERMISSION:
+        for group_name in user_groups:
+            store.create_group_model_permission(group_name, model_name, permission)
 
 
-def _delete_can_manage_registered_model_permission(resp: Response):
+# TODO: Should a _delete_experiment_permission be added?
+
+
+def _delete_registered_model_permission(resp: Response):
     """
     Delete registered model permission when the model is deleted.
 
@@ -47,8 +58,12 @@ def _delete_can_manage_registered_model_permission(resp: Response):
     """
     # Get model name from request context because it's not available in the response
     model_name = get_request_param("name")
-    username = get_request_param("user_name")
+    username = get_username()
     store.delete_registered_model_permission(model_name, username)
+    # TODO: Should all permissions be deleted?
+    user_groups = get_user_groups(username)
+    for group_name in user_groups:
+        store.delete_group_model_permission(group_name, model_name)
 
 
 def _get_after_request_handler(request_class):
@@ -147,9 +162,9 @@ def _filter_search_registered_models(resp: Response):
 
 
 AFTER_REQUEST_PATH_HANDLERS = {
-    CreateExperiment: _set_can_manage_experiment_permission,
-    CreateRegisteredModel: _set_can_manage_registered_model_permission,
-    DeleteRegisteredModel: _delete_can_manage_registered_model_permission,
+    CreateExperiment: _set_initial_experiment_permission,
+    CreateRegisteredModel: _set_initial_registered_model_permission,
+    DeleteRegisteredModel: _delete_registered_model_permission,
     SearchExperiments: _filter_search_experiments,
     SearchRegisteredModels: _filter_search_registered_models,
 }

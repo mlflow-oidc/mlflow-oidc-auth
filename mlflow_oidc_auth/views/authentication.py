@@ -47,27 +47,28 @@ def callback():
     email = token["userinfo"]["email"]
     if email is None:
         return "No email provided", 401
-    display_name = token["userinfo"]["name"]
-    is_admin = False
-    user_groups = []
 
     if config.OIDC_GROUP_DETECTION_PLUGIN:
         import importlib
-
-        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
+        groups_plugin = importlib.import_module(
+                config.OIDC_GROUP_DETECTION_PLUGIN
+                )
+        user_groups = groups_plugin.get_user_groups(token["access_token"])
     else:
-        user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
-
+        user_groups = token["userinfo"].get(config.OIDC_GROUPS_ATTRIBUTE, [])
     app.logger.debug(f"User groups: {user_groups}")
+    user_groups = utils.filter_groups(user_groups)
 
-    if config.OIDC_ADMIN_GROUP_NAME in user_groups:
-        is_admin = True
-    elif not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+    is_admin = config.OIDC_ADMIN_GROUP_NAME in user_groups
+    if len(user_groups) == 0:
         return "User is not allowed to login", 401
 
-    create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
+    username = email.lower()
+    display_name = token["userinfo"]["name"]
+    create_user(username=username, display_name=display_name, is_admin=is_admin)
     populate_groups(group_names=user_groups)
-    update_user(email.lower(), user_groups)
-    session["username"] = email.lower()
+    update_user(username, user_groups)
+    session["username"] = username
+    session[config.OIDC_GROUPS_ATTRIBUTE] = user_groups
 
     return redirect(url_for("oidc_ui"))
