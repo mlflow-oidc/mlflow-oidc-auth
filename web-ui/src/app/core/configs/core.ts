@@ -7,6 +7,7 @@ export enum EntityEnum {
   EXPERIMENT = 'experiment',
   MODEL = 'model',
   GROUP = 'group',
+  PROMPT = 'prompt',
 }
 
 export enum RoutePath {

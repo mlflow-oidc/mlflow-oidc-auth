@@ -22,3 +22,15 @@ export const MODELS_ACTIONS = [
   TABLE_ACTION_CONFIG.EDIT,
   TABLE_ACTION_CONFIG.REVOKE,
 ];
+
+
+export const PROMPTS_COLUMN_CONFIG = [
+  { title: 'Prompt name', key: 'name' },
+  { title: 'Permission', key: 'permission' },
+];
+
+
+export const PROMPTS_ACTIONS = [
+  TABLE_ACTION_CONFIG.EDIT,
+  TABLE_ACTION_CONFIG.REVOKE,
+];

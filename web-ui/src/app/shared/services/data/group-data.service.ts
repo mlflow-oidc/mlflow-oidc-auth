@@ -24,4 +24,8 @@ export class GroupDataService {
   getAllRegisteredModelsForGroup(groupName: string) {
     return this.http.get<ModelModel[]>(API_URL.MODELS_FOR_GROUP.replace('${groupName}', groupName));
   }
+
+  getAllPromptsForGroup(groupName: string) {
+    return this.http.get<ModelModel[]>(API_URL.PROMPTS_FOR_GROUP.replace('${groupName}', groupName));
+  }
 }

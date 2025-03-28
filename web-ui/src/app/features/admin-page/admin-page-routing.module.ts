@@ -7,6 +7,7 @@ import {
   ModelPermissionDetailsComponent,
   PermissionsComponent,
   UserPermissionDetailsComponent,
+  PromptPermissionDetailsComponent,
 } from './components';
 import { AdminPageRoutesEnum } from './config';
 
@@ -35,6 +36,13 @@ const routes: Routes = [
     },
   },
   {
+    path: `${AdminPageRoutesEnum.USER}/:id/prompts`,
+    component: UserPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    }
+  },
+  {
     path: `${AdminPageRoutesEnum.USER}/:id`,
     redirectTo: `${AdminPageRoutesEnum.USER}/:id/experiments`,
   },
@@ -61,6 +69,17 @@ const routes: Routes = [
     },
   },
   {
+    path: `${AdminPageRoutesEnum.PROMPTS}`,
+    component: PermissionsComponent,
+  },
+  {
+    path: `${AdminPageRoutesEnum.PROMPT}/:id`,
+    component: PromptPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
     path: `${AdminPageRoutesEnum.GROUPS}`,
     component: PermissionsComponent,
   },
@@ -82,6 +101,13 @@ const routes: Routes = [
     path: `${AdminPageRoutesEnum.GROUP}/:id`,
     pathMatch: 'full',
     redirectTo: `${AdminPageRoutesEnum.GROUP}/:id/experiments`,
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/prompts`,
+    component: GroupPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
   },
   {
     path: '**',

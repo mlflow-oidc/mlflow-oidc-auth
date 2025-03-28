@@ -42,6 +42,18 @@ export class PermissionDataService {
     return this.http.delete(API_URL.DELETE_MODEL_PERMISSION, { body });
   }
 
+  createPromptPermission(body: { name: string, user_name: string, permission: string }) {
+    return this.http.post(API_URL.CREATE_PROMPT_PERMISSION, body);
+  }
+
+  updatePromptPermission(body: { name: string, user_name: string, permission: string }) {
+    return this.http.patch(API_URL.UPDATE_PROMPT_PERMISSION, body);
+  }
+
+  deletePromptPermission(body: { name: string, user_name: string }) {
+    return this.http.delete(API_URL.DELETE_PROMPT_PERMISSION, { body });
+  }
+
   addExperimentPermissionToGroup(groupName: string, experiment_id: string, permission: PermissionEnum) {
     return this.http.post(
       API_URL.CREATE_GROUP_EXPERIMENT_PERMISSION.replace('${groupName}', groupName),
@@ -56,6 +68,15 @@ export class PermissionDataService {
       API_URL.CREATE_GROUP_MODEL_PERMISSION.replace('${groupName}', groupName),
       {
         model_name: modelName,
+        permission,
+      });
+  }
+
+  addPromptPermissionToGroup(promptName: string, groupName: string, permission: string) {
+    return this.http.post(
+      API_URL.CREATE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName),
+      {
+        prompt_name: promptName,
         permission,
       });
   }
@@ -80,6 +101,16 @@ export class PermissionDataService {
       });
   }
 
+  removePromptPermissionFromGroup(promptName: string, groupName: string) {
+    return this.http.delete(
+      API_URL.DELETE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName),
+      {
+        body: {
+          prompt_name: promptName
+        }
+      });
+  }
+
   updateExperimentPermissionForGroup(groupName: string, experiment_id: string, permission: string) {
     return this.http.patch(
       API_URL.UPDATE_GROUP_EXPERIMENT_PERMISSION.replace('${groupName}', groupName),
@@ -94,6 +125,15 @@ export class PermissionDataService {
       API_URL.UPDATE_GROUP_MODEL_PERMISSION.replace('${groupName}', groupName),
       {
         model_name: modelName,
+        permission
+      });
+  }
+
+  updatePromptPermissionForGroup(promptName: string, groupName: string, permission: string) {
+    return this.http.patch(
+      API_URL.UPDATE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName),
+      {
+        prompt_name: promptName,
         permission
       });
   }

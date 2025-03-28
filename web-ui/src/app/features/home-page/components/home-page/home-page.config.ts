@@ -9,3 +9,9 @@ export const MODELS_COLUMN_CONFIG = [
   { title: 'Permissions', key: 'permission' },
   { title: 'Type', key: 'type' },
 ];
+
+export const PROMPTS_COLUMN_CONFIG = [
+  { title: 'Prompt name', key: 'name' },
+  { title: 'Permissions', key: 'permission' },
+  { title: 'Type', key: 'type' },
+];

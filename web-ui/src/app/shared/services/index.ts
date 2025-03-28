@@ -1,4 +1,5 @@
 export * from './data/models-data.service';
+export * from './data/prompt-data.service';
 export * from './data/user-data.service';
 export * from './data/experiments-data.service';
 export * from './data/permission-data.service';

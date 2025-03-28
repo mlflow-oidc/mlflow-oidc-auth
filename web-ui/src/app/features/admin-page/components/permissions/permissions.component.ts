@@ -15,6 +15,7 @@ export class PermissionsComponent implements AfterViewInit {
   private readonly tabIndexMapping: string[] = [
     AdminPageRoutesEnum.USERS,
     AdminPageRoutesEnum.EXPERIMENTS,
+    AdminPageRoutesEnum.PROMPTS,
     AdminPageRoutesEnum.MODELS,
     AdminPageRoutesEnum.GROUPS,
   ];

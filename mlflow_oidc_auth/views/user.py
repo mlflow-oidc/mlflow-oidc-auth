@@ -132,6 +132,51 @@ def get_user_models(username):
 
 
 @catch_mlflow_exception
+def get_user_prompts(username):
+    all_registered_models = _get_model_registry_store().search_registered_models(
+        max_results=1000, filter_string="tags.`mlflow.prompt.is_prompt` = 'true'"
+    )
+    current_user = store.get_user(get_username())
+    is_admin = get_is_admin()
+    if is_admin:
+        list_registered_models = all_registered_models
+    else:
+        if username == current_user.username:
+            list_registered_models = [
+                model
+                for model in all_registered_models
+                if get_permission_from_store_or_default(
+                    lambda: store.get_registered_model_permission(model.name, username).permission,
+                    lambda: store.get_user_groups_registered_model_permission(model.name, username).permission,
+                ).permission.name
+                != NO_PERMISSIONS.name
+            ]
+        else:
+            list_registered_models = [
+                model
+                for model in all_registered_models
+                if get_permission_from_store_or_default(
+                    lambda: store.get_registered_model_permission(model.name, current_user.username).permission,
+                    lambda: store.get_user_groups_registered_model_permission(model.name, current_user.username).permission,
+                ).permission.can_manage
+            ]
+    models = [
+        {
+            "name": model.name,
+            "permission": (
+                perm := get_permission_from_store_or_default(
+                    lambda: store.get_registered_model_permission(model.name, username).permission,
+                    lambda: store.get_user_groups_registered_model_permission(model.name, username).permission,
+                )
+            ).permission.name,
+            "type": perm.type,
+        }
+        for model in list_registered_models
+    ]
+    return jsonify({"prompts": models})
+
+
+@catch_mlflow_exception
 def get_users():
     # is_admin = get_is_admin()
     # if is_admin:

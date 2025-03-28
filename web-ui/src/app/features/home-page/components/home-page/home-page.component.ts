@@ -5,13 +5,14 @@ import { ActivatedRoute, Router } from '@angular/router';
 
 import { AccessKeyModalComponent } from 'src/app/shared/components';
 import { AuthService } from 'src/app/shared/services';
-import { EXPERIMENTS_COLUMN_CONFIG, MODELS_COLUMN_CONFIG } from './home-page.config';
+import { EXPERIMENTS_COLUMN_CONFIG, MODELS_COLUMN_CONFIG, PROMPTS_COLUMN_CONFIG } from './home-page.config';
 import { AccessKeyDialogData } from 'src/app/shared/components/modals/access-key-modal/access-key-modal.interface';
 import { UserDataService } from 'src/app/shared/services/data/user-data.service';
 import {
   CurrentUserModel,
   ExperimentPermission,
   RegisteredModelPermission,
+  PromptPermission,
 } from 'src/app/shared/interfaces/user-data.interface';
 import { RoutePath } from '../../home-page-routing.module';
 
@@ -25,12 +26,14 @@ export class HomePageComponent implements OnInit, AfterViewInit {
   currentUserInfo: CurrentUserModel | null = null;
   experimentsColumnConfig = EXPERIMENTS_COLUMN_CONFIG;
   modelsColumnConfig = MODELS_COLUMN_CONFIG;
+  promptsColumnConfig = PROMPTS_COLUMN_CONFIG;
   experimentsDataSource: ExperimentPermission[] = [];
   modelsDataSource: RegisteredModelPermission[] = [];
+  promptsDataSource: PromptPermission[] = [];
 
   @ViewChild('userInfoTabs') userInfoTabs!: MatTabGroup;
 
-  private readonly tabIndexMapping: string[] = [RoutePath.Experiments, RoutePath.Models];
+  private readonly tabIndexMapping: string[] = [RoutePath.Experiments, RoutePath.Models, RoutePath.Prompts];
 
   constructor(
     private readonly dialog: MatDialog,
@@ -45,10 +48,11 @@ export class HomePageComponent implements OnInit, AfterViewInit {
     this.currentUserInfo = this.authService.getUserInfo();
 
     if (this.currentUserInfo) {
-      const { experiments, models } = this.currentUserInfo;
+      const { experiments, models, prompts } = this.currentUserInfo;
 
       this.modelsDataSource = models;
       this.experimentsDataSource = experiments;
+      this.promptsDataSource = prompts;
     }
   }
 
