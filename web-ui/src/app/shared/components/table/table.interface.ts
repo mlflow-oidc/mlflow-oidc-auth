@@ -1,4 +1,4 @@
-import { TableActionEnum } from './table.config';
+import { TableActionEnum } from "./table.config";
 
 export interface TableActionModel {
   icon: string;
@@ -12,6 +12,6 @@ export interface TableActionEvent<T> {
 }
 
 export interface TableColumnConfigModel {
-  title: string,
-  key: string
+  title: string;
+  key: string;
 }

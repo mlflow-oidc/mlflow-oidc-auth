@@ -1,32 +1,38 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { Injectable } from "@angular/core";
+import { HttpClient } from "@angular/common/http";
 import {
   CreateExperimentPermissionRequestBodyModel,
   CreateModelPermissionRequestBodyModel,
-} from 'src/app/shared/interfaces/permission-data.interface';
-import { API_URL } from 'src/app/core/configs/api-urls';
-import { PermissionEnum } from '../../../core/configs/permissions';
-
+} from "src/app/shared/interfaces/permission-data.interface";
+import { API_URL } from "src/app/core/configs/api-urls";
+import { PermissionEnum } from "../../../core/configs/permissions";
 
 @Injectable({
-  providedIn: 'root',
+  providedIn: "root",
 })
 export class PermissionDataService {
-
-  constructor(
-    private readonly http: HttpClient,
-  ) {
-  }
+  constructor(private readonly http: HttpClient) {}
 
   createExperimentPermission(body: CreateExperimentPermissionRequestBodyModel) {
-    return this.http.post(API_URL.CREATE_EXPERIMENT_PERMISSION, body, { responseType: 'text' });
+    return this.http.post(API_URL.CREATE_EXPERIMENT_PERMISSION, body, {
+      responseType: "text",
+    });
   }
 
-  updateExperimentPermission(body: { experiment_id: string, user_name: string, permission: string }) {
-    return this.http.patch(API_URL.UPDATE_EXPERIMENT_PERMISSION, body, { responseType: 'text' });
+  updateExperimentPermission(body: {
+    experiment_id: string;
+    user_name: string;
+    permission: string;
+  }) {
+    return this.http.patch(API_URL.UPDATE_EXPERIMENT_PERMISSION, body, {
+      responseType: "text",
+    });
   }
 
-  deleteExperimentPermission(body: { experiment_id: string, user_name: string }) {
+  deleteExperimentPermission(body: {
+    experiment_id: string;
+    user_name: string;
+  }) {
     return this.http.delete(API_URL.DELETE_EXPERIMENT_PERMISSION, { body });
   }
 
@@ -34,108 +40,166 @@ export class PermissionDataService {
     return this.http.post(API_URL.CREATE_MODEL_PERMISSION, body);
   }
 
-  updateModelPermission(body: { user_name: string, name: string, permission: string }) {
-    return this.http.patch(API_URL.UPDATE_MODEL_PERMISSION, body, { responseType: 'text' });
+  updateModelPermission(body: {
+    user_name: string;
+    name: string;
+    permission: string;
+  }) {
+    return this.http.patch(API_URL.UPDATE_MODEL_PERMISSION, body, {
+      responseType: "text",
+    });
   }
 
-  deleteModelPermission(body: { name: string, user_name: string }) {
+  deleteModelPermission(body: { name: string; user_name: string }) {
     return this.http.delete(API_URL.DELETE_MODEL_PERMISSION, { body });
   }
 
-  createPromptPermission(body: { name: string, user_name: string, permission: string }) {
+  createPromptPermission(body: {
+    name: string;
+    user_name: string;
+    permission: string;
+  }) {
     return this.http.post(API_URL.CREATE_PROMPT_PERMISSION, body);
   }
 
-  updatePromptPermission(body: { name: string, user_name: string, permission: string }) {
+  updatePromptPermission(body: {
+    name: string;
+    user_name: string;
+    permission: string;
+  }) {
     return this.http.patch(API_URL.UPDATE_PROMPT_PERMISSION, body);
   }
 
-  deletePromptPermission(body: { name: string, user_name: string }) {
+  deletePromptPermission(body: { name: string; user_name: string }) {
     return this.http.delete(API_URL.DELETE_PROMPT_PERMISSION, { body });
   }
 
-  addExperimentPermissionToGroup(groupName: string, experiment_id: string, permission: PermissionEnum) {
+  addExperimentPermissionToGroup(
+    groupName: string,
+    experiment_id: string,
+    permission: PermissionEnum,
+  ) {
     return this.http.post(
-      API_URL.CREATE_GROUP_EXPERIMENT_PERMISSION.replace('${groupName}', groupName),
+      API_URL.CREATE_GROUP_EXPERIMENT_PERMISSION.replace(
+        "${groupName}",
+        groupName,
+      ),
       {
         experiment_id,
         permission,
-      });
+      },
+    );
   }
 
-  addModelPermissionToGroup(modelName: string, groupName: string, permission: string) {
+  addModelPermissionToGroup(
+    modelName: string,
+    groupName: string,
+    permission: string,
+  ) {
     return this.http.post(
-      API_URL.CREATE_GROUP_MODEL_PERMISSION.replace('${groupName}', groupName),
+      API_URL.CREATE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
       {
         model_name: modelName,
         permission,
-      });
+      },
+    );
   }
 
-  addPromptPermissionToGroup(promptName: string, groupName: string, permission: string) {
+  addPromptPermissionToGroup(
+    promptName: string,
+    groupName: string,
+    permission: string,
+  ) {
     return this.http.post(
-      API_URL.CREATE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName),
+      API_URL.CREATE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
       {
         prompt_name: promptName,
         permission,
-      });
+      },
+    );
   }
 
-  removeExperimentPermissionFromGroup(groupName: string, experiment_id: string) {
+  removeExperimentPermissionFromGroup(
+    groupName: string,
+    experiment_id: string,
+  ) {
     return this.http.delete(
-      API_URL.DELETE_GROUP_EXPERIMENT_PERMISSION.replace('${groupName}', groupName),
+      API_URL.DELETE_GROUP_EXPERIMENT_PERMISSION.replace(
+        "${groupName}",
+        groupName,
+      ),
       {
         body: {
-          experiment_id
-        }
-      });
+          experiment_id,
+        },
+      },
+    );
   }
 
   removeModelPermissionFromGroup(modelName: string, groupName: string) {
     return this.http.delete(
-      API_URL.DELETE_GROUP_MODEL_PERMISSION.replace('${groupName}', groupName),
+      API_URL.DELETE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
       {
         body: {
-          model_name: modelName
-        }
-      });
+          model_name: modelName,
+        },
+      },
+    );
   }
 
   removePromptPermissionFromGroup(promptName: string, groupName: string) {
     return this.http.delete(
-      API_URL.DELETE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName),
+      API_URL.DELETE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
       {
         body: {
-          prompt_name: promptName
-        }
-      });
+          prompt_name: promptName,
+        },
+      },
+    );
   }
 
-  updateExperimentPermissionForGroup(groupName: string, experiment_id: string, permission: string) {
+  updateExperimentPermissionForGroup(
+    groupName: string,
+    experiment_id: string,
+    permission: string,
+  ) {
     return this.http.patch(
-      API_URL.UPDATE_GROUP_EXPERIMENT_PERMISSION.replace('${groupName}', groupName),
+      API_URL.UPDATE_GROUP_EXPERIMENT_PERMISSION.replace(
+        "${groupName}",
+        groupName,
+      ),
       {
         experiment_id,
-        permission
-      });
+        permission,
+      },
+    );
   }
 
-  updateModelPermissionForGroup(modelName: string, groupName: string, permission: string) {
+  updateModelPermissionForGroup(
+    modelName: string,
+    groupName: string,
+    permission: string,
+  ) {
     return this.http.patch(
-      API_URL.UPDATE_GROUP_MODEL_PERMISSION.replace('${groupName}', groupName),
+      API_URL.UPDATE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
       {
         model_name: modelName,
-        permission
-      });
+        permission,
+      },
+    );
   }
 
-  updatePromptPermissionForGroup(promptName: string, groupName: string, permission: string) {
+  updatePromptPermissionForGroup(
+    promptName: string,
+    groupName: string,
+    permission: string,
+  ) {
     return this.http.patch(
-      API_URL.UPDATE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName),
+      API_URL.UPDATE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
       {
         prompt_name: promptName,
-        permission
-      });
+        permission,
+      },
+    );
   }
-
 }

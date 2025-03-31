@@ -1,35 +1,39 @@
 import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { MAT_DIALOG_DATA } from "@angular/material/dialog";
-import { MatDialogModule } from "@angular/material/dialog";
+import {
+  MAT_DIALOG_DATA,
+  MatDialogRef,
+  MatDialogModule,
+} from "@angular/material/dialog";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatInputModule } from "@angular/material/input";
-import { MatButtonModule } from "@angular/material/button";
+import { MatSelectModule } from "@angular/material/select";
+import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { ReactiveFormsModule } from "@angular/forms";
-import { provideAnimations } from "@angular/platform-browser/animations";
 
-import { GrantUserPermissionsComponent } from "./grant-user-permissions.component";
+import { GrantPermissionModalComponent } from "./grant-permission-modal.component";
 
-describe("GrantUserPermissionsComponent", () => {
-  let component: GrantUserPermissionsComponent;
-  let fixture: ComponentFixture<GrantUserPermissionsComponent>;
+describe("GrantPermissionModalComponent", () => {
+  let component: GrantPermissionModalComponent;
+  let fixture: ComponentFixture<GrantPermissionModalComponent>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [GrantUserPermissionsComponent],
+      declarations: [GrantPermissionModalComponent],
       imports: [
         MatDialogModule,
         MatFormFieldModule,
         MatInputModule,
-        MatButtonModule,
+        MatSelectModule,
+        BrowserAnimationsModule,
         ReactiveFormsModule,
       ],
       providers: [
         { provide: MAT_DIALOG_DATA, useValue: {} },
-        provideAnimations(),
+        { provide: MatDialogRef, useValue: {} },
       ],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(GrantUserPermissionsComponent);
+    fixture = TestBed.createComponent(GrantPermissionModalComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   });

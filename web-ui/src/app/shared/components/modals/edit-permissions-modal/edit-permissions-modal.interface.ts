@@ -1,4 +1,4 @@
-import { PermissionEnum } from 'src/app/core/configs/permissions';
+import { PermissionEnum } from "src/app/core/configs/permissions";
 
 export interface PermissionsDialogData {
   entity: string;
