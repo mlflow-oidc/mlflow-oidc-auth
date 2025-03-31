@@ -10,7 +10,7 @@ on:
     branches:
       - main
 jobs:
-  angular-tests:
+  unit-tests:
     name: Run angular tests
     runs-on: ubuntu-latest
     steps:
@@ -30,14 +30,14 @@ jobs:
         run: |
           yarn test --watch=false --ci --passWithNoTests --coverage
         working-directory: web-ui
-  python-tests:
-    name: Run python tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-        with:
-          fetch-depth: 0
+  # python-tests:
+  #   name: Run python tests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+  #       with:
+  #         fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
         with:
