@@ -11,4 +11,4 @@ def get_user_groups(access_token):
         },
     )
     group_data = group_response.json()
-    return [group["displayName"] for group in group_data["value"]]
+    return [group["displayName"] for group in group_data["value"] if [group["displayName"] is not None] 
