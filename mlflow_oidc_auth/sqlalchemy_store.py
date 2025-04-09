@@ -371,6 +371,13 @@ class SqlAlchemyStore:
             session.delete(perm)
             session.flush()
 
+    def wipe_registered_model_permissions(self, name: str):
+        with self.ManagedSessionMaker() as session:
+            perms = session.query(SqlRegisteredModelPermission).filter(SqlRegisteredModelPermission.name == name).all()
+            for p in perms:
+                session.delete(p)
+            session.flush()
+
     def list_experiment_permissions_for_experiment(self, experiment_id: str) -> List[ExperimentPermission]:
         with self.ManagedSessionMaker() as session:
             perms = session.query(SqlExperimentPermission).filter(SqlExperimentPermission.experiment_id == experiment_id).all()
@@ -514,6 +521,15 @@ class SqlAlchemyStore:
                 .one()
             )
             session.delete(perm)
+            session.flush()
+
+    def wipe_group_model_permissions(self, name: str):
+        with self.ManagedSessionMaker() as session:
+            perms = (
+                session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.name == name).all()
+            )
+            for p in perms:
+                session.delete(p)
             session.flush()
 
     def update_group_model_permission(self, group_name: str, name: str, permission: str):

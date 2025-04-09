@@ -529,6 +529,29 @@ class TestSqlAlchemyStore:
         assert permission.name == expected_perm.name
         assert permission.permission == expected_perm.permission
 
+    def test_wipe_group_model_permissions(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+
+        store.wipe_group_model_permissions("group_name")
+        mock_session.query.return_value.filter.assert_called_once_with(mock_group.id)
+        mock_session.query.return_value.filter.return_value.delete.assert_called_once()
+        mock_session.flush.assert_called_once()
+
+    def test_wipe_registered_model_permissions(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+
+        store.wipe_registered_model_permissions("model_name")
+        mock_session.query.return_value.filter.assert_called_once_with("model_name")
+        mock_session.query.return_value.filter.return_value.delete.assert_called_once()
+        mock_session.flush.assert_called_once()
+
     def test_populate_groups_is_idempotent(self, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(add=MagicMock())
