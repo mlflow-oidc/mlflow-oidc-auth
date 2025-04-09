@@ -179,3 +179,5 @@ mlflow_oidc_auth/ui
 pytest-coverage.txt
 
 web-ui/coverage/
+scripts/postgresql/postgres_data/
+scripts/mysql/mysql_data
