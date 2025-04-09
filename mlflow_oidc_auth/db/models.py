@@ -124,6 +124,7 @@ class SqlRegisteredModelGroupPermission(Base):
     name = Column(String(255), nullable=False)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
     permission = Column(String(255))
+    prompt = Column(Boolean, default=False)
     __table_args__ = (UniqueConstraint("name", "group_id", name="unique_name_group"),)
 
     def to_mlflow_entity(self):
@@ -131,4 +132,5 @@ class SqlRegisteredModelGroupPermission(Base):
             name=self.name,
             group_id=self.group_id,
             permission=self.permission,
+            prompt=bool(self.prompt),
         )

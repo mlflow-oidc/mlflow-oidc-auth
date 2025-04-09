@@ -21,7 +21,6 @@
 
     <!--  Models-->
     <mat-tab label="Models">
-        <div class="my-3">
             <div class="my-3">
                 <div class="header-section">
                     <button mat-button (click)="openModalAddModelPermissionToGroup()">
@@ -38,7 +37,25 @@
                     [actions]="modelActions"
                     (action)="handleModelActions($event)"
             ></ml-table>
+    </mat-tab>
+
+    <!--  Prompts-->
+    <mat-tab label="Prompts">
+        <div class="my-3">
+            <div class="header-section">
+                <button mat-button (click)="openModalAddPromptPermissionToGroup()">
+                    <mat-icon>add</mat-icon>
+                    <span>Add</span>
+                </button>
+            </div>
         </div>
+
+        <ml-table
+                [columnConfig]="promptColumnConfig"
+                [data]="promptDataSource"
+                [actions]="promptActions"
+                (action)="handlePromptActions($event)"
+        ></ml-table>
     </mat-tab>
 
 </mat-tab-group>

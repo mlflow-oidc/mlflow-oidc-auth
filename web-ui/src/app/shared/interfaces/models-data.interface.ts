@@ -1,4 +1,7 @@
-import { PermissionEnum, PermissionTypeEnum } from 'src/app/core/configs/permissions';
+import {
+  PermissionEnum,
+  PermissionTypeEnum,
+} from "src/app/core/configs/permissions";
 
 export interface ModelModel {
   aliases: Record<string, unknown>;
@@ -6,7 +9,6 @@ export interface ModelModel {
   name: string;
   tags: Record<string, unknown>;
 }
-
 
 export interface ModelPermissionsModel {
   models: ModelPermissionModel[];

@@ -24,7 +24,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("group_id", sa.Integer(), nullable=False),
         sa.Column("permission", sa.String(length=255), nullable=True),
-        sa.ForeignKeyConstraint(["group_id"], ["groups.id"], name="fk_group_id"),
+        sa.ForeignKeyConstraint(["group_id"], ["groups.id"], name="fk_group_id_registered_model_group_permissions"),
         sa.UniqueConstraint("name", "group_id", name="unique_name_group"),
     )
     op.create_table(
@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.Column("experiment_id", sa.String(length=255), nullable=False),
         sa.Column("group_id", sa.Integer(), nullable=False),
         sa.Column("permission", sa.String(length=255), nullable=True),
-        sa.ForeignKeyConstraint(["group_id"], ["groups.id"], name="fk_group_id"),
+        sa.ForeignKeyConstraint(["group_id"], ["groups.id"], name="fk_group_id_experiment_group_permissions"),
         sa.UniqueConstraint("experiment_id", "group_id", name="unique_experiment_group"),
     )
 
