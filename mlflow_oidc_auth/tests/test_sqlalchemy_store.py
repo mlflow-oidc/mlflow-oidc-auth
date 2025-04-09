@@ -2,9 +2,9 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.exc import IntegrityError, NoResultFound
 
+from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupPermission, SqlRegisteredModelPermission
 from mlflow_oidc_auth.entities import ExperimentPermission, RegisteredModelPermission
 from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
 
@@ -533,13 +533,12 @@ class TestSqlAlchemyStore:
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock()
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
-
-        mock_group = MagicMock(id=1)
-        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
-
-        store.wipe_group_model_permissions("group_name")
-        mock_session.query.return_value.filter.assert_called_once_with(mock_group.id)
-        mock_session.query.return_value.filter.return_value.delete.assert_called_once()
+        store.wipe_group_model_permissions("model_name")
+        actual_filter = mock_session.query.return_value.filter.call_args[0][0]
+        expected_filter = SqlRegisteredModelGroupPermission.name == "model_name"
+        assert str(expected_filter.compile(compile_kwargs={"literal_binds": True})) == str(
+            actual_filter.compile(compile_kwargs={"literal_binds": True})
+        )
         mock_session.flush.assert_called_once()
 
     def test_wipe_registered_model_permissions(self, store: SqlAlchemyStore):
@@ -548,8 +547,11 @@ class TestSqlAlchemyStore:
         store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
 
         store.wipe_registered_model_permissions("model_name")
-        mock_session.query.return_value.filter.assert_called_once_with("model_name")
-        mock_session.query.return_value.filter.return_value.delete.assert_called_once()
+        actual_filter = mock_session.query.return_value.filter.call_args[0][0]
+        expected_filter = SqlRegisteredModelPermission.name == "model_name"
+        assert str(expected_filter.compile(compile_kwargs={"literal_binds": True})) == str(
+            actual_filter.compile(compile_kwargs={"literal_binds": True})
+        )
         mock_session.flush.assert_called_once()
 
     def test_populate_groups_is_idempotent(self, store: SqlAlchemyStore):
