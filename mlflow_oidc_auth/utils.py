@@ -156,3 +156,19 @@ def check_registered_model_permission(f) -> Callable:
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+def check_prompt_permission(f) -> Callable:
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user = store.get_user(get_username())
+        if not get_is_admin():
+            app.logger.debug(f"Not Admin. Checking permission for {current_user.username}")
+            prompt_name = get_request_param("prompt_name")
+            if not can_manage_registered_model(prompt_name, current_user.username):
+                app.logger.warning(f"Change permission denied for {current_user.username} on prompt {prompt_name}")
+                return make_forbidden_response()
+        app.logger.debug(f"Permission granted for {current_user.username}")
+        return f(*args, **kwargs)
+
+    return decorated_function

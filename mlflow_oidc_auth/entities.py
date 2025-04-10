@@ -158,11 +158,13 @@ class RegisteredModelPermission:
         permission,
         user_id=None,
         group_id=None,
+        prompt=False,
     ):
         self._name = name
         self._user_id = user_id
         self._permission = permission
         self._group_id = group_id
+        self._prompt = prompt
 
     @property
     def name(self):
@@ -188,12 +190,21 @@ class RegisteredModelPermission:
     def group_id(self, group_id):
         self._group_id = group_id
 
+    @property
+    def prompt(self):
+        return self._prompt
+
+    @prompt.setter
+    def prompt(self, prompt):
+        self._prompt = prompt
+
     def to_json(self):
         return {
             "name": self.name,
             "user_id": self.user_id,
             "permission": self.permission,
             "group_id": self.group_id,
+            "prompt": self.prompt,
         }
 
     @classmethod
@@ -203,6 +214,7 @@ class RegisteredModelPermission:
             user_id=dictionary["user_id"],
             permission=dictionary["permission"],
             group_id=dictionary.get("group_id"),
+            prompt=bool(dictionary.get("prompt", False)),
         )
 
 

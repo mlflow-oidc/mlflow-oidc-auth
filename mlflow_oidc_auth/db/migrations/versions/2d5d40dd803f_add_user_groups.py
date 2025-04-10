@@ -29,8 +29,8 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False, primary_key=True),
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("group_id", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="fk_user_id"),
-        sa.ForeignKeyConstraint(["group_id"], ["groups.id"], name="fk_group_id"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="fk_user_id_user_groups"),
+        sa.ForeignKeyConstraint(["group_id"], ["groups.id"], name="fk_group_id_user_groups"),
         sa.UniqueConstraint("user_id", "group_id", name="unique_user_group"),
     )
 

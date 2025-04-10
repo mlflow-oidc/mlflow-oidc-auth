@@ -1,5 +1,5 @@
-import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
+import { NgModule } from "@angular/core";
+import { RouterModule, Routes } from "@angular/router";
 
 import {
   ExperimentPermissionDetailsComponent,
@@ -7,11 +7,12 @@ import {
   ModelPermissionDetailsComponent,
   PermissionsComponent,
   UserPermissionDetailsComponent,
-} from './components';
-import { AdminPageRoutesEnum } from './config';
+  PromptPermissionDetailsComponent,
+} from "./components";
+import { AdminPageRoutesEnum } from "./config";
 
 const getBreadcrumb = (route: string) => {
-  const [entity, id] = route.split('/');
+  const [entity, id] = route.split("/");
   return `${entity} / ${id}`;
 };
 
@@ -29,6 +30,13 @@ const routes: Routes = [
   },
   {
     path: `${AdminPageRoutesEnum.USER}/:id/models`,
+    component: UserPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id/prompts`,
     component: UserPermissionDetailsComponent,
     data: {
       breadcrumb: getBreadcrumb,
@@ -61,6 +69,17 @@ const routes: Routes = [
     },
   },
   {
+    path: `${AdminPageRoutesEnum.PROMPTS}`,
+    component: PermissionsComponent,
+  },
+  {
+    path: `${AdminPageRoutesEnum.PROMPT}/:id`,
+    component: PromptPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
     path: `${AdminPageRoutesEnum.GROUPS}`,
     component: PermissionsComponent,
   },
@@ -80,11 +99,18 @@ const routes: Routes = [
   },
   {
     path: `${AdminPageRoutesEnum.GROUP}/:id`,
-    pathMatch: 'full',
+    pathMatch: "full",
     redirectTo: `${AdminPageRoutesEnum.GROUP}/:id/experiments`,
   },
   {
-    path: '**',
+    path: `${AdminPageRoutesEnum.GROUP}/:id/prompts`,
+    component: GroupPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: "**",
     redirectTo: `${AdminPageRoutesEnum.USERS}`,
   },
 ];

@@ -5,6 +5,7 @@ export interface CurrentUserModel {
   is_admin: boolean;
   models: RegisteredModelPermission[];
   username: string;
+  prompts: PromptPermission[];
 }
 
 export interface ExperimentPermission {
@@ -15,6 +16,13 @@ export interface ExperimentPermission {
 }
 
 export interface RegisteredModelPermission {
+  name: string;
+  permission: string;
+  user_id: number;
+  type: string;
+}
+
+export interface PromptPermission {
   name: string;
   permission: string;
   user_id: number;
