@@ -59,10 +59,9 @@ app.add_url_rule(rule=routes.GET_EXPERIMENT_PERMISSION, methods=["GET"], view_fu
 app.add_url_rule(rule=routes.UPDATE_EXPERIMENT_PERMISSION, methods=["PATCH"], view_func=views.update_experiment_permission)
 app.add_url_rule(rule=routes.DELETE_EXPERIMENT_PERMISSION, methods=["DELETE"], view_func=views.delete_experiment_permission)
 
-
-app.add_url_rule(rule=routes.GET_PROMPTS, methods=["GET"], view_func=views.get_prompts)
-app.add_url_rule(rule=routes.GET_PROMPT_USERS, methods=["GET"], view_func=views.get_prompt_users)
+# prompt management
 app.add_url_rule(rule=routes.CREATE_PROMPT_PERMISSION, methods=["POST"], view_func=views.create_prompt_permission)
+app.add_url_rule(rule=routes.GET_PROMPTS, methods=["GET"], view_func=views.get_prompts)
 app.add_url_rule(rule=routes.UPDATE_PROMPT_PERMISSION, methods=["PATCH"], view_func=views.update_prompt_permission)
 app.add_url_rule(rule=routes.DELETE_PROMPT_PERMISSION, methods=["DELETE"], view_func=views.delete_prompt_permission)
 
