@@ -1,7 +1,7 @@
-import { PermissionEnum } from 'src/app/core/configs/permissions';
+import { PermissionEnum } from "src/app/core/configs/permissions";
 
 export interface GroupsDataModel {
-  groups: string[]
+  groups: string[];
 }
 
 export interface ExperimentModel {

@@ -1,14 +1,13 @@
-import { Injectable } from '@angular/core';
-import { CurrentUserModel } from '../interfaces/user-data.interface';
+import { Injectable } from "@angular/core";
+import { CurrentUserModel } from "../interfaces/user-data.interface";
 
 @Injectable({
-  providedIn: 'root',
+  providedIn: "root",
 })
 export class AuthService {
   private user!: CurrentUserModel;
 
-  constructor() {
-  }
+  constructor() {}
 
   getUserInfo(): CurrentUserModel {
     return this.user;

@@ -23,7 +23,7 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
   "cachelib<1",
-  "mlflow-skinny<3,>=2.11.1",
+  "mlflow-skinny<3,>=2.21.0",
   "python-dotenv<2",
   "requests<3,>=2.31.0",
   "sqlalchemy<3,>=1.4.0",
@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-full = ["mlflow<3,>=2.11.1"]
+full = ["mlflow<3,>=2.21.0"]
 caching-redis = ["redis[hiredis]<6"]
 dev = [
   "black==24.8.0",

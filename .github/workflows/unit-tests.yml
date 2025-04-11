@@ -10,14 +10,26 @@ on:
     branches:
       - main
 jobs:
-  python-tests:
-    name: Run python tests
+  unit-tests:
+    name: Run Unit testing
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: |
+          yarn install
+        working-directory: web-ui
+      - name: Run tests
+        run: |
+          yarn test --watch=false --ci --passWithNoTests --coverage
+        working-directory: web-ui
       - name: Set up Python
         uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
         with:

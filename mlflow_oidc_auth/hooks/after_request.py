@@ -47,8 +47,8 @@ def _delete_can_manage_registered_model_permission(resp: Response):
     """
     # Get model name from request context because it's not available in the response
     model_name = get_request_param("name")
-    username = get_request_param("user_name")
-    store.delete_registered_model_permission(model_name, username)
+    store.wipe_group_model_permissions(model_name)
+    store.wipe_registered_model_permissions(model_name)
 
 
 def _get_after_request_handler(request_class):

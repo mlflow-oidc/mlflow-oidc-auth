@@ -371,6 +371,13 @@ class SqlAlchemyStore:
             session.delete(perm)
             session.flush()
 
+    def wipe_registered_model_permissions(self, name: str):
+        with self.ManagedSessionMaker() as session:
+            perms = session.query(SqlRegisteredModelPermission).filter(SqlRegisteredModelPermission.name == name).all()
+            for p in perms:
+                session.delete(p)
+            session.flush()
+
     def list_experiment_permissions_for_experiment(self, experiment_id: str) -> List[ExperimentPermission]:
         with self.ManagedSessionMaker() as session:
             perms = session.query(SqlExperimentPermission).filter(SqlExperimentPermission.experiment_id == experiment_id).all()
@@ -516,6 +523,15 @@ class SqlAlchemyStore:
             session.delete(perm)
             session.flush()
 
+    def wipe_group_model_permissions(self, name: str):
+        with self.ManagedSessionMaker() as session:
+            perms = (
+                session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.name == name).all()
+            )
+            for p in perms:
+                session.delete(p)
+            session.flush()
+
     def update_group_model_permission(self, group_name: str, name: str, permission: str):
         _validate_permission(permission)
         with self.ManagedSessionMaker() as session:
@@ -523,6 +539,59 @@ class SqlAlchemyStore:
             perm = (
                 session.query(SqlRegisteredModelGroupPermission)
                 .filter(SqlRegisteredModelGroupPermission.name == name, SqlRegisteredModelGroupPermission.group_id == group.id)
+                .one()
+            )
+            perm.permission = permission
+            session.flush()
+            return perm.to_mlflow_entity()
+
+    def get_group_prompts(self, group_name: str) -> List[RegisteredModelPermission]:
+        with self.ManagedSessionMaker() as session:
+            group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one()
+            perms = (
+                session.query(SqlRegisteredModelGroupPermission)
+                .filter(
+                    SqlRegisteredModelGroupPermission.group_id == group.id, SqlRegisteredModelGroupPermission.prompt == True
+                )
+                .all()
+            )
+            return [p.to_mlflow_entity() for p in perms]
+
+    def create_group_prompt_permission(self, group_name: str, name: str, permission: str):
+        _validate_permission(permission)
+        with self.ManagedSessionMaker() as session:
+            group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one()
+            perm = SqlRegisteredModelGroupPermission(name=name, group_id=group.id, permission=permission, prompt=True)
+            session.add(perm)
+            session.flush()
+            return perm.to_mlflow_entity()
+
+    def delete_group_prompt_permission(self, group_name: str, name: str):
+        with self.ManagedSessionMaker() as session:
+            group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one()
+            perm = (
+                session.query(SqlRegisteredModelGroupPermission)
+                .filter(
+                    SqlRegisteredModelGroupPermission.name == name,
+                    SqlRegisteredModelGroupPermission.group_id == group.id,
+                    SqlRegisteredModelGroupPermission.prompt == True,
+                )
+                .one()
+            )
+            session.delete(perm)
+            session.flush()
+
+    def update_group_prompt_permission(self, group_name: str, name: str, permission: str):
+        _validate_permission(permission)
+        with self.ManagedSessionMaker() as session:
+            group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one()
+            perm = (
+                session.query(SqlRegisteredModelGroupPermission)
+                .filter(
+                    SqlRegisteredModelGroupPermission.name == name,
+                    SqlRegisteredModelGroupPermission.group_id == group.id,
+                    SqlRegisteredModelGroupPermission.prompt == True,
+                )
                 .one()
             )
             perm.permission = permission

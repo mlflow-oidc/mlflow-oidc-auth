@@ -1,0 +1,25 @@
+services:
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: mlflow-db
+      MYSQL_USER: mlflow
+      MYSQL_PASSWORD: password
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+  mysql-admin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: mysql-admin
+    ports:
+      - "5555:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: mlflow
+      PMA_PASSWORD: password
+      PMA_ABSOLUTE_URI: http://localhost:5555
+      PMA_ARBITRARY: 1

@@ -42,6 +42,9 @@ app.add_url_rule(rule=routes.GET_USER_EXPERIMENTS, methods=["GET"], view_func=vi
 app.add_url_rule(rule=routes.GET_USER_MODELS, methods=["GET"], view_func=views.get_user_models)
 app.add_url_rule(rule=routes.GET_EXPERIMENT_USERS, methods=["GET"], view_func=views.get_experiment_users)
 app.add_url_rule(rule=routes.GET_MODEL_USERS, methods=["GET"], view_func=views.get_registered_model_users)
+app.add_url_rule(rule=routes.GET_USER_PROMPTS, methods=["GET"], view_func=views.get_user_prompts)
+app.add_url_rule(rule=routes.GET_PROMPT_USERS, methods=["GET"], view_func=views.get_prompt_users)
+
 
 # User management
 app.add_url_rule(rule=routes.CREATE_USER, methods=["POST"], view_func=views.create_new_user)
@@ -55,6 +58,13 @@ app.add_url_rule(rule=routes.CREATE_EXPERIMENT_PERMISSION, methods=["POST"], vie
 app.add_url_rule(rule=routes.GET_EXPERIMENT_PERMISSION, methods=["GET"], view_func=views.get_experiment_permission)
 app.add_url_rule(rule=routes.UPDATE_EXPERIMENT_PERMISSION, methods=["PATCH"], view_func=views.update_experiment_permission)
 app.add_url_rule(rule=routes.DELETE_EXPERIMENT_PERMISSION, methods=["DELETE"], view_func=views.delete_experiment_permission)
+
+# prompt management
+app.add_url_rule(rule=routes.CREATE_PROMPT_PERMISSION, methods=["POST"], view_func=views.create_prompt_permission)
+app.add_url_rule(rule=routes.GET_PROMPTS, methods=["GET"], view_func=views.get_prompts)
+app.add_url_rule(rule=routes.UPDATE_PROMPT_PERMISSION, methods=["PATCH"], view_func=views.update_prompt_permission)
+app.add_url_rule(rule=routes.DELETE_PROMPT_PERMISSION, methods=["DELETE"], view_func=views.delete_prompt_permission)
+
 app.add_url_rule(
     rule=routes.CREATE_REGISTERED_MODEL_PERMISSION, methods=["POST"], view_func=views.create_registered_model_permission
 )
@@ -82,6 +92,12 @@ app.add_url_rule(rule=routes.GET_GROUP_MODELS_PERMISSION, methods=["GET"], view_
 app.add_url_rule(rule=routes.CREATE_GROUP_MODEL_PERMISSION, methods=["POST"], view_func=views.create_group_model_permission)
 app.add_url_rule(rule=routes.DELETE_GROUP_MODEL_PERMISSION, methods=["DELETE"], view_func=views.delete_group_model_permission)
 app.add_url_rule(rule=routes.UPDATE_GROUP_MODEL_PERMISSION, methods=["PATCH"], view_func=views.update_group_model_permission)
+
+app.add_url_rule(rule=routes.GET_GROUP_PROMPTS_PERMISSION, methods=["GET"], view_func=views.get_group_prompts)
+app.add_url_rule(rule=routes.CREATE_GROUP_PROMPT_PERMISSION, methods=["POST"], view_func=views.create_group_prompt_permission)
+app.add_url_rule(rule=routes.DELETE_GROUP_PROMPT_PERMISSION, methods=["DELETE"], view_func=views.delete_group_prompt_permission)
+app.add_url_rule(rule=routes.UPDATE_GROUP_PROMPT_PERMISSION, methods=["PATCH"], view_func=views.update_group_prompt_permission)
+
 
 # Add new hooks
 app.before_request(before_request_hook)
