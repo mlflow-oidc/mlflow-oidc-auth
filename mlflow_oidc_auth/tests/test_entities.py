@@ -9,6 +9,7 @@ class TestUser(unittest.TestCase):
             username="test_user",
             password_hash="password",
             is_admin=True,
+            is_service_account=False,
             display_name="Test User",
             experiment_permissions=[ExperimentPermission("exp1", "read")],
             registered_model_permissions=[RegisteredModelPermission("model1", "write")],
@@ -44,7 +45,7 @@ class TestUser(unittest.TestCase):
         self.assertEqual(user.password_hash, "REDACTED")
         self.assertTrue(user.is_admin)
         self.assertEqual(user.display_name, "Test User")
-        self.assertEqual(len(user.experiment_permissions), 1)
+        self.assertEqual(len(user.experiment_permissions or []), 1)
         self.assertEqual(user.experiment_permissions[0].experiment_id, "exp1")
         self.assertEqual(user.experiment_permissions[0].permission, "read")
         self.assertEqual(len(user.registered_model_permissions), 1)
