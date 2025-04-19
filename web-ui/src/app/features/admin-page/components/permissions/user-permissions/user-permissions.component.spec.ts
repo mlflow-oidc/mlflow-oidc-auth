@@ -3,6 +3,9 @@ import { ActivatedRoute } from "@angular/router";
 import { of } from "rxjs";
 import { provideHttpClient } from "@angular/common/http";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
+import { MatTabsModule } from "@angular/material/tabs";
+import { MatIconModule } from "@angular/material/icon";
+import { MatDialogModule } from "@angular/material/dialog";
 
 import { UserPermissionsComponent } from "./user-permissions.component";
 
@@ -13,7 +16,7 @@ describe("UserPermissionsComponent", () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       declarations: [UserPermissionsComponent],
-      imports: [MatProgressSpinnerModule],
+      imports: [MatProgressSpinnerModule, MatTabsModule, MatIconModule, MatDialogModule],
       providers: [
         {
           provide: ActivatedRoute,
