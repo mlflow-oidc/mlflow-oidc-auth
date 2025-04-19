@@ -97,9 +97,12 @@ class SqlAlchemyStore:
         with self.ManagedSessionMaker() as session:
             return self._get_user(session, username).to_mlflow_entity()
 
-    def list_users(self, is_service_account: bool = False) -> List[User]:
+    def list_users(self, is_service_account: bool = False, all: bool = False) -> List[User]:
         with self.ManagedSessionMaker() as session:
-            users = session.query(SqlUser).filter(SqlUser.is_service_account == is_service_account).all()
+            if all:
+                users = session.query(SqlUser).all()
+            else:
+                users = session.query(SqlUser).filter(SqlUser.is_service_account == is_service_account).all()
             return [u.to_mlflow_entity() for u in users]
 
     def update_user(

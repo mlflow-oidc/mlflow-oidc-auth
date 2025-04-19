@@ -41,7 +41,7 @@ export class ModelPermissionDetailsComponent implements OnInit {
     private readonly userDataService: UserDataService,
     private readonly snackService: SnackBarService,
     private readonly permissionModalService: PermissionModalService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.modelId = this.route.snapshot.paramMap.get("id") ?? "";
@@ -85,10 +85,10 @@ export class ModelPermissionDetailsComponent implements OnInit {
 
   handleActions({ action, item }: TableActionEvent<ModelUserListModel>) {
     const actionMapping: { [key: string]: (item: ModelUserListModel) => void } =
-      {
-        [TableActionEnum.REVOKE]: this.revokePermissionForUser.bind(this),
-        [TableActionEnum.EDIT]: this.editPermissionForUser.bind(this),
-      };
+    {
+      [TableActionEnum.REVOKE]: this.revokePermissionForUser.bind(this),
+      [TableActionEnum.EDIT]: this.editPermissionForUser.bind(this),
+    };
 
     const selectedAction = actionMapping[action.action];
     if (selectedAction) {
@@ -103,6 +103,37 @@ export class ModelPermissionDetailsComponent implements OnInit {
   addUser() {
     this.userDataService
       .getAllUsers()
+      .pipe(
+        map(({ users }) =>
+          users.filter(
+            (user) => !this.userDataSource.some((u) => u.username === user),
+          ),
+        ),
+        switchMap((users) =>
+          this.permissionModalService.openGrantPermissionModal(
+            EntityEnum.MODEL,
+            users.map((user, index) => ({ id: index + user, name: user })),
+            this.modelId,
+          ),
+        ),
+        filter(Boolean),
+        switchMap(({ entity, permission }) =>
+          this.permissionDataService.createModelPermission({
+            name: this.modelId,
+            permission: permission,
+            username: entity.name,
+          }),
+        ),
+        switchMap(() => this.loadUsersForModel(this.modelId)),
+      )
+      .subscribe((users) => {
+        this.userDataSource = users;
+      });
+  }
+
+  addServiceAccount() {
+    this.userDataService
+      .getAllServiceUsers()
       .pipe(
         map(({ users }) =>
           users.filter(

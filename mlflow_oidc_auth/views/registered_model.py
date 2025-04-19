@@ -76,7 +76,7 @@ def get_registered_model_users(model_name):
         current_user = store.get_user(get_username())
         if not can_manage_registered_model(model_name, current_user.username):
             return make_forbidden_response()
-    list_users = store.list_users()
+    list_users = store.list_users(all=True)
     # Filter users who are associated with the given model
     users = []
     for user in list_users:
@@ -87,5 +87,11 @@ def get_registered_model_users(model_name):
             else {}
         )
         if model_name in user_models:
-            users.append({"username": user.username, "permission": user_models[model_name]})
+            users.append(
+                {
+                    "username": user.username,
+                    "permission": user_models[model_name],
+                    "kind": "user" if not user.is_service_account else "service-account",
+                }
+            )
     return jsonify(users)

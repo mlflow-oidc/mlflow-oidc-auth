@@ -80,12 +80,18 @@ def get_experiment_users(experiment_id: str):
         current_user = store.get_user(get_username())
         if not can_manage_experiment(experiment_id, current_user.username):
             return make_forbidden_response()
-    list_users = store.list_users()
+    list_users = store.list_users(all=True)
     # Filter users who are associated with the given experiment
     users = []
     for user in list_users:
         # Check if the user is associated with the experiment
         user_experiments_details = {str(exp.experiment_id): exp.permission for exp in (user.experiment_permissions or [])}
         if experiment_id in user_experiments_details:
-            users.append({"username": user.username, "permission": user_experiments_details[experiment_id]})
+            users.append(
+                {
+                    "username": user.username,
+                    "permission": user_experiments_details[experiment_id],
+                    "kind": "user" if not user.is_service_account else "service-account",
+                }
+            )
     return jsonify(users)

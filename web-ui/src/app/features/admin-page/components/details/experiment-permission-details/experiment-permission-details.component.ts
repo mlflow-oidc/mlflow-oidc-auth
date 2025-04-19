@@ -147,6 +147,36 @@ export class ExperimentPermissionDetailsComponent implements OnInit {
       .subscribe((users) => (this.userDataSource = users));
   }
 
+  addServiceAccount(){
+    this.userDataService
+      .getAllServiceUsers()
+      .pipe(
+        map(({ users }) =>
+          users.filter(
+            (user) => !this.userDataSource.some((u) => u.username === user),
+          ),
+        ),
+        switchMap((users) =>
+          this.dialog
+            .open<
+              GrantUserPermissionsComponent,
+              GrantUserPermissionsModel
+            >(GrantUserPermissionsComponent, { data: { users } })
+            .afterClosed(),
+        ),
+        filter(Boolean),
+        switchMap(({ user, permission }) =>
+          this.permissionDataService.createExperimentPermission({
+            experiment_id: this.experimentId,
+            permission: permission,
+            username: user,
+          }),
+        ),
+        switchMap(() => this.loadUsersForExperiment(this.experimentId)),
+      )
+      .subscribe((users) => (this.userDataSource = users));
+  }
+
   loadUsersForExperiment(experimentId: string) {
     return this.experimentDataService.getUsersForExperiment(experimentId);
   }
