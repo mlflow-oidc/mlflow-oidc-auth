@@ -22,6 +22,7 @@ class TestUser(unittest.TestCase):
             "id": "123",
             "username": "test_user",
             "is_admin": True,
+            "is_service_account": False,
             "display_name": "Test User",
             "groups": [{"id": "group1", "group_name": "Group 1"}],
         }
