@@ -53,7 +53,7 @@ export class PromptPermissionDetailsComponent implements OnInit {
 
   revokePermissionForUser(item: PromptUserListModel) {
     this.permissionDataService
-      .deletePromptPermission({ name: this.promptId, user_name: item.username })
+      .deletePromptPermission({ name: this.promptId, username: item.username })
       .pipe(
         tap(() =>
           this.snackService.openSnackBar("Permission revoked successfully"),
@@ -72,7 +72,7 @@ export class PromptPermissionDetailsComponent implements OnInit {
           this.permissionDataService.updatePromptPermission({
             name: this.promptId,
             permission,
-            user_name: username,
+            username: username,
           }),
         ),
         tap(() => this.snackService.openSnackBar("Permission updated")),
@@ -122,7 +122,7 @@ export class PromptPermissionDetailsComponent implements OnInit {
           this.permissionDataService.createPromptPermission({
             name: this.promptId,
             permission: permission,
-            user_name: entity.name,
+            username: entity.name,
           }),
         ),
         switchMap(() => this.loadUsersForPrompt(this.promptId)),

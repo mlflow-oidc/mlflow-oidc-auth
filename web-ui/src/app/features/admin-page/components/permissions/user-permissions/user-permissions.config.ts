@@ -4,8 +4,13 @@ import { TableActionModel } from "src/app/shared/components/table/table.interfac
 export const USER_COLUMN_CONFIG = [
   {
     title: "User name",
-    key: "user",
+    key: "username",
   },
 ];
 
 export const USER_ACTIONS: TableActionModel[] = [TABLE_ACTION_CONFIG.EDIT];
+
+export const USER_SERVICE_ACCOUNT_ACTIONS: TableActionModel[] = [
+  TABLE_ACTION_CONFIG.EDIT,
+  TABLE_ACTION_CONFIG.DELETE,
+];

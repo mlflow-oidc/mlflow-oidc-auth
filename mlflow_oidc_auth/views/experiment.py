@@ -18,7 +18,7 @@ from mlflow_oidc_auth.utils import (
 def create_experiment_permission():
     store.create_experiment_permission(
         get_experiment_id(),
-        get_request_param("user_name"),
+        get_request_param("username"),
         get_request_param("permission"),
     )
     return jsonify({"message": "Experiment permission has been created."})
@@ -27,7 +27,7 @@ def create_experiment_permission():
 @catch_mlflow_exception
 @check_experiment_permission
 def get_experiment_permission():
-    ep = store.get_experiment_permission(get_experiment_id(), get_request_param("user_name"))
+    ep = store.get_experiment_permission(get_experiment_id(), get_request_param("username"))
     return make_response({"experiment_permission": ep.to_json()})
 
 
@@ -36,7 +36,7 @@ def get_experiment_permission():
 def update_experiment_permission():
     store.update_experiment_permission(
         get_experiment_id(),
-        get_request_param("user_name"),
+        get_request_param("username"),
         get_request_param("permission"),
     )
     return jsonify({"message": "Experiment permission has been changed."})
@@ -47,7 +47,7 @@ def update_experiment_permission():
 def delete_experiment_permission():
     store.delete_experiment_permission(
         get_experiment_id(),
-        get_request_param("user_name"),
+        get_request_param("username"),
     )
     return jsonify({"message": "Experiment permission has been deleted."})
 

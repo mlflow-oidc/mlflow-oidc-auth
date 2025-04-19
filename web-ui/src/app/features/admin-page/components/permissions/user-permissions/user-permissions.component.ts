@@ -8,12 +8,13 @@ import {
   TableActionModel,
 } from "src/app/shared/components/table/table.interface";
 import { TableActionEnum } from "src/app/shared/components/table/table.config";
-import { USER_ACTIONS, USER_COLUMN_CONFIG } from "./user-permissions.config";
+import { USER_ACTIONS, USER_SERVICE_ACCOUNT_ACTIONS, USER_COLUMN_CONFIG } from "./user-permissions.config";
 import { AdminPageRoutesEnum } from "../../../config";
-
-interface UserModel {
-  user: string;
-}
+import { CreateServiceAccountService } from "src/app/shared/services/create-service-account.service";
+import { UserModel } from "src/app/shared/interfaces/user-data.interface";
+// interface UserModel {
+//   user: string;
+// }
 
 @Component({
   selector: "ml-user-permissions",
@@ -23,15 +24,20 @@ interface UserModel {
 })
 export class UserPermissionsComponent implements OnInit {
   columnConfig = USER_COLUMN_CONFIG;
+  serviceAccountColumnConfig = USER_COLUMN_CONFIG;
   actions: TableActionModel[] = USER_ACTIONS;
+  serviceAccountActions: TableActionModel[] = USER_SERVICE_ACCOUNT_ACTIONS;
   dataSource: UserModel[] = [];
+  serviceAccountsDataSource: UserModel[] = [];
 
   isLoading = false;
+  isServiceAccountsLoading = false;
 
   constructor(
     private readonly router: Router,
     private readonly route: ActivatedRoute,
     private readonly userDataService: UserDataService,
+    private readonly createServiceAccountService: CreateServiceAccountService,
   ) {}
 
   ngOnInit(): void {
@@ -40,7 +46,15 @@ export class UserPermissionsComponent implements OnInit {
       .getAllUsers()
       .pipe(finalize(() => (this.isLoading = false)))
       .subscribe(
-        ({ users }) => (this.dataSource = users.map((user) => ({ user }))),
+        ({ users }) => (this.dataSource = users.map((username) => ({ username }))),
+      );
+    this.isServiceAccountsLoading = true;
+    this.userDataService
+      .getAllServiceUsers()
+      .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
+      .subscribe(
+        ({ users }) =>
+          (this.serviceAccountsDataSource = users.map((username) => ({ username }))),
       );
   }
 
@@ -55,9 +69,52 @@ export class UserPermissionsComponent implements OnInit {
     }
   }
 
-  handleUserEdit({ user }: UserModel): void {
-    this.router.navigate([`../${AdminPageRoutesEnum.USER}/` + user], {
+  handleServiceAccountAction({action, item}: TableActionEvent<UserModel>) {
+    const actionHandlers: { [key: string]: (user: UserModel) => void } = {
+      [TableActionEnum.EDIT]: this.handleUserEdit.bind(this),
+      [TableActionEnum.DELETE]: this.handleServiceAccountDelete.bind(this),
+    };
+    const selectedAction = actionHandlers[action.action];
+    if (selectedAction) {
+      selectedAction(item);
+    }
+  }
+
+  handleUserEdit({ username }: UserModel): void {
+    this.router.navigate([`../${AdminPageRoutesEnum.USER}/` + username], {
       relativeTo: this.route,
+    });
+  }
+
+  handleServiceAccountDelete({ username }: UserModel): void {
+    this.userDataService.deleteUser({username}).subscribe(() => {
+      this.isServiceAccountsLoading = true;
+      this.userDataService
+        .getAllServiceUsers()
+        .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
+        .subscribe(
+          ({ users }) =>
+            (this.serviceAccountsDataSource = users.map((username) => ({ username }))),
+        );
+    });
+  }
+
+  createServiceAccount(): void {
+    this.createServiceAccountService.openCreateServiceAccountModal({ title: 'Create Service Account' }).subscribe(result => {
+      if (result) {
+        this.userDataService.createServiceAccount(result).subscribe(
+          () => {
+            this.isServiceAccountsLoading = true;
+            this.userDataService
+              .getAllServiceUsers()
+              .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
+              .subscribe(
+          ({ users }) =>
+            (this.serviceAccountsDataSource = users.map((username) => ({ username }))),
+              );
+          }
+        );
+      }
     });
   }
 }

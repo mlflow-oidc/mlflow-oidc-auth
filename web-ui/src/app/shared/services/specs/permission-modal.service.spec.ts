@@ -10,7 +10,7 @@ import {
   EditPermissionsModalComponent,
   GrantPermissionModalComponent,
 } from "../../components";
-import { WithNameAndId } from "src/app/shared/components/modals/grant-permission-modal/grant-permission-modal.inteface";
+import { WithNameAndId } from "src/app/shared/components/modals/grant-permission-modal/grant-permission-modal.interface";
 
 describe("PermissionModalService", () => {
   let service: PermissionModalService;

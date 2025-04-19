@@ -53,7 +53,7 @@ export class ModelPermissionDetailsComponent implements OnInit {
 
   revokePermissionForUser(item: ModelUserListModel) {
     this.permissionDataService
-      .deleteModelPermission({ name: this.modelId, user_name: item.username })
+      .deleteModelPermission({ name: this.modelId, username: item.username })
       .pipe(
         tap(() =>
           this.snackService.openSnackBar("Permission revoked successfully"),
@@ -72,7 +72,7 @@ export class ModelPermissionDetailsComponent implements OnInit {
           this.permissionDataService.updateModelPermission({
             name: this.modelId,
             permission,
-            user_name: username,
+            username: username,
           }),
         ),
         tap(() => this.snackService.openSnackBar("Permission updated")),
@@ -121,7 +121,7 @@ export class ModelPermissionDetailsComponent implements OnInit {
           this.permissionDataService.createModelPermission({
             name: this.modelId,
             permission: permission,
-            user_name: entity.name,
+            username: entity.name,
           }),
         ),
         switchMap(() => this.loadUsersForModel(this.modelId)),

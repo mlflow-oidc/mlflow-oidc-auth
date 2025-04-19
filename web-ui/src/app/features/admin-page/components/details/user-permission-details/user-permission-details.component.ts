@@ -100,7 +100,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
         filter(Boolean),
         switchMap(({ entity, permission }) =>
           this.permissionDataService.createModelPermission({
-            user_name: this.userId,
+            username: this.userId,
             name: entity.name,
             permission: permission,
           }),
@@ -135,7 +135,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
         filter(Boolean),
         switchMap(({ entity, permission }) => {
           return this.permissionDataService.createExperimentPermission({
-            user_name: this.userId,
+            username: this.userId,
             experiment_name: entity.name,
             permission,
           });
@@ -176,7 +176,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
     this.permissionDataService
       .deleteExperimentPermission({
         experiment_id: item.id,
-        user_name: this.userId,
+        username: this.userId,
       })
       .pipe(
         tap(() =>
@@ -194,7 +194,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
     }
 
     this.permissionDataService
-      .deleteModelPermission({ name: name, user_name: this.userId })
+      .deleteModelPermission({ name: name, username: this.userId })
       .pipe(
         tap(() =>
           this.snackBarService.openSnackBar("Permission revoked successfully"),
@@ -231,7 +231,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
           const permissionData = {
             name,
             permission,
-            user_name: this.userId,
+            username: this.userId,
           };
 
           return type !== PermissionTypeEnum.FALLBACK
@@ -259,7 +259,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
           const permissionData = {
             experiment_id: id,
             permission,
-            user_name: this.userId,
+            username: this.userId,
           };
           return type !== PermissionTypeEnum.USER
             ? this.permissionDataService.createExperimentPermission(

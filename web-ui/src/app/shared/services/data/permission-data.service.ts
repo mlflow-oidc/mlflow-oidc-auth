@@ -21,7 +21,7 @@ export class PermissionDataService {
 
   updateExperimentPermission(body: {
     experiment_id: string;
-    user_name: string;
+    username: string;
     permission: string;
   }) {
     return this.http.patch(API_URL.UPDATE_EXPERIMENT_PERMISSION, body, {
@@ -31,7 +31,7 @@ export class PermissionDataService {
 
   deleteExperimentPermission(body: {
     experiment_id: string;
-    user_name: string;
+    username: string;
   }) {
     return this.http.delete(API_URL.DELETE_EXPERIMENT_PERMISSION, { body });
   }
@@ -41,7 +41,7 @@ export class PermissionDataService {
   }
 
   updateModelPermission(body: {
-    user_name: string;
+    username: string;
     name: string;
     permission: string;
   }) {
@@ -50,13 +50,13 @@ export class PermissionDataService {
     });
   }
 
-  deleteModelPermission(body: { name: string; user_name: string }) {
+  deleteModelPermission(body: { name: string; username: string }) {
     return this.http.delete(API_URL.DELETE_MODEL_PERMISSION, { body });
   }
 
   createPromptPermission(body: {
     name: string;
-    user_name: string;
+    username: string;
     permission: string;
   }) {
     return this.http.post(API_URL.CREATE_PROMPT_PERMISSION, body);
@@ -64,13 +64,13 @@ export class PermissionDataService {
 
   updatePromptPermission(body: {
     name: string;
-    user_name: string;
+    username: string;
     permission: string;
   }) {
     return this.http.patch(API_URL.UPDATE_PROMPT_PERMISSION, body);
   }
 
-  deletePromptPermission(body: { name: string; user_name: string }) {
+  deletePromptPermission(body: { name: string; username: string }) {
     return this.http.delete(API_URL.DELETE_PROMPT_PERMISSION, { body });
   }
 
@@ -99,7 +99,7 @@ export class PermissionDataService {
     return this.http.post(
       API_URL.CREATE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
       {
-        model_name: modelName,
+        name: modelName,
         permission,
       },
     );
@@ -113,7 +113,7 @@ export class PermissionDataService {
     return this.http.post(
       API_URL.CREATE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
       {
-        prompt_name: promptName,
+        name: promptName,
         permission,
       },
     );
@@ -141,7 +141,7 @@ export class PermissionDataService {
       API_URL.DELETE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
       {
         body: {
-          model_name: modelName,
+          name: modelName,
         },
       },
     );
@@ -152,7 +152,7 @@ export class PermissionDataService {
       API_URL.DELETE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
       {
         body: {
-          prompt_name: promptName,
+          name: promptName,
         },
       },
     );
@@ -183,7 +183,7 @@ export class PermissionDataService {
     return this.http.patch(
       API_URL.UPDATE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
       {
-        model_name: modelName,
+        name: modelName,
         permission,
       },
     );
@@ -197,7 +197,7 @@ export class PermissionDataService {
     return this.http.patch(
       API_URL.UPDATE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
       {
-        prompt_name: promptName,
+        name: promptName,
         permission,
       },
     );

@@ -3,6 +3,7 @@ import { CommonModule } from "@angular/common";
 import {
   AccessKeyModalComponent,
   ConfirmModalComponent,
+  CreateServiceAccountModalComponent,
   EditPermissionsModalComponent,
   GrantPermissionModalComponent,
   GrantUserPermissionsComponent,
@@ -11,6 +12,7 @@ import {
 } from "./components";
 import { MaterialModule } from "./material/material.module";
 import { FormsModule, ReactiveFormsModule } from "@angular/forms";
+import { MatCheckboxModule } from "@angular/material/checkbox";
 import { NgbModule } from "@ng-bootstrap/ng-bootstrap";
 import { RouterLink, RouterLinkWithHref } from "@angular/router";
 import { HttpClientModule } from "@angular/common/http";
@@ -19,6 +21,7 @@ import { BreadcrumbModule } from "xng-breadcrumb";
 const SHARED_COMPONENTS = [
   AccessKeyModalComponent,
   ConfirmModalComponent,
+  CreateServiceAccountModalComponent,
   EditPermissionsModalComponent,
   GrantPermissionModalComponent,
   GrantUserPermissionsComponent,
@@ -37,6 +40,7 @@ const SHARED_COMPONENTS = [
     RouterLinkWithHref,
     HttpClientModule,
     ReactiveFormsModule,
+    MatCheckboxModule,
     RouterLink,
     BreadcrumbModule,
   ],

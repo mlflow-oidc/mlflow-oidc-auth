@@ -34,6 +34,8 @@ export const API_URL = {
   UPDATE_PROMPT_PERMISSION: "/api/2.0/mlflow/prompts/permissions/update",
   DELETE_PROMPT_PERMISSION: "/api/2.0/mlflow/prompts/permissions/delete",
 
+  CREATE_USER: "/api/2.0/mlflow/users/create",
+  DELETE_USER: "/api/2.0/mlflow/users/delete",
   GET_ALL_USERS: "/api/2.0/mlflow/users",
   GET_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",

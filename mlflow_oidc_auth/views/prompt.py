@@ -16,7 +16,9 @@ from mlflow_oidc_auth.utils import (
 @check_registered_model_permission
 def create_prompt_permission():
     store.create_registered_model_permission(
-        get_request_param("name"), get_request_param("user_name"), get_request_param("permission")
+        name=get_request_param("name"),
+        username=get_request_param("username"),
+        permission=get_request_param("permission"),
     )
     return jsonify({"message": "Model permission has been created."})
 
@@ -24,7 +26,7 @@ def create_prompt_permission():
 @catch_mlflow_exception
 @check_registered_model_permission
 def get_prompt_permission():
-    rmp = store.get_registered_model_permission(get_request_param("name"), get_request_param("user_name"))
+    rmp = store.get_registered_model_permission(get_request_param("name"), get_request_param("username"))
     return make_response({"prompt_permission": rmp.to_json()})
 
 
@@ -32,7 +34,7 @@ def get_prompt_permission():
 @check_registered_model_permission
 def update_prompt_permission():
     store.update_registered_model_permission(
-        get_request_param("name"), get_request_param("user_name"), get_request_param("permission")
+        get_request_param("name"), get_request_param("username"), get_request_param("permission")
     )
     return make_response(jsonify({"message": "Model permission has been changed"}))
 
@@ -40,7 +42,7 @@ def update_prompt_permission():
 @catch_mlflow_exception
 @check_registered_model_permission
 def delete_prompt_permission():
-    store.delete_registered_model_permission(get_request_param("name"), get_request_param("user_name"))
+    store.delete_registered_model_permission(get_request_param("name"), get_request_param("username"))
     return make_response(jsonify({"message": "Model permission has been deleted"}))
 
 
@@ -53,7 +55,7 @@ def get_prompts():
     else:
         current_user = store.get_user(get_username())
         prompts = []
-        for model in _get_model_registry_store().search_prompts(
+        for model in _get_model_registry_store().search_registered_models(
             max_results=1000, filter_string="tags.`mlflow.prompt.is_prompt` = 'true'"
         ):
             if can_manage_registered_model(model.name, current_user.username):

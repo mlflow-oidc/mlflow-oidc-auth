@@ -51,12 +51,20 @@ class SqlAlchemyStore:
             except MlflowException:
                 return False
 
-    def create_user(self, username: str, password: str, display_name: str, is_admin: bool = False) -> User:
+    def create_user(
+        self, username: str, password: str, display_name: str, is_admin: bool = False, is_service_account=False
+    ) -> User:
         _validate_username(username)
         pwhash = generate_password_hash(password)
         with self.ManagedSessionMaker() as session:
             try:
-                user = SqlUser(username=username, password_hash=pwhash, is_admin=is_admin, display_name=display_name)
+                user = SqlUser(
+                    username=username,
+                    password_hash=pwhash,
+                    is_admin=is_admin,
+                    display_name=display_name,
+                    is_service_account=is_service_account,
+                )
                 session.add(user)
                 session.flush()
                 return user.to_mlflow_entity()
@@ -89,9 +97,9 @@ class SqlAlchemyStore:
         with self.ManagedSessionMaker() as session:
             return self._get_user(session, username).to_mlflow_entity()
 
-    def list_users(self) -> List[User]:
+    def list_users(self, is_service_account: bool = False) -> List[User]:
         with self.ManagedSessionMaker() as session:
-            users = session.query(SqlUser).all()
+            users = session.query(SqlUser).filter(SqlUser.is_service_account == is_service_account).all()
             return [u.to_mlflow_entity() for u in users]
 
     def update_user(
@@ -99,6 +107,7 @@ class SqlAlchemyStore:
         username: str,
         password: Optional[str] = None,
         is_admin: Optional[bool] = None,
+        is_service_account: Optional[bool] = None,
     ) -> User:
         with self.ManagedSessionMaker() as session:
             user = self._get_user(session, username)
@@ -107,6 +116,9 @@ class SqlAlchemyStore:
                 setattr(user, "password_hash", pwhash)
             if is_admin is not None:
                 setattr(user, "is_admin", is_admin)
+            if is_service_account is not None:
+                setattr(user, "is_service_account", is_service_account)
+            session.flush()
             return user.to_mlflow_entity()
 
     def delete_user(self, username: str):
