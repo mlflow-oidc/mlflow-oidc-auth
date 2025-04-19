@@ -7,6 +7,7 @@ import {
   RegisteredModelPermission,
   ExperimentPermission,
   PromptPermission,
+  UserModel,
 } from "../../interfaces/user-data.interface";
 import { API_URL } from "src/app/core/configs/api-urls";
 import { switchMap, map } from "rxjs/operators";
@@ -54,7 +55,26 @@ export class UserDataService {
     return this.http.get<TokenModel>(API_URL.GET_ACCESS_TOKEN);
   }
 
+  getUserAccessKey(userName: string) {
+    return this.http.patch<TokenModel>(
+      API_URL.GET_ACCESS_TOKEN, { username: userName },
+    );
+  }
+
   getAllUsers() {
     return this.http.get<AllUsersListModel>(API_URL.GET_ALL_USERS);
   }
+
+  getAllServiceUsers() {
+    return this.http.get<AllUsersListModel>(`${API_URL.GET_ALL_USERS}?service=true`);
+  }
+
+  createServiceAccount(body: UserModel) {
+    return this.http.post<UserModel>(API_URL.CREATE_USER, body);
+  }
+
+  deleteUser(body: UserModel) {
+    return this.http.delete<UserModel>(API_URL.DELETE_USER, { body });
+  }
+
 }

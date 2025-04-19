@@ -1,6 +1,6 @@
 /venv/
 /instance/
-mlruns/
+mlruns*/
 basic_auth.db
 basic_auth
 # Byte-compiled / optimized / DLL files
@@ -181,3 +181,6 @@ pytest-coverage.txt
 web-ui/coverage/
 scripts/postgresql/postgres_data/
 scripts/mysql/mysql_data
+
+# until it ready
+integration-tests/

@@ -14,4 +14,8 @@ export const COLUMN_CONFIG = [
     title: "Permissions",
     key: "permission",
   },
+  {
+    title: "Kind",
+    key: "kind",
+  },
 ];

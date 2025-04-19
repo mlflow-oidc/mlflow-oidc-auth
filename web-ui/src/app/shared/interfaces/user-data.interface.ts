@@ -8,6 +8,13 @@ export interface CurrentUserModel {
   prompts: PromptPermission[];
 }
 
+export interface UserModel {
+  display_name?: string;
+  is_admin?: boolean;
+  is_service_account?: boolean;
+  username: string;
+}
+
 export interface ExperimentPermission {
   id: string;
   name: string;

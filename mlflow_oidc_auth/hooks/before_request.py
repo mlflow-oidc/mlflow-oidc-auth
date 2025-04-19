@@ -74,6 +74,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_run,
     validate_can_update_user_admin,
     validate_can_update_user_password,
+    validate_can_get_user_token,
 )
 
 
@@ -155,6 +156,7 @@ BEFORE_REQUEST_VALIDATORS.update(
         (routes.CREATE_REGISTERED_MODEL_PERMISSION, "POST"): validate_can_manage_registered_model,
         (routes.UPDATE_REGISTERED_MODEL_PERMISSION, "PATCH"): validate_can_manage_registered_model,
         (routes.DELETE_REGISTERED_MODEL_PERMISSION, "DELETE"): validate_can_manage_registered_model,
+        (routes.GET_ACCESS_TOKEN, "PATCH"): validate_can_get_user_token,
         # (SIGNUP, "GET"): validate_can_create_user,
         # (routes.GET_USER, "GET"): validate_can_read_user,
         (routes.CREATE_USER, "POST"): validate_can_create_user,

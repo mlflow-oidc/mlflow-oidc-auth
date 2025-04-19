@@ -6,6 +6,7 @@ export enum TableActionEnum {
   REVOKE = "REVOKE",
   ADD = "ADD",
   MANAGE = "MANAGE",
+  GET_ACCESS_KEY = "GET_ACCESS_KEY",
 }
 
 const ADD_ACTION: TableActionModel = {
@@ -32,9 +33,16 @@ const REVOKE_ACTION = {
   action: TableActionEnum.REVOKE,
 };
 
+const GET_ACCESS_KEY_ACTION = {
+  name: "Get access key",
+  icon: "key",
+  action: TableActionEnum.GET_ACCESS_KEY,
+};
+
 export const TABLE_ACTION_CONFIG = {
   ADD: ADD_ACTION,
   EDIT: EDIT_ACTION,
   DELETE: DELETE_ACTION,
   REVOKE: REVOKE_ACTION,
+  GET_ACCESS_KEY: GET_ACCESS_KEY_ACTION,
 };

@@ -14,6 +14,7 @@ import { ModelPermissionModel } from "src/app/shared/interfaces/models-data.inte
 import {
   ExperimentsDataService,
   ModelsDataService,
+  PromptsDataService,
   PermissionDataService,
   SnackBarService,
 } from "src/app/shared/services";
@@ -23,6 +24,8 @@ import {
   EXPERIMENT_COLUMN_CONFIG,
   MODEL_ACTIONS,
   MODEL_COLUMN_CONFIG,
+  PROMPT_COLUMN_CONFIG,
+  PROMPT_ACTIONS,
 } from "./user-permission-details.config";
 
 @Component({
@@ -35,25 +38,30 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
   userId: string = "";
   experimentsColumnConfig = EXPERIMENT_COLUMN_CONFIG;
   modelsColumnConfig = MODEL_COLUMN_CONFIG;
+  promptsColumnConfig = PROMPT_COLUMN_CONFIG;
+
 
   experimentsDataSource: ExperimentForUserModel[] = [];
   modelsDataSource: ModelPermissionModel[] = [];
+  promptsDataSource: ModelPermissionModel[] = [];
   experimentsActions: TableActionModel[] = EXPERIMENT_ACTIONS;
   modelsActions: TableActionModel[] = MODEL_ACTIONS;
+  promptsActions: TableActionModel[] = PROMPT_ACTIONS;
 
   @ViewChild("userTabs") permissionsTabs!: MatTabGroup;
 
-  private readonly tabIndexMapping: string[] = ["experiments", "models"];
+  private readonly tabIndexMapping: string[] = ["experiments", "models", "prompts"];
 
   constructor(
     private readonly expDataService: ExperimentsDataService,
     private readonly modelDataService: ModelsDataService,
+    private readonly promptDataService: PromptsDataService,
     private readonly permissionDataService: PermissionDataService,
     private readonly route: ActivatedRoute,
     private readonly permissionModalService: PermissionModalService,
     private readonly snackBarService: SnackBarService,
     private readonly router: Router,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.userId = this.route.snapshot.paramMap.get("id") ?? "";
@@ -61,9 +69,11 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
     forkJoin([
       this.expDataService.getExperimentsForUser(this.userId),
       this.modelDataService.getModelsForUser(this.userId),
-    ]).subscribe(([experiments, models]) => {
+      this.promptDataService.getPromptsForUser(this.userId),
+    ]).subscribe(([experiments, models, prompts]) => {
       this.experimentsDataSource = experiments;
       this.modelsDataSource = models;
+      this.promptsDataSource = prompts;
     });
   }
 
@@ -100,7 +110,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
         filter(Boolean),
         switchMap(({ entity, permission }) =>
           this.permissionDataService.createModelPermission({
-            user_name: this.userId,
+            username: this.userId,
             name: entity.name,
             permission: permission,
           }),
@@ -135,7 +145,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
         filter(Boolean),
         switchMap(({ entity, permission }) => {
           return this.permissionDataService.createExperimentPermission({
-            user_name: this.userId,
+            username: this.userId,
             experiment_name: entity.name,
             permission,
           });
@@ -176,7 +186,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
     this.permissionDataService
       .deleteExperimentPermission({
         experiment_id: item.id,
-        user_name: this.userId,
+        username: this.userId,
       })
       .pipe(
         tap(() =>
@@ -194,7 +204,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
     }
 
     this.permissionDataService
-      .deleteModelPermission({ name: name, user_name: this.userId })
+      .deleteModelPermission({ name: name, username: this.userId })
       .pipe(
         tap(() =>
           this.snackBarService.openSnackBar("Permission revoked successfully"),
@@ -231,10 +241,10 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
           const permissionData = {
             name,
             permission,
-            user_name: this.userId,
+            username: this.userId,
           };
 
-          return type !== PermissionTypeEnum.FALLBACK
+          return type === PermissionTypeEnum.FALLBACK
             ? this.permissionDataService.createModelPermission(permissionData)
             : this.permissionDataService.updateModelPermission(permissionData);
         }),
@@ -259,15 +269,15 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
           const permissionData = {
             experiment_id: id,
             permission,
-            user_name: this.userId,
+            username: this.userId,
           };
-          return type !== PermissionTypeEnum.USER
+          return type === PermissionTypeEnum.FALLBACK
             ? this.permissionDataService.createExperimentPermission(
-                permissionData,
-              )
+              permissionData,
+            )
             : this.permissionDataService.updateExperimentPermission(
-                permissionData,
-              );
+              permissionData,
+            );
         }),
         tap(() =>
           this.snackBarService.openSnackBar("Permissions updated successfully"),
@@ -275,6 +285,63 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
         switchMap(() => this.expDataService.getExperimentsForUser(this.userId)),
       )
       .subscribe((experiments) => (this.experimentsDataSource = experiments));
+  }
+
+  handlePromptActions({ action, item }: TableActionEvent<ModelPermissionModel>) {
+    const actionMapping: {
+      [key: string]: (model: ModelPermissionModel) => void;
+    } = {
+      [TableActionEnum.EDIT]: this.handleEditUserPermissionForPrompt.bind(this),
+      [TableActionEnum.REVOKE]: this.revokePromptPermissionForUser.bind(this),
+    };
+    const selectedAction = actionMapping[action.action];
+    if (selectedAction) {
+      selectedAction(item);
+    }
+  }
+  handleEditUserPermissionForPrompt({
+    name,
+    permission,
+    type,
+  }: ModelPermissionModel) {
+    this.permissionModalService
+      .openEditPermissionsModal(name, this.userId, permission)
+      .pipe(
+        filter(Boolean),
+        switchMap((permission) => {
+          const permissionData = {
+            name,
+            permission,
+            username: this.userId,
+          };
+          console.log("permissionData", permissionData);
+          console.log("type", type);
+          return type === PermissionTypeEnum.FALLBACK
+            ? this.permissionDataService.createPromptPermission(permissionData)
+            : this.permissionDataService.updatePromptPermission(permissionData);
+        }),
+        tap(() =>
+          this.snackBarService.openSnackBar("Permissions updated successfully"),
+        ),
+        switchMap(() => this.promptDataService.getPromptsForUser(this.userId)),
+      )
+      .subscribe((models) => (this.promptsDataSource = models));
+  }
+  revokePromptPermissionForUser({ name, type }: ModelPermissionModel) {
+    if (type !== PermissionTypeEnum.USER) {
+      this.snackBarService.openSnackBar("Nothing to reset");
+      return;
+    }
+    this.permissionDataService
+      .deletePromptPermission({ name: name, username: this.userId })
+      .pipe(
+        tap(() =>
+          this.snackBarService.openSnackBar("Permission revoked successfully"),
+        ),
+        switchMap(() => this.promptDataService.getPromptsForUser(this.userId)
+        ),
+      )
+      .subscribe((models) => (this.promptsDataSource = models));
   }
 
   handleTabSelection(index: number) {

@@ -73,7 +73,7 @@ export class ExperimentPermissionDetailsComponent implements OnInit {
           this.permissionDataService.updateExperimentPermission({
             experiment_id: this.experimentId,
             permission,
-            user_name: event.username,
+            username: event.username,
           }),
         ),
         tap(() =>
@@ -106,7 +106,7 @@ export class ExperimentPermissionDetailsComponent implements OnInit {
     this.permissionDataService
       .deleteExperimentPermission({
         experiment_id: this.experimentId,
-        user_name: item.username,
+        username: item.username,
       })
       .pipe(
         tap(() =>
@@ -139,7 +139,37 @@ export class ExperimentPermissionDetailsComponent implements OnInit {
           this.permissionDataService.createExperimentPermission({
             experiment_id: this.experimentId,
             permission: permission,
-            user_name: user,
+            username: user,
+          }),
+        ),
+        switchMap(() => this.loadUsersForExperiment(this.experimentId)),
+      )
+      .subscribe((users) => (this.userDataSource = users));
+  }
+
+  addServiceAccount(){
+    this.userDataService
+      .getAllServiceUsers()
+      .pipe(
+        map(({ users }) =>
+          users.filter(
+            (user) => !this.userDataSource.some((u) => u.username === user),
+          ),
+        ),
+        switchMap((users) =>
+          this.dialog
+            .open<
+              GrantUserPermissionsComponent,
+              GrantUserPermissionsModel
+            >(GrantUserPermissionsComponent, { data: { users } })
+            .afterClosed(),
+        ),
+        filter(Boolean),
+        switchMap(({ user, permission }) =>
+          this.permissionDataService.createExperimentPermission({
+            experiment_id: this.experimentId,
+            permission: permission,
+            username: user,
           }),
         ),
         switchMap(() => this.loadUsersForExperiment(this.experimentId)),

@@ -15,7 +15,7 @@ import {
   GrantPermissionModalData,
   GrantPermissionModalResult,
   WithNameAndId,
-} from "../components/modals/grant-permission-modal/grant-permission-modal.inteface";
+} from "../components/modals/grant-permission-modal/grant-permission-modal.interface";
 
 @Injectable({
   providedIn: "root",

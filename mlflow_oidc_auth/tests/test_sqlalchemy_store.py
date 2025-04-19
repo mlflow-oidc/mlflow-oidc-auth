@@ -597,3 +597,103 @@ class TestSqlAlchemyStore:
         mock_get_experiment_group_permission.assert_called()
         mock_get_groups_for_user.assert_called_once_with("test_user")
         mock_compare_permissions.assert_called()
+
+    def test_update_registered_model_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value="updated_perm"))
+        store._get_registered_model_permission = MagicMock(return_value=mock_perm)
+        permission = store.update_registered_model_permission("model", "test_user", "EDIT")
+        assert permission == "updated_perm"
+        assert mock_perm.permission == "EDIT"
+
+    def test_delete_registered_model_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock(flush=MagicMock(), delete=MagicMock())
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_perm = MagicMock()
+        store._get_registered_model_permission = MagicMock(return_value=mock_perm)
+        store.delete_registered_model_permission("model", "test_user")
+        store._get_registered_model_permission.assert_called_once_with(mock_session, "model", "test_user")
+        mock_session.delete.assert_called_once_with(mock_perm)
+        mock_session.flush.assert_called_once()
+
+    def test_delete_group_model_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perm = MagicMock()
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_perm
+        store.delete_group_model_permission("group_name", "model")
+        mock_session.delete.assert_called_once_with(mock_perm)
+        mock_session.flush.assert_called_once()
+
+    def test_update_group_model_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value="updated_perm"))
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_perm
+        permission = store.update_group_model_permission("group_name", "model", "EDIT")
+        assert permission == "updated_perm"
+        assert mock_perm.permission == "EDIT"
+        mock_session.flush.assert_called_once()
+
+    def test_get_group_prompts(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perms = [
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
+            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
+        ]
+        mock_session.query.return_value.filter.return_value.all.return_value = mock_perms
+        permissions = store.get_group_prompts("group_name")
+        assert permissions == ["perm1", "perm2"]
+        mock_session.query.assert_called()
+        mock_session.query.return_value.filter.assert_called()
+
+    def test_create_group_prompt_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        expected_perm = RegisteredModelPermission(name="model", permission="READ")
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value=expected_perm))
+        mock_session.add.return_value = mock_perm
+        permission = store.create_group_prompt_permission("group_name", "model", "READ")
+        assert permission.name == expected_perm.name
+        assert permission.permission == expected_perm.permission
+
+    def test_delete_group_prompt_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perm = MagicMock()
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_perm
+        store.delete_group_prompt_permission("group_name", "model")
+        mock_session.delete.assert_called_once_with(mock_perm)
+        mock_session.flush.assert_called_once()
+
+    def test_update_group_prompt_permission(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_group = MagicMock(id=1)
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_group
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value="updated_perm"))
+        mock_session.query.return_value.filter.return_value.one.return_value = mock_perm
+        permission = store.update_group_prompt_permission("group_name", "model", "EDIT")
+        assert permission == "updated_perm"
+        assert mock_perm.permission == "EDIT"
+        mock_session.flush.assert_called_once()

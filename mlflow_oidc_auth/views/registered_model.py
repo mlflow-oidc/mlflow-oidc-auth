@@ -16,7 +16,9 @@ from mlflow_oidc_auth.utils import (
 @check_registered_model_permission
 def create_registered_model_permission():
     store.create_registered_model_permission(
-        get_request_param("name"), get_request_param("user_name"), get_request_param("permission")
+        name=get_request_param("name"),
+        username=get_request_param("username"),
+        permission=get_request_param("permission"),
     )
     return jsonify({"message": "Model permission has been created."})
 
@@ -24,7 +26,7 @@ def create_registered_model_permission():
 @catch_mlflow_exception
 @check_registered_model_permission
 def get_registered_model_permission():
-    rmp = store.get_registered_model_permission(get_request_param("name"), get_request_param("user_name"))
+    rmp = store.get_registered_model_permission(get_request_param("name"), get_request_param("username"))
     return make_response({"registered_model_permission": rmp.to_json()})
 
 
@@ -32,7 +34,9 @@ def get_registered_model_permission():
 @check_registered_model_permission
 def update_registered_model_permission():
     store.update_registered_model_permission(
-        get_request_param("name"), get_request_param("user_name"), get_request_param("permission")
+        name=get_request_param("name"),
+        username=get_request_param("username"),
+        permission=get_request_param("permission"),
     )
     return make_response(jsonify({"message": "Model permission has been changed"}))
 
@@ -40,7 +44,7 @@ def update_registered_model_permission():
 @catch_mlflow_exception
 @check_registered_model_permission
 def delete_registered_model_permission():
-    store.delete_registered_model_permission(get_request_param("name"), get_request_param("user_name"))
+    store.delete_registered_model_permission(get_request_param("name"), get_request_param("username"))
     return make_response(jsonify({"message": "Model permission has been deleted"}))
 
 
@@ -72,7 +76,7 @@ def get_registered_model_users(model_name):
         current_user = store.get_user(get_username())
         if not can_manage_registered_model(model_name, current_user.username):
             return make_forbidden_response()
-    list_users = store.list_users()
+    list_users = store.list_users(all=True)
     # Filter users who are associated with the given model
     users = []
     for user in list_users:
@@ -83,5 +87,11 @@ def get_registered_model_users(model_name):
             else {}
         )
         if model_name in user_models:
-            users.append({"username": user.username, "permission": user_models[model_name]})
+            users.append(
+                {
+                    "username": user.username,
+                    "permission": user_models[model_name],
+                    "kind": "user" if not user.is_service_account else "service-account",
+                }
+            )
     return jsonify(users)
