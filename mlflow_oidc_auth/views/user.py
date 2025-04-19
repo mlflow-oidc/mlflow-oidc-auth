@@ -42,9 +42,24 @@ def delete_user():
 
 @catch_mlflow_exception
 def create_access_token():
+    username = get_username()
+    user = store.get_user(username)
+    if user is None:
+        return jsonify({"message": f"User {username} not found"}), 404
     new_token = generate_token()
-    store.update_user(get_username(), new_token)
-    return jsonify({"token": new_token})
+    store.update_user(username, new_token)
+    return jsonify({"token": new_token, "message": f"Token for {username} has been created"})
+
+
+@catch_mlflow_exception
+def create_user_access_token():
+    username = get_request_param("username")
+    user = store.get_user(username)
+    if user is None:
+        return jsonify({"message": f"User {username} not found"}), 404
+    new_token = generate_token()
+    store.update_user(username, new_token)
+    return jsonify({"token": new_token, "message": f"Token for {username} has been created"})
 
 
 @catch_mlflow_exception

@@ -12,9 +12,9 @@ import { USER_ACTIONS, USER_SERVICE_ACCOUNT_ACTIONS, USER_COLUMN_CONFIG } from "
 import { AdminPageRoutesEnum } from "../../../config";
 import { CreateServiceAccountService } from "src/app/shared/services/create-service-account.service";
 import { UserModel } from "src/app/shared/interfaces/user-data.interface";
-// interface UserModel {
-//   user: string;
-// }
+import { MatDialog } from "@angular/material/dialog";
+import { AccessKeyModalComponent } from "src/app/shared/components";
+import { AccessKeyDialogData } from "src/app/shared/components/modals/access-key-modal/access-key-modal.interface";
 
 @Component({
   selector: "ml-user-permissions",
@@ -36,9 +36,10 @@ export class UserPermissionsComponent implements OnInit {
   constructor(
     private readonly router: Router,
     private readonly route: ActivatedRoute,
+    private readonly dialog: MatDialog,
     private readonly userDataService: UserDataService,
     private readonly createServiceAccountService: CreateServiceAccountService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.isLoading = true;
@@ -69,10 +70,11 @@ export class UserPermissionsComponent implements OnInit {
     }
   }
 
-  handleServiceAccountAction({action, item}: TableActionEvent<UserModel>) {
+  handleServiceAccountAction({ action, item }: TableActionEvent<UserModel>) {
     const actionHandlers: { [key: string]: (user: UserModel) => void } = {
       [TableActionEnum.EDIT]: this.handleUserEdit.bind(this),
       [TableActionEnum.DELETE]: this.handleServiceAccountDelete.bind(this),
+      [TableActionEnum.GET_ACCESS_KEY]: this.handleAccessKey.bind(this),
     };
     const selectedAction = actionHandlers[action.action];
     if (selectedAction) {
@@ -87,7 +89,7 @@ export class UserPermissionsComponent implements OnInit {
   }
 
   handleServiceAccountDelete({ username }: UserModel): void {
-    this.userDataService.deleteUser({username}).subscribe(() => {
+    this.userDataService.deleteUser({ username }).subscribe(() => {
       this.isServiceAccountsLoading = true;
       this.userDataService
         .getAllServiceUsers()
@@ -109,12 +111,22 @@ export class UserPermissionsComponent implements OnInit {
               .getAllServiceUsers()
               .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
               .subscribe(
-          ({ users }) =>
-            (this.serviceAccountsDataSource = users.map((username) => ({ username }))),
+                ({ users }) =>
+                  (this.serviceAccountsDataSource = users.map((username) => ({ username }))),
               );
           }
         );
       }
+    });
+  }
+
+  handleAccessKey({ username }: UserModel): void {
+    this.userDataService.getUserAccessKey(username).subscribe(({ token }) => {
+      const data = { token };
+      this.dialog.open<AccessKeyModalComponent, AccessKeyDialogData>(
+        AccessKeyModalComponent,
+        { data },
+      );
     });
   }
 }
