@@ -117,6 +117,14 @@ class TestSqlAlchemyStore:
         assert retrieved_user.is_admin == True
         assert retrieved_user.password_hash == "hashed_password"
 
+    @patch("mlflow_oidc_auth.sqlalchemy_store.generate_password_hash", return_value="hashed_password")
+    def test_update_user_is_service_account(self, _generate_password_hash, store: SqlAlchemyStore):
+        # Cover update_user with is_service_account set
+        retrieved_user = MagicMock(is_admin=PropertyMock(), password_hash=PropertyMock(), is_service_account=PropertyMock())
+        store._get_user = MagicMock(return_value=retrieved_user)
+        store.update_user("test_user", is_service_account=True)
+        assert retrieved_user.is_service_account == True
+
     def test_delete_user(self, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock(flush=MagicMock(), delete=MagicMock())
@@ -130,6 +138,17 @@ class TestSqlAlchemyStore:
     def test_create_experiment_permission_validates_permission(self, store: SqlAlchemyStore):
         with pytest.raises(MlflowException):
             store.create_experiment_permission("1", "test_user", "INVALID_PERMISSION")
+
+    def test_create_experiment_permission_integrity_error(self, store: SqlAlchemyStore):
+        # Cover IntegrityError in create_experiment_permission
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock(flush=MagicMock(), add=MagicMock())
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store._get_user = MagicMock(return_value=MagicMock(id=1))
+        mock_session.add.side_effect = IntegrityError("", {}, Exception())
+        with pytest.raises(MlflowException) as exc_info:
+            store.create_experiment_permission("1", "test_user", "READ")
+        assert "already exists" in str(exc_info.value)
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
     def test_create_experiment_permission(self, mock_get_user, store: SqlAlchemyStore):
@@ -145,6 +164,39 @@ class TestSqlAlchemyStore:
         assert permission.experiment_id == "1"
         assert permission.permission == "READ"
         assert permission.user_id == 1
+
+    def test_get_experiment_permission_no_result(self, store: SqlAlchemyStore):
+        # Cover NoResultFound in _get_experiment_permission
+        session = MagicMock()
+        store._get_user = MagicMock(return_value=MagicMock(id=1))
+        session.query.return_value.filter.return_value.one.side_effect = NoResultFound()
+        with pytest.raises(MlflowException) as exc_info:
+            store._get_experiment_permission(session, "1", "test_user")
+        assert "not found" in str(exc_info.value)
+
+    def test_get_experiment_permission_multiple_results(self, store: SqlAlchemyStore):
+        # Cover MultipleResultsFound in _get_experiment_permission
+        session = MagicMock()
+        store._get_user = MagicMock(return_value=MagicMock(id=1))
+        session.query.return_value.filter.return_value.one.side_effect = MultipleResultsFound()
+        with pytest.raises(MlflowException) as exc_info:
+            store._get_experiment_permission(session, "1", "test_user")
+        assert "multiple experiment permissions" in str(exc_info.value)
+
+    def test_get_experiment_group_permission_no_result(self, store: SqlAlchemyStore):
+        # Cover NoResultFound in _get_experiment_group_permission
+        session = MagicMock()
+        session.query.return_value.filter.return_value.one.side_effect = NoResultFound()
+        result = store._get_experiment_group_permission(session, "1", "group_name")
+        assert result is None
+
+    def test_get_experiment_group_permission_multiple_results(self, store: SqlAlchemyStore):
+        # Cover MultipleResultsFound in _get_experiment_group_permission
+        session = MagicMock()
+        session.query.return_value.filter.return_value.one.side_effect = MultipleResultsFound()
+        with pytest.raises(MlflowException) as exc_info:
+            store._get_experiment_group_permission(session, "1", "group_name")
+        assert "multiple experiment permissions" in str(exc_info.value)
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
     def test_list_group_experiment_permissions(self, mock_get_user, store: SqlAlchemyStore):
@@ -183,6 +235,16 @@ class TestSqlAlchemyStore:
         assert permissions == ["perm1", "perm2"]
         mock_session.query.assert_called()
         mock_session.query.return_value.filter.assert_called()
+
+    def test_get_experiment_permission_method(self, store: SqlAlchemyStore):
+        # Cover get_experiment_permission (lines 193-194)
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value="perm"))
+        store._get_experiment_permission = MagicMock(return_value=mock_perm)
+        result = store.get_experiment_permission("1", "test_user")
+        assert result == "perm"
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.SqlAlchemyStore._get_user")
     def test_list_group_id_experiment_permissions(self, mock_get_user, store: SqlAlchemyStore):
@@ -616,6 +678,43 @@ class TestSqlAlchemyStore:
         mock_get_groups_for_user.assert_called_once_with("test_user")
         mock_compare_permissions.assert_called()
 
+    def test_get_user_groups_experiment_permission_skips_none(self, store: SqlAlchemyStore):
+        # Cover lines 202-203: perms is None, continue
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store.get_groups_for_user = MagicMock(return_value=["group1", "group2"])
+        store._get_experiment_group_permission = MagicMock(
+            side_effect=[None, MagicMock(permission="READ", to_mlflow_entity=MagicMock(return_value="perm"))]
+        )
+        result = store.get_user_groups_experiment_permission("1", "test_user")
+        assert result == "perm"
+
+    def test_get_user_groups_experiment_permission_no_perms(self, store: SqlAlchemyStore):
+        # Cover lines 216-224: user_perms is None, raise
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store.get_groups_for_user = MagicMock(return_value=["group1"])
+        store._get_experiment_group_permission = MagicMock(return_value=None)
+        with pytest.raises(MlflowException) as exc_info:
+            store.get_user_groups_experiment_permission("1", "test_user")
+        assert "not found" in str(exc_info.value)
+
+    def test_get_user_groups_experiment_permission_attribute_error(self, store: SqlAlchemyStore):
+        # Cover lines 216-224: AttributeError branch
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store.get_groups_for_user = MagicMock(return_value=["group1"])
+        # Simulate user_perms is not None, but .to_mlflow_entity raises AttributeError
+        bad_perm = MagicMock()
+        bad_perm.to_mlflow_entity.side_effect = AttributeError()
+        store._get_experiment_group_permission = MagicMock(return_value=bad_perm)
+        with pytest.raises(MlflowException) as exc_info:
+            store.get_user_groups_experiment_permission("1", "test_user")
+        assert "not found" in str(exc_info.value)
+
     def test_update_registered_model_permission(self, store: SqlAlchemyStore):
         store.ManagedSessionMaker = MagicMock()
         mock_session = MagicMock()
@@ -744,3 +843,122 @@ class TestSqlAlchemyStore:
         mock_session.query.return_value.filter.return_value.all.return_value = [mock_user1]
         users = store.list_users(is_service_account=True, all=False)
         assert users == ["user1"]
+
+    def test_create_registered_model_permission_success(self, store: SqlAlchemyStore):
+        # Cover lines 268-277: successful creation
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock(flush=MagicMock(), add=MagicMock())
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store._get_user = MagicMock(return_value=MagicMock(id=1))
+        mock_perm = MagicMock(to_mlflow_entity=MagicMock(return_value="perm"))
+        with patch("mlflow_oidc_auth.sqlalchemy_store.SqlRegisteredModelPermission", return_value=mock_perm):
+            result = store.create_registered_model_permission("model", "user", "READ")
+            assert result == "perm"
+            mock_session.add.assert_called_once()
+            mock_session.flush.assert_called_once()
+
+    def test_create_registered_model_permission_integrity_error(self, store: SqlAlchemyStore):
+        # Cover lines 268-277: IntegrityError
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock(flush=MagicMock(), add=MagicMock())
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store._get_user = MagicMock(return_value=MagicMock(id=1))
+        mock_session.add.side_effect = IntegrityError("", {"name": "model"}, Exception())
+        with patch("mlflow_oidc_auth.sqlalchemy_store.SqlRegisteredModelPermission"):
+            with pytest.raises(MlflowException) as exc_info:
+                store.create_registered_model_permission("model", "user", "READ")
+            assert "already exists" in str(exc_info.value)
+
+    def test_get_registered_model_permission_no_result(self, store: SqlAlchemyStore):
+        # Cover lines 293-295: NoResultFound
+        session = MagicMock()
+        store._get_user = MagicMock(return_value=MagicMock(id=1))
+        session.query.return_value.filter.return_value.one.side_effect = NoResultFound()
+        with pytest.raises(MlflowException) as exc_info:
+            store._get_registered_model_permission(session, "model", "user")
+        assert "not found" in str(exc_info.value)
+
+    def test_get_registered_model_group_permission_success(self, store: SqlAlchemyStore):
+        # Cover lines 307-309: success
+        session = MagicMock()
+        mock_group = MagicMock(id=1)
+        session.query.return_value.filter.return_value.one.side_effect = [mock_group, MagicMock()]
+        result = store._get_registered_model_group_permission(session, "model", "group")
+        assert result is not None
+
+    def test_get_registered_model_group_permission_no_result(self, store: SqlAlchemyStore):
+        # Cover lines 317-320: NoResultFound returns None
+        session = MagicMock()
+        session.query.return_value.filter.return_value.one.side_effect = NoResultFound()
+        result = store._get_registered_model_group_permission(session, "model", "group")
+        assert result is None
+
+    def test_get_registered_model_group_permission_multiple_results(self, store: SqlAlchemyStore):
+        # Cover lines 317-320: MultipleResultsFound raises
+        session = MagicMock()
+        session.query.return_value.filter.return_value.one.side_effect = MultipleResultsFound()
+        with pytest.raises(MlflowException) as exc_info:
+            store._get_registered_model_group_permission(session, "model", "group")
+        assert "multiple registered model permissions" in str(exc_info.value)
+
+    def test_get_user_groups_registered_model_permission_perms_none(self, store: SqlAlchemyStore):
+        # Cover lines 335-336: perms is None, continue
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store.get_groups_for_user = MagicMock(return_value=["group1", "group2"])
+        store._get_registered_model_group_permission = MagicMock(
+            side_effect=[None, MagicMock(permission="READ", to_mlflow_entity=MagicMock(return_value="perm"))]
+        )
+        result = store.get_user_groups_registered_model_permission("model", "user")
+        assert result == "perm"
+
+    def test_get_user_groups_registered_model_permission_compare_permissions_attribute_error(self, store: SqlAlchemyStore):
+        # Cover lines 343-344: compare_permissions raises AttributeError
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store.get_groups_for_user = MagicMock(return_value=["group1", "group2"])
+        perms1 = MagicMock(permission="READ")
+        perms2 = MagicMock(permission="EDIT")
+        store._get_registered_model_group_permission = MagicMock(side_effect=[perms1, perms2])
+        with patch("mlflow_oidc_auth.sqlalchemy_store.compare_permissions", side_effect=AttributeError):
+            result = store.get_user_groups_registered_model_permission("model", "user")
+            assert result is not None
+
+    def test_get_user_groups_registered_model_permission_user_perms_none(self, store: SqlAlchemyStore):
+        # Cover lines 348-349: user_perms is None, should raise
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store.get_groups_for_user = MagicMock(return_value=["group1"])
+        store._get_registered_model_group_permission = MagicMock(return_value=None)
+        with pytest.raises(MlflowException) as exc_info:
+            store.get_user_groups_registered_model_permission("model", "user")
+        assert "not found" in str(exc_info.value)
+
+    def test_get_user_groups_registered_model_permission_to_mlflow_entity_attribute_error(self, store: SqlAlchemyStore):
+        # Cover lines 353-354: user_perms.to_mlflow_entity raises AttributeError
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store.get_groups_for_user = MagicMock(return_value=["group1"])
+        bad_perm = MagicMock()
+        bad_perm.to_mlflow_entity.side_effect = AttributeError()
+        store._get_registered_model_group_permission = MagicMock(return_value=bad_perm)
+        with pytest.raises(MlflowException) as exc_info:
+            store.get_user_groups_registered_model_permission("model", "user")
+        assert "not found" in str(exc_info.value)
+
+    def test_wipe_registered_model_permissions_deletes_all(self, store: SqlAlchemyStore):
+        # Cover lines 392-393: for p in perms: session.delete(p)
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        mock_perm1 = MagicMock()
+        mock_perm2 = MagicMock()
+        mock_session.query.return_value.filter.return_value.all.return_value = [mock_perm1, mock_perm2]
+        store.wipe_registered_model_permissions("model")
+        mock_session.delete.assert_any_call(mock_perm1)
+        mock_session.delete.assert_any_call(mock_perm2)
+        mock_session.flush.assert_called_once()
