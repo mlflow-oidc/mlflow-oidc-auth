@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from mlflow.exceptions import MlflowException
-from sqlalchemy.exc import IntegrityError, NoResultFound
+from sqlalchemy.exc import IntegrityError, NoResultFound, MultipleResultsFound
 
 from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupPermission, SqlRegisteredModelPermission
 from mlflow_oidc_auth.entities import ExperimentPermission, RegisteredModelPermission
@@ -39,6 +39,14 @@ class TestSqlAlchemyStore:
         mock_check_password_hash.assert_called_once()
         assert mock_get_user.call_args[0][1] == "test_user"
         assert auth_result is False
+
+    def test_authenticate_user_mlflow_exception(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        store._get_user = MagicMock(side_effect=MlflowException("User not found"))
+        result = store.authenticate_user("missing_user", "password")
+        assert result is False
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.generate_password_hash", return_value="hashed_password")
     def test_create_user(self, generate_password_hash, store: SqlAlchemyStore):
@@ -90,6 +98,16 @@ class TestSqlAlchemyStore:
 
         with pytest.raises(MlflowException):
             store.get_user("non_existent_user")
+
+    def test_get_user_multiple_results_found(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        # Simulate MultipleResultsFound when querying for user
+        mock_session.query.return_value.filter.return_value.one.side_effect = MultipleResultsFound()
+        with pytest.raises(MlflowException) as exc_info:
+            store._get_user(mock_session, "duplicate_user")
+        assert "Found multiple users with username=duplicate_user" in str(exc_info.value)
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.generate_password_hash", return_value="hashed_password")
     def test_update_user(self, _generate_password_hash, store: SqlAlchemyStore):
@@ -697,3 +715,32 @@ class TestSqlAlchemyStore:
         assert permission == "updated_perm"
         assert mock_perm.permission == "EDIT"
         mock_session.flush.assert_called_once()
+
+    def test_has_user(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        # Simulate user exists
+        mock_session.query.return_value.filter.return_value.first.return_value = MagicMock()
+        assert store.has_user("existing_user") is True
+        # Simulate user does not exist
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        assert store.has_user("missing_user") is False
+
+    def test_list_users(self, store: SqlAlchemyStore):
+        store.ManagedSessionMaker = MagicMock()
+        mock_session = MagicMock()
+        store.ManagedSessionMaker.return_value.__enter__.return_value = mock_session
+        # Mock user entities
+        mock_user1 = MagicMock()
+        mock_user2 = MagicMock()
+        mock_user1.to_mlflow_entity.return_value = "user1"
+        mock_user2.to_mlflow_entity.return_value = "user2"
+        # all=True branch
+        mock_session.query.return_value.all.return_value = [mock_user1, mock_user2]
+        users = store.list_users(all=True)
+        assert users == ["user1", "user2"]
+        # all=False branch
+        mock_session.query.return_value.filter.return_value.all.return_value = [mock_user1]
+        users = store.list_users(is_service_account=True, all=False)
+        assert users == ["user1"]
