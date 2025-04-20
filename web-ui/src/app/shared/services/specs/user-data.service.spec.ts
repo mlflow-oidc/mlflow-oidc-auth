@@ -103,4 +103,60 @@ describe("UserDataService", () => {
     expect(req.request.method).toBe("GET");
     req.flush(mockUsers);
   });
+
+  it("should return the user access key for a given username", () => {
+    const mockToken: TokenModel = { token: "mock-user-token" };
+    const userName = "testuser";
+
+    service.getUserAccessKey(userName).subscribe((token) => {
+      expect(token).toEqual(mockToken);
+    });
+
+    const req = httpMock.expectOne(API_URL.GET_ACCESS_TOKEN);
+    expect(req.request.method).toBe("PATCH");
+    expect(req.request.body).toEqual({ username: userName });
+    req.flush(mockToken);
+  });
+
+  it("should return all service users", () => {
+    const mockServiceUsers: AllUsersListModel = {
+      users: ["ServiceUser1", "ServiceUser2"],
+    };
+
+    service.getAllServiceUsers().subscribe((users) => {
+      expect(users).toEqual(mockServiceUsers);
+    });
+
+    const req = httpMock.expectOne(`${API_URL.GET_ALL_USERS}?service=true`);
+    expect(req.request.method).toBe("GET");
+    req.flush(mockServiceUsers);
+  });
+
+  it("should create a service account", () => {
+    const mockUser = { username: "service", password: "pass" };
+    const mockResponse = { ...mockUser, id: 123 };
+
+    service.createServiceAccount(mockUser as any).subscribe((user) => {
+      expect(user).toEqual(mockResponse);
+    });
+
+    const req = httpMock.expectOne(API_URL.CREATE_USER);
+    expect(req.request.method).toBe("POST");
+    expect(req.request.body).toEqual(mockUser);
+    req.flush(mockResponse);
+  });
+
+  it("should delete a user", () => {
+    const mockUser = { username: "deleteMe" };
+    const mockResponse = { ...mockUser, deleted: true };
+
+    service.deleteUser(mockUser as any).subscribe((user) => {
+      expect(user).toEqual(mockResponse);
+    });
+
+    const req = httpMock.expectOne(API_URL.DELETE_USER);
+    expect(req.request.method).toBe("DELETE");
+    expect(req.request.body).toEqual(mockUser);
+    req.flush(mockResponse);
+  });
 });
