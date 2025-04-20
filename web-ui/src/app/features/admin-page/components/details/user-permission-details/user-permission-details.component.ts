@@ -314,8 +314,6 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit {
             permission,
             username: this.userId,
           };
-          console.log("permissionData", permissionData);
-          console.log("type", type);
           return type === PermissionTypeEnum.FALLBACK
             ? this.permissionDataService.createPromptPermission(permissionData)
             : this.permissionDataService.updatePromptPermission(permissionData);
