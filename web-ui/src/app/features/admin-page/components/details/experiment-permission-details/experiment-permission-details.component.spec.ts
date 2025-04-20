@@ -12,10 +12,8 @@ import { Observable, of } from "rxjs";
 import { PermissionEnum } from "src/app/core/configs/permissions";
 import { jest } from '@jest/globals';
 import { ExperimentPermissionDetailsComponent } from "./experiment-permission-details.component";
+import { UserPermissionModel } from "src/app/shared/interfaces/experiments-data.interface";
 
-import {
-  UserPermissionModel,
-} from "src/app/shared/interfaces/experiments-data.interface";
 describe("ExperimentPermissionDetailsComponent", () => {
   let component: ExperimentPermissionDetailsComponent;
   let fixture: ComponentFixture<ExperimentPermissionDetailsComponent>;
