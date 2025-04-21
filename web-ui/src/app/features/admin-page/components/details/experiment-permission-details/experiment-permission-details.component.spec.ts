@@ -4,7 +4,6 @@ import { ComponentFixture, TestBed } from "@angular/core/testing";
 import { MatIconModule } from "@angular/material/icon";
 import { ActivatedRoute } from "@angular/router";
 import { RouterTestingModule } from "@angular/router/testing";
-import { MatDialog } from "@angular/material/dialog";
 import { ExperimentsDataService, PermissionDataService, SnackBarService, UserDataService } from "src/app/shared/services";
 import { PermissionModalService } from "src/app/shared/services/permission-modal.service";
 import { TableActionEnum } from "src/app/shared/components/table/table.config";
@@ -13,6 +12,7 @@ import { PermissionEnum } from "src/app/core/configs/permissions";
 import { jest } from '@jest/globals';
 import { ExperimentPermissionDetailsComponent } from "./experiment-permission-details.component";
 import { UserPermissionModel } from "src/app/shared/interfaces/experiments-data.interface";
+import { EntityEnum } from "src/app/core/configs/core";
 
 describe("ExperimentPermissionDetailsComponent", () => {
   let component: ExperimentPermissionDetailsComponent;
@@ -22,7 +22,6 @@ describe("ExperimentPermissionDetailsComponent", () => {
   let userDataService: jest.Mocked<UserDataService>;
   let permissionModalService: jest.Mocked<PermissionModalService>;
   let snackBarService: jest.Mocked<SnackBarService>;
-  let dialog: jest.Mocked<MatDialog>;
 
   beforeEach(async () => {
     experimentDataService = {
@@ -38,13 +37,11 @@ describe("ExperimentPermissionDetailsComponent", () => {
       getAllServiceUsers: jest.fn()
     } as any;
     permissionModalService = {
-      openEditPermissionsModal: jest.fn()
+      openEditPermissionsModal: jest.fn(),
+      openGrantPermissionModal: jest.fn(),
     } as any;
     snackBarService = {
       openSnackBar: jest.fn()
-    } as any;
-    dialog = {
-      open: jest.fn()
     } as any;
 
     await TestBed.configureTestingModule({
@@ -58,7 +55,6 @@ describe("ExperimentPermissionDetailsComponent", () => {
         { provide: UserDataService, useValue: userDataService },
         { provide: PermissionModalService, useValue: permissionModalService },
         { provide: SnackBarService, useValue: snackBarService },
-        { provide: MatDialog, useValue: dialog },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
@@ -125,28 +121,36 @@ describe("ExperimentPermissionDetailsComponent", () => {
 
   it('should add user', () => {
     userDataService.getAllUsers.mockReturnValue(of({ users: ['user1', 'user2'] }));
-    dialog.open.mockReturnValue({ afterClosed: () => of({ user: 'user2', permission: PermissionEnum.EDIT }) } as any);
+    permissionModalService.openGrantPermissionModal.mockReturnValue(of({ entity: { id: '0-user2', name: 'user2' }, permission: PermissionEnum.EDIT }));
     permissionDataService.createExperimentPermission.mockReturnValue(of('EDIT'));
     component.loadUsersForExperiment = jest.fn().mockReturnValue(of([{ username: 'user2', permission: PermissionEnum.EDIT } as UserPermissionModel])) as unknown as (experimentId: string) => Observable<UserPermissionModel[]>;
     component.experimentId = 'test-id';
     component.userDataSource = [{ username: 'user1', permission: PermissionEnum.READ }];
     component.addUser();
     expect(userDataService.getAllUsers).toHaveBeenCalled();
-    expect(dialog.open).toHaveBeenCalled();
+    expect(permissionModalService.openGrantPermissionModal).toHaveBeenCalledWith(
+      EntityEnum.USER,
+      [{ id: '0-user2', name: 'user2' }],
+      'test-id'
+    );
     expect(permissionDataService.createExperimentPermission).toHaveBeenCalledWith({ experiment_id: 'test-id', permission: PermissionEnum.EDIT, username: 'user2' });
     expect(component.loadUsersForExperiment).toHaveBeenCalledWith('test-id');
   });
 
   it('should add service account', () => {
     userDataService.getAllServiceUsers.mockReturnValue(of({ users: ['svc1', 'svc2'] }));
-    dialog.open.mockReturnValue({ afterClosed: () => of({ user: 'svc2', permission: PermissionEnum.READ }) } as any);
+    permissionModalService.openGrantPermissionModal.mockReturnValue(of({ entity: { id: '0-svc2', name: 'svc2' }, permission: PermissionEnum.READ }));
     permissionDataService.createExperimentPermission.mockReturnValue(of('READ'));
     component.loadUsersForExperiment = jest.fn().mockReturnValue(of([{ username: 'svc2', permission: PermissionEnum.READ } as UserPermissionModel])) as unknown as (experimentId: string) => Observable<UserPermissionModel[]>;
     component.experimentId = 'test-id';
     component.userDataSource = [{ username: 'svc1', permission: PermissionEnum.EDIT }];
     component.addServiceAccount();
     expect(userDataService.getAllServiceUsers).toHaveBeenCalled();
-    expect(dialog.open).toHaveBeenCalled();
+    expect(permissionModalService.openGrantPermissionModal).toHaveBeenCalledWith(
+      EntityEnum.SERVICE_ACCOUNT,
+      [{ id: '0-svc2', name: 'svc2' }],
+      'test-id'
+    );
     expect(permissionDataService.createExperimentPermission).toHaveBeenCalledWith({ experiment_id: 'test-id', permission: PermissionEnum.READ, username: 'svc2' });
     expect(component.loadUsersForExperiment).toHaveBeenCalledWith('test-id');
   });

@@ -100,22 +100,16 @@ export class ModelPermissionDetailsComponent implements OnInit {
     return this.modelDataService.getUsersForModel(modelId);
   }
 
-  addUser() {
-    this.userDataService
-      .getAllUsers()
+  private handleAddEntity(users: string[], entity: EntityEnum) {
+    const filteredUsers = users.filter(
+      (user: string) => !this.userDataSource.some((u) => u.username === user),
+    );
+    this.permissionModalService.openGrantPermissionModal(
+      entity,
+      filteredUsers.map((user, index) => ({ id: index + user, name: user })),
+      this.modelId,
+    )
       .pipe(
-        map(({ users }) =>
-          users.filter(
-            (user) => !this.userDataSource.some((u) => u.username === user),
-          ),
-        ),
-        switchMap((users) =>
-          this.permissionModalService.openGrantPermissionModal(
-            EntityEnum.MODEL,
-            users.map((user, index) => ({ id: index + user, name: user })),
-            this.modelId,
-          ),
-        ),
         filter(Boolean),
         switchMap(({ entity, permission }) =>
           this.permissionDataService.createModelPermission({
@@ -126,39 +120,20 @@ export class ModelPermissionDetailsComponent implements OnInit {
         ),
         switchMap(() => this.loadUsersForModel(this.modelId)),
       )
-      .subscribe((users) => {
+      .subscribe((users: ModelUserListModel[]) => {
         this.userDataSource = users;
       });
   }
 
+  addUser() {
+    this.userDataService.getAllUsers().pipe(
+      map(({ users }) => users),
+    ).subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.USER));
+  }
+
   addServiceAccount() {
-    this.userDataService
-      .getAllServiceUsers()
-      .pipe(
-        map(({ users }) =>
-          users.filter(
-            (user) => !this.userDataSource.some((u) => u.username === user),
-          ),
-        ),
-        switchMap((users) =>
-          this.permissionModalService.openGrantPermissionModal(
-            EntityEnum.MODEL,
-            users.map((user, index) => ({ id: index + user, name: user })),
-            this.modelId,
-          ),
-        ),
-        filter(Boolean),
-        switchMap(({ entity, permission }) =>
-          this.permissionDataService.createModelPermission({
-            name: this.modelId,
-            permission: permission,
-            username: entity.name,
-          }),
-        ),
-        switchMap(() => this.loadUsersForModel(this.modelId)),
-      )
-      .subscribe((users) => {
-        this.userDataSource = users;
-      });
+    this.userDataService.getAllServiceUsers().pipe(
+      map(({ users }) => users),
+    ).subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.SERVICE_ACCOUNT));
   }
 }

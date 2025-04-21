@@ -8,6 +8,8 @@ export enum EntityEnum {
   MODEL = "model",
   GROUP = "group",
   PROMPT = "prompt",
+  USER = "user",
+  SERVICE_ACCOUNT = "service account",
 }
 
 export enum RoutePath {

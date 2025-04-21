@@ -1,5 +1,4 @@
 import { Component, OnInit } from "@angular/core";
-import { MatDialog } from "@angular/material/dialog";
 import { ActivatedRoute } from "@angular/router";
 
 import { filter, map, switchMap, tap } from "rxjs";
@@ -24,6 +23,7 @@ import {
   COLUMN_CONFIG,
   TABLE_ACTIONS,
 } from "./experiment-permission-details.config";
+import { EntityEnum } from "src/app/core/configs/core";
 
 interface ExperimentModel {
   permission: PermissionEnum;
@@ -43,7 +43,6 @@ export class ExperimentPermissionDetailsComponent implements OnInit {
   userDataSource: ExperimentModel[] = [];
 
   constructor(
-    private readonly dialog: MatDialog,
     private readonly experimentDataService: ExperimentsDataService,
     private readonly permissionDataService: PermissionDataService,
     private readonly userDataService: UserDataService,
@@ -117,64 +116,41 @@ export class ExperimentPermissionDetailsComponent implements OnInit {
       .subscribe((users) => (this.userDataSource = users));
   }
 
-  addUser() {
-    this.userDataService
-      .getAllUsers()
+  private handleAddEntity(users: string[], entity: EntityEnum) {
+    const filteredUsers = users.filter(
+      (user: string) => !this.userDataSource.some((u) => u.username === user),
+    );
+    this.permissionModalService.openGrantPermissionModal(
+      entity,
+      filteredUsers.map((user, index) => ({ id: `${index}-${user}`, name: user })),
+      this.experimentId,
+    )
       .pipe(
-        map(({ users }) =>
-          users.filter(
-            (user) => !this.userDataSource.some((u) => u.username === user),
-          ),
-        ),
-        switchMap((users) =>
-          this.dialog
-            .open<
-              GrantUserPermissionsComponent,
-              GrantUserPermissionsModel
-            >(GrantUserPermissionsComponent, { data: { users } })
-            .afterClosed(),
-        ),
         filter(Boolean),
-        switchMap(({ user, permission }) =>
+        switchMap(({ entity, permission }) =>
           this.permissionDataService.createExperimentPermission({
             experiment_id: this.experimentId,
             permission: permission,
-            username: user,
+            username: entity.name,
           }),
         ),
         switchMap(() => this.loadUsersForExperiment(this.experimentId)),
       )
-      .subscribe((users) => (this.userDataSource = users));
+      .subscribe((users: ExperimentModel[]) => {
+        this.userDataSource = users;
+      });
   }
 
-  addServiceAccount(){
-    this.userDataService
-      .getAllServiceUsers()
-      .pipe(
-        map(({ users }) =>
-          users.filter(
-            (user) => !this.userDataSource.some((u) => u.username === user),
-          ),
-        ),
-        switchMap((users) =>
-          this.dialog
-            .open<
-              GrantUserPermissionsComponent,
-              GrantUserPermissionsModel
-            >(GrantUserPermissionsComponent, { data: { users } })
-            .afterClosed(),
-        ),
-        filter(Boolean),
-        switchMap(({ user, permission }) =>
-          this.permissionDataService.createExperimentPermission({
-            experiment_id: this.experimentId,
-            permission: permission,
-            username: user,
-          }),
-        ),
-        switchMap(() => this.loadUsersForExperiment(this.experimentId)),
-      )
-      .subscribe((users) => (this.userDataSource = users));
+  addUser() {
+    this.userDataService.getAllUsers().pipe(
+      map(({ users }) => users),
+    ).subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.USER));
+  }
+
+  addServiceAccount() {
+    this.userDataService.getAllServiceUsers().pipe(
+      map(({ users }) => users),
+    ).subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.SERVICE_ACCOUNT));
   }
 
   loadUsersForExperiment(experimentId: string) {

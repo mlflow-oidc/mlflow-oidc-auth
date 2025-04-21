@@ -134,7 +134,7 @@ describe("ModelPermissionDetailsComponent", () => {
     component.userDataSource = [{ username: "user1", permission: PermissionEnum.READ }];
     component.addUser();
     expect(userDataService.getAllUsers).toHaveBeenCalled();
-    expect(permissionModalService.openGrantPermissionModal).toHaveBeenCalledWith(EntityEnum.MODEL, [{ id: "0user2", name: "user2" }], "test-id");
+    expect(permissionModalService.openGrantPermissionModal).toHaveBeenCalledWith(EntityEnum.USER, [{ id: "0user2", name: "user2" }], "test-id");
     expect(permissionDataService.createModelPermission).toHaveBeenCalledWith({ name: "test-id", permission: PermissionEnum.EDIT, username: "user2" });
     expect(modelDataService.getUsersForModel).toHaveBeenCalledWith("test-id");
   });
@@ -148,7 +148,7 @@ describe("ModelPermissionDetailsComponent", () => {
     component.userDataSource = [{ username: "svc1", permission: PermissionEnum.EDIT }];
     component.addServiceAccount();
     expect(userDataService.getAllServiceUsers).toHaveBeenCalled();
-    expect(permissionModalService.openGrantPermissionModal).toHaveBeenCalledWith(EntityEnum.MODEL, [{ id: "0svc2", name: "svc2" }], "test-id");
+    expect(permissionModalService.openGrantPermissionModal).toHaveBeenCalledWith(EntityEnum.SERVICE_ACCOUNT, [{ id: "0svc2", name: "svc2" }], "test-id");
     expect(permissionDataService.createModelPermission).toHaveBeenCalledWith({ name: "test-id", permission: PermissionEnum.READ, username: "svc2" });
     expect(modelDataService.getUsersForModel).toHaveBeenCalledWith("test-id");
   });

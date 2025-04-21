@@ -101,22 +101,16 @@ export class PromptPermissionDetailsComponent implements OnInit {
     return this.promptDataService.getUsersForPrompt(promptId);
   }
 
-  addUser() {
-    this.userDataService
-      .getAllUsers()
+  private handleAddEntity(users: string[], entity: EntityEnum) {
+    const filteredUsers = users.filter(
+      (user) => !this.userDataSource.some((u) => u.username === user),
+    );
+    this.permissionModalService.openGrantPermissionModal(
+      entity,
+      filteredUsers.map((user, index) => ({ id: index + user, name: user })),
+      this.promptId,
+    )
       .pipe(
-        map(({ users }) =>
-          users.filter(
-            (user) => !this.userDataSource.some((u) => u.username === user),
-          ),
-        ),
-        switchMap((users) =>
-          this.permissionModalService.openGrantPermissionModal(
-            EntityEnum.MODEL,
-            users.map((user, index) => ({ id: index + user, name: user })),
-            this.promptId,
-          ),
-        ),
         filter(Boolean),
         switchMap(({ entity, permission }) =>
           this.permissionDataService.createPromptPermission({
@@ -131,35 +125,17 @@ export class PromptPermissionDetailsComponent implements OnInit {
         this.userDataSource = users;
       });
   }
+
+  addUser() {
+    this.userDataService.getAllUsers().pipe(
+      map(({ users }) => users),
+    ).subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.USER));
+  }
+
   addServiceAccount() {
-    this.userDataService
-      .getAllServiceUsers()
-      .pipe(
-        map(({ users }) =>
-          users.filter(
-            (user) => !this.userDataSource.some((u) => u.username === user),
-          ),
-        ),
-        switchMap((users) =>
-          this.permissionModalService.openGrantPermissionModal(
-            EntityEnum.MODEL,
-            users.map((user, index) => ({ id: index + user, name: user })),
-            this.promptId,
-          ),
-        ),
-        filter(Boolean),
-        switchMap(({ entity, permission }) =>
-          this.permissionDataService.createPromptPermission({
-            name: this.promptId,
-            permission: permission,
-            username: entity.name,
-          }),
-        ),
-        switchMap(() => this.loadUsersForPrompt(this.promptId)),
-      )
-      .subscribe((users) => {
-        this.userDataSource = users;
-      });
+    this.userDataService.getAllServiceUsers().pipe(
+      map(({ users }) => users),
+    ).subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.SERVICE_ACCOUNT));
   }
 
 }
