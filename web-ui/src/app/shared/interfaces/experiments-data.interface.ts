@@ -1,7 +1,4 @@
-import {
-  PermissionEnum,
-  PermissionTypeEnum,
-} from "src/app/core/configs/permissions";
+import { PermissionEnum, PermissionTypeEnum } from 'src/app/core/configs/permissions';
 
 export interface ExperimentModel {
   id: string;

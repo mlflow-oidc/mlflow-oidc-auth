@@ -1,14 +1,14 @@
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { provideHttpClientTesting } from "@angular/common/http/testing";
-import { provideHttpClient } from "@angular/common/http";
-import { ActivatedRoute, UrlSegment } from "@angular/router";
-import { RouterTestingModule } from "@angular/router/testing";
-import { of } from "rxjs";
-import { HomePageComponent } from "./home-page.component";
-import { MatTabsModule } from "@angular/material/tabs";
-import { provideAnimations } from "@angular/platform-browser/animations";
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { ActivatedRoute, UrlSegment } from '@angular/router';
+import { RouterTestingModule } from '@angular/router/testing';
+import { of } from 'rxjs';
+import { HomePageComponent } from './home-page.component';
+import { MatTabsModule } from '@angular/material/tabs';
+import { provideAnimations } from '@angular/platform-browser/animations';
 
-describe("HomePageComponent", () => {
+describe('HomePageComponent', () => {
   let component: HomePageComponent;
   let fixture: ComponentFixture<HomePageComponent>;
 
@@ -23,10 +23,10 @@ describe("HomePageComponent", () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            params: of({ id: "123" }),
-            queryParams: of({ filter: "test" }),
+            params: of({ id: '123' }),
+            queryParams: of({ filter: 'test' }),
             snapshot: {
-              url: [new UrlSegment("sample-path", {})],
+              url: [new UrlSegment('sample-path', {})],
             },
           },
         },
@@ -38,7 +38,7 @@ describe("HomePageComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

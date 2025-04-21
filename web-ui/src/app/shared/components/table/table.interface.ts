@@ -1,4 +1,4 @@
-import { TableActionEnum } from "./table.config";
+import { TableActionEnum } from './table.config';
 
 export interface TableActionModel {
   icon: string;

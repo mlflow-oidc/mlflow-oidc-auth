@@ -1,13 +1,10 @@
-import { TestBed } from "@angular/core/testing";
-import {
-  HttpClientTestingModule,
-  HttpTestingController,
-} from "@angular/common/http/testing";
-import { PermissionDataService } from "../data/permission-data.service";
-import { API_URL } from "src/app/core/configs/api-urls";
-import { PermissionEnum } from "../../../core/configs/permissions";
+import { TestBed } from '@angular/core/testing';
+import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+import { PermissionDataService } from '../data/permission-data.service';
+import { API_URL } from 'src/app/core/configs/api-urls';
+import { PermissionEnum } from '../../../core/configs/permissions';
 
-describe("PermissionDataService", () => {
+describe('PermissionDataService', () => {
   let service: PermissionDataService;
   let httpMock: HttpTestingController;
 
@@ -24,219 +21,178 @@ describe("PermissionDataService", () => {
     httpMock.verify();
   });
 
-  it("should be created", () => {
+  it('should be created', () => {
     expect(service).toBeTruthy();
   });
 
-  it("should call createExperimentPermission with correct URL and payload", () => {
+  it('should call createExperimentPermission with correct URL and payload', () => {
     const body = {
-      experiment_id: "123",
-      username: "testUser",
-      permission: "READ",
+      experiment_id: '123',
+      username: 'testUser',
+      permission: 'READ',
     };
     service.createExperimentPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.CREATE_EXPERIMENT_PERMISSION);
-    expect(req.request.method).toBe("POST");
+    expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call updateExperimentPermission with correct URL and payload", () => {
+  it('should call updateExperimentPermission with correct URL and payload', () => {
     const body = {
-      experiment_id: "123",
-      username: "testUser",
-      permission: "WRITE",
+      experiment_id: '123',
+      username: 'testUser',
+      permission: 'WRITE',
     };
     service.updateExperimentPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.UPDATE_EXPERIMENT_PERMISSION);
-    expect(req.request.method).toBe("PATCH");
+    expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call deleteExperimentPermission with correct URL and payload", () => {
-    const body = { experiment_id: "123", username: "testUser" };
+  it('should call deleteExperimentPermission with correct URL and payload', () => {
+    const body = { experiment_id: '123', username: 'testUser' };
     service.deleteExperimentPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.DELETE_EXPERIMENT_PERMISSION);
-    expect(req.request.method).toBe("DELETE");
+    expect(req.request.method).toBe('DELETE');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call createModelPermission with correct URL and payload", () => {
-    const body = { name: "model1", username: "testUser", permission: "READ" };
+  it('should call createModelPermission with correct URL and payload', () => {
+    const body = { name: 'model1', username: 'testUser', permission: 'READ' };
     service.createModelPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.CREATE_MODEL_PERMISSION);
-    expect(req.request.method).toBe("POST");
+    expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call updateModelPermission with correct URL and payload", () => {
-    const body = { name: "model1", username: "testUser", permission: "WRITE" };
+  it('should call updateModelPermission with correct URL and payload', () => {
+    const body = { name: 'model1', username: 'testUser', permission: 'WRITE' };
     service.updateModelPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.UPDATE_MODEL_PERMISSION);
-    expect(req.request.method).toBe("PATCH");
+    expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call deleteModelPermission with correct URL and payload", () => {
-    const body = { name: "model1", username: "testUser" };
+  it('should call deleteModelPermission with correct URL and payload', () => {
+    const body = { name: 'model1', username: 'testUser' };
     service.deleteModelPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.DELETE_MODEL_PERMISSION);
-    expect(req.request.method).toBe("DELETE");
+    expect(req.request.method).toBe('DELETE');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call createPromptPermission with correct URL and payload", () => {
-    const body = { name: "prompt1", username: "testUser", permission: "READ" };
+  it('should call createPromptPermission with correct URL and payload', () => {
+    const body = { name: 'prompt1', username: 'testUser', permission: 'READ' };
     service.createPromptPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.CREATE_PROMPT_PERMISSION);
-    expect(req.request.method).toBe("POST");
+    expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call updatePromptPermission with correct URL and payload", () => {
+  it('should call updatePromptPermission with correct URL and payload', () => {
     const body = {
-      name: "prompt1",
-      username: "testUser",
-      permission: "WRITE",
+      name: 'prompt1',
+      username: 'testUser',
+      permission: 'WRITE',
     };
     service.updatePromptPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.UPDATE_PROMPT_PERMISSION);
-    expect(req.request.method).toBe("PATCH");
+    expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call deletePromptPermission with correct URL and payload", () => {
-    const body = { name: "prompt1", username: "testUser" };
+  it('should call deletePromptPermission with correct URL and payload', () => {
+    const body = { name: 'prompt1', username: 'testUser' };
     service.deletePromptPermission(body).subscribe();
     const req = httpMock.expectOne(API_URL.DELETE_PROMPT_PERMISSION);
-    expect(req.request.method).toBe("DELETE");
+    expect(req.request.method).toBe('DELETE');
     expect(req.request.body).toEqual(body);
   });
 
-  it("should call addExperimentPermissionToGroup with correct URL and payload", () => {
-    const groupName = "group1";
-    const experiment_id = "123";
+  it('should call addExperimentPermissionToGroup with correct URL and payload', () => {
+    const groupName = 'group1';
+    const experiment_id = '123';
     const permission = PermissionEnum.READ;
-    service
-      .addExperimentPermissionToGroup(groupName, experiment_id, permission)
-      .subscribe();
-    const req = httpMock.expectOne(
-      API_URL.CREATE_GROUP_EXPERIMENT_PERMISSION.replace(
-        "${groupName}",
-        groupName,
-      ),
-    );
-    expect(req.request.method).toBe("POST");
+    service.addExperimentPermissionToGroup(groupName, experiment_id, permission).subscribe();
+    const req = httpMock.expectOne(API_URL.CREATE_GROUP_EXPERIMENT_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ experiment_id, permission });
   });
 
-  it("should call addModelPermissionToGroup with correct URL and payload", () => {
-    const modelName = "model1";
-    const groupName = "group1";
-    const permission = "READ";
-    service
-      .addModelPermissionToGroup(modelName, groupName, permission)
-      .subscribe();
-    const req = httpMock.expectOne(
-      API_URL.CREATE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
-    );
-    expect(req.request.method).toBe("POST");
+  it('should call addModelPermissionToGroup with correct URL and payload', () => {
+    const modelName = 'model1';
+    const groupName = 'group1';
+    const permission = 'READ';
+    service.addModelPermissionToGroup(modelName, groupName, permission).subscribe();
+    const req = httpMock.expectOne(API_URL.CREATE_GROUP_MODEL_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ name: modelName, permission });
   });
 
-  it("should call addPromptPermissionToGroup with correct URL and payload", () => {
-    const promptName = "prompt1";
-    const groupName = "group1";
-    const permission = "READ";
-    service
-      .addPromptPermissionToGroup(promptName, groupName, permission)
-      .subscribe();
-    const req = httpMock.expectOne(
-      API_URL.CREATE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
-    );
-    expect(req.request.method).toBe("POST");
+  it('should call addPromptPermissionToGroup with correct URL and payload', () => {
+    const promptName = 'prompt1';
+    const groupName = 'group1';
+    const permission = 'READ';
+    service.addPromptPermissionToGroup(promptName, groupName, permission).subscribe();
+    const req = httpMock.expectOne(API_URL.CREATE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ name: promptName, permission });
   });
 
-  it("should call removeExperimentPermissionFromGroup with correct URL and payload", () => {
-    const groupName = "group1";
-    const experiment_id = "123";
-    service
-      .removeExperimentPermissionFromGroup(groupName, experiment_id)
-      .subscribe();
-    const req = httpMock.expectOne(
-      API_URL.DELETE_GROUP_EXPERIMENT_PERMISSION.replace(
-        "${groupName}",
-        groupName,
-      ),
-    );
-    expect(req.request.method).toBe("DELETE");
+  it('should call removeExperimentPermissionFromGroup with correct URL and payload', () => {
+    const groupName = 'group1';
+    const experiment_id = '123';
+    service.removeExperimentPermissionFromGroup(groupName, experiment_id).subscribe();
+    const req = httpMock.expectOne(API_URL.DELETE_GROUP_EXPERIMENT_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('DELETE');
     expect(req.request.body).toEqual({ experiment_id });
   });
 
-  it("should call removeModelPermissionFromGroup with correct URL and payload", () => {
-    const modelName = "model1";
-    const groupName = "group1";
+  it('should call removeModelPermissionFromGroup with correct URL and payload', () => {
+    const modelName = 'model1';
+    const groupName = 'group1';
     service.removeModelPermissionFromGroup(modelName, groupName).subscribe();
-    const req = httpMock.expectOne(
-      API_URL.DELETE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
-    );
-    expect(req.request.method).toBe("DELETE");
+    const req = httpMock.expectOne(API_URL.DELETE_GROUP_MODEL_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('DELETE');
     expect(req.request.body).toEqual({ name: modelName });
   });
 
-  it("should call removePromptPermissionFromGroup with correct URL and payload", () => {
-    const promptName = "prompt1";
-    const groupName = "group1";
+  it('should call removePromptPermissionFromGroup with correct URL and payload', () => {
+    const promptName = 'prompt1';
+    const groupName = 'group1';
     service.removePromptPermissionFromGroup(promptName, groupName).subscribe();
-    const req = httpMock.expectOne(
-      API_URL.DELETE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
-    );
-    expect(req.request.method).toBe("DELETE");
+    const req = httpMock.expectOne(API_URL.DELETE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('DELETE');
     expect(req.request.body).toEqual({ name: promptName });
   });
 
-  it("should call updateExperimentPermissionForGroup with correct URL and payload", () => {
-    const groupName = "group1";
-    const experiment_id = "123";
-    const permission = "WRITE";
-    service
-      .updateExperimentPermissionForGroup(groupName, experiment_id, permission)
-      .subscribe();
-    const req = httpMock.expectOne(
-      API_URL.UPDATE_GROUP_EXPERIMENT_PERMISSION.replace(
-        "${groupName}",
-        groupName,
-      ),
-    );
-    expect(req.request.method).toBe("PATCH");
+  it('should call updateExperimentPermissionForGroup with correct URL and payload', () => {
+    const groupName = 'group1';
+    const experiment_id = '123';
+    const permission = 'WRITE';
+    service.updateExperimentPermissionForGroup(groupName, experiment_id, permission).subscribe();
+    const req = httpMock.expectOne(API_URL.UPDATE_GROUP_EXPERIMENT_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ experiment_id, permission });
   });
 
-  it("should call updateModelPermissionForGroup with correct URL and payload", () => {
-    const modelName = "model1";
-    const groupName = "group1";
-    const permission = "WRITE";
-    service
-      .updateModelPermissionForGroup(modelName, groupName, permission)
-      .subscribe();
-    const req = httpMock.expectOne(
-      API_URL.UPDATE_GROUP_MODEL_PERMISSION.replace("${groupName}", groupName),
-    );
-    expect(req.request.method).toBe("PATCH");
+  it('should call updateModelPermissionForGroup with correct URL and payload', () => {
+    const modelName = 'model1';
+    const groupName = 'group1';
+    const permission = 'WRITE';
+    service.updateModelPermissionForGroup(modelName, groupName, permission).subscribe();
+    const req = httpMock.expectOne(API_URL.UPDATE_GROUP_MODEL_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ name: modelName, permission });
   });
 
-  it("should call updatePromptPermissionForGroup with correct URL and payload", () => {
-    const promptName = "prompt1";
-    const groupName = "group1";
-    const permission = "WRITE";
-    service
-      .updatePromptPermissionForGroup(promptName, groupName, permission)
-      .subscribe();
-    const req = httpMock.expectOne(
-      API_URL.UPDATE_GROUP_PROMPT_PERMISSION.replace("${groupName}", groupName),
-    );
-    expect(req.request.method).toBe("PATCH");
+  it('should call updatePromptPermissionForGroup with correct URL and payload', () => {
+    const promptName = 'prompt1';
+    const groupName = 'group1';
+    const permission = 'WRITE';
+    service.updatePromptPermissionForGroup(promptName, groupName, permission).subscribe();
+    const req = httpMock.expectOne(API_URL.UPDATE_GROUP_PROMPT_PERMISSION.replace('${groupName}', groupName));
+    expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ name: promptName, permission });
   });
 });

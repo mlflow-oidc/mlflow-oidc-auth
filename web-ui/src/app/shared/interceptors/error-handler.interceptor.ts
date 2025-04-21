@@ -1,22 +1,13 @@
-import { Injectable } from "@angular/core";
-import {
-  HttpErrorResponse,
-  HttpEvent,
-  HttpHandler,
-  HttpInterceptor,
-  HttpRequest,
-} from "@angular/common/http";
-import { catchError, Observable, throwError } from "rxjs";
-import { SnackBarService } from "../services";
+import { Injectable } from '@angular/core';
+import { HttpErrorResponse, HttpEvent, HttpHandler, HttpInterceptor, HttpRequest } from '@angular/common/http';
+import { catchError, Observable, throwError } from 'rxjs';
+import { SnackBarService } from '../services';
 
 @Injectable()
 export class ErrorHandlerInterceptor implements HttpInterceptor {
   constructor(private readonly snackBarService: SnackBarService) {}
 
-  intercept(
-    request: HttpRequest<unknown>,
-    next: HttpHandler,
-  ): Observable<HttpEvent<unknown>> {
+  intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
     return next.handle(request).pipe(
       catchError((error: HttpErrorResponse) => {
         let errorMessage =
@@ -26,7 +17,7 @@ export class ErrorHandlerInterceptor implements HttpInterceptor {
 
         this.snackBarService.openSnackBar(errorMessage);
         return throwError(() => new Error(errorMessage));
-      }),
+      })
     );
   }
 }

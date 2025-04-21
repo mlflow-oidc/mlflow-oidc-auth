@@ -11,196 +11,196 @@ import { MatIconModule } from '@angular/material/icon';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 describe('CreateServiceAccountModalComponent', () => {
-    let component: CreateServiceAccountModalComponent;
-    let fixture: ComponentFixture<CreateServiceAccountModalComponent>;
-    let dialogRefSpy: { close: jest.Mock };
+  let component: CreateServiceAccountModalComponent;
+  let fixture: ComponentFixture<CreateServiceAccountModalComponent>;
+  let dialogRefSpy: { close: jest.Mock };
 
-    const data = {
-        title: 'Test Title',
-        username: 'testuser',
-        display_name: 'Test User',
-        is_admin: true,
-        is_service_account: true,
-    };
+  const data = {
+    title: 'Test Title',
+    username: 'testuser',
+    display_name: 'Test User',
+    is_admin: true,
+    is_service_account: true,
+  };
 
-    beforeEach(async () => {
-        dialogRefSpy = { close: jest.fn() };
-        await TestBed.configureTestingModule({
-            imports: [
-                ReactiveFormsModule,
-                MatCheckboxModule,
-                MatFormFieldModule,
-                MatInputModule,
-                MatTabsModule,
-                MatIconModule,
-                MatDialogModule,
-                NoopAnimationsModule,
-            ],
-            declarations: [CreateServiceAccountModalComponent],
-            providers: [
-                FormBuilder,
-                { provide: MatDialogRef, useValue: dialogRefSpy },
-                { provide: MAT_DIALOG_DATA, useValue: data },
-            ],
-        }).compileComponents();
-        fixture = TestBed.createComponent(CreateServiceAccountModalComponent);
-        component = fixture.componentInstance;
-        fixture.detectChanges();
+  beforeEach(async () => {
+    dialogRefSpy = { close: jest.fn() };
+    await TestBed.configureTestingModule({
+      imports: [
+        ReactiveFormsModule,
+        MatCheckboxModule,
+        MatFormFieldModule,
+        MatInputModule,
+        MatTabsModule,
+        MatIconModule,
+        MatDialogModule,
+        NoopAnimationsModule,
+      ],
+      declarations: [CreateServiceAccountModalComponent],
+      providers: [
+        FormBuilder,
+        { provide: MatDialogRef, useValue: dialogRefSpy },
+        { provide: MAT_DIALOG_DATA, useValue: data },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(CreateServiceAccountModalComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+
+  it('should initialize form and title from data', () => {
+    expect(component.title).toBe(data.title);
+    expect(component.form.value.username).toBe(data.username);
+    expect(component.form.value.display_name).toBe(data.display_name);
+    expect(component.form.value.is_admin).toBe(data.is_admin);
+    expect(component.form.value.is_service_account).toBe(true);
+  });
+
+  it('should set default title if not provided', async () => {
+    const testData = { ...data, title: undefined };
+    await TestBed.resetTestingModule()
+      .configureTestingModule({
+        imports: [
+          ReactiveFormsModule,
+          MatCheckboxModule,
+          MatFormFieldModule,
+          MatInputModule,
+          MatTabsModule,
+          MatIconModule,
+          MatDialogModule,
+          NoopAnimationsModule,
+        ],
+        declarations: [CreateServiceAccountModalComponent],
+        providers: [
+          FormBuilder,
+          { provide: MatDialogRef, useValue: dialogRefSpy },
+          { provide: MAT_DIALOG_DATA, useValue: testData },
+        ],
+      })
+      .compileComponents();
+    const testFixture = TestBed.createComponent(CreateServiceAccountModalComponent);
+    const testComponent = testFixture.componentInstance;
+    testComponent.ngOnInit();
+    expect(testComponent.title).toBe('Create Service Account');
+  });
+
+  it('should sync display name if not dirty', () => {
+    component.form.get('username')?.setValue('newuser');
+    component.form.get('display_name')?.markAsPristine();
+    component.syncDisplayName();
+    expect(component.form.get('display_name')?.value).toBe('newuser');
+  });
+
+  it('should not sync display name if dirty', () => {
+    component.form.get('username')?.setValue('newuser');
+    component.form.get('display_name')?.markAsDirty();
+    component.form.get('display_name')?.setValue('dirtyname');
+    component.syncDisplayName();
+    expect(component.form.get('display_name')?.value).toBe('dirtyname');
+  });
+
+  it('should close dialog with form value on submit if form is valid', () => {
+    component.form.setValue({
+      username: 'user',
+      display_name: 'User',
+      is_admin: false,
+      is_service_account: true,
     });
+    component.submit();
+    expect(dialogRefSpy.close).toHaveBeenCalledWith(component.form.value);
+  });
 
-    it('should create', () => {
-        expect(component).toBeTruthy();
-    });
+  it('should not close dialog on submit if form is invalid', () => {
+    component.form.get('username')?.setValue('');
+    component.submit();
+    expect(dialogRefSpy.close).not.toHaveBeenCalled();
+  });
 
-    it('should initialize form and title from data', () => {
-        expect(component.title).toBe(data.title);
-        expect(component.form.value.username).toBe(data.username);
-        expect(component.form.value.display_name).toBe(data.display_name);
-        expect(component.form.value.is_admin).toBe(data.is_admin);
-        expect(component.form.value.is_service_account).toBe(true);
-    });
+  it('should close dialog with no data on close()', () => {
+    component.close();
+    expect(dialogRefSpy.close).toHaveBeenCalledWith();
+  });
 
-    it('should set default title if not provided', async () => {
-        const testData = { ...data, title: undefined };
-        await TestBed.resetTestingModule()
-            .configureTestingModule({
-                imports: [
-                    ReactiveFormsModule,
-                    MatCheckboxModule,
-                    MatFormFieldModule,
-                    MatInputModule,
-                    MatTabsModule,
-                    MatIconModule,
-                    MatDialogModule,
-                    NoopAnimationsModule,
-                ],
-                declarations: [CreateServiceAccountModalComponent],
-                providers: [
-                    FormBuilder,
-                    { provide: MatDialogRef, useValue: dialogRefSpy },
-                    { provide: MAT_DIALOG_DATA, useValue: testData },
-                ],
-            })
-            .compileComponents();
-        const testFixture = TestBed.createComponent(CreateServiceAccountModalComponent);
-        const testComponent = testFixture.componentInstance;
-        testComponent.ngOnInit();
-        expect(testComponent.title).toBe('Create Service Account');
-    });
+  it('should do nothing in syncDisplayName if username is falsy', () => {
+    component.form.get('username')?.setValue('');
+    component.form.get('display_name')?.markAsPristine();
+    component.form.get('display_name')?.setValue('');
+    component.syncDisplayName();
+    expect(component.form.get('display_name')?.value).toBe('');
+  });
 
-    it('should sync display name if not dirty', () => {
-        component.form.get('username')?.setValue('newuser');
-        component.form.get('display_name')?.markAsPristine();
-        component.syncDisplayName();
-        expect(component.form.get('display_name')?.value).toBe('newuser');
-    });
+  it('should not throw or close dialog if submit called with invalid form', () => {
+    component.form.get('username')?.setValue('');
+    expect(() => component.submit()).not.toThrow();
+    expect(dialogRefSpy.close).not.toHaveBeenCalled();
+  });
 
-    it('should not sync display name if dirty', () => {
-        component.form.get('username')?.setValue('newuser');
-        component.form.get('display_name')?.markAsDirty();
-        component.form.get('display_name')?.setValue('dirtyname');
-        component.syncDisplayName();
-        expect(component.form.get('display_name')?.value).toBe('dirtyname');
-    });
+  it('should always set is_service_account to true in ngOnInit', async () => {
+    const testData = { ...data, is_service_account: false };
+    await TestBed.resetTestingModule()
+      .configureTestingModule({
+        imports: [
+          ReactiveFormsModule,
+          MatCheckboxModule,
+          MatFormFieldModule,
+          MatInputModule,
+          MatTabsModule,
+          MatIconModule,
+          MatDialogModule,
+          NoopAnimationsModule,
+        ],
+        declarations: [CreateServiceAccountModalComponent],
+        providers: [
+          FormBuilder,
+          { provide: MatDialogRef, useValue: dialogRefSpy },
+          { provide: MAT_DIALOG_DATA, useValue: testData },
+        ],
+      })
+      .compileComponents();
+    const testFixture = TestBed.createComponent(CreateServiceAccountModalComponent);
+    const testComponent = testFixture.componentInstance;
+    testComponent.ngOnInit();
+    expect(testComponent.form.value.is_service_account).toBe(true);
+  });
 
-    it('should close dialog with form value on submit if form is valid', () => {
-        component.form.setValue({
-            username: 'user',
-            display_name: 'User',
-            is_admin: false,
-            is_service_account: true,
-        });
-        component.submit();
-        expect(dialogRefSpy.close).toHaveBeenCalledWith(component.form.value);
-    });
+  it('should set default values if data fields are missing', async () => {
+    const testData = {};
+    await TestBed.resetTestingModule()
+      .configureTestingModule({
+        imports: [
+          ReactiveFormsModule,
+          MatCheckboxModule,
+          MatFormFieldModule,
+          MatInputModule,
+          MatTabsModule,
+          MatIconModule,
+          MatDialogModule,
+          NoopAnimationsModule,
+        ],
+        declarations: [CreateServiceAccountModalComponent],
+        providers: [
+          FormBuilder,
+          { provide: MatDialogRef, useValue: dialogRefSpy },
+          { provide: MAT_DIALOG_DATA, useValue: testData },
+        ],
+      })
+      .compileComponents();
+    const testFixture = TestBed.createComponent(CreateServiceAccountModalComponent);
+    const testComponent = testFixture.componentInstance;
+    testComponent.ngOnInit();
+    expect(testComponent.form.value.username).toBe('');
+    expect(testComponent.form.value.display_name).toBe('');
+    expect(testComponent.form.value.is_admin).toBe(false);
+    expect(testComponent.form.value.is_service_account).toBe(true);
+  });
 
-    it('should not close dialog on submit if form is invalid', () => {
-        component.form.get('username')?.setValue('');
-        component.submit();
-        expect(dialogRefSpy.close).not.toHaveBeenCalled();
-    });
-
-    it('should close dialog with no data on close()', () => {
-        component.close();
-        expect(dialogRefSpy.close).toHaveBeenCalledWith();
-    });
-
-    it('should do nothing in syncDisplayName if username is falsy', () => {
-        component.form.get('username')?.setValue('');
-        component.form.get('display_name')?.markAsPristine();
-        component.form.get('display_name')?.setValue('');
-        component.syncDisplayName();
-        expect(component.form.get('display_name')?.value).toBe('');
-    });
-
-    it('should not throw or close dialog if submit called with invalid form', () => {
-        component.form.get('username')?.setValue('');
-        expect(() => component.submit()).not.toThrow();
-        expect(dialogRefSpy.close).not.toHaveBeenCalled();
-    });
-
-    it('should always set is_service_account to true in ngOnInit', async () => {
-        const testData = { ...data, is_service_account: false };
-        await TestBed.resetTestingModule()
-            .configureTestingModule({
-                imports: [
-                    ReactiveFormsModule,
-                    MatCheckboxModule,
-                    MatFormFieldModule,
-                    MatInputModule,
-                    MatTabsModule,
-                    MatIconModule,
-                    MatDialogModule,
-                    NoopAnimationsModule,
-                ],
-                declarations: [CreateServiceAccountModalComponent],
-                providers: [
-                    FormBuilder,
-                    { provide: MatDialogRef, useValue: dialogRefSpy },
-                    { provide: MAT_DIALOG_DATA, useValue: testData },
-                ],
-            })
-            .compileComponents();
-        const testFixture = TestBed.createComponent(CreateServiceAccountModalComponent);
-        const testComponent = testFixture.componentInstance;
-        testComponent.ngOnInit();
-        expect(testComponent.form.value.is_service_account).toBe(true);
-    });
-
-    it('should set default values if data fields are missing', async () => {
-        const testData = {};
-        await TestBed.resetTestingModule()
-            .configureTestingModule({
-                imports: [
-                    ReactiveFormsModule,
-                    MatCheckboxModule,
-                    MatFormFieldModule,
-                    MatInputModule,
-                    MatTabsModule,
-                    MatIconModule,
-                    MatDialogModule,
-                    NoopAnimationsModule,
-                ],
-                declarations: [CreateServiceAccountModalComponent],
-                providers: [
-                    FormBuilder,
-                    { provide: MatDialogRef, useValue: dialogRefSpy },
-                    { provide: MAT_DIALOG_DATA, useValue: testData },
-                ],
-            })
-            .compileComponents();
-        const testFixture = TestBed.createComponent(CreateServiceAccountModalComponent);
-        const testComponent = testFixture.componentInstance;
-        testComponent.ngOnInit();
-        expect(testComponent.form.value.username).toBe('');
-        expect(testComponent.form.value.display_name).toBe('');
-        expect(testComponent.form.value.is_admin).toBe(false);
-        expect(testComponent.form.value.is_service_account).toBe(true);
-    });
-
-    it('should call dialogRef.close every time close() is called', () => {
-        component.close();
-        component.close();
-        expect(dialogRefSpy.close).toHaveBeenCalledTimes(2);
-    });
+  it('should call dialogRef.close every time close() is called', () => {
+    component.close();
+    component.close();
+    expect(dialogRefSpy.close).toHaveBeenCalledTimes(2);
+  });
 });

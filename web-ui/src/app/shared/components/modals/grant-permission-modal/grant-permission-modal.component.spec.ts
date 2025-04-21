@@ -1,18 +1,14 @@
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import {
-  MAT_DIALOG_DATA,
-  MatDialogRef,
-  MatDialogModule,
-} from "@angular/material/dialog";
-import { MatFormFieldModule } from "@angular/material/form-field";
-import { MatInputModule } from "@angular/material/input";
-import { MatSelectModule } from "@angular/material/select";
-import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
-import { ReactiveFormsModule } from "@angular/forms";
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { ReactiveFormsModule } from '@angular/forms';
 
-import { GrantPermissionModalComponent } from "./grant-permission-modal.component";
+import { GrantPermissionModalComponent } from './grant-permission-modal.component';
 
-describe("GrantPermissionModalComponent", () => {
+describe('GrantPermissionModalComponent', () => {
   let component: GrantPermissionModalComponent;
   let fixture: ComponentFixture<GrantPermissionModalComponent>;
 
@@ -38,7 +34,7 @@ describe("GrantPermissionModalComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

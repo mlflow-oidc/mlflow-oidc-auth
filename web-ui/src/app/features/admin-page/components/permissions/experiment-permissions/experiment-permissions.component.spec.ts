@@ -1,12 +1,12 @@
-import { provideHttpClient } from "@angular/common/http";
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
-import { ActivatedRoute } from "@angular/router";
-import { of } from "rxjs";
+import { provideHttpClient } from '@angular/common/http';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { ActivatedRoute } from '@angular/router';
+import { of } from 'rxjs';
 
-import { ExperimentPermissionsComponent } from "./experiment-permissions.component";
+import { ExperimentPermissionsComponent } from './experiment-permissions.component';
 
-describe("ExperimentPermissionsComponent", () => {
+describe('ExperimentPermissionsComponent', () => {
   let component: ExperimentPermissionsComponent;
   let fixture: ComponentFixture<ExperimentPermissionsComponent>;
 
@@ -28,7 +28,7 @@ describe("ExperimentPermissionsComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

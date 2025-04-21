@@ -1,7 +1,7 @@
-import { NgModule } from "@angular/core";
-import { CommonModule } from "@angular/common";
-import { FormsModule } from "@angular/forms";
-import { RouterModule } from "@angular/router";
+import { NgModule } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router';
 
 import {
   AdminPageComponent,
@@ -16,9 +16,9 @@ import {
   PermissionsComponent,
   UserPermissionDetailsComponent,
   UserPermissionsComponent,
-} from "./components";
-import { AdminPageRoutingModule } from "./admin-page-routing.module";
-import { SharedModule } from "../../shared/shared.module";
+} from './components';
+import { AdminPageRoutingModule } from './admin-page-routing.module';
+import { SharedModule } from '../../shared/shared.module';
 
 @NgModule({
   declarations: [
@@ -35,12 +35,6 @@ import { SharedModule } from "../../shared/shared.module";
     GroupPermissionDetailsComponent,
     GroupPermissionsComponent,
   ],
-  imports: [
-    CommonModule,
-    SharedModule,
-    AdminPageRoutingModule,
-    FormsModule,
-    RouterModule,
-  ],
+  imports: [CommonModule, SharedModule, AdminPageRoutingModule, FormsModule, RouterModule],
 })
 export class AdminPageModule {}

@@ -1,25 +1,22 @@
-import { Component, OnInit } from "@angular/core";
-import { ActivatedRoute, Router } from "@angular/router";
-import { finalize } from "rxjs";
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { finalize } from 'rxjs';
 
-import { UserDataService } from "src/app/shared/services";
-import {
-  TableActionEvent,
-  TableActionModel,
-} from "src/app/shared/components/table/table.interface";
-import { TableActionEnum } from "src/app/shared/components/table/table.config";
-import { USER_ACTIONS, USER_SERVICE_ACCOUNT_ACTIONS, USER_COLUMN_CONFIG } from "./user-permissions.config";
-import { AdminPageRoutesEnum } from "../../../config";
-import { CreateServiceAccountService } from "src/app/shared/services/create-service-account.service";
-import { UserModel } from "src/app/shared/interfaces/user-data.interface";
-import { MatDialog } from "@angular/material/dialog";
-import { AccessKeyModalComponent } from "src/app/shared/components";
-import { AccessKeyDialogData } from "src/app/shared/components/modals/access-key-modal/access-key-modal.interface";
+import { UserDataService } from 'src/app/shared/services';
+import { TableActionEvent, TableActionModel } from 'src/app/shared/components/table/table.interface';
+import { TableActionEnum } from 'src/app/shared/components/table/table.config';
+import { USER_ACTIONS, USER_SERVICE_ACCOUNT_ACTIONS, USER_COLUMN_CONFIG } from './user-permissions.config';
+import { AdminPageRoutesEnum } from '../../../config';
+import { CreateServiceAccountService } from 'src/app/shared/services/create-service-account.service';
+import { UserModel } from 'src/app/shared/interfaces/user-data.interface';
+import { MatDialog } from '@angular/material/dialog';
+import { AccessKeyModalComponent } from 'src/app/shared/components';
+import { AccessKeyDialogData } from 'src/app/shared/components/modals/access-key-modal/access-key-modal.interface';
 
 @Component({
-  selector: "ml-user-permissions",
-  templateUrl: "./user-permissions.component.html",
-  styleUrls: ["./user-permissions.component.scss"],
+  selector: 'ml-user-permissions',
+  templateUrl: './user-permissions.component.html',
+  styleUrls: ['./user-permissions.component.scss'],
   standalone: false,
 })
 export class UserPermissionsComponent implements OnInit {
@@ -38,24 +35,24 @@ export class UserPermissionsComponent implements OnInit {
     private readonly route: ActivatedRoute,
     private readonly dialog: MatDialog,
     private readonly userDataService: UserDataService,
-    private readonly createServiceAccountService: CreateServiceAccountService,
-  ) { }
+    private readonly createServiceAccountService: CreateServiceAccountService
+  ) {}
 
   ngOnInit(): void {
     this.isLoading = true;
     this.userDataService
       .getAllUsers()
       .pipe(finalize(() => (this.isLoading = false)))
-      .subscribe(
-        ({ users }) => (this.dataSource = users.map((username) => ({ username }))),
-      );
+      .subscribe(({ users }) => (this.dataSource = users.map((username) => ({ username }))));
     this.isServiceAccountsLoading = true;
     this.userDataService
       .getAllServiceUsers()
       .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
       .subscribe(
         ({ users }) =>
-          (this.serviceAccountsDataSource = users.map((username) => ({ username }))),
+          (this.serviceAccountsDataSource = users.map((username) => ({
+            username,
+          })))
       );
   }
 
@@ -96,37 +93,38 @@ export class UserPermissionsComponent implements OnInit {
         .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
         .subscribe(
           ({ users }) =>
-            (this.serviceAccountsDataSource = users.map((username) => ({ username }))),
+            (this.serviceAccountsDataSource = users.map((username) => ({
+              username,
+            })))
         );
     });
   }
 
   createServiceAccount(): void {
-    this.createServiceAccountService.openCreateServiceAccountModal({ title: 'Create Service Account' }).subscribe(result => {
-      if (result) {
-        this.userDataService.createServiceAccount(result).subscribe(
-          () => {
+    this.createServiceAccountService
+      .openCreateServiceAccountModal({ title: 'Create Service Account' })
+      .subscribe((result) => {
+        if (result) {
+          this.userDataService.createServiceAccount(result).subscribe(() => {
             this.isServiceAccountsLoading = true;
             this.userDataService
               .getAllServiceUsers()
               .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
               .subscribe(
                 ({ users }) =>
-                  (this.serviceAccountsDataSource = users.map((username) => ({ username }))),
+                  (this.serviceAccountsDataSource = users.map((username) => ({
+                    username,
+                  })))
               );
-          }
-        );
-      }
-    });
+          });
+        }
+      });
   }
 
   handleAccessKey({ username }: UserModel): void {
     this.userDataService.getUserAccessKey(username).subscribe(({ token }) => {
       const data = { token };
-      this.dialog.open<AccessKeyModalComponent, AccessKeyDialogData>(
-        AccessKeyModalComponent,
-        { data },
-      );
+      this.dialog.open<AccessKeyModalComponent, AccessKeyDialogData>(AccessKeyModalComponent, { data });
     });
   }
 }

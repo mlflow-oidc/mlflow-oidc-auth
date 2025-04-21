@@ -1,10 +1,10 @@
-import { TABLE_ACTION_CONFIG } from "src/app/shared/components/table/table.config";
-import { TableActionModel } from "src/app/shared/components/table/table.interface";
+import { TABLE_ACTION_CONFIG } from 'src/app/shared/components/table/table.config';
+import { TableActionModel } from 'src/app/shared/components/table/table.interface';
 
 export const GROUP_COLUMN_CONFIG = [
   {
-    title: "Group name",
-    key: "group",
+    title: 'Group name',
+    key: 'group',
   },
 ];
 

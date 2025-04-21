@@ -1,24 +1,18 @@
-import { Component, OnInit } from "@angular/core";
-import { ActivatedRoute, Router } from "@angular/router";
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 
-import { finalize } from "rxjs";
-import { TableActionEnum } from "src/app/shared/components/table/table.config";
-import {
-  TableActionEvent,
-  TableActionModel,
-} from "src/app/shared/components/table/table.interface";
-import { ModelModel } from "src/app/shared/interfaces/models-data.interface";
-import { ModelsDataService } from "src/app/shared/services";
-import { AdminPageRoutesEnum } from "../../../config";
-import {
-  MODEL_COLUMN_CONFIG,
-  MODEL_TABLE_ACTIONS,
-} from "./model-permissions.config";
+import { finalize } from 'rxjs';
+import { TableActionEnum } from 'src/app/shared/components/table/table.config';
+import { TableActionEvent, TableActionModel } from 'src/app/shared/components/table/table.interface';
+import { ModelModel } from 'src/app/shared/interfaces/models-data.interface';
+import { ModelsDataService } from 'src/app/shared/services';
+import { AdminPageRoutesEnum } from '../../../config';
+import { MODEL_COLUMN_CONFIG, MODEL_TABLE_ACTIONS } from './model-permissions.config';
 
 @Component({
-  selector: "ml-model-permissions",
-  templateUrl: "./model-permissions.component.html",
-  styleUrls: ["./model-permissions.component.scss"],
+  selector: 'ml-model-permissions',
+  templateUrl: './model-permissions.component.html',
+  styleUrls: ['./model-permissions.component.scss'],
   standalone: false,
 })
 export class ModelPermissionsComponent implements OnInit {
@@ -31,7 +25,7 @@ export class ModelPermissionsComponent implements OnInit {
   constructor(
     private readonly route: ActivatedRoute,
     private readonly router: Router,
-    private readonly modelDataService: ModelsDataService,
+    private readonly modelDataService: ModelsDataService
   ) {}
 
   ngOnInit(): void {

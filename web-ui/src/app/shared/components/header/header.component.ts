@@ -1,13 +1,13 @@
-import { Component, Input, OnInit } from "@angular/core";
+import { Component, Input, OnInit } from '@angular/core';
 
 @Component({
-  selector: "ml-header",
-  templateUrl: "./header.component.html",
-  styleUrls: ["./header.component.scss"],
+  selector: 'ml-header',
+  templateUrl: './header.component.html',
+  styleUrls: ['./header.component.scss'],
   standalone: false,
 })
 export class HeaderComponent implements OnInit {
-  @Input() name: string = "";
+  @Input() name: string = '';
   @Input() admin: boolean = false;
 
   constructor() {}
@@ -15,6 +15,6 @@ export class HeaderComponent implements OnInit {
   ngOnInit(): void {}
 
   logout() {
-    window.location.href = "/logout";
+    window.location.href = '/logout';
   }
 }
