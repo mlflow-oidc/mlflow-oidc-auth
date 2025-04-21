@@ -198,11 +198,11 @@ describe('UserPermissionsComponent', () => {
   });
 
   it('should open access key dialog with correct data', () => {
-    (userDataService.getUserAccessKey as jest.Mock).mockReturnValue(of({ token: 'tok123' }));
+    (userDataService.getUserAccessKey as jest.Mock).mockReturnValue(of({ token: 'dummy_password' }));
     component.handleAccessKey({ username: 'svc' });
     expect(userDataService.getUserAccessKey).toHaveBeenCalledWith('svc');
     expect(dialog.open).toHaveBeenCalledWith(AccessKeyModalComponent, {
-      data: { token: 'tok123' },
+      data: { token: 'dummy_password' },
     });
   });
 });

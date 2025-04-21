@@ -26,7 +26,7 @@ def test_create_user_already_exists(mock_store):
 
 
 @patch("mlflow_oidc_auth.user.MlflowException", Exception)
-@patch("mlflow_oidc_auth.user.generate_token", return_value="tok123")
+@patch("mlflow_oidc_auth.user.generate_token", return_value="dummy_password")
 @patch("mlflow_oidc_auth.user.store")
 def test_create_user_new_user(mock_store, mock_generate_token):
     mock_store.get_user.side_effect = Exception
