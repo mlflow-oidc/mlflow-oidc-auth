@@ -151,7 +151,7 @@ class TestUserPropertiesSetters(unittest.TestCase):
         user = User(
             id_="1",
             username="u",
-            password_hash="h",
+            password_hash="dummy_hash",
             is_admin=False,
             is_service_account=False,
             display_name="d",
