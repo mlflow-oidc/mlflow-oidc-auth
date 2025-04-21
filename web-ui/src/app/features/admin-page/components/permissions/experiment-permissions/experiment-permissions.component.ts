@@ -1,21 +1,18 @@
-import { Component, OnInit } from "@angular/core";
-import { ActivatedRoute, Router } from "@angular/router";
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 
-import { finalize } from "rxjs";
-import { TableActionEnum } from "src/app/shared/components/table/table.config";
-import {
-  TableActionEvent,
-  TableActionModel,
-} from "src/app/shared/components/table/table.interface";
-import { ExperimentModel } from "src/app/shared/interfaces/experiments-data.interface";
-import { ExperimentsDataService } from "src/app/shared/services";
-import { AdminPageRoutesEnum } from "../../../config";
-import { COLUMN_CONFIG, TABLE_ACTIONS } from "./experiment-permissions.config";
+import { finalize } from 'rxjs';
+import { TableActionEnum } from 'src/app/shared/components/table/table.config';
+import { TableActionEvent, TableActionModel } from 'src/app/shared/components/table/table.interface';
+import { ExperimentModel } from 'src/app/shared/interfaces/experiments-data.interface';
+import { ExperimentsDataService } from 'src/app/shared/services';
+import { AdminPageRoutesEnum } from '../../../config';
+import { COLUMN_CONFIG, TABLE_ACTIONS } from './experiment-permissions.config';
 
 @Component({
-  selector: "ml-experiment-permissions",
-  templateUrl: "./experiment-permissions.component.html",
-  styleUrls: ["./experiment-permissions.component.scss"],
+  selector: 'ml-experiment-permissions',
+  templateUrl: './experiment-permissions.component.html',
+  styleUrls: ['./experiment-permissions.component.scss'],
   standalone: false,
 })
 export class ExperimentPermissionsComponent implements OnInit {
@@ -28,7 +25,7 @@ export class ExperimentPermissionsComponent implements OnInit {
   constructor(
     private readonly router: Router,
     private readonly route: ActivatedRoute,
-    private readonly experimentDataService: ExperimentsDataService,
+    private readonly experimentDataService: ExperimentsDataService
   ) {}
 
   ngOnInit(): void {

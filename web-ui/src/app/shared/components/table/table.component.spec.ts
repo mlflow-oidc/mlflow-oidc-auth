@@ -1,12 +1,12 @@
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { MatFormFieldModule } from "@angular/material/form-field";
-import { MatInputModule } from "@angular/material/input";
-import { MatTableModule } from "@angular/material/table";
-import { provideAnimations } from "@angular/platform-browser/animations";
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatTableModule } from '@angular/material/table';
+import { provideAnimations } from '@angular/platform-browser/animations';
 
-import { TableComponent } from "./table.component";
+import { TableComponent } from './table.component';
 
-describe("TableComponent", () => {
+describe('TableComponent', () => {
   let component: TableComponent<string>;
   let fixture: ComponentFixture<TableComponent<string>>;
 
@@ -22,7 +22,7 @@ describe("TableComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

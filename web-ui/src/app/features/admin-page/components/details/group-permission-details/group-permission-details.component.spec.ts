@@ -1,15 +1,15 @@
-import { provideHttpClient } from "@angular/common/http";
-import { CUSTOM_ELEMENTS_SCHEMA } from "@angular/core";
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { MatIconModule } from "@angular/material/icon";
-import { MatTabsModule } from "@angular/material/tabs";
-import { provideAnimations } from "@angular/platform-browser/animations";
-import { ActivatedRoute } from "@angular/router";
-import { of } from "rxjs";
+import { provideHttpClient } from '@angular/common/http';
+import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatIconModule } from '@angular/material/icon';
+import { MatTabsModule } from '@angular/material/tabs';
+import { provideAnimations } from '@angular/platform-browser/animations';
+import { ActivatedRoute } from '@angular/router';
+import { of } from 'rxjs';
 
-import { GroupPermissionDetailsComponent } from "./group-permission-details.component";
+import { GroupPermissionDetailsComponent } from './group-permission-details.component';
 
-describe("GroupPermissionDetailsComponent", () => {
+describe('GroupPermissionDetailsComponent', () => {
   let component: GroupPermissionDetailsComponent;
   let fixture: ComponentFixture<GroupPermissionDetailsComponent>;
 
@@ -23,12 +23,12 @@ describe("GroupPermissionDetailsComponent", () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            params: of({ id: "123" }),
+            params: of({ id: '123' }),
             snapshot: {
               paramMap: {
-                get: (key: string) => (key === "id" ? "123" : null),
+                get: (key: string) => (key === 'id' ? '123' : null),
               },
-              url: [{ path: "user-info" }],
+              url: [{ path: 'user-info' }],
             },
           },
         },
@@ -41,7 +41,7 @@ describe("GroupPermissionDetailsComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

@@ -18,7 +18,7 @@ from mlflow_oidc_auth.utils import (
 def create_experiment_permission():
     store.create_experiment_permission(
         get_experiment_id(),
-        get_request_param("user_name"),
+        get_request_param("username"),
         get_request_param("permission"),
     )
     return jsonify({"message": "Experiment permission has been created."})
@@ -27,7 +27,7 @@ def create_experiment_permission():
 @catch_mlflow_exception
 @check_experiment_permission
 def get_experiment_permission():
-    ep = store.get_experiment_permission(get_experiment_id(), get_request_param("user_name"))
+    ep = store.get_experiment_permission(get_experiment_id(), get_request_param("username"))
     return make_response({"experiment_permission": ep.to_json()})
 
 
@@ -36,7 +36,7 @@ def get_experiment_permission():
 def update_experiment_permission():
     store.update_experiment_permission(
         get_experiment_id(),
-        get_request_param("user_name"),
+        get_request_param("username"),
         get_request_param("permission"),
     )
     return jsonify({"message": "Experiment permission has been changed."})
@@ -47,7 +47,7 @@ def update_experiment_permission():
 def delete_experiment_permission():
     store.delete_experiment_permission(
         get_experiment_id(),
-        get_request_param("user_name"),
+        get_request_param("username"),
     )
     return jsonify({"message": "Experiment permission has been deleted."})
 
@@ -80,12 +80,18 @@ def get_experiment_users(experiment_id: str):
         current_user = store.get_user(get_username())
         if not can_manage_experiment(experiment_id, current_user.username):
             return make_forbidden_response()
-    list_users = store.list_users()
+    list_users = store.list_users(all=True)
     # Filter users who are associated with the given experiment
     users = []
     for user in list_users:
         # Check if the user is associated with the experiment
         user_experiments_details = {str(exp.experiment_id): exp.permission for exp in (user.experiment_permissions or [])}
         if experiment_id in user_experiments_details:
-            users.append({"username": user.username, "permission": user_experiments_details[experiment_id]})
+            users.append(
+                {
+                    "username": user.username,
+                    "permission": user_experiments_details[experiment_id],
+                    "kind": "user" if not user.is_service_account else "service-account",
+                }
+            )
     return jsonify(users)

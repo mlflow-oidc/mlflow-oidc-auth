@@ -31,4 +31,20 @@
     </div>
   </mat-tab>
 
+  <!--  Prompts-->
+  <mat-tab label="Prompts">
+    <div class="my-3">
+      <div class="header-section">
+      </div>
+
+      <ml-table
+              [columnConfig]="promptsColumnConfig"
+              [data]="promptsDataSource"
+              *ngIf="promptsDataSource.length"
+              [actions]="promptsActions"
+              (action)="handlePromptActions($event)"
+      ></ml-table>
+    </div>
+  </mat-tab>
+
 </mat-tab-group>

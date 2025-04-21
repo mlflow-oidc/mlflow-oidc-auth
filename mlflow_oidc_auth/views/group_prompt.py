@@ -15,7 +15,7 @@ from mlflow_oidc_auth.utils import (
 @check_prompt_permission
 def create_group_prompt_permission(group_name):
     store.create_group_prompt_permission(
-        group_name=group_name, name=get_request_param("prompt_name"), permission=get_request_param("permission")
+        group_name=group_name, name=get_request_param("name"), permission=get_request_param("permission")
     )
     return jsonify({"message": "Group model permission has been created."})
 
@@ -23,14 +23,14 @@ def create_group_prompt_permission(group_name):
 @catch_mlflow_exception
 @check_prompt_permission
 def delete_group_prompt_permission(group_name):
-    store.delete_group_prompt_permission(group_name, get_request_param("prompt_name"))
+    store.delete_group_prompt_permission(group_name, get_request_param("name"))
     return jsonify({"message": "Group model permission has been deleted."})
 
 
 @catch_mlflow_exception
 @check_prompt_permission
 def update_group_prompt_permission(group_name):
-    store.update_group_prompt_permission(group_name, get_request_param("prompt_name"), get_request_param("permission"))
+    store.update_group_prompt_permission(group_name, get_request_param("name"), get_request_param("permission"))
     return jsonify({"message": "Group model permission has been updated."})
 
 

@@ -5,6 +5,7 @@ class User:
         username,
         password_hash,
         is_admin,
+        is_service_account,
         display_name,
         experiment_permissions=None,
         registered_model_permissions=None,
@@ -14,6 +15,7 @@ class User:
         self._username = username
         self._password_hash = password_hash
         self._is_admin = is_admin
+        self._is_service_account = is_service_account
         self._experiment_permissions = experiment_permissions
         self._registered_model_permissions = registered_model_permissions
         self._display_name = display_name
@@ -38,6 +40,14 @@ class User:
     @is_admin.setter
     def is_admin(self, is_admin):
         self._is_admin = is_admin
+
+    @property
+    def is_service_account(self):
+        return self._is_service_account
+
+    @is_service_account.setter
+    def is_service_account(self, is_service_account):
+        self._is_service_account = is_service_account
 
     @property
     def experiment_permissions(self):
@@ -76,6 +86,7 @@ class User:
             "id": self.id,
             "username": self.username,
             "is_admin": self.is_admin,
+            "is_service_account": self.is_service_account,
             "display_name": self.display_name,
             "groups": [g.to_json() for g in self.groups] if self.groups else [],
         }
@@ -88,6 +99,7 @@ class User:
             display_name=dictionary["display_name"],
             password_hash="REDACTED",
             is_admin=dictionary["is_admin"],
+            is_service_account=dictionary.get("is_service_account", False),
             experiment_permissions=[ExperimentPermission.from_json(p) for p in dictionary["experiment_permissions"]],
             registered_model_permissions=[
                 RegisteredModelPermission.from_json(p) for p in dictionary["registered_model_permissions"]

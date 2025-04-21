@@ -1,23 +1,11 @@
-import {
-  Component,
-  EventEmitter,
-  Input,
-  OnChanges,
-  OnInit,
-  Output,
-  SimpleChanges,
-} from "@angular/core";
-import {
-  TableActionEvent,
-  TableActionModel,
-  TableColumnConfigModel,
-} from "./table.interface";
-import { MatTableDataSource } from "@angular/material/table";
+import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
+import { TableActionEvent, TableActionModel, TableColumnConfigModel } from './table.interface';
+import { MatTableDataSource } from '@angular/material/table';
 
 @Component({
-  selector: "ml-table",
-  templateUrl: "./table.component.html",
-  styleUrls: ["./table.component.scss"],
+  selector: 'ml-table',
+  templateUrl: './table.component.html',
+  styleUrls: ['./table.component.scss'],
   standalone: false,
 })
 export class TableComponent<T> implements OnInit, OnChanges {
@@ -30,12 +18,12 @@ export class TableComponent<T> implements OnInit, OnChanges {
   dataSource: MatTableDataSource<T> = new MatTableDataSource<T>();
   columns: string[] = [];
 
-  serachValue: string = "";
+  serachValue: string = '';
 
-  readonly columnActionName = "actions";
+  readonly columnActionName = 'actions';
 
   ngOnChanges(changes: SimpleChanges): void {
-    const data = changes["data"].currentValue;
+    const data = changes['data'].currentValue;
     if (data) {
       this.dataSource = new MatTableDataSource(data);
     }
@@ -46,9 +34,7 @@ export class TableComponent<T> implements OnInit, OnChanges {
 
     this.dataSource = new MatTableDataSource(this.data);
     this.columns = columnKeys;
-    this.actions.length
-      ? (this.columns = [this.columnActionName, ...columnKeys])
-      : (this.columns = columnKeys);
+    this.actions.length ? (this.columns = [this.columnActionName, ...columnKeys]) : (this.columns = columnKeys);
   }
 
   filter(event: Event) {

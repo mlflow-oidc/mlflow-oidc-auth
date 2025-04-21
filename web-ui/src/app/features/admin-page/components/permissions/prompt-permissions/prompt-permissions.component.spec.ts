@@ -1,14 +1,14 @@
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { RouterTestingModule } from "@angular/router/testing";
-import { ActivatedRoute } from "@angular/router";
-import { provideHttpClient } from "@angular/common/http";
-import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { RouterTestingModule } from '@angular/router/testing';
+import { ActivatedRoute } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
-import { of } from "rxjs";
+import { of } from 'rxjs';
 
-import { PromptPermissionsComponent } from "./prompt-permissions.component";
+import { PromptPermissionsComponent } from './prompt-permissions.component';
 
-describe("PromptPermissionsComponent", () => {
+describe('PromptPermissionsComponent', () => {
   let component: PromptPermissionsComponent;
   let fixture: ComponentFixture<PromptPermissionsComponent>;
 
@@ -34,7 +34,7 @@ describe("PromptPermissionsComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

@@ -1,13 +1,13 @@
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { MatToolbarModule } from "@angular/material/toolbar";
-import { MatIconModule } from "@angular/material/icon";
-import { RouterModule } from "@angular/router";
-import { ActivatedRoute } from "@angular/router";
-import { of } from "rxjs";
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatIconModule } from '@angular/material/icon';
+import { RouterModule } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
+import { of } from 'rxjs';
 
-import { HeaderComponent } from "./header.component";
+import { HeaderComponent } from './header.component';
 
-describe("HeaderComponent", () => {
+describe('HeaderComponent', () => {
   let component: HeaderComponent;
   let fixture: ComponentFixture<HeaderComponent>;
 
@@ -19,8 +19,8 @@ describe("HeaderComponent", () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            snapshot: { paramMap: { get: () => "mockParamValue" } },
-            queryParams: of({ mockQueryParam: "mockValue" }),
+            snapshot: { paramMap: { get: () => 'mockParamValue' } },
+            queryParams: of({ mockQueryParam: 'mockValue' }),
           },
         },
       ],
@@ -31,7 +31,7 @@ describe("HeaderComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

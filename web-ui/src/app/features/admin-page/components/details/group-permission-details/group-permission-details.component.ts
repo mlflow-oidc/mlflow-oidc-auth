@@ -1,28 +1,25 @@
-import { Component, OnInit, ViewChild } from "@angular/core";
-import { ActivatedRoute, Router } from "@angular/router";
-import { filter, map, switchMap, tap } from "rxjs";
+import { Component, OnInit, ViewChild } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { filter, map, switchMap, tap } from 'rxjs';
 
-import { MatTabGroup } from "@angular/material/tabs";
-import { EntityEnum } from "src/app/core/configs/core";
-import { TableActionEnum } from "src/app/shared/components/table/table.config";
+import { MatTabGroup } from '@angular/material/tabs';
+import { EntityEnum } from 'src/app/core/configs/core';
+import { TableActionEnum } from 'src/app/shared/components/table/table.config';
 import {
   TableActionEvent,
   TableActionModel,
   TableColumnConfigModel,
-} from "src/app/shared/components/table/table.interface";
-import {
-  ExperimentModel,
-  ModelModel,
-} from "src/app/shared/interfaces/groups-data.interface";
+} from 'src/app/shared/components/table/table.interface';
+import { ExperimentModel, ModelModel } from 'src/app/shared/interfaces/groups-data.interface';
 import {
   ExperimentsDataService,
   ModelsDataService,
   PermissionDataService,
   PromptsDataService,
   SnackBarService,
-} from "src/app/shared/services";
-import { GroupDataService } from "src/app/shared/services/data/group-data.service";
-import { PermissionModalService } from "src/app/shared/services/permission-modal.service";
+} from 'src/app/shared/services';
+import { GroupDataService } from 'src/app/shared/services/data/group-data.service';
+import { PermissionModalService } from 'src/app/shared/services/permission-modal.service';
 import {
   EXPERIMENT_ACTIONS,
   EXPERIMENT_COLUMN_CONFIG,
@@ -30,16 +27,16 @@ import {
   MODELS_COLUMN_CONFIG,
   PROMPTS_ACTIONS,
   PROMPTS_COLUMN_CONFIG,
-} from "./group-permission-details.config";
+} from './group-permission-details.config';
 
 @Component({
-  selector: "ml-group-permission-details",
-  templateUrl: "./group-permission-details.component.html",
-  styleUrls: ["./group-permission-details.component.scss"],
+  selector: 'ml-group-permission-details',
+  templateUrl: './group-permission-details.component.html',
+  styleUrls: ['./group-permission-details.component.scss'],
   standalone: false,
 })
 export class GroupPermissionDetailsComponent implements OnInit {
-  groupName = "";
+  groupName = '';
 
   experimentColumnConfig: TableColumnConfigModel[] = EXPERIMENT_COLUMN_CONFIG;
   experimentDataSource: ExperimentModel[] = [];
@@ -53,13 +50,9 @@ export class GroupPermissionDetailsComponent implements OnInit {
   promptDataSource: ModelModel[] = [];
   promptActions: TableActionModel[] = PROMPTS_ACTIONS;
 
-  @ViewChild("permissionsTabs") permissionsTabs!: MatTabGroup;
+  @ViewChild('permissionsTabs') permissionsTabs!: MatTabGroup;
 
-  private readonly tabIndexMapping: string[] = [
-    "experiments",
-    "models",
-    "prompts",
-  ];
+  private readonly tabIndexMapping: string[] = ['experiments', 'models', 'prompts'];
 
   constructor(
     private readonly groupDataService: GroupDataService,
@@ -70,11 +63,11 @@ export class GroupPermissionDetailsComponent implements OnInit {
     private readonly snackBarService: SnackBarService,
     private readonly modelDataService: ModelsDataService,
     private readonly promptDataService: PromptsDataService,
-    private readonly router: Router,
+    private readonly router: Router
   ) {}
 
   ngOnInit(): void {
-    this.groupName = this.route.snapshot.paramMap.get("id") ?? "";
+    this.groupName = this.route.snapshot.paramMap.get('id') ?? '';
 
     this.groupDataService
       .getAllExperimentsForGroup(this.groupName)
@@ -89,9 +82,7 @@ export class GroupPermissionDetailsComponent implements OnInit {
 
   ngAfterViewInit(): void {
     const routePath = String(this.route.snapshot.url[2]);
-    this.permissionsTabs.selectedIndex = routePath
-      ? this.tabIndexMapping.indexOf(routePath)
-      : 0;
+    this.permissionsTabs.selectedIndex = routePath ? this.tabIndexMapping.indexOf(routePath) : 0;
   }
 
   openModalAddExperimentPermissionToGroup() {
@@ -99,34 +90,21 @@ export class GroupPermissionDetailsComponent implements OnInit {
       .getAllExperiments()
       .pipe(
         map((experiments) =>
-          experiments.filter(
-            (experiment) =>
-              !this.experimentDataSource.some(
-                (exp) => exp.name === experiment.name,
-              ),
-          ),
+          experiments.filter((experiment) => !this.experimentDataSource.some((exp) => exp.name === experiment.name))
         ),
         switchMap((experiments) =>
-          this.permissionModalService.openGrantPermissionModal(
-            EntityEnum.EXPERIMENT,
-            experiments,
-            this.groupName,
-          ),
+          this.permissionModalService.openGrantPermissionModal(EntityEnum.EXPERIMENT, experiments, this.groupName)
         ),
         filter(Boolean),
         switchMap((newPermission) =>
           this.permissionDataService.addExperimentPermissionToGroup(
             this.groupName,
             newPermission.entity.id,
-            newPermission.permission,
-          ),
+            newPermission.permission
+          )
         ),
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission granted successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllExperimentsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission granted successfully')),
+        switchMap(() => this.groupDataService.getAllExperimentsForGroup(this.groupName))
       )
       .subscribe((experiments) => (this.experimentDataSource = experiments));
   }
@@ -137,36 +115,25 @@ export class GroupPermissionDetailsComponent implements OnInit {
       .pipe(
         map((models) =>
           models
-            .filter(
-              (model) =>
-                !this.modelDataSource.some((m) => m.name === model.name),
-            )
+            .filter((model) => !this.modelDataSource.some((m) => m.name === model.name))
             .map((model, index) => ({
               ...model,
               id: `${index}-${model.name}`,
-            })),
+            }))
         ),
         switchMap((models) =>
-          this.permissionModalService.openGrantPermissionModal(
-            EntityEnum.MODEL,
-            models,
-            this.groupName,
-          ),
+          this.permissionModalService.openGrantPermissionModal(EntityEnum.MODEL, models, this.groupName)
         ),
         filter(Boolean),
         switchMap((newPermission) =>
           this.permissionDataService.addModelPermissionToGroup(
             newPermission.entity.name,
             this.groupName,
-            newPermission.permission,
-          ),
+            newPermission.permission
+          )
         ),
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission granted successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllRegisteredModelsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission granted successfully')),
+        switchMap(() => this.groupDataService.getAllRegisteredModelsForGroup(this.groupName))
       )
       .subscribe((models) => (this.modelDataSource = models));
   }
@@ -177,36 +144,25 @@ export class GroupPermissionDetailsComponent implements OnInit {
       .pipe(
         map((prompts) =>
           prompts
-            .filter(
-              (prompt) =>
-                !this.promptDataSource.some((p) => p.name === prompt.name),
-            )
+            .filter((prompt) => !this.promptDataSource.some((p) => p.name === prompt.name))
             .map((prompt, index) => ({
               ...prompt,
               id: `${index}-${prompt.name}`,
-            })),
+            }))
         ),
         switchMap((prompts) =>
-          this.permissionModalService.openGrantPermissionModal(
-            EntityEnum.PROMPT,
-            prompts,
-            this.groupName,
-          ),
+          this.permissionModalService.openGrantPermissionModal(EntityEnum.PROMPT, prompts, this.groupName)
         ),
         filter(Boolean),
         switchMap((newPermission) =>
           this.permissionDataService.addPromptPermissionToGroup(
             newPermission.entity.name,
             this.groupName,
-            newPermission.permission,
-          ),
+            newPermission.permission
+          )
         ),
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission granted successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllPromptsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission granted successfully')),
+        switchMap(() => this.groupDataService.getAllPromptsForGroup(this.groupName))
       )
       .subscribe((prompts) => (this.promptDataSource = prompts));
   }
@@ -215,10 +171,8 @@ export class GroupPermissionDetailsComponent implements OnInit {
     const actionMapping: {
       [key: string]: (experiment: ExperimentModel) => void;
     } = {
-      [TableActionEnum.EDIT]:
-        this.handleEditExperimentPermissionForGroup.bind(this),
-      [TableActionEnum.REVOKE]:
-        this.revokeExperimentPermissionForGroup.bind(this),
+      [TableActionEnum.EDIT]: this.handleEditExperimentPermissionForGroup.bind(this),
+      [TableActionEnum.REVOKE]: this.revokeExperimentPermissionForGroup.bind(this),
     };
 
     const selectedAction = actionMapping[event.action.action];
@@ -229,26 +183,14 @@ export class GroupPermissionDetailsComponent implements OnInit {
 
   handleEditExperimentPermissionForGroup(experiment: ExperimentModel) {
     this.permissionModalService
-      .openEditPermissionsModal(
-        experiment.name,
-        this.groupName,
-        experiment.permission,
-      )
+      .openEditPermissionsModal(experiment.name, this.groupName, experiment.permission)
       .pipe(
         filter(Boolean),
         switchMap((permission) =>
-          this.permissionDataService.updateExperimentPermissionForGroup(
-            this.groupName,
-            experiment.id,
-            permission,
-          ),
+          this.permissionDataService.updateExperimentPermissionForGroup(this.groupName, experiment.id, permission)
         ),
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission updated successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllExperimentsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission updated successfully')),
+        switchMap(() => this.groupDataService.getAllExperimentsForGroup(this.groupName))
       )
       .subscribe((experiments) => (this.experimentDataSource = experiments));
   }
@@ -257,12 +199,8 @@ export class GroupPermissionDetailsComponent implements OnInit {
     this.permissionDataService
       .removeExperimentPermissionFromGroup(this.groupName, experiment.id)
       .pipe(
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission revoked successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllExperimentsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission revoked successfully')),
+        switchMap(() => this.groupDataService.getAllExperimentsForGroup(this.groupName))
       )
       .subscribe((experiments) => (this.experimentDataSource = experiments));
   }
@@ -285,18 +223,10 @@ export class GroupPermissionDetailsComponent implements OnInit {
       .pipe(
         filter(Boolean),
         switchMap((permission) =>
-          this.permissionDataService.updateModelPermissionForGroup(
-            model.name,
-            this.groupName,
-            permission,
-          ),
+          this.permissionDataService.updateModelPermissionForGroup(model.name, this.groupName, permission)
         ),
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission updated successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllRegisteredModelsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission updated successfully')),
+        switchMap(() => this.groupDataService.getAllRegisteredModelsForGroup(this.groupName))
       )
       .subscribe((models) => (this.modelDataSource = models));
   }
@@ -305,20 +235,15 @@ export class GroupPermissionDetailsComponent implements OnInit {
     this.permissionDataService
       .removeModelPermissionFromGroup(model.name, this.groupName)
       .pipe(
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission revoked successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllRegisteredModelsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission revoked successfully')),
+        switchMap(() => this.groupDataService.getAllRegisteredModelsForGroup(this.groupName))
       )
       .subscribe((models) => (this.modelDataSource = models));
   }
 
   handlePromptActions(event: TableActionEvent<ModelModel>) {
     const actionMapping: { [key: string]: (model: ModelModel) => void } = {
-      [TableActionEnum.EDIT]:
-        this.handleEditPromptPermissionForGroup.bind(this),
+      [TableActionEnum.EDIT]: this.handleEditPromptPermissionForGroup.bind(this),
       [TableActionEnum.REVOKE]: this.revokePromptPermissionForGroup.bind(this),
     };
 
@@ -334,18 +259,10 @@ export class GroupPermissionDetailsComponent implements OnInit {
       .pipe(
         filter(Boolean),
         switchMap((permission) =>
-          this.permissionDataService.updatePromptPermissionForGroup(
-            prompt.name,
-            this.groupName,
-            permission,
-          ),
+          this.permissionDataService.updatePromptPermissionForGroup(prompt.name, this.groupName, permission)
         ),
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission updated successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllPromptsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission updated successfully')),
+        switchMap(() => this.groupDataService.getAllPromptsForGroup(this.groupName))
       )
       .subscribe((prompts) => (this.promptDataSource = prompts));
   }
@@ -354,12 +271,8 @@ export class GroupPermissionDetailsComponent implements OnInit {
     this.permissionDataService
       .removePromptPermissionFromGroup(prompt.name, this.groupName)
       .pipe(
-        tap(() =>
-          this.snackBarService.openSnackBar("Permission revoked successfully"),
-        ),
-        switchMap(() =>
-          this.groupDataService.getAllPromptsForGroup(this.groupName),
-        ),
+        tap(() => this.snackBarService.openSnackBar('Permission revoked successfully')),
+        switchMap(() => this.groupDataService.getAllPromptsForGroup(this.groupName))
       )
       .subscribe((prompts) => (this.promptDataSource = prompts));
   }

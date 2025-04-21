@@ -26,6 +26,7 @@ class SqlUser(Base):
     display_name = Column(String(255))
     password_hash = Column(String(255))
     is_admin = Column(Boolean, default=False)
+    is_service_account = Column(Boolean, default=False)
     experiment_permissions = relationship("SqlExperimentPermission", backref="users")
     registered_model_permissions = relationship("SqlRegisteredModelPermission", backref="users")
     groups = relationship("SqlGroup", secondary="user_groups", backref="users")
@@ -37,6 +38,7 @@ class SqlUser(Base):
             display_name=self.display_name,
             password_hash=self.password_hash,
             is_admin=self.is_admin,
+            is_service_account=self.is_service_account,
             experiment_permissions=[p.to_mlflow_entity() for p in self.experiment_permissions],
             registered_model_permissions=[p.to_mlflow_entity() for p in self.registered_model_permissions],
             groups=[g.to_mlflow_entity() for g in self.groups],

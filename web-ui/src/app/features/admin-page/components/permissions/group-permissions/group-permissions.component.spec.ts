@@ -1,14 +1,14 @@
-import { HTTP_INTERCEPTORS, provideHttpClient } from "@angular/common/http";
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
-import { ActivatedRoute } from "@angular/router";
-import { of } from "rxjs";
+import { HTTP_INTERCEPTORS, provideHttpClient } from '@angular/common/http';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { ActivatedRoute } from '@angular/router';
+import { of } from 'rxjs';
 
-import { ErrorHandlerInterceptor } from "src/app/shared/interceptors/error-handler.interceptor";
-import { GroupDataService } from "src/app/shared/services/data/group-data.service";
-import { GroupPermissionsComponent } from "./group-permissions.component";
+import { ErrorHandlerInterceptor } from 'src/app/shared/interceptors/error-handler.interceptor';
+import { GroupDataService } from 'src/app/shared/services/data/group-data.service';
+import { GroupPermissionsComponent } from './group-permissions.component';
 
-describe("GroupPermissionsComponent", () => {
+describe('GroupPermissionsComponent', () => {
   let component: GroupPermissionsComponent;
   let fixture: ComponentFixture<GroupPermissionsComponent>;
 
@@ -39,7 +39,7 @@ describe("GroupPermissionsComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

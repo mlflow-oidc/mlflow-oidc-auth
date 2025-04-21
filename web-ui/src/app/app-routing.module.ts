@@ -1,14 +1,11 @@
-import { NgModule } from "@angular/core";
-import { RouterModule, Routes } from "@angular/router";
-import { RoutePath } from "./core/configs/core";
+import { NgModule } from '@angular/core';
+import { RouterModule, Routes } from '@angular/router';
+import { RoutePath } from './core/configs/core';
 
 const routes: Routes = [
   {
     path: RoutePath.Home,
-    loadChildren: () =>
-      import("./features/home-page/home-page.module").then(
-        (m) => m.HomePageModule,
-      ),
+    loadChildren: () => import('./features/home-page/home-page.module').then((m) => m.HomePageModule),
     data: {
       breadcrumb: {
         skip: true,
@@ -17,12 +14,9 @@ const routes: Routes = [
   },
   {
     path: RoutePath.Manage,
-    loadChildren: () =>
-      import("./features/admin-page/admin-page.module").then(
-        (m) => m.AdminPageModule,
-      ),
+    loadChildren: () => import('./features/admin-page/admin-page.module').then((m) => m.AdminPageModule),
   },
-  { path: "**", redirectTo: RoutePath.Home },
+  { path: '**', redirectTo: RoutePath.Home },
 ];
 
 @NgModule({

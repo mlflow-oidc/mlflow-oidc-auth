@@ -1,9 +1,9 @@
-import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { MatDialogModule } from "@angular/material/dialog";
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatDialogModule } from '@angular/material/dialog';
 
-import { ConfirmModalComponent } from "./confirm-modal.component";
+import { ConfirmModalComponent } from './confirm-modal.component';
 
-describe("ConfirmModalComponent", () => {
+describe('ConfirmModalComponent', () => {
   let component: ConfirmModalComponent;
   let fixture: ComponentFixture<ConfirmModalComponent>;
 
@@ -18,7 +18,7 @@ describe("ConfirmModalComponent", () => {
     fixture.detectChanges();
   });
 
-  it("should create", () => {
+  it('should create', () => {
     expect(component).toBeTruthy();
   });
 });

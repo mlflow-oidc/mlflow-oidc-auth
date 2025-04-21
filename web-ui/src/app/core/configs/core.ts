@@ -4,13 +4,15 @@ export const CORE_CONFIGS = {
 };
 
 export enum EntityEnum {
-  EXPERIMENT = "experiment",
-  MODEL = "model",
-  GROUP = "group",
-  PROMPT = "prompt",
+  EXPERIMENT = 'experiment',
+  MODEL = 'model',
+  GROUP = 'group',
+  PROMPT = 'prompt',
+  USER = 'user',
+  SERVICE_ACCOUNT = 'service account',
 }
 
 export enum RoutePath {
-  Home = "home",
-  Manage = "manage",
+  Home = 'home',
+  Manage = 'manage',
 }

@@ -37,6 +37,23 @@ def get_request_param(param: str) -> str:
     return args[param]
 
 
+def get_optional_request_param(param: str) -> str | None:
+    if request.method == "GET":
+        args = request.args
+    elif request.method in ("POST", "PATCH", "DELETE"):
+        args = request.json
+    else:
+        raise MlflowException(
+            f"Unsupported HTTP method '{request.method}'",
+            BAD_REQUEST,
+        )
+
+    if not args or param not in args:
+        app.logger.debug(f"Optional parameter '{param}' not found in request data.")
+        return None
+    return args[param]
+
+
 def get_username() -> str:
     username = session.get("username")
     if username:
@@ -148,7 +165,7 @@ def check_registered_model_permission(f) -> Callable:
         current_user = store.get_user(get_username())
         if not get_is_admin():
             app.logger.debug(f"Not Admin. Checking permission for {current_user.username}")
-            model_name = get_request_param("model_name")
+            model_name = get_request_param("name")
             if not can_manage_registered_model(model_name, current_user.username):
                 app.logger.warning(f"Change permission denied for {current_user.username} on model {model_name}")
                 return make_forbidden_response()
@@ -164,7 +181,7 @@ def check_prompt_permission(f) -> Callable:
         current_user = store.get_user(get_username())
         if not get_is_admin():
             app.logger.debug(f"Not Admin. Checking permission for {current_user.username}")
-            prompt_name = get_request_param("prompt_name")
+            prompt_name = get_request_param("name")
             if not can_manage_registered_model(prompt_name, current_user.username):
                 app.logger.warning(f"Change permission denied for {current_user.username} on prompt {prompt_name}")
                 return make_forbidden_response()

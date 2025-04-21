@@ -1,13 +1,32 @@
-<ml-table
-        *ngIf="!isLoading; else loader"
-        [columnConfig]="columnConfig"
-        [data]="dataSource"
-        [actions]="actions"
-        (action)="handleItemAction($event)"
-></ml-table>
+<mat-tab-group>
+  <mat-tab label="Users">
+    <ml-table
+      *ngIf="!isLoading; else loader"
+      [columnConfig]="columnConfig"
+      [data]="dataSource"
+      [actions]="actions"
+      (action)="handleItemAction($event)"
+    ></ml-table>
+  </mat-tab>
+  <mat-tab label="Service Accounts">
+    <div class="header-section">
+      <button mat-button (click)="createServiceAccount()">
+        <mat-icon>add</mat-icon>
+        <span>Create Service Account</span>
+      </button>
+    </div>
+    <ml-table
+      *ngIf="!isServiceAccountsLoading; else loader"
+      [columnConfig]="serviceAccountColumnConfig"
+      [data]="serviceAccountsDataSource"
+      [actions]="serviceAccountActions"
+      (action)="handleServiceAccountAction($event)"
+    ></ml-table>
+  </mat-tab>
+</mat-tab-group>
 
 <ng-template #loader>
-    <div class="loader d-flex justify-content-center align-items-center my-5">
-        <mat-spinner [diameter]="40"></mat-spinner>
-    </div>
+  <div class="loader d-flex justify-content-center align-items-center my-5">
+    <mat-spinner [diameter]="40"></mat-spinner>
+  </div>
 </ng-template>

@@ -1,24 +1,18 @@
-import { Component, OnInit } from "@angular/core";
-import { ActivatedRoute, Router } from "@angular/router";
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 
-import { PromptsDataService } from "src/app/shared/services";
-import {
-  TableActionEvent,
-  TableActionModel,
-} from "src/app/shared/components/table/table.interface";
-import {
-  PROMPT_COLUMN_CONFIG,
-  PROMPT_TABLE_ACTIONS,
-} from "./prompt-permissions.config";
-import { TableActionEnum } from "src/app/shared/components/table/table.config";
-import { PromptModel } from "src/app/shared/interfaces/prompts-data.interface";
-import { AdminPageRoutesEnum } from "../../../config";
-import { finalize } from "rxjs";
+import { PromptsDataService } from 'src/app/shared/services';
+import { TableActionEvent, TableActionModel } from 'src/app/shared/components/table/table.interface';
+import { PROMPT_COLUMN_CONFIG, PROMPT_TABLE_ACTIONS } from './prompt-permissions.config';
+import { TableActionEnum } from 'src/app/shared/components/table/table.config';
+import { PromptModel } from 'src/app/shared/interfaces/prompts-data.interface';
+import { AdminPageRoutesEnum } from '../../../config';
+import { finalize } from 'rxjs';
 
 @Component({
-  selector: "ml-prompt-permissions",
-  templateUrl: "./prompt-permissions.component.html",
-  styleUrls: ["./prompt-permissions.component.scss"],
+  selector: 'ml-prompt-permissions',
+  templateUrl: './prompt-permissions.component.html',
+  styleUrls: ['./prompt-permissions.component.scss'],
   standalone: false,
 })
 export class PromptPermissionsComponent implements OnInit {
@@ -31,7 +25,7 @@ export class PromptPermissionsComponent implements OnInit {
   constructor(
     private readonly route: ActivatedRoute,
     private readonly router: Router,
-    private readonly promptDataService: PromptsDataService,
+    private readonly promptDataService: PromptsDataService
   ) {}
 
   ngOnInit(): void {

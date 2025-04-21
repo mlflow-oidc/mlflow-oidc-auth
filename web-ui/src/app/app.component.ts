@@ -1,13 +1,13 @@
-import { Component, OnInit } from "@angular/core";
-import { AuthService } from "./shared/services";
-import { UserDataService } from "./shared/services";
-import { finalize } from "rxjs";
-import { CurrentUserModel } from "./shared/interfaces/user-data.interface";
+import { Component, OnInit } from '@angular/core';
+import { AuthService } from './shared/services';
+import { UserDataService } from './shared/services';
+import { finalize } from 'rxjs';
+import { CurrentUserModel } from './shared/interfaces/user-data.interface';
 
 @Component({
-  selector: "app-root",
-  templateUrl: "./app.component.html",
-  styleUrls: ["./app.component.scss"],
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.scss'],
   standalone: false,
 })
 export class AppComponent implements OnInit {
@@ -16,7 +16,7 @@ export class AppComponent implements OnInit {
 
   constructor(
     private readonly userDataService: UserDataService,
-    private readonly authService: AuthService,
+    private readonly authService: AuthService
   ) {}
 
   ngOnInit(): void {

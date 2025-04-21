@@ -4,11 +4,22 @@ from mlflow.server.handlers import _get_model_registry_store, _get_tracking_stor
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
-from mlflow_oidc_auth.utils import get_is_admin, get_permission_from_store_or_default, get_request_param, get_username
+from mlflow_oidc_auth.utils import (
+    get_is_admin,
+    get_permission_from_store_or_default,
+    get_request_param,
+    get_optional_request_param,
+    get_username,
+)
 
 
-def create_new_user(username: str, display_name: str, is_admin: bool = False):
-    status, message = create_user(username, display_name, is_admin)
+@catch_mlflow_exception
+def create_new_user():
+    username = get_request_param("username")
+    display_name = get_request_param("display_name")
+    is_admin = bool(get_optional_request_param("is_admin") or False)
+    is_service_account = bool(get_optional_request_param("is_service_account") or False)
+    status, message = create_user(username, display_name, is_admin, is_service_account)
     if status:
         return (jsonify({"message": message}), 201)
     else:
@@ -17,22 +28,38 @@ def create_new_user(username: str, display_name: str, is_admin: bool = False):
 
 @catch_mlflow_exception
 def get_user():
-    username = get_request_param("user_name")
+    username = get_request_param("username")
     user = store.get_user(username)
     return jsonify({"user": user.to_json()})
 
 
 @catch_mlflow_exception
 def delete_user():
-    store.delete_user(get_request_param("user_name"))
-    return jsonify({"message": f"User {get_username()} has been deleted"})
+    username = get_request_param("username")
+    store.delete_user(username)
+    return jsonify({"message": f"Account {username} has been deleted"})
 
 
 @catch_mlflow_exception
 def create_access_token():
+    username = get_username()
+    user = store.get_user(username)
+    if user is None:
+        return jsonify({"message": f"User {username} not found"}), 404
     new_token = generate_token()
-    store.update_user(get_username(), new_token)
-    return jsonify({"token": new_token})
+    store.update_user(username, new_token)
+    return jsonify({"token": new_token, "message": f"Token for {username} has been created"})
+
+
+@catch_mlflow_exception
+def create_user_access_token():
+    username = get_request_param("username")
+    user = store.get_user(username)
+    if user is None:
+        return jsonify({"message": f"User {username} not found"}), 404
+    new_token = generate_token()
+    store.update_user(username, new_token)
+    return jsonify({"token": new_token, "message": f"Token for {username} has been created"})
 
 
 @catch_mlflow_exception
@@ -178,12 +205,13 @@ def get_user_prompts(username):
 
 @catch_mlflow_exception
 def get_users():
+    service_account = bool(get_optional_request_param("service") or False)
     # is_admin = get_is_admin()
     # if is_admin:
     #     users = [user.username for user in store.list_users()]
     # else:
     #     users = [get_username()]
-    users = [user.username for user in store.list_users()]
+    users = [user.username for user in store.list_users(is_service_account=service_account)]
     return jsonify({"users": users})
 
 
