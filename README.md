@@ -27,8 +27,7 @@ The plugin required the following environment variables but also supported `.env
 | OIDC_GROUP_DETECTION_PLUGIN | OIDC plugin to detect groups |
 | OIDC_PROVIDER_DISPLAY_NAME | any text to display |
 | OIDC_SCOPE | OIDC scope |
-| OIDC_GROUP_NAME | User group name to be allowed login to MLFlow, currently supported groups in OIDC claims and Microsoft Entra ID groups |
-| OIDC_ADMIN_GROUP_NAME | User group name to be allowed login to MLFlow manage and define permissions, currently supported groups in OIDC claims and Microsoft Entra ID groups |
+| OIDC_GROUP_FILTER_PATTERNS | List of fnmatch patterns that will be considered relevant to login to MLFlow. Any groups coming from the currently supported groups in OIDC claims and Microsoft Entra ID groups not matching any of the patterns will be ignored. Will default to `*` to not filter out any groups |
 | OIDC_AUTHORIZATION_URL | OIDC Auth URL (if discovery URL is not defined) |
 | OIDC_TOKEN_URL         | OIDC Token URL (if discovery URL is not defined) |
 | OIDC_USER_URL          | OIDC User info URL (if discovery URL is not defined) |
@@ -62,7 +61,7 @@ OIDC_CLIENT_SECRET ='<super_secret>'
 OIDC_CLIENT_ID ='<client_id>'
 OIDC_PROVIDER_DISPLAY_NAME = "Login with Okta"
 OIDC_SCOPE = "openid,profile,email,groups"
-OIDC_GROUP_NAME = "mlflow-users-group-name"
+OIDC_GROUP_FILTER_PATTERNS = "mlflow-users-group-name"
 OIDC_ADMIN_GROUP_NAME = "mlflow-admin-group-name"
 ```
 
@@ -75,7 +74,20 @@ OIDC_CLIENT_ID = '<client_id>'
 OIDC_PROVIDER_DISPLAY_NAME = "Login with Microsoft"
 OIDC_GROUP_DETECTION_PLUGIN = 'mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id'
 OIDC_SCOPE = "openid,profile,email"
-OIDC_GROUP_NAME = "mlflow_users_group_name"
+OIDC_GROUP_FILTER_PATTERNS = "mlflow_users_group_name"
+OIDC_ADMIN_GROUP_NAME = "mlflow_admins_group_name"
+```
+
+Alternatively, if you want to give access to every group starting with `mlflow_users_` or `mlflow_viewers_` you can use the following configuration:
+
+```bash
+OIDC_DISCOVERY_URL = 'https://login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration'
+OIDC_CLIENT_SECRET = '<super_secret>'
+OIDC_CLIENT_ID = '<client_id>'
+OIDC_PROVIDER_DISPLAY_NAME = "Login with Microsoft"
+OIDC_GROUP_DETECTION_PLUGIN = 'mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id'
+OIDC_SCOPE = "openid,profile,email"
+OIDC_GROUP_FILTER_PATTERNS = "mlflow_users_* mlflow_viewers_*"
 OIDC_ADMIN_GROUP_NAME = "mlflow_admins_group_name"
 ```
 
