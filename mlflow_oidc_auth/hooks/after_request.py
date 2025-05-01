@@ -21,7 +21,7 @@ from mlflow_oidc_auth.utils import get_is_admin, get_request_param, get_username
 
 
 def _set_can_manage_experiment_permission(resp: Response):
-    response_message = CreateExperiment.Response()
+    response_message = CreateExperiment.Response()  # type: ignore
     parse_dict(resp.json, response_message)
     experiment_id = response_message.experiment_id
     username = get_username()
@@ -29,7 +29,7 @@ def _set_can_manage_experiment_permission(resp: Response):
 
 
 def _set_can_manage_registered_model_permission(resp: Response):
-    response_message = CreateRegisteredModel.Response()
+    response_message = CreateRegisteredModel.Response()  # type: ignore
     parse_dict(resp.json, response_message)
     name = response_message.registered_model.name
     username = get_username()
@@ -59,7 +59,7 @@ def _filter_search_experiments(resp: Response):
     if get_is_admin():
         return
 
-    response_message = SearchExperiments.Response()
+    response_message = SearchExperiments.Response()  # type: ignore
     parse_dict(resp.json, response_message)
 
     # fetch permissions
@@ -105,7 +105,7 @@ def _filter_search_registered_models(resp: Response):
     if get_is_admin():
         return
 
-    response_message = SearchRegisteredModels.Response()
+    response_message = SearchRegisteredModels.Response()  # type: ignore
     parse_dict(resp.json, response_message)
 
     # fetch permissions
