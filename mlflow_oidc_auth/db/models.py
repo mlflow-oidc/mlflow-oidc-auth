@@ -152,6 +152,7 @@ class SqlExperimentRegexPermission(Base):
     __tablename__ = "experiment_regex_permissions"
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     regex: Mapped[str] = mapped_column(String(255), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer(), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
     __table_args__ = (UniqueConstraint("regex", "user_id", name="unique_experiment_user_regex"),)
@@ -159,6 +160,7 @@ class SqlExperimentRegexPermission(Base):
     def to_mlflow_entity(self):
         return ExperimentRegexPermission(
             regex=self.regex,
+            priority=self.priority,
             user_id=self.user_id,
             permission=self.permission,
         )
@@ -168,6 +170,7 @@ class SqlRegisteredModelRegexPermission(Base):
     __tablename__ = "registered_model_regex_permissions"
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     regex: Mapped[str] = mapped_column(String(255), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer(), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
     prompt: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -176,6 +179,7 @@ class SqlRegisteredModelRegexPermission(Base):
     def to_mlflow_entity(self):
         return RegisteredModelRegexPermission(
             regex=self.regex,
+            priority=self.priority,
             user_id=self.user_id,
             permission=self.permission,
             prompt=bool(self.prompt),
@@ -186,6 +190,7 @@ class SqlExperimentGroupRegexPermission(Base):
     __tablename__ = "experiment_group_regex_permissions"
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     regex: Mapped[str] = mapped_column(String(255), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer(), nullable=False)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
     __table_args__ = (UniqueConstraint("regex", "group_id", name="unique_experiment_group_regex"),)
@@ -193,6 +198,7 @@ class SqlExperimentGroupRegexPermission(Base):
     def to_mlflow_entity(self):
         return ExperimentGroupRegexPermission(
             regex=self.regex,
+            priority=self.priority,
             group_id=self.group_id,
             permission=self.permission,
         )
@@ -202,6 +208,7 @@ class SqlRegisteredModelGroupRegexPermission(Base):
     __tablename__ = "registered_model_group_regex_permissions"
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     regex: Mapped[str] = mapped_column(String(255), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer(), nullable=False)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
     prompt: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -210,6 +217,7 @@ class SqlRegisteredModelGroupRegexPermission(Base):
     def to_mlflow_entity(self):
         return RegisteredModelGroupRegexPermission(
             regex=self.regex,
+            priority=self.priority,
             group_id=self.group_id,
             permission=self.permission,
             prompt=bool(self.prompt),
