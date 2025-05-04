@@ -39,6 +39,17 @@ def get_one_optional(session: Session, model, *criterion):
         )
 
 
+def get_all(session: Session, model, *criterion):
+    """
+    Get all rows matching the given criteria.
+    :param session: SQLAlchemy session
+    :param model: SQLAlchemy model class
+    :param criterion: SQLAlchemy filter criteria
+    :return: A list of all rows found
+    """
+    return session.query(model).filter(*criterion).all()
+
+
 def get_user(session: Session, username: str) -> SqlUser:
     """
     Get a user by username.
