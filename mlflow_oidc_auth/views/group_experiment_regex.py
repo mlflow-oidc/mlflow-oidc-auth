@@ -1,15 +1,8 @@
 from flask import jsonify
-from mlflow.server.handlers import _get_tracking_store, catch_mlflow_exception
+from mlflow.server.handlers import catch_mlflow_exception
 
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import (
-    can_manage_experiment,
-    check_admin_permission,
-    get_experiment_id,
-    get_is_admin,
-    get_request_param,
-    get_username,
-)
+from mlflow_oidc_auth.utils import check_admin_permission, get_request_param
 
 
 @catch_mlflow_exception
@@ -26,19 +19,18 @@ def create_group_experiment_regex_permission(group_name):
 
 @catch_mlflow_exception
 @check_admin_permission
-def get_group_experiment_regex_permission():
-    ep = store.get_group_experiment_regex_permission(
-        group_name=get_request_param("group_name"),
-        regex=get_request_param("regex"),
+def get_group_experiment_regex_permission(group_name):
+    ep = store.list_group_experiment_regex_permissions(
+        group_name=group_name,
     )
-    return jsonify({"experiment_permission": ep.to_json()}), 200
+    return jsonify({"experiment_permissions": [e.to_json() for e in ep]}), 200
 
 
 @catch_mlflow_exception
 @check_admin_permission
-def update_group_experiment_regex_permission():
+def update_group_experiment_regex_permission(group_name):
     ep = store.update_group_experiment_regex_permission(
-        group_name=get_request_param("group_name"),
+        group_name=group_name,
         regex=get_request_param("regex"),
         priority=int(get_request_param("priority")),
         permission=get_request_param("permission"),
@@ -48,9 +40,9 @@ def update_group_experiment_regex_permission():
 
 @catch_mlflow_exception
 @check_admin_permission
-def delete_group_experiment_regex_permission():
+def delete_group_experiment_regex_permission(group_name):
     store.delete_group_experiment_regex_permission(
-        group_name=get_request_param("group_name"),
+        group_name=group_name,
         regex=get_request_param("regex"),
     )
     return jsonify({"status": "success"}), 200
