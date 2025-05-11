@@ -2,10 +2,7 @@ from flask import jsonify
 from mlflow.server.handlers import catch_mlflow_exception
 
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import (
-    check_admin_permission,
-    get_request_param,
-)
+from mlflow_oidc_auth.utils import check_admin_permission, get_request_param
 
 
 @catch_mlflow_exception
@@ -23,11 +20,10 @@ def create_prompt_regex_permission():
 @catch_mlflow_exception
 @check_admin_permission
 def get_prompt_regex_permission():
-    rm = store.get_prompt_regex_permission(
-        regex=get_request_param("regex"),
+    rm = store.list_prompt_regex_permissions(
         username=get_request_param("username"),
     )
-    return jsonify({"prompt_permission": rm.to_json()}), 200
+    return jsonify({"prompt_permission": [r.to_json() for r in rm]}), 200
 
 
 @catch_mlflow_exception

@@ -20,11 +20,10 @@ def create_experiment_regex_permission():
 @catch_mlflow_exception
 @check_admin_permission
 def get_experiment_regex_permission():
-    ep = store.get_experiment_regex_permission(
-        get_request_param("regex"),
-        get_request_param("username"),
+    ep = store.list_experiment_regex_permissions(
+        username=get_request_param("username"),
     )
-    return make_response({"experiment_permission": ep.to_json()})
+    return make_response({"experiment_permission": [e.to_json() for e in ep]})
 
 
 @catch_mlflow_exception

@@ -1,11 +1,8 @@
 from flask import jsonify, make_response
-from mlflow.server.handlers import _get_model_registry_store, catch_mlflow_exception
+from mlflow.server.handlers import catch_mlflow_exception
 
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import (
-    check_admin_permission,
-    get_request_param,
-)
+from mlflow_oidc_auth.utils import check_admin_permission, get_request_param
 
 
 @catch_mlflow_exception
@@ -23,11 +20,10 @@ def create_registered_model_regex_permission():
 @catch_mlflow_exception
 @check_admin_permission
 def get_registered_model_regex_permission():
-    rm = store.get_registered_model_regex_permission(
-        regex=get_request_param("regex"),
+    rm = store.list_registered_model_regex_permissions(
         username=get_request_param("username"),
     )
-    return make_response({"registered_model_permission": rm.to_json()})
+    return make_response({"registered_model_permission": [r.to_json() for r in rm]})
 
 
 @catch_mlflow_exception

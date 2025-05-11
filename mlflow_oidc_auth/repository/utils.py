@@ -4,6 +4,7 @@ from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 import re
 from mlflow_oidc_auth.db.models import SqlUser, SqlGroup, SqlUserGroup
 from sqlalchemy.orm import Session
+import warnings
 
 
 def get_one_or_raise(session: Session, model, *criterion, not_found_msg: str, multiple_msg: str):
@@ -102,7 +103,15 @@ def validate_regex(regex: str) -> None:
     """
     if not regex:
         raise MlflowException("Regex pattern cannot be empty", INVALID_STATE)
-    try:
-        re.compile(regex)
-    except re.error as e:
-        raise MlflowException(f"Invalid regex pattern: {regex}. Error: {e}", INVALID_STATE)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        try:
+            re.compile(regex)
+        except re.error as e:
+            raise MlflowException(f"Invalid regex pattern: {regex}. Error: {e}", INVALID_STATE)
+        for warning in w:
+            if issubclass(warning.category, SyntaxWarning):
+                raise MlflowException(
+                    f"Regex pattern may contain invalid escape sequences: {regex}. " f"Warning: {warning.message}",
+                    INVALID_STATE,
+                )

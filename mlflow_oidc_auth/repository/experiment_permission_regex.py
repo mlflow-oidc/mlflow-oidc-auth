@@ -54,6 +54,11 @@ class ExperimentPermissionRegexRepository:
             )
             return row.to_mlflow_entity()
 
+    def list(self) -> List[ExperimentRegexPermission]:
+        with self._Session() as session:
+            rows = session.query(SqlExperimentRegexPermission).all()
+            return [r.to_mlflow_entity() for r in rows]
+
     def list_permissions_for_user(self, username: str) -> List[ExperimentRegexPermission]:
         with self._Session() as session:
             user = get_user(session, username)
@@ -78,6 +83,7 @@ class ExperimentPermissionRegexRepository:
             return perm.to_mlflow_entity()
 
     def revoke(self, regex: str, username: str) -> None:
+        validate_regex(regex)
         with self._Session() as session:
             perm: SqlExperimentRegexPermission = get_one_or_raise(
                 session,
