@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("permission", sa.String(length=255), nullable=True),
         sa.Column("prompt", sa.Boolean(), nullable=True),
         sa.ForeignKeyConstraint(["group_id"], ["groups.id"], name="fk_group_id_registered_model_group_regex_permissions"),
-        sa.UniqueConstraint("regex", "group_id", name="unique_name_group_regex"),
+        sa.UniqueConstraint("regex", "group_id", "prompt", name="unique_name_group_regex"),
     )
     op.create_table(
         "experiment_group_regex_permissions",
@@ -48,7 +48,7 @@ def upgrade() -> None:
         sa.Column("permission", sa.String(length=255), nullable=True),
         sa.Column("prompt", sa.Boolean(), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="fk_user_id_registered_model_regex_permissions"),
-        sa.UniqueConstraint("regex", "user_id", name="unique_name_user_regex"),
+        sa.UniqueConstraint("regex", "user_id", "prompt", name="unique_name_user_regex"),
     )
     op.create_table(
         "experiment_regex_permissions",
