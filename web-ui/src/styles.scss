@@ -2,4 +2,6 @@
 @use 'bootstrap/scss/bootstrap';
 
 html, body { height: 100%; }
-body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; padding-bottom: 4rem; }
+.content { padding-bottom: 4rem; }
+table.mat-table { margin-bottom: 4rem; }

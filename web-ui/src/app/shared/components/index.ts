@@ -8,3 +8,4 @@ export * from './modals/grant-user-permissions/grant-user-permissions.component'
 export * from './modals/confirm-modal/confirm-modal.component';
 export * from './modals/create-service-account-modal/create-service-account-modal.component';
 export * from './modals/manage-regex-modal/manage-regex-modal.component';
+export * from './footer/footer.component';
