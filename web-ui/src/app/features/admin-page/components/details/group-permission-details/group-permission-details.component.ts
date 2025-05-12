@@ -1,7 +1,8 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { Component, OnInit, ViewChild, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { filter, map, switchMap, tap } from 'rxjs';
+import { filter, map, switchMap, tap, takeUntil } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
+import { Subject } from 'rxjs';
 
 import { MatTabGroup } from '@angular/material/tabs';
 import { EntityEnum } from 'src/app/core/configs/core';
@@ -50,7 +51,7 @@ import { ManageRegexModalData } from 'src/app/shared/components/modals/manage-re
   styleUrls: ['./group-permission-details.component.scss'],
   standalone: false,
 })
-export class GroupPermissionDetailsComponent implements OnInit {
+export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
   selectedSubTabIndexes: number[] = [0, 0, 0];
   private navigating = false;
 
@@ -88,6 +89,7 @@ export class GroupPermissionDetailsComponent implements OnInit {
 
   private readonly tabIndexMapping: string[] = ['experiments', 'models', 'prompts'];
   private isMainTabInit = true;
+  private destroy$ = new Subject<void>();
 
   constructor(
     private readonly groupDataService: GroupDataService,
@@ -122,25 +124,31 @@ export class GroupPermissionDetailsComponent implements OnInit {
 
     this.groupDataService
       .getAllExperimentsForGroup(this.groupName)
+      .pipe(takeUntil(this.destroy$))
       .subscribe((experiments) => (this.experimentDataSource = experiments));
     this.groupDataService
       .getAllRegisteredModelsForGroup(this.groupName)
+      .pipe(takeUntil(this.destroy$))
       .subscribe((models) => (this.modelDataSource = models));
     this.groupDataService
       .getAllPromptsForGroup(this.groupName)
+      .pipe(takeUntil(this.destroy$))
       .subscribe((prompts) => (this.promptDataSource = prompts));
 
     if (this.isAdmin) {
       this.experimentRegexDataService.
         getExperimentRegexPermissionsForGroup(this.groupName)
+        .pipe(takeUntil(this.destroy$))
         .subscribe((experimentsRegex) => (this.experimentRegexDataSource = experimentsRegex));
 
       this.modelRegexDataService
         .getModelRegexPermissionsForGroup(this.groupName)
+        .pipe(takeUntil(this.destroy$))
         .subscribe((modelsRegex) => (this.modelRegexDataSource = modelsRegex));
 
       this.promptRegexDataService
         .getPromptRegexPermissionsForGroup(this.groupName)
+        .pipe(takeUntil(this.destroy$))
         .subscribe((promptsRegex) => (this.promptRegexDataSource = promptsRegex));
     }
   }
@@ -160,6 +168,11 @@ export class GroupPermissionDetailsComponent implements OnInit {
     setTimeout(() => {
       this.isMainTabInit = false;
     }, 0);
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   openModalAddExperimentPermissionToGroup() {
