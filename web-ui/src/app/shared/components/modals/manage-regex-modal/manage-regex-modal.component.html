@@ -2,14 +2,6 @@
 <mat-dialog-content [formGroup]="manageRegexForm">
   <div class="d-flex flex-column">
     <mat-form-field cdkFocusInitial>
-      <mat-label>{{ data.entityType | titlecase }}</mat-label>
-      <select matNativeControl formControlName="entity" [compareWith]="compareEntities">
-        <ng-container *ngFor="let entity of data.entities">
-          <option [ngValue]="entity">{{ entity.name }}</option>
-        </ng-container>
-      </select>
-    </mat-form-field>
-    <mat-form-field>
       <mat-label>Regex</mat-label>
       <input matInput formControlName="regex" placeholder="Enter Python regex" />
       <mat-error *ngIf="manageRegexForm.get('regex')?.hasError('invalidRegex')">

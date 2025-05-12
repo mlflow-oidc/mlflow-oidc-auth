@@ -274,7 +274,7 @@ class SqlAlchemyStore:
         )
 
     def delete_group_registered_model_regex_permission(self, group_name: str, regex: str) -> None:
-        return self.registered_model_group_regex_repo.revoke(group_name, regex)
+        return self.registered_model_group_regex_repo.revoke(group_name=group_name, regex=regex)
 
     # Prompt regex CRUD
     def create_prompt_regex_permission(self, regex: str, priority: int, permission: str, username: str, prompt: bool = True):

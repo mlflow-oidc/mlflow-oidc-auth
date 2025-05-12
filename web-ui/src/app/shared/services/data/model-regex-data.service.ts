@@ -16,34 +16,43 @@ export class ModelRegexDataService {
 
   addModelRegexPermissionToGroup(
     groupName: string,
-    pattern: string,
-    permission: string
+    regex: string,
+    permission: string,
+    priority: number,
   ) {
     return this.http.post(
       API_URL.CREATE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION.replace('${groupName}', groupName),
-      { pattern, permission }
+      {
+        "regex": regex,
+        "priority": priority,
+        "permission": permission
+      }
     );
   }
 
   updateModelRegexPermissionForGroup(
     groupName: string,
-    regexPermissionId: string,
-    pattern: string,
-    permission: string
+    regex: string,
+    permission: string,
+    priority: number,
   ) {
     return this.http.patch(
       API_URL.UPDATE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION.replace('${groupName}', groupName),
-      { id: regexPermissionId, pattern, permission }
+      {
+        "regex": regex,
+        "priority": priority,
+        "permission": permission
+      }
     );
   }
 
   removeModelRegexPermissionFromGroup(
     groupName: string,
-    regexPermissionId: string
+    regex: string
   ) {
     return this.http.delete(
       API_URL.DELETE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION.replace('${groupName}', groupName),
-      { body: { id: regexPermissionId } }
+      { body: { "regex": regex } }
     );
   }
 

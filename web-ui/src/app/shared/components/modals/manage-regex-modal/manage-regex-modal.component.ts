@@ -2,7 +2,6 @@ import { Component, Inject, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { PermissionEnum, PERMISSIONS } from 'src/app/core/configs/permissions';
-import { EntityEnum } from 'src/app/core/configs/core';
 import { ManageRegexModalData } from './manage-regex-modal.interface';
 
 @Component({
@@ -14,27 +13,24 @@ import { ManageRegexModalData } from './manage-regex-modal.interface';
 export class ManageRegexModalComponent implements OnInit {
   manageRegexForm!: FormGroup;
   permissions = PERMISSIONS;
-  entityTypes = [EntityEnum.MODEL, EntityEnum.EXPERIMENT, EntityEnum.PROMPT];
   title: string = '';
 
   constructor(
     @Inject(MAT_DIALOG_DATA) public data: ManageRegexModalData,
     private readonly fb: FormBuilder
-  ) {}
+  ) { }
 
   ngOnInit(): void {
-    this.title = `Manage Regex Rule`;
+    this.title = this.data.regex ? `Manage Regex Rule: ${this.data.regex}` : 'Add New Regex Rule';
     this.manageRegexForm = this.fb.group({
-      entity: [null, Validators.required],
-      regex: ['', [Validators.required, this.pythonRegexValidator]],
-      priority: [1, [Validators.required, Validators.pattern('^[0-9]+$')]],
-      permission: [PermissionEnum.READ, Validators.required],
+      regex: [{ value: this.data.regex || '', disabled: !!this.data.regex }, [Validators.required, this.pythonRegexValidator]],
+      priority: [this.data.priority || 1, [Validators.required, Validators.pattern('^[0-9]+$')]],
+      permission: [this.data.permission || PermissionEnum.READ, Validators.required],
     });
   }
 
   pythonRegexValidator(control: any) {
     try {
-      // Try to create a RegExp object (JS regex is similar to Python for most cases)
       new RegExp(control.value);
       return null;
     } catch {
