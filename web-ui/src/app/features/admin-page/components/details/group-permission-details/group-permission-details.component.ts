@@ -39,6 +39,7 @@ import {
 } from './group-permission-details.config';
 import { AuthService } from 'src/app/shared/services/auth.service';
 import { PermissionEnum } from 'src/app/core/configs/permissions';
+import { AdminPageRoutesEnum } from '../../../config';
 
 @Component({
   selector: 'ml-group-permission-details',
@@ -47,6 +48,9 @@ import { PermissionEnum } from 'src/app/core/configs/permissions';
   standalone: false,
 })
 export class GroupPermissionDetailsComponent implements OnInit {
+  selectedSubTabIndexes: number[] = [0, 0, 0];
+  private navigating = false;
+
   groupName = '';
 
   experimentColumnConfig: TableColumnConfigModel[] = EXPERIMENT_COLUMN_CONFIG;
@@ -80,6 +84,7 @@ export class GroupPermissionDetailsComponent implements OnInit {
   @ViewChild('permissionsTabs') permissionsTabs!: MatTabGroup;
 
   private readonly tabIndexMapping: string[] = ['experiments', 'models', 'prompts'];
+  private isMainTabInit = true;
 
   constructor(
     private readonly groupDataService: GroupDataService,
@@ -95,12 +100,20 @@ export class GroupPermissionDetailsComponent implements OnInit {
     private readonly promptRegexDataService: PromptRegexDataService,
     private readonly router: Router,
     private readonly authService: AuthService
-  ) {}
+  ) { }
 
   ngOnInit(): void {
+    const segments = this.route.snapshot.url.map((segment) => segment.path);
+    const mainEntity = segments.length > 2 ? segments[2] : '';
+    const mainTabIndex = this.tabIndexMapping.indexOf(mainEntity);
+    const subRoute = segments.length > 3 ? segments[3] : '';
+
+    if (mainTabIndex >= 0) {
+      this.selectedSubTabIndexes[mainTabIndex] = subRoute === AdminPageRoutesEnum.REGEX ? 1 : 0;
+    }
+
     this.groupName = this.route.snapshot.paramMap.get('id') ?? '';
 
-    // set admin flag
     this.isAdmin = this.authService.getUserInfo().is_admin;
 
     this.groupDataService
@@ -113,7 +126,6 @@ export class GroupPermissionDetailsComponent implements OnInit {
       .getAllPromptsForGroup(this.groupName)
       .subscribe((prompts) => (this.promptDataSource = prompts));
 
-    // fetch regex permissions for group if admin
     if (this.isAdmin) {
       this.experimentRegexDataService.
         getExperimentRegexPermissionsForGroup(this.groupName)
@@ -123,15 +135,27 @@ export class GroupPermissionDetailsComponent implements OnInit {
         .getModelRegexPermissionsForGroup(this.groupName)
         .subscribe((modelsRegex) => (this.modelRegexDataSource = modelsRegex));
 
-        this.promptRegexDataService
+      this.promptRegexDataService
         .getPromptRegexPermissionsForGroup(this.groupName)
         .subscribe((promptsRegex) => (this.promptRegexDataSource = promptsRegex));
     }
   }
 
   ngAfterViewInit(): void {
-    const routePath = String(this.route.snapshot.url[2]);
-    this.permissionsTabs.selectedIndex = routePath ? this.tabIndexMapping.indexOf(routePath) : 0;
+    const segments = this.route.snapshot.url.map((segment) => segment.path);
+    const mainEntity = segments.length > 2 ? segments[2] : '';
+    const mainTabIndex = this.tabIndexMapping.indexOf(mainEntity);
+    const subRoute = segments.length > 3 ? segments[3] : '';
+
+    this.permissionsTabs.selectedIndex = mainTabIndex >= 0 ? mainTabIndex : 0;
+
+    if (mainTabIndex >= 0) {
+      this.selectedSubTabIndexes[mainTabIndex] = subRoute === AdminPageRoutesEnum.REGEX ? 1 : 0;
+    }
+
+    setTimeout(() => {
+      this.isMainTabInit = false;
+    }, 0);
   }
 
   openModalAddExperimentPermissionToGroup() {
@@ -327,9 +351,34 @@ export class GroupPermissionDetailsComponent implements OnInit {
   }
 
   handleTabSelection(index: number) {
-    this.router.navigate([`../${this.tabIndexMapping[index]}`], {
-      relativeTo: this.route,
-    });
+    if (this.isMainTabInit) {
+      return;
+    }
+    const groupId = this.route.snapshot.paramMap.get('id');
+    this.router.navigate([`/manage/group/${groupId}/${this.tabIndexMapping[index]}/permissions`]);
+  }
+
+  handleSubTabSelection(index: number): void {
+    if (this.navigating) {
+      return;
+    }
+
+    this.navigating = true;
+    const mainIndex = this.permissionsTabs.selectedIndex;
+    const entity = mainIndex !== null && mainIndex >= 0 ? this.tabIndexMapping[mainIndex] : '';
+    const subRoute = index === 1 ? AdminPageRoutesEnum.REGEX : AdminPageRoutesEnum.PERMISSIONS;
+
+    if (mainIndex !== null && mainIndex >= 0) {
+      this.selectedSubTabIndexes[mainIndex] = index;
+    }
+
+    const groupId = this.route.snapshot.paramMap.get('id');
+    this.router.navigate([`/manage/group/${groupId}/${entity}/${subRoute}`])
+      .then(() => {
+        setTimeout(() => {
+          this.navigating = false;
+        }, 100);
+      });
   }
 
   // Regex handlers

@@ -1,7 +1,7 @@
 <mat-tab-group (selectedIndexChange)="handleTabSelection($event)" #permissionsTabs>
     <!--  Experiments-->
     <mat-tab label="Experiments">
-        <mat-tab-group mat-stretch-tabs>
+        <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[0]" (selectedIndexChange)="handleSubTabSelection($event)">
             <mat-tab label="Permissions">
                 <div class="my-3">
                     <div class="header-section">
@@ -40,7 +40,7 @@
 
     <!--  Models-->
     <mat-tab label="Models">
-        <mat-tab-group mat-stretch-tabs>
+        <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[1]" (selectedIndexChange)="handleSubTabSelection($event)">
             <mat-tab label="Permissions">
                 <div class="my-3">
                     <div class="header-section">
@@ -79,7 +79,7 @@
 
     <!--  Prompts-->
     <mat-tab label="Prompts">
-        <mat-tab-group mat-stretch-tabs>
+        <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[2]" (selectedIndexChange)="handleSubTabSelection($event)">
             <mat-tab label="Permissions">
                 <div class="my-3">
                     <div class="header-section">

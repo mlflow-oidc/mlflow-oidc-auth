@@ -84,30 +84,54 @@ const routes: Routes = [
     component: PermissionsComponent,
   },
   {
-    path: `${AdminPageRoutesEnum.GROUP}/:id/experiments`,
+    path: `${AdminPageRoutesEnum.GROUP}/:id`,
+    pathMatch: 'full',
+    redirectTo: `${AdminPageRoutesEnum.GROUP}/:id/experiments/permissions`,
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/experiments/permissions`,
     component: GroupPermissionDetailsComponent,
-    data: {
-      breadcrumb: getBreadcrumb,
-    },
+    data: { breadcrumb: getBreadcrumb },
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/experiments/regex`,
+    component: GroupPermissionDetailsComponent,
+    data: { breadcrumb: getBreadcrumb },
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/experiments`,
+    pathMatch: 'full',
+    redirectTo: `${AdminPageRoutesEnum.GROUP}/:id/experiments/permissions`,
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/models/permissions`,
+    component: GroupPermissionDetailsComponent,
+    data: { breadcrumb: getBreadcrumb },
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/models/regex`,
+    component: GroupPermissionDetailsComponent,
+    data: { breadcrumb: getBreadcrumb },
   },
   {
     path: `${AdminPageRoutesEnum.GROUP}/:id/models`,
-    component: GroupPermissionDetailsComponent,
-    data: {
-      breadcrumb: getBreadcrumb,
-    },
+    pathMatch: 'full',
+    redirectTo: `${AdminPageRoutesEnum.GROUP}/:id/models/permissions`,
   },
   {
-    path: `${AdminPageRoutesEnum.GROUP}/:id`,
-    pathMatch: 'full',
-    redirectTo: `${AdminPageRoutesEnum.GROUP}/:id/experiments`,
+    path: `${AdminPageRoutesEnum.GROUP}/:id/prompts/permissions`,
+    component: GroupPermissionDetailsComponent,
+    data: { breadcrumb: getBreadcrumb },
+  },
+  {
+    path: `${AdminPageRoutesEnum.GROUP}/:id/prompts/regex`,
+    component: GroupPermissionDetailsComponent,
+    data: { breadcrumb: getBreadcrumb },
   },
   {
     path: `${AdminPageRoutesEnum.GROUP}/:id/prompts`,
-    component: GroupPermissionDetailsComponent,
-    data: {
-      breadcrumb: getBreadcrumb,
-    },
+    pathMatch: 'full',
+    redirectTo: `${AdminPageRoutesEnum.GROUP}/:id/prompts/permissions`,
   },
   {
     path: '**',
