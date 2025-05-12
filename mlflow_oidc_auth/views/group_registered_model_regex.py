@@ -23,7 +23,7 @@ def get_group_registered_model_regex_permission(group_name):
     ep = store.list_group_registered_model_regex_permissions(
         group_name=group_name,
     )
-    return jsonify({"experiment_permission": [e.to_json() for e in ep]}), 200
+    return jsonify([e.to_json() for e in ep]), 200
 
 
 @catch_mlflow_exception
@@ -35,7 +35,7 @@ def update_group_registered_model_regex_permission(group_name):
         priority=int(get_request_param("priority")),
         permission=get_request_param("permission"),
     )
-    return jsonify({"experiment_permission": ep.to_json()}), 200
+    return jsonify({"registered_model_permission": ep.to_json()}), 200
 
 
 @catch_mlflow_exception

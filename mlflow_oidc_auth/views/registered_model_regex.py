@@ -23,7 +23,7 @@ def get_registered_model_regex_permission():
     rm = store.list_registered_model_regex_permissions(
         username=get_request_param("username"),
     )
-    return make_response({"registered_model_permission": [r.to_json() for r in rm]})
+    return make_response([r.to_json() for r in rm]), 200
 
 
 @catch_mlflow_exception

@@ -23,7 +23,7 @@ def get_group_experiment_regex_permission(group_name):
     ep = store.list_group_experiment_regex_permissions(
         group_name=group_name,
     )
-    return jsonify({"experiment_permissions": [e.to_json() for e in ep]}), 200
+    return jsonify([e.to_json() for e in ep]), 200
 
 
 @catch_mlflow_exception
