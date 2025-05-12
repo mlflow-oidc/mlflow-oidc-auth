@@ -430,7 +430,7 @@ export class GroupPermissionDetailsComponent implements OnInit {
         switchMap((result) =>
           this.experimentRegexDataService.updateExperimentRegexPermissionForGroup(
             this.groupName,
-            result.regex,
+            item.regex,
             result.permission,
             result.priority
           )
