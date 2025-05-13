@@ -12,7 +12,13 @@ import {
   TableActionModel,
   TableColumnConfigModel,
 } from 'src/app/shared/components/table/table.interface';
-import { ExperimentModel, ModelModel, ExperimentRegexPermissionModel, ModelRegexPermissionModel, PromptRegexPermissionModel } from 'src/app/shared/interfaces/groups-data.interface';
+import {
+  ExperimentModel,
+  ModelModel,
+  ExperimentRegexPermissionModel,
+  ModelRegexPermissionModel,
+  PromptRegexPermissionModel,
+} from 'src/app/shared/interfaces/groups-data.interface';
 import {
   ExperimentsDataService,
   ModelsDataService,
@@ -106,7 +112,7 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
     private readonly router: Router,
     private readonly authService: AuthService,
     private readonly dialog: MatDialog
-  ) { }
+  ) {}
 
   ngOnInit(): void {
     const segments = this.route.snapshot.url.map((segment) => segment.path);
@@ -136,8 +142,8 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
       .subscribe((prompts) => (this.promptDataSource = prompts));
 
     if (this.isAdmin) {
-      this.experimentRegexDataService.
-        getExperimentRegexPermissionsForGroup(this.groupName)
+      this.experimentRegexDataService
+        .getExperimentRegexPermissionsForGroup(this.groupName)
         .pipe(takeUntil(this.destroy$))
         .subscribe((experimentsRegex) => (this.experimentRegexDataSource = experimentsRegex));
 
@@ -390,12 +396,11 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
     }
 
     const groupId = this.route.snapshot.paramMap.get('id');
-    this.router.navigate([`/manage/group/${groupId}/${entity}/${subRoute}`])
-      .then(() => {
-        setTimeout(() => {
-          this.navigating = false;
-        }, 100);
-      });
+    this.router.navigate([`/manage/group/${groupId}/${entity}/${subRoute}`]).then(() => {
+      setTimeout(() => {
+        this.navigating = false;
+      }, 100);
+    });
   }
 
   // Regex handlers
@@ -406,24 +411,26 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
       priority: 100,
     };
 
-    this.dialog.open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
-      data: modalData,
-      width: '500px',
-    }).afterClosed().pipe(
-      filter((result): result is ManageRegexModalData => !!result),
-      switchMap((result) =>
-        this.experimentRegexDataService.addExperimentRegexPermissionToGroup(
-          this.groupName,
-          result.regex,
-          result.permission,
-          result.priority
-        )
-      ),
-      tap(() => this.snackBarService.openSnackBar('Experiment regex permission added successfully')),
-      switchMap(() =>
-        this.experimentRegexDataService.getExperimentRegexPermissionsForGroup(this.groupName)
+    this.dialog
+      .open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
+        data: modalData,
+        width: '500px',
+      })
+      .afterClosed()
+      .pipe(
+        filter((result): result is ManageRegexModalData => !!result),
+        switchMap((result) =>
+          this.experimentRegexDataService.addExperimentRegexPermissionToGroup(
+            this.groupName,
+            result.regex,
+            result.permission,
+            result.priority
+          )
+        ),
+        tap(() => this.snackBarService.openSnackBar('Experiment regex permission added successfully')),
+        switchMap(() => this.experimentRegexDataService.getExperimentRegexPermissionsForGroup(this.groupName))
       )
-    ).subscribe((data) => (this.experimentRegexDataSource = data));
+      .subscribe((data) => (this.experimentRegexDataSource = data));
   }
 
   handleExperimentRegexActions(event: TableActionEvent<ExperimentRegexPermissionModel>) {
@@ -435,32 +442,30 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
         priority: item.priority,
       };
 
-      this.dialog.open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
-        data: modalData,
-        width: '500px',
-      }).afterClosed().pipe(
-        filter((result): result is ManageRegexModalData => !!result),
-        switchMap((result) =>
-          this.experimentRegexDataService.updateExperimentRegexPermissionForGroup(
-            this.groupName,
-            item.regex,
-            result.permission,
-            result.priority
-          )
-        ),
-        tap(() => this.snackBarService.openSnackBar('Experiment regex permission updated successfully')),
-        switchMap(() =>
-          this.experimentRegexDataService.getExperimentRegexPermissionsForGroup(this.groupName)
+      this.dialog
+        .open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
+          data: modalData,
+          width: '500px',
+        })
+        .afterClosed()
+        .pipe(
+          filter((result): result is ManageRegexModalData => !!result),
+          switchMap((result) =>
+            this.experimentRegexDataService.updateExperimentRegexPermissionForGroup(
+              this.groupName,
+              item.regex,
+              result.permission,
+              result.priority
+            )
+          ),
+          tap(() => this.snackBarService.openSnackBar('Experiment regex permission updated successfully')),
+          switchMap(() => this.experimentRegexDataService.getExperimentRegexPermissionsForGroup(this.groupName))
         )
-      ).subscribe((data) => (this.experimentRegexDataSource = data));
+        .subscribe((data) => (this.experimentRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.experimentRegexDataService
         .removeExperimentRegexPermissionFromGroup(this.groupName, event.item.regex)
-        .pipe(
-          switchMap(() =>
-            this.experimentRegexDataService.getExperimentRegexPermissionsForGroup(this.groupName)
-          )
-        )
+        .pipe(switchMap(() => this.experimentRegexDataService.getExperimentRegexPermissionsForGroup(this.groupName)))
         .subscribe((data) => (this.experimentRegexDataSource = data));
     }
   }
@@ -472,24 +477,26 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
       priority: 100,
     };
 
-    this.dialog.open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
-      data: modalData,
-      width: '500px',
-    }).afterClosed().pipe(
-      filter((result): result is ManageRegexModalData => !!result),
-      switchMap((result) =>
-        this.modelRegexDataService.addModelRegexPermissionToGroup(
-          this.groupName,
-          result.regex,
-          result.permission,
-          result.priority
-        )
-      ),
-      tap(() => this.snackBarService.openSnackBar('Model regex permission added successfully')),
-      switchMap(() =>
-        this.modelRegexDataService.getModelRegexPermissionsForGroup(this.groupName)
+    this.dialog
+      .open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
+        data: modalData,
+        width: '500px',
+      })
+      .afterClosed()
+      .pipe(
+        filter((result): result is ManageRegexModalData => !!result),
+        switchMap((result) =>
+          this.modelRegexDataService.addModelRegexPermissionToGroup(
+            this.groupName,
+            result.regex,
+            result.permission,
+            result.priority
+          )
+        ),
+        tap(() => this.snackBarService.openSnackBar('Model regex permission added successfully')),
+        switchMap(() => this.modelRegexDataService.getModelRegexPermissionsForGroup(this.groupName))
       )
-    ).subscribe((data) => (this.modelRegexDataSource = data));
+      .subscribe((data) => (this.modelRegexDataSource = data));
   }
 
   openModalAddPromptRegexPermissionToGroup() {
@@ -499,24 +506,26 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
       priority: 100,
     };
 
-    this.dialog.open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
-      data: modalData,
-      width: '500px',
-    }).afterClosed().pipe(
-      filter((result): result is ManageRegexModalData => !!result),
-      switchMap((result) =>
-        this.promptRegexDataService.addPromptRegexPermissionToGroup(
-          this.groupName,
-          result.regex,
-          result.permission,
-          result.priority
-        )
-      ),
-      tap(() => this.snackBarService.openSnackBar('Prompt regex permission added successfully')),
-      switchMap(() =>
-        this.promptRegexDataService.getPromptRegexPermissionsForGroup(this.groupName)
+    this.dialog
+      .open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
+        data: modalData,
+        width: '500px',
+      })
+      .afterClosed()
+      .pipe(
+        filter((result): result is ManageRegexModalData => !!result),
+        switchMap((result) =>
+          this.promptRegexDataService.addPromptRegexPermissionToGroup(
+            this.groupName,
+            result.regex,
+            result.permission,
+            result.priority
+          )
+        ),
+        tap(() => this.snackBarService.openSnackBar('Prompt regex permission added successfully')),
+        switchMap(() => this.promptRegexDataService.getPromptRegexPermissionsForGroup(this.groupName))
       )
-    ).subscribe((data) => (this.promptRegexDataSource = data));
+      .subscribe((data) => (this.promptRegexDataSource = data));
   }
 
   handleModelRegexActions(event: TableActionEvent<ModelRegexPermissionModel>) {
@@ -527,32 +536,30 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
         permission: item.permission as PermissionEnum,
         priority: item.priority,
       };
-      this.dialog.open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
-        data: modalData,
-        width: '500px',
-      }).afterClosed().pipe(
-        filter((result): result is ManageRegexModalData => !!result),
-        switchMap((result) =>
-          this.modelRegexDataService.updateModelRegexPermissionForGroup(
-            this.groupName,
-            item.regex,
-            result.permission,
-            result.priority
-          )
-        ),
-        tap(() => this.snackBarService.openSnackBar('Model regex permission updated successfully')),
-        switchMap(() =>
-          this.modelRegexDataService.getModelRegexPermissionsForGroup(this.groupName)
+      this.dialog
+        .open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
+          data: modalData,
+          width: '500px',
+        })
+        .afterClosed()
+        .pipe(
+          filter((result): result is ManageRegexModalData => !!result),
+          switchMap((result) =>
+            this.modelRegexDataService.updateModelRegexPermissionForGroup(
+              this.groupName,
+              item.regex,
+              result.permission,
+              result.priority
+            )
+          ),
+          tap(() => this.snackBarService.openSnackBar('Model regex permission updated successfully')),
+          switchMap(() => this.modelRegexDataService.getModelRegexPermissionsForGroup(this.groupName))
         )
-      ).subscribe((data) => (this.modelRegexDataSource = data));
+        .subscribe((data) => (this.modelRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.modelRegexDataService
         .removeModelRegexPermissionFromGroup(this.groupName, event.item.regex)
-        .pipe(
-          switchMap(() =>
-            this.modelRegexDataService.getModelRegexPermissionsForGroup(this.groupName)
-          )
-        )
+        .pipe(switchMap(() => this.modelRegexDataService.getModelRegexPermissionsForGroup(this.groupName)))
         .subscribe((data) => (this.modelRegexDataSource = data));
     }
   }
@@ -565,32 +572,30 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
         permission: item.permission as PermissionEnum,
         priority: item.priority,
       };
-      this.dialog.open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
-        data: modalData,
-        width: '500px',
-      }).afterClosed().pipe(
-        filter((result): result is ManageRegexModalData => !!result),
-        switchMap((result) =>
-          this.promptRegexDataService.updatePromptRegexPermissionForGroup(
-            this.groupName,
-            item.regex,
-            result.permission,
-            result.priority
-          )
-        ),
-        tap(() => this.snackBarService.openSnackBar('Prompt regex permission updated successfully')),
-        switchMap(() =>
-          this.promptRegexDataService.getPromptRegexPermissionsForGroup(this.groupName)
+      this.dialog
+        .open<ManageRegexModalComponent, ManageRegexModalData>(ManageRegexModalComponent, {
+          data: modalData,
+          width: '500px',
+        })
+        .afterClosed()
+        .pipe(
+          filter((result): result is ManageRegexModalData => !!result),
+          switchMap((result) =>
+            this.promptRegexDataService.updatePromptRegexPermissionForGroup(
+              this.groupName,
+              item.regex,
+              result.permission,
+              result.priority
+            )
+          ),
+          tap(() => this.snackBarService.openSnackBar('Prompt regex permission updated successfully')),
+          switchMap(() => this.promptRegexDataService.getPromptRegexPermissionsForGroup(this.groupName))
         )
-      ).subscribe((data) => (this.promptRegexDataSource = data));
+        .subscribe((data) => (this.promptRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.promptRegexDataService
         .removePromptRegexPermissionFromGroup(this.groupName, event.item.regex)
-        .pipe(
-          switchMap(() =>
-            this.promptRegexDataService.getPromptRegexPermissionsForGroup(this.groupName)
-          )
-        )
+        .pipe(switchMap(() => this.promptRegexDataService.getPromptRegexPermissionsForGroup(this.groupName)))
         .subscribe((data) => (this.promptRegexDataSource = data));
     }
   }

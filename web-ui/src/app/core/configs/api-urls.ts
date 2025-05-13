@@ -61,6 +61,21 @@ export const API_URL = {
   UPDATE_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/prompts/regex-permissions/update',
   DELETE_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/prompts/regex-permissions/delete',
 
+  CREATE_USER_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/experiments/regex/create',
+  GET_USER_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/experiments/regex',
+  UPDATE_USER_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/experiments/regex/update',
+  DELETE_USER_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/experiments/regex/delete',
+
+  CREATE_USER_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/registered-models/regex/create',
+  GET_USER_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/registered-models/regex',
+  UPDATE_USER_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/registered-models/regex/update',
+  DELETE_USER_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/registered-models/regex/delete',
+
+  CREATE_USER_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/prompts/regex/create',
+  GET_USER_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/prompts/regex',
+  UPDATE_USER_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/prompts/regex/update',
+  DELETE_USER_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/prompts/regex/delete',
+
   CREATE_GROUP_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/regex/create',
   GET_GROUP_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/regex',
   UPDATE_GROUP_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/regex/update',
@@ -75,5 +90,4 @@ export const API_URL = {
   GET_GROUP_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/regex',
   UPDATE_GROUP_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/regex/update',
   DELETE_GROUP_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/regex/delete',
-
 };

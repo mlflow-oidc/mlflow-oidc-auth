@@ -17,11 +17,19 @@ import { ModelPermissionModel } from 'src/app/shared/interfaces/models-data.inte
 import {
   ExperimentsDataService,
   ModelsDataService,
-  PromptsDataService,
   PermissionDataService,
   SnackBarService,
+  ExperimentRegexDataService,
+  ModelRegexDataService,
+  PromptRegexDataService,
+  AuthService,
+  PromptsDataService,
 } from 'src/app/shared/services';
-import { PermissionModalService } from 'src/app/shared/services/permission-modal.service';
+import { PermissionModalService } from 'src/app/shared/services/permission-modal.service'; // Corrected import path
+import { UserExperimentRegexDataService } from 'src/app/shared/services/data/user-experiment-regex-data.service';
+import { UserModelRegexDataService } from 'src/app/shared/services/data/user-model-regex-data.service';
+import { UserPromptRegexDataService } from 'src/app/shared/services/data/user-prompt-regex-data.service';
+import { UserDataService } from 'src/app/shared/services/data/user-data.service';
 import { jest } from '@jest/globals';
 
 describe('UserPermissionDetailsComponent', () => {
@@ -29,40 +37,88 @@ describe('UserPermissionDetailsComponent', () => {
   let fixture: ComponentFixture<UserPermissionDetailsComponent>;
   let expDataService: jest.Mocked<ExperimentsDataService>;
   let modelDataService: jest.Mocked<ModelsDataService>;
-  let promptDataService: jest.Mocked<PromptsDataService>;
+  let promptDataService: jest.Mocked<PromptsDataService>; // Corrected type
   let permissionDataService: jest.Mocked<PermissionDataService>;
+  let experimentRegexDataService: jest.Mocked<UserExperimentRegexDataService>; // Corrected type
+  let modelRegexDataService: jest.Mocked<UserModelRegexDataService>; // Corrected type
+  let promptRegexDataService: jest.Mocked<UserPromptRegexDataService>; // Corrected type
   let permissionModalService: jest.Mocked<PermissionModalService>;
   let snackBarService: jest.Mocked<SnackBarService>;
   let router: jest.Mocked<Router>;
   let activatedRoute: ActivatedRoute;
+  let authService: jest.Mocked<AuthService>;
+  let userDataService: jest.Mocked<UserDataService>;
 
   beforeEach(async () => {
     expDataService = {
-      getExperimentsForUser: jest.fn(),
-      getAllExperiments: jest.fn(),
+      getExperimentsForUser: jest.fn().mockReturnValue(of([])),
+      getAllExperiments: jest.fn().mockReturnValue(of([])),
     } as any;
+
     modelDataService = {
-      getModelsForUser: jest.fn(),
-      getAllModels: jest.fn(),
+      getModelsForUser: jest.fn().mockReturnValue(of([])),
+      getAllModels: jest.fn().mockReturnValue(of([])),
     } as any;
-    promptDataService = { getPromptsForUser: jest.fn() } as any;
+
+    promptDataService = {
+      getPromptsForUser: jest.fn().mockReturnValue(of([])),
+      getAllPrompts: jest.fn().mockReturnValue(of([])),
+    } as any;
+
     permissionDataService = {
-      createModelPermission: jest.fn(),
-      updateModelPermission: jest.fn(),
-      deleteModelPermission: jest.fn(),
-      createExperimentPermission: jest.fn(),
-      updateExperimentPermission: jest.fn(),
-      deleteExperimentPermission: jest.fn(),
-      createPromptPermission: jest.fn(),
-      updatePromptPermission: jest.fn(),
-      deletePromptPermission: jest.fn(),
+      createExperimentPermission: jest.fn().mockReturnValue(of(null)),
+      updateExperimentPermission: jest.fn().mockReturnValue(of(null)),
+      deleteExperimentPermission: jest.fn().mockReturnValue(of(null)),
+      createModelPermission: jest.fn().mockReturnValue(of(null)),
+      updateModelPermission: jest.fn().mockReturnValue(of(null)),
+      deleteModelPermission: jest.fn().mockReturnValue(of(null)),
+      createPromptPermission: jest.fn().mockReturnValue(of(null)),
+      updatePromptPermission: jest.fn().mockReturnValue(of(null)),
+      deletePromptPermission: jest.fn().mockReturnValue(of(null)),
     } as any;
+
+    experimentRegexDataService = {
+      getExperimentRegexPermissionsForUser: jest.fn().mockReturnValue(of([])),
+      addExperimentRegexPermissionToUser: jest.fn().mockReturnValue(of(null)),
+      updateExperimentRegexPermissionForUser: jest.fn().mockReturnValue(of(null)),
+      removeExperimentRegexPermissionFromUser: jest.fn().mockReturnValue(of(null)),
+    } as any;
+
+    modelRegexDataService = {
+      getModelRegexPermissionsForUser: jest.fn().mockReturnValue(of([])),
+      addModelRegexPermissionToUser: jest.fn().mockReturnValue(of(null)),
+      updateModelRegexPermissionForUser: jest.fn().mockReturnValue(of(null)),
+      removeModelRegexPermissionFromUser: jest.fn().mockReturnValue(of(null)),
+    } as any;
+
+    promptRegexDataService = {
+      getPromptRegexPermissionsForUser: jest.fn().mockReturnValue(of([])),
+      addPromptRegexPermissionToUser: jest.fn().mockReturnValue(of(null)),
+      updatePromptRegexPermissionForUser: jest.fn().mockReturnValue(of(null)),
+      removePromptRegexPermissionFromUser: jest.fn().mockReturnValue(of(null)),
+    } as any;
+
     permissionModalService = {
-      openGrantPermissionModal: jest.fn(),
-      openEditPermissionsModal: jest.fn(),
+      openGrantPermissionModal: jest.fn().mockReturnValue(of(null)),
+      openEditPermissionsModal: jest.fn().mockReturnValue(of(null)),
     } as any;
-    snackBarService = { openSnackBar: jest.fn() } as any;
-    router = { navigate: jest.fn() } as any;
+
+    snackBarService = {
+      openSnackBar: jest.fn(),
+    } as any;
+
+    router = {
+      navigate: jest.fn(),
+    } as any;
+
+    authService = {
+      getUserInfo: jest.fn().mockReturnValue({ is_admin: false }),
+    } as any;
+
+    userDataService = {
+      getUser: jest.fn().mockReturnValue(of(null)),
+    } as any;
+
     activatedRoute = {
       params: of({ id: '123' }),
       snapshot: {
@@ -75,20 +131,37 @@ describe('UserPermissionDetailsComponent', () => {
       declarations: [UserPermissionDetailsComponent],
       imports: [MatTabsModule],
       providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideAnimations(),
         { provide: ExperimentsDataService, useValue: expDataService },
         { provide: ModelsDataService, useValue: modelDataService },
-        { provide: PromptsDataService, useValue: promptDataService },
+        { provide: PromptsDataService, useValue: promptDataService }, // Corrected provider
         { provide: PermissionDataService, useValue: permissionDataService },
-        { provide: PermissionModalService, useValue: permissionModalService },
+        { provide: UserExperimentRegexDataService, useValue: experimentRegexDataService },
+        { provide: UserModelRegexDataService, useValue: modelRegexDataService },
+        { provide: UserPromptRegexDataService, useValue: promptRegexDataService },
+        { provide: PermissionModalService, useValue: permissionModalService }, // Corrected provider
         { provide: SnackBarService, useValue: snackBarService },
         { provide: Router, useValue: router },
-        { provide: ActivatedRoute, useValue: activatedRoute },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ id: 'testUser' }),
+              url: [], // Provide a default empty array for url
+            },
+          },
+        },
+        { provide: AuthService, useValue: authService },
+        { provide: UserDataService, useValue: userDataService },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
 
     fixture = TestBed.createComponent(UserPermissionDetailsComponent);
     component = fixture.componentInstance;
+    fixture.detectChanges();
   });
 
   it('should create', () => {
@@ -121,6 +194,10 @@ describe('UserPermissionDetailsComponent', () => {
     expDataService.getExperimentsForUser.mockReturnValue(of(experiments));
     modelDataService.getModelsForUser.mockReturnValue(of(models));
     promptDataService.getPromptsForUser.mockReturnValue(of(prompts));
+    experimentRegexDataService.getExperimentRegexPermissionsForUser.mockReturnValue(of([]));
+    modelRegexDataService.getModelRegexPermissionsForUser.mockReturnValue(of([]));
+    promptRegexDataService.getPromptRegexPermissionsForUser.mockReturnValue(of([]));
+
     component.ngOnInit();
     expect(expDataService.getExperimentsForUser).toHaveBeenCalledWith('123');
     expect(modelDataService.getModelsForUser).toHaveBeenCalledWith('123');
@@ -595,9 +672,9 @@ describe('UserPermissionDetailsComponent', () => {
 
   it('should handle tab selection', () => {
     component.userId = '123';
+    (component as any).isMainTabInit = false; // Ensure this is false for the test to proceed
+    component.permissionsTabs = { selectedIndex: 2 } as MatTabGroup; // Mock selectedIndex for main tab
     component.handleTabSelection(2);
-    expect(router.navigate).toHaveBeenCalledWith(['../prompts'], {
-      relativeTo: activatedRoute,
-    });
+    expect(router.navigate).toHaveBeenCalledWith([`/manage/user/123/prompts/permissions`]);
   });
 });

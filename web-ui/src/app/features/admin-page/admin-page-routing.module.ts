@@ -22,7 +22,33 @@ const routes: Routes = [
     component: PermissionsComponent,
   },
   {
+    path: `${AdminPageRoutesEnum.USER}/:id/experiments/permissions`,
+    component: UserPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id/experiments/regex`,
+    component: UserPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
     path: `${AdminPageRoutesEnum.USER}/:id/experiments`,
+    pathMatch: 'full',
+    redirectTo: `${AdminPageRoutesEnum.USER}/:id/experiments/permissions`,
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id/models/permissions`,
+    component: UserPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id/models/regex`,
     component: UserPermissionDetailsComponent,
     data: {
       breadcrumb: getBreadcrumb,
@@ -30,6 +56,18 @@ const routes: Routes = [
   },
   {
     path: `${AdminPageRoutesEnum.USER}/:id/models`,
+    pathMatch: 'full',
+    redirectTo: `${AdminPageRoutesEnum.USER}/:id/models/permissions`,
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id/prompts/permissions`,
+    component: UserPermissionDetailsComponent,
+    data: {
+      breadcrumb: getBreadcrumb,
+    },
+  },
+  {
+    path: `${AdminPageRoutesEnum.USER}/:id/prompts/regex`,
     component: UserPermissionDetailsComponent,
     data: {
       breadcrumb: getBreadcrumb,
@@ -37,14 +75,12 @@ const routes: Routes = [
   },
   {
     path: `${AdminPageRoutesEnum.USER}/:id/prompts`,
-    component: UserPermissionDetailsComponent,
-    data: {
-      breadcrumb: getBreadcrumb,
-    },
+    pathMatch: 'full',
+    redirectTo: `${AdminPageRoutesEnum.USER}/:id/prompts/permissions`,
   },
   {
     path: `${AdminPageRoutesEnum.USER}/:id`,
-    redirectTo: `${AdminPageRoutesEnum.USER}/:id/experiments`,
+    redirectTo: `${AdminPageRoutesEnum.USER}/:id/experiments/permissions`,
   },
   {
     path: `${AdminPageRoutesEnum.EXPERIMENTS}`,

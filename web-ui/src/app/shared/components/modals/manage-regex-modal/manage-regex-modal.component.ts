@@ -18,12 +18,15 @@ export class ManageRegexModalComponent implements OnInit {
   constructor(
     @Inject(MAT_DIALOG_DATA) public data: ManageRegexModalData,
     private readonly fb: FormBuilder
-  ) { }
+  ) {}
 
   ngOnInit(): void {
     this.title = this.data.regex ? `Manage Regex Rule: ${this.data.regex}` : 'Add New Regex Rule';
     this.manageRegexForm = this.fb.group({
-      regex: [{ value: this.data.regex || '', disabled: !!this.data.regex }, [Validators.required, this.pythonRegexValidator]],
+      regex: [
+        { value: this.data.regex || '', disabled: !!this.data.regex },
+        [Validators.required, this.pythonRegexValidator],
+      ],
       priority: [this.data.priority || 1, [Validators.required, Validators.pattern('^[0-9]+$')]],
       permission: [this.data.permission || PermissionEnum.READ, Validators.required],
     });

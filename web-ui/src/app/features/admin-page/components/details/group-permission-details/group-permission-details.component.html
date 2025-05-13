@@ -17,7 +17,9 @@
                         [data]="experimentDataSource"
                         [actions]="experimentActions"
                         (action)="handleExperimentActions($event)"
+                        *ngIf="experimentDataSource.length"
                 ></ml-table>
+                <div class="no-data" *ngIf="!experimentDataSource.length">No experiment permissions found for this group.</div>
             </mat-tab>
             <mat-tab *ngIf="isAdmin" label="Regex Permissions">
                 <div class="my-3">
@@ -33,7 +35,9 @@
                         [data]="experimentRegexDataSource"
                         [actions]="experimentRegexActions"
                         (action)="handleExperimentRegexActions($event)"
+                        *ngIf="experimentRegexDataSource.length"
                 ></ml-table>
+                <div class="no-data" *ngIf="!experimentRegexDataSource.length">No experiment regex permissions found for this group.</div>
             </mat-tab>
         </mat-tab-group>
     </mat-tab>
@@ -56,7 +60,9 @@
                         [data]="modelDataSource"
                         [actions]="modelActions"
                         (action)="handleModelActions($event)"
+                        *ngIf="modelDataSource.length"
                 ></ml-table>
+                <div class="no-data" *ngIf="!modelDataSource.length">No model permissions found for this group.</div>
             </mat-tab>
             <mat-tab *ngIf="isAdmin" label="Regex Permissions">
                 <div class="my-3">
@@ -72,7 +78,9 @@
                         [data]="modelRegexDataSource"
                         [actions]="modelRegexActions"
                         (action)="handleModelRegexActions($event)"
+                        *ngIf="modelRegexDataSource.length"
                 ></ml-table>
+                <div class="no-data" *ngIf="!modelRegexDataSource.length">No model regex permissions found for this group.</div>
             </mat-tab>
         </mat-tab-group>
     </mat-tab>
@@ -95,7 +103,9 @@
                         [data]="promptDataSource"
                         [actions]="promptActions"
                         (action)="handlePromptActions($event)"
+                        *ngIf="promptDataSource.length"
                 ></ml-table>
+                <div class="no-data" *ngIf="!promptDataSource.length">No prompt permissions found for this group.</div>
             </mat-tab>
             <mat-tab *ngIf="isAdmin" label="Regex Permissions">
                 <div class="my-3">
@@ -111,7 +121,9 @@
                         [data]="promptRegexDataSource"
                         [actions]="promptRegexActions"
                         (action)="handlePromptRegexActions($event)"
+                        *ngIf="promptRegexDataSource.length"
                 ></ml-table>
+                <div class="no-data" *ngIf="!promptRegexDataSource.length">No prompt regex permissions found for this group.</div>
             </mat-tab>
         </mat-tab-group>
     </mat-tab>

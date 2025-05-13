@@ -11,13 +11,7 @@ import { FooterComponent } from './shared/components/footer/footer.component';
 
 @NgModule({
   declarations: [AppComponent],
-  imports: [
-    BrowserModule,
-    AppRoutingModule,
-    BrowserAnimationsModule,
-    SharedModule,
-    FooterComponent
-  ],
+  imports: [BrowserModule, AppRoutingModule, BrowserAnimationsModule, SharedModule, FooterComponent],
   providers: [
     {
       provide: HTTP_INTERCEPTORS,
