@@ -1,12 +1,12 @@
 import os
 
-from mlflow.server import app
+from flask_caching import Cache
 from flask_session import Session
+from mlflow.server import app
 
 from mlflow_oidc_auth import routes, views
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.hooks import before_request_hook, after_request_hook
-from flask_caching import Cache
+from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
 
 # Configure custom Flask app
 template_dir = os.path.dirname(__file__)
@@ -133,6 +133,78 @@ app.add_url_rule(rule=routes.CREATE_PROMPT_REGEX_PERMISSION, methods=["POST"], v
 app.add_url_rule(rule=routes.GET_PROMPT_REGEX_PERMISSION, methods=["GET"], view_func=views.get_prompt_regex_permission)
 app.add_url_rule(rule=routes.UPDATE_PROMPT_REGEX_PERMISSION, methods=["PATCH"], view_func=views.update_prompt_regex_permission)
 app.add_url_rule(rule=routes.DELETE_PROMPT_REGEX_PERMISSION, methods=["DELETE"], view_func=views.delete_prompt_regex_permission)
+
+app.add_url_rule(
+    rule=routes.CREATE_USER_EXPERIMENT_REGEX_PERMISSION,
+    methods=["POST"],
+    view_func=views.create_user_experiment_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.GET_USER_EXPERIMENT_REGEX_PERMISSION,
+    methods=["GET"],
+    view_func=views.get_user_experiment_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.UPDATE_USER_EXPERIMENT_REGEX_PERMISSION,
+    methods=["PATCH"],
+    view_func=views.update_user_experiment_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.DELETE_USER_EXPERIMENT_REGEX_PERMISSION,
+    methods=["DELETE"],
+    view_func=views.delete_user_experiment_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.CREATE_USER_REGISTERED_MODEL_REGEX_PERMISSION,
+    methods=["POST"],
+    view_func=views.create_user_registered_model_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.GET_USER_REGISTERED_MODEL_REGEX_PERMISSION,
+    methods=["GET"],
+    view_func=views.get_user_registered_model_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.UPDATE_USER_REGISTERED_MODEL_REGEX_PERMISSION,
+    methods=["PATCH"],
+    view_func=views.update_user_registered_model_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.DELETE_USER_REGISTERED_MODEL_REGEX_PERMISSION,
+    methods=["DELETE"],
+    view_func=views.delete_user_registered_model_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.CREATE_USER_PROMPT_REGEX_PERMISSION,
+    methods=["POST"],
+    view_func=views.create_user_prompt_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.GET_USER_PROMPT_REGEX_PERMISSION,
+    methods=["GET"],
+    view_func=views.get_user_prompt_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.UPDATE_USER_PROMPT_REGEX_PERMISSION,
+    methods=["PATCH"],
+    view_func=views.update_user_prompt_regex_permission,
+)
+
+app.add_url_rule(
+    rule=routes.DELETE_USER_PROMPT_REGEX_PERMISSION,
+    methods=["DELETE"],
+    view_func=views.delete_user_prompt_regex_permission,
+)
 
 app.add_url_rule(
     rule=routes.CREATE_GROUP_EXPERIMENT_REGEX_PERMISSION,

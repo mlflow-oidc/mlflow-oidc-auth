@@ -49,7 +49,7 @@ class ExperimentPermissionRepository:
             session,
             SqlExperimentPermission,
             SqlExperimentPermission.experiment_id == experiment_id,
-            SqlExperimentPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username),
+            SqlExperimentPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username).scalar_subquery(),
             not_found_msg=f"No permission for exp={experiment_id}, user={username}",
             multiple_msg=f"Multiple perms for exp={experiment_id}, user={username}",
         )

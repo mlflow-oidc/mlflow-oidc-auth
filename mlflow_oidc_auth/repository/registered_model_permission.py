@@ -36,7 +36,8 @@ class RegisteredModelPermissionRepository:
                 session,
                 SqlRegisteredModelPermission,
                 SqlRegisteredModelPermission.name == name,
-                SqlRegisteredModelPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username),
+                SqlRegisteredModelPermission.user_id
+                == session.query(SqlUser.id).filter(SqlUser.username == username).scalar_subquery(),
                 not_found_msg=f"No model perm for name={name}, user={username}",
                 multiple_msg=f"Multiple model perms for name={name}, user={username}",
             )
@@ -55,7 +56,8 @@ class RegisteredModelPermissionRepository:
                 session,
                 SqlRegisteredModelPermission,
                 SqlRegisteredModelPermission.name == name,
-                SqlRegisteredModelPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username),
+                SqlRegisteredModelPermission.user_id
+                == session.query(SqlUser.id).filter(SqlUser.username == username).scalar_subquery(),
                 not_found_msg=f"No perm to update for name={name}, user={username}",
                 multiple_msg=f"Multiple perms for name={name}, user={username}",
             )
@@ -69,7 +71,8 @@ class RegisteredModelPermissionRepository:
                 session,
                 SqlRegisteredModelPermission,
                 SqlRegisteredModelPermission.name == name,
-                SqlRegisteredModelPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username),
+                SqlRegisteredModelPermission.user_id
+                == session.query(SqlUser.id).filter(SqlUser.username == username).scalar_subquery(),
                 not_found_msg=f"No perm to delete for name={name}, user={username}",
                 multiple_msg=f"Multiple perms for name={name}, user={username}",
             )

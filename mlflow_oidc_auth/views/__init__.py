@@ -14,3 +14,4 @@ from mlflow_oidc_auth.views.registered_model import *
 from mlflow_oidc_auth.views.registered_model_regex import *
 from mlflow_oidc_auth.views.ui import *
 from mlflow_oidc_auth.views.user import *
+from mlflow_oidc_auth.views.user_regex import *
