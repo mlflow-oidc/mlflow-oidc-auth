@@ -146,11 +146,9 @@ describe('GroupPermissionDetailsComponent', () => {
       getUserInfo: jest.fn().mockReturnValue({ is_admin: false }),
     };
     mockMatDialog = {
-      open: jest
-        .fn()
-        .mockReturnValue({
-          afterClosed: () => of({ regex: '.*', permission: PermissionEnum.READ, priority: 100 }),
-        } as any),
+      open: jest.fn().mockReturnValue({
+        afterClosed: () => of({ regex: '.*', permission: PermissionEnum.READ, priority: 100 }),
+      } as any),
     };
     await TestBed.configureTestingModule({
       declarations: [GroupPermissionDetailsComponent],

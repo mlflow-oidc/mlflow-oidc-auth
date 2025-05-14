@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
+import { HttpClientModule } from '@angular/common/http';
 import { ExperimentsDataService } from '../data/experiments-data.service';
 import { API_URL } from 'src/app/core/configs/api-urls';
 import { ExperimentsForUserModel, UserPermissionModel } from 'src/app/shared/interfaces/experiments-data.interface';
@@ -11,8 +12,8 @@ describe('ExperimentsDataService', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
-      providers: [ExperimentsDataService],
+      imports: [HttpClientModule],
+      providers: [provideHttpClientTesting(), ExperimentsDataService],
     });
     service = TestBed.inject(ExperimentsDataService);
     httpMock = TestBed.inject(HttpTestingController);

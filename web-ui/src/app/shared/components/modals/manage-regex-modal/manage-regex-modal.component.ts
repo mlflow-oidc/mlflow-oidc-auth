@@ -42,6 +42,11 @@ export class ManageRegexModalComponent implements OnInit {
   }
 
   compareEntities(c1: any, c2: any) {
-    return c1 && c2 ? c1.id === c2.id : c1 === c2;
+    const isObj1 = c1 != null && typeof c1 === 'object' && 'id' in c1;
+    const isObj2 = c2 != null && typeof c2 === 'object' && 'id' in c2;
+    if (isObj1 && isObj2) {
+      return c1.id === c2.id;
+    }
+    return c1 === c2;
   }
 }
