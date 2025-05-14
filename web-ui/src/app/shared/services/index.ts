@@ -8,3 +8,5 @@ export * from './auth.service';
 export * from './data/experiment-regex-data.service';
 export * from './data/model-regex-data.service';
 export * from './data/prompt-regex-data.service';
+export * from './data/group-data.service';
+export * from './permission-modal.service';

@@ -169,17 +169,14 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
   ngAfterViewInit(): void {
     const mainEntityPath = this.route.parent?.snapshot.url[0]?.path;
     let mainTabIndexToSet = mainEntityPath ? this.tabIndexMapping.indexOf(mainEntityPath) : -1;
-
     if (mainTabIndexToSet === -1) {
       mainTabIndexToSet = 0; // Default to the first main tab
     }
-
+    // Set the permissionsTabs selectedIndex synchronously so tests without timers can read it
     if (this.permissionsTabs) {
       this.permissionsTabs.selectedIndex = mainTabIndexToSet;
     }
-    // The selectedSubTabIndexes array is correctly set in ngOnInit and bound in the template.
-    // No need to modify selectedSubTabIndexes here again.
-
+    // After initial setup, disable main tab initialization
     setTimeout(() => {
       this.isMainTabInit = false;
     }, 0);
@@ -394,15 +391,16 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
     if (this.navigating) {
       return;
     }
-
+    const mainIndex = this.permissionsTabs?.selectedIndex;
+    // If mainIndex is null or invalid, do not navigate
+    if (mainIndex == null || mainIndex < 0 || mainIndex >= this.tabIndexMapping.length) {
+      return;
+    }
     this.navigating = true;
-    const mainIndex = this.permissionsTabs.selectedIndex;
     const entity = mainIndex !== null && mainIndex >= 0 ? this.tabIndexMapping[mainIndex] : '';
     const subRoute = index === 1 ? AdminPageRoutesEnum.REGEX : AdminPageRoutesEnum.PERMISSIONS;
 
-    if (mainIndex !== null && mainIndex >= 0) {
-      this.selectedSubTabIndexes[mainIndex] = index;
-    }
+    this.selectedSubTabIndexes[mainIndex] = index;
 
     const groupId = this.route.snapshot.paramMap.get('id');
     this.router.navigate([`/manage/group/${groupId}/${entity}/${subRoute}`]).then(() => {
