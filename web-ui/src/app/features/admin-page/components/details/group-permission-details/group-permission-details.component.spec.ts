@@ -28,7 +28,13 @@ describe('GroupPermissionDetailsComponent', () => {
               paramMap: {
                 get: (key: string) => (key === 'id' ? '123' : null),
               },
-              url: [{ path: 'user-info' }],
+              url: [{ path: 'permissions' }], // Current route segment
+            },
+            parent: {
+              // Mock parent route
+              snapshot: {
+                url: [{ path: 'experiments' }], // Parent route segment
+              },
             },
           },
         },

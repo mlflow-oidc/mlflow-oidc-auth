@@ -115,18 +115,25 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    const segments = this.route.snapshot.url.map((segment) => segment.path);
-    const mainEntity = segments.length > 2 ? segments[2] : '';
-    const mainTabIndex = this.tabIndexMapping.indexOf(mainEntity);
-    const subRoute = segments.length > 3 ? segments[3] : '';
+    this.groupName = this.route.snapshot.paramMap.get('id') ?? '';
+    this.isAdmin = this.authService.getUserInfo().is_admin;
 
-    if (mainTabIndex >= 0) {
-      this.selectedSubTabIndexes[mainTabIndex] = subRoute === AdminPageRoutesEnum.REGEX ? 1 : 0;
+    const mainEntityPath = this.route.parent?.snapshot.url[0]?.path;
+    const subRoutePath = this.route.snapshot.url[0]?.path;
+
+    let determinedMainTabIndex = mainEntityPath ? this.tabIndexMapping.indexOf(mainEntityPath) : -1;
+    if (determinedMainTabIndex === -1) {
+      determinedMainTabIndex = 0; // Default to the first main tab if entity not found or invalid
     }
 
-    this.groupName = this.route.snapshot.paramMap.get('id') ?? '';
-
-    this.isAdmin = this.authService.getUserInfo().is_admin;
+    // selectedSubTabIndexes is initialized as [0, 0, 0] in the class property.
+    // Update the correct sub-tab index based on the route.
+    if (subRoutePath) {
+      this.selectedSubTabIndexes[determinedMainTabIndex] = subRoutePath === AdminPageRoutesEnum.REGEX ? 1 : 0;
+    } else {
+      // Default to 'permissions' sub-tab (index 0) if subRoutePath is not present
+      this.selectedSubTabIndexes[determinedMainTabIndex] = 0;
+    }
 
     this.groupDataService
       .getAllExperimentsForGroup(this.groupName)
@@ -160,16 +167,18 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
-    const segments = this.route.snapshot.url.map((segment) => segment.path);
-    const mainEntity = segments.length > 2 ? segments[2] : '';
-    const mainTabIndex = this.tabIndexMapping.indexOf(mainEntity);
-    const subRoute = segments.length > 3 ? segments[3] : '';
+    const mainEntityPath = this.route.parent?.snapshot.url[0]?.path;
+    let mainTabIndexToSet = mainEntityPath ? this.tabIndexMapping.indexOf(mainEntityPath) : -1;
 
-    this.permissionsTabs.selectedIndex = mainTabIndex >= 0 ? mainTabIndex : 0;
-
-    if (mainTabIndex >= 0) {
-      this.selectedSubTabIndexes[mainTabIndex] = subRoute === AdminPageRoutesEnum.REGEX ? 1 : 0;
+    if (mainTabIndexToSet === -1) {
+      mainTabIndexToSet = 0; // Default to the first main tab
     }
+
+    if (this.permissionsTabs) {
+      this.permissionsTabs.selectedIndex = mainTabIndexToSet;
+    }
+    // The selectedSubTabIndexes array is correctly set in ngOnInit and bound in the template.
+    // No need to modify selectedSubTabIndexes here again.
 
     setTimeout(() => {
       this.isMainTabInit = false;

@@ -104,15 +104,18 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit, On
     this.userId = this.route.snapshot.paramMap.get('id') ?? '';
     this.isAdmin = this.authService.getUserInfo().is_admin;
 
-    const segments = this.route.snapshot.url.map((segment) => segment.path);
-    const mainEntity = segments.length > 2 ? segments[2] : '';
-    const mainTabIndex = this.tabIndexMapping.indexOf(mainEntity);
-    const subRoute = segments.length > 3 ? segments[3] : '';
+    const mainEntityPath = this.route.parent?.snapshot.url[0]?.path;
+    const subRoutePath = this.route.snapshot.url[0]?.path;
 
-    if (mainTabIndex >= 0) {
-      this.selectedSubTabIndexes[mainTabIndex] = subRoute === AdminPageRoutesEnum.REGEX ? 1 : 0;
+    let determinedMainTabIndex = mainEntityPath ? this.tabIndexMapping.indexOf(mainEntityPath) : -1;
+    if (determinedMainTabIndex === -1) {
+      determinedMainTabIndex = 0; // Default to the first main tab if entity not found or invalid
+    }
+    if (subRoutePath) {
+      this.selectedSubTabIndexes[determinedMainTabIndex] = subRoutePath === AdminPageRoutesEnum.REGEX ? 1 : 0;
     } else {
-      this.selectedSubTabIndexes[0] = 0;
+      // Default to 'permissions' sub-tab (index 0) if subRoutePath is not present
+      this.selectedSubTabIndexes[determinedMainTabIndex] = 0;
     }
 
     const dataObservables: any[] = [
@@ -147,17 +150,15 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit, On
   }
 
   ngAfterViewInit(): void {
-    const segments = this.route.snapshot.url.map((segment) => segment.path);
-    const mainEntity = segments.length > 2 ? segments[2] : '';
-    let mainTabIndex = this.tabIndexMapping.indexOf(mainEntity);
-    const subRoute = segments.length > 3 ? segments[3] : '';
+    const mainEntityPath = this.route.parent?.snapshot.url[0]?.path;
+    let mainTabIndexToSet = mainEntityPath ? this.tabIndexMapping.indexOf(mainEntityPath) : -1;
 
-    if (mainTabIndex === -1) {
-      mainTabIndex = 0;
+    if (mainTabIndexToSet === -1) {
+      mainTabIndexToSet = 0; // Default to the first main tab
     }
 
     if (this.permissionsTabs) {
-      this.permissionsTabs.selectedIndex = mainTabIndex;
+      this.permissionsTabs.selectedIndex = mainTabIndexToSet;
     }
     setTimeout(() => {
       this.isMainTabInit = false;

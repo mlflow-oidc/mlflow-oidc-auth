@@ -123,7 +123,13 @@ describe('UserPermissionDetailsComponent', () => {
       params: of({ id: '123' }),
       snapshot: {
         paramMap: { get: (key: string) => (key === 'id' ? '123' : null) },
-        url: [{ path: 'admin' }, { path: 'details' }, { path: 'models' }],
+        url: [{ path: 'permissions' }], // Current route segment
+      },
+      parent: {
+        // Mock parent route
+        snapshot: {
+          url: [{ path: 'experiments' }], // Parent route segment
+        },
       },
     } as any;
 
@@ -146,12 +152,7 @@ describe('UserPermissionDetailsComponent', () => {
         { provide: Router, useValue: router },
         {
           provide: ActivatedRoute,
-          useValue: {
-            snapshot: {
-              paramMap: convertToParamMap({ id: 'testUser' }),
-              url: [], // Provide a default empty array for url
-            },
-          },
+          useValue: activatedRoute, // Use the mocked activatedRoute
         },
         { provide: AuthService, useValue: authService },
         { provide: UserDataService, useValue: userDataService },
@@ -248,7 +249,6 @@ describe('UserPermissionDetailsComponent', () => {
         type: PermissionTypeEnum.USER,
       },
     ];
-    component.addModelPermissionToUser();
     expect(modelDataService.getAllModels).toHaveBeenCalled();
     expect(permissionModalService.openGrantPermissionModal).toHaveBeenCalled();
     expect(permissionDataService.createModelPermission).toHaveBeenCalledWith({
@@ -297,7 +297,6 @@ describe('UserPermissionDetailsComponent', () => {
         type: PermissionTypeEnum.USER,
       },
     ];
-    component.addExperimentPermissionToUser();
     expect(expDataService.getAllExperiments).toHaveBeenCalled();
     expect(permissionModalService.openGrantPermissionModal).toHaveBeenCalled();
     expect(permissionDataService.createExperimentPermission).toHaveBeenCalledWith({
