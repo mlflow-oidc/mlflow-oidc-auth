@@ -12,7 +12,7 @@ class TestUser(unittest.TestCase):
             is_service_account=False,
             display_name="Test User",
             experiment_permissions=[ExperimentPermission("exp1", "read")],
-            registered_model_permissions=[RegisteredModelPermission("model1", "write")],
+            registered_model_permissions=[RegisteredModelPermission("model1", "EDIT")],
             groups=[Group("group1", "Group 1")],
         )
 
@@ -35,7 +35,7 @@ class TestUser(unittest.TestCase):
             "is_admin": True,
             "display_name": "Test User",
             "experiment_permissions": [{"experiment_id": "exp1", "permission": "read", "user_id": None, "group_id": None}],
-            "registered_model_permissions": [{"name": "model1", "permission": "write", "user_id": None, "group_id": None}],
+            "registered_model_permissions": [{"name": "model1", "permission": "EDIT", "user_id": None, "group_id": None}],
             "groups": [{"id": "group1", "group_name": "Group 1"}],
         }
 
@@ -51,7 +51,7 @@ class TestUser(unittest.TestCase):
         self.assertEqual(user.experiment_permissions[0].permission, "read")
         self.assertEqual(len(user.registered_model_permissions), 1)
         self.assertEqual(user.registered_model_permissions[0].name, "model1")
-        self.assertEqual(user.registered_model_permissions[0].permission, "write")
+        self.assertEqual(user.registered_model_permissions[0].permission, "EDIT")
         self.assertEqual(len(user.groups), 1)
         self.assertEqual(user.groups[0].id, "group1")
         self.assertEqual(user.groups[0].group_name, "Group 1")
@@ -64,9 +64,9 @@ class TestExperimentPermission(unittest.TestCase):
         self.assertEqual(perm.user_id, "u1")
         self.assertEqual(perm.permission, "read")
         self.assertEqual(perm.group_id, "g1")
-        perm.permission = "write"
+        perm.permission = "EDIT"
         perm.group_id = "g2"
-        self.assertEqual(perm.permission, "write")
+        self.assertEqual(perm.permission, "EDIT")
         self.assertEqual(perm.group_id, "g2")
 
     def test_experiment_permission_to_json_and_from_json(self):
@@ -91,10 +91,10 @@ class TestRegisteredModelPermission(unittest.TestCase):
         self.assertEqual(perm.permission, "read")
         self.assertEqual(perm.group_id, "g1")
         self.assertTrue(perm.prompt)
-        perm.permission = "write"
+        perm.permission = "EDIT"
         perm.group_id = "g2"
         perm.prompt = False
-        self.assertEqual(perm.permission, "write")
+        self.assertEqual(perm.permission, "EDIT")
         self.assertEqual(perm.group_id, "g2")
         self.assertFalse(perm.prompt)
 

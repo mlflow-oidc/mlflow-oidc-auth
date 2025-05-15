@@ -14,185 +14,232 @@ def repo():
     return ExperimentPermissionGroupRepository(session_maker=MagicMock())
 
 
-def test__get_experiment_group_permission_group_none(repo):
+@pytest.fixture
+def session():
+    return MagicMock()
+
+
+def make_group(id=1, group_name="group1"):
+    group = MagicMock(spec=SqlGroup)
+    group.id = id
+    group.group_name = group_name
+    return group
+
+
+def make_permission(experiment_id="exp1", group_id=1, permission="READ"):
+    perm = MagicMock(spec=SqlExperimentGroupPermission)
+    perm.experiment_id = experiment_id
+    perm.group_id = group_id
+    perm.permission = permission
+    perm.to_mlflow_entity.return_value = f"entity-{experiment_id}-{group_id}-{permission}"
+    return perm
+
+
+def make_user(id=1, username="user1"):
+    user = MagicMock()
+    user.id = id
+    user.username = username
+    return user
+
+
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_one_optional")
+def test__get_experiment_group_permission_found(mock_get_one_optional, repo, session):
+    group = make_group()
+    perm = make_permission()
+    # First call returns group, second call returns permission
+    mock_get_one_optional.side_effect = [group, perm]
+    result = repo._get_experiment_group_permission(session, "exp1", "group1")
+    assert result == perm
+    assert mock_get_one_optional.call_count == 2
+
+
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_one_optional")
+def test__get_experiment_group_permission_group_not_found(mock_get_one_optional, repo, session):
+    mock_get_one_optional.side_effect = [None]
+    result = repo._get_experiment_group_permission(session, "exp1", "group1")
+    assert result is None
+
+
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_user")
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.list_user_groups")
+def test__list_user_groups(mock_list_user_groups, mock_get_user, repo):
     session = MagicMock()
-    # Patch get_one_optional to return None for group
-    with patch("mlflow_oidc_auth.repository.experiment_permission_group.get_one_optional", side_effect=[None]):
-        result = repo._get_experiment_group_permission(session, "1", "group_name")
-        assert result is None
+    user = make_user()
+    mock_get_user.return_value = user
+    group1 = make_group(id=1, group_name="g1")
+    group2 = make_group(id=2, group_name="g2")
+    mock_list_user_groups.return_value = [group1, group2]
+    session.query().filter().all.return_value = [group1, group2]
+    repo._Session.return_value.__enter__.return_value = session
+    result = repo._list_user_groups("user1")
+    assert result == ["g1", "g2"]
 
 
-def test__get_experiment_group_permission_found(repo):
+@patch("mlflow_oidc_auth.repository.experiment_permission_group._validate_permission")
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_group")
+def test_grant_group_permission(mock_get_group, mock_validate, repo):
     session = MagicMock()
-    group = MagicMock(id=1)
-    perm = MagicMock()
-    # Patch get_one_optional to return group then perm
-    with patch("mlflow_oidc_auth.repository.experiment_permission_group.get_one_optional", side_effect=[group, perm]):
-        result = repo._get_experiment_group_permission(session, "1", "group_name")
-        assert result == perm
+    group = make_group()
+    mock_get_group.return_value = group
+    perm = make_permission()
+    session.add = MagicMock()
+    session.flush = MagicMock()
+    session.__enter__.return_value = session
+    session.__exit__ = MagicMock()
+    repo._Session.return_value.__enter__.return_value = session
+    # Patch SqlExperimentGroupPermission to return our mock
+    with patch("mlflow_oidc_auth.repository.experiment_permission_group.SqlExperimentGroupPermission", return_value=perm):
+        result = repo.grant_group_permission("group1", "exp1", "READ")
+    assert result == perm.to_mlflow_entity()
 
 
-def test__list_user_groups(repo):
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_group")
+def test_list_permissions_for_group(mock_get_group, repo):
     session = MagicMock()
-    user = MagicMock(id=1)
-    user_groups_ids = [MagicMock(group_id=1), MagicMock(group_id=2)]
-    user_groups = [MagicMock(group_name="g1"), MagicMock(group_name="g2")]
-    with patch("mlflow_oidc_auth.repository.experiment_permission_group.get_user", return_value=user):
-        repo._Session.return_value.__enter__.return_value = session
-        session.query.return_value.filter.return_value.all.side_effect = [user_groups_ids, user_groups]
-        result = repo._list_user_groups("user")
-        assert result == ["g1", "g2"]
+    group = make_group()
+    mock_get_group.return_value = group
+    perm1 = make_permission("exp1", group.id, "READ")
+    perm2 = make_permission("exp2", group.id, "EDIT")
+    session.query().filter().all.return_value = [perm1, perm2]
+    repo._Session.return_value.__enter__.return_value = session
+    result = repo.list_permissions_for_group("group1")
+    assert result == [perm1.to_mlflow_entity(), perm2.to_mlflow_entity()]
 
 
-def test_create_success(repo):
+def test_list_permissions_for_group_id(repo):
+    session = MagicMock()
+    perm1 = make_permission("exp1", 1, "READ")
+    perm2 = make_permission("exp2", 1, "EDIT")
+    session.query().filter().all.return_value = [perm1, perm2]
+    repo._Session.return_value.__enter__.return_value = session
+    result = repo.list_permissions_for_group_id(1)
+    assert result == [perm1.to_mlflow_entity(), perm2.to_mlflow_entity()]
+
+
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_user")
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.list_user_groups")
+def test_list_permissions_for_user_groups(mock_list_user_groups, mock_get_user, repo):
+    session = MagicMock()
+    user = make_user()
+    mock_get_user.return_value = user
+    group1 = make_group(id=1)
+    group2 = make_group(id=2)
+    mock_list_user_groups.return_value = [group1, group2]
+    perm1 = make_permission("exp1", 1, "READ")
+    perm2 = make_permission("exp2", 2, "EDIT")
+    session.query().filter().all.return_value = [perm1, perm2]
+    repo._Session.return_value.__enter__.return_value = session
+    result = repo.list_permissions_for_user_groups("user1")
+    assert result == [perm1.to_mlflow_entity(), perm2.to_mlflow_entity()]
+
+
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._list_user_groups")
+@patch(
+    "mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._get_experiment_group_permission"
+)
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.compare_permissions")
+def test_get_group_permission_for_user_experiment_best_permission(
+    mock_compare_permissions, mock_get_experiment_group_permission, mock_list_user_groups, repo
+):
     session = MagicMock()
     repo._Session.return_value.__enter__.return_value = session
-    group = MagicMock(id=1)
-    session.query.return_value.filter.return_value.one.return_value = group
-    # Patch SqlExperimentGroupPermission to allow isinstance check
-    with patch("mlflow_oidc_auth.db.models.SqlExperimentGroupPermission") as perm_cls:
-        perm_instance = MagicMock()
-        perm_instance.to_mlflow_entity.return_value = "entity"
-        perm_cls.return_value = perm_instance
-        result = repo.create("group", "1", "READ")
-        session.add.assert_called_once()
-        session.flush.assert_called_once()
-        assert result == "entity"
+    mock_list_user_groups.return_value = ["g1", "g2"]
+    perm1 = make_permission("exp1", 1, "READ")
+    perm2 = make_permission("exp1", 2, "EDIT")
+    # First call returns perm1, second call returns perm2
+    mock_get_experiment_group_permission.side_effect = [perm1, perm2]
+    # compare_permissions returns True, so perm2 is "better"
+    mock_compare_permissions.return_value = True
+    result = repo.get_group_permission_for_user_experiment("exp1", "user1")
+    assert result == perm2.to_mlflow_entity()
 
 
-def test_create_invalid_permission(repo):
-    with patch(
-        "mlflow_oidc_auth.repository.experiment_permission_group._validate_permission", side_effect=MlflowException("Invalid")
-    ):
-        with pytest.raises(MlflowException):
-            repo.create("group", "1", "INVALID")
-
-
-def test_list_group_permissions(repo):
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._list_user_groups")
+@patch(
+    "mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._get_experiment_group_permission"
+)
+def test_get_group_permission_for_user_experiment_none_found(mock_get_experiment_group_permission, mock_list_user_groups, repo):
     session = MagicMock()
     repo._Session.return_value.__enter__.return_value = session
-    group = MagicMock(id=1)
-    session.query.return_value.filter.return_value.one.return_value = group
-    perms = [
-        MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
-        MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
-    ]
-    session.query.return_value.filter.return_value.all.return_value = perms
-    result = repo.list_group_permissions("group")
-    assert result == ["perm1", "perm2"]
+    mock_list_user_groups.return_value = ["g1", "g2"]
+    mock_get_experiment_group_permission.side_effect = [None, None]
+    with pytest.raises(MlflowException) as exc:
+        repo.get_group_permission_for_user_experiment("exp1", "user1")
+    assert "not found" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
 
-def test_list_group_permissions_by_id(repo):
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._list_user_groups")
+@patch(
+    "mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._get_experiment_group_permission"
+)
+def test_get_group_permission_for_user_experiment_attribute_error(
+    mock_get_experiment_group_permission, mock_list_user_groups, repo
+):
     session = MagicMock()
     repo._Session.return_value.__enter__.return_value = session
-    perms = [
-        MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
-        MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
-    ]
-    session.query.return_value.filter.return_value.all.return_value = perms
-    result = repo.list_group_permissions_by_id(1)
-    assert result == ["perm1", "perm2"]
+    mock_list_user_groups.return_value = ["g1"]
+
+    # Return an object with no .permission attribute to trigger AttributeError
+    class Dummy:
+        def to_mlflow_entity(self):
+            raise AttributeError()
+
+    mock_get_experiment_group_permission.return_value = Dummy()
+    with pytest.raises(MlflowException) as exc:
+        repo.get_group_permission_for_user_experiment("exp1", "user1")
+    assert "not found" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
 
-def test_list_user_permissions(repo):
+@patch("mlflow_oidc_auth.repository.experiment_permission_group._validate_permission")
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_group")
+def test_update_group_permission(mock_get_group, mock_validate, repo):
     session = MagicMock()
+    group = make_group()
+    mock_get_group.return_value = group
+    perm = make_permission()
+    session.query().filter().one.return_value = perm
+    session.flush = MagicMock()
     repo._Session.return_value.__enter__.return_value = session
-    user = MagicMock(id=1)
-    with patch("mlflow_oidc_auth.repository.experiment_permission_group.get_user", return_value=user):
-        user_groups = [MagicMock(group_id=1), MagicMock(group_id=2)]
-        perms = [
-            MagicMock(to_mlflow_entity=MagicMock(return_value="perm1")),
-            MagicMock(to_mlflow_entity=MagicMock(return_value="perm2")),
-        ]
-        session.query.return_value.filter.return_value.all.side_effect = [user_groups, perms]
-        result = repo.list_user_permissions("user")
-        assert result == ["perm1", "perm2"]
+    result = repo.update_group_permission("group1", "exp1", "EDIT")
+    assert result == perm.to_mlflow_entity()
+    assert perm.permission == "EDIT"
 
 
-def test_get_user_experiment_permission_happy_path(repo):
+@patch("mlflow_oidc_auth.repository.experiment_permission_group._validate_permission")
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_group")
+def test_update_group_permission_not_found(mock_get_group, mock_validate, repo):
     session = MagicMock()
+    group = make_group()
+    mock_get_group.return_value = group
+    session.query().filter().one.side_effect = Exception("not found")
     repo._Session.return_value.__enter__.return_value = session
-    repo._list_user_groups = MagicMock(return_value=["g1", "g2"])
-    perm1 = MagicMock(permission="READ", to_mlflow_entity=MagicMock(return_value="entity1"))
-    perm2 = MagicMock(permission="EDIT", to_mlflow_entity=MagicMock(return_value="entity2"))
-    # Patch _get_experiment_group_permission to return perm1 then perm2
-    repo._get_experiment_group_permission = MagicMock(side_effect=[perm1, perm2])
-    with patch("mlflow_oidc_auth.repository.experiment_permission_group.compare_permissions", return_value=True):
-        result = repo.get_user_experiment_permission("1", "user")
-        assert result == "entity2"
+    with pytest.raises(Exception):
+        repo.update_group_permission("group1", "exp1", "EDIT")
 
 
-def test_get_user_experiment_permission_compare_permissions_attribute_error(repo):
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_group")
+def test_revoke_group_permission(mock_get_group, repo):
     session = MagicMock()
+    group = make_group()
+    mock_get_group.return_value = group
+    perm = make_permission()
+    session.query().filter().one.return_value = perm
+    session.delete = MagicMock()
+    session.flush = MagicMock()
     repo._Session.return_value.__enter__.return_value = session
-    repo._list_user_groups = MagicMock(return_value=["g1", "g2"])
-    perm1 = MagicMock(permission="READ", to_mlflow_entity=MagicMock(return_value="entity1"))
-    perm2 = MagicMock(permission="EDIT", to_mlflow_entity=MagicMock(return_value="entity2"))
-    repo._get_experiment_group_permission = MagicMock(side_effect=[perm1, perm2])
-    with patch("mlflow_oidc_auth.repository.experiment_permission_group.compare_permissions", side_effect=AttributeError):
-        result = repo.get_user_experiment_permission("1", "user")
-        assert result == "entity2"
-
-
-def test_get_user_experiment_permission_skips_none(repo):
-    session = MagicMock()
-    repo._Session.return_value.__enter__.return_value = session
-    repo._list_user_groups = MagicMock(return_value=["g1", "g2"])
-    repo._get_experiment_group_permission = MagicMock(
-        side_effect=[None, MagicMock(permission="READ", to_mlflow_entity=MagicMock(return_value="entity"))]
-    )
-    result = repo.get_user_experiment_permission("1", "user")
-    assert result == "entity"
-
-
-def test_get_user_experiment_permission_no_perms(repo):
-    session = MagicMock()
-    repo._Session.return_value.__enter__.return_value = session
-    repo._list_user_groups = MagicMock(return_value=["g1"])
-    repo._get_experiment_group_permission = MagicMock(return_value=None)
-    with pytest.raises(MlflowException) as exc_info:
-        repo.get_user_experiment_permission("1", "user")
-    assert "not found" in str(exc_info.value)
-
-
-def test_get_user_experiment_permission_to_mlflow_entity_attribute_error(repo):
-    session = MagicMock()
-    repo._Session.return_value.__enter__.return_value = session
-    repo._list_user_groups = MagicMock(return_value=["g1"])
-    bad_perm = MagicMock()
-    bad_perm.to_mlflow_entity.side_effect = AttributeError()
-    repo._get_experiment_group_permission = MagicMock(return_value=bad_perm)
-    with pytest.raises(MlflowException) as exc_info:
-        repo.get_user_experiment_permission("1", "user")
-    assert "not found" in str(exc_info.value)
-
-
-def test_update_success(repo):
-    session = MagicMock()
-    repo._Session.return_value.__enter__.return_value = session
-    group = MagicMock(id=1)
-    perm = MagicMock(to_mlflow_entity=MagicMock(return_value="entity"))
-    session.query.return_value.filter.return_value.one.side_effect = [group, perm]
-    result = repo.update("group", "1", "READ")
-    assert result == "entity"
-    assert perm.permission == "READ"
-    session.flush.assert_called_once()
-
-
-def test_update_invalid_permission(repo):
-    with patch(
-        "mlflow_oidc_auth.repository.experiment_permission_group._validate_permission", side_effect=MlflowException("Invalid")
-    ):
-        with pytest.raises(MlflowException):
-            repo.update("group", "1", "INVALID")
-
-
-def test_delete_success(repo):
-    session = MagicMock()
-    repo._Session.return_value.__enter__.return_value = session
-    group = MagicMock(id=1)
-    perm = MagicMock()
-    session.query.return_value.filter.return_value.one.side_effect = [group, perm]
-    repo.delete("group", "1")
+    repo.revoke_group_permission("group1", "exp1")
     session.delete.assert_called_once_with(perm)
     session.flush.assert_called_once()
+
+
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_group")
+def test_revoke_group_permission_not_found(mock_get_group, repo):
+    session = MagicMock()
+    group = make_group()
+    mock_get_group.return_value = group
+    session.query().filter().one.side_effect = Exception("not found")
+    repo._Session.return_value.__enter__.return_value = session
+    with pytest.raises(Exception):
+        repo.revoke_group_permission("group1", "exp1")
