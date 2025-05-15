@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, NamedTuple
+from typing import Callable, Dict, NamedTuple
 
 from flask import request, session
 from mlflow.exceptions import MlflowException
@@ -12,6 +12,35 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission
 from mlflow_oidc_auth.responses.client_error import make_forbidden_response
 from mlflow_oidc_auth.store import store
+
+
+def _permission_prompt_sources_config(model_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
+        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(
+            model_name, user
+        ).permission,
+    }
+
+
+def _permission_experiment_sources_config(experiment_id: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "user": lambda experiment_id=experiment_id, user=username: store.get_experiment_permission(
+            experiment_id, user
+        ).permission,
+        "group": lambda experiment_id=experiment_id, user=username: store.get_user_groups_experiment_permission(
+            experiment_id, user
+        ).permission,
+    }
+
+
+def _permission_registered_model_sources_config(model_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
+        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(
+            model_name, user
+        ).permission,
+    }
 
 
 def get_request_param(param: str) -> str:
@@ -101,45 +130,69 @@ class PermissionResult(NamedTuple):
     type: str
 
 
-def get_permission_from_store_or_default(
-    store_permission_user_func: Callable[[], str], store_permission_group_func: Callable[[], str]
-) -> PermissionResult:
+# TODO: check fi str can be replaced by Permission in function signature
+def get_permission_from_store_or_default(PERMISSION_SOURCES_CONFIG: Dict[str, Callable[[], str]]) -> PermissionResult:
     """
-    Attempts to get permission from store,
+    Attempts to get permission from store based on configured sources,
     and returns default permission if no record is found.
-    user permission takes precedence over group permission
+    Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
     """
-    try:
-        perm = store_permission_user_func()
-        app.logger.debug("User permission found")
-        perm_type = "user"
-    except MlflowException as e:
-        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+    for source_name in config.PERMISSION_SOURCE_ORDER:
+        if source_name in PERMISSION_SOURCES_CONFIG:
             try:
-                perm = store_permission_group_func()
-                app.logger.debug("Group permission found")
-                perm_type = "group"
+                # Get the permission retrieval function from the configuration
+                permission_func = PERMISSION_SOURCES_CONFIG[source_name]
+                # Call the function to get the permission
+                perm = permission_func()
+                app.logger.debug(f"Permission found using source: {source_name}")
+                return PermissionResult(get_permission(perm), source_name)
             except MlflowException as e:
-                if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
-                    perm = config.DEFAULT_MLFLOW_PERMISSION
-                    app.logger.debug("Default permission used")
-                    perm_type = "fallback"
-    return PermissionResult(get_permission(perm), perm_type)
+                if e.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+                    raise  # Re-raise exceptions other than RESOURCE_DOES_NOT_EXIST
+                app.logger.debug(f"Permission not found using source {source_name}: {e}")
+        else:
+            app.logger.warning(f"Invalid permission source configured: {source_name}")
+
+    # If no permission is found, use the default
+    perm = config.DEFAULT_MLFLOW_PERMISSION
+    app.logger.debug("Default permission used")
+    return PermissionResult(get_permission(perm), "fallback")
+
+
+def effective_experiment_permission(experiment_id: str, user: str) -> PermissionResult:
+    """
+    Attempts to get permission from store based on configured sources,
+    and returns default permission if no record is found.
+    Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
+    """
+    return get_permission_from_store_or_default(_permission_experiment_sources_config(experiment_id, user))
+
+
+def effective_registered_model_permission(model_name: str, user: str) -> PermissionResult:
+    """
+    Attempts to get permission from store based on configured sources,
+    and returns default permission if no record is found.
+    Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
+    """
+    return get_permission_from_store_or_default(_permission_registered_model_sources_config(model_name, user))
+
+
+def effective_prompt_permission(model_name: str, user: str) -> PermissionResult:
+    """
+    Attempts to get permission from store based on configured sources,
+    and returns default permission if no record is found.
+    Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
+    """
+    return get_permission_from_store_or_default(_permission_prompt_sources_config(model_name, user))
 
 
 def can_manage_experiment(experiment_id: str, user: str) -> bool:
-    permission = get_permission_from_store_or_default(
-        lambda: store.get_experiment_permission(experiment_id, user).permission,
-        lambda: store.get_user_groups_experiment_permission(experiment_id, user).permission,
-    ).permission
+    permission = effective_experiment_permission(experiment_id, user).permission
     return permission.can_manage
 
 
 def can_manage_registered_model(model_name: str, user: str) -> bool:
-    permission = get_permission_from_store_or_default(
-        lambda: store.get_registered_model_permission(model_name, user).permission,
-        lambda: store.get_user_groups_registered_model_permission(model_name, user).permission,
-    ).permission
+    permission = effective_registered_model_permission(model_name, user).permission
     return permission.can_manage
 
 

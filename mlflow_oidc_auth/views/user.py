@@ -6,10 +6,12 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
 from mlflow_oidc_auth.utils import (
     get_is_admin,
-    get_permission_from_store_or_default,
     get_request_param,
     get_optional_request_param,
     get_username,
+    effective_experiment_permission,
+    effective_prompt_permission,
+    effective_registered_model_permission,
 )
 
 
@@ -82,32 +84,20 @@ def get_user_experiments(username):
             list_experiments = [
                 exp
                 for exp in all_experiments
-                if get_permission_from_store_or_default(
-                    lambda: store.get_experiment_permission(exp.experiment_id, username).permission,
-                    lambda: store.get_user_groups_experiment_permission(exp.experiment_id, username).permission,
-                ).permission.name
-                != NO_PERMISSIONS.name
+                if effective_experiment_permission(exp.experiment_id, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_experiments = [
                 exp
                 for exp in all_experiments
-                if get_permission_from_store_or_default(
-                    lambda: store.get_experiment_permission(exp.experiment_id, current_user.username).permission,
-                    lambda: store.get_user_groups_experiment_permission(exp.experiment_id, current_user.username).permission,
-                ).permission.can_manage
+                if effective_experiment_permission(exp.experiment_id, current_user.username).permission.can_manage
             ]
 
     experiments_list = [
         {
             "name": _get_tracking_store().get_experiment(exp.experiment_id).name,
             "id": exp.experiment_id,
-            "permission": (
-                perm := get_permission_from_store_or_default(
-                    lambda: store.get_experiment_permission(exp.experiment_id, username).permission,
-                    lambda: store.get_user_groups_experiment_permission(exp.experiment_id, username).permission,
-                )
-            ).permission.name,
+            "permission": (perm := effective_experiment_permission(exp.experiment_id, username)).permission.name,
             "type": perm.type,
         }
         for exp in list_experiments
@@ -127,30 +117,18 @@ def get_user_models(username):
             list_registered_models = [
                 model
                 for model in all_registered_models
-                if get_permission_from_store_or_default(
-                    lambda: store.get_registered_model_permission(model.name, username).permission,
-                    lambda: store.get_user_groups_registered_model_permission(model.name, username).permission,
-                ).permission.name
-                != NO_PERMISSIONS.name
+                if effective_registered_model_permission(model.name, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_registered_models = [
                 model
                 for model in all_registered_models
-                if get_permission_from_store_or_default(
-                    lambda: store.get_registered_model_permission(model.name, current_user.username).permission,
-                    lambda: store.get_user_groups_registered_model_permission(model.name, current_user.username).permission,
-                ).permission.can_manage
+                if effective_registered_model_permission(model.name, current_user.username).permission.can_manage
             ]
     models = [
         {
             "name": model.name,
-            "permission": (
-                perm := get_permission_from_store_or_default(
-                    lambda: store.get_registered_model_permission(model.name, username).permission,
-                    lambda: store.get_user_groups_registered_model_permission(model.name, username).permission,
-                )
-            ).permission.name,
+            "permission": (perm := effective_registered_model_permission(model.name, username)).permission.name,
             "type": perm.type,
         }
         for model in list_registered_models
@@ -172,30 +150,18 @@ def get_user_prompts(username):
             list_registered_models = [
                 model
                 for model in all_registered_models
-                if get_permission_from_store_or_default(
-                    lambda: store.get_registered_model_permission(model.name, username).permission,
-                    lambda: store.get_user_groups_registered_model_permission(model.name, username).permission,
-                ).permission.name
-                != NO_PERMISSIONS.name
+                if effective_prompt_permission(model.name, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_registered_models = [
                 model
                 for model in all_registered_models
-                if get_permission_from_store_or_default(
-                    lambda: store.get_registered_model_permission(model.name, current_user.username).permission,
-                    lambda: store.get_user_groups_registered_model_permission(model.name, current_user.username).permission,
-                ).permission.can_manage
+                if effective_prompt_permission(model.name, current_user.username).permission.can_manage
             ]
     models = [
         {
             "name": model.name,
-            "permission": (
-                perm := get_permission_from_store_or_default(
-                    lambda: store.get_registered_model_permission(model.name, username).permission,
-                    lambda: store.get_user_groups_registered_model_permission(model.name, username).permission,
-                )
-            ).permission.name,
+            "permission": (perm := effective_prompt_permission(model.name, username)).permission.name,
             "type": perm.type,
         }
         for model in list_registered_models
