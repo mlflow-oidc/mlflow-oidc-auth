@@ -113,7 +113,7 @@ class GroupRepository:
         with self._Session() as session:
             user = get_user(session, username)
             user_groups_ids = list_user_groups(session, user)
-            user_groups = session.query(SqlGroup).filter(SqlGroup.id.in_([ug.id for ug in user_groups_ids])).all()
+            user_groups = session.query(SqlGroup).filter(SqlGroup.id.in_([ug.group_id for ug in user_groups_ids])).all()
             return [ug.group_name for ug in user_groups]
 
     def list_group_ids_for_user(self, username: str) -> List[int]:
@@ -125,7 +125,7 @@ class GroupRepository:
         with self._Session() as session:
             user = get_user(session, username)
             user_groups_ids = list_user_groups(session, user)
-            return [ug.id for ug in user_groups_ids]
+            return [ug.group_id for ug in user_groups_ids]
 
     def set_groups_for_user(self, username: str, group_names: List[str]) -> None:
         """

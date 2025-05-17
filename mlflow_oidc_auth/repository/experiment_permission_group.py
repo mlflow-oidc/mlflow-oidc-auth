@@ -42,7 +42,7 @@ class ExperimentPermissionGroupRepository:
         with self._Session() as session:
             user = get_user(session, username)
             user_groups_ids = list_user_groups(session, user)
-            user_groups = session.query(SqlGroup).filter(SqlGroup.id.in_([ug.id for ug in user_groups_ids])).all()
+            user_groups = session.query(SqlGroup).filter(SqlGroup.id.in_([ug.group_id for ug in user_groups_ids])).all()
             return [ug.group_name for ug in user_groups]
 
     def grant_group_permission(self, group_name: str, experiment_id: str, permission: str) -> ExperimentPermission:
@@ -93,7 +93,7 @@ class ExperimentPermissionGroupRepository:
             user_groups = list_user_groups(session, user)
             perms = (
                 session.query(SqlExperimentGroupPermission)
-                .filter(SqlExperimentGroupPermission.group_id.in_([ug.id for ug in user_groups]))
+                .filter(SqlExperimentGroupPermission.group_id.in_([ug.group_id for ug in user_groups]))
                 .all()
             )
             return [p.to_mlflow_entity() for p in perms]

@@ -40,7 +40,7 @@ def get_one_optional(session: Session, model, *criterion):
         )
 
 
-def get_all(session: Session, model, *criterion):
+def get_all(session: Session, model, *criterion, order_by=None):
     """
     Get all rows matching the given criteria.
     :param session: SQLAlchemy session
@@ -48,7 +48,11 @@ def get_all(session: Session, model, *criterion):
     :param criterion: SQLAlchemy filter criteria
     :return: A list of all rows found
     """
-    return session.query(model).filter(*criterion).all()
+    return (
+        session.query(model).filter(*criterion).order_by(order_by).all()
+        if order_by
+        else session.query(model).filter(*criterion).all()
+    )
 
 
 def get_user(session: Session, username: str) -> SqlUser:

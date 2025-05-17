@@ -58,7 +58,7 @@ class RegisteredModelPermissionRegexRepository:
             )
             return perm.to_mlflow_entity()
 
-    def list_permissions_for_user(self, username: str, prompt: bool = False) -> List[RegisteredModelRegexPermission]:
+    def list_regex_for_user(self, username: str, prompt: bool = False) -> List[RegisteredModelRegexPermission]:
         with self._Session() as session:
             user = get_user(session, username)
             perms = get_all(
@@ -66,6 +66,7 @@ class RegisteredModelPermissionRegexRepository:
                 SqlRegisteredModelRegexPermission,
                 SqlRegisteredModelRegexPermission.user_id == user.id,
                 SqlRegisteredModelRegexPermission.prompt == prompt,
+                order_by=SqlRegisteredModelRegexPermission.priority,
             )
             return [p.to_mlflow_entity() for p in perms]
 

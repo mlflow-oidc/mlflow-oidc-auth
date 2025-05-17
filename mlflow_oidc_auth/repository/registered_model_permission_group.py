@@ -84,7 +84,7 @@ class RegisteredModelPermissionGroupRepository:
             user_groups = list_user_groups(session, user)
             perms = (
                 session.query(SqlRegisteredModelGroupPermission)
-                .filter(SqlRegisteredModelGroupPermission.group_id.in_([ug.id for ug in user_groups]))
+                .filter(SqlRegisteredModelGroupPermission.group_id.in_([ug.group_id for ug in user_groups]))
                 .all()
             )
             return [p.to_mlflow_entity() for p in perms]
