@@ -282,3 +282,243 @@ class UserGroup:
             user_id=dictionary["user_id"],
             group_id=dictionary["group_id"],
         )
+
+
+class RegisteredModelGroupRegexPermission:
+    def __init__(
+        self,
+        regex,
+        priority,
+        group_id,
+        permission,
+        prompt=False,
+    ):
+        self._regex = regex
+        self._priority = priority
+        self._group_id = group_id
+        self._permission = permission
+        self._prompt = prompt
+
+    @property
+    def regex(self):
+        return self._regex
+
+    @property
+    def priority(self):
+        return self._priority
+
+    @priority.setter
+    def priority(self, priority):
+        self._priority = priority
+
+    @property
+    def group_id(self):
+        return self._group_id
+
+    @property
+    def permission(self):
+        return self._permission
+
+    @permission.setter
+    def permission(self, permission):
+        self._permission = permission
+
+    @property
+    def prompt(self):
+        return self._prompt
+
+    def to_json(self):
+        return {
+            "regex": self.regex,
+            "priority": self.priority,
+            "group_id": self.group_id,
+            "permission": self.permission,
+            "prompt": self.prompt,
+        }
+
+    @classmethod
+    def from_json(cls, dictionary):
+        return cls(
+            regex=dictionary["regex"],
+            priority=dictionary["priority"],
+            group_id=dictionary["group_id"],
+            permission=dictionary["permission"],
+            prompt=bool(dictionary.get("prompt", False)),
+        )
+
+
+class ExperimentGroupRegexPermission:
+    def __init__(
+        self,
+        regex,
+        priority,
+        group_id,
+        permission,
+    ):
+        self._regex = regex
+        self._priority = priority
+        self._group_id = group_id
+        self._permission = permission
+
+    @property
+    def regex(self):
+        return self._regex
+
+    @property
+    def priority(self):
+        return self._priority
+
+    @priority.setter
+    def priority(self, priority):
+        self._priority = priority
+
+    @property
+    def group_id(self):
+        return self._group_id
+
+    @property
+    def permission(self):
+        return self._permission
+
+    @permission.setter
+    def permission(self, permission):
+        self._permission = permission
+
+    def to_json(self):
+        return {
+            "regex": self.regex,
+            "priority": self.priority,
+            "group_id": self.group_id,
+            "permission": self.permission,
+        }
+
+    @classmethod
+    def from_json(cls, dictionary):
+        return cls(
+            regex=dictionary["regex"],
+            priority=dictionary["priority"],
+            group_id=dictionary["group_id"],
+            permission=dictionary["permission"],
+        )
+
+
+class RegisteredModelRegexPermission:
+    def __init__(
+        self,
+        regex,
+        priority,
+        user_id,
+        permission,
+        prompt=False,
+    ):
+        self._regex = regex
+        self._priority = priority
+        self._user_id = user_id
+        self._permission = permission
+        self._prompt = prompt
+
+    @property
+    def regex(self):
+        return self._regex
+
+    @property
+    def priority(self):
+        return self._priority
+
+    @priority.setter
+    def priority(self, priority):
+        self._priority = priority
+
+    @property
+    def user_id(self):
+        return self._user_id
+
+    @property
+    def permission(self):
+        return self._permission
+
+    @permission.setter
+    def permission(self, permission):
+        self._permission = permission
+
+    @property
+    def prompt(self):
+        return self._prompt
+
+    @prompt.setter
+    def prompt(self, prompt):
+        self._prompt = prompt
+
+    def to_json(self):
+        return {
+            "regex": self.regex,
+            "priority": self.priority,
+            "user_id": self.user_id,
+            "permission": self.permission,
+            "prompt": self.prompt,
+        }
+
+    @classmethod
+    def from_json(cls, dictionary):
+        return cls(
+            regex=dictionary["regex"],
+            priority=dictionary["priority"],
+            user_id=dictionary["user_id"],
+            permission=dictionary["permission"],
+            prompt=bool(dictionary.get("prompt", False)),
+        )
+
+
+class ExperimentRegexPermission:
+    def __init__(
+        self,
+        regex,
+        priority,
+        user_id,
+        permission,
+    ):
+        self._regex = regex
+        self._priority = priority
+        self._user_id = user_id
+        self._permission = permission
+
+    @property
+    def regex(self):
+        return self._regex
+
+    @property
+    def priority(self):
+        return self._priority
+
+    @priority.setter
+    def priority(self, priority):
+        self._priority = priority
+
+    @property
+    def user_id(self):
+        return self._user_id
+
+    @property
+    def permission(self):
+        return self._permission
+
+    @permission.setter
+    def permission(self, permission):
+        self._permission = permission
+
+    def to_json(self):
+        return {
+            "regex": self.regex,
+            "priority": self.priority,
+            "user_id": self.user_id,
+            "permission": self.permission,
+        }
+
+    @classmethod
+    def from_json(cls, dictionary):
+        return cls(
+            regex=dictionary["regex"],
+            priority=dictionary["priority"],
+            user_id=dictionary["user_id"],
+            permission=dictionary["permission"],
+        )

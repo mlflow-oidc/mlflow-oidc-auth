@@ -7,6 +7,7 @@ import {
   EditPermissionsModalComponent,
   GrantPermissionModalComponent,
   GrantUserPermissionsComponent,
+  ManageRegexModalComponent,
   HeaderComponent,
   TableComponent,
 } from './components';
@@ -25,6 +26,7 @@ const SHARED_COMPONENTS = [
   EditPermissionsModalComponent,
   GrantPermissionModalComponent,
   GrantUserPermissionsComponent,
+  ManageRegexModalComponent,
   HeaderComponent,
   TableComponent,
 ];

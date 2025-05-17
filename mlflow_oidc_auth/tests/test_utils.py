@@ -1,18 +1,30 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from flask import Flask
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST
+
+from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils import (
-    get_is_admin,
-    get_permission_from_store_or_default,
+    PermissionResult,
     can_manage_experiment,
     can_manage_registered_model,
+    can_read_experiment,
+    can_read_registered_model,
     check_experiment_permission,
+    check_prompt_permission,
     check_registered_model_permission,
-    PermissionResult,
+    effective_experiment_permission,
+    effective_prompt_permission,
+    effective_registered_model_permission,
+    get_experiment_id,
+    get_is_admin,
+    get_optional_request_param,
+    get_permission_from_store_or_default,
+    get_request_param,
+    get_username,
 )
-from mlflow_oidc_auth.permissions import Permission
 
 
 class TestUtils(unittest.TestCase):
@@ -33,6 +45,8 @@ class TestUtils(unittest.TestCase):
             mock_get_username.return_value = "user"
             mock_store.get_user.return_value.is_admin = True
             self.assertTrue(get_is_admin())
+            mock_store.get_user.return_value.is_admin = False
+            self.assertFalse(get_is_admin())
 
     @patch("mlflow_oidc_auth.utils.store")
     @patch("mlflow_oidc_auth.utils.config")
@@ -46,18 +60,39 @@ class TestUtils(unittest.TestCase):
             mock_get_permission.return_value = Permission(
                 name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True
             )
+            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group"]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "default_perm"
 
-            result = get_permission_from_store_or_default(mock_store_permission_user_func, mock_store_permission_group_func)
+            # user permission found
+            result = get_permission_from_store_or_default(
+                {"user": mock_store_permission_user_func, "group": mock_store_permission_group_func}
+            )
             self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "user")
 
+            # user not found, group found
             mock_store_permission_user_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
-            result = get_permission_from_store_or_default(mock_store_permission_user_func, mock_store_permission_group_func)
+            result = get_permission_from_store_or_default(
+                {"user": mock_store_permission_user_func, "group": mock_store_permission_group_func}
+            )
             self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "group")
 
+            # both not found, fallback to default
             mock_store_permission_group_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
-            result = get_permission_from_store_or_default(mock_store_permission_user_func, mock_store_permission_group_func)
+            result = get_permission_from_store_or_default(
+                {"user": mock_store_permission_user_func, "group": mock_store_permission_group_func}
+            )
             self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "fallback")
+
+            # invalid source in config
+            mock_config.PERMISSION_SOURCE_ORDER = ["invalid"]
+            # Just call and check fallback, don't assert logs
+            result = get_permission_from_store_or_default(
+                {"user": mock_store_permission_user_func, "group": mock_store_permission_group_func}
+            )
+            self.assertEqual(result.type, "fallback")
 
     @patch("mlflow_oidc_auth.utils.store")
     @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
@@ -67,6 +102,10 @@ class TestUtils(unittest.TestCase):
                 Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
             )
             self.assertTrue(can_manage_experiment("exp_id", "user"))
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=False), "user"
+            )
+            self.assertFalse(can_manage_experiment("exp_id", "user"))
 
     @patch("mlflow_oidc_auth.utils.store")
     @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
@@ -76,6 +115,10 @@ class TestUtils(unittest.TestCase):
                 Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
             )
             self.assertTrue(can_manage_registered_model("model_name", "user"))
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=False), "user"
+            )
+            self.assertFalse(can_manage_registered_model("model_name", "user"))
 
     @patch("mlflow_oidc_auth.utils.store")
     @patch("mlflow_oidc_auth.utils.get_is_admin")
@@ -106,6 +149,10 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(mock_func(), "forbidden")
 
             mock_can_manage_experiment.return_value = True
+            self.assertEqual(mock_func(), "success")
+
+            # Admin always allowed
+            mock_get_is_admin.return_value = True
             self.assertEqual(mock_func(), "success")
 
     @patch("mlflow_oidc_auth.utils.store")
@@ -139,11 +186,109 @@ class TestUtils(unittest.TestCase):
             mock_can_manage_registered_model.return_value = True
             self.assertEqual(mock_func(), "success")
 
+            # Admin always allowed
+            mock_get_is_admin.return_value = True
+            self.assertEqual(mock_func(), "success")
+
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_is_admin")
+    @patch("mlflow_oidc_auth.utils.get_username")
+    @patch("mlflow_oidc_auth.utils.get_request_param")
+    @patch("mlflow_oidc_auth.utils.can_manage_registered_model")
+    @patch("mlflow_oidc_auth.utils.make_forbidden_response")
+    def test_check_prompt_permission(
+        self,
+        mock_make_forbidden_response,
+        mock_can_manage_registered_model,
+        mock_get_request_param,
+        mock_get_username,
+        mock_get_is_admin,
+        mock_store,
+    ):
+        with self.app.test_request_context():
+            mock_get_is_admin.return_value = False
+            mock_get_username.return_value = "user"
+            mock_get_request_param.return_value = "prompt_name"
+            mock_can_manage_registered_model.return_value = False
+            mock_make_forbidden_response.return_value = "forbidden"
+
+            @check_prompt_permission
+            def mock_func():
+                return "success"
+
+            self.assertEqual(mock_func(), "forbidden")
+
+            mock_can_manage_registered_model.return_value = True
+            self.assertEqual(mock_func(), "success")
+
+            # Admin always allowed
+            mock_get_is_admin.return_value = True
+            self.assertEqual(mock_func(), "success")
+
+    def test_get_request_param(self):
+        # GET method, param present
+        with self.app.test_request_context("/?foo=bar", method="GET"):
+            self.assertEqual(get_request_param("foo"), "bar")
+        # POST method, param present
+        with self.app.test_request_context("/", method="POST", json={"foo": "baz"}):
+            self.assertEqual(get_request_param("foo"), "baz")
+        # param missing, run_id fallback to run_uuid
+        with self.app.test_request_context("/", method="GET"):
+            with patch("mlflow_oidc_auth.utils.get_request_param", return_value="uuid_val") as mock_get:
+                self.assertEqual(get_request_param("run_id"), "uuid_val")
+        # param missing, not run_id
+        with self.app.test_request_context("/", method="GET"):
+            with self.assertRaises(MlflowException) as cm:
+                get_request_param("notfound")
+            self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+        # unsupported method
+        with self.app.test_request_context("/", method="PUT"):
+            with self.assertRaises(MlflowException) as cm:
+                get_request_param("foo")
+            self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
+
+    def test_get_optional_request_param(self):
+        # GET method, param present
+        with self.app.test_request_context("/?foo=bar", method="GET"):
+            self.assertEqual(get_optional_request_param("foo"), "bar")
+        # POST method, param present
+        with self.app.test_request_context("/", method="POST", json={"foo": "baz"}):
+            self.assertEqual(get_optional_request_param("foo"), "baz")
+        # param missing
+        with self.app.test_request_context("/", method="GET"):
+            self.assertIsNone(get_optional_request_param("notfound"))
+        # unsupported method
+        with self.app.test_request_context("/", method="PUT"):
+            with self.assertRaises(MlflowException) as cm:
+                get_optional_request_param("foo")
+            self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
+
+    @patch("mlflow_oidc_auth.utils._get_tracking_store")
+    def test_get_experiment_id(self, mock_tracking_store):
+        # GET method, experiment_id present
+        with self.app.test_request_context("/?experiment_id=123", method="GET"):
+            self.assertEqual(get_experiment_id(), "123")
+        # POST method, experiment_id present
+        with self.app.test_request_context("/", method="POST", json={"experiment_id": "456"}):
+            self.assertEqual(get_experiment_id(), "456")
+        # experiment_name present
+        with self.app.test_request_context("/?experiment_name=exp", method="GET"):
+            mock_tracking_store().get_experiment_by_name.return_value.experiment_id = "789"
+            self.assertEqual(get_experiment_id(), "789")
+        # missing both
+        with self.app.test_request_context("/", method="GET"):
+            with self.assertRaises(MlflowException) as cm:
+                get_experiment_id()
+            self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+        # unsupported method
+        with self.app.test_request_context("/", method="PUT"):
+            with self.assertRaises(MlflowException) as cm:
+                get_experiment_id()
+            self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
+
     @patch("mlflow_oidc_auth.utils.store")
     @patch("mlflow_oidc_auth.utils.validate_token")
     def test_get_username(self, mock_validate_token, mock_store):
-        from mlflow_oidc_auth.utils import get_username
-
         with self.app.test_request_context():
             # session username
             with patch("mlflow_oidc_auth.utils.session", {"username": "session_user"}):
@@ -168,7 +313,7 @@ class TestUtils(unittest.TestCase):
 
                 with patch("mlflow_oidc_auth.utils.request") as mock_request:
                     mock_request.authorization = AuthBasicNone()
-                    with self.assertRaises(Exception):
+                    with self.assertRaises(MlflowException):
                         get_username()
             # bearer token
             with patch("mlflow_oidc_auth.utils.session", {}):
@@ -185,103 +330,68 @@ class TestUtils(unittest.TestCase):
             with patch("mlflow_oidc_auth.utils.session", {}):
                 with patch("mlflow_oidc_auth.utils.request") as mock_request:
                     mock_request.authorization = None
-                    with self.assertRaises(Exception):
+                    with self.assertRaises(MlflowException):
                         get_username()
 
-    def test_get_request_param(self):
-        from mlflow_oidc_auth.utils import get_request_param
-
-        # GET method, param present
-        with self.app.test_request_context("/?foo=bar", method="GET"):
-            self.assertEqual(get_request_param("foo"), "bar")
-        # POST method, param present
-        with self.app.test_request_context("/", method="POST", json={"foo": "baz"}):
-            self.assertEqual(get_request_param("foo"), "baz")
-        # param missing, run_id fallback
-        with self.app.test_request_context("/", method="GET"):
-            with patch("mlflow_oidc_auth.utils.get_request_param", return_value="uuid_val") as mock_get:
-                self.assertEqual(get_request_param("run_id"), "uuid_val")
-        # param missing, not run_id
-        with self.app.test_request_context("/", method="GET"):
-            with self.assertRaises(Exception):
-                get_request_param("notfound")
-        # unsupported method
-        with self.app.test_request_context("/", method="PUT"):
-            with self.assertRaises(Exception):
-                get_request_param("foo")
-
-    def test_get_optional_request_param(self):
-        from mlflow_oidc_auth.utils import get_optional_request_param
-
-        # GET method, param present
-        with self.app.test_request_context("/?foo=bar", method="GET"):
-            self.assertEqual(get_optional_request_param("foo"), "bar")
-        # POST method, param present
-        with self.app.test_request_context("/", method="POST", json={"foo": "baz"}):
-            self.assertEqual(get_optional_request_param("foo"), "baz")
-        # param missing
-        with self.app.test_request_context("/", method="GET"):
-            self.assertIsNone(get_optional_request_param("notfound"))
-        # unsupported method
-        with self.app.test_request_context("/", method="PUT"):
-            with self.assertRaises(Exception):
-                get_optional_request_param("foo")
-
     @patch("mlflow_oidc_auth.utils._get_tracking_store")
-    def test_get_experiment_id(self, mock_tracking_store):
-        from mlflow_oidc_auth.utils import get_experiment_id
-
-        # GET method, experiment_id present
-        with self.app.test_request_context("/?experiment_id=123", method="GET"):
-            self.assertEqual(get_experiment_id(), "123")
-        # POST method, experiment_id present
-        with self.app.test_request_context("/", method="POST", json={"experiment_id": "456"}):
-            self.assertEqual(get_experiment_id(), "456")
-        # experiment_name present
-        with self.app.test_request_context("/?experiment_name=exp", method="GET"):
-            mock_tracking_store().get_experiment_by_name.return_value.experiment_id = "789"
-            self.assertEqual(get_experiment_id(), "789")
-        # missing both
-        with self.app.test_request_context("/", method="GET"):
-            with self.assertRaises(Exception):
+    def test_get_experiment_id_experiment_name_not_found(self, mock_tracking_store):
+        # experiment_name provided but not found
+        with self.app.test_request_context("/?experiment_name=nonexistent_exp", method="GET"):
+            mock_tracking_store().get_experiment_by_name.return_value = None
+            with self.assertRaises(MlflowException) as cm:
                 get_experiment_id()
-        # unsupported method
-        with self.app.test_request_context("/", method="PUT"):
-            with self.assertRaises(Exception):
-                get_experiment_id()
+            self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
 
     @patch("mlflow_oidc_auth.utils.store")
-    @patch("mlflow_oidc_auth.utils.get_is_admin")
-    @patch("mlflow_oidc_auth.utils.get_username")
-    @patch("mlflow_oidc_auth.utils.get_request_param")
-    @patch("mlflow_oidc_auth.utils.can_manage_registered_model")
-    @patch("mlflow_oidc_auth.utils.make_forbidden_response")
-    def test_check_prompt_permission(
-        self,
-        mock_make_forbidden_response,
-        mock_can_manage_registered_model,
-        mock_get_request_param,
-        mock_get_username,
-        mock_get_is_admin,
-        mock_store,
-    ):
-        from mlflow_oidc_auth.utils import check_prompt_permission
-
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_effective_experiment_permission(self, mock_get_permission_from_store_or_default, mock_store):
         with self.app.test_request_context():
-            mock_get_is_admin.return_value = False
-            mock_get_username.return_value = "user"
-            mock_get_request_param.return_value = "prompt_name"
-            mock_can_manage_registered_model.return_value = False
-            mock_make_forbidden_response.return_value = "forbidden"
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+            )
+            result = effective_experiment_permission("exp_id", "user")
+            self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "user")
 
-            @check_prompt_permission
-            def mock_func():
-                return "success"
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_effective_registered_model_permission(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+            )
+            result = effective_registered_model_permission("model_name", "user")
+            self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "user")
 
-            self.assertEqual(mock_func(), "forbidden")
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_effective_prompt_permission(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+            )
+            result = effective_prompt_permission("prompt_name", "user")
+            self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "user")
 
-            mock_can_manage_registered_model.return_value = True
-            self.assertEqual(mock_func(), "success")
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_can_read_experiment(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=False, can_delete=False, can_manage=False), "user"
+            )
+            self.assertTrue(can_read_experiment("exp_id", "user"))
+
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_can_read_registered_model(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=False, can_delete=False, can_manage=False), "user"
+            )
+            self.assertTrue(can_read_registered_model("model_name", "user"))
 
 
 if __name__ == "__main__":

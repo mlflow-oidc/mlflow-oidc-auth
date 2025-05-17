@@ -49,6 +49,36 @@ GET_REGISTERED_MODEL_PERMISSION = _get_rest_path("/mlflow/registered-models/perm
 UPDATE_REGISTERED_MODEL_PERMISSION = _get_rest_path("/mlflow/registered-models/permissions/update")
 DELETE_REGISTERED_MODEL_PERMISSION = _get_rest_path("/mlflow/registered-models/permissions/delete")
 
+CREATE_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/experiments/regex-permissions/create")
+GET_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/experiments/regex-permissions/get")
+UPDATE_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/experiments/regex-permissions/update")
+DELETE_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/experiments/regex-permissions/delete")
+
+CREATE_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/registered-models/regex-permissions/create")
+GET_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/registered-models/regex-permissions/get")
+UPDATE_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/registered-models/regex-permissions/update")
+DELETE_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/registered-models/regex-permissions/delete")
+
+CREATE_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/prompts/regex-permissions/create")
+GET_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/prompts/regex-permissions/get")
+UPDATE_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/prompts/regex-permissions/update")
+DELETE_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/prompts/regex-permissions/delete")
+
+CREATE_USER_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/experiments/regex/create")
+GET_USER_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/experiments/regex")
+UPDATE_USER_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/experiments/regex/update")
+DELETE_USER_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/experiments/regex/delete")
+
+CREATE_USER_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/registered-models/regex/create")
+GET_USER_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/registered-models/regex")
+UPDATE_USER_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/registered-models/regex/update")
+DELETE_USER_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/registered-models/regex/delete")
+
+CREATE_USER_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/prompts/regex/create")
+GET_USER_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/prompts/regex")
+UPDATE_USER_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/prompts/regex/update")
+DELETE_USER_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/prompts/regex/delete")
+
 # manage group permissions
 GET_GROUPS = _get_rest_path("/mlflow/groups")
 GET_GROUP_USERS = _get_rest_path("/mlflow/groups/<string:group_name>/users")
@@ -67,3 +97,24 @@ CREATE_GROUP_PROMPT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_na
 GET_GROUP_PROMPTS_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts")
 UPDATE_GROUP_PROMPT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/update")
 DELETE_GROUP_PROMPT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/delete")
+
+CREATE_GROUP_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/regex/create")
+GET_GROUP_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/regex")
+UPDATE_GROUP_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/regex/update")
+DELETE_GROUP_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/regex/delete")
+
+CREATE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path(
+    "/mlflow/groups/<string:group_name>/registered-models/regex/create"
+)
+GET_GROUP_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/registered-models/regex")
+UPDATE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path(
+    "/mlflow/groups/<string:group_name>/registered-models/regex/update"
+)
+DELETE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path(
+    "/mlflow/groups/<string:group_name>/registered-models/regex/delete"
+)
+
+CREATE_GROUP_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/regex/create")
+GET_GROUP_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/regex")
+UPDATE_GROUP_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/regex/update")
+DELETE_GROUP_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/regex/delete")

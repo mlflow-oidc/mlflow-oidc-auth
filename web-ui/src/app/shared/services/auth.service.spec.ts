@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
-import { AuthService } from '../auth.service';
-import { CurrentUserModel } from '../../interfaces/user-data.interface';
+import { AuthService } from './auth.service';
+import { CurrentUserModel } from '../interfaces/user-data.interface';
 
 describe('AuthService', () => {
   let service: AuthService;

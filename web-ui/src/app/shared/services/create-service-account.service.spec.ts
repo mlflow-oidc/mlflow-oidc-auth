@@ -1,12 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
-import { CreateServiceAccountService } from '../create-service-account.service';
-import { CreateServiceAccountModalComponent } from '../../components/modals/create-service-account-modal/create-service-account-modal.component';
+import { CreateServiceAccountService } from './create-service-account.service';
+import { CreateServiceAccountModalComponent } from '../components/modals/create-service-account-modal/create-service-account-modal.component';
 import {
   CreateServiceAccountModalData,
   CreateServiceAccountModalResult,
-} from '../../components/modals/create-service-account-modal/create-service-account-modal.interface';
+} from '../components/modals/create-service-account-modal/create-service-account-modal.interface';
 
 describe('CreateServiceAccountService', () => {
   let service: CreateServiceAccountService;

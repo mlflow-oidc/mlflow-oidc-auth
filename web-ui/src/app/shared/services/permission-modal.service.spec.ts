@@ -3,10 +3,10 @@ import { jest } from '@jest/globals';
 import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 
-import { PermissionModalService } from '../permission-modal.service';
+import { PermissionModalService } from './permission-modal.service';
 import { EntityEnum } from 'src/app/core/configs/core';
 import { PermissionEnum } from 'src/app/core/configs/permissions';
-import { EditPermissionsModalComponent, GrantPermissionModalComponent } from '../../components';
+import { EditPermissionsModalComponent, GrantPermissionModalComponent } from '../components';
 import { WithNameAndId } from 'src/app/shared/components/modals/grant-permission-modal/grant-permission-modal.interface';
 
 describe('PermissionModalService', () => {

@@ -9,6 +9,7 @@ export enum PermissionTypeEnum {
   USER = 'user',
   GROUP = 'group',
   FALLBACK = 'fallback',
+  REGEX = 'regex',
 }
 
 export const PERMISSIONS = [

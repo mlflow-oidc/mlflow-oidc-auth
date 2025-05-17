@@ -10,4 +10,5 @@ export enum AdminPageRoutesEnum {
   GROUPS = 'groups',
   PROMPT = 'prompt',
   PROMPTS = 'prompts',
+  REGEX = 'regex',
 }

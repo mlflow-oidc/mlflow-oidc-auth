@@ -1,0 +1,17 @@
+.footer {
+  text-align: left;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  z-index: 100;
+}
+
+.footer-link {
+  color: #007bff;
+  text-decoration: none;
+  font-weight: bold;
+  cursor: pointer;
+}

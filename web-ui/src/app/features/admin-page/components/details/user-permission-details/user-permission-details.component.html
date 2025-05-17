@@ -1,50 +1,87 @@
-<mat-tab-group #userTabs (selectedIndexChange)="handleTabSelection($event)">
+<mat-tab-group (selectedIndexChange)="handleTabSelection($event)" #userTabs>
   <!--  Experiments-->
   <mat-tab label="Experiments">
-    <div class="my-3">
-      <div class="header-section">
-      </div>
-
-      <ml-table
-              [columnConfig]="experimentsColumnConfig"
-              [data]="experimentsDataSource"
-              *ngIf="experimentsDataSource.length"
-              [actions]="experimentsActions"
-              (action)="handleExperimentActions($event)"
-      ></ml-table>
-    </div>
+    <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[0]"
+      (selectedIndexChange)="handleSubTabSelection($event)">
+      <mat-tab label="Permissions">
+        <ml-table [columnConfig]="experimentsColumnConfig" [data]="experimentsDataSource"
+          *ngIf="experimentsDataSource.length" [actions]="experimentsActions"
+          (action)="handleExperimentActions($event)">
+        </ml-table>
+        <div class="no-data" *ngIf="!experimentsDataSource.length">No experiment permissions found for this user.</div>
+      </mat-tab>
+      <mat-tab *ngIf="isAdmin" label="Regex">
+        <div class="my-3">
+          <div class="header-section">
+            <button mat-button (click)="openModalAddExperimentRegexPermissionToUser()">
+              <mat-icon>add</mat-icon>
+              <span>Add</span>
+            </button>
+          </div>
+        </div>
+        <ml-table [columnConfig]="experimentRegexColumnConfig" [data]="experimentRegexDataSource"
+          *ngIf="experimentRegexDataSource.length" [actions]="experimentRegexActions"
+          (action)="handleExperimentRegexActions($event)">
+        </ml-table>
+        <div class="no-data" *ngIf="!experimentRegexDataSource.length">No experiment regex permissions found for this
+          user.</div>
+      </mat-tab>
+    </mat-tab-group>
   </mat-tab>
 
   <!--  Models-->
   <mat-tab label="Models">
-    <div class="my-3">
-      <div class="header-section">
-      </div>
+    <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[1]"
+      (selectedIndexChange)="handleSubTabSelection($event)">
+      <mat-tab label="Permissions">
 
-      <ml-table
-              [columnConfig]="modelsColumnConfig"
-              [data]="modelsDataSource"
-              *ngIf="modelsDataSource.length"
-              [actions]="modelsActions"
-              (action)="handleModelActions($event)"
-      ></ml-table>
-    </div>
+        <ml-table [columnConfig]="modelsColumnConfig" [data]="modelsDataSource" *ngIf="modelsDataSource.length"
+          [actions]="modelsActions" (action)="handleModelActions($event)">
+        </ml-table>
+        <div class="no-data" *ngIf="!modelsDataSource.length">No model permissions found for this user.</div>
+      </mat-tab>
+      <mat-tab *ngIf="isAdmin" label="Regex">
+        <div class="my-3">
+          <div class="header-section">
+            <button mat-button (click)="openModalAddModelRegexPermissionToUser()">
+              <mat-icon>add</mat-icon>
+              <span>Add</span>
+            </button>
+          </div>
+        </div>
+        <ml-table [columnConfig]="modelRegexColumnConfig" [data]="modelRegexDataSource"
+          *ngIf="modelRegexDataSource.length" [actions]="modelRegexActions" (action)="handleModelRegexActions($event)">
+        </ml-table>
+        <div class="no-data" *ngIf="!modelRegexDataSource.length">No model regex permissions found for this user.</div>
+      </mat-tab>
+    </mat-tab-group>
+
+    <!--  Prompts-->
   </mat-tab>
-
-  <!--  Prompts-->
   <mat-tab label="Prompts">
-    <div class="my-3">
-      <div class="header-section">
-      </div>
-
-      <ml-table
-              [columnConfig]="promptsColumnConfig"
-              [data]="promptsDataSource"
-              *ngIf="promptsDataSource.length"
-              [actions]="promptsActions"
-              (action)="handlePromptActions($event)"
-      ></ml-table>
-    </div>
+    <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[2]"
+      (selectedIndexChange)="handleSubTabSelection($event)">
+      <mat-tab label="Permissions">
+        <ml-table [columnConfig]="promptsColumnConfig" [data]="promptsDataSource" *ngIf="promptsDataSource.length"
+          [actions]="promptsActions" (action)="handlePromptActions($event)">
+        </ml-table>
+        <div class="no-data" *ngIf="!promptsDataSource.length">No prompt permissions found for this user.</div>
+      </mat-tab>
+      <mat-tab *ngIf="isAdmin" label="Regex">
+        <div class="my-3">
+          <div class="header-section">
+            <button mat-button (click)="openModalAddPromptRegexPermissionToUser()">
+              <mat-icon>add</mat-icon>
+              <span>Add</span>
+            </button>
+          </div>
+        </div>
+        <ml-table [columnConfig]="promptRegexColumnConfig" [data]="promptRegexDataSource"
+          *ngIf="promptRegexDataSource.length" [actions]="promptRegexActions"
+          (action)="handlePromptRegexActions($event)"></ml-table>
+        <div class="no-data" *ngIf="!promptRegexDataSource.length">No prompt regex permissions found for this user.
+        </div>
+      </mat-tab>
+    </mat-tab-group>
   </mat-tab>
-
 </mat-tab-group>
