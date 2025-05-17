@@ -10,11 +10,20 @@ from mlflow_oidc_auth.utils import (
     PermissionResult,
     can_manage_experiment,
     can_manage_registered_model,
+    can_read_experiment,
+    can_read_registered_model,
     check_experiment_permission,
     check_prompt_permission,
     check_registered_model_permission,
+    effective_experiment_permission,
+    effective_prompt_permission,
+    effective_registered_model_permission,
+    get_experiment_id,
     get_is_admin,
+    get_optional_request_param,
     get_permission_from_store_or_default,
+    get_request_param,
+    get_username,
 )
 
 
@@ -217,8 +226,6 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(mock_func(), "success")
 
     def test_get_request_param(self):
-        from mlflow_oidc_auth.utils import get_request_param
-
         # GET method, param present
         with self.app.test_request_context("/?foo=bar", method="GET"):
             self.assertEqual(get_request_param("foo"), "bar")
@@ -241,8 +248,6 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
 
     def test_get_optional_request_param(self):
-        from mlflow_oidc_auth.utils import get_optional_request_param
-
         # GET method, param present
         with self.app.test_request_context("/?foo=bar", method="GET"):
             self.assertEqual(get_optional_request_param("foo"), "bar")
@@ -260,8 +265,6 @@ class TestUtils(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils._get_tracking_store")
     def test_get_experiment_id(self, mock_tracking_store):
-        from mlflow_oidc_auth.utils import get_experiment_id
-
         # GET method, experiment_id present
         with self.app.test_request_context("/?experiment_id=123", method="GET"):
             self.assertEqual(get_experiment_id(), "123")
@@ -286,8 +289,6 @@ class TestUtils(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils.store")
     @patch("mlflow_oidc_auth.utils.validate_token")
     def test_get_username(self, mock_validate_token, mock_store):
-        from mlflow_oidc_auth.utils import get_username
-
         with self.app.test_request_context():
             # session username
             with patch("mlflow_oidc_auth.utils.session", {"username": "session_user"}):
@@ -334,14 +335,63 @@ class TestUtils(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils._get_tracking_store")
     def test_get_experiment_id_experiment_name_not_found(self, mock_tracking_store):
-        from mlflow_oidc_auth.utils import get_experiment_id
-
         # experiment_name provided but not found
         with self.app.test_request_context("/?experiment_name=nonexistent_exp", method="GET"):
             mock_tracking_store().get_experiment_by_name.return_value = None
             with self.assertRaises(MlflowException) as cm:
                 get_experiment_id()
             self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_effective_experiment_permission(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+            )
+            result = effective_experiment_permission("exp_id", "user")
+            self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "user")
+
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_effective_registered_model_permission(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+            )
+            result = effective_registered_model_permission("model_name", "user")
+            self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "user")
+
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_effective_prompt_permission(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+            )
+            result = effective_prompt_permission("prompt_name", "user")
+            self.assertTrue(result.permission.can_manage)
+            self.assertEqual(result.type, "user")
+
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_can_read_experiment(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=False, can_delete=False, can_manage=False), "user"
+            )
+            self.assertTrue(can_read_experiment("exp_id", "user"))
+
+    @patch("mlflow_oidc_auth.utils.store")
+    @patch("mlflow_oidc_auth.utils.get_permission_from_store_or_default")
+    def test_can_read_registered_model(self, mock_get_permission_from_store_or_default, mock_store):
+        with self.app.test_request_context():
+            mock_get_permission_from_store_or_default.return_value = PermissionResult(
+                Permission(name="perm", priority=1, can_read=True, can_update=False, can_delete=False, can_manage=False), "user"
+            )
+            self.assertTrue(can_read_registered_model("model_name", "user"))
 
 
 if __name__ == "__main__":
