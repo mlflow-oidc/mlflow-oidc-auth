@@ -7,6 +7,7 @@ import mlflow_oidc_auth.utils as utils
 from mlflow_oidc_auth.auth import get_oauth_instance
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.user import create_user, populate_groups, update_user
+from mlflow_oidc_auth.token_utils import token_get_user_is_admin, token_get_user_groups
 
 
 def login():
@@ -48,21 +49,15 @@ def callback():
     if email is None:
         return "No email provided", 401
     display_name = token["userinfo"]["name"]
-    is_admin = False
-    user_groups = []
 
-    if config.OIDC_GROUP_DETECTION_PLUGIN:
-        import importlib
+    # Get groups and admin status
+    user_groups = token_get_user_groups(token)
+    app.logger.debug(f"Filtered user groups the user belongs to: {user_groups}")
+    is_admin = token_get_user_is_admin(user_groups)
+    app.logger.debug(f"User is an admin user: {is_admin}")
 
-        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
-    else:
-        user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
-
-    app.logger.debug(f"User groups: {user_groups}")
-
-    if config.OIDC_ADMIN_GROUP_NAME in user_groups:
-        is_admin = True
-    elif not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+    # If there are no user_groups (including the admin group) that allow login to server, give 401
+    if not len(user_groups):
         return "User is not allowed to login", 401
 
     create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
