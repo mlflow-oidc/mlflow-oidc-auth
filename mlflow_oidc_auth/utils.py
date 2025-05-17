@@ -198,7 +198,13 @@ def get_experiment_id() -> str:
     if args and "experiment_id" in args:
         return args["experiment_id"]
     elif args and "experiment_name" in args:
-        return _get_tracking_store().get_experiment_by_name(args["experiment_name"]).experiment_id
+        experiment = _get_tracking_store().get_experiment_by_name(args["experiment_name"])
+        if experiment is None:
+            raise MlflowException(
+                f"Experiment with name '{args['experiment_name']}' not found.",
+                INVALID_PARAMETER_VALUE,
+            )
+        return experiment.experiment_id
     raise MlflowException(
         "Either 'experiment_id' or 'experiment_name' must be provided in the request data.",
         INVALID_PARAMETER_VALUE,

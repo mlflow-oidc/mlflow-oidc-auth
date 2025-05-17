@@ -56,6 +56,51 @@ class TestUser(unittest.TestCase):
         self.assertEqual(user.groups[0].id, "group1")
         self.assertEqual(user.groups[0].group_name, "Group 1")
 
+    def test_user_to_json_with_none_fields(self):
+        user = User(
+            id_="123",
+            username="test_user",
+            password_hash="password",
+            is_admin=True,
+            is_service_account=False,
+            display_name="Test User",
+            experiment_permissions=None,
+            registered_model_permissions=None,
+            groups=None,
+        )
+
+        expected_json = {
+            "id": "123",
+            "username": "test_user",
+            "is_admin": True,
+            "is_service_account": False,
+            "display_name": "Test User",
+            "groups": [],
+        }
+        self.assertEqual(user.to_json(), expected_json)
+
+    def test_user_from_json_with_none_fields(self):
+        json_data = {
+            "id": "123",
+            "username": "test_user",
+            "is_admin": True,
+            "display_name": "Test User",
+            "experiment_permissions": [],
+            "registered_model_permissions": [],
+            "groups": [],
+        }
+
+        user = User.from_json(json_data)
+
+        self.assertEqual(user.id, "123")
+        self.assertEqual(user.username, "test_user")
+        self.assertEqual(user.password_hash, "REDACTED")
+        self.assertTrue(user.is_admin)
+        self.assertEqual(user.display_name, "Test User")
+        self.assertEqual(user.experiment_permissions, [])
+        self.assertEqual(user.registered_model_permissions, [])
+        self.assertEqual(user.groups, [])
+
 
 class TestExperimentPermission(unittest.TestCase):
     def test_experiment_permission_properties_and_setters(self):

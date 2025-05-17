@@ -332,6 +332,17 @@ class TestUtils(unittest.TestCase):
                     with self.assertRaises(MlflowException):
                         get_username()
 
+    @patch("mlflow_oidc_auth.utils._get_tracking_store")
+    def test_get_experiment_id_experiment_name_not_found(self, mock_tracking_store):
+        from mlflow_oidc_auth.utils import get_experiment_id
+
+        # experiment_name provided but not found
+        with self.app.test_request_context("/?experiment_name=nonexistent_exp", method="GET"):
+            mock_tracking_store().get_experiment_by_name.return_value = None
+            with self.assertRaises(MlflowException) as cm:
+                get_experiment_id()
+            self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+
 
 if __name__ == "__main__":
     unittest.main()
