@@ -66,9 +66,18 @@ def test__list_user_groups(mock_list_user_groups, mock_get_user, repo):
     session = MagicMock()
     user = make_user()
     mock_get_user.return_value = user
-    group1 = make_group(id=1, group_name="g1")
-    group2 = make_group(id=2, group_name="g2")
-    mock_list_user_groups.return_value = [group1, group2]
+    group1 = MagicMock(spec=SqlGroup)
+    group1.id = 1
+    group1.group_name = "g1"
+    group2 = MagicMock(spec=SqlGroup)
+    group2.id = 2
+    group2.group_name = "g2"
+    # list_user_groups returns objects with .group_id
+    mock_list_user_groups.return_value = [
+        MagicMock(group_id=1),
+        MagicMock(group_id=2),
+    ]
+    # session.query(SqlGroup).filter(...).all() returns SqlGroup objects
     session.query().filter().all.return_value = [group1, group2]
     repo._Session.return_value.__enter__.return_value = session
     result = repo._list_user_groups("user1")
@@ -122,8 +131,10 @@ def test_list_permissions_for_user_groups(mock_list_user_groups, mock_get_user, 
     session = MagicMock()
     user = make_user()
     mock_get_user.return_value = user
-    group1 = make_group(id=1)
-    group2 = make_group(id=2)
+    group1 = MagicMock()
+    group1.group_id = 1
+    group2 = MagicMock()
+    group2.group_id = 2
     mock_list_user_groups.return_value = [group1, group2]
     perm1 = make_permission("exp1", 1, "READ")
     perm2 = make_permission("exp2", 2, "EDIT")

@@ -44,15 +44,17 @@ def test_get(repo, session):
         assert result == "entity"
 
 
-def test_list_permissions_for_user(repo, session):
-    user = MagicMock(id=4)
-    perm = MagicMock()
-    perm.to_mlflow_entity.return_value = "entity"
+def test_list_regex_for_user(repo, session):
+    user = MagicMock(id=7)
+    perm1 = MagicMock()
+    perm1.to_mlflow_entity.return_value = "entity1"
+    perm2 = MagicMock()
+    perm2.to_mlflow_entity.return_value = "entity2"
     with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_all", return_value=[perm]
+        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_all", return_value=[perm1, perm2]
     ):
-        result = repo.list_permissions_for_user("user", prompt=True)
-        assert result == ["entity"]
+        result = repo.list_regex_for_user("user", prompt=True)
+        assert result == ["entity1", "entity2"]
 
 
 def test_update(repo, session):

@@ -102,7 +102,7 @@ class GroupRepository:
             grp = get_group(session, group_name)
             user_ids = [ug.user_id for ug in session.query(SqlUserGroup).filter(SqlUserGroup.group_id == grp.id)]
             users = session.query(SqlUser).filter(SqlUser.id.in_(user_ids)).all()
-            return [u.to_mlflow_entity() for u in users]
+            return [user.to_mlflow_entity() for user in users]
 
     def list_groups_for_user(self, username: str) -> List[str]:
         """

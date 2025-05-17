@@ -109,7 +109,6 @@ class ExperimentPermissionGroupRegexRepository:
             return [p.to_mlflow_entity() for p in permissions]
 
     def list_permissions_for_groups_ids(self, group_ids: List[int]) -> List[ExperimentGroupRegexPermission]:
-        print(f"list_permissions_for_groups_ids: {group_ids}")
         with self._Session() as session:
             permissions = (
                 session.query(SqlExperimentGroupRegexPermission)

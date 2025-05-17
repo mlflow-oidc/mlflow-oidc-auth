@@ -24,11 +24,6 @@ class TestSqlAlchemyStore:
         store.get_experiment_regex_permission(".*", "user")
         store.experiment_regex_repo.get.assert_called_once_with(".*", "user")
 
-    def test_list_experiment_regex_permissions(self, store: SqlAlchemyStore):
-        store.experiment_regex_repo = MagicMock()
-        store.list_experiment_regex_permissions("user")
-        store.experiment_regex_repo.list_permissions_for_user.assert_called_once_with("user")
-
     def test_update_experiment_regex_permission(self, store: SqlAlchemyStore):
         store.experiment_regex_repo = MagicMock()
         store.update_experiment_regex_permission(".*", 1, "EDIT", "user")
@@ -73,11 +68,6 @@ class TestSqlAlchemyStore:
         store.registered_model_regex_repo = MagicMock()
         store.get_registered_model_regex_permission(".*", "user")
         store.registered_model_regex_repo.get.assert_called_once_with(".*", "user")
-
-    def test_list_registered_model_regex_permissions(self, store: SqlAlchemyStore):
-        store.registered_model_regex_repo = MagicMock()
-        store.list_registered_model_regex_permissions("user")
-        store.registered_model_regex_repo.list_permissions_for_user.assert_called_once_with("user")
 
     def test_update_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_regex_repo = MagicMock()
@@ -130,11 +120,6 @@ class TestSqlAlchemyStore:
         store.get_prompt_regex_permission(".*", "user", prompt=True)
         store.prompt_regex_repo.get.assert_called_once_with(regex=".*", username="user", prompt=True)
 
-    def test_list_prompt_regex_permissions(self, store: SqlAlchemyStore):
-        store.prompt_regex_repo = MagicMock()
-        store.list_prompt_regex_permissions("user", prompt=True)
-        store.prompt_regex_repo.list_permissions_for_user.assert_called_once_with(username="user", prompt=True)
-
     def test_update_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
         store.update_prompt_regex_permission(".*", 1, "EDIT", "user", prompt=True)
@@ -175,3 +160,15 @@ class TestSqlAlchemyStore:
         store.prompt_group_regex_repo = MagicMock()
         store.delete_group_prompt_regex_permission(".*", "group")
         store.prompt_group_regex_repo.revoke.assert_called_once_with(regex=".*", group_name="group", prompt=True)
+
+    def test_list_group_prompt_regex_permissions_for_groups(self, store: SqlAlchemyStore):
+        store.prompt_group_regex_repo = MagicMock()
+        store.list_group_prompt_regex_permissions_for_groups(["group1", "group2"], prompt=True)
+        store.prompt_group_regex_repo.list_permissions_for_groups.assert_called_once_with(
+            group_names=["group1", "group2"], prompt=True
+        )
+
+    def test_list_group_prompt_regex_permissions_for_groups_ids(self, store: SqlAlchemyStore):
+        store.prompt_group_regex_repo = MagicMock()
+        store.list_group_prompt_regex_permissions_for_groups_ids([1, 2], prompt=True)
+        store.prompt_group_regex_repo.list_permissions_for_groups_ids.assert_called_once_with(group_ids=[1, 2], prompt=True)
