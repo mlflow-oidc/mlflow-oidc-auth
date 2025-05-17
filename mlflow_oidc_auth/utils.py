@@ -272,6 +272,16 @@ def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult
     return get_permission_from_store_or_default(_permission_prompt_sources_config(prompt_name, user))
 
 
+def can_read_experiment(experiment_id: str, user: str) -> bool:
+    permission = effective_experiment_permission(experiment_id, user).permission
+    return permission.can_read
+
+
+def can_read_registered_model(model_name: str, user: str) -> bool:
+    permission = effective_registered_model_permission(model_name, user).permission
+    return permission.can_read
+
+
 def can_manage_experiment(experiment_id: str, user: str) -> bool:
     permission = effective_experiment_permission(experiment_id, user).permission
     return permission.can_manage

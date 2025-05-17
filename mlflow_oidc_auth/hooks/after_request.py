@@ -14,10 +14,9 @@ from mlflow.store.entities.paged_list import PagedList
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
 
-from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.permissions import MANAGE, get_permission
+from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import get_is_admin, get_request_param, get_username
+from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_is_admin, get_request_param, get_username
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -61,20 +60,11 @@ def _filter_search_experiments(resp: Response):
 
     response_message = SearchExperiments.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-
     # fetch permissions
     username = get_username()
-    perms = store.list_experiment_permissions(username)
-    perms_group = store.list_user_groups_experiment_permissions(username)
-    can_read = {p.experiment_id: get_permission(p.permission).can_read for p in perms_group}
-    can_read.update({p.experiment_id: get_permission(p.permission).can_read for p in perms})
-    default_can_read = get_permission(config.DEFAULT_MLFLOW_PERMISSION).can_read
-
-    # filter out unreadable
-    for e in list(response_message.experiments):
-        if not can_read.get(e.experiment_id, default_can_read):
-            response_message.experiments.remove(e)
-
+    for experiment in list(response_message.experiments):
+        if not can_read_experiment(experiment.experiment_id, username):
+            response_message.experiments.remove(experiment)
     # re-fetch to fill max results
     request_message = _get_request_message(SearchExperiments())
     while len(response_message.experiments) < request_message.max_results and response_message.next_page_token != "":
@@ -85,12 +75,14 @@ def _filter_search_experiments(resp: Response):
             filter_string=request_message.filter,
             page_token=response_message.next_page_token,
         )
-        refetched = refetched[: request_message.max_results - len(response_message.experiments)]
+        refetched = PagedList(
+            refetched[: request_message.max_results - len(response_message.experiments)],
+            refetched.token if hasattr(refetched, "token") else "",
+        )
         if len(refetched) == 0:
             response_message.next_page_token = ""
             break
-
-        refetched_readable_proto = [e.to_proto() for e in refetched if can_read.get(e.experiment_id, default_can_read)]
+        refetched_readable_proto = [e.to_proto() for e in refetched if can_read_experiment(e.experiment_id, username)]
         response_message.experiments.extend(refetched_readable_proto)
 
         # recalculate next page token
@@ -110,15 +102,8 @@ def _filter_search_registered_models(resp: Response):
 
     # fetch permissions
     username = get_username()
-    perms = store.list_registered_model_permissions(username)
-    perms_group = store.list_user_groups_registered_model_permissions(username)
-    can_read = {p.name: get_permission(p.permission).can_read for p in perms_group}
-    can_read.update({p.name: get_permission(p.permission).can_read for p in perms})
-    default_can_read = get_permission(config.DEFAULT_MLFLOW_PERMISSION).can_read
-
-    # filter out unreadable
     for rm in list(response_message.registered_models):
-        if not can_read.get(rm.name, default_can_read):
+        if not can_read_registered_model(rm.name, username):
             response_message.registered_models.remove(rm)
 
     # re-fetch to fill max results
@@ -130,12 +115,14 @@ def _filter_search_registered_models(resp: Response):
             order_by=request_message.order_by,
             page_token=response_message.next_page_token,
         )
-        refetched = refetched[: request_message.max_results - len(response_message.registered_models)]
+        refetched = PagedList(
+            refetched[: request_message.max_results - len(response_message.registered_models)],
+            refetched.token if hasattr(refetched, "token") else "",
+        )
         if len(refetched) == 0:
             response_message.next_page_token = ""
             break
-
-        refetched_readable_proto = [rm.to_proto() for rm in refetched if can_read.get(rm.name, default_can_read)]
+        refetched_readable_proto = [rm.to_proto() for rm in refetched if can_read_registered_model(rm.name, username)]
         response_message.registered_models.extend(refetched_readable_proto)
 
         # recalculate next page token
