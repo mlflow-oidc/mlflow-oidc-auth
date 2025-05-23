@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from flask import jsonify
 from mlflow.server.handlers import _get_model_registry_store, _get_tracking_store, catch_mlflow_exception
 
@@ -5,13 +7,13 @@ from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
 from mlflow_oidc_auth.utils import (
-    get_is_admin,
-    get_request_param,
-    get_optional_request_param,
-    get_username,
     effective_experiment_permission,
     effective_prompt_permission,
     effective_registered_model_permission,
+    get_is_admin,
+    get_optional_request_param,
+    get_request_param,
+    get_username,
 )
 
 
@@ -43,31 +45,33 @@ def delete_user():
 
 
 @catch_mlflow_exception
-def create_access_token():
-    username = get_username()
-    user = store.get_user(username)
-    if user is None:
-        return jsonify({"message": f"User {username} not found"}), 404
-    new_token = generate_token()
-    store.update_user(username, new_token)
-    return jsonify({"token": new_token, "message": f"Token for {username} has been created"})
-
-
-@catch_mlflow_exception
 def create_user_access_token():
     username = get_request_param("username")
+    expiration_str = get_request_param("expiration")
+    # Handle ISO 8601 with 'Z' (UTC) at the end
+    if expiration_str:
+        if expiration_str.endswith("Z"):
+            expiration_str = expiration_str[:-1] + "+00:00"
+        expiration = datetime.fromisoformat(expiration_str)
+        now = datetime.now(timezone.utc)
+        if expiration < now:
+            return jsonify({"message": "Expiration date must be in the future"}), 400
+        if expiration > now + timedelta(days=366):
+            return jsonify({"message": "Expiration date must be less than 1 year in the future"}), 400
+    else:
+        expiration = None
     user = store.get_user(username)
     if user is None:
         return jsonify({"message": f"User {username} not found"}), 404
     new_token = generate_token()
-    store.update_user(username, new_token)
+    store.update_user(username=username, password=new_token, password_expiration=expiration)
     return jsonify({"token": new_token, "message": f"Token for {username} has been created"})
 
 
 @catch_mlflow_exception
 def update_username_password():
     new_password = generate_token()
-    store.update_user(get_username(), new_password)
+    store.update_user(username=get_username(), password=new_password)
     return jsonify({"token": new_password})
 
 
@@ -183,8 +187,8 @@ def get_users():
 
 @catch_mlflow_exception
 def update_user_admin():
-    is_admin = get_request_param("is_admin")
-    store.update_user(get_username(), is_admin)
+    is_admin = get_request_param("is_admin").strip().lower() == "true" if get_request_param("is_admin") else False
+    store.update_user(username=get_username(), is_admin=is_admin)
     return jsonify({"is_admin": is_admin})
 
 

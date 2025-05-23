@@ -22,7 +22,7 @@ def test_create_user_already_exists(mock_store):
     result = user.create_user("alice", "Alice", is_admin=True)
     assert result == (False, f"User alice (ID: 1) already exists")
     mock_store.get_user.assert_called_once_with("alice")
-    mock_store.update_user.assert_called_once_with("alice", is_admin=True, is_service_account=False)
+    mock_store.update_user.assert_called_once_with(username="alice", is_admin=True, is_service_account=False)
 
 
 @patch("mlflow_oidc_auth.user.MlflowException", Exception)

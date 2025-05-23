@@ -8,10 +8,18 @@ import { SharedModule } from './shared/shared.module';
 import { HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ErrorHandlerInterceptor } from './shared/interceptors/error-handler.interceptor';
 import { FooterComponent } from './shared/components/footer/footer.component';
+import { MatNativeDateModule } from '@angular/material/core';
 
 @NgModule({
   declarations: [AppComponent],
-  imports: [BrowserModule, AppRoutingModule, BrowserAnimationsModule, SharedModule, FooterComponent],
+  imports: [
+    BrowserModule,
+    AppRoutingModule,
+    BrowserAnimationsModule,
+    SharedModule,
+    MatNativeDateModule,
+    FooterComponent,
+  ],
   providers: [
     {
       provide: HTTP_INTERCEPTORS,

@@ -60,9 +60,8 @@ export class HomePageComponent implements OnInit, AfterViewInit {
   }
 
   showAccessKeyModal() {
-    this.userDataService.getAccessKey().subscribe(({ token }) => {
-      const data = { token };
-      this.dialog.open<AccessKeyModalComponent, AccessKeyDialogData>(AccessKeyModalComponent, { data });
+    const dialogRef = this.dialog.open<AccessKeyModalComponent, AccessKeyDialogData>(AccessKeyModalComponent, {
+      data: { username: this.currentUserInfo?.username || '' },
     });
   }
 

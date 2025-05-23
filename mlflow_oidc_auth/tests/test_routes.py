@@ -19,7 +19,7 @@ class TestRoutes:
                 routes.STATIC,
                 routes.UI,
                 routes.UI_ROOT,
-                routes.GET_ACCESS_TOKEN,
+                routes.CREATE_ACCESS_TOKEN,
                 routes.GET_CURRENT_USER,
                 routes.GET_EXPERIMENTS,
                 routes.GET_MODELS,

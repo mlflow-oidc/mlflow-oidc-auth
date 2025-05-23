@@ -1,3 +1,3 @@
 export interface AccessKeyDialogData {
-  token: string;
+  username: string;
 }

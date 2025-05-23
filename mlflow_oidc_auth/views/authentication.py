@@ -67,7 +67,7 @@ def callback():
 
     create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
     populate_groups(group_names=user_groups)
-    update_user(email.lower(), user_groups)
+    update_user(username=email.lower(), group_names=user_groups)
     session["username"] = email.lower()
 
     return redirect(url_for("oidc_ui"))

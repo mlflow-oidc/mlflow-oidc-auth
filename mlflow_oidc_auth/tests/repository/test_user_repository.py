@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from mlflow_oidc_auth.repository.user import UserRepository
 from mlflow.exceptions import MlflowException
+from datetime import datetime, timedelta
 
 
 @pytest.fixture
@@ -81,6 +82,18 @@ def test_update_partial_fields(repo, session):
         session.flush.assert_called_once()
 
 
+def test_update_all_fields(repo, session):
+    user = MagicMock()
+    user.to_mlflow_entity.return_value = "entity"
+    session.flush = MagicMock()
+    with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user), patch(
+        "mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"
+    ):
+        result = repo.update("user", password="new_pw", is_admin=True, is_service_account=True)
+        assert result == "entity"
+        session.flush.assert_called_once()
+
+
 def test_delete(repo, session):
     user = MagicMock()
     session.delete = MagicMock()
@@ -91,9 +104,20 @@ def test_delete(repo, session):
         session.flush.assert_called_once()
 
 
+def test_delete_non_existent_user(repo, session):
+    session.delete = MagicMock()
+    session.flush = MagicMock()
+    with patch("mlflow_oidc_auth.repository.user.get_user", return_value=None):
+        with pytest.raises(MlflowException):
+            repo.delete("non_existent_user")
+        session.delete.assert_not_called()
+        session.flush.assert_not_called()
+
+
 def test_authenticate_success(repo, session):
     user = MagicMock()
     user.password_hash = "hashed"
+    user.password_expiration = None
     with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user), patch(
         "mlflow_oidc_auth.repository.user.check_password_hash", return_value=True
     ):
@@ -102,4 +126,12 @@ def test_authenticate_success(repo, session):
 
 def test_authenticate_fail(repo, session):
     with patch("mlflow_oidc_auth.repository.user.get_user", side_effect=MlflowException("fail")):
+        assert repo.authenticate("user", "pw") is False
+
+
+def test_authenticate_expired_password(repo, session):
+    user = MagicMock()
+    user.password_hash = "hashed"
+    user.password_expiration = datetime.now() - timedelta(days=1)
+    with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user):
         assert repo.authenticate("user", "pw") is False

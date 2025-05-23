@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 
 from mlflow.store.db.utils import _get_managed_session_maker, create_sqlalchemy_engine_with_retry
@@ -70,10 +71,17 @@ class SqlAlchemyStore:
         self,
         username: str,
         password: Optional[str] = None,
+        password_expiration: Optional[datetime] = None,
         is_admin: Optional[bool] = None,
         is_service_account: Optional[bool] = None,
     ) -> User:
-        return self.user_repo.update(username, password, is_admin, is_service_account)
+        return self.user_repo.update(
+            username=username,
+            password=password,
+            password_expiration=password_expiration,
+            is_admin=is_admin,
+            is_service_account=is_service_account,
+        )
 
     def delete_user(self, username: str):
         return self.user_repo.delete(username)

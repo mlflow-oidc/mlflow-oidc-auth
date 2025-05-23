@@ -4,6 +4,7 @@ import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { PermissionEnum, PERMISSIONS } from 'src/app/core/configs/permissions';
 import { ManageRegexModalComponent } from './manage-regex-modal.component';
 import { ManageRegexModalData } from './manage-regex-modal.interface';
+import { MaterialModule } from 'src/app/shared/material/material.module';
 
 describe('ManageRegexModalComponent', () => {
   let component: ManageRegexModalComponent;
@@ -11,7 +12,7 @@ describe('ManageRegexModalComponent', () => {
 
   function initWithData(data: Partial<ManageRegexModalData>) {
     TestBed.configureTestingModule({
-      imports: [ReactiveFormsModule, MatDialogModule],
+      imports: [ReactiveFormsModule, MatDialogModule, MaterialModule],
       declarations: [ManageRegexModalComponent],
       providers: [FormBuilder, { provide: MAT_DIALOG_DATA, useValue: data }],
     }).compileComponents();

@@ -4,6 +4,7 @@ class User:
         id_,
         username,
         password_hash,
+        password_expiration,
         is_admin,
         is_service_account,
         display_name,
@@ -14,12 +15,13 @@ class User:
         self._id = id_
         self._username = username
         self._password_hash = password_hash
+        self._password_expiration = password_expiration
         self._is_admin = is_admin
         self._is_service_account = is_service_account
-        self._experiment_permissions = experiment_permissions
-        self._registered_model_permissions = registered_model_permissions
+        self._experiment_permissions = experiment_permissions or []
+        self._registered_model_permissions = registered_model_permissions or []
         self._display_name = display_name
-        self._groups = groups
+        self._groups = groups or []
 
     @property
     def id(self):
@@ -32,6 +34,14 @@ class User:
     @property
     def password_hash(self):
         return self._password_hash
+
+    @property
+    def password_expiration(self):
+        return self._password_expiration
+
+    @password_expiration.setter
+    def password_expiration(self, password_expiration):
+        self._password_expiration = password_expiration
 
     @property
     def is_admin(self):
@@ -87,6 +97,7 @@ class User:
             "username": self.username,
             "is_admin": self.is_admin,
             "is_service_account": self.is_service_account,
+            "password_expiration": self.password_expiration,
             "display_name": self.display_name,
             "groups": [g.to_json() for g in self.groups] if self.groups else [],
         }
@@ -98,6 +109,7 @@ class User:
             username=dictionary["username"],
             display_name=dictionary["display_name"],
             password_hash="REDACTED",
+            password_expiration=dictionary.get("password_expiration"),
             is_admin=dictionary["is_admin"],
             is_service_account=dictionary.get("is_service_account", False),
             experiment_permissions=[ExperimentPermission.from_json(p) for p in dictionary["experiment_permissions"]],

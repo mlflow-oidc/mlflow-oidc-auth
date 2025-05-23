@@ -122,9 +122,8 @@ export class UserPermissionsComponent implements OnInit {
   }
 
   handleAccessKey({ username }: UserModel): void {
-    this.userDataService.getUserAccessKey(username).subscribe(({ token }) => {
-      const data = { token };
-      this.dialog.open<AccessKeyModalComponent, AccessKeyDialogData>(AccessKeyModalComponent, { data });
+    this.dialog.open<AccessKeyModalComponent, AccessKeyDialogData>(AccessKeyModalComponent, {
+      data: { username },
     });
   }
 }

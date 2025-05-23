@@ -12,9 +12,8 @@ import { UserDataService } from 'src/app/shared/services';
 import { CreateServiceAccountService } from 'src/app/shared/services/create-service-account.service';
 import { TableActionEnum } from 'src/app/shared/components/table/table.config';
 import { AdminPageRoutesEnum } from '../../../config';
-import { AccessKeyModalComponent } from 'src/app/shared/components';
 import { UserModel } from 'src/app/shared/interfaces/user-data.interface';
-import { TableActionModel, TableActionEvent } from 'src/app/shared/components/table/table.interface';
+import { TableActionModel } from 'src/app/shared/components/table/table.interface';
 import { jest } from '@jest/globals';
 
 import { UserPermissionsComponent } from './user-permissions.component';
@@ -195,14 +194,5 @@ describe('UserPermissionsComponent', () => {
     (createServiceAccountService.openCreateServiceAccountModal as jest.Mock).mockReturnValue(of(undefined));
     component.createServiceAccount();
     expect(userDataService.createServiceAccount).not.toHaveBeenCalled();
-  });
-
-  it('should open access key dialog with correct data', () => {
-    (userDataService.getUserAccessKey as jest.Mock).mockReturnValue(of({ token: 'dummy_password' }));
-    component.handleAccessKey({ username: 'svc' });
-    expect(userDataService.getUserAccessKey).toHaveBeenCalledWith('svc');
-    expect(dialog.open).toHaveBeenCalledWith(AccessKeyModalComponent, {
-      data: { token: 'dummy_password' },
-    });
   });
 });

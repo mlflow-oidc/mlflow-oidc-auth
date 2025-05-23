@@ -9,8 +9,7 @@ def _username_is_sender():
 
 
 def validate_can_get_user_token():
-    # only admins can get user token, but admins won't reach this validator
-    return False
+    return _username_is_sender()
 
 
 def validate_can_read_user():
