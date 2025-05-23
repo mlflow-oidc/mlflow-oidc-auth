@@ -81,6 +81,8 @@ class UserRepository:
     def delete(self, username: str) -> None:
         with self._Session() as session:
             user = get_user(session, username)
+            if user is None:
+                raise MlflowException(f"User '{username}' not found.")
             session.delete(user)
             session.flush()
 
