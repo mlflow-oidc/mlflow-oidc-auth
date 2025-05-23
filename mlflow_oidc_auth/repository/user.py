@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
