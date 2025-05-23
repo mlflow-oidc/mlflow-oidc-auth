@@ -65,18 +65,6 @@ describe('UserDataService', () => {
     promptsReq.flush({ prompts: [] });
   });
 
-  it('should return the access key', () => {
-    const mockAccessKey: TokenModel = { token: 'mock-access-key' };
-
-    service.getAccessKey().subscribe((token) => {
-      expect(token).toEqual(mockAccessKey);
-    });
-
-    const req = httpMock.expectOne(API_URL.GET_ACCESS_TOKEN);
-    expect(req.request.method).toBe('GET');
-    req.flush(mockAccessKey);
-  });
-
   it('should return all users', () => {
     const mockUsers: AllUsersListModel = {
       users: ['John Doe', 'Jane Smith'],
@@ -94,14 +82,16 @@ describe('UserDataService', () => {
   it('should return the user access key for a given username', () => {
     const mockToken: TokenModel = { token: 'mock-user-token' };
     const userName = 'testuser';
+    const expirationDate = new Date();
+    expirationDate.setFullYear(expirationDate.getFullYear() + 1);
 
-    service.getUserAccessKey(userName).subscribe((token) => {
+    service.getUserAccessKey(userName, expirationDate).subscribe((token) => {
       expect(token).toEqual(mockToken);
     });
 
     const req = httpMock.expectOne(API_URL.GET_ACCESS_TOKEN);
     expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ username: userName });
+    expect(req.request.body).toEqual({ username: userName, expiration: expirationDate });
     req.flush(mockToken);
   });
 

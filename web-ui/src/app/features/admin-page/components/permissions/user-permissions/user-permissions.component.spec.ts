@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -195,14 +195,5 @@ describe('UserPermissionsComponent', () => {
     (createServiceAccountService.openCreateServiceAccountModal as jest.Mock).mockReturnValue(of(undefined));
     component.createServiceAccount();
     expect(userDataService.createServiceAccount).not.toHaveBeenCalled();
-  });
-
-  it('should open access key dialog with correct data', () => {
-    (userDataService.getUserAccessKey as jest.Mock).mockReturnValue(of({ token: 'dummy_password' }));
-    component.handleAccessKey({ username: 'svc' });
-    expect(userDataService.getUserAccessKey).toHaveBeenCalledWith('svc');
-    expect(dialog.open).toHaveBeenCalledWith(AccessKeyModalComponent, {
-      data: { token: 'dummy_password' },
-    });
   });
 });
