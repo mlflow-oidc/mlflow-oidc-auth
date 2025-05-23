@@ -8,6 +8,7 @@ class TestUser(unittest.TestCase):
             id_="123",
             username="test_user",
             password_hash="password",
+            password_expiration=None,
             is_admin=True,
             is_service_account=False,
             display_name="Test User",
@@ -16,13 +17,13 @@ class TestUser(unittest.TestCase):
             groups=[Group("group1", "Group 1")],
         )
 
-        # expected_json does not contain "experiment_permissions" and "registered_model_permissions",
-        # this is expected
+        # expected_json updated to include "password_expiration"
         expected_json = {
             "id": "123",
             "username": "test_user",
             "is_admin": True,
             "is_service_account": False,
+            "password_expiration": None,
             "display_name": "Test User",
             "groups": [{"id": "group1", "group_name": "Group 1"}],
         }
@@ -61,6 +62,7 @@ class TestUser(unittest.TestCase):
             id_="123",
             username="test_user",
             password_hash="password",
+            password_expiration=None,
             is_admin=True,
             is_service_account=False,
             display_name="Test User",
@@ -69,11 +71,13 @@ class TestUser(unittest.TestCase):
             groups=None,
         )
 
+        # expected_json updated to include "password_expiration"
         expected_json = {
             "id": "123",
             "username": "test_user",
             "is_admin": True,
             "is_service_account": False,
+            "password_expiration": None,
             "display_name": "Test User",
             "groups": [],
         }
@@ -197,6 +201,7 @@ class TestUserPropertiesSetters(unittest.TestCase):
             id_="1",
             username="u",
             password_hash="dummy_hash",
+            password_expiration=None,
             is_admin=False,
             is_service_account=False,
             display_name="d",

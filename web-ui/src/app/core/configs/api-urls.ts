@@ -31,7 +31,7 @@ export const API_URL = {
   CREATE_USER: '/api/2.0/mlflow/users/create',
   DELETE_USER: '/api/2.0/mlflow/users/delete',
   GET_ALL_USERS: '/api/2.0/mlflow/users',
-  GET_ACCESS_TOKEN: '/api/2.0/mlflow/users/access-token',
+  CREATE_ACCESS_TOKEN: '/api/2.0/mlflow/users/access-token',
   GET_CURRENT_USER: '/api/2.0/mlflow/users/current',
 
   CREATE_GROUP_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/create',

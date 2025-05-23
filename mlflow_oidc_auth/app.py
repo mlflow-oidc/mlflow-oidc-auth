@@ -31,8 +31,7 @@ app.add_url_rule(rule=routes.UI, methods=["GET"], view_func=views.oidc_ui)
 app.add_url_rule(rule=routes.UI_ROOT, methods=["GET"], view_func=views.oidc_ui)
 
 # User token
-app.add_url_rule(rule=routes.GET_ACCESS_TOKEN, methods=["GET"], view_func=views.create_access_token)
-app.add_url_rule(rule=routes.GET_ACCESS_TOKEN, methods=["PATCH"], view_func=views.create_user_access_token)
+app.add_url_rule(rule=routes.CREATE_ACCESS_TOKEN, methods=["PATCH"], view_func=views.create_user_access_token)
 app.add_url_rule(rule=routes.GET_CURRENT_USER, methods=["GET"], view_func=views.get_current_user)
 
 # UI routes support

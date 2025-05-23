@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -24,6 +26,7 @@ class SqlUser(Base):
     username: Mapped[str] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_expiration: Mapped[datetime] = mapped_column(nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
     experiment_permissions: Mapped[list["SqlExperimentPermission"]] = relationship("SqlExperimentPermission", backref="users")
@@ -42,6 +45,7 @@ class SqlUser(Base):
             username=self.username,
             display_name=self.display_name,
             password_hash=self.password_hash,
+            password_expiration=self.password_expiration,
             is_admin=self.is_admin,
             is_service_account=self.is_service_account,
             experiment_permissions=[p.to_mlflow_entity() for p in self.experiment_permissions],

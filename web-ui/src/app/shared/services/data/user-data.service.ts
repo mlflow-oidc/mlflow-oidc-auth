@@ -52,7 +52,7 @@ export class UserDataService {
   }
 
   getUserAccessKey(userName: string, expiration: Date) {
-    return this.http.patch<TokenModel>(API_URL.GET_ACCESS_TOKEN, {
+    return this.http.patch<TokenModel>(API_URL.CREATE_ACCESS_TOKEN, {
       username: userName,
       expiration: expiration,
     });

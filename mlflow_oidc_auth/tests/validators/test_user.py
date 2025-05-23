@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+from flask import Flask, Request
+
 from mlflow_oidc_auth.validators import user
 
 
@@ -39,7 +41,21 @@ def test__username_is_sender_both_none():
 
 
 def test_validate_can_get_user_token():
-    assert user.validate_can_get_user_token() is False
+    app = Flask(__name__)
+    with app.test_request_context(method="GET"):
+        with patch("mlflow_oidc_auth.validators.user.get_request_param", return_value="alice"), patch(
+            "mlflow_oidc_auth.validators.user.get_username", return_value="alice"
+        ):
+            assert user.validate_can_get_user_token() is True
+
+
+def test_validate_cant_get_user_token():
+    app = Flask(__name__)
+    with app.test_request_context(method="GET"):
+        with patch("mlflow_oidc_auth.validators.user.get_request_param", return_value="alice"), patch(
+            "mlflow_oidc_auth.validators.user.get_username", return_value="bob"
+        ):
+            assert user.validate_can_get_user_token() is False
 
 
 def test_validate_can_create_user():

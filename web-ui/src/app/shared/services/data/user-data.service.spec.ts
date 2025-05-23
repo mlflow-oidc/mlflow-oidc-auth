@@ -89,7 +89,7 @@ describe('UserDataService', () => {
       expect(token).toEqual(mockToken);
     });
 
-    const req = httpMock.expectOne(API_URL.GET_ACCESS_TOKEN);
+    const req = httpMock.expectOne(API_URL.CREATE_ACCESS_TOKEN);
     expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ username: userName, expiration: expirationDate });
     req.flush(mockToken);

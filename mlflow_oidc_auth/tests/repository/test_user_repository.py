@@ -94,6 +94,7 @@ def test_delete(repo, session):
 def test_authenticate_success(repo, session):
     user = MagicMock()
     user.password_hash = "hashed"
+    user.password_expiration = None
     with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user), patch(
         "mlflow_oidc_auth.repository.user.check_password_hash", return_value=True
     ):
