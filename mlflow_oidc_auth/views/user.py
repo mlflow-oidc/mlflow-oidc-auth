@@ -187,7 +187,7 @@ def get_users():
 
 @catch_mlflow_exception
 def update_user_admin():
-    is_admin = bool(get_request_param("is_admin"))
+    is_admin = get_request_param("is_admin").strip().lower() == "true" if get_request_param("is_admin") else False
     store.update_user(username=get_username(), is_admin=is_admin)
     return jsonify({"is_admin": is_admin})
 
