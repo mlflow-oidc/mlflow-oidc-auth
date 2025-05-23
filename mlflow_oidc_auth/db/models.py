@@ -26,7 +26,7 @@ class SqlUser(Base):
     username: Mapped[str] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_expiration: Mapped[datetime] = mapped_column(nullable=False)
+    password_expiration: Mapped[datetime] = mapped_column(nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
     experiment_permissions: Mapped[list["SqlExperimentPermission"]] = relationship("SqlExperimentPermission", backref="users")

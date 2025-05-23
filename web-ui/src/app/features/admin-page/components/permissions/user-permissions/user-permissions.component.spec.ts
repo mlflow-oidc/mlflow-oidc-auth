@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { of } from 'rxjs';
 import { provideHttpClient } from '@angular/common/http';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -12,9 +12,8 @@ import { UserDataService } from 'src/app/shared/services';
 import { CreateServiceAccountService } from 'src/app/shared/services/create-service-account.service';
 import { TableActionEnum } from 'src/app/shared/components/table/table.config';
 import { AdminPageRoutesEnum } from '../../../config';
-import { AccessKeyModalComponent } from 'src/app/shared/components';
 import { UserModel } from 'src/app/shared/interfaces/user-data.interface';
-import { TableActionModel, TableActionEvent } from 'src/app/shared/components/table/table.interface';
+import { TableActionModel } from 'src/app/shared/components/table/table.interface';
 import { jest } from '@jest/globals';
 
 import { UserPermissionsComponent } from './user-permissions.component';
