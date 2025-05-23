@@ -90,7 +90,7 @@ class UserRepository:
         with self._Session() as session:
             try:
                 user = get_user(session, username)
-                if user.password_expiration is not None and user.password_expiration < datetime.now():
+                if user.password_expiration is not None and user.password_expiration < datetime.now(timezone.utc):
                     return False
                 return check_password_hash(getattr(user, "password_hash"), password)
             except MlflowException:
