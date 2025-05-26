@@ -118,7 +118,7 @@ class TestAuth:
         mock_mlflow_app.logger.warning = warning
         mock_mlflow_app.logger.error = error
         with patch.object(mlflow_oidc_app, "app", mock_mlflow_app):
-            with pytest.raises(Exception, match="fail2"):
+            with pytest.raises(Exception, match="fail1"):
                 validate_token("mock_token")
 
     @patch("mlflow_oidc_auth.auth.store")
