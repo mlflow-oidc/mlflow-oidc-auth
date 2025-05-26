@@ -57,15 +57,18 @@ def validate_token(token):
         payload = jwt.decode(token, jwks)
         payload.validate()
         return payload
-    except Exception as e:
+    except (BadSignatureError, jwt.DecodeError) as e:
         app.logger.warning("Token validation failed. Attempting JWKS refresh. Error: %s", str(e))
         jwks = _get_oidc_jwks(clear_cache=True)
         try:
             payload = jwt.decode(token, jwks)
             payload.validate()
             return payload
-        except Exception as e:
+        except (BadSignatureError, jwt.DecodeError) as e:
             app.logger.error("Token validation failed after JWKS refresh. Error: %s", str(e))
+            raise
+        except Exception as e:
+            app.logger.error("Unexpected error during token validation: %s", str(e))
             raise
 
 
