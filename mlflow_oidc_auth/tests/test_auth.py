@@ -75,8 +75,15 @@ class TestAuth:
     @patch("mlflow_oidc_auth.auth.config")
     def test__get_oidc_jwks_no_discovery_url(self, mock_config):
         mock_config.OIDC_DISCOVERY_URL = None
-        with pytest.raises(ValueError, match="OIDC_DISCOVERY_URL is not set in the configuration"):
-            _get_oidc_jwks()
+        mlflow_oidc_app = importlib.import_module("mlflow_oidc_auth.app")
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+        mock_app = MagicMock()
+        mock_app.logger.debug = MagicMock()
+
+        with patch.object(mlflow_oidc_app, "cache", mock_cache):
+            with pytest.raises(ValueError, match="OIDC_DISCOVERY_URL is not set in the configuration"):
+                _get_oidc_jwks()
 
     @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
     @patch("mlflow_oidc_auth.auth.jwt.decode")
@@ -93,6 +100,26 @@ class TestAuth:
         mock_jwt_decode.assert_called_once_with(token, mock_jwks)
         mock_payload.validate.assert_called_once()
         assert result == mock_payload
+
+    @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
+    @patch("mlflow_oidc_auth.auth.jwt.decode")
+    def test_validate_token_jwks_refresh_fails(self, mock_jwt_decode, mock_get_oidc_jwks):
+        mock_get_oidc_jwks.side_effect = [Exception("fail1"), Exception("fail2")]
+        mock_jwt_decode.side_effect = Exception("decode fail")
+        mlflow_oidc_app = importlib.import_module("mlflow_oidc_auth.app")
+        mock_mlflow_app = MagicMock()
+
+        def warning(*args, **kwargs):
+            pass
+
+        def error(*args, **kwargs):
+            pass
+
+        mock_mlflow_app.logger.warning = warning
+        mock_mlflow_app.logger.error = error
+        with patch.object(mlflow_oidc_app, "app", mock_mlflow_app):
+            with pytest.raises(Exception, match="fail2"):
+                validate_token("mock_token")
 
     @patch("mlflow_oidc_auth.auth.store")
     def test_authenticate_request_basic_auth_uses_authenticate_user(self, mock_store):
@@ -153,16 +180,158 @@ class TestAuth:
             mock_validate_token.assert_called_once_with("mock_token")
             assert result == False
 
-    def test_authenticate_request_bearer_token_no_authorization(self):
+    @patch("mlflow_oidc_auth.auth.store")
+    def test_authenticate_request_basic_auth_missing_username_or_password(self, mock_store):
+        # username is None
+        mock_request = MagicMock()
+        mock_request.authorization.username = None
+        mock_request.authorization.password = "pw"
+        with patch("mlflow_oidc_auth.auth.request", mock_request):
+            assert authenticate_request_basic_auth() is False
+        # password is None
+        mock_request.authorization.username = "user"
+        mock_request.authorization.password = None
+        with patch("mlflow_oidc_auth.auth.request", mock_request):
+            assert authenticate_request_basic_auth() is False
+
+    def test_authenticate_request_basic_auth_empty(self):
+        # Both username and password are None
+        mock_request = MagicMock()
+        mock_request.authorization.username = None
+        mock_request.authorization.password = None
+        with patch("mlflow_oidc_auth.auth.request", mock_request):
+            assert authenticate_request_basic_auth() is False
+
+    @patch("mlflow_oidc_auth.auth.validate_token")
+    def test_authenticate_request_bearer_token_invalid(self, mock_validate_token):
+        # validate_token raises Exception
+        mock_request = MagicMock()
+        mock_request.authorization.token = "bad"
+        mock_validate_token.side_effect = Exception("fail")
+        with patch("mlflow_oidc_auth.auth.request", mock_request):
+            assert authenticate_request_bearer_token() is False
+
+    def test_authenticate_request_bearer_token_empty(self):
+        # No authorization
         mock_request = MagicMock()
         mock_request.authorization = None
         with patch("mlflow_oidc_auth.auth.request", mock_request):
-            result = authenticate_request_bearer_token()
-            assert result == False
-
-    def test_authenticate_request_bearer_token_no_token(self):
-        mock_request = MagicMock()
+            assert authenticate_request_bearer_token() is False
+        # Authorization but no token
+        mock_request.authorization = MagicMock()
         mock_request.authorization.token = None
         with patch("mlflow_oidc_auth.auth.request", mock_request):
-            result = authenticate_request_bearer_token()
-            assert result == False
+            assert authenticate_request_bearer_token() is False
+
+    def test_handle_token_validation_success(self):
+        # Simulate successful token validation
+        oauth_instance = MagicMock()
+        token = {"access_token": "tok"}
+        oauth_instance.oidc.authorize_access_token.return_value = token
+        from mlflow_oidc_auth.auth import handle_token_validation
+
+        assert handle_token_validation(oauth_instance) == token
+
+    def test_handle_token_validation_bad_signature(self):
+        # Simulate BadSignatureError and then success
+        oauth_instance = MagicMock()
+        from authlib.jose.errors import BadSignatureError
+
+        oauth_instance.oidc.authorize_access_token.side_effect = [BadSignatureError(result=None), {"access_token": "tok"}]
+        oauth_instance.oidc.load_server_metadata = MagicMock()
+        mlflow_oidc_app = importlib.import_module("mlflow_oidc_auth.app")
+        mock_mlflow_app = MagicMock()
+        mock_mlflow_app.logger.warning = lambda *a, **k: None
+        mock_mlflow_app.logger.error = lambda *a, **k: None
+        with patch.object(mlflow_oidc_app, "app", mock_mlflow_app):
+            from mlflow_oidc_auth.auth import handle_token_validation
+
+            assert handle_token_validation(oauth_instance) == {"access_token": "tok"}
+        # logger.warning is called, but we do not assert call count here due to direct function replacement
+
+    def test_handle_token_validation_bad_signature_fails(self):
+        # Simulate BadSignatureError twice
+        oauth_instance = MagicMock()
+        from authlib.jose.errors import BadSignatureError
+
+        oauth_instance.oidc.authorize_access_token.side_effect = [
+            BadSignatureError(result=None),
+            BadSignatureError(result=None),
+        ]
+        oauth_instance.oidc.load_server_metadata = MagicMock()
+        mlflow_oidc_app = importlib.import_module("mlflow_oidc_auth.app")
+        mock_mlflow_app = MagicMock()
+        mock_mlflow_app.logger.warning = lambda *a, **k: None
+        mock_mlflow_app.logger.error = lambda *a, **k: None
+        with patch.object(mlflow_oidc_app, "app", mock_mlflow_app):
+            from mlflow_oidc_auth.auth import handle_token_validation
+
+            assert handle_token_validation(oauth_instance) is None
+        # logger.error is called, but we do not assert call count here due to direct function replacement
+
+    def test_handle_user_and_group_management_admin(self):
+        # User is admin
+        token = {
+            "userinfo": {"email": "admin@example.com", "name": "Admin", "groups": ["admin", "users"]},
+            "access_token": "tok",
+        }
+        from mlflow_oidc_auth.auth import handle_user_and_group_management
+
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = None
+        config.OIDC_GROUPS_ATTRIBUTE = "groups"
+        config.OIDC_ADMIN_GROUP_NAME = "admin"
+        config.OIDC_GROUP_NAME = ["users"]
+        with patch("mlflow_oidc_auth.auth.create_user") as mock_create_user, patch(
+            "mlflow_oidc_auth.auth.populate_groups"
+        ) as mock_populate_groups, patch("mlflow_oidc_auth.auth.update_user") as mock_update_user, patch(
+            "mlflow_oidc_auth.auth.app"
+        ) as mock_app:
+            mock_app.logger.debug = MagicMock()
+            handle_user_and_group_management(token)
+            mock_create_user.assert_called_once()
+            mock_populate_groups.assert_called_once()
+            mock_update_user.assert_called_once()
+
+    def test_handle_user_and_group_management_denied(self):
+        # User is not admin and not in allowed group
+        token = {"userinfo": {"email": "user@example.com", "name": "User", "groups": ["guests"]}, "access_token": "tok"}
+        from mlflow_oidc_auth.auth import handle_user_and_group_management
+
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = None
+        config.OIDC_GROUPS_ATTRIBUTE = "groups"
+        config.OIDC_ADMIN_GROUP_NAME = "admin"
+        config.OIDC_GROUP_NAME = ["users"]
+        with patch("mlflow_oidc_auth.auth.app") as mock_app:
+            mock_app.logger.debug = MagicMock()
+            with pytest.raises(ValueError, match="User is not allowed to login"):
+                handle_user_and_group_management(token)
+
+    def test_handle_user_and_group_management_group_plugin(self):
+        # User groups via plugin
+        token = {"userinfo": {"email": "user@example.com", "name": "User"}, "access_token": "tok"}
+        from mlflow_oidc_auth.auth import handle_user_and_group_management
+
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = "mlflow_oidc_auth.tests.test_auth"
+        config.OIDC_ADMIN_GROUP_NAME = "admin"
+        config.OIDC_GROUP_NAME = ["users"]
+
+        # Provide a fake plugin
+        def get_user_groups(token):
+            return ["users"]
+
+        import sys
+
+        sys.modules["mlflow_oidc_auth.tests.test_auth"] = MagicMock(get_user_groups=get_user_groups)
+        with patch("mlflow_oidc_auth.auth.create_user") as mock_create_user, patch(
+            "mlflow_oidc_auth.auth.populate_groups"
+        ) as mock_populate_groups, patch("mlflow_oidc_auth.auth.update_user") as mock_update_user, patch(
+            "mlflow_oidc_auth.auth.app"
+        ) as mock_app:
+            mock_app.logger.debug = MagicMock()
+            handle_user_and_group_management(token)
+            mock_create_user.assert_called_once()
+            mock_populate_groups.assert_called_once()
+            mock_update_user.assert_called_once()
