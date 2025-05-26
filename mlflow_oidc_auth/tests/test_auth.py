@@ -210,6 +210,20 @@ class TestAuth:
             result = handle_token_validation(oauth_instance)
             assert result == {"access_token": "token"}
 
+    def test_handle_token_validation_bad_signature_fails(self):
+        from mlflow_oidc_auth.auth import handle_token_validation
+        from authlib.jose.errors import BadSignatureError
+
+        oauth_instance = MagicMock()
+        oauth_instance.oidc.authorize_access_token.side_effect = [
+            BadSignatureError(result=None),
+            BadSignatureError(result=None),
+        ]
+
+        with patch("mlflow_oidc_auth.auth.app", MagicMock()):
+            result = handle_token_validation(oauth_instance)
+            assert result is None
+
     def test_handle_user_and_group_management_success(self):
         from mlflow_oidc_auth.auth import handle_user_and_group_management
 
@@ -256,6 +270,41 @@ class TestAuth:
             errors = handle_user_and_group_management(token)
             assert "not allowed to login" in str(errors)
 
+    def test_handle_user_and_group_management_group_plugin_error(self):
+        from mlflow_oidc_auth.auth import handle_user_and_group_management
+
+        token = {
+            "userinfo": {"email": "user@example.com", "name": "User"},
+            "access_token": "token",
+        }
+
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = "nonexistent.module"
+
+        with patch("mlflow_oidc_auth.auth.app"):
+            errors = handle_user_and_group_management(token)
+            assert "Group detection error: Failed to get user groups" in errors
+
+    def test_handle_user_and_group_management_db_error(self):
+        from mlflow_oidc_auth.auth import handle_user_and_group_management
+
+        token = {
+            "userinfo": {"email": "admin@example.com", "name": "Admin", "groups": ["admin"]},
+            "access_token": "token",
+        }
+
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = None
+        config.OIDC_GROUPS_ATTRIBUTE = "groups"
+        config.OIDC_ADMIN_GROUP_NAME = "admin"
+        config.OIDC_GROUP_NAME = ["users"]
+
+        with patch("mlflow_oidc_auth.auth.create_user", side_effect=Exception("DB error")), patch(
+            "mlflow_oidc_auth.auth.populate_groups"
+        ), patch("mlflow_oidc_auth.auth.update_user"), patch("mlflow_oidc_auth.auth.app"):
+            errors = handle_user_and_group_management(token)
+            assert "User/group DB error: Failed to update user/groups" in errors
+
     def test_process_oidc_callback_success(self):
         from mlflow_oidc_auth.auth import process_oidc_callback
 
@@ -292,3 +341,74 @@ class TestAuth:
         email, errors = process_oidc_callback(mock_request, session)
         assert email is None
         assert "Invalid state parameter" in str(errors)
+
+    def test_process_oidc_callback_missing_oauth_state(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "state_value" if k == "state" else None
+        session = {}  # Missing oauth_state
+
+        email, errors = process_oidc_callback(mock_request, session)
+        assert email is None
+        assert "Missing OAuth state in session" in str(errors)
+
+    def test_process_oidc_callback_oauth_instance_none(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "state_value" if k == "state" else None
+        session = {"oauth_state": "state_value"}
+
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance", return_value=None), patch("mlflow_oidc_auth.auth.app"):
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email is None
+            assert "OAuth instance or OIDC is not properly initialized" in str(errors)
+
+    def test_process_oidc_callback_oauth_instance_no_oidc(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "state_value" if k == "state" else None
+        session = {"oauth_state": "state_value"}
+
+        class DummyOAuth:
+            pass  # No oidc attribute
+
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance", return_value=DummyOAuth()), patch("mlflow_oidc_auth.auth.app"):
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email is None
+            assert "OAuth instance or OIDC is not properly initialized" in str(errors)
+
+    def test_process_oidc_callback_token_validation_none(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "state_value" if k == "state" else None
+        session = {"oauth_state": "state_value"}
+
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_oauth, patch(
+            "mlflow_oidc_auth.auth.handle_token_validation", return_value=None
+        ), patch("mlflow_oidc_auth.auth.app"):
+            mock_oauth.return_value.oidc = MagicMock()
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email is None
+            assert "Invalid token signature or token could not be validated" in str(errors)
+
+    def test_process_oidc_callback_user_management_errors(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "state_value" if k == "state" else None
+        session = {"oauth_state": "state_value"}
+        token = {"userinfo": {"email": "user@example.com"}}
+
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_oauth, patch(
+            "mlflow_oidc_auth.auth.handle_token_validation", return_value=token
+        ), patch("mlflow_oidc_auth.auth.handle_user_and_group_management", return_value=["Some error"]), patch(
+            "mlflow_oidc_auth.auth.app"
+        ):
+            mock_oauth.return_value.oidc = MagicMock()
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email is None
+            assert "Some error" in errors
