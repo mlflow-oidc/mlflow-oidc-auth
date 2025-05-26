@@ -360,3 +360,166 @@ class TestAuth:
         ), patch("mlflow_oidc_auth.auth.update_user"), patch("mlflow_oidc_auth.auth.app"):
             errors = handle_user_and_group_management(token)
             assert "User/group DB error: Failed to update user/groups" in errors
+
+    def test_process_oidc_callback_oidc_error(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "err" if k == "error" else "desc" if k == "error_description" else None
+        session = {}
+        email, errors = process_oidc_callback(mock_request, session)
+        assert email is None
+        assert "OIDC provider error: An error occurred during the OIDC authentication process." in errors
+        assert "desc" in errors
+
+    def test_process_oidc_callback_missing_state(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: None
+        session = {}
+        email, errors = process_oidc_callback(mock_request, session)
+        assert email is None
+        assert "Session error: Missing OAuth state in session. Please try logging in again." in errors
+
+    def test_process_oidc_callback_state_mismatch(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "abc" if k == "state" else None
+        session = {"oauth_state": "xyz"}
+        email, errors = process_oidc_callback(mock_request, session)
+        assert email is None
+        assert "Security error: Invalid state parameter. Possible CSRF detected." in errors
+
+    def test_process_oidc_callback_oauth_instance_none(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback, get_oauth_instance
+
+        # Patch get_oauth_instance to return None
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "stateval" if k == "state" else None
+        session = {"oauth_state": "stateval"}
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance", return_value=None), patch(
+            "mlflow_oidc_auth.auth.app"
+        ) as mock_app:
+            mock_app.logger.error = MagicMock()
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email is None
+            assert (
+                "Server error: OAuth instance or OIDC is not properly initialized. Please contact the administrator." in errors
+            )
+
+    def test_process_oidc_callback_oauth_instance_no_oidc(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "stateval" if k == "state" else None
+        session = {"oauth_state": "stateval"}
+
+        class Dummy:
+            pass
+
+        dummy = Dummy()
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance", return_value=dummy), patch(
+            "mlflow_oidc_auth.auth.app"
+        ) as mock_app:
+            mock_app.logger.error = MagicMock()
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email is None
+            assert (
+                "Server error: OAuth instance or OIDC is not properly initialized. Please contact the administrator." in errors
+            )
+
+    def test_process_oidc_callback_token_validation_error(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "stateval" if k == "state" else None
+        session = {"oauth_state": "stateval"}
+
+        class DummyOIDC:
+            def authorize_access_token(self):
+                raise Exception("fail")
+
+        class Dummy:
+            oidc = DummyOIDC()
+
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance", return_value=Dummy()), patch(
+            "mlflow_oidc_auth.auth.handle_token_validation", return_value=None
+        ), patch("mlflow_oidc_auth.auth.app") as mock_app:
+            mock_app.logger.error = MagicMock()
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email is None
+            assert "OIDC token error: Invalid token signature or token could not be validated." in errors
+
+    def test_process_oidc_callback_user_group_management_error(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "stateval" if k == "state" else None
+        session = {"oauth_state": "stateval"}
+        token = {"userinfo": {"email": "user@example.com", "name": "User"}, "access_token": "tok"}
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_get_oauth, patch(
+            "mlflow_oidc_auth.auth.handle_token_validation", return_value=token
+        ), patch("mlflow_oidc_auth.auth.handle_user_and_group_management", return_value=["err1"]), patch(
+            "mlflow_oidc_auth.auth.app"
+        ) as mock_app:
+            mock_get_oauth.return_value.oidc = MagicMock()
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email is None
+            assert "err1" in errors
+
+    def test_process_oidc_callback_success(self):
+        from mlflow_oidc_auth.auth import process_oidc_callback
+
+        mock_request = MagicMock()
+        mock_request.args.get.side_effect = lambda k: "stateval" if k == "state" else None
+        session = {"oauth_state": "stateval"}
+        token = {"userinfo": {"email": "user@example.com", "name": "User"}, "access_token": "tok"}
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_get_oauth, patch(
+            "mlflow_oidc_auth.auth.handle_token_validation", return_value=token
+        ), patch("mlflow_oidc_auth.auth.handle_user_and_group_management", return_value=[]), patch(
+            "mlflow_oidc_auth.auth.app"
+        ) as mock_app:
+            mock_get_oauth.return_value.oidc = MagicMock()
+            email, errors = process_oidc_callback(mock_request, session)
+            assert email == "user@example.com"
+            assert errors == []
+
+    @patch("mlflow_oidc_auth.auth.requests")
+    @patch("mlflow_oidc_auth.auth.config")
+    def test__get_oidc_jwks_clear_cache(self, mock_config, mock_requests):
+        # Covers clear_cache=True branch
+        mock_cache = MagicMock()
+        mock_app = MagicMock()
+        mock_app.logger.debug = MagicMock()
+        mock_requests.get.return_value.json.return_value = {"jwks_uri": "mock_jwks_uri"}
+        mock_cache.get.return_value = None
+        mock_config.OIDC_DISCOVERY_URL = "mock_discovery_url"
+        mlflow_oidc_app = importlib.import_module("mlflow_oidc_auth.app")
+        with patch.object(mlflow_oidc_app, "cache", mock_cache):
+            with patch.object(mlflow_oidc_app, "app", mock_app):
+                result = _get_oidc_jwks(clear_cache=True)
+                # Just verify cache.delete was called when clear_cache=True
+                mock_cache.delete.assert_called_once_with("jwks")
+                assert result == mock_requests.get.return_value.json.return_value
+
+    @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
+    @patch("mlflow_oidc_auth.auth.jwt.decode")
+    def test_validate_token_generic_exception_after_refresh(self, mock_jwt_decode, mock_get_oidc_jwks):
+        # Covers the generic Exception branch after JWKS refresh
+        from mlflow_oidc_auth.auth import validate_token
+        from authlib.jose.errors import BadSignatureError
+
+        mock_get_oidc_jwks.side_effect = [{"keys": "mock_keys"}, {"keys": "mock_keys"}]
+        # First decode raises BadSignatureError, second decode raises generic Exception
+        mock_jwt_decode.side_effect = [BadSignatureError("bad sig"), Exception("other error")]
+        mlflow_oidc_app = importlib.import_module("mlflow_oidc_auth.app")
+        mock_mlflow_app = MagicMock()
+        mock_mlflow_app.logger.warning = MagicMock()
+        mock_mlflow_app.logger.error = MagicMock()
+        with patch.object(mlflow_oidc_app, "app", mock_mlflow_app):
+            with pytest.raises(Exception, match="other error"):
+                validate_token("mock_token")
+            # Just verify the function followed the expected path
+            assert mock_get_oidc_jwks.call_count == 2
