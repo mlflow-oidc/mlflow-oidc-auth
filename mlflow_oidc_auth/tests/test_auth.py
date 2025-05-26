@@ -305,11 +305,25 @@ class TestAuth:
         config.OIDC_GROUP_NAME = ["users"]
         with patch("mlflow_oidc_auth.auth.app") as mock_app:
             mock_app.logger.debug = MagicMock()
-            with pytest.raises(ValueError, match="User is not allowed to login"):
-                handle_user_and_group_management(token)
+            errors = handle_user_and_group_management(token)
+            assert "Authorization error: User is not allowed to login." in errors
 
-    def test_handle_user_and_group_management_group_plugin(self):
-        # User groups via plugin
+    def test_handle_user_and_group_management_missing_email_and_name(self):
+        # Missing email and display name
+        token = {"userinfo": {}, "access_token": "tok"}
+        from mlflow_oidc_auth.auth import handle_user_and_group_management
+
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = None
+        config.OIDC_GROUPS_ATTRIBUTE = "groups"
+        config.OIDC_ADMIN_GROUP_NAME = "admin"
+        config.OIDC_GROUP_NAME = ["users"]
+        errors = handle_user_and_group_management(token)
+        assert "User profile error: No email provided in OIDC userinfo." in errors
+        assert "User profile error: No display name provided in OIDC userinfo." in errors
+
+    def test_handle_user_and_group_management_group_plugin_exception(self):
+        # Plugin raises exception
         token = {"userinfo": {"email": "user@example.com", "name": "User"}, "access_token": "tok"}
         from mlflow_oidc_auth.auth import handle_user_and_group_management
 
@@ -318,20 +332,31 @@ class TestAuth:
         config.OIDC_ADMIN_GROUP_NAME = "admin"
         config.OIDC_GROUP_NAME = ["users"]
 
-        # Provide a fake plugin
+        # Provide a fake plugin that raises
         def get_user_groups(token):
-            return ["users"]
+            raise Exception("fail")
 
         import sys
 
         sys.modules["mlflow_oidc_auth.tests.test_auth"] = MagicMock(get_user_groups=get_user_groups)
-        with patch("mlflow_oidc_auth.auth.create_user") as mock_create_user, patch(
+        errors = handle_user_and_group_management(token)
+        assert "Group detection error: Failed to get user groups" in errors
+
+    def test_handle_user_and_group_management_db_exception(self):
+        # DB update fails
+        token = {
+            "userinfo": {"email": "admin@example.com", "name": "Admin", "groups": ["admin", "users"]},
+            "access_token": "tok",
+        }
+        from mlflow_oidc_auth.auth import handle_user_and_group_management
+
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = None
+        config.OIDC_GROUPS_ATTRIBUTE = "groups"
+        config.OIDC_ADMIN_GROUP_NAME = "admin"
+        config.OIDC_GROUP_NAME = ["users"]
+        with patch("mlflow_oidc_auth.auth.create_user", side_effect=Exception("fail")), patch(
             "mlflow_oidc_auth.auth.populate_groups"
-        ) as mock_populate_groups, patch("mlflow_oidc_auth.auth.update_user") as mock_update_user, patch(
-            "mlflow_oidc_auth.auth.app"
-        ) as mock_app:
-            mock_app.logger.debug = MagicMock()
-            handle_user_and_group_management(token)
-            mock_create_user.assert_called_once()
-            mock_populate_groups.assert_called_once()
-            mock_update_user.assert_called_once()
+        ), patch("mlflow_oidc_auth.auth.update_user"), patch("mlflow_oidc_auth.auth.app"):
+            errors = handle_user_and_group_management(token)
+            assert "User/group DB error: Failed to update user/groups" in errors

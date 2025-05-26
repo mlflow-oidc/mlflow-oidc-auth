@@ -114,25 +114,91 @@ def handle_token_validation(oauth_instance):
     return token
 
 
-def handle_user_and_group_management(token):
-    """Handle user and group management based on the token."""
-    email = token["userinfo"]["email"]
-    display_name = token["userinfo"]["name"]
-    user_groups = []
+def handle_user_and_group_management(token) -> list[str]:
+    """Handle user and group management based on the token. Returns list of error messages or empty list."""
+    errors = []
+    email = token["userinfo"].get("email")
+    display_name = token["userinfo"].get("name")
+    if not email:
+        errors.append("User profile error: No email provided in OIDC userinfo.")
+    if not display_name:
+        errors.append("User profile error: No display name provided in OIDC userinfo.")
+    if errors:
+        return errors
 
-    if config.OIDC_GROUP_DETECTION_PLUGIN:
-        import importlib
+    # Get user groups
+    try:
+        if config.OIDC_GROUP_DETECTION_PLUGIN:
+            import importlib
 
-        user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
-    else:
-        user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
+            user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
+        else:
+            user_groups = token["userinfo"].get(config.OIDC_GROUPS_ATTRIBUTE, [])
+    except Exception as e:
+        errors.append(f"Group detection error: Failed to get user groups")
+        return errors
 
     app.logger.debug(f"User groups: {user_groups}")
 
     is_admin = config.OIDC_ADMIN_GROUP_NAME in user_groups
     if not is_admin and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
-        raise ValueError("User is not allowed to login")
+        errors.append("Authorization error: User is not allowed to login.")
+        return errors
 
-    create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
-    populate_groups(group_names=user_groups)
-    update_user(username=email.lower(), group_names=user_groups)
+    try:
+        create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
+        populate_groups(group_names=user_groups)
+        update_user(username=email.lower(), group_names=user_groups)
+    except Exception as e:
+        errors.append("User/group DB error: Failed to update user/groups")
+
+    return errors
+
+
+def process_oidc_callback(request, session) -> tuple[Optional[str], list[str]]:
+    """
+    Process the OIDC callback logic.
+    Returns (email, error_list) tuple.
+    """
+    import html
+
+    errors = []
+
+    # Handle OIDC error response
+    error_param = request.args.get("error")
+    error_description = request.args.get("error_description")
+    if error_param:
+        safe_desc = html.escape(error_description) if error_description else ""
+        errors.append("OIDC provider error: An error occurred during the OIDC authentication process.")
+        if safe_desc:
+            errors.append(f"{safe_desc}")
+        return None, errors
+
+    # State check
+    state = request.args.get("state")
+    if "oauth_state" not in session:
+        errors.append("Session error: Missing OAuth state in session. Please try logging in again.")
+        return None, errors
+    if state != session["oauth_state"]:
+        errors.append("Security error: Invalid state parameter. Possible CSRF detected.")
+        return None, errors
+
+    oauth_instance = get_oauth_instance(app)
+    if oauth_instance is None or getattr(oauth_instance, "oidc", None) is None:
+        app.logger.error("OAuth instance or OIDC is not properly initialized")
+        errors.append("Server error: OAuth instance or OIDC is not properly initialized. Please contact the administrator.")
+        return None, errors
+
+    token = handle_token_validation(oauth_instance)
+    if token is None:
+        errors.append("OIDC token error: Invalid token signature or token could not be validated.")
+        return None, errors
+
+    # User and group management
+    user_errors = handle_user_and_group_management(token)
+    if user_errors:
+        errors.extend(user_errors)
+        return None, errors
+
+    email = token["userinfo"].get("email")
+    return email.lower(), []
