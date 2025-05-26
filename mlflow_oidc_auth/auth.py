@@ -94,7 +94,7 @@ def authenticate_request_bearer_token() -> bool:
             app.logger.debug("User %s authenticated", user.get("email"))
             return True
         except Exception as e:
-            app.logger.debug("JWT auth failed")
+            app.logger.error(f"JWT auth failed: {str(e)}")
             return False
     else:
         app.logger.debug("No authorization token found")
@@ -138,7 +138,8 @@ def handle_user_and_group_management(token) -> list[str]:
         else:
             user_groups = token["userinfo"].get(config.OIDC_GROUPS_ATTRIBUTE, [])
     except Exception as e:
-        errors.append(f"Group detection error: Failed to get user groups")
+        app.logger.error(f"Group detection error: {str(e)}")
+        errors.append("Group detection error: Failed to get user groups")
         return errors
 
     app.logger.debug(f"User groups: {user_groups}")
@@ -153,6 +154,7 @@ def handle_user_and_group_management(token) -> list[str]:
         populate_groups(group_names=user_groups)
         update_user(username=email.lower(), group_names=user_groups)
     except Exception as e:
+        app.logger.error(f"User/group DB error: {str(e)}")
         errors.append("User/group DB error: Failed to update user/groups")
 
     return errors
