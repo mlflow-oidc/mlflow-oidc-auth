@@ -101,13 +101,26 @@ def authenticate_request_bearer_token() -> bool:
         return False
 
 
-def handle_token_validation(oauth_instance):
+def handle_token_validation(oauth_instance: OAuth):
     """Validate the token and handle JWKS refresh if necessary."""
+    if getattr(oauth_instance, "oidc", None) is None:
+        app.logger.error("OAuth instance or OIDC is not properly initialized")
+        return None
+    if (
+        oauth_instance.oidc is None
+        or not hasattr(oauth_instance.oidc, "authorize_access_token")
+        or not callable(oauth_instance.oidc.authorize_access_token)
+    ):
+        app.logger.error("OIDC client is not properly initialized or missing 'authorize_access_token' method")
+        return None
     try:
         token = oauth_instance.oidc.authorize_access_token()
     except BadSignatureError:
         app.logger.warning("Bad signature detected. Refreshing JWKS keys.")
-        oauth_instance.oidc.load_server_metadata(force=True)
+        if not hasattr(oauth_instance.oidc, "load_server_metadata") or not callable(oauth_instance.oidc.load_server_metadata):
+            app.logger.error("OIDC client is missing 'load_server_metadata' method")
+            return None
+        oauth_instance.oidc.load_server_metadata()
         try:
             token = oauth_instance.oidc.authorize_access_token()
         except BadSignatureError:
@@ -205,5 +218,14 @@ def process_oidc_callback(request, session) -> tuple[Optional[str], list[str]]:
         errors.extend(user_errors)
         return None, errors
 
-    email = token["userinfo"].get("email")
+    userinfo = getattr(token, "userinfo", None)
+    if userinfo is None and isinstance(token, dict):
+        userinfo = token.get("userinfo")
+    if not isinstance(userinfo, dict):
+        errors.append("OIDC token error: 'userinfo' is missing or not a dictionary.")
+        return None, errors
+    email = userinfo.get("email")
+    if email is None:
+        errors.append("OIDC token error: 'email' is missing in userinfo.")
+        return None, errors
     return email.lower(), []
