@@ -21,7 +21,7 @@ class RegisteredModelPermissionRepository:
         :param session: SQLAlchemy session
         :param name: The name of the registered model.
         :param user_id: The ID of the user.
-        :return: The registered model permission if it exists, otherwise None.
+        :return: The registered model permission if it exists, otherwise raises an exception.
         """
         try:
             return (

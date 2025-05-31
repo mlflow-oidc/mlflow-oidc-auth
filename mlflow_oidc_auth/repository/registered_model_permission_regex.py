@@ -24,7 +24,7 @@ class RegisteredModelPermissionRegexRepository:
         :param regex: The regex pattern.
         :param user_id: The ID of the user.
         :param prompt: Whether to include prompt in the filter.
-        :return: The registered model regex permission if it exists, otherwise None.
+        :return: The registered model regex permission if it exists, otherwise raises an exception.
         """
         try:
             return (

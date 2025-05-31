@@ -21,7 +21,7 @@ class ExperimentPermissionRepository:
         :param session: SQLAlchemy session
         :param experiment_id: The ID of the experiment.
         :param username: The username of the user.
-        :return: The experiment permission if it exists, otherwise None.
+        :return: The experiment permission if it exists, otherwise raises an exception.
         """
         try:
             return (
