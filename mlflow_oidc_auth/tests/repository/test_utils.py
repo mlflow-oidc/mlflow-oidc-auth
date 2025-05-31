@@ -22,14 +22,6 @@ def test_get_one_or_raise_not_found():
             utils.get_one_or_raise(session, model, 1, not_found_msg="not found", multiple_msg="multiple")
 
 
-def test_get_all():
-    session = MagicMock()
-    model = MagicMock()
-    session.query().filter().all.return_value = [1, 2]
-    result = utils.get_all(session, model, 1)
-    assert result == [1, 2]
-
-
 def test_get_user_found():
     session = MagicMock()
     user = MagicMock()
