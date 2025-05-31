@@ -26,20 +26,6 @@ def get_one_or_raise(session: Session, model, *criterion, not_found_msg: str, mu
         raise MlflowException(multiple_msg, INVALID_STATE)
 
 
-def get_one_optional(session: Session, model, *criterion):
-    """
-    Like .one() but returns None if no row, and error if >1 row.
-    """
-    try:
-        return session.query(model).filter(*criterion).one_or_none()
-    except MultipleResultsFound:
-        model_name = getattr(model, "__tablename__", None) or getattr(model, "__name__", None) or str(model)
-        raise MlflowException(
-            f"Found multiple rows in '{model_name}' for filter {criterion}",
-            INVALID_STATE,
-        )
-
-
 def get_all(session: Session, model, *criterion, order_by=None):
     """
     Get all rows matching the given criteria.

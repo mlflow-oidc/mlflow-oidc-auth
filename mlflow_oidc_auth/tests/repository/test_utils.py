@@ -22,24 +22,6 @@ def test_get_one_or_raise_not_found():
             utils.get_one_or_raise(session, model, 1, not_found_msg="not found", multiple_msg="multiple")
 
 
-def test_get_one_optional_found():
-    session = MagicMock()
-    model = MagicMock()
-    obj = MagicMock()
-    session.query().filter().one_or_none.return_value = obj
-    result = utils.get_one_optional(session, model, 1)
-    assert result == obj
-
-
-def test_get_one_optional_multiple():
-    session = MagicMock()
-    model = type("Model", (), {"__tablename__": "table"})
-    session.query().filter().one_or_none.side_effect = Exception("MultipleResultsFound")
-    with patch("mlflow_oidc_auth.repository.utils.MultipleResultsFound", Exception):
-        with pytest.raises(MlflowException):
-            utils.get_one_optional(session, model, 1)
-
-
 def test_get_all():
     session = MagicMock()
     model = MagicMock()

@@ -42,20 +42,26 @@ def make_user(id=1, username="user1"):
     return user
 
 
-@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_one_optional")
-def test__get_experiment_group_permission_found(mock_get_one_optional, repo, session):
+def test__get_experiment_group_permission_found(repo, session):
     group = make_group()
     perm = make_permission()
-    # First call returns group, second call returns permission
-    mock_get_one_optional.side_effect = [group, perm]
+    # Mock the first query for finding the group
+    group_query = MagicMock()
+    group_query.filter().one_or_none.return_value = group
+    # Mock the second query for finding the permission
+    perm_query = MagicMock()
+    perm_query.filter().one_or_none.return_value = perm
+    # Configure session.query to return different mocks for different queries
+    session.query.side_effect = [group_query, perm_query]
     result = repo._get_experiment_group_permission(session, "exp1", "group1")
     assert result == perm
-    assert mock_get_one_optional.call_count == 2
 
 
-@patch("mlflow_oidc_auth.repository.experiment_permission_group.get_one_optional")
-def test__get_experiment_group_permission_group_not_found(mock_get_one_optional, repo, session):
-    mock_get_one_optional.side_effect = [None]
+def test__get_experiment_group_permission_group_not_found(repo, session):
+    # Mock the query for finding the group to return None
+    group_query = MagicMock()
+    group_query.filter().one_or_none.return_value = None
+    session.query.return_value = group_query
     result = repo._get_experiment_group_permission(session, "exp1", "group1")
     assert result is None
 

@@ -6,7 +6,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from mlflow_oidc_auth.db.models import SqlExperimentGroupPermission, SqlGroup, SqlUserGroup
 from mlflow_oidc_auth.entities import ExperimentPermission
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
-from mlflow_oidc_auth.repository.utils import get_one_optional, get_user, get_group, list_user_groups
+from mlflow_oidc_auth.repository.utils import get_user, get_group, list_user_groups
 
 
 class ExperimentPermissionGroupRepository:
@@ -14,7 +14,7 @@ class ExperimentPermissionGroupRepository:
         self._Session: Callable[[], Session] = session_maker
 
     def _get_experiment_group_permission(
-        self, session, experiment_id: str, group_name: str
+        self, session: Session, experiment_id: str, group_name: str
     ) -> Optional[SqlExperimentGroupPermission]:
         """
         Get the experiment group permission for a given experiment and group name.
@@ -23,14 +23,16 @@ class ExperimentPermissionGroupRepository:
         :param group_name: The name of the group.
         :return: The experiment group permission if it exists, otherwise None.
         """
-        group: SqlExperimentGroupPermission = get_one_optional(session, SqlGroup, SqlGroup.group_name == group_name)
+        group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one_or_none()
         if group is None:
             return None
-        return get_one_optional(
-            session,
-            SqlExperimentGroupPermission,
-            SqlExperimentGroupPermission.experiment_id == experiment_id,
-            SqlExperimentGroupPermission.group_id == group.id,
+        return (
+            session.query(SqlExperimentGroupPermission)
+            .filter(
+                SqlExperimentGroupPermission.experiment_id == experiment_id,
+                SqlExperimentGroupPermission.group_id == group.id,
+            )
+            .one_or_none()
         )
 
     def _list_user_groups(self, username: str) -> List[str]:
