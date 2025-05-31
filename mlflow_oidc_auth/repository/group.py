@@ -1,7 +1,7 @@
 from typing import Callable, List
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, INVALID_STATE
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
@@ -63,7 +63,7 @@ class GroupRepository:
             except NoResultFound:
                 raise MlflowException(f"Group '{group_name}' not found", RESOURCE_DOES_NOT_EXIST)
             except MultipleResultsFound:
-                raise MlflowException(f"Multiple groups named '{group_name}'", RESOURCE_ALREADY_EXISTS)
+                raise MlflowException(f"Multiple groups named '{group_name}'", INVALID_STATE)
 
     def add_user_to_group(self, username: str, group_name: str) -> None:
         """
