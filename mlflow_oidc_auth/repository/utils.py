@@ -80,6 +80,6 @@ def validate_regex(regex: str) -> None:
         for warning in w:
             if issubclass(warning.category, SyntaxWarning):
                 raise MlflowException(
-                    f"Regex pattern may contain invalid escape sequences: {regex}. " f"Warning: {warning.message}",
+                    f"Regex pattern may contain invalid escape sequences: {regex}. Warning: {warning.message}",
                     INVALID_STATE,
                 )

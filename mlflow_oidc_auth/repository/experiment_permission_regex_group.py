@@ -35,13 +35,9 @@ class ExperimentPermissionGroupRegexRepository:
                 .one()
             )
         except NoResultFound:
-            raise MlflowException(
-                "Permission not found for group_id: {} and regex: {}".format(group_id, regex), RESOURCE_DOES_NOT_EXIST
-            )
+            raise MlflowException(f"Permission not found for group_id: {group_id} and regex: {regex}", RESOURCE_DOES_NOT_EXIST)
         except MultipleResultsFound:
-            raise MlflowException(
-                "Multiple Permissions found for group_id: {} and regex: {}".format(group_id, regex), INVALID_STATE
-            )
+            raise MlflowException(f"Multiple Permissions found for group_id: {group_id} and regex: {regex}", INVALID_STATE)
 
     def _list_group_permissions(self, session: Session, groups: List[int]) -> List[SqlExperimentGroupRegexPermission]:
         return (
