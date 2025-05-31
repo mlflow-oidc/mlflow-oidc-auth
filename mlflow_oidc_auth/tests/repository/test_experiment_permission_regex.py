@@ -37,8 +37,7 @@ def test_grant_integrity_error(repo, session):
 def test_get(repo, session):
     row = MagicMock()
     row.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_one_or_raise", return_value=row):
-        session.query().filter().scalar.return_value = 1
+    with patch.object(repo, "_get_experiment_regex_permission", return_value=row):
         assert repo.get("r", "user") == "entity"
 
 
@@ -61,7 +60,7 @@ def test_list_regex_for_user(repo, session):
 def test_update(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_one_or_raise", return_value=perm):
+    with patch.object(repo, "_get_experiment_regex_permission", return_value=perm):
         session.flush = MagicMock()
         result = repo.update("r", 2, "EDIT", "user")
         assert result == "entity"
@@ -72,7 +71,7 @@ def test_update(repo, session):
 
 def test_revoke(repo, session):
     perm = MagicMock()
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_one_or_raise", return_value=perm):
+    with patch.object(repo, "_get_experiment_regex_permission", return_value=perm):
         session.delete = MagicMock()
         session.commit = MagicMock()
         assert repo.revoke("r", "user") is None

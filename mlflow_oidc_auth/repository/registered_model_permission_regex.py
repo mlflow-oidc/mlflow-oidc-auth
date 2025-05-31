@@ -1,19 +1,45 @@
-from typing import List, Callable
+from typing import Callable, List
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS
-from sqlalchemy.exc import IntegrityError
+from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
+from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlRegisteredModelRegexPermission
 from mlflow_oidc_auth.entities import RegisteredModelRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
-from mlflow_oidc_auth.repository.utils import get_one_or_raise, get_user, validate_regex
-from sqlalchemy.orm import Session
+from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 
 
 class RegisteredModelPermissionRegexRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
+
+    def _get_registered_model_regex_permission(
+        self, session: Session, regex: str, user_id: int, prompt: bool = False
+    ) -> SqlRegisteredModelRegexPermission:
+        """
+        Get the registered model regex permission for a given regex and user ID.
+        :param session: SQLAlchemy session
+        :param regex: The regex pattern.
+        :param user_id: The ID of the user.
+        :param prompt: Whether to include prompt in the filter.
+        :return: The registered model regex permission if it exists, otherwise None.
+        """
+        try:
+            return (
+                session.query(SqlRegisteredModelRegexPermission)
+                .filter(
+                    SqlRegisteredModelRegexPermission.regex == regex,
+                    SqlRegisteredModelRegexPermission.user_id == user_id,
+                    SqlRegisteredModelRegexPermission.prompt == prompt,
+                )
+                .one()
+            )
+        except NoResultFound:
+            raise MlflowException(f"Permission not found for user_id: {user_id} and regex: {regex}", RESOURCE_DOES_NOT_EXIST)
+        except MultipleResultsFound:
+            raise MlflowException(f"Multiple Permissions found for user_id: {user_id} and regex: {regex}", INVALID_STATE)
 
     def grant(
         self,
@@ -47,15 +73,7 @@ class RegisteredModelPermissionRegexRepository:
     def get(self, regex: str, username: str, prompt: bool = False) -> RegisteredModelRegexPermission:
         with self._Session() as session:
             user = get_user(session, username)
-            perm: SqlRegisteredModelRegexPermission = get_one_or_raise(
-                session,
-                SqlRegisteredModelRegexPermission,
-                SqlRegisteredModelRegexPermission.regex == regex,
-                SqlRegisteredModelRegexPermission.user_id == user.id,
-                SqlRegisteredModelRegexPermission.prompt == prompt,
-                not_found_msg=f"No registered model perm for regex={regex}, user={username}",
-                multiple_msg=f"Multiple registered model perms for regex={regex}, user={username}",
-            )
+            perm = self._get_registered_model_regex_permission(session, regex, user.id, prompt=prompt)
             return perm.to_mlflow_entity()
 
     def list_regex_for_user(self, username: str, prompt: bool = False) -> List[RegisteredModelRegexPermission]:
@@ -79,15 +97,7 @@ class RegisteredModelPermissionRegexRepository:
         _validate_permission(permission)
         with self._Session() as session:
             user = get_user(session, username)
-            perm: SqlRegisteredModelRegexPermission = get_one_or_raise(
-                session,
-                SqlRegisteredModelRegexPermission,
-                SqlRegisteredModelRegexPermission.regex == regex,
-                SqlRegisteredModelRegexPermission.user_id == user.id,
-                SqlRegisteredModelRegexPermission.prompt == prompt,
-                not_found_msg=f"No registered model perm to update for regex={regex}, user={username}",
-                multiple_msg=f"Multiple registered model perms for regex={regex}, user={username}",
-            )
+            perm = self._get_registered_model_regex_permission(session, regex, user.id, prompt=prompt)
             perm.priority = priority
             perm.permission = permission
             session.commit()
@@ -96,15 +106,7 @@ class RegisteredModelPermissionRegexRepository:
     def revoke(self, regex: str, username: str, prompt: bool = False) -> None:
         with self._Session() as session:
             user = get_user(session, username)
-            perm = get_one_or_raise(
-                session,
-                SqlRegisteredModelRegexPermission,
-                SqlRegisteredModelRegexPermission.regex == regex,
-                SqlRegisteredModelRegexPermission.user_id == user.id,
-                SqlRegisteredModelRegexPermission.prompt == prompt,
-                not_found_msg=f"No registered model perm to delete for regex={regex}, user={username}",
-                multiple_msg=f"Multiple registered model perms for regex={regex}, user={username}",
-            )
+            perm = self._get_registered_model_regex_permission(session, regex, user.id, prompt=prompt)
             session.delete(perm)
             session.commit()
             return None

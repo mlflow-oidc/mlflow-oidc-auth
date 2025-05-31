@@ -1,7 +1,8 @@
 from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_DOES_NOT_EXIST
+from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupRegexPermission
@@ -15,6 +16,38 @@ class RegisteredModelGroupRegexPermissionRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
         self._group_repo = GroupRepository(session_maker)
+
+    def _get_registered_model_group_regex_permission(
+        self, session: Session, regex: str, group_id: int, prompt: bool = False
+    ) -> SqlRegisteredModelGroupRegexPermission:
+        """
+        Get the registered model group regex permission for a given regex and group ID.
+        :param session: SQLAlchemy session
+        :param regex: The regex pattern for the registered model name.
+        :param group_id: The ID of the group.
+        :param prompt: Whether the permission is a prompt permission.
+        :return: The registered model group regex permission if it exists, otherwise None.
+        """
+        try:
+            return (
+                session.query(SqlRegisteredModelGroupRegexPermission)
+                .filter(
+                    SqlRegisteredModelGroupRegexPermission.regex == regex,
+                    SqlRegisteredModelGroupRegexPermission.group_id == group_id,
+                    SqlRegisteredModelGroupRegexPermission.prompt == prompt,
+                )
+                .one()
+            )
+        except NoResultFound:
+            raise MlflowException(
+                f"No model perm for regex={regex}, group_id={group_id}, prompt={prompt}",
+                RESOURCE_DOES_NOT_EXIST,
+            )
+        except MultipleResultsFound:
+            raise MlflowException(
+                f"Multiple model perms for regex={regex}, group_id={group_id}, prompt={prompt}",
+                INVALID_STATE,
+            )
 
     def grant(
         self, group_name: str, regex: str, permission: str, priority: int = 0, prompt: bool = False
@@ -49,18 +82,8 @@ class RegisteredModelGroupRegexPermissionRepository:
         """
         with self._Session() as session:
             group = get_group(session, group_name)
-            row = (
-                session.query(SqlRegisteredModelGroupRegexPermission)
-                .filter(
-                    SqlRegisteredModelGroupRegexPermission.regex == regex,
-                    SqlRegisteredModelGroupRegexPermission.group_id == group.id,
-                    SqlRegisteredModelGroupRegexPermission.prompt == prompt,
-                )
-                .one_or_none()
-            )
-            if row is None:
-                raise MlflowException(f"No model perm for regex={regex}, group={group_name}", RESOURCE_DOES_NOT_EXIST)
-            return row.to_mlflow_entity()
+            perm = self._get_registered_model_group_regex_permission(session, regex, group.id, prompt=prompt)
+            return perm.to_mlflow_entity()
 
     def list_permissions_for_group(self, group_name: str, prompt: bool = False) -> List[RegisteredModelGroupRegexPermission]:
         """
@@ -136,17 +159,7 @@ class RegisteredModelGroupRegexPermissionRepository:
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = (
-                session.query(SqlRegisteredModelGroupRegexPermission)
-                .filter(
-                    SqlRegisteredModelGroupRegexPermission.regex == regex,
-                    SqlRegisteredModelGroupRegexPermission.group_id == group.id,
-                    SqlRegisteredModelGroupRegexPermission.prompt == prompt,
-                )
-                .one_or_none()
-            )
-            if perm is None:
-                raise MlflowException(f"No perm to update for regex={regex}, group={group_name}", RESOURCE_DOES_NOT_EXIST)
+            perm = self._get_registered_model_group_regex_permission(session, regex, group.id, prompt=prompt)
             perm.permission = permission
             perm.priority = priority
             perm.prompt = prompt
@@ -161,16 +174,6 @@ class RegisteredModelGroupRegexPermissionRepository:
         """
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = (
-                session.query(SqlRegisteredModelGroupRegexPermission)
-                .filter(
-                    SqlRegisteredModelGroupRegexPermission.regex == regex,
-                    SqlRegisteredModelGroupRegexPermission.group_id == group.id,
-                    SqlRegisteredModelGroupRegexPermission.prompt == prompt,
-                )
-                .one_or_none()
-            )
-            if perm is None:
-                raise MlflowException(f"No perm to delete for regex={regex}, group={group_name}", RESOURCE_DOES_NOT_EXIST)
+            perm = self._get_registered_model_group_regex_permission(session, regex, group.id, prompt=prompt)
             session.delete(perm)
             session.flush()

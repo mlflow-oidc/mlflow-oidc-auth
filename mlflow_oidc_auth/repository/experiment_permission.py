@@ -1,19 +1,48 @@
-from typing import List, Callable
+from typing import Callable, List
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS
-from sqlalchemy.exc import IntegrityError
+from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
+from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlExperimentPermission, SqlUser
 from mlflow_oidc_auth.entities import ExperimentPermission
 from mlflow_oidc_auth.permissions import _validate_permission
-from mlflow_oidc_auth.repository.utils import get_one_or_raise, get_user
-from sqlalchemy.orm import Session
+from mlflow_oidc_auth.repository.utils import get_user
 
 
 class ExperimentPermissionRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
+
+    def _get_experiment_permission(self, session, experiment_id: str, username: str) -> SqlExperimentPermission:
+        """
+        Get the experiment permission for a given experiment and user.
+        :param session: SQLAlchemy session
+        :param experiment_id: The ID of the experiment.
+        :param username: The username of the user.
+        :return: The experiment permission if it exists, otherwise None.
+        """
+        try:
+            return (
+                session.query(SqlExperimentPermission)
+                .join(SqlUser, SqlExperimentPermission.user_id == SqlUser.id)
+                .filter(
+                    SqlExperimentPermission.experiment_id == experiment_id,
+                    SqlUser.username == username,
+                )
+                .one()
+            )
+        except NoResultFound:
+            raise MlflowException(
+                f"No permission for exp={experiment_id}, user={username}",
+                RESOURCE_DOES_NOT_EXIST,
+            )
+        except MultipleResultsFound:
+            raise MlflowException(
+                f"Multiple perms for exp={experiment_id}, user={username}",
+                INVALID_STATE,
+            )
 
     def grant_permission(self, experiment_id: str, username: str, permission: str) -> ExperimentPermission:
         """
@@ -36,23 +65,6 @@ class ExperimentPermissionRepository:
                     f"Experiment permission already exists ({experiment_id}, {username}): {e}",
                     RESOURCE_ALREADY_EXISTS,
                 )
-
-    def _get_experiment_permission(self, session, experiment_id: str, username: str) -> SqlExperimentPermission:
-        """
-        Get the experiment permission for a given experiment and user.
-        :param session: SQLAlchemy session
-        :param experiment_id: The ID of the experiment.
-        :param username: The username of the user.
-        :return: The experiment permission if it exists, otherwise None.
-        """
-        return get_one_or_raise(
-            session,
-            SqlExperimentPermission,
-            SqlExperimentPermission.experiment_id == experiment_id,
-            SqlExperimentPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username).scalar_subquery(),
-            not_found_msg=f"No permission for exp={experiment_id}, user={username}",
-            multiple_msg=f"Multiple perms for exp={experiment_id}, user={username}",
-        )
 
     def get_permission(self, experiment_id: str, username: str) -> ExperimentPermission:
         """

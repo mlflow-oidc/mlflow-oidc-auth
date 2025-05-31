@@ -43,9 +43,10 @@ def test_get_permission(repo, session):
 
 def test__get_experiment_permission(repo, session):
     perm = MagicMock()
-    with patch("mlflow_oidc_auth.repository.experiment_permission.get_one_or_raise", return_value=perm):
-        result = repo._get_experiment_permission(session, "exp4", "user")
-        assert result == perm
+    # Mock the SQLAlchemy query chain: session.query().join().filter().one()
+    session.query().join().filter().one.return_value = perm
+    result = repo._get_experiment_permission(session, "exp4", "user")
+    assert result == perm
 
 
 def test_list_permissions_for_user(repo, session):

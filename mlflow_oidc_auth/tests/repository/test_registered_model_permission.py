@@ -36,8 +36,8 @@ def test_create_integrity_error(repo, session):
 def test_get(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_one_or_raise", return_value=perm):
-        assert repo.get("name", "user") == "entity"
+    session.query().filter().one.return_value = perm
+    assert repo.get("name", "user") == "entity"
 
 
 def test_list_for_user(repo, session):
@@ -52,22 +52,22 @@ def test_list_for_user(repo, session):
 def test_update(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_one_or_raise", return_value=perm):
-        session.flush = MagicMock()
-        result = repo.update("name", "user", "EDIT")
-        assert result == "entity"
-        assert perm.permission == "EDIT"
-        session.flush.assert_called_once()
+    session.query().filter().one.return_value = perm
+    session.flush = MagicMock()
+    result = repo.update("name", "user", "EDIT")
+    assert result == "entity"
+    assert perm.permission == "EDIT"
+    session.flush.assert_called_once()
 
 
 def test_delete(repo, session):
     perm = MagicMock()
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_one_or_raise", return_value=perm):
-        session.delete = MagicMock()
-        session.flush = MagicMock()
-        repo.delete("name", "user")
-        session.delete.assert_called_once_with(perm)
-        session.flush.assert_called_once()
+    session.query().filter().one.return_value = perm
+    session.delete = MagicMock()
+    session.flush = MagicMock()
+    repo.delete("name", "user")
+    session.delete.assert_called_once_with(perm)
+    session.flush.assert_called_once()
 
 
 def test_wipe(repo, session):

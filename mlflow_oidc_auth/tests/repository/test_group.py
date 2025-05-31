@@ -60,12 +60,12 @@ def test_list_groups(repo, session):
 
 def test_delete_group_success(repo, session):
     grp = MagicMock()
+    session.query().filter().one.return_value = grp
     session.delete = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.group.get_one_or_raise", return_value=grp):
-        repo.delete_group("g5")
-        session.delete.assert_called_once_with(grp)
-        session.flush.assert_called_once()
+    repo.delete_group("g5")
+    session.delete.assert_called_once_with(grp)
+    session.flush.assert_called_once()
 
 
 def test_add_user_to_group(repo, session):

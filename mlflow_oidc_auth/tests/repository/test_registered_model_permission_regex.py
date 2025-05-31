@@ -37,9 +37,8 @@ def test_get(repo, session):
     user = MagicMock(id=3)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_one_or_raise", return_value=perm
-    ):
+    session.query().filter().one.return_value = perm
+    with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user):
         result = repo.get("r", "user", prompt=True)
         assert result == "entity"
 
@@ -60,10 +59,9 @@ def test_update(repo, session):
     user = MagicMock(id=5)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
+    session.query().filter().one.return_value = perm
     session.commit = MagicMock()
-    with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_one_or_raise", return_value=perm
-    ):
+    with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user):
         result = repo.update("r", 2, "EDIT", "user", prompt=True)
         assert result == "entity"
         assert perm.priority == 2
@@ -74,11 +72,10 @@ def test_update(repo, session):
 def test_revoke(repo, session):
     user = MagicMock(id=6)
     perm = MagicMock()
+    session.query().filter().one.return_value = perm
     session.delete = MagicMock()
     session.commit = MagicMock()
-    with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_one_or_raise", return_value=perm
-    ):
+    with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user):
         repo.revoke("r", "user", prompt=True)
         session.delete.assert_called_once_with(perm)
         session.commit.assert_called_once()

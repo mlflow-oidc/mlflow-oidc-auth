@@ -1,13 +1,13 @@
-from typing import List, Callable
-from sqlalchemy.orm import Session
+from typing import Callable, List
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS
-from sqlalchemy.exc import IntegrityError
+from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
+from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
 from mlflow_oidc_auth.entities import User
-from mlflow_oidc_auth.repository.utils import get_one_or_raise, get_user, get_group, list_user_groups
+from mlflow_oidc_auth.repository.utils import get_group, get_user, list_user_groups
 
 
 class GroupRepository:
@@ -56,15 +56,14 @@ class GroupRepository:
         :raises MlflowException: If the group does not exist or if multiple groups with the same name exist.
         """
         with self._Session() as session:
-            grp = get_one_or_raise(
-                session,
-                SqlGroup,
-                SqlGroup.group_name == group_name,
-                not_found_msg=f"Group '{group_name}' not found",
-                multiple_msg=f"Multiple groups named '{group_name}'",
-            )
-            session.delete(grp)
-            session.flush()
+            try:
+                grp = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one()
+                session.delete(grp)
+                session.flush()
+            except NoResultFound:
+                raise MlflowException(f"Group '{group_name}' not found", RESOURCE_DOES_NOT_EXIST)
+            except MultipleResultsFound:
+                raise MlflowException(f"Multiple groups named '{group_name}'", RESOURCE_ALREADY_EXISTS)
 
     def add_user_to_group(self, username: str, group_name: str) -> None:
         """

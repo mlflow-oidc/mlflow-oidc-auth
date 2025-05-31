@@ -27,9 +27,8 @@ def test_get(repo, session):
     group = MagicMock(id=2)
     row = MagicMock()
     row.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group), patch(
-        "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_one_or_raise", return_value=row
-    ):
+    session.query().filter().one.return_value = row
+    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group):
         assert repo.get("g", "r") == "entity"
 
 
@@ -98,10 +97,9 @@ def test_list_permissions_for_user_groups(repo, session):
 
 
 def test__get_experiment_group_regex_permission(repo, session):
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_one_or_raise", return_value="perm") as m:
-        result = repo._get_experiment_group_regex_permission(session, "r", 1)
-        assert result == "perm"
-        m.assert_called_once()
+    session.query().filter().one.return_value = "perm"
+    result = repo._get_experiment_group_regex_permission(session, "r", 1)
+    assert result == "perm"
 
 
 def test_grant(repo, session):

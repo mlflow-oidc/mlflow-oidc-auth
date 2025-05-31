@@ -39,7 +39,7 @@ def test_get(repo, session):
     group = MagicMock(id=2)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().one_or_none.return_value = perm
+    session.query().filter().one.return_value = perm
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
         result = repo.get("r", "group1", prompt=True)
         assert result == "entity"
@@ -47,7 +47,9 @@ def test_get(repo, session):
 
 def test_get_not_found(repo, session):
     group = MagicMock(id=3)
-    session.query().filter().one_or_none.return_value = None
+    from sqlalchemy.exc import NoResultFound
+
+    session.query().filter().one.side_effect = NoResultFound()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
         with pytest.raises(MlflowException):
             repo.get("r", "group1", prompt=True)
@@ -88,7 +90,7 @@ def test_update(repo, session):
     group = MagicMock(id=7)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().one_or_none.return_value = perm
+    session.query().filter().one.return_value = perm
     session.flush = MagicMock()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
         result = repo.update("r", "group1", "EDIT", priority=2, prompt=True)
@@ -100,7 +102,9 @@ def test_update(repo, session):
 
 def test_update_not_found(repo, session):
     group = MagicMock(id=8)
-    session.query().filter().one_or_none.return_value = None
+    from sqlalchemy.exc import NoResultFound
+
+    session.query().filter().one.side_effect = NoResultFound()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
         with pytest.raises(MlflowException):
             repo.update("r", "group1", "EDIT", priority=2, prompt=True)
@@ -109,7 +113,7 @@ def test_update_not_found(repo, session):
 def test_revoke(repo, session):
     group = MagicMock(id=9)
     perm = MagicMock()
-    session.query().filter().one_or_none.return_value = perm
+    session.query().filter().one.return_value = perm
     session.delete = MagicMock()
     session.flush = MagicMock()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
@@ -120,7 +124,9 @@ def test_revoke(repo, session):
 
 def test_revoke_not_found(repo, session):
     group = MagicMock(id=10)
-    session.query().filter().one_or_none.return_value = None
+    from sqlalchemy.exc import NoResultFound
+
+    session.query().filter().one.side_effect = NoResultFound()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
         with pytest.raises(MlflowException):
             repo.revoke("r", "group1", prompt=True)

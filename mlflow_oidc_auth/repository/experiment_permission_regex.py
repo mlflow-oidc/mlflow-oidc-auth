@@ -1,19 +1,41 @@
-from typing import List, Callable
+from typing import Callable, List
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS
-from sqlalchemy.exc import IntegrityError
+from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
+from sqlalchemy.orm import Session
 
-from mlflow_oidc_auth.db.models import SqlExperimentRegexPermission, SqlUser
+from mlflow_oidc_auth.db.models import SqlExperimentRegexPermission
 from mlflow_oidc_auth.entities import ExperimentRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
-from mlflow_oidc_auth.repository.utils import get_one_or_raise, get_user, validate_regex
-from sqlalchemy.orm import Session
+from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 
 
 class ExperimentPermissionRegexRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
+
+    def _get_experiment_regex_permission(self, session: Session, regex: str, user_id: int) -> SqlExperimentRegexPermission:
+        """
+        Get the experiment regex permission for a given regex and user ID.
+        :param session: SQLAlchemy session
+        :param regex: The regex pattern.
+        :param user_id: The ID of the user.
+        :return: The experiment regex permission if it exists, otherwise None.
+        """
+        try:
+            return (
+                session.query(SqlExperimentRegexPermission)
+                .filter(
+                    SqlExperimentRegexPermission.regex == regex,
+                    SqlExperimentRegexPermission.user_id == user_id,
+                )
+                .one()
+            )
+        except NoResultFound:
+            raise MlflowException(f"Permission not found for user_id: {user_id} and regex: {regex}", RESOURCE_DOES_NOT_EXIST)
+        except MultipleResultsFound:
+            raise MlflowException(f"Multiple Permissions found for user_id: {user_id} and regex: {regex}", INVALID_STATE)
 
     def grant(
         self,
@@ -44,15 +66,9 @@ class ExperimentPermissionRegexRepository:
 
     def get(self, regex: str, username: str) -> ExperimentRegexPermission:
         with self._Session() as session:
-            row: SqlExperimentRegexPermission = get_one_or_raise(
-                session,
-                SqlExperimentRegexPermission,
-                SqlExperimentRegexPermission.regex == regex,
-                SqlExperimentRegexPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username),
-                not_found_msg=f"No experiment perm for regex={regex}, user={username}",
-                multiple_msg=f"Multiple experiment perms for regex={regex}, user={username}",
-            )
-            return row.to_mlflow_entity()
+            user = get_user(session, username)
+            perm = self._get_experiment_regex_permission(session, regex, user.id)
+            return perm.to_mlflow_entity()
 
     def list(self) -> List[ExperimentRegexPermission]:
         with self._Session() as session:
@@ -74,14 +90,8 @@ class ExperimentPermissionRegexRepository:
         validate_regex(regex)
         _validate_permission(permission)
         with self._Session() as session:
-            perm: SqlExperimentRegexPermission = get_one_or_raise(
-                session,
-                SqlExperimentRegexPermission,
-                SqlExperimentRegexPermission.regex == regex,
-                SqlExperimentRegexPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username),
-                not_found_msg=f"No perm to update for regex={regex}, user={username}",
-                multiple_msg=f"Multiple perms for regex={regex}, user={username}",
-            )
+            user = get_user(session, username)
+            perm = self._get_experiment_regex_permission(session, regex, user.id)
             perm.priority = priority
             perm.permission = permission
             session.flush()
@@ -90,14 +100,8 @@ class ExperimentPermissionRegexRepository:
     def revoke(self, regex: str, username: str) -> None:
         validate_regex(regex)
         with self._Session() as session:
-            perm: SqlExperimentRegexPermission = get_one_or_raise(
-                session,
-                SqlExperimentRegexPermission,
-                SqlExperimentRegexPermission.regex == regex,
-                SqlExperimentRegexPermission.user_id == session.query(SqlUser.id).filter(SqlUser.username == username),
-                not_found_msg=f"No perm to delete for regex={regex}, user={username}",
-                multiple_msg=f"Multiple perms for regex={regex}, user={username}",
-            )
+            user = get_user(session, username)
+            perm = self._get_experiment_regex_permission(session, regex, user.id)
             session.delete(perm)
             session.commit()
             return None
