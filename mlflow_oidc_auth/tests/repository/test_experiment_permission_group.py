@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch, ANY
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
@@ -63,6 +64,30 @@ def test__get_experiment_group_permission_group_not_found(repo, session):
     session.query.return_value = group_query
     result = repo._get_experiment_group_permission(session, "exp1", "group1")
     assert result is None
+
+
+def test__get_experiment_group_permission_permission_not_found(repo, session):
+    group = make_group()
+    # Mock the first query for finding the group - returns the group
+    group_query = MagicMock()
+    group_query.filter().one_or_none.return_value = group
+    # Mock the second query for finding the permission - returns None
+    perm_query = MagicMock()
+    perm_query.filter().one_or_none.return_value = None
+    # Configure session.query to return different mocks for different queries
+    session.query.side_effect = [group_query, perm_query]
+    result = repo._get_experiment_group_permission(session, "exp1", "group1")
+    assert result is None
+
+
+def test__get_experiment_group_permission_database_error(repo, session):
+    # Mock the first query to raise a database exception
+    group_query = MagicMock()
+    group_query.filter().one_or_none.side_effect = Exception("Database connection error")
+    session.query.return_value = group_query
+
+    with pytest.raises(Exception, match="Database connection error"):
+        repo._get_experiment_group_permission(session, "exp1", "group1")
 
 
 @patch("mlflow_oidc_auth.repository.experiment_permission_group.get_user")

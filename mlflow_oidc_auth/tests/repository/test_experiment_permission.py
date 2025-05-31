@@ -1,7 +1,10 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from mlflow_oidc_auth.repository.experiment_permission import ExperimentPermissionRepository
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, INVALID_STATE
+
+from mlflow_oidc_auth.repository.experiment_permission import ExperimentPermissionRepository
 
 
 @pytest.fixture
@@ -47,6 +50,36 @@ def test__get_experiment_permission(repo, session):
     session.query().join().filter().one.return_value = perm
     result = repo._get_experiment_permission(session, "exp4", "user")
     assert result == perm
+
+
+def test__get_experiment_permission_not_found(repo, session):
+    """Test _get_experiment_permission when no permission is found"""
+    session.query().join().filter().one.side_effect = NoResultFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_experiment_permission(session, "exp1", "user1")
+
+    assert "No permission for exp=exp1, user=user1" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+def test__get_experiment_permission_multiple_found(repo, session):
+    """Test _get_experiment_permission when multiple permissions are found"""
+    session.query().join().filter().one.side_effect = MultipleResultsFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_experiment_permission(session, "exp1", "user1")
+
+    assert "Multiple perms for exp=exp1, user=user1" in str(exc.value)
+    assert exc.value.error_code == "INVALID_STATE"
+
+
+def test__get_experiment_permission_database_error(repo, session):
+    """Test _get_experiment_permission when database error occurs"""
+    session.query().join().filter().one.side_effect = Exception("Database connection error")
+
+    with pytest.raises(Exception, match="Database connection error"):
+        repo._get_experiment_permission(session, "exp1", "user1")
 
 
 def test_list_permissions_for_user(repo, session):

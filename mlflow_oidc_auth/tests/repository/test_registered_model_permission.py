@@ -1,7 +1,10 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from mlflow_oidc_auth.repository.registered_model_permission import RegisteredModelPermissionRepository
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, INVALID_STATE
+
+from mlflow_oidc_auth.repository.registered_model_permission import RegisteredModelPermissionRepository
 
 
 @pytest.fixture
@@ -79,3 +82,33 @@ def test_wipe(repo, session):
     repo.wipe("name")
     assert session.delete.call_count == 2
     session.flush.assert_called_once()
+
+
+def test__get_registered_model_permission_not_found(repo, session):
+    """Test _get_registered_model_permission when no permission is found"""
+    session.query().filter().one.side_effect = NoResultFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_registered_model_permission(session, "test_model", 1)
+
+    assert "No model perm for name=test_model, user_id=1" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+def test__get_registered_model_permission_multiple_found(repo, session):
+    """Test _get_registered_model_permission when multiple permissions are found"""
+    session.query().filter().one.side_effect = MultipleResultsFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_registered_model_permission(session, "test_model", 1)
+
+    assert "Multiple model perms for name=test_model, user_id=1" in str(exc.value)
+    assert exc.value.error_code == "INVALID_STATE"
+
+
+def test__get_registered_model_permission_database_error(repo, session):
+    """Test _get_registered_model_permission when database error occurs"""
+    session.query().filter().one.side_effect = Exception("Database connection error")
+
+    with pytest.raises(Exception, match="Database connection error"):
+        repo._get_registered_model_permission(session, "test_model", 1)
