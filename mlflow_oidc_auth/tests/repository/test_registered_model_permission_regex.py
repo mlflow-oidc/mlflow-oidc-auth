@@ -50,9 +50,8 @@ def test_list_regex_for_user(repo, session):
     perm1.to_mlflow_entity.return_value = "entity1"
     perm2 = MagicMock()
     perm2.to_mlflow_entity.return_value = "entity2"
-    with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_all", return_value=[perm1, perm2]
-    ):
+    session.query().filter().order_by().all.return_value = [perm1, perm2]
+    with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user):
         result = repo.list_regex_for_user("user", prompt=True)
         assert result == ["entity1", "entity2"]
 

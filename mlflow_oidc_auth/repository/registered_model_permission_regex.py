@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from mlflow_oidc_auth.db.models import SqlRegisteredModelRegexPermission, SqlUser
 from mlflow_oidc_auth.entities import RegisteredModelRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
-from mlflow_oidc_auth.repository.utils import get_one_or_raise, get_user, validate_regex, get_all
+from mlflow_oidc_auth.repository.utils import get_one_or_raise, get_user, validate_regex
 from sqlalchemy.orm import Session
 
 
@@ -61,12 +61,14 @@ class RegisteredModelPermissionRegexRepository:
     def list_regex_for_user(self, username: str, prompt: bool = False) -> List[RegisteredModelRegexPermission]:
         with self._Session() as session:
             user = get_user(session, username)
-            perms = get_all(
-                session,
-                SqlRegisteredModelRegexPermission,
-                SqlRegisteredModelRegexPermission.user_id == user.id,
-                SqlRegisteredModelRegexPermission.prompt == prompt,
-                order_by=SqlRegisteredModelRegexPermission.priority,
+            perms = (
+                session.query(SqlRegisteredModelRegexPermission)
+                .filter(
+                    SqlRegisteredModelRegexPermission.user_id == user.id,
+                    SqlRegisteredModelRegexPermission.prompt == prompt,
+                )
+                .order_by(SqlRegisteredModelRegexPermission.priority)
+                .all()
             )
             return [p.to_mlflow_entity() for p in perms]
 

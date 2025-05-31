@@ -90,7 +90,7 @@ def test_list_permissions_for_user_groups(repo, session):
     group2 = MagicMock(id=2)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().all.return_value = [perm]
+    session.query().filter().order_by().all.return_value = [perm]
     with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_user", return_value=user), patch(
         "mlflow_oidc_auth.repository.experiment_permission_regex_group.list_user_groups", return_value=[group1, group2]
     ):

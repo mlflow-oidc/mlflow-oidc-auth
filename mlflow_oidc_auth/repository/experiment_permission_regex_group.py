@@ -126,6 +126,8 @@ class ExperimentPermissionGroupRegexRepository:
             permissions = (
                 session.query(SqlExperimentGroupRegexPermission)
                 .filter(SqlExperimentGroupRegexPermission.group_id.in_(group_ids))
+                .order_by(SqlExperimentGroupRegexPermission.priority)
                 .all()
             )
+            permissions.sort(key=lambda p: p.priority)
             return [p.to_mlflow_entity() for p in permissions]

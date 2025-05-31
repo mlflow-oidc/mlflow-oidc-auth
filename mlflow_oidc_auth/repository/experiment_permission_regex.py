@@ -62,7 +62,12 @@ class ExperimentPermissionRegexRepository:
     def list_regex_for_user(self, username: str) -> List[ExperimentRegexPermission]:
         with self._Session() as session:
             user = get_user(session, username)
-            rows = session.query(SqlExperimentRegexPermission).filter(SqlExperimentRegexPermission.user_id == user.id).all()
+            rows = (
+                session.query(SqlExperimentRegexPermission)
+                .filter(SqlExperimentRegexPermission.user_id == user.id)
+                .order_by(SqlExperimentRegexPermission.priority)
+                .all()
+            )
             return [r.to_mlflow_entity() for r in rows]
 
     def update(self, regex: str, priority: int, permission: str, username: str) -> ExperimentRegexPermission:
