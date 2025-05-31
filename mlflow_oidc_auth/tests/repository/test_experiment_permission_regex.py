@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from mlflow_oidc_auth.repository.experiment_permission_regex import ExperimentPermissionRegexRepository
-from mlflow_oidc_auth.entities import ExperimentRegexPermission
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS
 

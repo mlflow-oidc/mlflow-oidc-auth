@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
-from mlflow_oidc_auth.db.models import SqlExperimentGroupPermission, SqlGroup, SqlUserGroup
+from mlflow_oidc_auth.db.models import SqlExperimentGroupPermission, SqlGroup
 from mlflow_oidc_auth.entities import ExperimentPermission
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
 from mlflow_oidc_auth.repository.utils import get_user, get_group, list_user_groups

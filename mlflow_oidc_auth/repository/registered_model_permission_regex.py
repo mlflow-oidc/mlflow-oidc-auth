@@ -4,7 +4,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS
 from sqlalchemy.exc import IntegrityError
 
-from mlflow_oidc_auth.db.models import SqlRegisteredModelRegexPermission, SqlUser
+from mlflow_oidc_auth.db.models import SqlRegisteredModelRegexPermission
 from mlflow_oidc_auth.entities import RegisteredModelRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository.utils import get_one_or_raise, get_user, validate_regex
