@@ -62,7 +62,7 @@ def get_permission(permission: str) -> Permission:
     return ALL_PERMISSIONS[permission]
 
 
-def _validate_permission(permission: str):
+def _validate_permission(permission: str) -> None:
     if permission not in ALL_PERMISSIONS:
         raise MlflowException(
             f"Invalid permission '{permission}'. Valid permissions are: {tuple(ALL_PERMISSIONS)}",
