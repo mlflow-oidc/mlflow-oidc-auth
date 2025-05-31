@@ -21,7 +21,7 @@ class PromptPermissionGroupRepository:
         :param session: SQLAlchemy session
         :param name: The name of the prompt.
         :param group_id: The ID of the group.
-        :return: The prompt permission if it exists, otherwise None.
+        :return: The prompt permission if it exists, otherwise raises an exception.
         """
         try:
             return (

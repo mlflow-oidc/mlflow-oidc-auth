@@ -23,7 +23,7 @@ class ExperimentPermissionGroupRegexRepository:
         :param session: SQLAlchemy session
         :param regex: The regex pattern.
         :param group_id: The ID of the group.
-        :return: The experiment group regex permission if it exists, otherwise None.
+        :return: The experiment group regex permission if it exists, otherwise raises an exception.
         """
         try:
             return (

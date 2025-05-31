@@ -26,7 +26,7 @@ class RegisteredModelGroupRegexPermissionRepository:
         :param regex: The regex pattern for the registered model name.
         :param group_id: The ID of the group.
         :param prompt: Whether the permission is a prompt permission.
-        :return: The registered model group regex permission if it exists, otherwise None.
+        :return: The registered model group regex permission if it exists, otherwise raises an exception.
         """
         try:
             return (
