@@ -20,11 +20,8 @@ def _get_permission_from_experiment_name() -> Permission:
     experiment_name = get_request_param("experiment_name")
     store_exp = _get_tracking_store().get_experiment_by_name(experiment_name)
     if store_exp is None:
-        # TODO: refactor to avoid panic during rename experiment
-        raise MlflowException(
-            f"Could not find experiment with name {experiment_name}",
-            error_code=RESOURCE_DOES_NOT_EXIST,
-        )
+        # experiment is not exist, need return all permissions
+        return get_permission("MANAGE")
     username = get_username()
     return effective_experiment_permission(store_exp.experiment_id, username).permission
 
