@@ -84,4 +84,4 @@ exclude = ["tests", "tests.*"]
 version = {attr = "mlflow_oidc_auth.version"}
 
 [tool.black]
-line-length = 128
+line-length = 180

@@ -147,15 +147,15 @@ BEFORE_REQUEST_VALIDATORS = {
 
 BEFORE_REQUEST_VALIDATORS.update(
     {
-        (routes.GET_EXPERIMENT_PERMISSION, "GET"): validate_can_manage_experiment,
-        (routes.CREATE_EXPERIMENT_PERMISSION, "GET"): validate_can_manage_experiment,
-        (routes.CREATE_EXPERIMENT_PERMISSION, "POST"): validate_can_manage_experiment,
-        (routes.UPDATE_EXPERIMENT_PERMISSION, "PATCH"): validate_can_manage_experiment,
-        (routes.DELETE_EXPERIMENT_PERMISSION, "DELETE"): validate_can_manage_experiment,
-        (routes.GET_REGISTERED_MODEL_PERMISSION, "GET"): validate_can_manage_registered_model,
-        (routes.CREATE_REGISTERED_MODEL_PERMISSION, "POST"): validate_can_manage_registered_model,
-        (routes.UPDATE_REGISTERED_MODEL_PERMISSION, "PATCH"): validate_can_manage_registered_model,
-        (routes.DELETE_REGISTERED_MODEL_PERMISSION, "DELETE"): validate_can_manage_registered_model,
+        # (routes.GET_EXPERIMENT_PERMISSION, "GET"): validate_can_manage_experiment,
+        # (routes.CREATE_EXPERIMENT_PERMISSION, "GET"): validate_can_manage_experiment,
+        # (routes.CREATE_EXPERIMENT_PERMISSION, "POST"): validate_can_manage_experiment,
+        # (routes.UPDATE_EXPERIMENT_PERMISSION, "PATCH"): validate_can_manage_experiment,
+        # (routes.DELETE_EXPERIMENT_PERMISSION, "DELETE"): validate_can_manage_experiment,)
+        # (routes.GET_REGISTERED_MODEL_PERMISSION, "GET"): validate_can_manage_registered_model,
+        # (routes.CREATE_REGISTERED_MODEL_PERMISSION, "POST"): validate_can_manage_registered_model,
+        # (routes.UPDATE_REGISTERED_MODEL_PERMISSION, "PATCH"): validate_can_manage_registered_model,
+        # (routes.DELETE_REGISTERED_MODEL_PERMISSION, "DELETE"): validate_can_manage_registered_model,
         (routes.CREATE_ACCESS_TOKEN, "PATCH"): validate_can_get_user_token,
         # (SIGNUP, "GET"): validate_can_create_user,
         # (routes.GET_USER, "GET"): validate_can_read_user,
@@ -163,6 +163,25 @@ BEFORE_REQUEST_VALIDATORS.update(
         (routes.UPDATE_USER_PASSWORD, "PATCH"): validate_can_update_user_password,
         (routes.UPDATE_USER_ADMIN, "PATCH"): validate_can_update_user_admin,
         (routes.DELETE_USER, "DELETE"): validate_can_delete_user,
+        # refactored
+        (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,
+        (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "POST"): validate_can_manage_experiment,
+        (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "PATCH"): validate_can_manage_experiment,
+        (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "DELETE"): validate_can_manage_experiment,
+        (routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
+        (routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
+        (routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
+        (routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
+        (routes.USER_PROMPT_PERMISSIONS, "GET"): validate_can_manage_registered_model,
+        (routes.USER_PROMPT_PERMISSIONS, "POST"): validate_can_manage_registered_model,
+        (routes.USER_PROMPT_PERMISSIONS, "PATCH"): validate_can_manage_registered_model,
+        (routes.USER_PROMPT_PERMISSIONS, "DELETE"): validate_can_manage_registered_model,
+        (routes.USER_EXPERIMENT_PATTERN_PERMISSIONS, "GET"): validate_can_manage_experiment,
+        (routes.USER_EXPERIMENT_PATTERN_PERMISSIONS, "POST"): validate_can_manage_experiment,
+        (routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,
+        (routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "POST"): validate_can_manage_experiment,
+        (routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "PATCH"): validate_can_manage_experiment,
+        (routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "DELETE"): validate_can_manage_experiment,
     }
 )
 

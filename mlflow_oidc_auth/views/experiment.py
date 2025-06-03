@@ -15,10 +15,10 @@ from mlflow_oidc_auth.utils import (
 
 @catch_mlflow_exception
 @check_experiment_permission
-def create_experiment_permission():
+def create_experiment_permission(username: str, experiment_id: str):
     store.create_experiment_permission(
-        get_experiment_id(),
-        get_request_param("username"),
+        experiment_id,
+        username,
         get_request_param("permission"),
     )
     return jsonify({"message": "Experiment permission has been created."})
@@ -26,17 +26,17 @@ def create_experiment_permission():
 
 @catch_mlflow_exception
 @check_experiment_permission
-def get_experiment_permission():
-    ep = store.get_experiment_permission(get_experiment_id(), get_request_param("username"))
+def get_experiment_permission(username: str, experiment_id: str):
+    ep = store.get_experiment_permission(experiment_id, username)
     return make_response({"experiment_permission": ep.to_json()})
 
 
 @catch_mlflow_exception
 @check_experiment_permission
-def update_experiment_permission():
+def update_experiment_permission(username: str, experiment_id: str):
     store.update_experiment_permission(
-        get_experiment_id(),
-        get_request_param("username"),
+        experiment_id,
+        username,
         get_request_param("permission"),
     )
     return jsonify({"message": "Experiment permission has been changed."})
@@ -44,16 +44,17 @@ def update_experiment_permission():
 
 @catch_mlflow_exception
 @check_experiment_permission
-def delete_experiment_permission():
+def delete_experiment_permission(username: str, experiment_id: str):
     store.delete_experiment_permission(
-        get_experiment_id(),
-        get_request_param("username"),
+        experiment_id,
+        username,
     )
     return jsonify({"message": "Experiment permission has been deleted."})
 
 
+# TODO: refactor it, move filtering logic to the store
 @catch_mlflow_exception
-def get_experiments():
+def list_experiments():
     if get_is_admin():
         list_experiments = _get_tracking_store().search_experiments()
     else:

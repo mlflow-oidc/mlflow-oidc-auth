@@ -412,7 +412,8 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit, On
               this.userId,
               item.regex,
               result.permission,
-              result.priority
+              result.priority,
+              item.id
             )
           ),
           tap(() => this.snackBarService.openSnackBar('Experiment regex permission updated successfully')),
@@ -422,7 +423,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit, On
         .subscribe((data: ExperimentRegexPermissionModel[]) => (this.experimentRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.experimentRegexDataService
-        .removeExperimentRegexPermissionFromUser(this.userId, event.item.regex)
+        .removeExperimentRegexPermissionFromUser(this.userId, event.item.id)
         .pipe(
           switchMap(() => this.experimentRegexDataService.getExperimentRegexPermissionsForUser(this.userId)),
           takeUntil(this.destroy$)

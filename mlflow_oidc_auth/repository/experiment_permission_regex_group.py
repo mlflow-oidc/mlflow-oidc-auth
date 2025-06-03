@@ -16,12 +16,12 @@ class ExperimentPermissionGroupRegexRepository:
         self._Session: Callable[[], Session] = session_maker
 
     def _get_experiment_group_regex_permission(
-        self, session: Session, regex: str, group_id: int
+        self, session: Session, id: int, group_id: int
     ) -> SqlExperimentGroupRegexPermission:
         """
-        Get the experiment group regex permission for a given regex and group ID.
+        Get the experiment group regex permission for a given ID and group ID.
         :param session: SQLAlchemy session
-        :param regex: The regex pattern.
+        :param id: The ID of the permission.
         :param group_id: The ID of the group.
         :return: The experiment group regex permission if it exists, otherwise raises an exception.
         """
@@ -29,15 +29,15 @@ class ExperimentPermissionGroupRegexRepository:
             return (
                 session.query(SqlExperimentGroupRegexPermission)
                 .filter(
-                    SqlExperimentGroupRegexPermission.regex == regex,
+                    SqlExperimentGroupRegexPermission.id == id,
                     SqlExperimentGroupRegexPermission.group_id == group_id,
                 )
                 .one()
             )
         except NoResultFound:
-            raise MlflowException(f"Permission not found for group_id: {group_id} and regex: {regex}", RESOURCE_DOES_NOT_EXIST)
+            raise MlflowException(f"Permission not found for group_id: {group_id} and id: {id}", RESOURCE_DOES_NOT_EXIST)
         except MultipleResultsFound:
-            raise MlflowException(f"Multiple Permissions found for group_id: {group_id} and regex: {regex}", INVALID_STATE)
+            raise MlflowException(f"Multiple Permissions found for group_id: {group_id} and id: {id}", INVALID_STATE)
 
     def _list_group_permissions(self, session: Session, groups: List[int]) -> List[SqlExperimentGroupRegexPermission]:
         return (
@@ -57,28 +57,28 @@ class ExperimentPermissionGroupRegexRepository:
             session.flush()
             return perm.to_mlflow_entity()
 
-    def get(self, group_name: str, regex: str) -> ExperimentGroupRegexPermission:
+    def get(self, group_name: str, id: int) -> ExperimentGroupRegexPermission:
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_experiment_group_regex_permission(session, regex, group.id)
+            perm = self._get_experiment_group_regex_permission(session, id, group.id)
             return perm.to_mlflow_entity()
 
-    def update(self, group_name: str, regex: str, priority: int, permission: str) -> ExperimentGroupRegexPermission:
+    def update(self, id: int, group_name: str, regex: str, priority: int, permission: str) -> ExperimentGroupRegexPermission:
         _validate_permission(permission)
         validate_regex(regex)
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_experiment_group_regex_permission(session, regex, group.id)
+            perm = self._get_experiment_group_regex_permission(session, id, group.id)
             perm.permission = permission
+            perm.regex = regex
             perm.priority = priority
             session.commit()
             return perm.to_mlflow_entity()
 
-    def revoke(self, group_name: str, regex: str) -> None:
-        validate_regex(regex)
+    def revoke(self, group_name: str, id: int) -> None:
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_experiment_group_regex_permission(session, regex, group.id)
+            perm = self._get_experiment_group_regex_permission(session, id, group.id)
             session.delete(perm)
             session.commit()
             return None

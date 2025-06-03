@@ -29,7 +29,7 @@ export class UserDataService {
             API_URL.MODELS_FOR_USER.replace('${userName}', userName)
           ),
           experiments: this.http.get<{ experiments: ExperimentPermission[] }>(
-            API_URL.EXPERIMENTS_FOR_USER.replace('${userName}', userName)
+            API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', userName)
           ),
           prompts: this.http.get<{ prompts: PromptPermission[] }>(
             API_URL.PROMPTS_FOR_USER.replace('${userName}', userName)
@@ -59,11 +59,11 @@ export class UserDataService {
   }
 
   getAllUsers() {
-    return this.http.get<AllUsersListModel>(API_URL.GET_ALL_USERS);
+    return this.http.get<AllUsersListModel>(API_URL.ALL_USERS);
   }
 
   getAllServiceUsers() {
-    return this.http.get<AllUsersListModel>(`${API_URL.GET_ALL_USERS}?service=true`);
+    return this.http.get<AllUsersListModel>(`${API_URL.ALL_USERS}?service=true`);
   }
 
   createServiceAccount(body: UserModel) {

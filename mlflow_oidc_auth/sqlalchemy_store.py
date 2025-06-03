@@ -208,19 +208,21 @@ class SqlAlchemyStore:
     def create_experiment_regex_permission(self, regex: str, priority: int, permission: str, username: str):
         return self.experiment_regex_repo.grant(regex, priority, permission, username)
 
-    def get_experiment_regex_permission(self, regex: str, username: str) -> ExperimentRegexPermission:
-        return self.experiment_regex_repo.get(regex, username)
+    def get_experiment_regex_permission(self, username: str, id: int) -> ExperimentRegexPermission:
+        return self.experiment_regex_repo.get(username=username, id=id)
 
     def list_experiment_regex_permissions(self, username: str) -> List[ExperimentRegexPermission]:
         return self.experiment_regex_repo.list_regex_for_user(username)
 
     def update_experiment_regex_permission(
-        self, regex: str, priority: int, permission: str, username: str
+        self, regex: str, priority: int, permission: str, username: str, id: int
     ) -> ExperimentRegexPermission:
-        return self.experiment_regex_repo.update(regex, priority, permission, username)
+        return self.experiment_regex_repo.update(
+            regex=regex, priority=priority, permission=permission, username=username, id=id
+        )
 
-    def delete_experiment_regex_permission(self, regex: str, username: str) -> None:
-        return self.experiment_regex_repo.revoke(regex, username)
+    def delete_experiment_regex_permission(self, username: str, id: int) -> None:
+        return self.experiment_regex_repo.revoke(username=username, id=id)
 
     # Experiment regex group CRUD
     def create_group_experiment_regex_permission(
@@ -228,8 +230,8 @@ class SqlAlchemyStore:
     ) -> ExperimentGroupRegexPermission:
         return self.experiment_group_regex_repo.grant(group_name, regex, priority, permission)
 
-    def get_group_experiment_regex_permission(self, group_name: str, regex: str) -> ExperimentGroupRegexPermission:
-        return self.experiment_group_regex_repo.get(group_name, regex)
+    def get_group_experiment_regex_permission(self, group_name: str, id: int) -> ExperimentGroupRegexPermission:
+        return self.experiment_group_regex_repo.get(group_name, id)
 
     def list_group_experiment_regex_permissions(self, group_name: str) -> List[ExperimentGroupRegexPermission]:
         return self.experiment_group_regex_repo.list_permissions_for_group(group_name)
@@ -245,30 +247,30 @@ class SqlAlchemyStore:
         return self.experiment_group_regex_repo.list_permissions_for_groups_ids(group_ids)
 
     def update_group_experiment_regex_permission(
-        self, group_name: str, regex: str, priority: int, permission: str
+        self, id: int, group_name: str, regex: str, priority: int, permission: str
     ) -> ExperimentGroupRegexPermission:
-        return self.experiment_group_regex_repo.update(group_name, regex, priority, permission)
+        return self.experiment_group_regex_repo.update(id, group_name, regex, priority, permission)
 
-    def delete_group_experiment_regex_permission(self, group_name: str, regex: str) -> None:
-        return self.experiment_group_regex_repo.revoke(group_name, regex)
+    def delete_group_experiment_regex_permission(self, group_name: str, id: int) -> None:
+        return self.experiment_group_regex_repo.revoke(group_name, id)
 
     # Registered model regex CRUD
     def create_registered_model_regex_permission(self, regex: str, priority: int, permission: str, username: str):
         return self.registered_model_regex_repo.grant(regex, priority, permission, username)
 
-    def get_registered_model_regex_permission(self, regex: str, username: str) -> RegisteredModelRegexPermission:
-        return self.registered_model_regex_repo.get(regex, username)
+    def get_registered_model_regex_permission(self, id: int, username: str) -> RegisteredModelRegexPermission:
+        return self.registered_model_regex_repo.get(id, username)
 
     def list_registered_model_regex_permissions(self, username: str) -> List[RegisteredModelRegexPermission]:
         return self.registered_model_regex_repo.list_regex_for_user(username)
 
     def update_registered_model_regex_permission(
-        self, regex: str, priority: int, permission: str, username: str
+        self, id: int, regex: str, priority: int, permission: str, username: str
     ) -> RegisteredModelRegexPermission:
-        return self.registered_model_regex_repo.update(regex, priority, permission, username)
+        return self.registered_model_regex_repo.update(id, regex, priority, permission, username)
 
-    def delete_registered_model_regex_permission(self, regex: str, username: str) -> None:
-        return self.registered_model_regex_repo.revoke(regex, username)
+    def delete_registered_model_regex_permission(self, id: int, username: str) -> None:
+        return self.registered_model_regex_repo.revoke(id, username)
 
     # Registered model regex group CRUD
     def create_group_registered_model_regex_permission(
@@ -278,8 +280,8 @@ class SqlAlchemyStore:
             group_name=group_name, regex=regex, priority=priority, permission=permission
         )
 
-    def get_group_registered_model_regex_permission(self, group_name: str, regex: str) -> RegisteredModelGroupRegexPermission:
-        return self.registered_model_group_regex_repo.get(group_name, regex)
+    def get_group_registered_model_regex_permission(self, group_name: str, id: int) -> RegisteredModelGroupRegexPermission:
+        return self.registered_model_group_regex_repo.get(id=id, group_name=group_name)
 
     def list_group_registered_model_regex_permissions(self, group_name: str) -> List[RegisteredModelGroupRegexPermission]:
         return self.registered_model_group_regex_repo.list_permissions_for_group(group_name)
@@ -295,14 +297,14 @@ class SqlAlchemyStore:
         return self.registered_model_group_regex_repo.list_permissions_for_groups_ids(group_ids)
 
     def update_group_registered_model_regex_permission(
-        self, group_name: str, regex: str, priority: int, permission: str
+        self, id: int, group_name: str, regex: str, priority: int, permission: str
     ) -> RegisteredModelGroupRegexPermission:
         return self.registered_model_group_regex_repo.update(
-            group_name=group_name, regex=regex, priority=priority, permission=permission
+            id=id, group_name=group_name, regex=regex, priority=priority, permission=permission
         )
 
-    def delete_group_registered_model_regex_permission(self, group_name: str, regex: str) -> None:
-        return self.registered_model_group_regex_repo.revoke(group_name=group_name, regex=regex)
+    def delete_group_registered_model_regex_permission(self, group_name: str, id: int) -> None:
+        return self.registered_model_group_regex_repo.revoke(group_name=group_name, id=id)
 
     # Prompt regex CRUD
     def create_prompt_regex_permission(self, regex: str, priority: int, permission: str, username: str, prompt: bool = True):
@@ -310,21 +312,21 @@ class SqlAlchemyStore:
             regex=regex, priority=priority, permission=permission, username=username, prompt=prompt
         )
 
-    def get_prompt_regex_permission(self, regex: str, username: str, prompt: bool = True) -> RegisteredModelRegexPermission:
-        return self.prompt_regex_repo.get(regex=regex, username=username, prompt=prompt)
+    def get_prompt_regex_permission(self, id: int, username: str, prompt: bool = True) -> RegisteredModelRegexPermission:
+        return self.prompt_regex_repo.get(id=id, username=username, prompt=prompt)
 
     def list_prompt_regex_permissions(self, username: str, prompt: bool = True) -> List[RegisteredModelRegexPermission]:
         return self.prompt_regex_repo.list_regex_for_user(username=username, prompt=prompt)
 
     def update_prompt_regex_permission(
-        self, regex: str, priority: int, permission: str, username: str, prompt: bool = True
+        self, id: int, regex: str, priority: int, permission: str, username: str, prompt: bool = True
     ) -> RegisteredModelRegexPermission:
         return self.prompt_regex_repo.update(
-            regex=regex, priority=priority, permission=permission, username=username, prompt=prompt
+            id=id, regex=regex, priority=priority, permission=permission, username=username, prompt=prompt
         )
 
-    def delete_prompt_regex_permission(self, regex: str, username: str) -> None:
-        return self.prompt_regex_repo.revoke(regex=regex, username=username, prompt=True)
+    def delete_prompt_regex_permission(self, id: int, username: str) -> None:
+        return self.prompt_regex_repo.revoke(id=id, username=username, prompt=True)
 
     # Prompt regex group CRUD
     def create_group_prompt_regex_permission(
@@ -335,9 +337,9 @@ class SqlAlchemyStore:
         )
 
     def get_group_prompt_regex_permission(
-        self, regex: str, group_name: str, prompt: bool = True
+        self, id: int, group_name: str, prompt: bool = True
     ) -> RegisteredModelGroupRegexPermission:
-        return self.prompt_group_regex_repo.get(regex=regex, group_name=group_name, prompt=prompt)
+        return self.prompt_group_regex_repo.get(id=id, group_name=group_name, prompt=prompt)
 
     def list_group_prompt_regex_permissions(
         self, group_name: str, prompt: bool = True
@@ -355,11 +357,11 @@ class SqlAlchemyStore:
         return self.prompt_group_regex_repo.list_permissions_for_groups_ids(group_ids=group_ids, prompt=prompt)
 
     def update_group_prompt_regex_permission(
-        self, regex: str, priority: int, permission: str, group_name: str, prompt: bool = True
+        self, id: int, regex: str, priority: int, permission: str, group_name: str, prompt: bool = True
     ) -> RegisteredModelGroupRegexPermission:
         return self.prompt_group_regex_repo.update(
-            regex=regex, priority=priority, permission=permission, group_name=group_name, prompt=prompt
+            id=id, regex=regex, priority=priority, permission=permission, group_name=group_name, prompt=prompt
         )
 
-    def delete_group_prompt_regex_permission(self, regex: str, group_name: str) -> None:
-        return self.prompt_group_regex_repo.revoke(regex=regex, group_name=group_name, prompt=True)
+    def delete_group_prompt_regex_permission(self, id: int, group_name: str) -> None:
+        return self.prompt_group_regex_repo.revoke(id=id, group_name=group_name, prompt=True)

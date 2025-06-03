@@ -5,7 +5,7 @@ from mlflow_oidc_auth.store import store
 
 
 @catch_mlflow_exception
-def get_groups():
+def list_groups():
     return jsonify({"groups": store.get_groups()})
 
 

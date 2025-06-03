@@ -201,6 +201,7 @@ class SqlExperimentGroupRegexPermission(Base):
 
     def to_mlflow_entity(self):
         return ExperimentGroupRegexPermission(
+            id_=self.id,
             regex=self.regex,
             priority=self.priority,
             group_id=self.group_id,
@@ -220,6 +221,7 @@ class SqlRegisteredModelGroupRegexPermission(Base):
 
     def to_mlflow_entity(self):
         return RegisteredModelGroupRegexPermission(
+            id_=self.id,
             regex=self.regex,
             priority=self.priority,
             group_id=self.group_id,

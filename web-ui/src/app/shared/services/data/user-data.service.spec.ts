@@ -74,7 +74,7 @@ describe('UserDataService', () => {
       expect(users).toEqual(mockUsers);
     });
 
-    const req = httpMock.expectOne(API_URL.GET_ALL_USERS);
+    const req = httpMock.expectOne(API_URL.ALL_USERS);
     expect(req.request.method).toBe('GET');
     req.flush(mockUsers);
   });
@@ -104,7 +104,7 @@ describe('UserDataService', () => {
       expect(users).toEqual(mockServiceUsers);
     });
 
-    const req = httpMock.expectOne(`${API_URL.GET_ALL_USERS}?service=true`);
+    const req = httpMock.expectOne(`${API_URL.ALL_USERS}?service=true`);
     expect(req.request.method).toBe('GET');
     req.flush(mockServiceUsers);
   });

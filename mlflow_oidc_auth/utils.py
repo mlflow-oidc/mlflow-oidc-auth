@@ -123,6 +123,43 @@ def _permission_registered_model_sources_config(model_name: str, username: str) 
     }
 
 
+def get_url_param(param: str) -> str:
+    """Extract a URL path parameter from Flask's request.view_args.
+
+    Args:
+        param: The name of the URL parameter to extract
+
+    Returns:
+        The parameter value
+
+    Raises:
+        MlflowException: If the parameter is not found in the URL path
+    """
+    view_args = request.view_args
+    if not view_args or param not in view_args:
+        raise MlflowException(
+            f"Missing value for required URL parameter '{param}'. " "The parameter should be part of the URL path.",
+            INVALID_PARAMETER_VALUE,
+        )
+    return view_args[param]
+
+
+def get_optional_url_param(param: str) -> str | None:
+    """Extract an optional URL path parameter from Flask's request.view_args.
+
+    Args:
+        param: The name of the URL parameter to extract
+
+    Returns:
+        The parameter value or None if not found
+    """
+    view_args = request.view_args
+    if not view_args or param not in view_args:
+        app.logger.debug(f"Optional URL parameter '{param}' not found in request path.")
+        return None
+    return view_args[param]
+
+
 def get_request_param(param: str) -> str:
     if request.method == "GET":
         args = request.args

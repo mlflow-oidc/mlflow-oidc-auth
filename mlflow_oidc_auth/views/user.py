@@ -75,8 +75,9 @@ def update_username_password():
     return jsonify({"token": new_password})
 
 
+# TODO: move filtering logic to store
 @catch_mlflow_exception
-def get_user_experiments(username):
+def list_user_experiments(username):
     current_user = store.get_user(get_username())
     all_experiments = _get_tracking_store().search_experiments()
     is_admin = get_is_admin()
@@ -110,7 +111,7 @@ def get_user_experiments(username):
 
 
 @catch_mlflow_exception
-def get_user_models(username):
+def list_user_models(username):
     all_registered_models = _get_model_registry_store().search_registered_models(max_results=1000)
     current_user = store.get_user(get_username())
     is_admin = get_is_admin()
@@ -141,7 +142,7 @@ def get_user_models(username):
 
 
 @catch_mlflow_exception
-def get_user_prompts(username):
+def list_user_prompts(username):
     all_registered_models = _get_model_registry_store().search_registered_models(
         max_results=1000, filter_string="tags.`mlflow.prompt.is_prompt` = 'true'"
     )
@@ -173,8 +174,9 @@ def get_user_prompts(username):
     return jsonify({"prompts": models})
 
 
+# TODO: use to_json
 @catch_mlflow_exception
-def get_users():
+def list_users():
     service_account = bool(get_optional_request_param("service") or False)
     # is_admin = get_is_admin()
     # if is_admin:

@@ -299,17 +299,23 @@ class UserGroup:
 class RegisteredModelGroupRegexPermission:
     def __init__(
         self,
+        id_,
         regex,
         priority,
         group_id,
         permission,
         prompt=False,
     ):
+        self._id = id_
         self._regex = regex
         self._priority = priority
         self._group_id = group_id
         self._permission = permission
         self._prompt = prompt
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def regex(self):
@@ -341,6 +347,7 @@ class RegisteredModelGroupRegexPermission:
 
     def to_json(self):
         return {
+            "id": self.id,
             "regex": self.regex,
             "priority": self.priority,
             "group_id": self.group_id,
@@ -351,6 +358,7 @@ class RegisteredModelGroupRegexPermission:
     @classmethod
     def from_json(cls, dictionary):
         return cls(
+            id_=dictionary["id"],
             regex=dictionary["regex"],
             priority=dictionary["priority"],
             group_id=dictionary["group_id"],
@@ -362,15 +370,21 @@ class RegisteredModelGroupRegexPermission:
 class ExperimentGroupRegexPermission:
     def __init__(
         self,
+        id_,
         regex,
         priority,
         group_id,
         permission,
     ):
+        self._id = id_
         self._regex = regex
         self._priority = priority
         self._group_id = group_id
         self._permission = permission
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def regex(self):
@@ -398,6 +412,7 @@ class ExperimentGroupRegexPermission:
 
     def to_json(self):
         return {
+            "id": self.id,
             "regex": self.regex,
             "priority": self.priority,
             "group_id": self.group_id,
@@ -407,6 +422,7 @@ class ExperimentGroupRegexPermission:
     @classmethod
     def from_json(cls, dictionary):
         return cls(
+            id_=dictionary["id"],
             regex=dictionary["regex"],
             priority=dictionary["priority"],
             group_id=dictionary["group_id"],

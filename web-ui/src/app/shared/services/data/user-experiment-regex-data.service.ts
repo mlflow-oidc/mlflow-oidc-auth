@@ -13,7 +13,7 @@ export class UserExperimentRegexDataService {
   constructor(private readonly http: HttpClient) {}
 
   getExperimentRegexPermissionsForUser(userName: string): Observable<ExperimentRegexPermissionModel[]> {
-    const url = API_URL.GET_USER_EXPERIMENT_REGEX_PERMISSION.replace('${userName}', userName);
+    const url = API_URL.USER_EXPERIMENT_PATTERN_PERMISSIONS.replace('${userName}', userName);
     return this.http.get<ExperimentRegexPermissionModel[]>(url);
   }
 
@@ -23,7 +23,7 @@ export class UserExperimentRegexDataService {
     permission: PermissionEnum,
     priority: number
   ): Observable<unknown> {
-    const url = API_URL.CREATE_USER_EXPERIMENT_REGEX_PERMISSION.replace('${userName}', userName);
+    const url = API_URL.USER_EXPERIMENT_PATTERN_PERMISSIONS.replace('${userName}', userName);
     return this.http.post(url, { regex, permission, priority });
   }
 
@@ -31,14 +31,19 @@ export class UserExperimentRegexDataService {
     userName: string,
     regex: string,
     permission: PermissionEnum,
-    priority: number
+    priority: number,
+    id: string
   ): Observable<unknown> {
-    const url = API_URL.UPDATE_USER_EXPERIMENT_REGEX_PERMISSION.replace('${userName}', userName);
-    return this.http.patch(url, { regex, permission, priority });
+    const url = API_URL.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL
+      .replace('${userName}', userName)
+      .replace('${patternId}', id);
+    return this.http.patch(url, { permission, priority, regex });
   }
 
-  removeExperimentRegexPermissionFromUser(userName: string, regex: string): Observable<unknown> {
-    const url = API_URL.DELETE_USER_EXPERIMENT_REGEX_PERMISSION.replace('${userName}', userName);
-    return this.http.delete(url, { body: { regex } });
+  removeExperimentRegexPermissionFromUser(userName: string, id: string): Observable<unknown> {
+    const url = API_URL.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL
+      .replace('${userName}', userName)
+      .replace('${patternId}', id);
+    return this.http.delete(url);
   }
 }

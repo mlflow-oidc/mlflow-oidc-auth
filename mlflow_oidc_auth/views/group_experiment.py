@@ -14,27 +14,27 @@ from mlflow_oidc_auth.utils import (
 
 @catch_mlflow_exception
 @check_experiment_permission
-def create_group_experiment_permission(group_name):
-    store.create_group_experiment_permission(group_name, get_experiment_id(), get_request_param("permission"))
+def create_group_experiment_permission(group_name: str, experiment_id: str):
+    store.create_group_experiment_permission(group_name, experiment_id, get_request_param("permission"))
     return jsonify({"message": "Group experiment permission has been created."})
 
 
 @catch_mlflow_exception
 @check_experiment_permission
-def update_group_experiment_permission(group_name):
-    store.update_group_experiment_permission(group_name, get_experiment_id(), get_request_param("permission"))
+def update_group_experiment_permission(group_name: str, experiment_id: str):
+    store.update_group_experiment_permission(group_name, experiment_id, get_request_param("permission"))
     return jsonify({"message": "Group experiment permission has been updated."})
 
 
 @catch_mlflow_exception
 @check_experiment_permission
-def delete_group_experiment_permission(group_name):
-    store.delete_group_experiment_permission(group_name, get_experiment_id())
+def delete_group_experiment_permission(group_name: str, experiment_id: str):
+    store.delete_group_experiment_permission(group_name, experiment_id)
     return jsonify({"message": "Group experiment permission has been deleted."})
 
 
 @catch_mlflow_exception
-def get_group_experiments(group_name):
+def list_group_experiments(group_name: str):
     experiments = store.get_group_experiments(group_name)
     if get_is_admin():
         return jsonify(

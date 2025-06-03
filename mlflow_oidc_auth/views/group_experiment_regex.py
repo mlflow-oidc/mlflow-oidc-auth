@@ -19,7 +19,7 @@ def create_group_experiment_regex_permission(group_name):
 
 @catch_mlflow_exception
 @check_admin_permission
-def get_group_experiment_regex_permission(group_name):
+def list_group_experiment_regex_permission(group_name):
     ep = store.list_group_experiment_regex_permissions(
         group_name=group_name,
     )
@@ -28,8 +28,19 @@ def get_group_experiment_regex_permission(group_name):
 
 @catch_mlflow_exception
 @check_admin_permission
-def update_group_experiment_regex_permission(group_name):
+def get_group_experiment_regex_permission(group_name: str, pattern_id: str):
+    ep = store.get_group_experiment_regex_permission(
+        group_name=group_name,
+        id=int(pattern_id),
+    )
+    return jsonify({"experiment_permission": ep.to_json()}), 200
+
+
+@catch_mlflow_exception
+@check_admin_permission
+def update_group_experiment_regex_permission(group_name: str, pattern_id: str):
     ep = store.update_group_experiment_regex_permission(
+        id=int(pattern_id),
         group_name=group_name,
         regex=get_request_param("regex"),
         priority=int(get_request_param("priority")),
@@ -40,9 +51,9 @@ def update_group_experiment_regex_permission(group_name):
 
 @catch_mlflow_exception
 @check_admin_permission
-def delete_group_experiment_regex_permission(group_name):
+def delete_group_experiment_regex_permission(group_name: str, pattern_id: str):
     store.delete_group_experiment_regex_permission(
         group_name=group_name,
-        regex=get_request_param("regex"),
+        id=int(pattern_id),
     )
     return jsonify({"status": "success"}), 200

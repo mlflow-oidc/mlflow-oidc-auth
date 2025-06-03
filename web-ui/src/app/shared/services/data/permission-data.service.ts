@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import {
-  CreateExperimentPermissionRequestBodyModel,
-  CreateModelPermissionRequestBodyModel,
+  ExperimentPermissionRequestModel,
+  ModelPermissionRequestModel,
 } from 'src/app/shared/interfaces/permission-data.interface';
 import { API_URL } from 'src/app/core/configs/api-urls';
 import { PermissionEnum } from '../../../core/configs/permissions';
@@ -13,46 +13,75 @@ import { PermissionEnum } from '../../../core/configs/permissions';
 export class PermissionDataService {
   constructor(private readonly http: HttpClient) {}
 
-  createExperimentPermission(body: CreateExperimentPermissionRequestBodyModel) {
-    return this.http.post(API_URL.CREATE_EXPERIMENT_PERMISSION, body, {
+  createExperimentPermission(input: ExperimentPermissionRequestModel) {
+    const url = API_URL.USER_EXPERIMENT_PERMISSION
+      .replace('${userName}', input.username)
+      .replace('${experimentId}', input.experiment_id);
+    return this.http.post(url, { permission: input.permission }, {
       responseType: 'text',
     });
   }
 
-  updateExperimentPermission(body: { experiment_id: string; username: string; permission: string }) {
-    return this.http.patch(API_URL.UPDATE_EXPERIMENT_PERMISSION, body, {
+  updateExperimentPermission(input: ExperimentPermissionRequestModel) {
+    const url = API_URL.USER_EXPERIMENT_PERMISSION
+      .replace('${userName}', input.username)
+      .replace('${experimentId}', input.experiment_id);
+    return this.http.patch(url, { permission: input.permission }, {
       responseType: 'text',
     });
   }
 
-  deleteExperimentPermission(body: { experiment_id: string; username: string }) {
-    return this.http.delete(API_URL.DELETE_EXPERIMENT_PERMISSION, { body });
+  deleteExperimentPermission(input: ExperimentPermissionRequestModel) {
+    const url = API_URL.USER_EXPERIMENT_PERMISSION
+      .replace('${userName}', input.username)
+      .replace('${experimentId}', input.experiment_id);
+    return this.http.delete(url);
   }
 
-  createModelPermission(body: CreateModelPermissionRequestBodyModel) {
-    return this.http.post(API_URL.CREATE_MODEL_PERMISSION, body);
-  }
-
-  updateModelPermission(body: { username: string; name: string; permission: string }) {
-    return this.http.patch(API_URL.UPDATE_MODEL_PERMISSION, body, {
-      responseType: 'text',
+  createModelPermission(input: ModelPermissionRequestModel) {
+    const url = API_URL.USER_MODEL_PERMISSION
+      .replace('${userName}', input.username)
+      .replace('${modelName}', input.name);
+    return this.http.post(url, { permission: input.permission }, {
+      responseType: 'json',
     });
   }
 
-  deleteModelPermission(body: { name: string; username: string }) {
-    return this.http.delete(API_URL.DELETE_MODEL_PERMISSION, { body });
+  updateModelPermission(input: ModelPermissionRequestModel) {
+    const url = API_URL.USER_MODEL_PERMISSION
+      .replace('${userName}', input.username)
+      .replace('${modelName}', input.name);
+    return this.http.patch(url, { permission: input.permission }, {
+      responseType: 'json',
+    });
+  }
+
+  deleteModelPermission(input: { name: string; username: string }) {
+    const url = API_URL.USER_MODEL_PERMISSION
+      .replace('${userName}', input.username)
+      .replace('${modelName}', input.name);
+    return this.http.delete(url);
   }
 
   createPromptPermission(body: { name: string; username: string; permission: string }) {
-    return this.http.post(API_URL.CREATE_PROMPT_PERMISSION, body);
+    const url = API_URL.USER_PROMPT_PERMISSION
+      .replace('${userName}', body.username)
+      .replace('${promptName}', body.name);
+    return this.http.post(url, { permission: body.permission });
   }
 
   updatePromptPermission(body: { name: string; username: string; permission: string }) {
-    return this.http.patch(API_URL.UPDATE_PROMPT_PERMISSION, body);
+    const url = API_URL.USER_PROMPT_PERMISSION
+      .replace('${userName}', body.username)
+      .replace('${promptName}', body.name);
+    return this.http.patch(url, { permission: body.permission });
   }
 
   deletePromptPermission(body: { name: string; username: string }) {
-    return this.http.delete(API_URL.DELETE_PROMPT_PERMISSION, { body });
+    const url = API_URL.USER_PROMPT_PERMISSION
+      .replace('${userName}', body.username)
+      .replace('${promptName}', body.name);
+    return this.http.delete(url);
   }
 
   addExperimentPermissionToGroup(groupName: string, experiment_id: string, permission: PermissionEnum) {

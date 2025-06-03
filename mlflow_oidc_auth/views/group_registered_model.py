@@ -13,27 +13,27 @@ from mlflow_oidc_auth.utils import (
 
 @catch_mlflow_exception
 @check_registered_model_permission
-def create_group_model_permission(group_name):
-    store.create_group_model_permission(group_name, get_request_param("name"), get_request_param("permission"))
+def create_group_model_permission(group_name: str, registered_model_name: str):
+    store.create_group_model_permission(group_name, registered_model_name, get_request_param("permission"))
     return jsonify({"message": "Group model permission has been created."})
 
 
 @catch_mlflow_exception
 @check_registered_model_permission
-def delete_group_model_permission(group_name):
-    store.delete_group_model_permission(group_name, get_request_param("name"))
+def delete_group_model_permission(group_name: str, registered_model_name: str):
+    store.delete_group_model_permission(group_name, registered_model_name)
     return jsonify({"message": "Group model permission has been deleted."})
 
 
 @catch_mlflow_exception
 @check_registered_model_permission
-def update_group_model_permission(group_name):
-    store.update_group_model_permission(group_name, get_request_param("name"), get_request_param("permission"))
+def update_group_model_permission(group_name: str, registered_model_name: str):
+    store.update_group_model_permission(group_name, registered_model_name, get_request_param("permission"))
     return jsonify({"message": "Group model permission has been updated."})
 
 
 @catch_mlflow_exception
-def get_group_models(group_name):
+def list_group_models(group_name: str):
     models = store.get_group_models(group_name)
     if get_is_admin():
         return jsonify(

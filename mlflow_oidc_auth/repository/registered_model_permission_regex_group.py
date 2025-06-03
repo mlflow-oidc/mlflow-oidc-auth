@@ -18,7 +18,7 @@ class RegisteredModelGroupRegexPermissionRepository:
         self._group_repo = GroupRepository(session_maker)
 
     def _get_registered_model_group_regex_permission(
-        self, session: Session, regex: str, group_id: int, prompt: bool = False
+        self, session: Session, id: int, group_id: int, prompt: bool = False
     ) -> SqlRegisteredModelGroupRegexPermission:
         """
         Get the registered model group regex permission for a given regex and group ID.
@@ -32,7 +32,7 @@ class RegisteredModelGroupRegexPermissionRepository:
             return (
                 session.query(SqlRegisteredModelGroupRegexPermission)
                 .filter(
-                    SqlRegisteredModelGroupRegexPermission.regex == regex,
+                    SqlRegisteredModelGroupRegexPermission.id == id,
                     SqlRegisteredModelGroupRegexPermission.group_id == group_id,
                     SqlRegisteredModelGroupRegexPermission.prompt == prompt,
                 )
@@ -40,12 +40,12 @@ class RegisteredModelGroupRegexPermissionRepository:
             )
         except NoResultFound:
             raise MlflowException(
-                f"No model perm for regex={regex}, group_id={group_id}, prompt={prompt}",
+                f"No model perm for id={id}, group_id={group_id}, prompt={prompt}",
                 RESOURCE_DOES_NOT_EXIST,
             )
         except MultipleResultsFound:
             raise MlflowException(
-                f"Multiple model perms for regex={regex}, group_id={group_id}, prompt={prompt}",
+                f"Multiple model perms for id={id}, group_id={group_id}, prompt={prompt}",
                 INVALID_STATE,
             )
 
@@ -73,16 +73,16 @@ class RegisteredModelGroupRegexPermissionRepository:
             session.flush()
             return perm.to_mlflow_entity()
 
-    def get(self, regex: str, group_name: str, prompt: bool = False) -> RegisteredModelGroupRegexPermission:
+    def get(self, id: int, group_name: str, prompt: bool = False) -> RegisteredModelGroupRegexPermission:
         """
-        Get a registered model group permission by regex and group name.
-        :param regex: The regex pattern for the registered model name.
+        Get a registered model group permission by ID and group name.
+        :param id: The ID of the registered model group permission.
         :param group_name: The name of the group.
         :return: The registered model group permission.
         """
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_registered_model_group_regex_permission(session, regex, group.id, prompt=prompt)
+            perm = self._get_registered_model_group_regex_permission(session, id, group.id, prompt=prompt)
             return perm.to_mlflow_entity()
 
     def list_permissions_for_group(self, group_name: str, prompt: bool = False) -> List[RegisteredModelGroupRegexPermission]:
@@ -146,7 +146,7 @@ class RegisteredModelGroupRegexPermissionRepository:
             return [p.to_mlflow_entity() for p in permissions]
 
     def update(
-        self, regex: str, group_name: str, permission: str, priority: int = 0, prompt: bool = False
+        self, id: int, regex: str, group_name: str, permission: str, priority: int = 0, prompt: bool = False
     ) -> RegisteredModelGroupRegexPermission:
         """
         Update a registered model group permission.
@@ -159,21 +159,22 @@ class RegisteredModelGroupRegexPermissionRepository:
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_registered_model_group_regex_permission(session, regex, group.id, prompt=prompt)
+            perm = self._get_registered_model_group_regex_permission(session, id, group.id, prompt=prompt)
             perm.permission = permission
             perm.priority = priority
             perm.prompt = prompt
+            perm.regex = regex
             session.flush()
             return perm.to_mlflow_entity()
 
-    def revoke(self, regex: str, group_name: str, prompt: bool = False) -> None:
+    def revoke(self, id: int, group_name: str, prompt: bool = False) -> None:
         """
         Revoke a registered model group permission.
-        :param regex: The regex pattern for the registered model name.
+        :param id: The ID of the registered model group permission.
         :param group_name: The name of the group.
         """
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_registered_model_group_regex_permission(session, regex, group.id, prompt=prompt)
+            perm = self._get_registered_model_group_regex_permission(session, id, group.id, prompt=prompt)
             session.delete(perm)
             session.flush()

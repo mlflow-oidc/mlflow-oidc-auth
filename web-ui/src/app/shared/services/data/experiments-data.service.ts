@@ -20,7 +20,7 @@ export class ExperimentsDataService {
   }
 
   getExperimentsForUser(userName: string) {
-    const url = API_URL.EXPERIMENTS_FOR_USER.replace('${userName}', userName);
+    const url = API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', userName);
     return this.http.get<ExperimentsForUserModel>(url).pipe(map(({ experiments }) => experiments));
   }
 
