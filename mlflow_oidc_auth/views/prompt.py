@@ -6,6 +6,7 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
     can_manage_registered_model,
     check_registered_model_permission,
+    fetch_all_prompts,
     get_is_admin,
     get_request_param,
     get_username,
@@ -48,15 +49,11 @@ def delete_prompt_permission(username: str, prompt_name: str):
 @catch_mlflow_exception
 def list_prompts():
     if get_is_admin():
-        prompts = _get_model_registry_store().search_registered_models(
-            max_results=1000, filter_string="tags.`mlflow.prompt.is_prompt` = 'true'"
-        )
+        prompts = fetch_all_prompts()
     else:
         current_user = store.get_user(get_username())
         prompts = []
-        for model in _get_model_registry_store().search_registered_models(
-            max_results=1000, filter_string="tags.`mlflow.prompt.is_prompt` = 'true'"
-        ):
+        for model in fetch_all_prompts():
             if can_manage_registered_model(model.name, current_user.username):
                 prompts.append(model)
     models = [

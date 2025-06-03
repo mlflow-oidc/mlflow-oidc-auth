@@ -127,14 +127,14 @@ export class ExperimentPermissionDetailsComponent implements OnInit {
   addUser() {
     this.userDataService
       .getAllUsers()
-      .pipe(map(({ users }) => users))
+      .pipe(map((users: any[]) => users.map((user) => (typeof user === 'string' ? user : user.username))))
       .subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.USER));
   }
 
   addServiceAccount() {
     this.userDataService
       .getAllServiceUsers()
-      .pipe(map(({ users }) => users))
+      .pipe(map((users: any[]) => users.map((user) => (typeof user === 'string' ? user : user.username))))
       .subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.SERVICE_ACCOUNT));
   }
 

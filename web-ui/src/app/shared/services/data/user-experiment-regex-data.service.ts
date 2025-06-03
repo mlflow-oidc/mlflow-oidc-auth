@@ -34,16 +34,18 @@ export class UserExperimentRegexDataService {
     priority: number,
     id: string
   ): Observable<unknown> {
-    const url = API_URL.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL
-      .replace('${userName}', userName)
-      .replace('${patternId}', id);
+    const url = API_URL.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL.replace('${userName}', userName).replace(
+      '${patternId}',
+      id
+    );
     return this.http.patch(url, { permission, priority, regex });
   }
 
   removeExperimentRegexPermissionFromUser(userName: string, id: string): Observable<unknown> {
-    const url = API_URL.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL
-      .replace('${userName}', userName)
-      .replace('${patternId}', id);
+    const url = API_URL.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL.replace('${userName}', userName).replace(
+      '${patternId}',
+      id
+    );
     return this.http.delete(url);
   }
 }

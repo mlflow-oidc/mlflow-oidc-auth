@@ -39,21 +39,8 @@ export class UserPermissionsComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.isLoading = true;
-    this.userDataService
-      .getAllUsers()
-      .pipe(finalize(() => (this.isLoading = false)))
-      .subscribe(({ users }) => (this.dataSource = users.map((username) => ({ username }))));
-    this.isServiceAccountsLoading = true;
-    this.userDataService
-      .getAllServiceUsers()
-      .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
-      .subscribe(
-        ({ users }) =>
-          (this.serviceAccountsDataSource = users.map((username) => ({
-            username,
-          })))
-      );
+    this.loadUsers();
+    this.loadServiceAccounts();
   }
 
   handleItemAction({ action, item }: TableActionEvent<UserModel>) {
@@ -86,17 +73,13 @@ export class UserPermissionsComponent implements OnInit {
   }
 
   handleServiceAccountDelete({ username }: UserModel): void {
-    this.userDataService.deleteUser({ username }).subscribe(() => {
-      this.isServiceAccountsLoading = true;
-      this.userDataService
-        .getAllServiceUsers()
-        .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
-        .subscribe(
-          ({ users }) =>
-            (this.serviceAccountsDataSource = users.map((username) => ({
-              username,
-            })))
-        );
+    this.userDataService.deleteUser({ username }).subscribe({
+      next: () => {
+        this.loadServiceAccounts();
+      },
+      error: (error) => {
+        console.error('Error deleting service account:', error);
+      },
     });
   }
 
@@ -105,17 +88,13 @@ export class UserPermissionsComponent implements OnInit {
       .openCreateServiceAccountModal({ title: 'Create Service Account' })
       .subscribe((result) => {
         if (result) {
-          this.userDataService.createServiceAccount(result).subscribe(() => {
-            this.isServiceAccountsLoading = true;
-            this.userDataService
-              .getAllServiceUsers()
-              .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
-              .subscribe(
-                ({ users }) =>
-                  (this.serviceAccountsDataSource = users.map((username) => ({
-                    username,
-                  })))
-              );
+          this.userDataService.createServiceAccount(result).subscribe({
+            next: () => {
+              this.loadServiceAccounts();
+            },
+            error: (error) => {
+              console.error('Error creating service account:', error);
+            },
           });
         }
       });
@@ -125,5 +104,39 @@ export class UserPermissionsComponent implements OnInit {
     this.dialog.open<AccessKeyModalComponent, AccessKeyDialogData>(AccessKeyModalComponent, {
       data: { username },
     });
+  }
+
+  private loadUsers(): void {
+    this.isLoading = true;
+    this.userDataService
+      .getAllUsers()
+      .pipe(finalize(() => (this.isLoading = false)))
+      .subscribe({
+        next: (users) => {
+          this.dataSource = users.map((username) => ({ username }));
+        },
+        error: (error) => {
+          console.error('Error loading users:', error);
+          this.dataSource = [];
+        },
+      });
+  }
+
+  private loadServiceAccounts(): void {
+    this.isServiceAccountsLoading = true;
+    this.userDataService
+      .getAllServiceUsers()
+      .pipe(finalize(() => (this.isServiceAccountsLoading = false)))
+      .subscribe({
+        next: (users) => {
+          this.serviceAccountsDataSource = users.map((username) => ({
+            username,
+          }));
+        },
+        error: (error) => {
+          console.error('Error loading service accounts:', error);
+          this.serviceAccountsDataSource = [];
+        },
+      });
   }
 }

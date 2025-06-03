@@ -10,6 +10,8 @@ from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
     effective_prompt_permission,
     effective_registered_model_permission,
+    fetch_all_registered_models,
+    fetch_all_prompts,
     get_is_admin,
     get_optional_request_param,
     get_request_param,
@@ -107,12 +109,12 @@ def list_user_experiments(username):
         }
         for exp in list_experiments
     ]
-    return jsonify({"experiments": experiments_list})
+    return experiments_list
 
 
 @catch_mlflow_exception
 def list_user_models(username):
-    all_registered_models = _get_model_registry_store().search_registered_models(max_results=1000)
+    all_registered_models = fetch_all_registered_models()
     current_user = store.get_user(get_username())
     is_admin = get_is_admin()
     if is_admin:
@@ -138,14 +140,12 @@ def list_user_models(username):
         }
         for model in list_registered_models
     ]
-    return jsonify({"models": models})
+    return models
 
 
 @catch_mlflow_exception
 def list_user_prompts(username):
-    all_registered_models = _get_model_registry_store().search_registered_models(
-        max_results=1000, filter_string="tags.`mlflow.prompt.is_prompt` = 'true'"
-    )
+    all_registered_models = fetch_all_prompts()
     current_user = store.get_user(get_username())
     is_admin = get_is_admin()
     if is_admin:
@@ -171,7 +171,7 @@ def list_user_prompts(username):
         }
         for model in list_registered_models
     ]
-    return jsonify({"prompts": models})
+    return models
 
 
 # TODO: use to_json
@@ -184,7 +184,7 @@ def list_users():
     # else:
     #     users = [get_username()]
     users = [user.username for user in store.list_users(is_service_account=service_account)]
-    return jsonify({"users": users})
+    return users
 
 
 @catch_mlflow_exception

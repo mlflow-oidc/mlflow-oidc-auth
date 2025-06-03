@@ -16,7 +16,7 @@ from mlflow.utils.search_utils import SearchUtils
 
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_is_admin, get_request_param, get_username
+from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_is_admin, get_username, get_model_name, fetch_registered_models_paginated, fetch_readable_registered_models, fetch_readable_experiments
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -45,7 +45,7 @@ def _delete_can_manage_registered_model_permission(resp: Response):
     conflicts with the new model registered with the same name.
     """
     # Get model name from request context because it's not available in the response
-    model_name = get_request_param("name")
+    model_name = get_model_name()
     store.wipe_group_model_permissions(model_name)
     store.wipe_registered_model_permissions(model_name)
 
@@ -60,35 +60,33 @@ def _filter_search_experiments(resp: Response):
 
     response_message = SearchExperiments.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-    # fetch permissions
-    username = get_username()
-    for experiment in list(response_message.experiments):
-        if not can_read_experiment(experiment.experiment_id, username):
-            response_message.experiments.remove(experiment)
-    # re-fetch to fill max results
     request_message = _get_request_message(SearchExperiments())
-    while len(response_message.experiments) < request_message.max_results and response_message.next_page_token != "":
-        refetched: PagedList[Experiment] = _get_tracking_store().search_experiments(
-            view_type=request_message.view_type,
-            max_results=request_message.max_results,
-            order_by=request_message.order_by,
-            filter_string=request_message.filter,
-            page_token=response_message.next_page_token,
-        )
-        refetched = PagedList(
-            refetched[: request_message.max_results - len(response_message.experiments)],
-            refetched.token if hasattr(refetched, "token") else "",
-        )
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
-        refetched_readable_proto = [e.to_proto() for e in refetched if can_read_experiment(e.experiment_id, username)]
-        response_message.experiments.extend(refetched_readable_proto)
 
-        # recalculate next page token
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+    # Get current user
+    username = get_username()
+    
+    # Get all readable experiments with the original filter and order
+    readable_experiments = fetch_readable_experiments(
+        view_type=request_message.view_type,
+        order_by=request_message.order_by,
+        filter_string=request_message.filter,
+        username=username
+    )
+    
+    # Convert to proto format and apply max_results limit
+    readable_experiments_proto = [experiment.to_proto() for experiment in readable_experiments[:request_message.max_results]]
+    
+    # Update response with filtered experiments
+    response_message.ClearField("experiments")
+    response_message.experiments.extend(readable_experiments_proto)
+    
+    # Handle pagination token
+    if len(readable_experiments) > request_message.max_results:
+        # Set next page token if there are more results
+        response_message.next_page_token = SearchUtils.create_page_token(request_message.max_results)
+    else:
+        # Clear next page token if all results fit
+        response_message.next_page_token = ""
 
     resp.data = message_to_json(response_message)
 
@@ -99,36 +97,32 @@ def _filter_search_registered_models(resp: Response):
 
     response_message = SearchRegisteredModels.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-
-    # fetch permissions
-    username = get_username()
-    for rm in list(response_message.registered_models):
-        if not can_read_registered_model(rm.name, username):
-            response_message.registered_models.remove(rm)
-
-    # re-fetch to fill max results
     request_message = _get_request_message(SearchRegisteredModels())
-    while len(response_message.registered_models) < request_message.max_results and response_message.next_page_token != "":
-        refetched: PagedList[RegisteredModel] = _get_model_registry_store().search_registered_models(
-            filter_string=request_message.filter,
-            max_results=request_message.max_results,
-            order_by=request_message.order_by,
-            page_token=response_message.next_page_token,
-        )
-        refetched = PagedList(
-            refetched[: request_message.max_results - len(response_message.registered_models)],
-            refetched.token if hasattr(refetched, "token") else "",
-        )
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
-        refetched_readable_proto = [rm.to_proto() for rm in refetched if can_read_registered_model(rm.name, username)]
-        response_message.registered_models.extend(refetched_readable_proto)
 
-        # recalculate next page token
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+    # Get current user
+    username = get_username()
+    
+    # Get all readable models with the original filter and order
+    readable_models = fetch_readable_registered_models(
+        filter_string=request_message.filter,
+        order_by=request_message.order_by,
+        username=username
+    )
+    
+    # Convert to proto format and apply max_results limit
+    readable_models_proto = [model.to_proto() for model in readable_models[:request_message.max_results]]
+    
+    # Update response with filtered models
+    response_message.ClearField("registered_models")
+    response_message.registered_models.extend(readable_models_proto)
+    
+    # Handle pagination token
+    if len(readable_models) > request_message.max_results:
+        # Set next page token if there are more results
+        response_message.next_page_token = SearchUtils.create_page_token(request_message.max_results)
+    else:
+        # Clear next page token if all results fit
+        response_message.next_page_token = ""
 
     resp.data = message_to_json(response_message)
 

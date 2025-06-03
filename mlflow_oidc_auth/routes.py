@@ -14,18 +14,18 @@ UI_ROOT = "/oidc/ui/"
 USER_EXPERIMENT_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/experiments")
 USER_EXPERIMENT_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/experiments/<string:experiment_id>")
 
-EXPERIMENT_USER_PERMISSIONS = _get_rest_path("/mlflow/permissions/experiments/<int:experiment_id>/users")
-EXPERIMENT_USER_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/experiments/<int:experiment_id>/users/<string:username>")
+EXPERIMENT_USER_PERMISSIONS = _get_rest_path("/mlflow/permissions/experiments/<string:experiment_id>/users")
+EXPERIMENT_USER_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/experiments/<string:experiment_id>/users/<string:username>")
 
 USER_EXPERIMENT_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/experiment-patterns")
 USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/experiment-patterns/<string:pattern_id>")
 
 # USER, REGISTERED_MODEL, PATTERN
 USER_REGISTERED_MODEL_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models")
-USER_REGISTERED_MODEL_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models/<string:registered_model_name>")
+USER_REGISTERED_MODEL_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models/<string:name>")
 
-REGISTERED_MODEL_USER_PERMISSIONS = _get_rest_path("/mlflow/permissions/registered-models/<string:registered_model_name>/users")
-REGISTERED_MODEL_USER_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/registered-models/<string:registered_model_name>/users/<string:username>")
+REGISTERED_MODEL_USER_PERMISSIONS = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/users")
+REGISTERED_MODEL_USER_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/users/<string:username>")
 
 USER_REGISTERED_MODEL_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models-patterns")
 USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models-patterns/<string:pattern_id>")
@@ -47,18 +47,18 @@ USER_PROMPT_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/user
 GROUP_EXPERIMENT_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/experiments")
 GROUP_EXPERIMENT_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/experiments/<string:experiment_id>")
 
-EXPERIMENT_GROUP_PERMISSIONS = _get_rest_path("/mlflow/permissions/experiments/<int:experiment_id>/groups")
-EXPERIMENT_GROUP_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/experiments/<int:experiment_id>/groups/<string:group_name>")
+EXPERIMENT_GROUP_PERMISSIONS = _get_rest_path("/mlflow/permissions/experiments/<string:experiment_id>/groups")
+EXPERIMENT_GROUP_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/experiments/<string:experiment_id>/groups/<string:group_name>")
 
 GROUP_EXPERIMENT_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/experiment-patterns")
 GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/experiment-patterns/<string:pattern_id>")
 
 # GROUP, REGISTERED_MODEL, PATTERN
 GROUP_REGISTERED_MODEL_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models")
-GROUP_REGISTERED_MODEL_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models/<string:registered_model_name>")
+GROUP_REGISTERED_MODEL_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models/<string:name>")
 
-REGISTERED_MODEL_GROUP_PERMISSIONS = _get_rest_path("/mlflow/permissions/registered-models/<string:registered_model_name>/groups")
-REGISTERED_MODEL_GROUP_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/registered-models/<string:registered_model_name>/groups/<string:group_name>")
+REGISTERED_MODEL_GROUP_PERMISSIONS = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/groups")
+REGISTERED_MODEL_GROUP_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/groups/<string:group_name>")
 
 GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models-patterns")
 GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models-patterns/<string:pattern_id>")

@@ -462,7 +462,8 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
               this.groupName,
               item.regex,
               result.permission,
-              result.priority
+              result.priority,
+              item.id
             )
           ),
           tap(() => this.snackBarService.openSnackBar('Experiment regex permission updated successfully')),
@@ -471,7 +472,7 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
         .subscribe((data) => (this.experimentRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.experimentRegexDataService
-        .removeExperimentRegexPermissionFromGroup(this.groupName, event.item.regex)
+        .removeExperimentRegexPermissionFromGroup(this.groupName, event.item.id)
         .pipe(switchMap(() => this.experimentRegexDataService.getExperimentRegexPermissionsForGroup(this.groupName)))
         .subscribe((data) => (this.experimentRegexDataSource = data));
     }
@@ -556,7 +557,8 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
               this.groupName,
               item.regex,
               result.permission,
-              result.priority
+              result.priority,
+              item.id
             )
           ),
           tap(() => this.snackBarService.openSnackBar('Model regex permission updated successfully')),
@@ -565,7 +567,7 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
         .subscribe((data) => (this.modelRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.modelRegexDataService
-        .removeModelRegexPermissionFromGroup(this.groupName, event.item.regex)
+        .removeModelRegexPermissionFromGroup(this.groupName, event.item.id)
         .pipe(switchMap(() => this.modelRegexDataService.getModelRegexPermissionsForGroup(this.groupName)))
         .subscribe((data) => (this.modelRegexDataSource = data));
     }
@@ -592,7 +594,8 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
               this.groupName,
               item.regex,
               result.permission,
-              result.priority
+              result.priority,
+              item.id
             )
           ),
           tap(() => this.snackBarService.openSnackBar('Prompt regex permission updated successfully')),
@@ -601,7 +604,7 @@ export class GroupPermissionDetailsComponent implements OnInit, OnDestroy {
         .subscribe((data) => (this.promptRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.promptRegexDataService
-        .removePromptRegexPermissionFromGroup(this.groupName, event.item.regex)
+        .removePromptRegexPermissionFromGroup(this.groupName, event.item.id)
         .pipe(switchMap(() => this.promptRegexDataService.getPromptRegexPermissionsForGroup(this.groupName)))
         .subscribe((data) => (this.promptRegexDataSource = data));
     }

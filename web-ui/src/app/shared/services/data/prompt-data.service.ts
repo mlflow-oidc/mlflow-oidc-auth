@@ -16,12 +16,12 @@ export class PromptsDataService {
   }
 
   getPromptsForUser(userName: string) {
-    const url = API_URL.PROMPTS_FOR_USER.replace('${userName}', userName);
+    const url = API_URL.USER_PROMPT_PERMISSIONS.replace('${userName}', userName);
     return this.http.get<PromptPermissionsModel>(url).pipe(map((response) => response.prompts));
   }
 
   getUsersForPrompt(promptName: string) {
-    const url = API_URL.USERS_FOR_PROMPT.replace('${promptName}', promptName);
+    const url = API_URL.PROMPT_USER_PERMISSIONS.replace('${promptName}', promptName);
     return this.http.get<PromptUserListModel[]>(url);
   }
 }

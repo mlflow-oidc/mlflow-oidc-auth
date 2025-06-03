@@ -19,11 +19,11 @@ def create_group_prompt_regex_permission(group_name):
 
 @catch_mlflow_exception
 @check_admin_permission
-def list_group_prompt_regex_permission(group_name):
+def list_group_prompt_regex_permissions(group_name):
     ep = store.list_group_prompt_regex_permissions(
         group_name=group_name,
     )
-    return jsonify([e.to_json() for e in ep]), 200
+    return [e.to_json() for e in ep] if ep else jsonify({"error": "No permissions found"}), 200
 
 
 @catch_mlflow_exception

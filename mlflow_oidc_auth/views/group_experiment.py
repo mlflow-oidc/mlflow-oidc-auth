@@ -5,7 +5,6 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
     can_manage_experiment,
     check_experiment_permission,
-    get_experiment_id,
     get_is_admin,
     get_request_param,
     get_username,

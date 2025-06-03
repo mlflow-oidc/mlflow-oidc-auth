@@ -1,8 +1,6 @@
 import re
 
 from flask import request
-from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.config import config

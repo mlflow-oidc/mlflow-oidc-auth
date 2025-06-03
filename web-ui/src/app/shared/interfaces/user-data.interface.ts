@@ -39,7 +39,3 @@ export interface PromptPermission {
 export interface TokenModel {
   token: string;
 }
-
-export interface AllUsersListModel {
-  users: string[];
-}

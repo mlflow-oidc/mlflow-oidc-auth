@@ -483,7 +483,8 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit, On
               this.userId,
               item.regex,
               result.permission,
-              result.priority
+              result.priority,
+              item.id
             )
           ),
           tap(() => this.snackBarService.openSnackBar('Model regex permission updated successfully')),
@@ -493,7 +494,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit, On
         .subscribe((data: ModelRegexPermissionModel[]) => (this.modelRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.modelRegexDataService
-        .removeModelRegexPermissionFromUser(this.userId, event.item.regex)
+        .removeModelRegexPermissionFromUser(this.userId, event.item.id)
         .pipe(
           switchMap(() => this.modelRegexDataService.getModelRegexPermissionsForUser(this.userId)),
           takeUntil(this.destroy$)
@@ -553,7 +554,8 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit, On
               this.userId,
               item.regex,
               result.permission,
-              result.priority
+              result.priority,
+              item.id
             )
           ),
           tap(() => this.snackBarService.openSnackBar('Prompt regex permission updated successfully')),
@@ -563,7 +565,7 @@ export class UserPermissionDetailsComponent implements OnInit, AfterViewInit, On
         .subscribe((data: PromptRegexPermissionModel[]) => (this.promptRegexDataSource = data));
     } else if (event.action.action === TableActionEnum.REVOKE) {
       this.promptRegexDataService
-        .removePromptRegexPermissionFromUser(this.userId, event.item.regex)
+        .removePromptRegexPermissionFromUser(this.userId, event.item.id)
         .pipe(
           switchMap(() => this.promptRegexDataService.getPromptRegexPermissionsForUser(this.userId)),
           takeUntil(this.destroy$)

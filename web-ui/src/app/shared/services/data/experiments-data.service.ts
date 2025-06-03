@@ -24,8 +24,8 @@ export class ExperimentsDataService {
     return this.http.get<ExperimentsForUserModel>(url).pipe(map(({ experiments }) => experiments));
   }
 
-  getUsersForExperiment(experimentName: string) {
-    const url = API_URL.USERS_FOR_EXPERIMENT.replace('${experimentName}', experimentName);
+  getUsersForExperiment(experimentId: string) {
+    const url = API_URL.EXPERIMENT_USER_PERMISSIONS.replace('${experimentId}', experimentId);
     return this.http.get<UserPermissionModel[]>(url);
   }
 }

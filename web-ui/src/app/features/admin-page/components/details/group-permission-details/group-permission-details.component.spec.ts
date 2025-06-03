@@ -53,12 +53,14 @@ describe('GroupPermissionDetailsComponent', () => {
   const mockModel: ModelModel = { name: 'Model 1', permission: PermissionEnum.READ };
   const mockPrompt: ModelModel = { name: 'Prompt 1', permission: PermissionEnum.READ };
   const mockExperimentRegex: ExperimentRegexPermissionModel = {
+    id: '1',
     group_id: '123',
     regex: '.*',
     permission: PermissionEnum.READ,
     priority: 100,
   };
   const mockModelRegex: ModelRegexPermissionModel = {
+    id: '1',
     group_id: '123',
     regex: '.*',
     permission: PermissionEnum.READ,
@@ -66,6 +68,7 @@ describe('GroupPermissionDetailsComponent', () => {
     prompt: false,
   };
   const mockPromptRegex: PromptRegexPermissionModel = {
+    id: '1',
     group_id: '123',
     regex: '.*',
     permission: PermissionEnum.READ,
@@ -483,7 +486,8 @@ describe('GroupPermissionDetailsComponent', () => {
         'testGroup',
         mockExperimentRegex.regex,
         PermissionEnum.READ,
-        100
+        100,
+        mockExperimentRegex.id
       );
       expect(mockSnackBarService.openSnackBar).toHaveBeenCalledWith('Experiment regex permission updated successfully');
       expect(mockExperimentRegexDataService.getExperimentRegexPermissionsForGroup).toHaveBeenCalledTimes(2);
@@ -495,7 +499,7 @@ describe('GroupPermissionDetailsComponent', () => {
       });
       expect(mockExperimentRegexDataService.removeExperimentRegexPermissionFromGroup).toHaveBeenCalledWith(
         'testGroup',
-        mockExperimentRegex.regex
+        mockExperimentRegex.id
       );
       expect(mockExperimentRegexDataService.getExperimentRegexPermissionsForGroup).toHaveBeenCalledTimes(2);
     });
@@ -521,7 +525,8 @@ describe('GroupPermissionDetailsComponent', () => {
         'testGroup',
         mockModelRegex.regex,
         PermissionEnum.READ,
-        100
+        100,
+        mockModelRegex.id
       );
       expect(mockSnackBarService.openSnackBar).toHaveBeenCalledWith('Model regex permission updated successfully');
       expect(mockModelRegexDataService.getModelRegexPermissionsForGroup).toHaveBeenCalledTimes(2);
@@ -533,7 +538,7 @@ describe('GroupPermissionDetailsComponent', () => {
       });
       expect(mockModelRegexDataService.removeModelRegexPermissionFromGroup).toHaveBeenCalledWith(
         'testGroup',
-        mockModelRegex.regex
+        mockModelRegex.id
       );
       expect(mockModelRegexDataService.getModelRegexPermissionsForGroup).toHaveBeenCalledTimes(2);
     });
@@ -559,7 +564,8 @@ describe('GroupPermissionDetailsComponent', () => {
         'testGroup',
         mockPromptRegex.regex,
         PermissionEnum.READ,
-        100
+        100,
+        mockPromptRegex.id
       );
       expect(mockSnackBarService.openSnackBar).toHaveBeenCalledWith('Prompt regex permission updated successfully');
       expect(mockPromptRegexDataService.getPromptRegexPermissionsForGroup).toHaveBeenCalledTimes(2);
@@ -571,7 +577,7 @@ describe('GroupPermissionDetailsComponent', () => {
       });
       expect(mockPromptRegexDataService.removePromptRegexPermissionFromGroup).toHaveBeenCalledWith(
         'testGroup',
-        mockPromptRegex.regex
+        mockPromptRegex.id
       );
       expect(mockPromptRegexDataService.getPromptRegexPermissionsForGroup).toHaveBeenCalledTimes(2);
     });

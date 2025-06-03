@@ -36,7 +36,7 @@ export class GroupPermissionsComponent implements OnInit {
     this.groupDataService
       .getAllGroups()
       .pipe(finalize(() => (this.isLoading = false)))
-      .subscribe(({ groups }) => (this.dataSource = groups.map((group) => ({ group }))));
+      .subscribe((groups) => (this.dataSource = groups.map((group) => ({ group }))));
   }
 
   handleItemAction({ action, item }: TableActionEvent<GroupModel>) {
