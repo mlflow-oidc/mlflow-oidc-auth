@@ -153,7 +153,7 @@ describe('ModelPermissionDetailsComponent', () => {
   });
 
   it('should add user', () => {
-    userDataService.getAllUsers.mockReturnValue(of({ users: ['user1', 'user2'] }));
+    userDataService.getAllUsers.mockReturnValue(of(['user1', 'user2']));
     permissionModalService.openGrantPermissionModal.mockReturnValue(
       of({
         entity: { id: 'user2', name: 'user2' },
@@ -180,7 +180,7 @@ describe('ModelPermissionDetailsComponent', () => {
   });
 
   it('should add service account', () => {
-    userDataService.getAllServiceUsers.mockReturnValue(of({ users: ['svc1', 'svc2'] }));
+    userDataService.getAllServiceUsers.mockReturnValue(of(['svc1', 'svc2']));
     permissionModalService.openGrantPermissionModal.mockReturnValue(
       of({
         entity: { id: 'svc2', name: 'svc2' },

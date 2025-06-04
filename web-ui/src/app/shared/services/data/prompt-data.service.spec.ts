@@ -65,7 +65,7 @@ describe('PromptsDataService', () => {
       expect(prompts).toEqual(expectedPrompts);
     });
 
-    const req = httpMock.expectOne(API_URL.PROMPTS_FOR_USER.replace('${userName}', userName));
+    const req = httpMock.expectOne(API_URL.USER_PROMPT_PERMISSIONS.replace('${userName}', userName));
     expect(req.request.method).toBe('GET');
     req.flush(mockResponse);
   });
@@ -81,7 +81,7 @@ describe('PromptsDataService', () => {
       expect(users).toEqual(mockUsers);
     });
 
-    const req = httpMock.expectOne(API_URL.USERS_FOR_PROMPT.replace('${promptName}', promptName));
+    const req = httpMock.expectOne(API_URL.PROMPT_USER_PERMISSIONS.replace('${promptName}', promptName));
     expect(req.request.method).toBe('GET');
     req.flush(mockUsers);
   });

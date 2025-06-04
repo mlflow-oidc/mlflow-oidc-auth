@@ -3,7 +3,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 
 import { UserDataService } from '../data/user-data.service';
 import { API_URL } from 'src/app/core/configs/api-urls';
-import { CurrentUserModel, TokenModel, AllUsersListModel } from '../../interfaces/user-data.interface';
+import { CurrentUserModel, TokenModel } from '../../interfaces/user-data.interface';
 
 describe('UserDataService', () => {
   let service: UserDataService;
@@ -52,23 +52,21 @@ describe('UserDataService', () => {
     expect(req.request.method).toBe('GET');
     req.flush(mockUser);
 
-    const modelsReq = httpMock.expectOne(API_URL.MODELS_FOR_USER.replace('${userName}', mockUser.username));
+    const modelsReq = httpMock.expectOne(API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', mockUser.username));
     expect(modelsReq.request.method).toBe('GET');
-    modelsReq.flush({ models: [] });
+    modelsReq.flush([]);
 
-    const experimentsReq = httpMock.expectOne(API_URL.EXPERIMENTS_FOR_USER.replace('${userName}', mockUser.username));
+    const experimentsReq = httpMock.expectOne(API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', mockUser.username));
     expect(experimentsReq.request.method).toBe('GET');
-    experimentsReq.flush({ experiments: [] });
+    experimentsReq.flush([]);
 
-    const promptsReq = httpMock.expectOne(API_URL.PROMPTS_FOR_USER.replace('${userName}', mockUser.username));
+    const promptsReq = httpMock.expectOne(API_URL.USER_PROMPT_PERMISSIONS.replace('${userName}', mockUser.username));
     expect(promptsReq.request.method).toBe('GET');
-    promptsReq.flush({ prompts: [] });
+    promptsReq.flush([]);
   });
 
   it('should return all users', () => {
-    const mockUsers: AllUsersListModel = {
-      users: ['John Doe', 'Jane Smith'],
-    };
+    const mockUsers = ['John Doe', 'Jane Smith'];
 
     service.getAllUsers().subscribe((users) => {
       expect(users).toEqual(mockUsers);
@@ -96,9 +94,7 @@ describe('UserDataService', () => {
   });
 
   it('should return all service users', () => {
-    const mockServiceUsers: AllUsersListModel = {
-      users: ['ServiceUser1', 'ServiceUser2'],
-    };
+    const mockServiceUsers = ['ServiceUser1', 'ServiceUser2'];
 
     service.getAllServiceUsers().subscribe((users) => {
       expect(users).toEqual(mockServiceUsers);

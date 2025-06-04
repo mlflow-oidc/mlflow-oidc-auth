@@ -76,8 +76,8 @@ describe('UserPermissionsComponent', () => {
   });
 
   it('should load users and service accounts on init', () => {
-    jest.spyOn(userDataService, 'getAllUsers').mockReturnValue(of({ users: ['user1', 'user2'] }));
-    jest.spyOn(userDataService, 'getAllServiceUsers').mockReturnValue(of({ users: ['svc1'] }));
+    jest.spyOn(userDataService, 'getAllUsers').mockReturnValue(of(['user1', 'user2']));
+    jest.spyOn(userDataService, 'getAllServiceUsers').mockReturnValue(of(['svc1']));
     component.ngOnInit();
     expect(component.dataSource).toEqual([{ username: 'user1' }, { username: 'user2' }]);
     expect(component.serviceAccountsDataSource).toEqual([{ username: 'svc1' }]);
@@ -165,7 +165,7 @@ describe('UserPermissionsComponent', () => {
 
   it('should delete service account and reload data', () => {
     jest.spyOn(userDataService, 'deleteUser').mockReturnValue(of(getUser('svc')));
-    jest.spyOn(userDataService, 'getAllServiceUsers').mockReturnValue(of({ users: ['svc2'] }));
+    jest.spyOn(userDataService, 'getAllServiceUsers').mockReturnValue(of(['svc2']));
     component.handleServiceAccountDelete({ username: 'svc' });
     expect(userDataService.deleteUser).toHaveBeenCalledWith({
       username: 'svc',
@@ -183,7 +183,7 @@ describe('UserPermissionsComponent', () => {
     };
     (createServiceAccountService.openCreateServiceAccountModal as jest.Mock).mockReturnValue(of(modalResult));
     jest.spyOn(userDataService, 'createServiceAccount').mockReturnValue(of(getUser('svc3')));
-    jest.spyOn(userDataService, 'getAllServiceUsers').mockReturnValue(of({ users: ['svc3'] }));
+    jest.spyOn(userDataService, 'getAllServiceUsers').mockReturnValue(of(['svc3']));
     component.createServiceAccount();
     expect(createServiceAccountService.openCreateServiceAccountModal).toHaveBeenCalled();
     expect(userDataService.createServiceAccount).toHaveBeenCalledWith(modalResult);

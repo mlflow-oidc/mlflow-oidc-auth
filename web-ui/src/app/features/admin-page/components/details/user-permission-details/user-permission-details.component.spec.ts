@@ -810,8 +810,12 @@ describe('UserPermissionDetailsComponent', () => {
     });
   });
   describe('Regex Permissions', () => {
-    const regexPerm = { regex: 'test-regex', permission: PermissionEnum.READ, priority: 100 };
-    const updatedRegexPerm = { regex: 'test-regex', permission: PermissionEnum.EDIT, priority: 50 };
+    const regexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.READ, priority: 100, group_id: 'group-1' };
+    const updatedRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.EDIT, priority: 50, group_id: 'group-1' };
+    const modelRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.READ, priority: 100, group_id: 'group-1', prompt: false };
+    const updatedModelRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.EDIT, priority: 50, group_id: 'group-1', prompt: false };
+    const promptRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.READ, priority: 100, group_id: 'group-1', prompt: true };
+    const updatedPromptRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.EDIT, priority: 50, group_id: 'group-1', prompt: true };
     it('should open modal and add experiment regex permission', () => {
       dialog.open.mockReturnValue({ afterClosed: () => of(regexPerm) } as any);
       experimentRegexDataService.addExperimentRegexPermissionToUser.mockReturnValue(of(null));
@@ -847,7 +851,8 @@ describe('UserPermissionDetailsComponent', () => {
         '123',
         regexPerm.regex,
         updatedRegexPerm.permission,
-        updatedRegexPerm.priority
+        updatedRegexPerm.priority,
+        regexPerm.id
       );
       expect(snackBarService.openSnackBar).toHaveBeenCalledWith('Experiment regex permission updated successfully');
       expect(component.experimentRegexDataSource).toEqual([updatedRegexPerm]);
@@ -860,7 +865,7 @@ describe('UserPermissionDetailsComponent', () => {
       component.handleExperimentRegexActions(event as any);
       expect(experimentRegexDataService.removeExperimentRegexPermissionFromUser).toHaveBeenCalledWith(
         '123',
-        regexPerm.regex
+        regexPerm.id
       );
       expect(component.experimentRegexDataSource).toEqual([]);
     });
@@ -883,7 +888,7 @@ describe('UserPermissionDetailsComponent', () => {
       dialog.open.mockReturnValue({ afterClosed: () => of(regexPerm) } as any);
       modelRegexDataService.addModelRegexPermissionToUser.mockReturnValue(of(null));
       modelRegexDataService.getModelRegexPermissionsForUser.mockReturnValue(
-        of([regexPerm as ModelRegexPermissionModel])
+        of([modelRegexPerm as ModelRegexPermissionModel])
       );
       component.userId = '123';
       component.openModalAddModelRegexPermissionToUser();
@@ -896,42 +901,43 @@ describe('UserPermissionDetailsComponent', () => {
         regexPerm.priority
       );
       expect(snackBarService.openSnackBar).toHaveBeenCalledWith('Model regex permission added successfully');
-      expect(component.modelRegexDataSource).toEqual([regexPerm]);
+      expect(component.modelRegexDataSource).toEqual([modelRegexPerm]);
     });
     it('should handle edit model regex permission', () => {
       dialog.open.mockReturnValue({ afterClosed: () => of(updatedRegexPerm) } as any);
       modelRegexDataService.updateModelRegexPermissionForUser.mockReturnValue(of(null));
       modelRegexDataService.getModelRegexPermissionsForUser.mockReturnValue(
-        of([updatedRegexPerm as ModelRegexPermissionModel])
+        of([updatedModelRegexPerm as ModelRegexPermissionModel])
       );
       component.userId = '123';
-      const event = { action: { action: TableActionEnum.EDIT }, item: regexPerm };
+      const event = { action: { action: TableActionEnum.EDIT }, item: modelRegexPerm };
       component.handleModelRegexActions(event as any);
       jest.runAllTimers();
       expect(dialog.open).toHaveBeenCalled();
       expect(modelRegexDataService.updateModelRegexPermissionForUser).toHaveBeenCalledWith(
         '123',
-        regexPerm.regex,
+        modelRegexPerm.regex,
         updatedRegexPerm.permission,
-        updatedRegexPerm.priority
+        updatedRegexPerm.priority,
+        modelRegexPerm.id
       );
       expect(snackBarService.openSnackBar).toHaveBeenCalledWith('Model regex permission updated successfully');
-      expect(component.modelRegexDataSource).toEqual([updatedRegexPerm]);
+      expect(component.modelRegexDataSource).toEqual([updatedModelRegexPerm]);
     });
     it('should handle revoke model regex permission', () => {
       modelRegexDataService.removeModelRegexPermissionFromUser.mockReturnValue(of(null));
       modelRegexDataService.getModelRegexPermissionsForUser.mockReturnValue(of([]));
       component.userId = '123';
-      const event = { action: { action: TableActionEnum.REVOKE }, item: regexPerm };
+      const event = { action: { action: TableActionEnum.REVOKE }, item: modelRegexPerm };
       component.handleModelRegexActions(event as any);
-      expect(modelRegexDataService.removeModelRegexPermissionFromUser).toHaveBeenCalledWith('123', regexPerm.regex);
+      expect(modelRegexDataService.removeModelRegexPermissionFromUser).toHaveBeenCalledWith('123', modelRegexPerm.id);
       expect(component.modelRegexDataSource).toEqual([]);
     });
     it('should open modal and add prompt regex permission', () => {
       dialog.open.mockReturnValue({ afterClosed: () => of(regexPerm) } as any);
       promptRegexDataService.addPromptRegexPermissionToUser.mockReturnValue(of(null));
       promptRegexDataService.getPromptRegexPermissionsForUser.mockReturnValue(
-        of([regexPerm as PromptRegexPermissionModel])
+        of([promptRegexPerm as PromptRegexPermissionModel])
       );
       component.userId = '123';
       component.openModalAddPromptRegexPermissionToUser();
@@ -944,35 +950,36 @@ describe('UserPermissionDetailsComponent', () => {
         regexPerm.priority
       );
       expect(snackBarService.openSnackBar).toHaveBeenCalledWith('Prompt regex permission added successfully');
-      expect(component.promptRegexDataSource).toEqual([regexPerm]);
+      expect(component.promptRegexDataSource).toEqual([promptRegexPerm]);
     });
     it('should handle edit prompt regex permission', () => {
       dialog.open.mockReturnValue({ afterClosed: () => of(updatedRegexPerm) } as any);
       promptRegexDataService.updatePromptRegexPermissionForUser.mockReturnValue(of(null));
       promptRegexDataService.getPromptRegexPermissionsForUser.mockReturnValue(
-        of([updatedRegexPerm as PromptRegexPermissionModel])
+        of([updatedPromptRegexPerm as PromptRegexPermissionModel])
       );
       component.userId = '123';
-      const event = { action: { action: TableActionEnum.EDIT }, item: regexPerm };
+      const event = { action: { action: TableActionEnum.EDIT }, item: promptRegexPerm };
       component.handlePromptRegexActions(event as any);
       jest.runAllTimers();
       expect(dialog.open).toHaveBeenCalled();
       expect(promptRegexDataService.updatePromptRegexPermissionForUser).toHaveBeenCalledWith(
         '123',
-        regexPerm.regex,
+        promptRegexPerm.regex,
         updatedRegexPerm.permission,
-        updatedRegexPerm.priority
+        updatedRegexPerm.priority,
+        promptRegexPerm.id
       );
       expect(snackBarService.openSnackBar).toHaveBeenCalledWith('Prompt regex permission updated successfully');
-      expect(component.promptRegexDataSource).toEqual([updatedRegexPerm]);
+      expect(component.promptRegexDataSource).toEqual([updatedPromptRegexPerm]);
     });
     it('should handle revoke prompt regex permission', () => {
       promptRegexDataService.removePromptRegexPermissionFromUser.mockReturnValue(of(null));
       promptRegexDataService.getPromptRegexPermissionsForUser.mockReturnValue(of([]));
       component.userId = '123';
-      const event = { action: { action: TableActionEnum.REVOKE }, item: regexPerm };
+      const event = { action: { action: TableActionEnum.REVOKE }, item: promptRegexPerm };
       component.handlePromptRegexActions(event as any);
-      expect(promptRegexDataService.removePromptRegexPermissionFromUser).toHaveBeenCalledWith('123', regexPerm.regex);
+      expect(promptRegexDataService.removePromptRegexPermissionFromUser).toHaveBeenCalledWith('123', promptRegexPerm.id);
       expect(component.promptRegexDataSource).toEqual([]);
     });
   });

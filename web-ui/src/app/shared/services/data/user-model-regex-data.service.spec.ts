@@ -25,7 +25,7 @@ describe('UserModelRegexDataService', () => {
   it('should fetch model regex permissions for user', () => {
     const userName = 'user1';
     const mockData: ModelRegexPermissionModel[] = [
-      { id: 1, regex: '.*', permission: PermissionEnum.READ, priority: 1, prompt: false },
+      { id: '1', group_id: 'group1', regex: '.*', permission: PermissionEnum.READ, priority: 1, prompt: false },
     ];
     service.getModelRegexPermissionsForUser(userName).subscribe((data) => {
       expect(data).toEqual(mockData);
@@ -54,14 +54,14 @@ describe('UserModelRegexDataService', () => {
     const regex = '^test$';
     const permission = PermissionEnum.MANAGE;
     const priority = 3;
-    const id = 1;
+    const id = '1';
     service.updateModelRegexPermissionForUser(userName, regex, permission, priority, id).subscribe((resp) => {
       expect(resp).toEqual({ updated: true });
     });
     const req = httpMock.expectOne(
       API_URL.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL.replace('${userName}', userName).replace(
         '${patternId}',
-        id.toString()
+        id
       )
     );
     expect(req.request.method).toBe('PATCH');
@@ -71,14 +71,14 @@ describe('UserModelRegexDataService', () => {
 
   it('should remove model regex permission from user', () => {
     const userName = 'user1';
-    const id = 1;
+    const id = '1';
     service.removeModelRegexPermissionFromUser(userName, id).subscribe((resp) => {
       expect(resp).toEqual({ deleted: true });
     });
     const req = httpMock.expectOne(
       API_URL.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL.replace('${userName}', userName).replace(
         '${patternId}',
-        id.toString()
+        id
       )
     );
     expect(req.request.method).toBe('DELETE');
