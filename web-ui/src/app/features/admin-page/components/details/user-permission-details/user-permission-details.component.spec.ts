@@ -810,12 +810,52 @@ describe('UserPermissionDetailsComponent', () => {
     });
   });
   describe('Regex Permissions', () => {
-    const regexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.READ, priority: 100, group_id: 'group-1' };
-    const updatedRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.EDIT, priority: 50, group_id: 'group-1' };
-    const modelRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.READ, priority: 100, group_id: 'group-1', prompt: false };
-    const updatedModelRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.EDIT, priority: 50, group_id: 'group-1', prompt: false };
-    const promptRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.READ, priority: 100, group_id: 'group-1', prompt: true };
-    const updatedPromptRegexPerm = { id: 'test-id-1', regex: 'test-regex', permission: PermissionEnum.EDIT, priority: 50, group_id: 'group-1', prompt: true };
+    const regexPerm = {
+      id: 'test-id-1',
+      regex: 'test-regex',
+      permission: PermissionEnum.READ,
+      priority: 100,
+      group_id: 'group-1',
+    };
+    const updatedRegexPerm = {
+      id: 'test-id-1',
+      regex: 'test-regex',
+      permission: PermissionEnum.EDIT,
+      priority: 50,
+      group_id: 'group-1',
+    };
+    const modelRegexPerm = {
+      id: 'test-id-1',
+      regex: 'test-regex',
+      permission: PermissionEnum.READ,
+      priority: 100,
+      group_id: 'group-1',
+      prompt: false,
+    };
+    const updatedModelRegexPerm = {
+      id: 'test-id-1',
+      regex: 'test-regex',
+      permission: PermissionEnum.EDIT,
+      priority: 50,
+      group_id: 'group-1',
+      prompt: false,
+    };
+    const promptRegexPerm = {
+      id: 'test-id-1',
+      regex: 'test-regex',
+      permission: PermissionEnum.READ,
+      priority: 100,
+      group_id: 'group-1',
+      prompt: true,
+    };
+    const updatedPromptRegexPerm = {
+      id: 'test-id-1',
+      regex: 'test-regex',
+      permission: PermissionEnum.EDIT,
+      priority: 50,
+      group_id: 'group-1',
+      prompt: true,
+    };
     it('should open modal and add experiment regex permission', () => {
       dialog.open.mockReturnValue({ afterClosed: () => of(regexPerm) } as any);
       experimentRegexDataService.addExperimentRegexPermissionToUser.mockReturnValue(of(null));
@@ -979,7 +1019,10 @@ describe('UserPermissionDetailsComponent', () => {
       component.userId = '123';
       const event = { action: { action: TableActionEnum.REVOKE }, item: promptRegexPerm };
       component.handlePromptRegexActions(event as any);
-      expect(promptRegexDataService.removePromptRegexPermissionFromUser).toHaveBeenCalledWith('123', promptRegexPerm.id);
+      expect(promptRegexDataService.removePromptRegexPermissionFromUser).toHaveBeenCalledWith(
+        '123',
+        promptRegexPerm.id
+      );
       expect(component.promptRegexDataSource).toEqual([]);
     });
   });

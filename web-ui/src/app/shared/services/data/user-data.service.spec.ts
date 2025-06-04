@@ -52,11 +52,15 @@ describe('UserDataService', () => {
     expect(req.request.method).toBe('GET');
     req.flush(mockUser);
 
-    const modelsReq = httpMock.expectOne(API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', mockUser.username));
+    const modelsReq = httpMock.expectOne(
+      API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', mockUser.username)
+    );
     expect(modelsReq.request.method).toBe('GET');
     modelsReq.flush([]);
 
-    const experimentsReq = httpMock.expectOne(API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', mockUser.username));
+    const experimentsReq = httpMock.expectOne(
+      API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', mockUser.username)
+    );
     expect(experimentsReq.request.method).toBe('GET');
     experimentsReq.flush([]);
 

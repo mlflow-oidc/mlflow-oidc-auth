@@ -35,14 +35,15 @@ describe('PermissionDataService', () => {
         const mockRequest: ExperimentPermissionRequestModel = {
           username: 'testuser',
           experiment_id: 'exp123',
-          permission: PermissionEnum.READ
+          permission: PermissionEnum.READ,
         };
 
         service.createExperimentPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${experimentId}', mockRequest.experiment_id);
+        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${experimentId}',
+          mockRequest.experiment_id
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('POST');
         expect(req.request.body).toEqual({ permission: mockRequest.permission });
@@ -54,34 +55,41 @@ describe('PermissionDataService', () => {
         const mockRequest: ExperimentPermissionRequestModel = {
           username: 'test@user.com',
           experiment_id: 'exp-123_special',
-          permission: PermissionEnum.MANAGE
+          permission: PermissionEnum.MANAGE,
         };
 
         service.createExperimentPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${experimentId}', mockRequest.experiment_id);
+        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${experimentId}',
+          mockRequest.experiment_id
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body).toEqual({ permission: mockRequest.permission });
         req.flush('Success');
       });
 
       it('should handle all permission types', () => {
-        const permissions = [PermissionEnum.READ, PermissionEnum.EDIT, PermissionEnum.MANAGE, PermissionEnum.NO_PERMISSIONS];
-        
+        const permissions = [
+          PermissionEnum.READ,
+          PermissionEnum.EDIT,
+          PermissionEnum.MANAGE,
+          PermissionEnum.NO_PERMISSIONS,
+        ];
+
         permissions.forEach((permission, index) => {
           const mockRequest: ExperimentPermissionRequestModel = {
             username: `user${index}`,
             experiment_id: `exp${index}`,
-            permission: permission
+            permission: permission,
           };
 
           service.createExperimentPermission(mockRequest).subscribe();
 
-          const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-            .replace('${userName}', mockRequest.username)
-            .replace('${experimentId}', mockRequest.experiment_id);
+          const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+            '${experimentId}',
+            mockRequest.experiment_id
+          );
           const req = httpMock.expectOne(expectedUrl);
           expect(req.request.body.permission).toBe(permission);
           req.flush('Success');
@@ -94,14 +102,15 @@ describe('PermissionDataService', () => {
         const mockRequest: ExperimentPermissionRequestModel = {
           username: 'updateuser',
           experiment_id: 'exp456',
-          permission: PermissionEnum.EDIT
+          permission: PermissionEnum.EDIT,
         };
 
         service.updateExperimentPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${experimentId}', mockRequest.experiment_id);
+        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${experimentId}',
+          mockRequest.experiment_id
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('PATCH');
         expect(req.request.body).toEqual({ permission: mockRequest.permission });
@@ -113,14 +122,15 @@ describe('PermissionDataService', () => {
         const mockRequest: ExperimentPermissionRequestModel = {
           username: '',
           experiment_id: 'exp456',
-          permission: PermissionEnum.READ
+          permission: PermissionEnum.READ,
         };
 
         service.updateExperimentPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${experimentId}', mockRequest.experiment_id);
+        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${experimentId}',
+          mockRequest.experiment_id
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body.permission).toBe(PermissionEnum.READ);
         req.flush('Updated');
@@ -131,14 +141,15 @@ describe('PermissionDataService', () => {
       it('should delete experiment permission with correct URL construction', () => {
         const mockRequest: ExperimentPermissionRequestModel = {
           username: 'deleteuser',
-          experiment_id: 'exp789'
+          experiment_id: 'exp789',
         };
 
         service.deleteExperimentPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${experimentId}', mockRequest.experiment_id);
+        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${experimentId}',
+          mockRequest.experiment_id
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('DELETE');
         req.flush('Deleted');
@@ -147,14 +158,15 @@ describe('PermissionDataService', () => {
       it('should handle URL encoding for special characters', () => {
         const mockRequest: ExperimentPermissionRequestModel = {
           username: 'user@example.com',
-          experiment_id: 'exp-123_test'
+          experiment_id: 'exp-123_test',
         };
 
         service.deleteExperimentPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${experimentId}', mockRequest.experiment_id);
+        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${experimentId}',
+          mockRequest.experiment_id
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('DELETE');
         req.flush('Deleted');
@@ -163,14 +175,15 @@ describe('PermissionDataService', () => {
       it('should handle empty parameters', () => {
         const mockRequest: ExperimentPermissionRequestModel = {
           username: '',
-          experiment_id: ''
+          experiment_id: '',
         };
 
         service.deleteExperimentPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${experimentId}', mockRequest.experiment_id);
+        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${experimentId}',
+          mockRequest.experiment_id
+        );
         const req = httpMock.expectOne(expectedUrl);
         req.flush('Deleted');
       });
@@ -183,14 +196,15 @@ describe('PermissionDataService', () => {
         const mockRequest: ModelPermissionRequestModel = {
           username: 'modeluser',
           name: 'testmodel',
-          permission: PermissionEnum.READ
+          permission: PermissionEnum.READ,
         };
 
         service.createModelPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_MODEL_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${modelName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_MODEL_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${modelName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('POST');
         expect(req.request.body).toEqual({ permission: mockRequest.permission });
@@ -202,14 +216,15 @@ describe('PermissionDataService', () => {
         const mockRequest: ModelPermissionRequestModel = {
           username: 'user1',
           name: 'my-awesome-model_v2.0',
-          permission: PermissionEnum.MANAGE
+          permission: PermissionEnum.MANAGE,
         };
 
         service.createModelPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_MODEL_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${modelName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_MODEL_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${modelName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body.permission).toBe(PermissionEnum.MANAGE);
         req.flush('Success');
@@ -221,14 +236,15 @@ describe('PermissionDataService', () => {
         const mockRequest: ModelPermissionRequestModel = {
           username: 'updatemodeluser',
           name: 'updatemodel',
-          permission: PermissionEnum.EDIT
+          permission: PermissionEnum.EDIT,
         };
 
         service.updateModelPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_MODEL_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${modelName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_MODEL_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${modelName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('PATCH');
         expect(req.request.body).toEqual({ permission: mockRequest.permission });
@@ -240,14 +256,15 @@ describe('PermissionDataService', () => {
         const mockRequest: ModelPermissionRequestModel = {
           username: 'testuser',
           name: 'testmodel',
-          permission: PermissionEnum.NO_PERMISSIONS
+          permission: PermissionEnum.NO_PERMISSIONS,
         };
 
         service.updateModelPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_MODEL_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${modelName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_MODEL_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${modelName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body.permission).toBe(PermissionEnum.NO_PERMISSIONS);
         req.flush('Updated');
@@ -258,14 +275,15 @@ describe('PermissionDataService', () => {
       it('should delete model permission with correct URL construction', () => {
         const mockRequest = {
           username: 'deletemodeluser',
-          name: 'deletemodel'
+          name: 'deletemodel',
         };
 
         service.deleteModelPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_MODEL_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${modelName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_MODEL_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${modelName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('DELETE');
         req.flush('Deleted');
@@ -274,14 +292,15 @@ describe('PermissionDataService', () => {
       it('should handle special characters in model name', () => {
         const mockRequest = {
           username: 'user',
-          name: 'model-v1.0_final'
+          name: 'model-v1.0_final',
         };
 
         service.deleteModelPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_MODEL_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${modelName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_MODEL_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${modelName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         req.flush('Deleted');
       });
@@ -294,14 +313,15 @@ describe('PermissionDataService', () => {
         const mockRequest = {
           username: 'promptuser',
           name: 'testprompt',
-          permission: PermissionEnum.READ
+          permission: PermissionEnum.READ,
         };
 
         service.createPromptPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_PROMPT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${promptName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_PROMPT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${promptName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('POST');
         expect(req.request.body).toEqual({ permission: mockRequest.permission });
@@ -310,19 +330,20 @@ describe('PermissionDataService', () => {
 
       it('should handle all permission types for prompts', () => {
         const permissions = [PermissionEnum.READ, PermissionEnum.EDIT, PermissionEnum.MANAGE];
-        
+
         permissions.forEach((permission, index) => {
           const mockRequest = {
             username: `user${index}`,
             name: `prompt${index}`,
-            permission: permission
+            permission: permission,
           };
 
           service.createPromptPermission(mockRequest).subscribe();
 
-          const expectedUrl = API_URL.USER_PROMPT_PERMISSION
-            .replace('${userName}', mockRequest.username)
-            .replace('${promptName}', mockRequest.name);
+          const expectedUrl = API_URL.USER_PROMPT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+            '${promptName}',
+            mockRequest.name
+          );
           const req = httpMock.expectOne(expectedUrl);
           expect(req.request.body.permission).toBe(permission);
           req.flush('Success');
@@ -335,14 +356,15 @@ describe('PermissionDataService', () => {
         const mockRequest = {
           username: 'updatepromptuser',
           name: 'updateprompt',
-          permission: PermissionEnum.EDIT
+          permission: PermissionEnum.EDIT,
         };
 
         service.updatePromptPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_PROMPT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${promptName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_PROMPT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${promptName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('PATCH');
         expect(req.request.body).toEqual({ permission: mockRequest.permission });
@@ -353,14 +375,15 @@ describe('PermissionDataService', () => {
         const mockRequest = {
           username: 'user',
           name: '',
-          permission: PermissionEnum.READ
+          permission: PermissionEnum.READ,
         };
 
         service.updatePromptPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_PROMPT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${promptName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_PROMPT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${promptName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body.permission).toBe(PermissionEnum.READ);
         req.flush('Updated');
@@ -371,14 +394,15 @@ describe('PermissionDataService', () => {
       it('should delete prompt permission with correct URL construction', () => {
         const mockRequest = {
           username: 'deletepromptuser',
-          name: 'deleteprompt'
+          name: 'deleteprompt',
         };
 
         service.deletePromptPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_PROMPT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${promptName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_PROMPT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${promptName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('DELETE');
         req.flush('Deleted');
@@ -387,14 +411,15 @@ describe('PermissionDataService', () => {
       it('should handle special characters in prompt name', () => {
         const mockRequest = {
           username: 'user',
-          name: 'my-prompt_v1.0'
+          name: 'my-prompt_v1.0',
         };
 
         service.deletePromptPermission(mockRequest).subscribe();
 
-        const expectedUrl = API_URL.USER_PROMPT_PERMISSION
-          .replace('${userName}', mockRequest.username)
-          .replace('${promptName}', mockRequest.name);
+        const expectedUrl = API_URL.USER_PROMPT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+          '${promptName}',
+          mockRequest.name
+        );
         const req = httpMock.expectOne(expectedUrl);
         req.flush('Deleted');
       });
@@ -410,9 +435,10 @@ describe('PermissionDataService', () => {
 
         service.addExperimentPermissionToGroup(groupName, experimentId, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${experimentId}', experimentId);
+        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${experimentId}',
+          experimentId
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('POST');
         expect(req.request.body).toEqual({ permission: permission });
@@ -426,9 +452,10 @@ describe('PermissionDataService', () => {
 
         service.addExperimentPermissionToGroup(groupName, experimentId, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${experimentId}', experimentId);
+        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${experimentId}',
+          experimentId
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body.permission).toBe(permission);
         req.flush('Success');
@@ -442,9 +469,10 @@ describe('PermissionDataService', () => {
 
         service.removeExperimentPermissionFromGroup(groupName, experimentId).subscribe();
 
-        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${experimentId}', experimentId);
+        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${experimentId}',
+          experimentId
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('DELETE');
         req.flush('Deleted');
@@ -456,9 +484,10 @@ describe('PermissionDataService', () => {
 
         service.removeExperimentPermissionFromGroup(groupName, experimentId).subscribe();
 
-        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${experimentId}', experimentId);
+        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${experimentId}',
+          experimentId
+        );
         const req = httpMock.expectOne(expectedUrl);
         req.flush('Deleted');
       });
@@ -472,9 +501,10 @@ describe('PermissionDataService', () => {
 
         service.updateExperimentPermissionForGroup(groupName, experimentId, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${experimentId}', experimentId);
+        const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${experimentId}',
+          experimentId
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('PATCH');
         expect(req.request.body).toEqual({ permission: permission });
@@ -482,17 +512,23 @@ describe('PermissionDataService', () => {
       });
 
       it('should handle all permission types for group experiments', () => {
-        const permissions = [PermissionEnum.READ, PermissionEnum.EDIT, PermissionEnum.MANAGE, PermissionEnum.NO_PERMISSIONS];
-        
+        const permissions = [
+          PermissionEnum.READ,
+          PermissionEnum.EDIT,
+          PermissionEnum.MANAGE,
+          PermissionEnum.NO_PERMISSIONS,
+        ];
+
         permissions.forEach((permission, index) => {
           const groupName = `group${index}`;
           const experimentId = `exp${index}`;
 
           service.updateExperimentPermissionForGroup(groupName, experimentId, permission).subscribe();
 
-          const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL
-            .replace('${groupName}', groupName)
-            .replace('${experimentId}', experimentId);
+          const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+            '${experimentId}',
+            experimentId
+          );
           const req = httpMock.expectOne(expectedUrl);
           expect(req.request.body.permission).toBe(permission);
           req.flush('Updated');
@@ -510,9 +546,10 @@ describe('PermissionDataService', () => {
 
         service.addModelPermissionToGroup(modelName, groupName, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${modelName}', modelName);
+        const expectedUrl = API_URL.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${modelName}',
+          modelName
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('POST');
         expect(req.request.body).toEqual({ permission: permission });
@@ -526,9 +563,10 @@ describe('PermissionDataService', () => {
 
         service.addModelPermissionToGroup(modelName, groupName, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${modelName}', modelName);
+        const expectedUrl = API_URL.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${modelName}',
+          modelName
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body.permission).toBe(permission);
         req.flush('Success');
@@ -542,9 +580,10 @@ describe('PermissionDataService', () => {
 
         service.removeModelPermissionFromGroup(modelName, groupName).subscribe();
 
-        const expectedUrl = API_URL.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${modelName}', modelName);
+        const expectedUrl = API_URL.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${modelName}',
+          modelName
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('DELETE');
         req.flush('Deleted');
@@ -559,9 +598,10 @@ describe('PermissionDataService', () => {
 
         service.updateModelPermissionForGroup(modelName, groupName, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${modelName}', modelName);
+        const expectedUrl = API_URL.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${modelName}',
+          modelName
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('PATCH');
         expect(req.request.body).toEqual({ permission: permission });
@@ -579,9 +619,10 @@ describe('PermissionDataService', () => {
 
         service.addPromptPermissionToGroup(promptName, groupName, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${promptName}', promptName);
+        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${promptName}',
+          promptName
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('POST');
         expect(req.request.body).toEqual({ permission: permission });
@@ -590,16 +631,17 @@ describe('PermissionDataService', () => {
 
       it('should handle various permission levels', () => {
         const permissions = [PermissionEnum.READ, PermissionEnum.EDIT, PermissionEnum.MANAGE];
-        
+
         permissions.forEach((permission, index) => {
           const promptName = `prompt${index}`;
           const groupName = `group${index}`;
 
           service.addPromptPermissionToGroup(promptName, groupName, permission).subscribe();
 
-          const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL
-            .replace('${groupName}', groupName)
-            .replace('${promptName}', promptName);
+          const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+            '${promptName}',
+            promptName
+          );
           const req = httpMock.expectOne(expectedUrl);
           expect(req.request.body.permission).toBe(permission);
           req.flush('Success');
@@ -614,9 +656,10 @@ describe('PermissionDataService', () => {
 
         service.removePromptPermissionFromGroup(promptName, groupName).subscribe();
 
-        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${promptName}', promptName);
+        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${promptName}',
+          promptName
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('DELETE');
         req.flush('Deleted');
@@ -628,9 +671,10 @@ describe('PermissionDataService', () => {
 
         service.removePromptPermissionFromGroup(promptName, groupName).subscribe();
 
-        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${promptName}', promptName);
+        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${promptName}',
+          promptName
+        );
         const req = httpMock.expectOne(expectedUrl);
         req.flush('Deleted');
       });
@@ -644,9 +688,10 @@ describe('PermissionDataService', () => {
 
         service.updatePromptPermissionForGroup(promptName, groupName, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${promptName}', promptName);
+        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${promptName}',
+          promptName
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.method).toBe('PATCH');
         expect(req.request.body).toEqual({ permission: permission });
@@ -660,9 +705,10 @@ describe('PermissionDataService', () => {
 
         service.updatePromptPermissionForGroup(promptName, groupName, permission).subscribe();
 
-        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL
-          .replace('${groupName}', groupName)
-          .replace('${promptName}', promptName);
+        const expectedUrl = API_URL.GROUP_PROMPT_PERMISSION_DETAIL.replace('${groupName}', groupName).replace(
+          '${promptName}',
+          promptName
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body.permission).toBe(PermissionEnum.NO_PERMISSIONS);
         req.flush('Updated');
@@ -675,19 +721,20 @@ describe('PermissionDataService', () => {
       const mockRequest: ExperimentPermissionRequestModel = {
         username: 'erroruser',
         experiment_id: 'exp123',
-        permission: PermissionEnum.READ
+        permission: PermissionEnum.READ,
       };
 
       service.createExperimentPermission(mockRequest).subscribe({
         next: () => fail('Expected error'),
         error: (error) => {
           expect(error.status).toBe(500);
-        }
+        },
       });
 
-      const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-        .replace('${userName}', mockRequest.username)
-        .replace('${experimentId}', mockRequest.experiment_id);
+      const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+        '${experimentId}',
+        mockRequest.experiment_id
+      );
       const req = httpMock.expectOne(expectedUrl);
       req.flush('Server Error', { status: 500, statusText: 'Internal Server Error' });
     });
@@ -696,19 +743,20 @@ describe('PermissionDataService', () => {
       const mockRequest: ModelPermissionRequestModel = {
         username: 'erroruser',
         name: 'errormodel',
-        permission: PermissionEnum.EDIT
+        permission: PermissionEnum.EDIT,
       };
 
       service.updateModelPermission(mockRequest).subscribe({
         next: () => fail('Expected error'),
         error: (error) => {
           expect(error.status).toBe(404);
-        }
+        },
       });
 
-      const expectedUrl = API_URL.USER_MODEL_PERMISSION
-        .replace('${userName}', mockRequest.username)
-        .replace('${modelName}', mockRequest.name);
+      const expectedUrl = API_URL.USER_MODEL_PERMISSION.replace('${userName}', mockRequest.username).replace(
+        '${modelName}',
+        mockRequest.name
+      );
       const req = httpMock.expectOne(expectedUrl);
       req.flush('Not Found', { status: 404, statusText: 'Not Found' });
     });
@@ -718,12 +766,13 @@ describe('PermissionDataService', () => {
         next: () => fail('Expected error'),
         error: (error) => {
           expect(error.status).toBe(403);
-        }
+        },
       });
 
-      const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL
-        .replace('${groupName}', 'errorgroup')
-        .replace('${experimentId}', 'errorexp');
+      const expectedUrl = API_URL.GROUP_EXPERIMENT_PERMISSION_DETAIL.replace('${groupName}', 'errorgroup').replace(
+        '${experimentId}',
+        'errorexp'
+      );
       const req = httpMock.expectOne(expectedUrl);
       req.flush('Forbidden', { status: 403, statusText: 'Forbidden' });
     });
@@ -735,14 +784,15 @@ describe('PermissionDataService', () => {
       const mockRequest: ExperimentPermissionRequestModel = {
         username: null as any,
         experiment_id: 'exp123',
-        permission: PermissionEnum.READ
+        permission: PermissionEnum.READ,
       };
 
       service.createExperimentPermission(mockRequest).subscribe();
 
-      const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-        .replace('${userName}', mockRequest.username)
-        .replace('${experimentId}', mockRequest.experiment_id);
+      const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', mockRequest.username).replace(
+        '${experimentId}',
+        mockRequest.experiment_id
+      );
       const req = httpMock.expectOne(expectedUrl);
       expect(req.request.body.permission).toBe(PermissionEnum.READ);
       req.flush('Success');
@@ -753,14 +803,15 @@ describe('PermissionDataService', () => {
       const mockRequest: ModelPermissionRequestModel = {
         username: longString,
         name: longString,
-        permission: PermissionEnum.MANAGE
+        permission: PermissionEnum.MANAGE,
       };
 
       service.createModelPermission(mockRequest).subscribe();
 
-      const expectedUrl = API_URL.USER_MODEL_PERMISSION
-        .replace('${userName}', mockRequest.username)
-        .replace('${modelName}', mockRequest.name);
+      const expectedUrl = API_URL.USER_MODEL_PERMISSION.replace('${userName}', mockRequest.username).replace(
+        '${modelName}',
+        mockRequest.name
+      );
       const req = httpMock.expectOne(expectedUrl);
       expect(req.request.body.permission).toBe(PermissionEnum.MANAGE);
       req.flush('Success');
@@ -770,7 +821,7 @@ describe('PermissionDataService', () => {
       const requests = [
         { username: 'user1', experiment_id: 'exp1', permission: PermissionEnum.READ },
         { username: 'user2', experiment_id: 'exp2', permission: PermissionEnum.EDIT },
-        { username: 'user3', experiment_id: 'exp3', permission: PermissionEnum.MANAGE }
+        { username: 'user3', experiment_id: 'exp3', permission: PermissionEnum.MANAGE },
       ];
 
       requests.forEach((request, index) => {
@@ -778,9 +829,10 @@ describe('PermissionDataService', () => {
       });
 
       requests.forEach((request, index) => {
-        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION
-          .replace('${userName}', request.username)
-          .replace('${experimentId}', request.experiment_id);
+        const expectedUrl = API_URL.USER_EXPERIMENT_PERMISSION.replace('${userName}', request.username).replace(
+          '${experimentId}',
+          request.experiment_id
+        );
         const req = httpMock.expectOne(expectedUrl);
         expect(req.request.body.permission).toBe(request.permission);
         req.flush(`Success ${index}`);
@@ -812,10 +864,10 @@ describe('PermissionDataService', () => {
         'updateModelPermissionForGroup',
         'addPromptPermissionToGroup',
         'removePromptPermissionFromGroup',
-        'updatePromptPermissionForGroup'
+        'updatePromptPermissionForGroup',
       ];
 
-      expectedMethods.forEach(method => {
+      expectedMethods.forEach((method) => {
         expect(typeof (service as any)[method]).toBe('function');
       });
     });
