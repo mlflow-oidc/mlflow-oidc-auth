@@ -54,9 +54,7 @@ def test_delete_can_manage_registered_model_permission(mock_response, mock_store
 def test_filter_search_experiments(mock_response, mock_store, mock_utils):
     handler = AFTER_REQUEST_PATH_HANDLERS[SearchExperiments]
     mock_response.json = {"experiments": [{"experiment_id": "123"}]}
-    with app.test_request_context(
-        path="/api/2.0/mlflow/experiments/search", method="POST", headers={"Content-Type": "application/json"}
-    ):
+    with app.test_request_context(path="/api/2.0/mlflow/experiments/search", method="POST", headers={"Content-Type": "application/json"}):
         with patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", side_effect=lambda exp_id, _: exp_id != "123"):
             handler(mock_response)
             assert len(mock_response.json["experiments"]) == 1
@@ -65,11 +63,7 @@ def test_filter_search_experiments(mock_response, mock_store, mock_utils):
 def test_filter_search_registered_models(mock_response, mock_store, mock_utils):
     handler = AFTER_REQUEST_PATH_HANDLERS[SearchRegisteredModels]
     mock_response.json = {"registered_models": [{"name": "test_model"}]}
-    with app.test_request_context(
-        path="/api/2.0/mlflow/registered-models/search", method="POST", headers={"Content-Type": "application/json"}
-    ):
-        with patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_registered_model", side_effect=lambda name, _: name != "test_model"
-        ):
+    with app.test_request_context(path="/api/2.0/mlflow/registered-models/search", method="POST", headers={"Content-Type": "application/json"}):
+        with patch("mlflow_oidc_auth.hooks.after_request.can_read_registered_model", side_effect=lambda name, _: name != "test_model"):
             handler(mock_response)
             assert len(mock_response.json["registered_models"]) == 1

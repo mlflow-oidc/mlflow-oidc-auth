@@ -85,9 +85,7 @@ class ExperimentPermissionRepository:
         """
         with self._Session() as session:
             user = get_user(session, username)
-            rows: List[SqlExperimentPermission] = (
-                session.query(SqlExperimentPermission).filter(SqlExperimentPermission.user_id == user.id).all()
-            )
+            rows: List[SqlExperimentPermission] = session.query(SqlExperimentPermission).filter(SqlExperimentPermission.user_id == user.id).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def list_permissions_for_experiment(self, experiment_id: str) -> List[ExperimentPermission]:
@@ -97,9 +95,7 @@ class ExperimentPermissionRepository:
         :return: A list of experiment permissions for the experiment.
         """
         with self._Session() as session:
-            rows: List[SqlExperimentPermission] = (
-                session.query(SqlExperimentPermission).filter(SqlExperimentPermission.experiment_id == experiment_id).all()
-            )
+            rows: List[SqlExperimentPermission] = session.query(SqlExperimentPermission).filter(SqlExperimentPermission.experiment_id == experiment_id).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def update_permission(self, experiment_id: str, username: str, permission: str) -> ExperimentPermission:

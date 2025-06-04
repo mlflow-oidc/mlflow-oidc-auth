@@ -49,9 +49,7 @@ class RegisteredModelGroupRegexPermissionRepository:
                 INVALID_STATE,
             )
 
-    def grant(
-        self, group_name: str, regex: str, permission: str, priority: int = 0, prompt: bool = False
-    ) -> RegisteredModelGroupRegexPermission:
+    def grant(self, group_name: str, regex: str, permission: str, priority: int = 0, prompt: bool = False) -> RegisteredModelGroupRegexPermission:
         """
         Create a new registered model group permission with regex.
         :param group_name: The name of the group.
@@ -104,9 +102,7 @@ class RegisteredModelGroupRegexPermissionRepository:
             )
             return [p.to_mlflow_entity() for p in permissions]
 
-    def list_permissions_for_groups(
-        self, group_names: List[str], prompt: bool = False
-    ) -> List[RegisteredModelGroupRegexPermission]:
+    def list_permissions_for_groups(self, group_names: List[str], prompt: bool = False) -> List[RegisteredModelGroupRegexPermission]:
         """
         List all registered model group permissions for a list of groups.
         :param group_names: The names of the groups.
@@ -125,9 +121,7 @@ class RegisteredModelGroupRegexPermissionRepository:
             )
             return [p.to_mlflow_entity() for p in permissions]
 
-    def list_permissions_for_groups_ids(
-        self, group_ids: List[int], prompt: bool = False
-    ) -> List[RegisteredModelGroupRegexPermission]:
+    def list_permissions_for_groups_ids(self, group_ids: List[int], prompt: bool = False) -> List[RegisteredModelGroupRegexPermission]:
         """
         List all registered model group permissions for a list of groups.
         :param group_ids: The IDs of the groups.
@@ -145,9 +139,7 @@ class RegisteredModelGroupRegexPermissionRepository:
             )
             return [p.to_mlflow_entity() for p in permissions]
 
-    def update(
-        self, id: int, regex: str, group_name: str, permission: str, priority: int = 0, prompt: bool = False
-    ) -> RegisteredModelGroupRegexPermission:
+    def update(self, id: int, regex: str, group_name: str, permission: str, priority: int = 0, prompt: bool = False) -> RegisteredModelGroupRegexPermission:
         """
         Update a registered model group permission.
         :param regex: The regex pattern for the registered model name.

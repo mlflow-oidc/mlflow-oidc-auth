@@ -30,9 +30,7 @@ class SqlUser(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
     experiment_permissions: Mapped[list["SqlExperimentPermission"]] = relationship("SqlExperimentPermission", backref="users")
-    registered_model_permissions: Mapped[list["SqlRegisteredModelPermission"]] = relationship(
-        "SqlRegisteredModelPermission", backref="users"
-    )
+    registered_model_permissions: Mapped[list["SqlRegisteredModelPermission"]] = relationship("SqlRegisteredModelPermission", backref="users")
     groups: Mapped[list["SqlGroup"]] = relationship(
         "SqlGroup",
         secondary="user_groups",

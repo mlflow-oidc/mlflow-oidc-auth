@@ -79,11 +79,7 @@ def get_prompt_users(prompt_name):
     users = []
     for user in list_users:
         # Check if the user is associated with the model
-        user_models = (
-            {model.name: model.permission for model in user.registered_model_permissions}
-            if user.registered_model_permissions
-            else {}
-        )
+        user_models = {model.name: model.permission for model in user.registered_model_permissions} if user.registered_model_permissions else {}
         if prompt_name in user_models:
             users.append(
                 {

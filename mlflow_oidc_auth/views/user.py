@@ -89,15 +89,11 @@ def list_user_experiments(username):
     else:
         if username == current_user.username:
             list_experiments = [
-                exp
-                for exp in all_experiments
-                if effective_experiment_permission(exp.experiment_id, username).permission.name != NO_PERMISSIONS.name
+                exp for exp in all_experiments if effective_experiment_permission(exp.experiment_id, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_experiments = [
-                exp
-                for exp in all_experiments
-                if effective_experiment_permission(exp.experiment_id, current_user.username).permission.can_manage
+                exp for exp in all_experiments if effective_experiment_permission(exp.experiment_id, current_user.username).permission.can_manage
             ]
 
     experiments_list = [
@@ -122,15 +118,11 @@ def list_user_models(username):
     else:
         if username == current_user.username:
             list_registered_models = [
-                model
-                for model in all_registered_models
-                if effective_registered_model_permission(model.name, username).permission.name != NO_PERMISSIONS.name
+                model for model in all_registered_models if effective_registered_model_permission(model.name, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_registered_models = [
-                model
-                for model in all_registered_models
-                if effective_registered_model_permission(model.name, current_user.username).permission.can_manage
+                model for model in all_registered_models if effective_registered_model_permission(model.name, current_user.username).permission.can_manage
             ]
     models = [
         {
@@ -153,15 +145,11 @@ def list_user_prompts(username):
     else:
         if username == current_user.username:
             list_registered_models = [
-                model
-                for model in all_registered_models
-                if effective_prompt_permission(model.name, username).permission.name != NO_PERMISSIONS.name
+                model for model in all_registered_models if effective_prompt_permission(model.name, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_registered_models = [
-                model
-                for model in all_registered_models
-                if effective_prompt_permission(model.name, current_user.username).permission.can_manage
+                model for model in all_registered_models if effective_prompt_permission(model.name, current_user.username).permission.can_manage
             ]
     models = [
         {

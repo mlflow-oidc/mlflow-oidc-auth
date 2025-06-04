@@ -1,5 +1,5 @@
 from mlflow_oidc_auth.permissions import Permission
-from mlflow_oidc_auth.utils import effective_registered_model_permission, get_username, get_model_name    
+from mlflow_oidc_auth.utils import effective_registered_model_permission, get_username, get_model_name
 
 
 def _get_permission_from_registered_model_name() -> Permission:

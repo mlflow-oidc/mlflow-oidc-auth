@@ -61,7 +61,9 @@ REGISTERED_MODEL_GROUP_PERMISSIONS = _get_rest_path("/mlflow/permissions/registe
 REGISTERED_MODEL_GROUP_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/groups/<string:group_name>")
 
 GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models-patterns")
-GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models-patterns/<string:pattern_id>")
+GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = _get_rest_path(
+    "/mlflow/permissions/groups/<string:group_name>/registered-models-patterns/<string:pattern_id>"
+)
 
 # GROUP, PROMPT, PATTERN
 GROUP_PROMPT_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/prompts")

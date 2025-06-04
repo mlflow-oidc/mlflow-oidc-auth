@@ -94,31 +94,11 @@ app.add_url_rule(rule=routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, methods=["
 app.add_url_rule(rule=routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, methods=["DELETE"], view_func=views.delete_registered_model_permission)
 
 # user registered model regex permission management
-app.add_url_rule(
-    rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSIONS,
-    methods=["GET"],
-    view_func=views.list_registered_model_regex_permissions,
-)
-app.add_url_rule(
-    rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSIONS,
-    methods=["POST"],
-    view_func=views.create_registered_model_regex_permission,
-)
-app.add_url_rule(
-    rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    methods=["GET"],
-    view_func=views.get_registered_model_regex_permission,
-)
-app.add_url_rule(
-    rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    methods=["PATCH"],
-    view_func=views.update_registered_model_regex_permission,
-)
-app.add_url_rule(
-    rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    methods=["DELETE"],
-    view_func=views.delete_registered_model_regex_permission,
-)
+app.add_url_rule(rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSIONS, methods=["GET"], view_func=views.list_registered_model_regex_permissions)
+app.add_url_rule(rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSIONS, methods=["POST"], view_func=views.create_registered_model_regex_permission)
+app.add_url_rule(rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, methods=["GET"], view_func=views.get_registered_model_regex_permission)
+app.add_url_rule(rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, methods=["PATCH"], view_func=views.update_registered_model_regex_permission)
+app.add_url_rule(rule=routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, methods=["DELETE"], view_func=views.delete_registered_model_regex_permission)
 
 app.add_url_rule(rule=routes.GROUP_USER_PERMISSIONS, methods=["GET"], view_func=views.get_group_users)
 
@@ -139,7 +119,7 @@ app.add_url_rule(rule=routes.GROUP_PROMPT_PERMISSION_DETAIL, methods=["PATCH"], 
 
 app.add_url_rule(rule=routes.GROUP_EXPERIMENT_PATTERN_PERMISSIONS, methods=["GET"], view_func=views.list_group_experiment_regex_permissions)
 app.add_url_rule(rule=routes.GROUP_EXPERIMENT_PATTERN_PERMISSIONS, methods=["POST"], view_func=views.create_group_experiment_regex_permission)
-app.add_url_rule(rule=routes.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL,methods=["GET"],view_func=views.get_group_experiment_regex_permission)
+app.add_url_rule(rule=routes.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL, methods=["GET"], view_func=views.get_group_experiment_regex_permission)
 app.add_url_rule(
     rule=routes.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
     methods=["PATCH"],

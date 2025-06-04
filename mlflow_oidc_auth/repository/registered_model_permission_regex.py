@@ -15,9 +15,7 @@ class RegisteredModelPermissionRegexRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
 
-    def _get_registered_model_regex_permission(
-        self, session: Session, id: int, user_id: int, prompt: bool = False
-    ) -> SqlRegisteredModelRegexPermission:
+    def _get_registered_model_regex_permission(self, session: Session, id: int, user_id: int, prompt: bool = False) -> SqlRegisteredModelRegexPermission:
         """
         Get the registered model regex permission for a given regex and user ID.
         :param session: SQLAlchemy session
@@ -90,9 +88,7 @@ class RegisteredModelPermissionRegexRepository:
             )
             return [p.to_mlflow_entity() for p in perms]
 
-    def update(
-        self, id: int, regex: str, priority: int, permission: str, username: str, prompt: bool = False
-    ) -> RegisteredModelRegexPermission:
+    def update(self, id: int, regex: str, priority: int, permission: str, username: str, prompt: bool = False) -> RegisteredModelRegexPermission:
         validate_regex(regex)
         _validate_permission(permission)
         with self._Session() as session:

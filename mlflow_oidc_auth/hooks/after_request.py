@@ -16,7 +16,16 @@ from mlflow.utils.search_utils import SearchUtils
 
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_is_admin, get_username, get_model_name, fetch_registered_models_paginated, fetch_readable_registered_models, fetch_readable_experiments
+from mlflow_oidc_auth.utils import (
+    can_read_experiment,
+    can_read_registered_model,
+    get_is_admin,
+    get_username,
+    get_model_name,
+    fetch_registered_models_paginated,
+    fetch_readable_registered_models,
+    fetch_readable_experiments,
+)
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -64,22 +73,19 @@ def _filter_search_experiments(resp: Response):
 
     # Get current user
     username = get_username()
-    
+
     # Get all readable experiments with the original filter and order
     readable_experiments = fetch_readable_experiments(
-        view_type=request_message.view_type,
-        order_by=request_message.order_by,
-        filter_string=request_message.filter,
-        username=username
+        view_type=request_message.view_type, order_by=request_message.order_by, filter_string=request_message.filter, username=username
     )
-    
+
     # Convert to proto format and apply max_results limit
-    readable_experiments_proto = [experiment.to_proto() for experiment in readable_experiments[:request_message.max_results]]
-    
+    readable_experiments_proto = [experiment.to_proto() for experiment in readable_experiments[: request_message.max_results]]
+
     # Update response with filtered experiments
     response_message.ClearField("experiments")
     response_message.experiments.extend(readable_experiments_proto)
-    
+
     # Handle pagination token
     if len(readable_experiments) > request_message.max_results:
         # Set next page token if there are more results
@@ -101,21 +107,17 @@ def _filter_search_registered_models(resp: Response):
 
     # Get current user
     username = get_username()
-    
+
     # Get all readable models with the original filter and order
-    readable_models = fetch_readable_registered_models(
-        filter_string=request_message.filter,
-        order_by=request_message.order_by,
-        username=username
-    )
-    
+    readable_models = fetch_readable_registered_models(filter_string=request_message.filter, order_by=request_message.order_by, username=username)
+
     # Convert to proto format and apply max_results limit
-    readable_models_proto = [model.to_proto() for model in readable_models[:request_message.max_results]]
-    
+    readable_models_proto = [model.to_proto() for model in readable_models[: request_message.max_results]]
+
     # Update response with filtered models
     response_message.ClearField("registered_models")
     response_message.registered_models.extend(readable_models_proto)
-    
+
     # Handle pagination token
     if len(readable_models) > request_message.max_results:
         # Set next page token if there are more results
@@ -135,11 +137,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     SearchRegisteredModels: _filter_search_registered_models,
 }
 
-AFTER_REQUEST_HANDLERS = {
-    (http_path, method): handler
-    for http_path, handler, methods in get_endpoints(_get_after_request_handler)
-    for method in methods
-}
+AFTER_REQUEST_HANDLERS = {(http_path, method): handler for http_path, handler, methods in get_endpoints(_get_after_request_handler) for method in methods}
 
 
 @catch_mlflow_exception

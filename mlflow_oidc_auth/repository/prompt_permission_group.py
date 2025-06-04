@@ -70,9 +70,7 @@ class PromptPermissionGroupRepository:
             group = get_group(session, group_name)
             perms = (
                 session.query(SqlRegisteredModelGroupPermission)
-                .filter(
-                    SqlRegisteredModelGroupPermission.group_id == group.id, SqlRegisteredModelGroupPermission.prompt == True
-                )
+                .filter(SqlRegisteredModelGroupPermission.group_id == group.id, SqlRegisteredModelGroupPermission.prompt == True)
                 .all()
             )
             return [p.to_mlflow_entity() for p in perms]

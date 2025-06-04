@@ -13,9 +13,7 @@ class ExperimentPermissionGroupRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
 
-    def _get_experiment_group_permission(
-        self, session: Session, experiment_id: str, group_name: str
-    ) -> Optional[SqlExperimentGroupPermission]:
+    def _get_experiment_group_permission(self, session: Session, experiment_id: str, group_name: str) -> Optional[SqlExperimentGroupPermission]:
         """
         Get the experiment group permission for a given experiment and group name.
         :param session: SQLAlchemy session
@@ -93,11 +91,7 @@ class ExperimentPermissionGroupRepository:
         with self._Session() as session:
             user = get_user(session, username=username)
             user_groups = list_user_groups(session, user)
-            perms = (
-                session.query(SqlExperimentGroupPermission)
-                .filter(SqlExperimentGroupPermission.group_id.in_([ug.group_id for ug in user_groups]))
-                .all()
-            )
+            perms = session.query(SqlExperimentGroupPermission).filter(SqlExperimentGroupPermission.group_id.in_([ug.group_id for ug in user_groups])).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def get_group_permission_for_user_experiment(self, experiment_id: str, username: str) -> ExperimentPermission:

@@ -20,7 +20,6 @@ class TestRoutes:
                 routes.STATIC,
                 routes.UI,
                 routes.UI_ROOT,
-                
                 # User management routes
                 routes.CREATE_ACCESS_TOKEN,
                 routes.GET_CURRENT_USER,
@@ -29,14 +28,12 @@ class TestRoutes:
                 routes.UPDATE_USER_PASSWORD,
                 routes.UPDATE_USER_ADMIN,
                 routes.DELETE_USER,
-                
                 # List resources
                 routes.LIST_EXPERIMENTS,
                 routes.LIST_PROMPTS,
                 routes.LIST_MODELS,
                 routes.LIST_USERS,
                 routes.LIST_GROUPS,
-                
                 # User permissions
                 routes.USER_EXPERIMENT_PERMISSIONS,
                 routes.USER_EXPERIMENT_PERMISSION_DETAIL,
@@ -44,7 +41,6 @@ class TestRoutes:
                 routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL,
                 routes.USER_PROMPT_PERMISSIONS,
                 routes.USER_PROMPT_PERMISSION_DETAIL,
-                
                 # Resource user permissions
                 routes.EXPERIMENT_USER_PERMISSIONS,
                 routes.EXPERIMENT_USER_PERMISSION_DETAIL,
@@ -52,7 +48,6 @@ class TestRoutes:
                 routes.REGISTERED_MODEL_USER_PERMISSION_DETAIL,
                 routes.PROMPT_USER_PERMISSIONS,
                 routes.PROMPT_USER_PERMISSION_DETAIL,
-                
                 # User pattern permissions
                 routes.USER_EXPERIMENT_PATTERN_PERMISSIONS,
                 routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
@@ -60,7 +55,6 @@ class TestRoutes:
                 routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
                 routes.USER_PROMPT_PATTERN_PERMISSIONS,
                 routes.USER_PROMPT_PATTERN_PERMISSION_DETAIL,
-                
                 # Group permissions
                 routes.GROUP_EXPERIMENT_PERMISSIONS,
                 routes.GROUP_EXPERIMENT_PERMISSION_DETAIL,
@@ -68,7 +62,6 @@ class TestRoutes:
                 routes.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL,
                 routes.GROUP_PROMPT_PERMISSIONS,
                 routes.GROUP_PROMPT_PERMISSION_DETAIL,
-                
                 # Resource group permissions
                 routes.EXPERIMENT_GROUP_PERMISSIONS,
                 routes.EXPERIMENT_GROUP_PERMISSION_DETAIL,
@@ -76,7 +69,6 @@ class TestRoutes:
                 routes.REGISTERED_MODEL_GROUP_PERMISSION_DETAIL,
                 routes.PROMPT_GROUP_PERMISSIONS,
                 routes.PROMPT_GROUP_PERMISSION_DETAIL,
-                
                 # Group pattern permissions
                 routes.GROUP_EXPERIMENT_PATTERN_PERMISSIONS,
                 routes.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
@@ -84,7 +76,6 @@ class TestRoutes:
                 routes.GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
                 routes.GROUP_PROMPT_PATTERN_PERMISSIONS,
                 routes.GROUP_PROMPT_PATTERN_PERMISSION_DETAIL,
-                
                 # Group user permissions
                 routes.GROUP_USER_PERMISSIONS,
             ]

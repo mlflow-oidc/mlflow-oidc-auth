@@ -76,41 +76,31 @@ class TestUtils(unittest.TestCase):
             mock_store_permission_group_func = MagicMock()
             mock_store_permission_user_func.return_value = "user_perm"
             mock_store_permission_group_func.return_value = "group_perm"
-            mock_get_permission.return_value = Permission(
-                name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True
-            )
+            mock_get_permission.return_value = Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True)
             mock_config.PERMISSION_SOURCE_ORDER = ["user", "group"]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "default_perm"
 
             # user permission found
-            result = get_permission_from_store_or_default(
-                {"user": mock_store_permission_user_func, "group": mock_store_permission_group_func}
-            )
+            result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
             self.assertTrue(result.permission.can_manage)
             self.assertEqual(result.type, "user")
 
             # user not found, group found
             mock_store_permission_user_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
-            result = get_permission_from_store_or_default(
-                {"user": mock_store_permission_user_func, "group": mock_store_permission_group_func}
-            )
+            result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
             self.assertTrue(result.permission.can_manage)
             self.assertEqual(result.type, "group")
 
             # both not found, fallback to default
             mock_store_permission_group_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
-            result = get_permission_from_store_or_default(
-                {"user": mock_store_permission_user_func, "group": mock_store_permission_group_func}
-            )
+            result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
             self.assertTrue(result.permission.can_manage)
             self.assertEqual(result.type, "fallback")
 
             # invalid source in config
             mock_config.PERMISSION_SOURCE_ORDER = ["invalid"]
             # Just call and check fallback, don't assert logs
-            result = get_permission_from_store_or_default(
-                {"user": mock_store_permission_user_func, "group": mock_store_permission_group_func}
-            )
+            result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
             self.assertEqual(result.type, "fallback")
 
     @patch("mlflow_oidc_auth.utils.store")
@@ -426,7 +416,7 @@ class TestUtils(unittest.TestCase):
             with patch("mlflow_oidc_auth.utils.request") as mock_request:
                 mock_request.view_args = {"id": "123"}
                 self.assertEqual(get_url_param("id"), "123")
-        
+
         # URL param missing
         with self.app.test_request_context("/test"):
             with patch("mlflow_oidc_auth.utils.request") as mock_request:
@@ -441,7 +431,7 @@ class TestUtils(unittest.TestCase):
             with patch("mlflow_oidc_auth.utils.request") as mock_request:
                 mock_request.view_args = {"id": "123"}
                 self.assertEqual(get_optional_url_param("id"), "123")
-        
+
         # URL param missing
         with self.app.test_request_context("/test"):
             with patch("mlflow_oidc_auth.utils.request") as mock_request:
@@ -456,15 +446,15 @@ class TestUtils(unittest.TestCase):
                 mock_request.args = {}
                 mock_request.json = None
                 self.assertEqual(get_model_name(), "test-model")
-        
+
         # Query args
         with self.app.test_request_context("/?name=test-model", method="GET"):
             self.assertEqual(get_model_name(), "test-model")
-        
+
         # JSON data
         with self.app.test_request_context("/", method="POST", json={"name": "test-model"}, content_type="application/json"):
             self.assertEqual(get_model_name(), "test-model")
-        
+
         # Missing name
         with self.app.test_request_context("/", method="GET"):
             with patch("mlflow_oidc_auth.utils.request") as mock_request:
@@ -481,7 +471,7 @@ class TestUtils(unittest.TestCase):
         mock_tracking_store().get_experiment_by_name.return_value.experiment_id = "123"
         result = _experiment_id_from_name("test-experiment")
         self.assertEqual(result, "123")
-        
+
         # Experiment not found
         mock_tracking_store().get_experiment_by_name.return_value = None
         with self.assertRaises(MlflowException) as cm:
@@ -516,23 +506,23 @@ class TestUtils(unittest.TestCase):
         mock_result.__len__ = MagicMock(return_value=2)
         mock_result.token = None
         mock_model_store().search_registered_models.return_value = mock_result
-        
+
         result = fetch_all_registered_models()
         self.assertEqual(len(result), 2)
-        
+
         # Multiple pages
         first_page = MagicMock()
         first_page.__iter__ = MagicMock(return_value=iter([MagicMock(name="model1")]))
         first_page.__len__ = MagicMock(return_value=1)
         first_page.token = "token123"
-        
+
         second_page = MagicMock()
         second_page.__iter__ = MagicMock(return_value=iter([MagicMock(name="model2")]))
         second_page.__len__ = MagicMock(return_value=1)
         second_page.token = None
-        
+
         mock_model_store().search_registered_models.side_effect = [first_page, second_page]
-        
+
         result = fetch_all_registered_models()
         self.assertEqual(len(result), 2)
 
@@ -540,32 +530,21 @@ class TestUtils(unittest.TestCase):
     def test_fetch_all_prompts(self, mock_fetch_models):
         mock_models = [MagicMock(name="prompt1"), MagicMock(name="prompt2")]
         mock_fetch_models.return_value = mock_models
-        
+
         result = fetch_all_prompts()
         self.assertEqual(result, mock_models)
-        mock_fetch_models.assert_called_once_with(
-            filter_string="tags.`mlflow.prompt.is_prompt` = 'true'",
-            max_results_per_page=1000
-        )
+        mock_fetch_models.assert_called_once_with(filter_string="tags.`mlflow.prompt.is_prompt` = 'true'", max_results_per_page=1000)
 
     @patch("mlflow_oidc_auth.utils._get_model_registry_store")
     def test_fetch_registered_models_paginated(self, mock_model_store):
         mock_result = MagicMock()
         mock_model_store().search_registered_models.return_value = mock_result
-        
-        result = fetch_registered_models_paginated(
-            filter_string="test_filter",
-            max_results=100,
-            order_by=["name"],
-            page_token="token123"
-        )
-        
+
+        result = fetch_registered_models_paginated(filter_string="test_filter", max_results=100, order_by=["name"], page_token="token123")
+
         self.assertEqual(result, mock_result)
         mock_model_store().search_registered_models.assert_called_once_with(
-            filter_string="test_filter",
-            max_results=100,
-            order_by=["name"],
-            page_token="token123"
+            filter_string="test_filter", max_results=100, order_by=["name"], page_token="token123"
         )
 
     @patch("mlflow_oidc_auth.utils._get_tracking_store")
@@ -576,23 +555,23 @@ class TestUtils(unittest.TestCase):
         mock_result.__len__ = MagicMock(return_value=2)
         mock_result.token = None
         mock_tracking_store().search_experiments.return_value = mock_result
-        
+
         result = fetch_all_experiments()
         self.assertEqual(len(result), 2)
-        
+
         # Multiple pages
         first_page = MagicMock()
         first_page.__iter__ = MagicMock(return_value=iter([MagicMock(name="exp1")]))
         first_page.__len__ = MagicMock(return_value=1)
         first_page.token = "token123"
-        
+
         second_page = MagicMock()
         second_page.__iter__ = MagicMock(return_value=iter([MagicMock(name="exp2")]))
         second_page.__len__ = MagicMock(return_value=1)
         second_page.token = None
-        
+
         mock_tracking_store().search_experiments.side_effect = [first_page, second_page]
-        
+
         result = fetch_all_experiments()
         self.assertEqual(len(result), 2)
 
@@ -600,22 +579,12 @@ class TestUtils(unittest.TestCase):
     def test_fetch_experiments_paginated(self, mock_tracking_store):
         mock_result = MagicMock()
         mock_tracking_store().search_experiments.return_value = mock_result
-        
-        result = fetch_experiments_paginated(
-            view_type=1,
-            max_results=100,
-            order_by=["name"],
-            filter_string="test_filter",
-            page_token="token123"
-        )
-        
+
+        result = fetch_experiments_paginated(view_type=1, max_results=100, order_by=["name"], filter_string="test_filter", page_token="token123")
+
         self.assertEqual(result, mock_result)
         mock_tracking_store().search_experiments.assert_called_once_with(
-            view_type=1,
-            max_results=100,
-            order_by=["name"],
-            filter_string="test_filter",
-            page_token="token123"
+            view_type=1, max_results=100, order_by=["name"], filter_string="test_filter", page_token="token123"
         )
 
     @patch("mlflow_oidc_auth.utils.fetch_all_experiments")
@@ -629,7 +598,7 @@ class TestUtils(unittest.TestCase):
         mock_exp2.experiment_id = "2"
         mock_fetch_all.return_value = [mock_exp1, mock_exp2]
         mock_can_read.side_effect = lambda exp_id, user: exp_id == "1"
-        
+
         result = fetch_readable_experiments()
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0], mock_exp1)
@@ -645,7 +614,7 @@ class TestUtils(unittest.TestCase):
         mock_model2.name = "model2"
         mock_fetch_all.return_value = [mock_model1, mock_model2]
         mock_can_read.side_effect = lambda name, user: name == "model1"
-        
+
         result = fetch_readable_registered_models()
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0], mock_model1)
@@ -653,16 +622,16 @@ class TestUtils(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils.store")
     def test_get_registered_model_permission_from_regex(self, mock_store):
         from mlflow_oidc_auth.entities import RegisteredModelRegexPermission
-        
+
         regex_perms = [
             RegisteredModelRegexPermission(regex="test.*", permission="READ", priority=1, user_id=1),
-            RegisteredModelRegexPermission(regex="prod.*", permission="MANAGE", priority=2, user_id=1)
+            RegisteredModelRegexPermission(regex="prod.*", permission="MANAGE", priority=2, user_id=1),
         ]
-        
+
         # Match found
         result = _get_registered_model_permission_from_regex(regex_perms, "test-model")
         self.assertEqual(result, "READ")
-        
+
         # No match
         with self.assertRaises(MlflowException) as cm:
             _get_registered_model_permission_from_regex(regex_perms, "other-model")
@@ -672,18 +641,18 @@ class TestUtils(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils._get_tracking_store")
     def test_get_experiment_permission_from_regex(self, mock_tracking_store, mock_store):
         from mlflow_oidc_auth.entities import ExperimentRegexPermission
-        
+
         mock_tracking_store().get_experiment.return_value.name = "test-experiment"
-        
+
         regex_perms = [
             ExperimentRegexPermission(regex="test.*", permission="READ", priority=1, user_id=1),
-            ExperimentRegexPermission(regex="prod.*", permission="MANAGE", priority=2, user_id=1)
+            ExperimentRegexPermission(regex="prod.*", permission="MANAGE", priority=2, user_id=1),
         ]
-        
+
         # Match found
         result = _get_experiment_permission_from_regex(regex_perms, "exp123")
         self.assertEqual(result, "READ")
-        
+
         # No match
         mock_tracking_store().get_experiment.return_value.name = "other-experiment"
         with self.assertRaises(MlflowException) as cm:
@@ -693,16 +662,16 @@ class TestUtils(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils.store")
     def test_get_registered_model_group_permission_from_regex(self, mock_store):
         from mlflow_oidc_auth.entities import RegisteredModelGroupRegexPermission
-        
+
         regex_perms = [
             RegisteredModelGroupRegexPermission(id_=1, regex="test.*", permission="READ", priority=1, group_id=1),
-            RegisteredModelGroupRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, group_id=1)
+            RegisteredModelGroupRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, group_id=1),
         ]
-        
+
         # Match found
         result = _get_registered_model_group_permission_from_regex(regex_perms, "test-model")
         self.assertEqual(result, "READ")
-        
+
         # No match
         with self.assertRaises(MlflowException) as cm:
             _get_registered_model_group_permission_from_regex(regex_perms, "other-model")
@@ -712,18 +681,18 @@ class TestUtils(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils._get_tracking_store")
     def test_get_experiment_group_permission_from_regex(self, mock_tracking_store, mock_store):
         from mlflow_oidc_auth.entities import ExperimentGroupRegexPermission
-        
+
         mock_tracking_store().get_experiment.return_value.name = "test-experiment"
-        
+
         regex_perms = [
             ExperimentGroupRegexPermission(id_=1, regex="test.*", permission="READ", priority=1, group_id=1),
-            ExperimentGroupRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, group_id=1)
+            ExperimentGroupRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, group_id=1),
         ]
-        
+
         # Match found
         result = _get_experiment_group_permission_from_regex(regex_perms, "exp123")
         self.assertEqual(result, "READ")
-        
+
         # No match
         mock_tracking_store().get_experiment.return_value.name = "other-experiment"
         with self.assertRaises(MlflowException) as cm:
@@ -738,14 +707,14 @@ class TestUtils(unittest.TestCase):
         self.assertIn("group", config)
         self.assertIn("regex", config)
         self.assertIn("group-regex", config)
-        
+
         # Test experiment sources config
         config = _permission_experiment_sources_config("exp1", "user1")
         self.assertIn("user", config)
         self.assertIn("group", config)
         self.assertIn("regex", config)
         self.assertIn("group-regex", config)
-        
+
         # Test registered model sources config
         config = _permission_registered_model_sources_config("model1", "user1")
         self.assertIn("user", config)
@@ -805,6 +774,7 @@ class TestUtils(unittest.TestCase):
         # Test bearer token without email
         with self.app.test_request_context():
             with patch("mlflow_oidc_auth.utils.session", {}):
+
                 class AuthBearer:
                     type = "bearer"
                     token = "tok"
@@ -821,6 +791,7 @@ class TestUtils(unittest.TestCase):
         # Test unknown auth type
         with self.app.test_request_context():
             with patch("mlflow_oidc_auth.utils.session", {}):
+
                 class AuthUnknown:
                     type = "unknown"
 
@@ -836,13 +807,11 @@ class TestUtils(unittest.TestCase):
         with self.app.test_request_context():
             mock_store_permission_user_func = MagicMock()
             mock_store_permission_user_func.side_effect = MlflowException("Other error", BAD_REQUEST)
-            
+
             mock_config.PERMISSION_SOURCE_ORDER = ["user"]
-            
+
             with self.assertRaises(MlflowException) as cm:
-                get_permission_from_store_or_default(
-                    {"user": mock_store_permission_user_func}
-                )
+                get_permission_from_store_or_default({"user": mock_store_permission_user_func})
             self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
 
 

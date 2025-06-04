@@ -16,9 +16,7 @@ def make_forbidden_response(msg=None) -> Response:
 
 
 def make_basic_auth_response() -> Response:
-    response = make_response(
-        "You are not authenticated. Please see documentation for details" "https://github.com/mlflow-oidc/mlflow-oidc-auth"
-    )
+    response = make_response("You are not authenticated. Please see documentation for details" "https://github.com/mlflow-oidc/mlflow-oidc-auth")
     response.status_code = 401
     response.headers["WWW-Authenticate"] = 'Basic realm="mlflow"'
     return response

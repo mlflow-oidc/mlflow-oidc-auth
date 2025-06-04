@@ -16,9 +16,7 @@ class RegisteredModelPermissionGroupRepository:
         self._Session: Callable[[], Session] = session_maker
         self._group_repo = GroupRepository(session_maker)
 
-    def _get_registered_model_group_permission(
-        self, session: Session, name: str, group_name: str
-    ) -> Optional[SqlRegisteredModelGroupPermission]:
+    def _get_registered_model_group_permission(self, session: Session, name: str, group_name: str) -> Optional[SqlRegisteredModelGroupPermission]:
         group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one_or_none()
         if group is None:
             return None
@@ -43,11 +41,7 @@ class RegisteredModelPermissionGroupRepository:
     def get(self, group_name: str) -> List[RegisteredModelPermission]:
         with self._Session() as session:
             group = get_group(session, group_name)
-            perms = (
-                session.query(SqlRegisteredModelGroupPermission)
-                .filter(SqlRegisteredModelGroupPermission.group_id == group.id)
-                .all()
-            )
+            perms = session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.group_id == group.id).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def get_for_user(self, name: str, username: str) -> RegisteredModelPermission:
@@ -117,9 +111,7 @@ class RegisteredModelPermissionGroupRepository:
 
     def wipe(self, name: str):
         with self._Session() as session:
-            perms = (
-                session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.name == name).all()
-            )
+            perms = session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.name == name).all()
             for p in perms:
                 session.delete(p)
             session.flush()

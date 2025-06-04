@@ -34,7 +34,5 @@ class TestClientErrorResponses:
     def test_make_basic_auth_response(self, test_app):
         response = make_basic_auth_response()
         assert response.status_code == 401
-        assert response.data.decode() == (
-            "You are not authenticated. Please see documentation for details" "https://github.com/mlflow-oidc/mlflow-oidc-auth"
-        )
+        assert response.data.decode() == ("You are not authenticated. Please see documentation for details" "https://github.com/mlflow-oidc/mlflow-oidc-auth")
         assert response.headers["WWW-Authenticate"] == 'Basic realm="mlflow"'

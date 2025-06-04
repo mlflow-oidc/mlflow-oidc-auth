@@ -15,9 +15,7 @@ class ExperimentPermissionGroupRegexRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
 
-    def _get_experiment_group_regex_permission(
-        self, session: Session, id: int, group_id: int
-    ) -> SqlExperimentGroupRegexPermission:
+    def _get_experiment_group_regex_permission(self, session: Session, id: int, group_id: int) -> SqlExperimentGroupRegexPermission:
         """
         Get the experiment group regex permission for a given ID and group ID.
         :param session: SQLAlchemy session

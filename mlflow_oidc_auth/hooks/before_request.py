@@ -139,11 +139,7 @@ def _get_before_request_handler(request_class):
     return BEFORE_REQUEST_HANDLERS.get(request_class)
 
 
-BEFORE_REQUEST_VALIDATORS = {
-    (http_path, method): handler
-    for http_path, handler, methods in get_endpoints(_get_before_request_handler)
-    for method in methods
-}
+BEFORE_REQUEST_VALIDATORS = {(http_path, method): handler for http_path, handler, methods in get_endpoints(_get_before_request_handler) for method in methods}
 
 BEFORE_REQUEST_VALIDATORS.update(
     {
@@ -154,7 +150,6 @@ BEFORE_REQUEST_VALIDATORS.update(
         (routes.UPDATE_USER_PASSWORD, "PATCH"): validate_can_update_user_password,
         (routes.UPDATE_USER_ADMIN, "PATCH"): validate_can_update_user_admin,
         (routes.DELETE_USER, "DELETE"): validate_can_delete_user,
-
         (routes.USER_EXPERIMENT_PERMISSIONS, "GET"): validate_can_manage_experiment,
         (routes.USER_EXPERIMENT_PERMISSIONS, "POST"): validate_can_manage_experiment,
         (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,

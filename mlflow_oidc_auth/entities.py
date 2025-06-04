@@ -113,9 +113,7 @@ class User:
             is_admin=dictionary["is_admin"],
             is_service_account=dictionary.get("is_service_account", False),
             experiment_permissions=[ExperimentPermission.from_json(p) for p in dictionary["experiment_permissions"]],
-            registered_model_permissions=[
-                RegisteredModelPermission.from_json(p) for p in dictionary["registered_model_permissions"]
-            ],
+            registered_model_permissions=[RegisteredModelPermission.from_json(p) for p in dictionary["registered_model_permissions"]],
             groups=[Group.from_json(g) for g in dictionary["groups"]],
         )
 

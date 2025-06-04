@@ -24,9 +24,7 @@ from mlflow_oidc_auth.store import store
 
 
 def fetch_all_registered_models(
-    filter_string: Optional[str] = None,
-    order_by: Optional[List[str]] = None,
-    max_results_per_page: int = 1000
+    filter_string: Optional[str] = None, order_by: Optional[List[str]] = None, max_results_per_page: int = 1000
 ) -> List[RegisteredModel]:
     """
     Fetch ALL registered models from the MLflow model registry using pagination.
@@ -42,23 +40,20 @@ def fetch_all_registered_models(
     """
     all_models = []
     page_token = None
-    
+
     while True:
         result = _get_model_registry_store().search_registered_models(
-            filter_string=filter_string,
-            max_results=max_results_per_page,
-            order_by=order_by,
-            page_token=page_token
+            filter_string=filter_string, max_results=max_results_per_page, order_by=order_by, page_token=page_token
         )
-        
+
         all_models.extend(result)
-        
+
         # Check if there are more pages
-        if hasattr(result, 'token') and result.token:
+        if hasattr(result, "token") and result.token:
             page_token = result.token
         else:
             break
-    
+
     return all_models
 
 
@@ -74,16 +69,11 @@ def fetch_all_prompts(max_results_per_page: int = 1000) -> List[RegisteredModel]
         List of ALL RegisteredModel objects that are prompts
     """
     filter_string = "tags.`mlflow.prompt.is_prompt` = 'true'"
-    return fetch_all_registered_models(
-        filter_string=filter_string,
-        max_results_per_page=max_results_per_page
-    )
+    return fetch_all_registered_models(filter_string=filter_string, max_results_per_page=max_results_per_page)
+
 
 def fetch_registered_models_paginated(
-    filter_string: Optional[str] = None,
-    max_results: int = 1000,
-    order_by: Optional[List[str]] = None,
-    page_token = None
+    filter_string: Optional[str] = None, max_results: int = 1000, order_by: Optional[List[str]] = None, page_token=None
 ) -> PagedList[RegisteredModel]:
     """
     Fetch registered models with pagination support.
@@ -108,9 +98,7 @@ def fetch_registered_models_paginated(
 def _get_registered_model_permission_from_regex(regexes: List[RegisteredModelRegexPermission], model_name: str) -> str:
     for regex in regexes:
         if re.match(regex.regex, model_name):
-            app.logger.debug(
-                f"Regex permission found for model name {model_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
-            )
+            app.logger.debug(f"Regex permission found for model name {model_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
             return regex.permission
     raise MlflowException(
         f"model name {model_name}",
@@ -132,9 +120,7 @@ def _get_experiment_permission_from_regex(regexes: List[ExperimentRegexPermissio
     )
 
 
-def _get_registered_model_group_permission_from_regex(
-    regexes: List[RegisteredModelGroupRegexPermission], model_name: str
-) -> str:
+def _get_registered_model_group_permission_from_regex(regexes: List[RegisteredModelGroupRegexPermission], model_name: str) -> str:
     for regex in regexes:
         if re.match(regex.regex, model_name):
             app.logger.debug(
@@ -164,9 +150,7 @@ def _get_experiment_group_permission_from_regex(regexes: List[ExperimentGroupReg
 def _permission_prompt_sources_config(model_name: str, username: str) -> Dict[str, Callable[[], str]]:
     return {
         "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
-        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(
-            model_name, user
-        ).permission,
+        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(model_name, user).permission,
         "regex": lambda model_name=model_name, user=username: _get_registered_model_permission_from_regex(
             store.list_prompt_regex_permissions(user), model_name
         ),
@@ -178,12 +162,8 @@ def _permission_prompt_sources_config(model_name: str, username: str) -> Dict[st
 
 def _permission_experiment_sources_config(experiment_id: str, username: str) -> Dict[str, Callable[[], str]]:
     return {
-        "user": lambda experiment_id=experiment_id, user=username: store.get_experiment_permission(
-            experiment_id, user
-        ).permission,
-        "group": lambda experiment_id=experiment_id, user=username: store.get_user_groups_experiment_permission(
-            experiment_id, user
-        ).permission,
+        "user": lambda experiment_id=experiment_id, user=username: store.get_experiment_permission(experiment_id, user).permission,
+        "group": lambda experiment_id=experiment_id, user=username: store.get_user_groups_experiment_permission(experiment_id, user).permission,
         "regex": lambda experiment_id=experiment_id, user=username: _get_experiment_permission_from_regex(
             store.list_experiment_regex_permissions(user), experiment_id
         ),
@@ -196,9 +176,7 @@ def _permission_experiment_sources_config(experiment_id: str, username: str) -> 
 def _permission_registered_model_sources_config(model_name: str, username: str) -> Dict[str, Callable[[], str]]:
     return {
         "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
-        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(
-            model_name, user
-        ).permission,
+        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(model_name, user).permission,
         "regex": lambda model_name=model_name, user=username: _get_registered_model_permission_from_regex(
             store.list_registered_model_regex_permissions(user), model_name
         ),
@@ -261,8 +239,7 @@ def get_request_param(param: str) -> str:
         if param == "run_id":
             return get_request_param("run_uuid")
         raise MlflowException(
-            f"Missing value for required parameter '{param}'. "
-            "See the API docs for more information about request parameters.",
+            f"Missing value for required parameter '{param}'. " "See the API docs for more information about request parameters.",
             INVALID_PARAMETER_VALUE,
         )
     return args[param]
@@ -306,6 +283,7 @@ def get_username() -> str:
 def get_is_admin() -> bool:
     return bool(store.get_user(get_username()).is_admin)
 
+
 def _experiment_id_from_name(experiment_name: str) -> str:
     """
     Helper function to get the experiment ID from the experiment name.
@@ -318,6 +296,7 @@ def _experiment_id_from_name(experiment_name: str) -> str:
             INVALID_PARAMETER_VALUE,
         )
     return experiment.experiment_id
+
 
 def get_experiment_id() -> str:
     # Fastest: check view_args first
@@ -342,6 +321,7 @@ def get_experiment_id() -> str:
         "Either 'experiment_id' or 'experiment_name' must be provided in the request data.",
         INVALID_PARAMETER_VALUE,
     )
+
 
 def get_model_name() -> str:
     """
@@ -503,10 +483,7 @@ def check_admin_permission(f) -> Callable:
 
 
 def fetch_all_experiments(
-    view_type: int = 1,  # ACTIVE_ONLY
-    max_results_per_page: int = 1000,
-    order_by: Optional[List[str]] = None,
-    filter_string: Optional[str] = None
+    view_type: int = 1, max_results_per_page: int = 1000, order_by: Optional[List[str]] = None, filter_string: Optional[str] = None  # ACTIVE_ONLY
 ) -> List[Experiment]:
     """
     Fetch ALL experiments from the MLflow tracking store using pagination.
@@ -523,7 +500,7 @@ def fetch_all_experiments(
     """
     all_experiments = []
     page_token = None
-    
+
     while True:
         result = _get_tracking_store().search_experiments(
             view_type=view_type,
@@ -532,24 +509,24 @@ def fetch_all_experiments(
             filter_string=filter_string,
             page_token=page_token,
         )
-        
+
         all_experiments.extend(result)
-        
+
         # Check if there are more pages
-        if hasattr(result, 'token') and result.token:
+        if hasattr(result, "token") and result.token:
             page_token = result.token
         else:
             break
-    
+
     return all_experiments
 
 
 def fetch_experiments_paginated(
-    view_type: int = 1,  # ACTIVE_ONLY
+    view_type: int = 1,
     max_results: int = 1000,
     order_by: Optional[List[str]] = None,
     filter_string: Optional[str] = None,
-    page_token = None
+    page_token=None,  # ACTIVE_ONLY
 ) -> PagedList[Experiment]:
     """
     Fetch experiments with pagination support.
@@ -574,11 +551,11 @@ def fetch_experiments_paginated(
 
 
 def fetch_readable_experiments(
-    view_type: int = 1,  # ACTIVE_ONLY
+    view_type: int = 1,
     max_results_per_page: int = 1000,
     order_by: Optional[List[str]] = None,
     filter_string: Optional[str] = None,
-    username: Optional[str] = None
+    username: Optional[str] = None,  # ACTIVE_ONLY
 ) -> List[Experiment]:
     """
     Fetch ALL experiments that the user can read from the MLflow tracking store using pagination.
@@ -596,29 +573,18 @@ def fetch_readable_experiments(
     """
     if username is None:
         username = get_username()
-    
+
     # Get all experiments matching the filter
-    all_experiments = fetch_all_experiments(
-        view_type=view_type,
-        max_results_per_page=max_results_per_page,
-        order_by=order_by,
-        filter_string=filter_string
-    )
-    
+    all_experiments = fetch_all_experiments(view_type=view_type, max_results_per_page=max_results_per_page, order_by=order_by, filter_string=filter_string)
+
     # Filter by permissions
-    readable_experiments = [
-        experiment for experiment in all_experiments
-        if can_read_experiment(experiment.experiment_id, username)
-    ]
-    
+    readable_experiments = [experiment for experiment in all_experiments if can_read_experiment(experiment.experiment_id, username)]
+
     return readable_experiments
 
 
 def fetch_readable_registered_models(
-    filter_string: Optional[str] = None,
-    order_by: Optional[List[str]] = None,
-    max_results_per_page: int = 1000,
-    username: Optional[str] = None
+    filter_string: Optional[str] = None, order_by: Optional[List[str]] = None, max_results_per_page: int = 1000, username: Optional[str] = None
 ) -> List[RegisteredModel]:
     """
     Fetch ALL registered models that the user can read from the MLflow model registry using pagination.
@@ -635,18 +601,11 @@ def fetch_readable_registered_models(
     """
     if username is None:
         username = get_username()
-    
+
     # Get all models matching the filter
-    all_models = fetch_all_registered_models(
-        filter_string=filter_string,
-        order_by=order_by,
-        max_results_per_page=max_results_per_page
-    )
-    
+    all_models = fetch_all_registered_models(filter_string=filter_string, order_by=order_by, max_results_per_page=max_results_per_page)
+
     # Filter by permissions
-    readable_models = [
-        model for model in all_models
-        if can_read_registered_model(model.name, username)
-    ]
-    
+    readable_models = [model for model in all_models if can_read_registered_model(model.name, username)]
+
     return readable_models
