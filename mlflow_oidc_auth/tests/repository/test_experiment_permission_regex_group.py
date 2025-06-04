@@ -44,7 +44,7 @@ def test_update(repo, session):
         repo, "_get_experiment_group_regex_permission", return_value=perm
     ):
         session.commit = MagicMock()
-        result = repo.update("g", "r", 2, "EDIT")
+        result = repo.update(1, "g", "r", 2, "EDIT")
         assert result == "entity"
         assert perm.permission == "EDIT"
         assert perm.priority == 2
@@ -59,7 +59,7 @@ def test_update_not_found(repo, session):
         repo, "_get_experiment_group_regex_permission", side_effect=ValueError("No permission found")
     ):
         with pytest.raises(ValueError):
-            repo.update("g", "r", 2, "EDIT")
+            repo.update(1, "g", "r", 2, "EDIT")
 
 
 def test_revoke(repo, session):
@@ -165,7 +165,7 @@ def test__get_experiment_group_regex_permission_not_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_experiment_group_regex_permission(session, "test_regex", 1)
 
-    assert "Permission not found for group_id: 1 and regex: test_regex" in str(exc.value)
+    assert "Permission not found for group_id: 1 and id: test_regex" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
 
@@ -176,7 +176,7 @@ def test__get_experiment_group_regex_permission_multiple_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_experiment_group_regex_permission(session, "test_regex", 1)
 
-    assert "Multiple Permissions found for group_id: 1 and regex: test_regex" in str(exc.value)
+    assert "Multiple Permissions found for group_id: 1 and id: test_regex" in str(exc.value)
     assert exc.value.error_code == "INVALID_STATE"
 
 

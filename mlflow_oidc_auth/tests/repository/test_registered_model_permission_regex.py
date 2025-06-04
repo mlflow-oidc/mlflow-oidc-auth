@@ -64,7 +64,7 @@ def test_update(repo, session):
     session.query().filter().one.return_value = perm
     session.commit = MagicMock()
     with patch("mlflow_oidc_auth.repository.registered_model_permission_regex.get_user", return_value=user):
-        result = repo.update("r", 2, "EDIT", "user", prompt=True)
+        result = repo.update(1, "r", 2, "EDIT", "user", prompt=True)
         assert result == "entity"
         assert perm.priority == 2
         assert perm.permission == "EDIT"
@@ -90,7 +90,7 @@ def test__get_registered_model_regex_permission_not_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_registered_model_regex_permission(session, "test_regex", 1, prompt=False)
 
-    assert "Permission not found for user_id: 1 and regex: test_regex" in str(exc.value)
+    assert "Permission not found for user_id: 1 and id: test_regex" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
 
@@ -101,7 +101,7 @@ def test__get_registered_model_regex_permission_multiple_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_registered_model_regex_permission(session, "test_regex", 1, prompt=False)
 
-    assert "Multiple Permissions found for user_id: 1 and regex: test_regex" in str(exc.value)
+    assert "Multiple Permissions found for user_id: 1 and id: test_regex" in str(exc.value)
     assert exc.value.error_code == "INVALID_STATE"
 
 
@@ -120,5 +120,5 @@ def test__get_registered_model_regex_permission_prompt_not_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_registered_model_regex_permission(session, "test_regex", 1, prompt=True)
 
-    assert "Permission not found for user_id: 1 and regex: test_regex" in str(exc.value)
+    assert "Permission not found for user_id: 1 and id: test_regex" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"

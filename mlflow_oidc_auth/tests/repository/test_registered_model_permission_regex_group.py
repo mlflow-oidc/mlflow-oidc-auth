@@ -43,7 +43,7 @@ def test_get(repo, session):
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().one.return_value = perm
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        result = repo.get("r", "group1", prompt=True)
+        result = repo.get(1, "group1", prompt=True)
         assert result == "entity"
 
 
@@ -54,7 +54,7 @@ def test_get_not_found(repo, session):
     session.query().filter().one.side_effect = NoResultFound()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
         with pytest.raises(MlflowException):
-            repo.get("r", "group1", prompt=True)
+            repo.get(1, "group1", prompt=True)
 
 
 def test_list_permissions_for_group(repo, session):
@@ -95,7 +95,7 @@ def test_update(repo, session):
     session.query().filter().one.return_value = perm
     session.flush = MagicMock()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        result = repo.update("r", "group1", "EDIT", priority=2, prompt=True)
+        result = repo.update(1, "r", "group1", "EDIT", priority=2, prompt=True)
         assert result == "entity"
         assert perm.permission == "EDIT"
         assert perm.priority == 2
@@ -109,7 +109,7 @@ def test_update_not_found(repo, session):
     session.query().filter().one.side_effect = NoResultFound()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
         with pytest.raises(MlflowException):
-            repo.update("r", "group1", "EDIT", priority=2, prompt=True)
+            repo.update(1, "r", "group1", "EDIT", priority=2, prompt=True)
 
 
 def test_revoke(repo, session):
@@ -119,7 +119,7 @@ def test_revoke(repo, session):
     session.delete = MagicMock()
     session.flush = MagicMock()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        repo.revoke("r", "group1", prompt=True)
+        repo.revoke(1, "group1", prompt=True)
         session.delete.assert_called_once_with(perm)
         session.flush.assert_called_once()
 
@@ -131,7 +131,7 @@ def test_revoke_not_found(repo, session):
     session.query().filter().one.side_effect = NoResultFound()
     with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
         with pytest.raises(MlflowException):
-            repo.revoke("r", "group1", prompt=True)
+            repo.revoke(1, "group1", prompt=True)
 
 
 def test__get_registered_model_group_regex_permission_not_found(repo, session):
@@ -141,7 +141,7 @@ def test__get_registered_model_group_regex_permission_not_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_registered_model_group_regex_permission(session, "test_regex", 1, prompt=False)
 
-    assert "No model perm for regex=test_regex, group_id=1, prompt=False" in str(exc.value)
+    assert "No model perm for id=test_regex, group_id=1, prompt=False" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
 
@@ -152,7 +152,7 @@ def test__get_registered_model_group_regex_permission_multiple_found(repo, sessi
     with pytest.raises(MlflowException) as exc:
         repo._get_registered_model_group_regex_permission(session, "test_regex", 1, prompt=False)
 
-    assert "Multiple model perms for regex=test_regex, group_id=1, prompt=False" in str(exc.value)
+    assert "Multiple model perms for id=test_regex, group_id=1, prompt=False" in str(exc.value)
     assert exc.value.error_code == "INVALID_STATE"
 
 
@@ -171,5 +171,5 @@ def test__get_registered_model_group_regex_permission_prompt_not_found(repo, ses
     with pytest.raises(MlflowException) as exc:
         repo._get_registered_model_group_regex_permission(session, "test_regex", 1, prompt=True)
 
-    assert "No model perm for regex=test_regex, group_id=1, prompt=True" in str(exc.value)
+    assert "No model perm for id=test_regex, group_id=1, prompt=True" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"

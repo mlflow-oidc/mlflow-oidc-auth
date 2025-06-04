@@ -64,7 +64,7 @@ def test_update(repo, session):
     perm.to_mlflow_entity.return_value = "entity"
     with patch.object(repo, "_get_experiment_regex_permission", return_value=perm):
         session.flush = MagicMock()
-        result = repo.update("r", 2, "EDIT", "user")
+        result = repo.update("r", 2, "EDIT", "user", 1)
         assert result == "entity"
         assert perm.priority == 2
         assert perm.permission == "EDIT"
@@ -88,7 +88,7 @@ def test__get_experiment_regex_permission_not_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_experiment_regex_permission(session, "test_regex", 1)
 
-    assert "Permission not found for user_id: 1 and regex: test_regex" in str(exc.value)
+    assert "Permission not found for user_id: test_regex, and id: 1" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
 
@@ -99,7 +99,7 @@ def test__get_experiment_regex_permission_multiple_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_experiment_regex_permission(session, "test_regex", 1)
 
-    assert "Multiple Permissions found for user_id: 1 and regex: test_regex" in str(exc.value)
+    assert "Multiple Permissions found for user_id: test_regex, and id: 1" in str(exc.value)
     assert exc.value.error_code == "INVALID_STATE"
 
 
