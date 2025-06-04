@@ -1,7 +1,9 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from mlflow_oidc_auth.repository.registered_model_permission import RegisteredModelPermissionRepository
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
+
+from mlflow_oidc_auth.repository.registered_model_permission import RegisteredModelPermissionRepository
 
 
 @pytest.fixture
@@ -36,8 +38,8 @@ def test_create_integrity_error(repo, session):
 def test_get(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_one_or_raise", return_value=perm):
-        assert repo.get("name", "user") == "entity"
+    session.query().filter().one.return_value = perm
+    assert repo.get("name", "user") == "entity"
 
 
 def test_list_for_user(repo, session):
@@ -52,22 +54,22 @@ def test_list_for_user(repo, session):
 def test_update(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_one_or_raise", return_value=perm):
-        session.flush = MagicMock()
-        result = repo.update("name", "user", "EDIT")
-        assert result == "entity"
-        assert perm.permission == "EDIT"
-        session.flush.assert_called_once()
+    session.query().filter().one.return_value = perm
+    session.flush = MagicMock()
+    result = repo.update("name", "user", "EDIT")
+    assert result == "entity"
+    assert perm.permission == "EDIT"
+    session.flush.assert_called_once()
 
 
 def test_delete(repo, session):
     perm = MagicMock()
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_one_or_raise", return_value=perm):
-        session.delete = MagicMock()
-        session.flush = MagicMock()
-        repo.delete("name", "user")
-        session.delete.assert_called_once_with(perm)
-        session.flush.assert_called_once()
+    session.query().filter().one.return_value = perm
+    session.delete = MagicMock()
+    session.flush = MagicMock()
+    repo.delete("name", "user")
+    session.delete.assert_called_once_with(perm)
+    session.flush.assert_called_once()
 
 
 def test_wipe(repo, session):
@@ -79,3 +81,33 @@ def test_wipe(repo, session):
     repo.wipe("name")
     assert session.delete.call_count == 2
     session.flush.assert_called_once()
+
+
+def test__get_registered_model_permission_not_found(repo, session):
+    """Test _get_registered_model_permission when no permission is found"""
+    session.query().filter().one.side_effect = NoResultFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_registered_model_permission(session, "test_model", 1)
+
+    assert "No model perm for name=test_model, user_id=1" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+def test__get_registered_model_permission_multiple_found(repo, session):
+    """Test _get_registered_model_permission when multiple permissions are found"""
+    session.query().filter().one.side_effect = MultipleResultsFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_registered_model_permission(session, "test_model", 1)
+
+    assert "Multiple model perms for name=test_model, user_id=1" in str(exc.value)
+    assert exc.value.error_code == "INVALID_STATE"
+
+
+def test__get_registered_model_permission_database_error(repo, session):
+    """Test _get_registered_model_permission when database error occurs"""
+    session.query().filter().one.side_effect = Exception("Database connection error")
+
+    with pytest.raises(Exception, match="Database connection error"):
+        repo._get_registered_model_permission(session, "test_model", 1)

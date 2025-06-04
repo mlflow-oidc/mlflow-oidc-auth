@@ -17,9 +17,7 @@ class UserRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
 
-    def create(
-        self, username: str, password: str, display_name: str, is_admin: bool = False, is_service_account: bool = False
-    ) -> User:
+    def create(self, username: str, password: str, display_name: str, is_admin: bool = False, is_service_account: bool = False) -> User:
         _validate_username(username)
         pwhash = generate_password_hash(password)
         with self._Session() as session:

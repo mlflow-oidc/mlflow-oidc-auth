@@ -1,9 +1,10 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from mlflow_oidc_auth.repository.experiment_permission_regex import ExperimentPermissionRegexRepository
-from mlflow_oidc_auth.entities import ExperimentRegexPermission
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS
+from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, INVALID_STATE
+
+from mlflow_oidc_auth.repository.experiment_permission_regex import ExperimentPermissionRegexRepository
 
 
 @pytest.fixture
@@ -38,8 +39,7 @@ def test_grant_integrity_error(repo, session):
 def test_get(repo, session):
     row = MagicMock()
     row.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_one_or_raise", return_value=row):
-        session.query().filter().scalar.return_value = 1
+    with patch.object(repo, "_get_experiment_regex_permission", return_value=row):
         assert repo.get("r", "user") == "entity"
 
 
@@ -54,7 +54,7 @@ def test_list_regex_for_user(repo, session):
     user = MagicMock(id=3)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().all.return_value = [perm]
+    session.query().filter().order_by().all.return_value = [perm]
     with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user):
         assert repo.list_regex_for_user("user") == ["entity"]
 
@@ -62,9 +62,9 @@ def test_list_regex_for_user(repo, session):
 def test_update(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_one_or_raise", return_value=perm):
+    with patch.object(repo, "_get_experiment_regex_permission", return_value=perm):
         session.flush = MagicMock()
-        result = repo.update("r", 2, "EDIT", "user")
+        result = repo.update("r", 2, "EDIT", "user", 1)
         assert result == "entity"
         assert perm.priority == 2
         assert perm.permission == "EDIT"
@@ -73,9 +73,39 @@ def test_update(repo, session):
 
 def test_revoke(repo, session):
     perm = MagicMock()
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_one_or_raise", return_value=perm):
+    with patch.object(repo, "_get_experiment_regex_permission", return_value=perm):
         session.delete = MagicMock()
         session.commit = MagicMock()
         assert repo.revoke("r", "user") is None
         session.delete.assert_called_once_with(perm)
         session.commit.assert_called_once()
+
+
+def test__get_experiment_regex_permission_not_found(repo, session):
+    """Test _get_experiment_regex_permission when no permission is found"""
+    session.query().filter().one.side_effect = NoResultFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_experiment_regex_permission(session, "test_regex", 1)
+
+    assert "Permission not found for user_id: test_regex, and id: 1" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+def test__get_experiment_regex_permission_multiple_found(repo, session):
+    """Test _get_experiment_regex_permission when multiple permissions are found"""
+    session.query().filter().one.side_effect = MultipleResultsFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_experiment_regex_permission(session, "test_regex", 1)
+
+    assert "Multiple Permissions found for user_id: test_regex, and id: 1" in str(exc.value)
+    assert exc.value.error_code == "INVALID_STATE"
+
+
+def test__get_experiment_regex_permission_database_error(repo, session):
+    """Test _get_experiment_regex_permission when database error occurs"""
+    session.query().filter().one.side_effect = Exception("Database connection error")
+
+    with pytest.raises(Exception, match="Database connection error"):
+        repo._get_experiment_regex_permission(session, "test_regex", 1)

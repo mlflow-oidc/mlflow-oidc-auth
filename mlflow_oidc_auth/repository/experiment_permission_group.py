@@ -3,19 +3,17 @@ from sqlalchemy.orm import Session
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
-from mlflow_oidc_auth.db.models import SqlExperimentGroupPermission, SqlGroup, SqlUserGroup
+from mlflow_oidc_auth.db.models import SqlExperimentGroupPermission, SqlGroup
 from mlflow_oidc_auth.entities import ExperimentPermission
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
-from mlflow_oidc_auth.repository.utils import get_one_optional, get_user, get_group, list_user_groups
+from mlflow_oidc_auth.repository.utils import get_user, get_group, list_user_groups
 
 
 class ExperimentPermissionGroupRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
 
-    def _get_experiment_group_permission(
-        self, session, experiment_id: str, group_name: str
-    ) -> Optional[SqlExperimentGroupPermission]:
+    def _get_experiment_group_permission(self, session: Session, experiment_id: str, group_name: str) -> Optional[SqlExperimentGroupPermission]:
         """
         Get the experiment group permission for a given experiment and group name.
         :param session: SQLAlchemy session
@@ -23,14 +21,16 @@ class ExperimentPermissionGroupRepository:
         :param group_name: The name of the group.
         :return: The experiment group permission if it exists, otherwise None.
         """
-        group: SqlExperimentGroupPermission = get_one_optional(session, SqlGroup, SqlGroup.group_name == group_name)
+        group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one_or_none()
         if group is None:
             return None
-        return get_one_optional(
-            session,
-            SqlExperimentGroupPermission,
-            SqlExperimentGroupPermission.experiment_id == experiment_id,
-            SqlExperimentGroupPermission.group_id == group.id,
+        return (
+            session.query(SqlExperimentGroupPermission)
+            .filter(
+                SqlExperimentGroupPermission.experiment_id == experiment_id,
+                SqlExperimentGroupPermission.group_id == group.id,
+            )
+            .one_or_none()
         )
 
     def _list_user_groups(self, username: str) -> List[str]:
@@ -91,11 +91,7 @@ class ExperimentPermissionGroupRepository:
         with self._Session() as session:
             user = get_user(session, username=username)
             user_groups = list_user_groups(session, user)
-            perms = (
-                session.query(SqlExperimentGroupPermission)
-                .filter(SqlExperimentGroupPermission.group_id.in_([ug.group_id for ug in user_groups]))
-                .all()
-            )
+            perms = session.query(SqlExperimentGroupPermission).filter(SqlExperimentGroupPermission.group_id.in_([ug.group_id for ug in user_groups])).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def get_group_permission_for_user_experiment(self, experiment_id: str, username: str) -> ExperimentPermission:

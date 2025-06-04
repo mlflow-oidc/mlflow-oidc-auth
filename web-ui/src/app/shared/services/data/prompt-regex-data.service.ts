@@ -10,29 +10,38 @@ export class PromptRegexDataService {
 
   getPromptRegexPermissionsForGroup(groupName: string) {
     return this.http.get<PromptRegexPermissionModel[]>(
-      API_URL.GET_GROUP_PROMPT_REGEX_PERMISSION.replace('${groupName}', groupName)
+      API_URL.GROUP_PROMPT_PATTERN_PERMISSIONS.replace('${groupName}', groupName)
     );
   }
 
   addPromptRegexPermissionToGroup(groupName: string, regex: string, permission: string, priority: number) {
-    return this.http.post(API_URL.CREATE_GROUP_PROMPT_REGEX_PERMISSION.replace('${groupName}', groupName), {
+    return this.http.post(API_URL.GROUP_PROMPT_PATTERN_PERMISSIONS.replace('${groupName}', groupName), {
       regex: regex,
       priority: priority,
       permission: permission,
     });
   }
 
-  updatePromptRegexPermissionForGroup(groupName: string, regex: string, permission: string, priority: number) {
-    return this.http.patch(API_URL.UPDATE_GROUP_PROMPT_REGEX_PERMISSION.replace('${groupName}', groupName), {
-      regex: regex,
-      priority: priority,
-      permission: permission,
-    });
+  updatePromptRegexPermissionForGroup(
+    groupName: string,
+    regex: string,
+    permission: string,
+    priority: number,
+    id: string
+  ) {
+    return this.http.patch(
+      API_URL.GROUP_PROMPT_PATTERN_PERMISSION_DETAIL.replace('${groupName}', groupName).replace('${patternId}', id),
+      {
+        regex: regex,
+        priority: priority,
+        permission: permission,
+      }
+    );
   }
 
-  removePromptRegexPermissionFromGroup(groupName: string, regex: string) {
-    return this.http.delete(API_URL.DELETE_GROUP_PROMPT_REGEX_PERMISSION.replace('${groupName}', groupName), {
-      body: { regex: regex },
-    });
+  removePromptRegexPermissionFromGroup(groupName: string, id: string) {
+    return this.http.delete(
+      API_URL.GROUP_PROMPT_PATTERN_PERMISSION_DETAIL.replace('${groupName}', groupName).replace('${patternId}', id)
+    );
   }
 }

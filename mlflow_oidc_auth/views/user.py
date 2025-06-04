@@ -10,6 +10,8 @@ from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
     effective_prompt_permission,
     effective_registered_model_permission,
+    fetch_all_registered_models,
+    fetch_all_prompts,
     get_is_admin,
     get_optional_request_param,
     get_request_param,
@@ -75,8 +77,9 @@ def update_username_password():
     return jsonify({"token": new_password})
 
 
+# TODO: move filtering logic to store
 @catch_mlflow_exception
-def get_user_experiments(username):
+def list_user_experiments(username):
     current_user = store.get_user(get_username())
     all_experiments = _get_tracking_store().search_experiments()
     is_admin = get_is_admin()
@@ -86,15 +89,11 @@ def get_user_experiments(username):
     else:
         if username == current_user.username:
             list_experiments = [
-                exp
-                for exp in all_experiments
-                if effective_experiment_permission(exp.experiment_id, username).permission.name != NO_PERMISSIONS.name
+                exp for exp in all_experiments if effective_experiment_permission(exp.experiment_id, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_experiments = [
-                exp
-                for exp in all_experiments
-                if effective_experiment_permission(exp.experiment_id, current_user.username).permission.can_manage
+                exp for exp in all_experiments if effective_experiment_permission(exp.experiment_id, current_user.username).permission.can_manage
             ]
 
     experiments_list = [
@@ -106,12 +105,12 @@ def get_user_experiments(username):
         }
         for exp in list_experiments
     ]
-    return jsonify({"experiments": experiments_list})
+    return experiments_list
 
 
 @catch_mlflow_exception
-def get_user_models(username):
-    all_registered_models = _get_model_registry_store().search_registered_models(max_results=1000)
+def list_user_models(username):
+    all_registered_models = fetch_all_registered_models()
     current_user = store.get_user(get_username())
     is_admin = get_is_admin()
     if is_admin:
@@ -119,15 +118,11 @@ def get_user_models(username):
     else:
         if username == current_user.username:
             list_registered_models = [
-                model
-                for model in all_registered_models
-                if effective_registered_model_permission(model.name, username).permission.name != NO_PERMISSIONS.name
+                model for model in all_registered_models if effective_registered_model_permission(model.name, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_registered_models = [
-                model
-                for model in all_registered_models
-                if effective_registered_model_permission(model.name, current_user.username).permission.can_manage
+                model for model in all_registered_models if effective_registered_model_permission(model.name, current_user.username).permission.can_manage
             ]
     models = [
         {
@@ -137,14 +132,12 @@ def get_user_models(username):
         }
         for model in list_registered_models
     ]
-    return jsonify({"models": models})
+    return models
 
 
 @catch_mlflow_exception
-def get_user_prompts(username):
-    all_registered_models = _get_model_registry_store().search_registered_models(
-        max_results=1000, filter_string="tags.`mlflow.prompt.is_prompt` = 'true'"
-    )
+def list_user_prompts(username):
+    all_registered_models = fetch_all_prompts()
     current_user = store.get_user(get_username())
     is_admin = get_is_admin()
     if is_admin:
@@ -152,15 +145,11 @@ def get_user_prompts(username):
     else:
         if username == current_user.username:
             list_registered_models = [
-                model
-                for model in all_registered_models
-                if effective_prompt_permission(model.name, username).permission.name != NO_PERMISSIONS.name
+                model for model in all_registered_models if effective_prompt_permission(model.name, username).permission.name != NO_PERMISSIONS.name
             ]
         else:
             list_registered_models = [
-                model
-                for model in all_registered_models
-                if effective_prompt_permission(model.name, current_user.username).permission.can_manage
+                model for model in all_registered_models if effective_prompt_permission(model.name, current_user.username).permission.can_manage
             ]
     models = [
         {
@@ -170,11 +159,12 @@ def get_user_prompts(username):
         }
         for model in list_registered_models
     ]
-    return jsonify({"prompts": models})
+    return models
 
 
+# TODO: use to_json
 @catch_mlflow_exception
-def get_users():
+def list_users():
     service_account = bool(get_optional_request_param("service") or False)
     # is_admin = get_is_admin()
     # if is_admin:
@@ -182,7 +172,7 @@ def get_users():
     # else:
     #     users = [get_username()]
     users = [user.username for user in store.list_users(is_service_account=service_account)]
-    return jsonify({"users": users})
+    return users
 
 
 @catch_mlflow_exception

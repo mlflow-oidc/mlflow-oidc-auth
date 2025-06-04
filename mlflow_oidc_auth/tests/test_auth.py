@@ -238,9 +238,9 @@ class TestAuth:
         config.OIDC_ADMIN_GROUP_NAME = "admin"
         config.OIDC_GROUP_NAME = ["users"]
 
-        with patch("mlflow_oidc_auth.auth.create_user") as mock_create, patch(
-            "mlflow_oidc_auth.auth.populate_groups"
-        ) as mock_populate, patch("mlflow_oidc_auth.auth.update_user") as mock_update, patch("mlflow_oidc_auth.auth.app"):
+        with patch("mlflow_oidc_auth.auth.create_user") as mock_create, patch("mlflow_oidc_auth.auth.populate_groups") as mock_populate, patch(
+            "mlflow_oidc_auth.auth.update_user"
+        ) as mock_update, patch("mlflow_oidc_auth.auth.app"):
             errors = handle_user_and_group_management(token)
             assert errors == []
             mock_create.assert_called_once()
@@ -299,9 +299,9 @@ class TestAuth:
         config.OIDC_ADMIN_GROUP_NAME = "admin"
         config.OIDC_GROUP_NAME = ["users"]
 
-        with patch("mlflow_oidc_auth.auth.create_user", side_effect=Exception("DB error")), patch(
-            "mlflow_oidc_auth.auth.populate_groups"
-        ), patch("mlflow_oidc_auth.auth.update_user"), patch("mlflow_oidc_auth.auth.app"):
+        with patch("mlflow_oidc_auth.auth.create_user", side_effect=Exception("DB error")), patch("mlflow_oidc_auth.auth.populate_groups"), patch(
+            "mlflow_oidc_auth.auth.update_user"
+        ), patch("mlflow_oidc_auth.auth.app"):
             errors = handle_user_and_group_management(token)
             assert "User/group DB error: Failed to update user/groups" in errors
 
@@ -313,9 +313,9 @@ class TestAuth:
         session = {"oauth_state": "state_value"}
         token = {"userinfo": {"email": "user@example.com"}}
 
-        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_oauth, patch(
-            "mlflow_oidc_auth.auth.handle_token_validation", return_value=token
-        ), patch("mlflow_oidc_auth.auth.handle_user_and_group_management", return_value=[]), patch("mlflow_oidc_auth.auth.app"):
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_oauth, patch("mlflow_oidc_auth.auth.handle_token_validation", return_value=token), patch(
+            "mlflow_oidc_auth.auth.handle_user_and_group_management", return_value=[]
+        ), patch("mlflow_oidc_auth.auth.app"):
             mock_oauth.return_value.oidc = MagicMock()
             email, errors = process_oidc_callback(mock_request, session)
             assert email == "user@example.com"
@@ -387,9 +387,9 @@ class TestAuth:
         mock_request.args.get.side_effect = lambda k: "state_value" if k == "state" else None
         session = {"oauth_state": "state_value"}
 
-        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_oauth, patch(
-            "mlflow_oidc_auth.auth.handle_token_validation", return_value=None
-        ), patch("mlflow_oidc_auth.auth.app"):
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_oauth, patch("mlflow_oidc_auth.auth.handle_token_validation", return_value=None), patch(
+            "mlflow_oidc_auth.auth.app"
+        ):
             mock_oauth.return_value.oidc = MagicMock()
             email, errors = process_oidc_callback(mock_request, session)
             assert email is None
@@ -403,11 +403,9 @@ class TestAuth:
         session = {"oauth_state": "state_value"}
         token = {"userinfo": {"email": "user@example.com"}}
 
-        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_oauth, patch(
-            "mlflow_oidc_auth.auth.handle_token_validation", return_value=token
-        ), patch("mlflow_oidc_auth.auth.handle_user_and_group_management", return_value=["Some error"]), patch(
-            "mlflow_oidc_auth.auth.app"
-        ):
+        with patch("mlflow_oidc_auth.auth.get_oauth_instance") as mock_oauth, patch("mlflow_oidc_auth.auth.handle_token_validation", return_value=token), patch(
+            "mlflow_oidc_auth.auth.handle_user_and_group_management", return_value=["Some error"]
+        ), patch("mlflow_oidc_auth.auth.app"):
             mock_oauth.return_value.oidc = MagicMock()
             email, errors = process_oidc_callback(mock_request, session)
             assert email is None

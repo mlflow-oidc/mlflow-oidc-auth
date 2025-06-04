@@ -9,23 +9,90 @@ STATIC = "/oidc/static/<path:filename>"
 UI = "/oidc/ui/<path:filename>"
 UI_ROOT = "/oidc/ui/"
 
+########### API refactoring ###########
+# USER, EXPERIMENT, PATTERN
+USER_EXPERIMENT_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/experiments")
+USER_EXPERIMENT_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/experiments/<string:experiment_id>")
+
+EXPERIMENT_USER_PERMISSIONS = _get_rest_path("/mlflow/permissions/experiments/<string:experiment_id>/users")
+EXPERIMENT_USER_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/experiments/<string:experiment_id>/users/<string:username>")
+
+USER_EXPERIMENT_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/experiment-patterns")
+USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/experiment-patterns/<string:pattern_id>")
+
+# USER, REGISTERED_MODEL, PATTERN
+USER_REGISTERED_MODEL_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models")
+USER_REGISTERED_MODEL_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models/<string:name>")
+
+REGISTERED_MODEL_USER_PERMISSIONS = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/users")
+REGISTERED_MODEL_USER_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/users/<string:username>")
+
+USER_REGISTERED_MODEL_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models-patterns")
+USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/registered-models-patterns/<string:pattern_id>")
+
+# USER, PROMPT, PATTERN
+USER_PROMPT_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/prompts")
+USER_PROMPT_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/prompts/<string:prompt_name>")
+
+PROMPT_USER_PERMISSIONS = _get_rest_path("/mlflow/permissions/prompts/<string:prompt_name>/users")
+PROMPT_USER_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/prompts/<string:prompt_name>/users/<string:username>")
+
+USER_PROMPT_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/prompts-patterns")
+USER_PROMPT_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/users/<string:username>/prompts-patterns/<string:pattern_id>")
+
+# GROUP STUFF
+
+# GROUP -> EXPERIMENT, REGISTERED_MODEL, PROMPT
+# GROUP, EXPERIMENT, PATTERN
+GROUP_EXPERIMENT_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/experiments")
+GROUP_EXPERIMENT_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/experiments/<string:experiment_id>")
+
+EXPERIMENT_GROUP_PERMISSIONS = _get_rest_path("/mlflow/permissions/experiments/<string:experiment_id>/groups")
+EXPERIMENT_GROUP_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/experiments/<string:experiment_id>/groups/<string:group_name>")
+
+GROUP_EXPERIMENT_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/experiment-patterns")
+GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/experiment-patterns/<string:pattern_id>")
+
+# GROUP, REGISTERED_MODEL, PATTERN
+GROUP_REGISTERED_MODEL_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models")
+GROUP_REGISTERED_MODEL_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models/<string:name>")
+
+REGISTERED_MODEL_GROUP_PERMISSIONS = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/groups")
+REGISTERED_MODEL_GROUP_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/registered-models/<string:name>/groups/<string:group_name>")
+
+GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/registered-models-patterns")
+GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = _get_rest_path(
+    "/mlflow/permissions/groups/<string:group_name>/registered-models-patterns/<string:pattern_id>"
+)
+
+# GROUP, PROMPT, PATTERN
+GROUP_PROMPT_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/prompts")
+GROUP_PROMPT_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/prompts/<string:prompt_name>")
+
+PROMPT_GROUP_PERMISSIONS = _get_rest_path("/mlflow/permissions/prompts/<string:prompt_name>/groups")
+PROMPT_GROUP_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/prompts/<string:prompt_name>/groups/<string:group_name>")
+
+GROUP_PROMPT_PATTERN_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/prompts-patterns")
+GROUP_PROMPT_PATTERN_PERMISSION_DETAIL = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/prompts-patterns/<string:pattern_id>")
+
+#######################################
+
+# List of Resources
+
+LIST_EXPERIMENTS = _get_rest_path("/mlflow/permissions/experiments")
+LIST_PROMPTS = _get_rest_path("/mlflow/permissions/prompts")
+LIST_MODELS = _get_rest_path("/mlflow/permissions/registered-models")
+LIST_USERS = _get_rest_path("/mlflow/permissions/users")
+LIST_GROUPS = _get_rest_path("/mlflow/permissions/groups")
+
+GROUP_USER_PERMISSIONS = _get_rest_path("/mlflow/permissions/groups/<string:group_name>/users")
+###############
+
+
 # create access token for current user
-CREATE_ACCESS_TOKEN = _get_rest_path("/mlflow/users/access-token")
+CREATE_ACCESS_TOKEN = _get_rest_path("/mlflow/permissions/users/access-token")
 # get infrmation about current user
-GET_CURRENT_USER = _get_rest_path("/mlflow/users/current")
-# list of experiments, models, users
-GET_EXPERIMENTS = _get_rest_path("/mlflow/experiments")
-GET_PROMPTS = _get_rest_path("/mlflow/prompts")
-GET_MODELS = _get_rest_path("/mlflow/registered-models")
-GET_USERS = _get_rest_path("/mlflow/users")
-# list of experiments, models, filtered by user
-GET_USER_EXPERIMENTS = _get_rest_path("/mlflow/users/<string:username>/experiments")
-GET_USER_PROMPTS = _get_rest_path("/mlflow/users/<string:username>/prompts")
-GET_USER_MODELS = _get_rest_path("/mlflow/users/<string:username>/registered-models")
-# list of users filtered by experiment, model
-GET_EXPERIMENT_USERS = _get_rest_path("/mlflow/experiments/<int:experiment_id>/users")
-GET_PROMPT_USERS = _get_rest_path("/mlflow/prompts/<string:prompt_name>/users")
-GET_MODEL_USERS = _get_rest_path("/mlflow/registered-models/<string:model_name>/users")
+GET_CURRENT_USER = _get_rest_path("/mlflow/permissions/users/current")
 
 # CRUD routes from basic_auth
 CREATE_USER = _get_rest_path("/mlflow/users/create")
@@ -33,88 +100,3 @@ GET_USER = _get_rest_path("/mlflow/users/get")
 UPDATE_USER_PASSWORD = _get_rest_path("/mlflow/users/update-password")
 UPDATE_USER_ADMIN = _get_rest_path("/mlflow/users/update-admin")
 DELETE_USER = _get_rest_path("/mlflow/users/delete")
-
-CREATE_EXPERIMENT_PERMISSION = _get_rest_path("/mlflow/experiments/permissions/create")
-GET_EXPERIMENT_PERMISSION = _get_rest_path("/mlflow/experiments/permissions/get")
-UPDATE_EXPERIMENT_PERMISSION = _get_rest_path("/mlflow/experiments/permissions/update")
-DELETE_EXPERIMENT_PERMISSION = _get_rest_path("/mlflow/experiments/permissions/delete")
-
-CREATE_PROMPT_PERMISSION = _get_rest_path("/mlflow/prompts/permissions/create")
-GET_PROMPT_PERMISSION = _get_rest_path("/mlflow/prompts/permissions/get")
-UPDATE_PROMPT_PERMISSION = _get_rest_path("/mlflow/prompts/permissions/update")
-DELETE_PROMPT_PERMISSION = _get_rest_path("/mlflow/prompts/permissions/delete")
-
-CREATE_REGISTERED_MODEL_PERMISSION = _get_rest_path("/mlflow/registered-models/permissions/create")
-GET_REGISTERED_MODEL_PERMISSION = _get_rest_path("/mlflow/registered-models/permissions/get")
-UPDATE_REGISTERED_MODEL_PERMISSION = _get_rest_path("/mlflow/registered-models/permissions/update")
-DELETE_REGISTERED_MODEL_PERMISSION = _get_rest_path("/mlflow/registered-models/permissions/delete")
-
-CREATE_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/experiments/regex-permissions/create")
-GET_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/experiments/regex-permissions/get")
-UPDATE_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/experiments/regex-permissions/update")
-DELETE_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/experiments/regex-permissions/delete")
-
-CREATE_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/registered-models/regex-permissions/create")
-GET_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/registered-models/regex-permissions/get")
-UPDATE_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/registered-models/regex-permissions/update")
-DELETE_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/registered-models/regex-permissions/delete")
-
-CREATE_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/prompts/regex-permissions/create")
-GET_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/prompts/regex-permissions/get")
-UPDATE_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/prompts/regex-permissions/update")
-DELETE_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/prompts/regex-permissions/delete")
-
-CREATE_USER_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/experiments/regex/create")
-GET_USER_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/experiments/regex")
-UPDATE_USER_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/experiments/regex/update")
-DELETE_USER_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/experiments/regex/delete")
-
-CREATE_USER_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/registered-models/regex/create")
-GET_USER_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/registered-models/regex")
-UPDATE_USER_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/registered-models/regex/update")
-DELETE_USER_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/registered-models/regex/delete")
-
-CREATE_USER_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/prompts/regex/create")
-GET_USER_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/prompts/regex")
-UPDATE_USER_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/prompts/regex/update")
-DELETE_USER_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/users/<string:username>/prompts/regex/delete")
-
-# manage group permissions
-GET_GROUPS = _get_rest_path("/mlflow/groups")
-GET_GROUP_USERS = _get_rest_path("/mlflow/groups/<string:group_name>/users")
-
-CREATE_GROUP_EXPERIMENT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/create")
-GET_GROUP_EXPERIMENTS_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments")
-UPDATE_GROUP_EXPERIMENT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/update")
-DELETE_GROUP_EXPERIMENT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/delete")
-
-CREATE_GROUP_MODEL_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/registered-models/create")
-GET_GROUP_MODELS_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/registered-models")
-UPDATE_GROUP_MODEL_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/registered-models/update")
-DELETE_GROUP_MODEL_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/registered-models/delete")
-
-CREATE_GROUP_PROMPT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/create")
-GET_GROUP_PROMPTS_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts")
-UPDATE_GROUP_PROMPT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/update")
-DELETE_GROUP_PROMPT_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/delete")
-
-CREATE_GROUP_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/regex/create")
-GET_GROUP_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/regex")
-UPDATE_GROUP_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/regex/update")
-DELETE_GROUP_EXPERIMENT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/experiments/regex/delete")
-
-CREATE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path(
-    "/mlflow/groups/<string:group_name>/registered-models/regex/create"
-)
-GET_GROUP_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/registered-models/regex")
-UPDATE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path(
-    "/mlflow/groups/<string:group_name>/registered-models/regex/update"
-)
-DELETE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION = _get_rest_path(
-    "/mlflow/groups/<string:group_name>/registered-models/regex/delete"
-)
-
-CREATE_GROUP_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/regex/create")
-GET_GROUP_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/regex")
-UPDATE_GROUP_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/regex/update")
-DELETE_GROUP_PROMPT_REGEX_PERMISSION = _get_rest_path("/mlflow/groups/<string:group_name>/prompts/regex/delete")

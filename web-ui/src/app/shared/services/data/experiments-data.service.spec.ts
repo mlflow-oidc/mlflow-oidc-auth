@@ -71,7 +71,7 @@ describe('ExperimentsDataService', () => {
         },
       ],
     };
-    const url = API_URL.EXPERIMENTS_FOR_USER.replace('${userName}', userName);
+    const url = API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', userName);
 
     service.getExperimentsForUser(userName).subscribe((experiments) => {
       expect(experiments).toEqual(mockExperiments.experiments);
@@ -83,7 +83,7 @@ describe('ExperimentsDataService', () => {
   });
 
   it('should fetch users for an experiment', () => {
-    const experimentName = 'testExperiment';
+    const experimentId = 'testExperiment';
     const mockUsers: UserPermissionModel[] = [
       {
         permission: PermissionEnum.READ,
@@ -94,9 +94,9 @@ describe('ExperimentsDataService', () => {
         username: 'alice@example.com',
       },
     ];
-    const url = API_URL.USERS_FOR_EXPERIMENT.replace('${experimentName}', experimentName);
+    const url = API_URL.EXPERIMENT_USER_PERMISSIONS.replace('${experimentId}', experimentId);
 
-    service.getUsersForExperiment(experimentName).subscribe((users) => {
+    service.getUsersForExperiment(experimentId).subscribe((users) => {
       expect(users).toEqual(mockUsers);
     });
 

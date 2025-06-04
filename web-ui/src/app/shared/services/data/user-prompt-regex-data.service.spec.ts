@@ -26,12 +26,12 @@ describe('UserPromptRegexDataService', () => {
   it('should fetch prompt regex permissions for user', () => {
     const userName = 'user1';
     const mockData: PromptRegexPermissionModel[] = [
-      { group_id: 'g1', regex: '^test$', permission: PermissionEnum.READ, priority: 1, prompt: true },
+      { id: '1', regex: '^test$', permission: PermissionEnum.READ, priority: 1, prompt: true, group_id: 'group1' },
     ];
     service.getPromptRegexPermissionsForUser(userName).subscribe((data) => {
       expect(data).toEqual(mockData);
     });
-    const req = httpMock.expectOne(API_URL.GET_USER_PROMPT_REGEX_PERMISSION.replace('${userName}', userName));
+    const req = httpMock.expectOne(API_URL.USER_PROMPT_PATTERN_PERMISSIONS.replace('${userName}', userName));
     expect(req.request.method).toBe('GET');
     req.flush(mockData);
   });
@@ -44,7 +44,7 @@ describe('UserPromptRegexDataService', () => {
     service.addPromptRegexPermissionToUser(userName, regex, permission, priority).subscribe((resp) => {
       expect(resp).toEqual({});
     });
-    const req = httpMock.expectOne(API_URL.CREATE_USER_PROMPT_REGEX_PERMISSION.replace('${userName}', userName));
+    const req = httpMock.expectOne(API_URL.USER_PROMPT_PATTERN_PERMISSIONS.replace('${userName}', userName));
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ regex, permission, priority });
     req.flush({});
@@ -55,10 +55,13 @@ describe('UserPromptRegexDataService', () => {
     const regex = 'abc';
     const permission = PermissionEnum.MANAGE;
     const priority = 3;
-    service.updatePromptRegexPermissionForUser(userName, regex, permission, priority).subscribe((resp) => {
+    const id = '1';
+    service.updatePromptRegexPermissionForUser(userName, regex, permission, priority, id).subscribe((resp) => {
       expect(resp).toEqual({ updated: true });
     });
-    const req = httpMock.expectOne(API_URL.UPDATE_USER_PROMPT_REGEX_PERMISSION.replace('${userName}', userName));
+    const req = httpMock.expectOne(
+      API_URL.USER_PROMPT_PATTERN_PERMISSION_DETAIL.replace('${userName}', userName).replace('${patternId}', id)
+    );
     expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual({ regex, permission, priority });
     req.flush({ updated: true });
@@ -66,13 +69,15 @@ describe('UserPromptRegexDataService', () => {
 
   it('should remove prompt regex permission from user', () => {
     const userName = 'user1';
-    const regex = 'test123';
-    service.removePromptRegexPermissionFromUser(userName, regex).subscribe((resp) => {
+    const id = '1';
+    service.removePromptRegexPermissionFromUser(userName, id).subscribe((resp) => {
       expect(resp).toEqual({ deleted: true });
     });
-    const req = httpMock.expectOne(API_URL.DELETE_USER_PROMPT_REGEX_PERMISSION.replace('${userName}', userName));
+    const req = httpMock.expectOne(
+      API_URL.USER_PROMPT_PATTERN_PERMISSION_DETAIL.replace('${userName}', userName).replace('${patternId}', id)
+    );
     expect(req.request.method).toBe('DELETE');
-    expect(req.request.body).toEqual({ regex });
+    expect(req.request.body).toBeNull();
     req.flush({ deleted: true });
   });
 });

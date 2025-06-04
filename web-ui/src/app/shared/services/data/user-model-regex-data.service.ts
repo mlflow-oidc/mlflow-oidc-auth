@@ -13,7 +13,7 @@ export class UserModelRegexDataService {
   constructor(private readonly http: HttpClient) {}
 
   getModelRegexPermissionsForUser(userName: string): Observable<ModelRegexPermissionModel[]> {
-    const url = API_URL.GET_USER_REGISTERED_MODEL_REGEX_PERMISSION.replace('${userName}', userName);
+    const url = API_URL.USER_REGISTERED_MODEL_PATTERN_PERMISSIONS.replace('${userName}', userName);
     return this.http.get<ModelRegexPermissionModel[]>(url);
   }
 
@@ -23,7 +23,7 @@ export class UserModelRegexDataService {
     permission: PermissionEnum,
     priority: number
   ): Observable<unknown> {
-    const url = API_URL.CREATE_USER_REGISTERED_MODEL_REGEX_PERMISSION.replace('${userName}', userName);
+    const url = API_URL.USER_REGISTERED_MODEL_PATTERN_PERMISSIONS.replace('${userName}', userName);
     return this.http.post(url, { regex, permission, priority });
   }
 
@@ -31,14 +31,21 @@ export class UserModelRegexDataService {
     userName: string,
     regex: string,
     permission: PermissionEnum,
-    priority: number
+    priority: number,
+    id: string
   ): Observable<unknown> {
-    const url = API_URL.UPDATE_USER_REGISTERED_MODEL_REGEX_PERMISSION.replace('${userName}', userName);
+    const url = API_URL.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL.replace('${userName}', userName).replace(
+      '${patternId}',
+      id
+    );
     return this.http.patch(url, { regex, permission, priority });
   }
 
-  removeModelRegexPermissionFromUser(userName: string, regex: string): Observable<unknown> {
-    const url = API_URL.DELETE_USER_REGISTERED_MODEL_REGEX_PERMISSION.replace('${userName}', userName);
-    return this.http.delete(url, { body: { regex } });
+  removeModelRegexPermissionFromUser(userName: string, id: string): Observable<unknown> {
+    const url = API_URL.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL.replace('${userName}', userName).replace(
+      '${patternId}',
+      id
+    );
+    return this.http.delete(url);
   }
 }

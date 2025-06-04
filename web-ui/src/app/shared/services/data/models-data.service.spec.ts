@@ -45,7 +45,7 @@ describe('ModelsDataService', () => {
 
   it('getModelsForUser should perform GET to correct URL and map response', () => {
     const userName = 'john';
-    const expectedUrl = API_URL.MODELS_FOR_USER.replace('${userName}', userName);
+    const expectedUrl = API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', userName);
     const mockResponse: ModelPermissionsModel = {
       models: [
         {
@@ -86,7 +86,7 @@ describe('ModelsDataService', () => {
 
   it('getUsersForModel should perform GET to correct URL', () => {
     const modelName = 'model1';
-    const expectedUrl = API_URL.USERS_FOR_MODEL.replace('${modelName}', modelName);
+    const expectedUrl = API_URL.REGISTERED_MODEL_USER_PERMISSIONS.replace('${modelName}', modelName);
     const mockUsers: ModelUserListModel[] = [{ permission: PermissionEnum.EDIT, username: 'alex' }];
 
     service.getUsersForModel(modelName).subscribe((users) => {

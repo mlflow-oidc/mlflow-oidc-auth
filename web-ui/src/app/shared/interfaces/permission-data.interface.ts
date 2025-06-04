@@ -1,12 +1,11 @@
-export interface CreateExperimentPermissionRequestBodyModel {
-  experiment_name?: string;
-  experiment_id?: string;
+export interface ExperimentPermissionRequestModel {
+  experiment_id: string;
   username: string;
-  permission: string;
+  permission?: string;
 }
 
-export interface CreateModelPermissionRequestBodyModel {
+export interface ModelPermissionRequestModel {
   name: string;
   username: string;
-  permission: string;
+  permission?: string;
 }

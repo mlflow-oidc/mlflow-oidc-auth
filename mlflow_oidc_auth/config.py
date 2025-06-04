@@ -31,9 +31,7 @@ class AppConfig:
         self.OIDC_CLIENT_SECRET = os.environ.get("OIDC_CLIENT_SECRET", None)
         self.AUTOMATIC_LOGIN_REDIRECT = get_bool_env_variable("AUTOMATIC_LOGIN_REDIRECT", False)
         self.OIDC_ALEMBIC_VERSION_TABLE = os.environ.get("OIDC_ALEMBIC_VERSION_TABLE", "alembic_version")
-        self.PERMISSION_SOURCE_ORDER = [
-            source.strip() for source in os.environ.get("PERMISSION_SOURCE_ORDER", "user,group,regex,group-regex").split(",")
-        ]
+        self.PERMISSION_SOURCE_ORDER = [source.strip() for source in os.environ.get("PERMISSION_SOURCE_ORDER", "user,group,regex,group-regex").split(",")]
 
         # session
         self.SESSION_TYPE = os.environ.get("SESSION_TYPE", "cachelib")

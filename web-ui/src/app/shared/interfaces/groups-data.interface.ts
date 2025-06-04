@@ -20,6 +20,7 @@ export interface ExperimentRegexPermissionModel {
   permission: PermissionEnum;
   priority: number;
   regex: string;
+  id: string;
 }
 
 export interface ModelRegexPermissionModel {
@@ -28,6 +29,7 @@ export interface ModelRegexPermissionModel {
   priority: number;
   prompt: boolean;
   regex: string;
+  id: string;
 }
 
 export interface PromptRegexPermissionModel {
@@ -36,4 +38,5 @@ export interface PromptRegexPermissionModel {
   priority: number;
   prompt: boolean;
   regex: string;
+  id: string;
 }

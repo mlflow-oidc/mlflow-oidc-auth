@@ -4,11 +4,11 @@ from sqlalchemy.orm import Session
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
-from mlflow_oidc_auth.db.models import SqlGroup, SqlRegisteredModelGroupPermission, SqlUserGroup
+from mlflow_oidc_auth.db.models import SqlGroup, SqlRegisteredModelGroupPermission
 from mlflow_oidc_auth.entities import RegisteredModelPermission
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
 from mlflow_oidc_auth.repository import GroupRepository
-from mlflow_oidc_auth.repository.utils import get_one_optional, get_user, get_group, list_user_groups
+from mlflow_oidc_auth.repository.utils import get_user, get_group, list_user_groups
 
 
 class RegisteredModelPermissionGroupRepository:
@@ -16,17 +16,17 @@ class RegisteredModelPermissionGroupRepository:
         self._Session: Callable[[], Session] = session_maker
         self._group_repo = GroupRepository(session_maker)
 
-    def _get_registered_model_group_permission(
-        self, session, name: str, group_name: str
-    ) -> Optional[SqlRegisteredModelGroupPermission]:
-        group = get_one_optional(session, SqlGroup, SqlGroup.group_name == group_name)
+    def _get_registered_model_group_permission(self, session: Session, name: str, group_name: str) -> Optional[SqlRegisteredModelGroupPermission]:
+        group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one_or_none()
         if group is None:
             return None
-        return get_one_optional(
-            session,
-            SqlRegisteredModelGroupPermission,
-            SqlRegisteredModelGroupPermission.name == name,
-            SqlRegisteredModelGroupPermission.group_id == group.id,
+        return (
+            session.query(SqlRegisteredModelGroupPermission)
+            .filter(
+                SqlRegisteredModelGroupPermission.name == name,
+                SqlRegisteredModelGroupPermission.group_id == group.id,
+            )
+            .one_or_none()
         )
 
     def create(self, group_name: str, name: str, permission: str):
@@ -41,11 +41,7 @@ class RegisteredModelPermissionGroupRepository:
     def get(self, group_name: str) -> List[RegisteredModelPermission]:
         with self._Session() as session:
             group = get_group(session, group_name)
-            perms = (
-                session.query(SqlRegisteredModelGroupPermission)
-                .filter(SqlRegisteredModelGroupPermission.group_id == group.id)
-                .all()
-            )
+            perms = session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.group_id == group.id).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def get_for_user(self, name: str, username: str) -> RegisteredModelPermission:
@@ -115,9 +111,7 @@ class RegisteredModelPermissionGroupRepository:
 
     def wipe(self, name: str):
         with self._Session() as session:
-            perms = (
-                session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.name == name).all()
-            )
+            perms = session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.name == name).all()
             for p in perms:
                 session.delete(p)
             session.flush()

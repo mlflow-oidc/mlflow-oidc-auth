@@ -34,9 +34,7 @@ def test_create_group_success(repo, session):
 def test_create_group_integrity_error(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock(side_effect=Exception("IntegrityError"))
-    with patch("mlflow_oidc_auth.db.models.SqlGroup", return_value=MagicMock()), patch(
-        "mlflow_oidc_auth.repository.group.IntegrityError", Exception
-    ):
+    with patch("mlflow_oidc_auth.db.models.SqlGroup", return_value=MagicMock()), patch("mlflow_oidc_auth.repository.group.IntegrityError", Exception):
         with pytest.raises(MlflowException):
             repo.create_group("g2")
 
@@ -60,12 +58,12 @@ def test_list_groups(repo, session):
 
 def test_delete_group_success(repo, session):
     grp = MagicMock()
+    session.query().filter().one.return_value = grp
     session.delete = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.group.get_one_or_raise", return_value=grp):
-        repo.delete_group("g5")
-        session.delete.assert_called_once_with(grp)
-        session.flush.assert_called_once()
+    repo.delete_group("g5")
+    session.delete.assert_called_once_with(grp)
+    session.flush.assert_called_once()
 
 
 def test_add_user_to_group(repo, session):
@@ -73,9 +71,9 @@ def test_add_user_to_group(repo, session):
     grp = MagicMock(id=2)
     session.add = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.group.get_group", return_value=grp
-    ), patch("mlflow_oidc_auth.db.models.SqlUserGroup", return_value=MagicMock()):
+    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch("mlflow_oidc_auth.repository.group.get_group", return_value=grp), patch(
+        "mlflow_oidc_auth.db.models.SqlUserGroup", return_value=MagicMock()
+    ):
         repo.add_user_to_group("user", "g6")
         session.add.assert_called_once()
         session.flush.assert_called_once()
@@ -88,9 +86,7 @@ def test_remove_user_from_group(repo, session):
     session.query().filter().one.return_value = ug
     session.delete = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.group.get_group", return_value=grp
-    ):
+    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch("mlflow_oidc_auth.repository.group.get_group", return_value=grp):
         repo.remove_user_from_group("user", "g7")
         session.delete.assert_called_once_with(ug)
         session.flush.assert_called_once()

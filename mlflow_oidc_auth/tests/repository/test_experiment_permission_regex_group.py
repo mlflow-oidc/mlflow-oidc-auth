@@ -1,8 +1,9 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
+from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.entities import ExperimentGroupRegexPermission
 from mlflow_oidc_auth.repository.experiment_permission_regex_group import ExperimentPermissionGroupRegexRepository
 
 
@@ -28,9 +29,8 @@ def test_get(repo, session):
     group = MagicMock(id=2)
     row = MagicMock()
     row.to_mlflow_entity.return_value = "entity"
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group), patch(
-        "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_one_or_raise", return_value=row
-    ):
+    session.query().filter().one.return_value = row
+    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group):
         assert repo.get("g", "r") == "entity"
 
 
@@ -44,7 +44,7 @@ def test_update(repo, session):
         repo, "_get_experiment_group_regex_permission", return_value=perm
     ):
         session.commit = MagicMock()
-        result = repo.update("g", "r", 2, "EDIT")
+        result = repo.update(1, "g", "r", 2, "EDIT")
         assert result == "entity"
         assert perm.permission == "EDIT"
         assert perm.priority == 2
@@ -59,7 +59,7 @@ def test_update_not_found(repo, session):
         repo, "_get_experiment_group_regex_permission", side_effect=ValueError("No permission found")
     ):
         with pytest.raises(ValueError):
-            repo.update("g", "r", 2, "EDIT")
+            repo.update(1, "g", "r", 2, "EDIT")
 
 
 def test_revoke(repo, session):
@@ -90,7 +90,7 @@ def test_list_permissions_for_user_groups(repo, session):
     group2 = MagicMock(id=2)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().all.return_value = [perm]
+    session.query().filter().order_by().all.return_value = [perm]
     with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_user", return_value=user), patch(
         "mlflow_oidc_auth.repository.experiment_permission_regex_group.list_user_groups", return_value=[group1, group2]
     ):
@@ -99,10 +99,9 @@ def test_list_permissions_for_user_groups(repo, session):
 
 
 def test__get_experiment_group_regex_permission(repo, session):
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_one_or_raise", return_value="perm") as m:
-        result = repo._get_experiment_group_regex_permission(session, "r", 1)
-        assert result == "perm"
-        m.assert_called_once()
+    session.query().filter().one.return_value = "perm"
+    result = repo._get_experiment_group_regex_permission(session, "r", 1)
+    assert result == "perm"
 
 
 def test_grant(repo, session):
@@ -157,3 +156,33 @@ def test_list_permissions_for_groups_ids(repo, session):
     session.query().filter().order_by().all.return_value = [perm]
     result = repo.list_permissions_for_groups_ids([12, 13])
     assert result == ["entity"]
+
+
+def test__get_experiment_group_regex_permission_not_found(repo, session):
+    """Test _get_experiment_group_regex_permission when no permission is found"""
+    session.query().filter().one.side_effect = NoResultFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_experiment_group_regex_permission(session, "test_regex", 1)
+
+    assert "Permission not found for group_id: 1 and id: test_regex" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+def test__get_experiment_group_regex_permission_multiple_found(repo, session):
+    """Test _get_experiment_group_regex_permission when multiple permissions are found"""
+    session.query().filter().one.side_effect = MultipleResultsFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo._get_experiment_group_regex_permission(session, "test_regex", 1)
+
+    assert "Multiple Permissions found for group_id: 1 and id: test_regex" in str(exc.value)
+    assert exc.value.error_code == "INVALID_STATE"
+
+
+def test__get_experiment_group_regex_permission_database_error(repo, session):
+    """Test _get_experiment_group_regex_permission when database error occurs"""
+    session.query().filter().one.side_effect = Exception("Database connection error")
+
+    with pytest.raises(Exception, match="Database connection error"):
+        repo._get_experiment_group_regex_permission(session, "test_regex", 1)

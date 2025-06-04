@@ -3,7 +3,7 @@ import { HttpClientModule } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { GroupDataService } from '../data/group-data.service';
 import { API_URL } from 'src/app/core/configs/api-urls';
-import { GroupsDataModel, ExperimentModel, ModelModel } from 'src/app/shared/interfaces/groups-data.interface';
+import { ExperimentModel, ModelModel } from 'src/app/shared/interfaces/groups-data.interface';
 import { PermissionEnum } from 'src/app/core/configs/permissions';
 
 describe('GroupDataService', () => {
@@ -24,7 +24,7 @@ describe('GroupDataService', () => {
   });
 
   it('should fetch all groups', () => {
-    const mockResponse: GroupsDataModel = { groups: ['group1', 'group2'] };
+    const mockResponse: string[] = ['group1', 'group2'];
 
     service.getAllGroups().subscribe((response) => {
       expect(response).toEqual(mockResponse);
@@ -52,7 +52,7 @@ describe('GroupDataService', () => {
       expect(response).toEqual(mockResponse);
     });
 
-    const req = httpMock.expectOne(API_URL.EXPERIMENTS_FOR_GROUP.replace('${groupName}', groupName));
+    const req = httpMock.expectOne(API_URL.GROUP_EXPERIMENT_PERMISSIONS.replace('${groupName}', groupName));
     expect(req.request.method).toBe('GET');
     req.flush(mockResponse);
   });
@@ -70,7 +70,7 @@ describe('GroupDataService', () => {
       expect(response).toEqual(mockResponse);
     });
 
-    const req = httpMock.expectOne(API_URL.MODELS_FOR_GROUP.replace('${groupName}', groupName));
+    const req = httpMock.expectOne(API_URL.GROUP_REGISTERED_MODEL_PERMISSIONS.replace('${groupName}', groupName));
     expect(req.request.method).toBe('GET');
     req.flush(mockResponse);
   });
@@ -88,7 +88,7 @@ describe('GroupDataService', () => {
       expect(response).toEqual(mockResponse);
     });
 
-    const req = httpMock.expectOne(API_URL.PROMPTS_FOR_GROUP.replace('${groupName}', groupName));
+    const req = httpMock.expectOne(API_URL.GROUP_PROMPT_PERMISSIONS.replace('${groupName}', groupName));
     expect(req.request.method).toBe('GET');
     req.flush(mockResponse);
   });

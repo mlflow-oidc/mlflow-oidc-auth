@@ -19,7 +19,7 @@ def create_group_registered_model_regex_permission(group_name):
 
 @catch_mlflow_exception
 @check_admin_permission
-def get_group_registered_model_regex_permission(group_name):
+def list_group_registered_model_regex_permissions(group_name: str):
     ep = store.list_group_registered_model_regex_permissions(
         group_name=group_name,
     )
@@ -28,9 +28,20 @@ def get_group_registered_model_regex_permission(group_name):
 
 @catch_mlflow_exception
 @check_admin_permission
-def update_group_registered_model_regex_permission(group_name):
+def get_group_registered_model_regex_permission(group_name: str, pattern_id: str):
+    ep = store.get_group_registered_model_regex_permission(
+        group_name=group_name,
+        id=int(pattern_id),
+    )
+    return jsonify({"registered_model_permission": ep.to_json()}), 200
+
+
+@catch_mlflow_exception
+@check_admin_permission
+def update_group_registered_model_regex_permission(group_name: str, id: int):
     ep = store.update_group_registered_model_regex_permission(
         group_name=group_name,
+        id=id,
         regex=get_request_param("regex"),
         priority=int(get_request_param("priority")),
         permission=get_request_param("permission"),
@@ -40,9 +51,9 @@ def update_group_registered_model_regex_permission(group_name):
 
 @catch_mlflow_exception
 @check_admin_permission
-def delete_group_registered_model_regex_permission(group_name):
+def delete_group_registered_model_regex_permission(group_name: str, id: int):
     store.delete_group_registered_model_regex_permission(
         group_name=group_name,
-        regex=get_request_param("regex"),
+        id=id,
     )
     return jsonify({"status": "success"}), 200

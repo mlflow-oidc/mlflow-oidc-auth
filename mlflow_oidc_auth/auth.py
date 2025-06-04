@@ -106,11 +106,7 @@ def handle_token_validation(oauth_instance: OAuth):
     if getattr(oauth_instance, "oidc", None) is None:
         app.logger.error("OAuth instance or OIDC is not properly initialized")
         return None
-    if (
-        oauth_instance.oidc is None
-        or not hasattr(oauth_instance.oidc, "authorize_access_token")
-        or not callable(oauth_instance.oidc.authorize_access_token)
-    ):
+    if oauth_instance.oidc is None or not hasattr(oauth_instance.oidc, "authorize_access_token") or not callable(oauth_instance.oidc.authorize_access_token):
         app.logger.error("OIDC client is not properly initialized or missing 'authorize_access_token' method")
         return None
     try:

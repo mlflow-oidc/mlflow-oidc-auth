@@ -49,10 +49,16 @@ def test__get_permission_from_experiment_name_found():
 def test__get_permission_from_experiment_name_not_found():
     with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="expname"), patch(
         "mlflow_oidc_auth.validators.experiment._get_tracking_store"
-    ) as mock_store:
+    ) as mock_store, patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission:
         mock_store.return_value.get_experiment_by_name.return_value = None
-        with pytest.raises(MlflowException):
-            experiment._get_permission_from_experiment_name()
+        mock_permission = DummyPermission(can_read=True, can_update=True, can_delete=True, can_manage=True)
+        mock_get_permission.return_value = mock_permission
+        perm = experiment._get_permission_from_experiment_name()
+        assert perm.can_read is True
+        assert perm.can_update is True
+        assert perm.can_delete is True
+        assert perm.can_manage is True
+        mock_get_permission.assert_called_once_with("MANAGE")
 
 
 def test__get_experiment_id_from_view_args_match():

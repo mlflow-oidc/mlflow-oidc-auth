@@ -34,9 +34,7 @@ def test_create_user_new_user(mock_store, mock_generate_token):
     mock_store.create_user.return_value = dummy
     result = user.create_user("bob", "Bob", is_admin=False, is_service_account=True)
     assert result == (True, f"User bob (ID: 2) successfully created")
-    mock_store.create_user.assert_called_once_with(
-        username="bob", password="dummy_password", display_name="Bob", is_admin=False, is_service_account=True
-    )
+    mock_store.create_user.assert_called_once_with(username="bob", password="dummy_password", display_name="Bob", is_admin=False, is_service_account=True)
 
 
 @patch("mlflow_oidc_auth.user.store")

@@ -1,93 +1,69 @@
 export const API_URL = {
-  ALL_EXPERIMENTS: '/api/2.0/mlflow/experiments',
-  ALL_MODELS: '/api/2.0/mlflow/registered-models',
-  ALL_PROMPTS: '/api/2.0/mlflow/prompts',
-  ALL_GROUPS: '/api/2.0/mlflow/groups',
+  // List endpoints
+  ALL_GROUPS: '/api/2.0/mlflow/permissions/groups',
+  ALL_EXPERIMENTS: '/api/2.0/mlflow/permissions/experiments',
+  ALL_MODELS: '/api/2.0/mlflow/permissions/registered-models',
+  ALL_PROMPTS: '/api/2.0/mlflow/permissions/prompts',
+  ALL_USERS: '/api/2.0/mlflow/permissions/users',
 
-  EXPERIMENTS_FOR_GROUP: '/api/2.0/mlflow/groups/${groupName}/experiments',
-  EXPERIMENTS_FOR_USER: '/api/2.0/mlflow/users/${userName}/experiments',
-  USERS_FOR_EXPERIMENT: '/api/2.0/mlflow/experiments/${experimentName}/users',
-
-  MODELS_FOR_GROUP: '/api/2.0/mlflow/groups/${groupName}/registered-models',
-  MODELS_FOR_USER: '/api/2.0/mlflow/users/${userName}/registered-models',
-  USERS_FOR_MODEL: '/api/2.0/mlflow/registered-models/${modelName}/users',
-
-  PROMPTS_FOR_GROUP: '/api/2.0/mlflow/groups/${groupName}/prompts',
-  PROMPTS_FOR_USER: '/api/2.0/mlflow/users/${userName}/prompts',
-  USERS_FOR_PROMPT: '/api/2.0/mlflow/prompts/${promptName}/users',
-
-  CREATE_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/experiments/permissions/create',
-  UPDATE_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/experiments/permissions/update',
-  DELETE_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/experiments/permissions/delete',
-
-  CREATE_MODEL_PERMISSION: '/api/2.0/mlflow/registered-models/permissions/create',
-  UPDATE_MODEL_PERMISSION: '/api/2.0/mlflow/registered-models/permissions/update',
-  DELETE_MODEL_PERMISSION: '/api/2.0/mlflow/registered-models/permissions/delete',
-
-  CREATE_PROMPT_PERMISSION: '/api/2.0/mlflow/prompts/permissions/create',
-  UPDATE_PROMPT_PERMISSION: '/api/2.0/mlflow/prompts/permissions/update',
-  DELETE_PROMPT_PERMISSION: '/api/2.0/mlflow/prompts/permissions/delete',
-
+  // User management
   CREATE_USER: '/api/2.0/mlflow/users/create',
+  GET_USER: '/api/2.0/mlflow/users/get',
+  UPDATE_USER_PASSWORD: '/api/2.0/mlflow/users/update-password',
+  UPDATE_USER_ADMIN: '/api/2.0/mlflow/users/update-admin',
   DELETE_USER: '/api/2.0/mlflow/users/delete',
-  GET_ALL_USERS: '/api/2.0/mlflow/users',
-  CREATE_ACCESS_TOKEN: '/api/2.0/mlflow/users/access-token',
-  GET_CURRENT_USER: '/api/2.0/mlflow/users/current',
+  CREATE_ACCESS_TOKEN: '/api/2.0/mlflow/permissions/users/access-token',
+  GET_CURRENT_USER: '/api/2.0/mlflow/permissions/users/current',
 
-  CREATE_GROUP_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/create',
-  DELETE_GROUP_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/delete',
-  UPDATE_GROUP_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/update',
+  // User permissions for resources
+  USER_EXPERIMENT_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/experiments',
+  USER_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/permissions/users/${userName}/experiments/${experimentId}',
+  USER_REGISTERED_MODEL_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/registered-models',
+  USER_MODEL_PERMISSION: '/api/2.0/mlflow/permissions/users/${userName}/registered-models/${modelName}',
+  USER_PROMPT_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/prompts',
+  USER_PROMPT_PERMISSION: '/api/2.0/mlflow/permissions/users/${userName}/prompts/${promptName}',
 
-  CREATE_GROUP_MODEL_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/create',
-  DELETE_GROUP_MODEL_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/delete',
-  UPDATE_GROUP_MODEL_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/update',
+  // User pattern permissions
+  USER_EXPERIMENT_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/experiment-patterns',
+  USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/users/${userName}/experiment-patterns/${patternId}',
+  USER_REGISTERED_MODEL_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/registered-models-patterns',
+  USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/users/${userName}/registered-models-patterns/${patternId}',
+  USER_PROMPT_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns',
+  USER_PROMPT_PATTERN_PERMISSION_DETAIL: '/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns/${patternId}',
 
-  CREATE_GROUP_PROMPT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/create',
-  DELETE_GROUP_PROMPT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/delete',
-  UPDATE_GROUP_PROMPT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/update',
+  // Resource user permissions
+  EXPERIMENT_USER_PERMISSIONS: '/api/2.0/mlflow/permissions/experiments/${experimentId}/users',
+  REGISTERED_MODEL_USER_PERMISSIONS: '/api/2.0/mlflow/permissions/registered-models/${modelName}/users',
+  PROMPT_USER_PERMISSIONS: '/api/2.0/mlflow/permissions/prompts/${promptName}/users',
 
-  CREATE_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/experiments/regex-permissions/create',
-  GET_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/experiments/regex-permissions/get',
-  UPDATE_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/experiments/regex-permissions/update',
-  DELETE_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/experiments/regex-permissions/delete',
+  // Group permissions for resources
+  GROUP_EXPERIMENT_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/experiments',
+  GROUP_EXPERIMENT_PERMISSION_DETAIL: '/api/2.0/mlflow/permissions/groups/${groupName}/experiments/${experimentId}',
+  GROUP_REGISTERED_MODEL_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/registered-models',
+  GROUP_REGISTERED_MODEL_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/registered-models/${modelName}',
+  GROUP_PROMPT_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/prompts',
+  GROUP_PROMPT_PERMISSION_DETAIL: '/api/2.0/mlflow/permissions/groups/${groupName}/prompts/${promptName}',
 
-  CREATE_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/registered-models/regex-permissions/create',
-  GET_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/registered-models/regex-permissions/get',
-  UPDATE_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/registered-models/regex-permissions/update',
-  DELETE_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/registered-models/regex-permissions/delete',
+  // Group pattern permissions
+  GROUP_EXPERIMENT_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns',
+  GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns/${patternId}',
+  GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns',
+  GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns/${patternId}',
+  GROUP_PROMPT_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns',
+  GROUP_PROMPT_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns/${patternId}',
 
-  CREATE_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/prompts/regex-permissions/create',
-  GET_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/prompts/regex-permissions/get',
-  UPDATE_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/prompts/regex-permissions/update',
-  DELETE_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/prompts/regex-permissions/delete',
+  // Resource group permissions
+  EXPERIMENT_GROUP_PERMISSIONS: '/api/2.0/mlflow/permissions/experiments/${experimentId}/groups',
+  REGISTERED_MODEL_GROUP_PERMISSIONS: '/api/2.0/mlflow/permissions/registered-models/${modelName}/groups',
+  PROMPT_GROUP_PERMISSIONS: '/api/2.0/mlflow/permissions/prompts/${promptName}/groups',
 
-  CREATE_USER_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/experiments/regex/create',
-  GET_USER_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/experiments/regex',
-  UPDATE_USER_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/experiments/regex/update',
-  DELETE_USER_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/experiments/regex/delete',
-
-  CREATE_USER_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/registered-models/regex/create',
-  GET_USER_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/registered-models/regex',
-  UPDATE_USER_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/registered-models/regex/update',
-  DELETE_USER_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/registered-models/regex/delete',
-
-  CREATE_USER_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/prompts/regex/create',
-  GET_USER_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/prompts/regex',
-  UPDATE_USER_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/prompts/regex/update',
-  DELETE_USER_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/users/${userName}/prompts/regex/delete',
-
-  CREATE_GROUP_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/regex/create',
-  GET_GROUP_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/regex',
-  UPDATE_GROUP_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/regex/update',
-  DELETE_GROUP_EXPERIMENT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/regex/delete',
-
-  CREATE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/regex/create',
-  GET_GROUP_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/regex',
-  UPDATE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/regex/update',
-  DELETE_GROUP_REGISTERED_MODEL_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/regex/delete',
-
-  CREATE_GROUP_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/regex/create',
-  GET_GROUP_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/regex',
-  UPDATE_GROUP_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/regex/update',
-  DELETE_GROUP_PROMPT_REGEX_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/prompts/regex/delete',
+  // Group user permissions
+  GROUP_USER_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/users',
 };

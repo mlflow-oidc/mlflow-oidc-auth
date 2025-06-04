@@ -16,12 +16,12 @@ export class ModelsDataService {
   }
 
   getModelsForUser(userName: string) {
-    const url = API_URL.MODELS_FOR_USER.replace('${userName}', userName);
+    const url = API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', userName);
     return this.http.get<ModelPermissionsModel>(url).pipe(map((response) => response.models));
   }
 
   getUsersForModel(modelName: string) {
-    const url = API_URL.USERS_FOR_MODEL.replace('${modelName}', modelName);
+    const url = API_URL.REGISTERED_MODEL_USER_PERMISSIONS.replace('${modelName}', modelName);
     return this.http.get<ModelUserListModel[]>(url);
   }
 }

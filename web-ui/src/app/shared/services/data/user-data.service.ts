@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import {
-  AllUsersListModel,
   CurrentUserModel,
   TokenModel,
   RegisteredModelPermission,
@@ -25,25 +24,23 @@ export class UserDataService {
         const userName = user.username;
         return forkJoin({
           user: of(user),
-          models: this.http.get<{ models: RegisteredModelPermission[] }>(
-            API_URL.MODELS_FOR_USER.replace('${userName}', userName)
+          models: this.http.get<RegisteredModelPermission[]>(
+            API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', userName)
           ),
-          experiments: this.http.get<{ experiments: ExperimentPermission[] }>(
-            API_URL.EXPERIMENTS_FOR_USER.replace('${userName}', userName)
+          experiments: this.http.get<ExperimentPermission[]>(
+            API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', userName)
           ),
-          prompts: this.http.get<{ prompts: PromptPermission[] }>(
-            API_URL.PROMPTS_FOR_USER.replace('${userName}', userName)
-          ),
+          prompts: this.http.get<PromptPermission[]>(API_URL.USER_PROMPT_PERMISSIONS.replace('${userName}', userName)),
         }).pipe(
           map((response) => {
-            user.models = response.models.models;
-            user.experiments = response.experiments.experiments;
-            user.prompts = response.prompts.prompts;
+            user.models = response.models;
+            user.experiments = response.experiments;
+            user.prompts = response.prompts;
             return {
               user,
-              models: response.models.models,
-              experiments: response.experiments.experiments,
-              prompts: response.prompts.prompts,
+              models: response.models,
+              experiments: response.experiments,
+              prompts: response.prompts,
             };
           })
         );
@@ -59,11 +56,11 @@ export class UserDataService {
   }
 
   getAllUsers() {
-    return this.http.get<AllUsersListModel>(API_URL.GET_ALL_USERS);
+    return this.http.get<string[]>(API_URL.ALL_USERS);
   }
 
   getAllServiceUsers() {
-    return this.http.get<AllUsersListModel>(`${API_URL.GET_ALL_USERS}?service=true`);
+    return this.http.get<string[]>(`${API_URL.ALL_USERS}?service=true`);
   }
 
   createServiceAccount(body: UserModel) {

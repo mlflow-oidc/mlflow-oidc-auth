@@ -10,29 +10,38 @@ export class ExperimentRegexDataService {
 
   getExperimentRegexPermissionsForGroup(groupName: string) {
     return this.http.get<ExperimentRegexPermissionModel[]>(
-      API_URL.GET_GROUP_EXPERIMENT_REGEX_PERMISSION.replace('${groupName}', groupName)
+      API_URL.GROUP_EXPERIMENT_PATTERN_PERMISSIONS.replace('${groupName}', groupName)
     );
   }
 
   addExperimentRegexPermissionToGroup(groupName: string, regex: string, permission: string, priority: number) {
-    return this.http.post(API_URL.CREATE_GROUP_EXPERIMENT_REGEX_PERMISSION.replace('${groupName}', groupName), {
+    return this.http.post(API_URL.GROUP_EXPERIMENT_PATTERN_PERMISSIONS.replace('${groupName}', groupName), {
       regex: regex,
       priority: priority,
       permission: permission,
     });
   }
 
-  updateExperimentRegexPermissionForGroup(groupName: string, regex: string, permission: string, priority: number) {
-    return this.http.patch(API_URL.UPDATE_GROUP_EXPERIMENT_REGEX_PERMISSION.replace('${groupName}', groupName), {
-      regex: regex,
-      priority: priority,
-      permission: permission,
-    });
+  updateExperimentRegexPermissionForGroup(
+    groupName: string,
+    regex: string,
+    permission: string,
+    priority: number,
+    id: string
+  ) {
+    return this.http.patch(
+      API_URL.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL.replace('${groupName}', groupName).replace('${patternId}', id),
+      {
+        regex: regex,
+        priority: priority,
+        permission: permission,
+      }
+    );
   }
 
-  removeExperimentRegexPermissionFromGroup(groupName: string, regex: string) {
-    return this.http.delete(API_URL.DELETE_GROUP_EXPERIMENT_REGEX_PERMISSION.replace('${groupName}', groupName), {
-      body: { regex: regex },
-    });
+  removeExperimentRegexPermissionFromGroup(groupName: string, id: string) {
+    return this.http.delete(
+      API_URL.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL.replace('${groupName}', groupName).replace('${patternId}', id)
+    );
   }
 }
