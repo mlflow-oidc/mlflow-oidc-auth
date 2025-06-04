@@ -19,7 +19,7 @@ def _patch_permission(**kwargs):
 
 
 def test__get_permission_from_registered_model_name():
-    with patch("mlflow_oidc_auth.validators.registered_model.get_url_param", return_value="modelA"), patch(
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="modelA"), patch(
         "mlflow_oidc_auth.validators.registered_model.get_username", return_value="alice"
     ), patch(
         "mlflow_oidc_auth.validators.registered_model.effective_registered_model_permission",
@@ -30,28 +30,28 @@ def test__get_permission_from_registered_model_name():
 
 
 def test_validate_can_read_registered_model():
-    with patch("mlflow_oidc_auth.validators.registered_model.get_url_param", return_value="modelA"):
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="modelA"):
         with patch("mlflow_oidc_auth.validators.registered_model.get_username", return_value="alice"):
             with _patch_permission(can_read=True):
                 assert registered_model.validate_can_read_registered_model() is True
 
 
 def test_validate_can_update_registered_model():
-    with patch("mlflow_oidc_auth.validators.registered_model.get_url_param", return_value="modelA"):
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="modelA"):
         with patch("mlflow_oidc_auth.validators.registered_model.get_username", return_value="alice"):
             with _patch_permission(can_update=True):
                 assert registered_model.validate_can_update_registered_model() is True
 
 
 def test_validate_can_delete_registered_model():
-    with patch("mlflow_oidc_auth.validators.registered_model.get_url_param", return_value="modelA"):
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="modelA"):
         with patch("mlflow_oidc_auth.validators.registered_model.get_username", return_value="alice"):
             with _patch_permission(can_delete=True):
                 assert registered_model.validate_can_delete_registered_model() is True
 
 
 def test_validate_can_manage_registered_model():
-    with patch("mlflow_oidc_auth.validators.registered_model.get_url_param", return_value="modelA"):
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="modelA"):
         with patch("mlflow_oidc_auth.validators.registered_model.get_username", return_value="alice"):
             with _patch_permission(can_manage=True):
                 assert registered_model.validate_can_manage_registered_model() is True
