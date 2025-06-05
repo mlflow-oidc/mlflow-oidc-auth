@@ -43,7 +43,7 @@ def _set_initial_experiment_permission(resp: Response):
 
 
 def _set_initial_registered_model_permission(resp: Response):
-    response_message = CreateRegisteredModel.Response()
+    response_message = CreateRegisteredModel.Response()  # type: ignore
     parse_dict(resp.json, response_message)
     model_name = response_message.registered_model.name
     username = get_username()
