@@ -7,14 +7,14 @@ export interface ExperimentModel {
 }
 
 export interface ExperimentsForUserModel {
-  experiments: ExperimentForUserModel[]
+  experiments: ExperimentForUserModel[];
 }
 
 export interface ExperimentForUserModel {
-  id: string,
-  name: string,
-  permission: PermissionEnum,
-  type: PermissionTypeEnum,
+  id: string;
+  name: string;
+  permission: PermissionEnum;
+  type: PermissionTypeEnum;
 }
 
 export interface UserPermissionModel {

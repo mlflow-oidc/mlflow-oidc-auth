@@ -32,6 +32,7 @@ The plugin required the following environment variables but also supported `.env
 | SECRET_KEY             | Key to perform cookie encryption | A secret key will be generated | No |
 | LOG_LEVEL                   | Application log level | "INFO" | No |
 | OIDC_USERS_DB_URI | Database connection string | "sqlite:///auth.db" | No |
+| OIDC_ALEMBIC_VERSION_TABLE  | Name of the table to use for alembic versions | "alembic_version" | No |
 | DEFAULT_MLFLOW_PERMISSION         | Default fallback permission on all resources  | "MANAGE" | No |
 | DEFAULT_MLFLOW_GROUP_PERMISSION   | Default group permission assigned on resource creation, no permission will be assigned if unspecified | None | No |
 

@@ -4,16 +4,15 @@ import { Component, Input, OnInit } from '@angular/core';
   selector: 'ml-header',
   templateUrl: './header.component.html',
   styleUrls: ['./header.component.scss'],
-  standalone: false
+  standalone: false,
 })
 export class HeaderComponent implements OnInit {
   @Input() name: string = '';
   @Input() admin: boolean = false;
 
-  constructor() { }
+  constructor() {}
 
-  ngOnInit(): void {
-  }
+  ngOnInit(): void {}
 
   logout() {
     window.location.href = '/logout';

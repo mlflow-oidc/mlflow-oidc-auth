@@ -6,7 +6,7 @@ import { MatTableDataSource } from '@angular/material/table';
   selector: 'ml-table',
   templateUrl: './table.component.html',
   styleUrls: ['./table.component.scss'],
-  standalone: false
+  standalone: false,
 })
 export class TableComponent<T> implements OnInit, OnChanges {
   @Input() columnConfig: TableColumnConfigModel[] = [];
@@ -30,15 +30,12 @@ export class TableComponent<T> implements OnInit, OnChanges {
   }
 
   ngOnInit(): void {
-    const columnKeys = this.columnConfig.map(config => config.key);
+    const columnKeys = this.columnConfig.map((config) => config.key);
 
     this.dataSource = new MatTableDataSource(this.data);
     this.columns = columnKeys;
-    this.actions.length
-      ? this.columns = [this.columnActionName, ...columnKeys]
-      : this.columns = columnKeys;
+    this.actions.length ? (this.columns = [this.columnActionName, ...columnKeys]) : (this.columns = columnKeys);
   }
-
 
   filter(event: Event) {
     const inputElement = event.target as HTMLInputElement;

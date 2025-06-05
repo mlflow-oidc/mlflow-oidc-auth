@@ -8,4 +8,7 @@ export enum AdminPageRoutesEnum {
   EXPERIMENTS = 'experiments',
   MODELS = 'models',
   GROUPS = 'groups',
+  PROMPT = 'prompt',
+  PROMPTS = 'prompts',
+  REGEX = 'regex',
 }

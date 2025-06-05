@@ -6,30 +6,22 @@ import { ModelModel, ModelPermissionsModel, ModelUserListModel } from '../../int
 import { API_URL } from 'src/app/core/configs/api-urls';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ModelsDataService {
-
-  constructor(
-    private readonly http: HttpClient,
-  ) {
-  }
+  constructor(private readonly http: HttpClient) {}
 
   getAllModels() {
     return this.http.get<ModelModel[]>(API_URL.ALL_MODELS);
   }
 
   getModelsForUser(userName: string) {
-    const url = API_URL.MODELS_FOR_USER.replace('${userName}', userName);
-    return this.http.get<ModelPermissionsModel>(url)
-      .pipe(
-        map(response => response.models),
-      );
+    const url = API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', userName);
+    return this.http.get<ModelPermissionsModel>(url).pipe(map((response) => response.models));
   }
 
   getUsersForModel(modelName: string) {
-    const url = API_URL.USERS_FOR_MODEL.replace('${modelName}', modelName);
+    const url = API_URL.REGISTERED_MODEL_USER_PERMISSIONS.replace('${modelName}', modelName);
     return this.http.get<ModelUserListModel[]>(url);
   }
-
 }

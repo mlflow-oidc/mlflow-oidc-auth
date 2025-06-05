@@ -6,13 +6,7 @@ import { HomePageComponent } from './components/home-page/home-page.component';
 import { SharedModule } from '../../shared/shared.module';
 
 @NgModule({
-  declarations: [
-    HomePageComponent
-  ],
-  imports: [
-    CommonModule,
-    SharedModule,
-    HomePageRoutingModule,
-  ],
+  declarations: [HomePageComponent],
+  imports: [CommonModule, SharedModule, HomePageRoutingModule],
 })
-export class HomePageModule { }
+export class HomePageModule {}

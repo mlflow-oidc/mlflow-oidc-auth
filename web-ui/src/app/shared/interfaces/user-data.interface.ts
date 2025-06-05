@@ -5,6 +5,14 @@ export interface CurrentUserModel {
   is_admin: boolean;
   models: RegisteredModelPermission[];
   username: string;
+  prompts: PromptPermission[];
+}
+
+export interface UserModel {
+  display_name?: string;
+  is_admin?: boolean;
+  is_service_account?: boolean;
+  username: string;
 }
 
 export interface ExperimentPermission {
@@ -21,10 +29,13 @@ export interface RegisteredModelPermission {
   type: string;
 }
 
-export interface TokenModel {
-  token: string;
+export interface PromptPermission {
+  name: string;
+  permission: string;
+  user_id: number;
+  type: string;
 }
 
-export interface AllUsersListModel {
-  users: string[];
+export interface TokenModel {
+  token: string;
 }

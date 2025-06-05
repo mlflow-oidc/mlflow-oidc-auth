@@ -7,7 +7,6 @@ export interface ModelModel {
   tags: Record<string, unknown>;
 }
 
-
 export interface ModelPermissionsModel {
   models: ModelPermissionModel[];
 }

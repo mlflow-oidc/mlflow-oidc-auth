@@ -12,6 +12,6 @@ export interface TableActionEvent<T> {
 }
 
 export interface TableColumnConfigModel {
-  title: string,
-  key: string
+  title: string;
+  key: string;
 }

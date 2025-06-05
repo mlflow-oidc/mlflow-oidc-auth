@@ -10,29 +10,22 @@ import {
 import { API_URL } from 'src/app/core/configs/api-urls';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ExperimentsDataService {
-
-  constructor(
-    private readonly http: HttpClient,
-  ) {
-  }
+  constructor(private readonly http: HttpClient) {}
 
   getAllExperiments() {
     return this.http.get<ExperimentModel[]>(API_URL.ALL_EXPERIMENTS);
   }
 
   getExperimentsForUser(userName: string) {
-    const url = API_URL.EXPERIMENTS_FOR_USER.replace('${userName}', userName);
-    return this.http.get<ExperimentsForUserModel>(url)
-      .pipe(
-        map(({ experiments }) => experiments)
-      );
+    const url = API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', userName);
+    return this.http.get<ExperimentsForUserModel>(url).pipe(map(({ experiments }) => experiments));
   }
 
-  getUsersForExperiment(experimentName: string) {
-    const url = API_URL.USERS_FOR_EXPERIMENT.replace('${experimentName}', experimentName);
+  getUsersForExperiment(experimentId: string) {
+    const url = API_URL.EXPERIMENT_USER_PERMISSIONS.replace('${experimentId}', experimentId);
     return this.http.get<UserPermissionModel[]>(url);
   }
 }

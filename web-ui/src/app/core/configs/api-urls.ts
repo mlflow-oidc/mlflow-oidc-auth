@@ -1,29 +1,69 @@
 export const API_URL = {
-  ALL_EXPERIMENTS: '/api/2.0/mlflow/experiments',
-  EXPERIMENTS_FOR_USER: '/api/2.0/mlflow/users/${userName}/experiments',
-  USERS_FOR_EXPERIMENT: '/api/2.0/mlflow/experiments/${experimentName}/users',
-  ALL_MODELS: '/api/2.0/mlflow/registered-models',
-  ALL_GROUPS: '/api/2.0/mlflow/groups',
-  EXPERIMENTS_FOR_GROUP: '/api/2.0/mlflow/groups/${groupName}/experiments',
-  MODELS_FOR_GROUP: '/api/2.0/mlflow/groups/${groupName}/registered-models',
-  MODELS_FOR_USER: '/api/2.0/mlflow/users/${userName}/registered-models',
-  USERS_FOR_MODEL: '/api/2.0/mlflow/registered-models/${modelName}/users',
-  CREATE_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/experiments/permissions/create',
-  UPDATE_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/experiments/permissions/update',
-  DELETE_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/experiments/permissions/delete',
-  CREATE_MODEL_PERMISSION: '/api/2.0/mlflow/registered-models/permissions/create',
-  UPDATE_MODEL_PERMISSION: '/api/2.0/mlflow/registered-models/permissions/update',
-  DELETE_MODEL_PERMISSION: '/api/2.0/mlflow/registered-models/permissions/delete',
+  // List endpoints
+  ALL_GROUPS: '/api/2.0/mlflow/permissions/groups',
+  ALL_EXPERIMENTS: '/api/2.0/mlflow/permissions/experiments',
+  ALL_MODELS: '/api/2.0/mlflow/permissions/registered-models',
+  ALL_PROMPTS: '/api/2.0/mlflow/permissions/prompts',
+  ALL_USERS: '/api/2.0/mlflow/permissions/users',
 
-  GET_ALL_USERS: '/api/2.0/mlflow/users',
-  GET_ACCESS_TOKEN: '/api/2.0/mlflow/users/access-token',
-  GET_CURRENT_USER: '/api/2.0/mlflow/users/current',
+  // User management
+  CREATE_USER: '/api/2.0/mlflow/users/create',
+  GET_USER: '/api/2.0/mlflow/users/get',
+  UPDATE_USER_PASSWORD: '/api/2.0/mlflow/users/update-password',
+  UPDATE_USER_ADMIN: '/api/2.0/mlflow/users/update-admin',
+  DELETE_USER: '/api/2.0/mlflow/users/delete',
+  CREATE_ACCESS_TOKEN: '/api/2.0/mlflow/permissions/users/access-token',
+  GET_CURRENT_USER: '/api/2.0/mlflow/permissions/users/current',
 
-  CREATE_GROUP_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/create',
-  DELETE_GROUP_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/delete',
-  UPDATE_GROUP_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/experiments/update',
+  // User permissions for resources
+  USER_EXPERIMENT_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/experiments',
+  USER_EXPERIMENT_PERMISSION: '/api/2.0/mlflow/permissions/users/${userName}/experiments/${experimentId}',
+  USER_REGISTERED_MODEL_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/registered-models',
+  USER_MODEL_PERMISSION: '/api/2.0/mlflow/permissions/users/${userName}/registered-models/${modelName}',
+  USER_PROMPT_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/prompts',
+  USER_PROMPT_PERMISSION: '/api/2.0/mlflow/permissions/users/${userName}/prompts/${promptName}',
 
-  CREATE_GROUP_MODEL_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/create',
-  DELETE_GROUP_MODEL_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/delete',
-  UPDATE_GROUP_MODEL_PERMISSION: '/api/2.0/mlflow/groups/${groupName}/registered-models/update',
+  // User pattern permissions
+  USER_EXPERIMENT_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/experiment-patterns',
+  USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/users/${userName}/experiment-patterns/${patternId}',
+  USER_REGISTERED_MODEL_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/registered-models-patterns',
+  USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/users/${userName}/registered-models-patterns/${patternId}',
+  USER_PROMPT_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns',
+  USER_PROMPT_PATTERN_PERMISSION_DETAIL: '/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns/${patternId}',
+
+  // Resource user permissions
+  EXPERIMENT_USER_PERMISSIONS: '/api/2.0/mlflow/permissions/experiments/${experimentId}/users',
+  REGISTERED_MODEL_USER_PERMISSIONS: '/api/2.0/mlflow/permissions/registered-models/${modelName}/users',
+  PROMPT_USER_PERMISSIONS: '/api/2.0/mlflow/permissions/prompts/${promptName}/users',
+
+  // Group permissions for resources
+  GROUP_EXPERIMENT_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/experiments',
+  GROUP_EXPERIMENT_PERMISSION_DETAIL: '/api/2.0/mlflow/permissions/groups/${groupName}/experiments/${experimentId}',
+  GROUP_REGISTERED_MODEL_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/registered-models',
+  GROUP_REGISTERED_MODEL_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/registered-models/${modelName}',
+  GROUP_PROMPT_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/prompts',
+  GROUP_PROMPT_PERMISSION_DETAIL: '/api/2.0/mlflow/permissions/groups/${groupName}/prompts/${promptName}',
+
+  // Group pattern permissions
+  GROUP_EXPERIMENT_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns',
+  GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns/${patternId}',
+  GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns',
+  GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns/${patternId}',
+  GROUP_PROMPT_PATTERN_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns',
+  GROUP_PROMPT_PATTERN_PERMISSION_DETAIL:
+    '/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns/${patternId}',
+
+  // Resource group permissions
+  EXPERIMENT_GROUP_PERMISSIONS: '/api/2.0/mlflow/permissions/experiments/${experimentId}/groups',
+  REGISTERED_MODEL_GROUP_PERMISSIONS: '/api/2.0/mlflow/permissions/registered-models/${modelName}/groups',
+  PROMPT_GROUP_PERMISSIONS: '/api/2.0/mlflow/permissions/prompts/${promptName}/groups',
+
+  // Group user permissions
+  GROUP_USER_PERMISSIONS: '/api/2.0/mlflow/permissions/groups/${groupName}/users',
 };

@@ -12,6 +12,8 @@ class TestGetUserGroups(unittest.TestCase):
                 {"displayName": "Group 1"},
                 {"displayName": "Group 2"},
                 {"displayName": "Group 3"},
+                {"displayName": "Group 3"},
+                {"displayName": None},
             ]
         }
         mock_get.return_value = mock_response

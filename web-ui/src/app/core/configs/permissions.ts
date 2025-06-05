@@ -2,30 +2,31 @@ export enum PermissionEnum {
   EDIT = 'EDIT',
   READ = 'READ',
   MANAGE = 'MANAGE',
-  NO_PERMISSIONS = 'NO_PERMISSIONS'
+  NO_PERMISSIONS = 'NO_PERMISSIONS',
 }
 
 export enum PermissionTypeEnum {
   USER = 'user',
   GROUP = 'group',
   FALLBACK = 'fallback',
+  REGEX = 'regex',
 }
 
 export const PERMISSIONS = [
   {
     value: PermissionEnum.EDIT,
-    title: 'Edit'
+    title: 'Edit',
   },
   {
     value: PermissionEnum.READ,
-    title: 'Read'
+    title: 'Read',
   },
   {
     value: PermissionEnum.MANAGE,
-    title: 'Manage'
+    title: 'Manage',
   },
   {
     value: PermissionEnum.NO_PERMISSIONS,
-    title: 'No permissions'
-  }
-]
+    title: 'No permissions',
+  },
+];

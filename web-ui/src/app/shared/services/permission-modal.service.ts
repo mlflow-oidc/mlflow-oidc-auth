@@ -12,17 +12,13 @@ import {
   GrantPermissionModalData,
   GrantPermissionModalResult,
   WithNameAndId,
-} from '../components/modals/grant-permissoin-modal/grant-permission-modal.inteface';
+} from '../components/modals/grant-permission-modal/grant-permission-modal.interface';
 
 @Injectable({
   providedIn: 'root',
 })
 export class PermissionModalService {
-
-  constructor(
-    private readonly dialog: MatDialog,
-  ) {
-  }
+  constructor(private readonly dialog: MatDialog) {}
 
   openEditPermissionsModal(entity: string, targetEntity: string, currentPermission: PermissionEnum) {
     const dialogData: PermissionsDialogData = {
@@ -31,21 +27,27 @@ export class PermissionModalService {
       currentPermission,
     };
 
-    return this.dialog.open<EditPermissionsModalComponent, PermissionsDialogData, PermissionDialogResultModel>(
-      EditPermissionsModalComponent,
-      { data: dialogData },
-    ).afterClosed();
+    return this.dialog
+      .open<
+        EditPermissionsModalComponent,
+        PermissionsDialogData,
+        PermissionDialogResultModel
+      >(EditPermissionsModalComponent, { data: dialogData })
+      .afterClosed();
   }
 
   openGrantPermissionModal(entityType = EntityEnum.EXPERIMENT, entities: WithNameAndId[], targetName: string) {
-    return this.dialog.open<GrantPermissionModalComponent, GrantPermissionModalData, GrantPermissionModalResult>(
-      GrantPermissionModalComponent,
-      {
-        data: {
-          entityType,
-          entities,
-          targetName,
-        },
-      }).afterClosed();
+    return this.dialog
+      .open<GrantPermissionModalComponent, GrantPermissionModalData, GrantPermissionModalResult>(
+        GrantPermissionModalComponent,
+        {
+          data: {
+            entityType,
+            entities,
+            targetName,
+          },
+        }
+      )
+      .afterClosed();
   }
 }

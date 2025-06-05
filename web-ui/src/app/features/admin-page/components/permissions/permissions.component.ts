@@ -7,23 +7,23 @@ import { AdminPageRoutesEnum } from '../../config';
   selector: 'ml-permissions',
   templateUrl: './permissions.component.html',
   styleUrls: ['./permissions.component.scss'],
-  standalone: false
+  standalone: false,
 })
 export class PermissionsComponent implements AfterViewInit {
-  @ViewChild('permissionsTabs') permissionsTabs!: MatTabGroup
+  @ViewChild('permissionsTabs') permissionsTabs!: MatTabGroup;
 
   private readonly tabIndexMapping: string[] = [
     AdminPageRoutesEnum.USERS,
     AdminPageRoutesEnum.EXPERIMENTS,
+    AdminPageRoutesEnum.PROMPTS,
     AdminPageRoutesEnum.MODELS,
     AdminPageRoutesEnum.GROUPS,
   ];
 
   constructor(
     private readonly route: ActivatedRoute,
-    private readonly router: Router,
-  ) {
-  }
+    private readonly router: Router
+  ) {}
 
   ngAfterViewInit(): void {
     const routePath = this.route.snapshot.routeConfig?.path;
@@ -31,6 +31,8 @@ export class PermissionsComponent implements AfterViewInit {
   }
 
   handleTabSelection(index: number) {
-    void this.router.navigate([`../${this.tabIndexMapping[index]}`], { relativeTo: this.route });
+    void this.router.navigate([`../${this.tabIndexMapping[index]}`], {
+      relativeTo: this.route,
+    });
   }
 }

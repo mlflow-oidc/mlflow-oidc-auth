@@ -1,4 +1,4 @@
-from mlflow_oidc_auth.utils import get_username, get_request_param
+from mlflow_oidc_auth.utils import get_request_param, get_username
 
 
 def _username_is_sender():
@@ -6,6 +6,10 @@ def _username_is_sender():
     username = get_request_param("username")
     sender = get_username()
     return username == sender
+
+
+def validate_can_get_user_token():
+    return _username_is_sender()
 
 
 def validate_can_read_user():

@@ -10,6 +10,43 @@
             <p><a href="{{ url_for('login') }}"><button>{{ provide_display_name }}</button></a></p>
         </div>
     </div>
+    {% if error_messages %}
+    <div id="snackbar" style="
+        visibility: hidden;
+        min-width: 350px;
+        max-width: 90vw;
+        background-color: #333;
+        color: #fff;
+        text-align: center;
+        border-radius: 8px;
+        padding: 20px 32px;
+        position: fixed;
+        z-index: 1000;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 17px;
+        box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+        ">
+        <ul style="margin:0; padding-left: 0; text-align:left; list-style: none;">
+            {% for msg in error_messages %}
+                <li style="margin-bottom: 10px; display: flex; align-items: flex-start;">
+                    <span style="color: #e74c3c; margin-right: 10px; font-size: 1.2em;">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                    </span>
+                    <span>{{ msg|safe }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+    <script>
+        window.onload = function() {
+            var x = document.getElementById("snackbar");
+            x.style.visibility = "visible";
+            setTimeout(function(){ x.style.visibility = "hidden"; }, 4000);
+        }
+    </script>
+    {% endif %}
     {% include '_footer.html' %}
 </body>
 

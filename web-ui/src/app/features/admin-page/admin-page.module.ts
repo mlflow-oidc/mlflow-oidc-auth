@@ -11,13 +11,14 @@ import {
   GroupPermissionsComponent,
   ModelPermissionDetailsComponent,
   ModelPermissionsComponent,
+  PromptPermissionDetailsComponent,
+  PromptPermissionsComponent,
   PermissionsComponent,
   UserPermissionDetailsComponent,
   UserPermissionsComponent,
 } from './components';
 import { AdminPageRoutingModule } from './admin-page-routing.module';
 import { SharedModule } from '../../shared/shared.module';
-
 
 @NgModule({
   declarations: [
@@ -29,15 +30,11 @@ import { SharedModule } from '../../shared/shared.module';
     PermissionsComponent,
     ExperimentPermissionDetailsComponent,
     ModelPermissionDetailsComponent,
+    PromptPermissionDetailsComponent,
+    PromptPermissionsComponent,
     GroupPermissionDetailsComponent,
     GroupPermissionsComponent,
   ],
-  imports: [
-    CommonModule,
-    SharedModule,
-    AdminPageRoutingModule,
-    FormsModule,
-    RouterModule,
-  ],
+  imports: [CommonModule, SharedModule, AdminPageRoutingModule, FormsModule, RouterModule],
 })
 export class AdminPageModule {}

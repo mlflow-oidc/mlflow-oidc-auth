@@ -8,7 +8,7 @@ import { CurrentUserModel } from './shared/interfaces/user-data.interface';
   selector: 'app-root',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
-  standalone: false
+  standalone: false,
 })
 export class AppComponent implements OnInit {
   loading = false;
@@ -16,16 +16,14 @@ export class AppComponent implements OnInit {
 
   constructor(
     private readonly userDataService: UserDataService,
-    private readonly authService: AuthService,
-  ) {
-  }
+    private readonly authService: AuthService
+  ) {}
 
   ngOnInit(): void {
     this.loading = false;
-    this.userDataService.getCurrentUser()
-      .pipe(
-        finalize(() => this.loading = false),
-      )
+    this.userDataService
+      .getCurrentUser()
+      .pipe(finalize(() => (this.loading = false)))
       .subscribe((userInfo) => {
         this.authService.setUserInfo(userInfo.user);
         this.user = userInfo.user;

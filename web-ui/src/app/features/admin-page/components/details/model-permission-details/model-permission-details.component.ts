@@ -2,19 +2,19 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { filter, map, switchMap, tap } from 'rxjs';
 
-import { TableActionEvent, TableActionModel } from 'src/app/shared/components/table/table.interface';
-import { ModelsDataService, PermissionDataService, SnackBarService, UserDataService } from 'src/app/shared/services';
-import { COLUMN_CONFIG, TABLE_ACTIONS } from './model-permission-details.config';
-import { TableActionEnum } from 'src/app/shared/components/table/table.config';
-import { PermissionModalService } from 'src/app/shared/services/permission-modal.service';
 import { EntityEnum } from 'src/app/core/configs/core';
+import { TableActionEnum } from 'src/app/shared/components/table/table.config';
+import { TableActionEvent, TableActionModel } from 'src/app/shared/components/table/table.interface';
 import { ModelUserListModel } from 'src/app/shared/interfaces/models-data.interface';
+import { ModelsDataService, PermissionDataService, SnackBarService, UserDataService } from 'src/app/shared/services';
+import { PermissionModalService } from 'src/app/shared/services/permission-modal.service';
+import { COLUMN_CONFIG, TABLE_ACTIONS } from './model-permission-details.config';
 
 @Component({
   selector: 'ml-model-permission-details',
   templateUrl: './model-permission-details.component.html',
   styleUrls: ['./model-permission-details.component.scss'],
-  standalone: false
+  standalone: false,
 })
 export class ModelPermissionDetailsComponent implements OnInit {
   modelId!: string;
@@ -30,36 +30,38 @@ export class ModelPermissionDetailsComponent implements OnInit {
     private readonly userDataService: UserDataService,
     private readonly snackService: SnackBarService,
     private readonly permissionModalService: PermissionModalService
-  ) {
-  }
+  ) {}
 
   ngOnInit(): void {
     this.modelId = this.route.snapshot.paramMap.get('id') ?? '';
 
-    this.loadUsersForModel(this.modelId)
-      .subscribe((users) => this.userDataSource = users);
+    this.loadUsersForModel(this.modelId).subscribe((users) => (this.userDataSource = users));
   }
 
   revokePermissionForUser(item: ModelUserListModel) {
-    this.permissionDataService.deleteModelPermission({ name: this.modelId, user_name: item.username })
+    this.permissionDataService
+      .deleteModelPermission({ name: this.modelId, username: item.username })
       .pipe(
         tap(() => this.snackService.openSnackBar('Permission revoked successfully')),
-        switchMap(() => this.loadUsersForModel(this.modelId)),
+        switchMap(() => this.loadUsersForModel(this.modelId))
       )
-      .subscribe((users) => this.userDataSource = users);
+      .subscribe((users) => (this.userDataSource = users));
   }
 
   editPermissionForUser({ username, permission }: ModelUserListModel) {
-    this.permissionModalService.openEditPermissionsModal(this.modelId, username, permission)
+    this.permissionModalService
+      .openEditPermissionsModal(this.modelId, username, permission)
       .pipe(
         filter(Boolean),
-        switchMap((permission) => this.permissionDataService.updateModelPermission({
-          name: this.modelId,
-          permission,
-          user_name: username,
-        })),
+        switchMap((permission) =>
+          this.permissionDataService.updateModelPermission({
+            name: this.modelId,
+            permission,
+            username: username,
+          })
+        ),
         tap(() => this.snackService.openSnackBar('Permission updated')),
-        switchMap(() => this.loadUsersForModel(this.modelId)),
+        switchMap(() => this.loadUsersForModel(this.modelId))
       )
       .subscribe((users) => {
         this.userDataSource = users;
@@ -82,25 +84,41 @@ export class ModelPermissionDetailsComponent implements OnInit {
     return this.modelDataService.getUsersForModel(modelId);
   }
 
-  addUser() {
-    this.userDataService.getAllUsers()
-      .pipe(
-        map(({ users }) => users.filter((user) => !this.userDataSource.some((u) => u.username === user))),
-        switchMap((users) => this.permissionModalService.openGrantPermissionModal(
-          EntityEnum.MODEL,
-          users.map((user, index) => ({ id: index + user, name: user })),
-          this.modelId),
-        ),
-        filter(Boolean),
-        switchMap(({ entity, permission }) => this.permissionDataService.createModelPermission({
-          name: this.modelId,
-          permission: permission,
-          user_name: entity.name,
-        })),
-        switchMap(() => this.loadUsersForModel(this.modelId)),
+  private handleAddEntity(users: string[], entity: EntityEnum) {
+    const filteredUsers = users.filter((user: string) => !this.userDataSource.some((u) => u.username === user));
+    this.permissionModalService
+      .openGrantPermissionModal(
+        entity,
+        filteredUsers.map((user, index) => ({ id: index + user, name: user })),
+        this.modelId
       )
-      .subscribe((users) => {
+      .pipe(
+        filter(Boolean),
+        switchMap(({ entity, permission }) =>
+          this.permissionDataService.createModelPermission({
+            name: this.modelId,
+            permission: permission,
+            username: entity.name,
+          })
+        ),
+        switchMap(() => this.loadUsersForModel(this.modelId))
+      )
+      .subscribe((users: ModelUserListModel[]) => {
         this.userDataSource = users;
       });
+  }
+
+  addUser() {
+    this.userDataService
+      .getAllUsers()
+      .pipe(map((users: any[]) => users.map((user) => (typeof user === 'string' ? user : user.username))))
+      .subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.USER));
+  }
+
+  addServiceAccount() {
+    this.userDataService
+      .getAllServiceUsers()
+      .pipe(map((users: any[]) => users.map((user) => (typeof user === 'string' ? user : user.username))))
+      .subscribe((users: string[]) => this.handleAddEntity(users, EntityEnum.SERVICE_ACCOUNT));
   }
 }

@@ -1,6 +1,5 @@
 import { NgModule } from '@angular/core';
 
-
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatBadgeModule } from '@angular/material/badge';
@@ -14,6 +13,8 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
 
 const MATERIAL_MODULES = [
   MatTableModule,
@@ -29,21 +30,19 @@ const MATERIAL_MODULES = [
   MatToolbarModule,
   MatBadgeModule,
   MatDividerModule,
+  MatDatepickerModule,
+  MatNativeDateModule,
 ];
 
 @NgModule({
   declarations: [],
-  imports: [
-    ...MATERIAL_MODULES,
-  ],
-  exports: [
-    ...MATERIAL_MODULES,
-  ],
+  imports: [...MATERIAL_MODULES],
+  exports: [...MATERIAL_MODULES],
   providers: [
     {
       provide: MAT_TABS_CONFIG,
-      useValue: { animationDuration: '0ms' }
-    }
+      useValue: { animationDuration: '0ms' },
+    },
   ],
 })
 export class MaterialModule {}

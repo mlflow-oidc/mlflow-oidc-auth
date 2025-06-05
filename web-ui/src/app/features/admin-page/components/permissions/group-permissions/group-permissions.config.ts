@@ -8,6 +8,4 @@ export const GROUP_COLUMN_CONFIG = [
   },
 ];
 
-export const GROUP_ACTIONS: TableActionModel[] = [
-  TABLE_ACTION_CONFIG.EDIT
-];
+export const GROUP_ACTIONS: TableActionModel[] = [TABLE_ACTION_CONFIG.EDIT];

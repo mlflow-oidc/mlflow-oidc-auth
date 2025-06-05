@@ -6,6 +6,4 @@ export const MODEL_COLUMN_CONFIG = [
     key: 'name',
   },
 ];
-export const MODEL_TABLE_ACTIONS = [
-  TABLE_ACTION_CONFIG.EDIT,
-];
+export const MODEL_TABLE_ACTIONS = [TABLE_ACTION_CONFIG.EDIT];

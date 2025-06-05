@@ -1,6 +1,6 @@
 /venv/
 /instance/
-mlruns/
+mlruns*/
 basic_auth.db
 basic_auth
 # Byte-compiled / optimized / DLL files
@@ -172,11 +172,23 @@ flask_session/
 *.db-*
 *.sqlite3-*
 *.sqlite-*
+*.sqlite.backup
+*.db.backup
 
 node_modules/
 .angular/
 mlflow_oidc_auth/ui
 pytest-coverage.txt
+
+web-ui/coverage/
+scripts/postgresql/postgres_data/
+scripts/mysql/mysql_data
+
+# until it ready
+integration-tests/
+
+# until it ready
+web-react/
 
 # VS Code
 .vscode

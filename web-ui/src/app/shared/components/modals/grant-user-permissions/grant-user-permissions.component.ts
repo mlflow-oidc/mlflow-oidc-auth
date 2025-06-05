@@ -3,7 +3,6 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { PermissionEnum, PERMISSIONS } from '../../../../core/configs/permissions';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
 
-
 export interface GrantUserPermissionsModel {
   users: string[];
 }
@@ -12,7 +11,7 @@ export interface GrantUserPermissionsModel {
   selector: 'ml-grant-user-permissions',
   templateUrl: './grant-user-permissions.component.html',
   styleUrls: ['./grant-user-permissions.component.scss'],
-  standalone: false
+  standalone: false,
 })
 export class GrantUserPermissionsComponent implements OnInit {
   form!: FormGroup;
@@ -22,15 +21,14 @@ export class GrantUserPermissionsComponent implements OnInit {
 
   constructor(
     @Inject(MAT_DIALOG_DATA) public data: GrantUserPermissionsModel,
-    private readonly fb: FormBuilder,
-  ) {
-  }
+    private readonly fb: FormBuilder
+  ) {}
 
   ngOnInit(): void {
     this.title = `Grant permissions`;
     this.form = this.fb.group({
       user: [null, Validators.required],
       permission: [PermissionEnum.READ, Validators.required],
-    })
+    });
   }
 }

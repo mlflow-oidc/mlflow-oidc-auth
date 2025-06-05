@@ -9,7 +9,7 @@ import { PermissionsDialogData } from './edit-permissions-modal.interface';
   selector: 'ml-edit-permissions-modal',
   templateUrl: './edit-permissions-modal.component.html',
   styleUrls: ['./edit-permissions-modal.component.scss'],
-  standalone: false
+  standalone: false,
 })
 export class EditPermissionsModalComponent implements OnInit {
   permissions = PERMISSIONS;
@@ -19,7 +19,7 @@ export class EditPermissionsModalComponent implements OnInit {
   constructor(
     public dialogRef: MatDialogRef<EditPermissionsModalComponent>,
     @Inject(MAT_DIALOG_DATA) public data: PermissionsDialogData,
-    private readonly fb: FormBuilder,
+    private readonly fb: FormBuilder
   ) {}
 
   ngOnInit(): void {

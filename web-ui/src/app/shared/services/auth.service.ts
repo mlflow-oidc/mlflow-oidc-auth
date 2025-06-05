@@ -7,8 +7,7 @@ import { CurrentUserModel } from '../interfaces/user-data.interface';
 export class AuthService {
   private user!: CurrentUserModel;
 
-  constructor() {
-  }
+  constructor() {}
 
   getUserInfo(): CurrentUserModel {
     return this.user;

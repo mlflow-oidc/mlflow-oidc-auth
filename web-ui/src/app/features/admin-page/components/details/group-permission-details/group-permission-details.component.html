@@ -1,44 +1,130 @@
 <mat-tab-group (selectedIndexChange)="handleTabSelection($event)" #permissionsTabs>
     <!--  Experiments-->
     <mat-tab label="Experiments">
-        <div class="my-3">
-            <div class="header-section">
-                <button mat-button (click)="openModalAddExperimentPermissionToGroup()">
-                    <mat-icon>add</mat-icon>
-                    <span>Add</span>
-                </button>
-            </div>
-        </div>
+        <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[0]" (selectedIndexChange)="handleSubTabSelection($event)">
+            <mat-tab label="Permissions">
+                <div class="my-3">
+                    <div class="header-section">
+                        <button mat-button (click)="openModalAddExperimentPermissionToGroup()">
+                            <mat-icon>add</mat-icon>
+                            <span>Add</span>
+                        </button>
+                    </div>
+                </div>
 
-        <ml-table
-                [columnConfig]="experimentColumnConfig"
-                [data]="experimentDataSource"
-                [actions]="experimentActions"
-                (action)="handleExperimentActions($event)"
-        ></ml-table>
-
+                <ml-table
+                        [columnConfig]="experimentColumnConfig"
+                        [data]="experimentDataSource"
+                        [actions]="experimentActions"
+                        (action)="handleExperimentActions($event)"
+                        *ngIf="experimentDataSource.length"
+                ></ml-table>
+                <div class="no-data" *ngIf="!experimentDataSource.length">No experiment permissions found for this group.</div>
+            </mat-tab>
+            <mat-tab *ngIf="isAdmin" label="Regex Permissions">
+                <div class="my-3">
+                    <div class="header-section">
+                        <button mat-button (click)="openModalAddExperimentRegexPermissionToGroup()">
+                            <mat-icon>add</mat-icon>
+                            <span>Add</span>
+                        </button>
+                    </div>
+                </div>
+                <ml-table
+                        [columnConfig]="experimentRegexColumnConfig"
+                        [data]="experimentRegexDataSource"
+                        [actions]="experimentRegexActions"
+                        (action)="handleExperimentRegexActions($event)"
+                        *ngIf="experimentRegexDataSource.length"
+                ></ml-table>
+                <div class="no-data" *ngIf="!experimentRegexDataSource.length">No experiment regex permissions found for this group.</div>
+            </mat-tab>
+        </mat-tab-group>
     </mat-tab>
 
     <!--  Models-->
     <mat-tab label="Models">
-        <div class="my-3">
-            <div class="my-3">
-                <div class="header-section">
-                    <button mat-button (click)="openModalAddModelPermissionToGroup()">
-                        <mat-icon>add</mat-icon>
-                        <span>Add</span>
-                    </button>
+        <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[1]" (selectedIndexChange)="handleSubTabSelection($event)">
+            <mat-tab label="Permissions">
+                <div class="my-3">
+                    <div class="header-section">
+                        <button mat-button (click)="openModalAddModelPermissionToGroup()">
+                            <mat-icon>add</mat-icon>
+                            <span>Add</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
 
-
-            <ml-table
-                    [columnConfig]="modelColumnConfig"
-                    [data]="modelDataSource"
-                    [actions]="modelActions"
-                    (action)="handleModelActions($event)"
-            ></ml-table>
-        </div>
+                <ml-table
+                        [columnConfig]="modelColumnConfig"
+                        [data]="modelDataSource"
+                        [actions]="modelActions"
+                        (action)="handleModelActions($event)"
+                        *ngIf="modelDataSource.length"
+                ></ml-table>
+                <div class="no-data" *ngIf="!modelDataSource.length">No model permissions found for this group.</div>
+            </mat-tab>
+            <mat-tab *ngIf="isAdmin" label="Regex Permissions">
+                <div class="my-3">
+                    <div class="header-section">
+                        <button mat-button (click)="openModalAddModelRegexPermissionToGroup()">
+                            <mat-icon>add</mat-icon>
+                            <span>Add</span>
+                        </button>
+                    </div>
+                </div>
+                <ml-table
+                        [columnConfig]="modelRegexColumnConfig"
+                        [data]="modelRegexDataSource"
+                        [actions]="modelRegexActions"
+                        (action)="handleModelRegexActions($event)"
+                        *ngIf="modelRegexDataSource.length"
+                ></ml-table>
+                <div class="no-data" *ngIf="!modelRegexDataSource.length">No model regex permissions found for this group.</div>
+            </mat-tab>
+        </mat-tab-group>
     </mat-tab>
 
+    <!--  Prompts-->
+    <mat-tab label="Prompts">
+        <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[2]" (selectedIndexChange)="handleSubTabSelection($event)">
+            <mat-tab label="Permissions">
+                <div class="my-3">
+                    <div class="header-section">
+                        <button mat-button (click)="openModalAddPromptPermissionToGroup()">
+                            <mat-icon>add</mat-icon>
+                            <span>Add</span>
+                        </button>
+                    </div>
+                </div>
+
+                <ml-table
+                        [columnConfig]="promptColumnConfig"
+                        [data]="promptDataSource"
+                        [actions]="promptActions"
+                        (action)="handlePromptActions($event)"
+                        *ngIf="promptDataSource.length"
+                ></ml-table>
+                <div class="no-data" *ngIf="!promptDataSource.length">No prompt permissions found for this group.</div>
+            </mat-tab>
+            <mat-tab *ngIf="isAdmin" label="Regex Permissions">
+                <div class="my-3">
+                    <div class="header-section">
+                        <button mat-button (click)="openModalAddPromptRegexPermissionToGroup()">
+                            <mat-icon>add</mat-icon>
+                            <span>Add</span>
+                        </button>
+                    </div>
+                </div>
+                <ml-table
+                        [columnConfig]="promptRegexColumnConfig"
+                        [data]="promptRegexDataSource"
+                        [actions]="promptRegexActions"
+                        (action)="handlePromptRegexActions($event)"
+                        *ngIf="promptRegexDataSource.length"
+                ></ml-table>
+                <div class="no-data" *ngIf="!promptRegexDataSource.length">No prompt regex permissions found for this group.</div>
+            </mat-tab>
+        </mat-tab-group>
+    </mat-tab>
 </mat-tab-group>
