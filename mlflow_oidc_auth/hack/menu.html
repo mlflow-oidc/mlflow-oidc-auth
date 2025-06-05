@@ -13,14 +13,25 @@
         xhr.open("GET", url, true);
         xhr.send();
     }
-    document.addEventListener("DOMContentLoaded", function () {
-        // Function to add links after the Docs link
-        function addLinks(username, oidcLink, logoutLink) {
+
+    function waitForDocsLink(callback) {
+        var docsLink = document.querySelector('a[href="https://www.mlflow.org/docs/latest/index.html"]');
+        if (docsLink) {
+            callback(docsLink);
+            return;
+        }
+        var observer = new MutationObserver(function (mutations, obs) {
             var docsLink = document.querySelector('a[href="https://www.mlflow.org/docs/latest/index.html"]');
-            if (!docsLink) {
-                console.error("Docs link not found.");
-                return;
+            if (docsLink) {
+                obs.disconnect();
+                callback(docsLink);
             }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        function addLinks(username, oidcLink, logoutLink, docsLink) {
             var parentDiv = docsLink.parentElement;
             function createLinkElement(text, link) {
                 var linkElement = document.createElement('a');
@@ -39,7 +50,7 @@
             parentDiv.appendChild(createLinkElement('Logout', logoutLink));
         }
         // Get username and add links after Docs
-        makeRequest("api/2.0/mlflow/users/current", function (error, response) {
+        makeRequest("api/2.0/mlflow/permissions/users/current", function (error, response) {
             if (error) {
                 console.error("Error fetching username:", error);
                 return;
@@ -47,7 +58,9 @@
             var username = response.display_name;
             var oidcLink = "/oidc/ui/";
             var logoutLink = "/logout";
-            addLinks(username, oidcLink, logoutLink);
+            waitForDocsLink(function(docsLink) {
+                addLinks(username, oidcLink, logoutLink, docsLink);
+            });
         });
     });
 </script>
