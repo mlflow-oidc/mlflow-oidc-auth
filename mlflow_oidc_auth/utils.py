@@ -287,8 +287,8 @@ def get_user_groups(username: Optional[str] = None) -> list[str]:
 
     This function is designed to obtain the list of groups a user belongs to,
     which can be used for permission and access control within the application.
-    It tries different approaches in order: session data, bearer token
-    authentication, and store query to determine the user's group memberships.
+    It tries different approaches in order: bearer token
+    authentication, then store query to determine the user's group memberships.
 
     Parameters
     ----------
@@ -301,11 +301,6 @@ def get_user_groups(username: Optional[str] = None) -> list[str]:
         A list of strings representing the user's groups. Returns an empty list
         if no groups are found.
     """
-    user_groups = session.get(config.OIDC_GROUPS_ATTRIBUTE)
-    if user_groups:
-        app.logger.debug(f"Groups from session: {user_groups}")
-        return user_groups
-
     if request.authorization and request.authorization.type == "bearer":
         if config.OIDC_GROUP_DETECTION_PLUGIN:
             import importlib

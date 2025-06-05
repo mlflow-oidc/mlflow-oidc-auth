@@ -203,20 +203,6 @@ class TestUtils(unittest.TestCase):
             mock_get_is_admin.return_value = True
             self.assertEqual(mock_func(), "success")
 
-    @patch("mlflow_oidc_auth.utils.app")
-    @patch('mlflow_oidc_auth.utils.config.OIDC_GROUPS_ATTRIBUTE',
-           new='test_oidc_groups')
-    def test_get_user_groups_from_session(self, mock_app):
-        mock_app.logger.debug = MagicMock()
-
-        with self.app.test_request_context():
-            session['test_oidc_groups'] = ['group1', 'group2']
-            groups = get_user_groups()
-            assert groups == ['group1', 'group2']
-            mock_app.logger.debug.assert_called_once_with(
-                f"Groups from session: {groups}"
-                )
-            
     @patch("importlib.import_module")
     @patch("mlflow_oidc_auth.utils.app")
     @patch('mlflow_oidc_auth.utils.config')
