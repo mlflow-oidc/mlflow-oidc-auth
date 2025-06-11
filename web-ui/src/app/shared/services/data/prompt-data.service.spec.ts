@@ -4,7 +4,7 @@ import { PromptsDataService } from '../data/prompt-data.service';
 import { API_URL } from 'src/app/core/configs/api-urls';
 import {
   PromptModel,
-  PromptPermissionsModel,
+  PromptPermissionModel,
   PromptUserListModel,
 } from 'src/app/shared/interfaces/prompts-data.interface';
 import { PermissionEnum, PermissionTypeEnum } from 'src/app/core/configs/permissions';
@@ -45,24 +45,21 @@ describe('PromptsDataService', () => {
 
   it('should fetch prompts for a user', () => {
     const userName = 'testUser';
-    const mockResponse: PromptPermissionsModel = {
-      prompts: [
-        {
-          name: 'prompt 1',
-          permission: PermissionEnum.MANAGE,
-          type: PermissionTypeEnum.USER,
-        },
-        {
-          name: 'prompt 2',
-          permission: PermissionEnum.READ,
-          type: PermissionTypeEnum.FALLBACK,
-        },
-      ],
-    };
-    const expectedPrompts = mockResponse.prompts;
+    const mockResponse: PromptPermissionModel[] = [
+      {
+        name: 'prompt 1',
+        permission: PermissionEnum.MANAGE,
+        type: PermissionTypeEnum.USER,
+      },
+      {
+        name: 'prompt 2',
+        permission: PermissionEnum.READ,
+        type: PermissionTypeEnum.FALLBACK,
+      },
+    ];
 
     service.getPromptsForUser(userName).subscribe((prompts) => {
-      expect(prompts).toEqual(expectedPrompts);
+      expect(prompts).toEqual(mockResponse);
     });
 
     const req = httpMock.expectOne(API_URL.USER_PROMPT_PERMISSIONS.replace('${userName}', userName));

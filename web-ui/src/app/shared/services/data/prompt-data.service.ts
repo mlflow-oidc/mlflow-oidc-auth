@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map } from 'rxjs';
 
-import { PromptModel, PromptPermissionsModel, PromptUserListModel } from '../../interfaces/prompts-data.interface';
+import { PromptModel, PromptPermissionModel, PromptUserListModel } from '../../interfaces/prompts-data.interface';
 import { API_URL } from 'src/app/core/configs/api-urls';
 
 @Injectable({
@@ -17,7 +17,7 @@ export class PromptsDataService {
 
   getPromptsForUser(userName: string) {
     const url = API_URL.USER_PROMPT_PERMISSIONS.replace('${userName}', userName);
-    return this.http.get<PromptPermissionsModel>(url).pipe(map((response) => response.prompts));
+    return this.http.get<PromptPermissionModel[]>(url);
   }
 
   getUsersForPrompt(promptName: string) {

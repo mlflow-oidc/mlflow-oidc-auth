@@ -23,7 +23,7 @@ def list_prompt_regex_permissions(username: str):
     rm = store.list_prompt_regex_permissions(
         username=username,
     )
-    return jsonify({"prompt_permissions": [r.to_json() for r in rm]}), 200
+    return jsonify([r.to_json() for r in rm]), 200
 
 
 @catch_mlflow_exception

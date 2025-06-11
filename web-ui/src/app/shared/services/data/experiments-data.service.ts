@@ -4,7 +4,7 @@ import { map } from 'rxjs';
 
 import {
   ExperimentModel,
-  ExperimentsForUserModel,
+  ExperimentForUserModel,
   UserPermissionModel,
 } from '../../interfaces/experiments-data.interface';
 import { API_URL } from 'src/app/core/configs/api-urls';
@@ -21,7 +21,7 @@ export class ExperimentsDataService {
 
   getExperimentsForUser(userName: string) {
     const url = API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', userName);
-    return this.http.get<ExperimentsForUserModel>(url).pipe(map(({ experiments }) => experiments));
+    return this.http.get<ExperimentForUserModel[]>(url);
   }
 
   getUsersForExperiment(experimentId: string) {

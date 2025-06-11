@@ -3,7 +3,7 @@ import { provideHttpClientTesting, HttpTestingController } from '@angular/common
 import { HttpClientModule } from '@angular/common/http';
 import { ExperimentsDataService } from '../data/experiments-data.service';
 import { API_URL } from 'src/app/core/configs/api-urls';
-import { ExperimentsForUserModel, UserPermissionModel } from 'src/app/shared/interfaces/experiments-data.interface';
+import { UserPermissionModel } from 'src/app/shared/interfaces/experiments-data.interface';
 import { PermissionEnum, PermissionTypeEnum } from 'src/app/core/configs/permissions';
 
 describe('ExperimentsDataService', () => {
@@ -49,32 +49,24 @@ describe('ExperimentsDataService', () => {
   it('should fetch experiments for a user', () => {
     const userName = 'testUser';
 
-    const mockExperiments: ExperimentsForUserModel = {
-      experiments: [
-        {
-          id: '854967757244196526',
-          name: 'experiment-manage-fallback',
-          permission: PermissionEnum.MANAGE,
-          type: PermissionTypeEnum.FALLBACK,
-        },
-        {
-          id: '837485082057419745',
-          name: 'experiment-manage-group',
-          permission: PermissionEnum.MANAGE,
-          type: PermissionTypeEnum.GROUP,
-        },
-        {
-          id: '833806752529152598',
-          name: 'experiment-manage-user',
-          permission: PermissionEnum.MANAGE,
-          type: PermissionTypeEnum.USER,
-        },
-      ],
-    };
+    const mockExperiments: UserPermissionModel[] = [
+      {
+        permission: PermissionEnum.MANAGE,
+        username: 'experiment-manage-fallback',
+      },
+      {
+        permission: PermissionEnum.MANAGE,
+        username: 'experiment-manage-group',
+      },
+      {
+        permission: PermissionEnum.MANAGE,
+        username: 'experiment-manage-user',
+      },
+    ];
     const url = API_URL.USER_EXPERIMENT_PERMISSIONS.replace('${userName}', userName);
 
     service.getExperimentsForUser(userName).subscribe((experiments) => {
-      expect(experiments).toEqual(mockExperiments.experiments);
+      expect(experiments).toEqual(mockExperiments);
     });
 
     const req = httpMock.expectOne(url);

@@ -6,10 +6,6 @@ export interface ExperimentModel {
   tags: Record<string, unknown>;
 }
 
-export interface ExperimentsForUserModel {
-  experiments: ExperimentForUserModel[];
-}
-
 export interface ExperimentForUserModel {
   id: string;
   name: string;

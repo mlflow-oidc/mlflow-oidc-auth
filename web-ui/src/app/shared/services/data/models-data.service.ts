@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map } from 'rxjs';
 
-import { ModelModel, ModelPermissionsModel, ModelUserListModel } from '../../interfaces/models-data.interface';
+import { ModelModel, ModelPermissionModel, ModelUserListModel } from '../../interfaces/models-data.interface';
 import { API_URL } from 'src/app/core/configs/api-urls';
 
 @Injectable({
@@ -17,7 +17,7 @@ export class ModelsDataService {
 
   getModelsForUser(userName: string) {
     const url = API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', userName);
-    return this.http.get<ModelPermissionsModel>(url).pipe(map((response) => response.models));
+    return this.http.get<ModelPermissionModel[]>(url);
   }
 
   getUsersForModel(modelName: string) {
