@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { ModelsDataService } from '../data/models-data.service';
 import { API_URL } from 'src/app/core/configs/api-urls';
-import { ModelModel, ModelPermissionsModel, ModelUserListModel } from 'src/app/shared/interfaces/models-data.interface';
+import { ModelModel, ModelUserListModel } from 'src/app/shared/interfaces/models-data.interface';
 import { PermissionEnum, PermissionTypeEnum } from 'src/app/core/configs/permissions';
 import { Type } from '@angular/core';
 
@@ -46,38 +46,36 @@ describe('ModelsDataService', () => {
   it('getModelsForUser should perform GET to correct URL and map response', () => {
     const userName = 'john';
     const expectedUrl = API_URL.USER_REGISTERED_MODEL_PERMISSIONS.replace('${userName}', userName);
-    const mockResponse: ModelPermissionsModel = {
-      models: [
-        {
-          name: 'test1',
-          permission: PermissionEnum.MANAGE,
-          type: PermissionTypeEnum.USER,
-        },
-        {
-          name: 'test2',
-          permission: PermissionEnum.MANAGE,
-          type: PermissionTypeEnum.USER,
-        },
-        {
-          name: 'test3',
-          permission: PermissionEnum.MANAGE,
-          type: PermissionTypeEnum.FALLBACK,
-        },
-        {
-          name: 'test4',
-          permission: PermissionEnum.MANAGE,
-          type: PermissionTypeEnum.FALLBACK,
-        },
-        {
-          name: 'test5',
-          permission: PermissionEnum.EDIT,
-          type: PermissionTypeEnum.GROUP,
-        },
-      ],
-    };
+    const mockResponse = [
+      {
+        name: 'test1',
+        permission: PermissionEnum.MANAGE,
+        type: PermissionTypeEnum.USER,
+      },
+      {
+        name: 'test2',
+        permission: PermissionEnum.MANAGE,
+        type: PermissionTypeEnum.USER,
+      },
+      {
+        name: 'test3',
+        permission: PermissionEnum.MANAGE,
+        type: PermissionTypeEnum.FALLBACK,
+      },
+      {
+        name: 'test4',
+        permission: PermissionEnum.MANAGE,
+        type: PermissionTypeEnum.FALLBACK,
+      },
+      {
+        name: 'test5',
+        permission: PermissionEnum.EDIT,
+        type: PermissionTypeEnum.GROUP,
+      },
+    ];
 
     service.getModelsForUser(userName).subscribe((models) => {
-      expect(models).toEqual(mockResponse.models);
+      expect(models).toEqual(mockResponse);
     });
     const req = httpMock.expectOne(expectedUrl);
     expect(req.request.method).toBe('GET');
