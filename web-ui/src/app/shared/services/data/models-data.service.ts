@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { map } from 'rxjs';
 
 import { ModelModel, ModelPermissionModel, ModelUserListModel } from '../../interfaces/models-data.interface';
 import { API_URL } from 'src/app/core/configs/api-urls';

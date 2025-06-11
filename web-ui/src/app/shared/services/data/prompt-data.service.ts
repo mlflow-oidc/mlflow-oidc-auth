@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { map } from 'rxjs';
 
 import { PromptModel, PromptPermissionModel, PromptUserListModel } from '../../interfaces/prompts-data.interface';
 import { API_URL } from 'src/app/core/configs/api-urls';
