@@ -135,9 +135,17 @@ AFTER_REQUEST_PATH_HANDLERS = {
     DeleteRegisteredModel: _delete_can_manage_registered_model_permission,
     SearchExperiments: _filter_search_experiments,
     SearchRegisteredModels: _filter_search_registered_models,
+    # TODO: review if we need to add more handlers
+    # SearchLoggedModels: filter_search_logged_models,
+    # RenameRegisteredModel: rename_registered_model_permission,
 }
 
-AFTER_REQUEST_HANDLERS = {(http_path, method): handler for http_path, handler, methods in get_endpoints(_get_after_request_handler) for method in methods}
+AFTER_REQUEST_HANDLERS = {
+    (http_path, method): handler
+    for http_path, handler, methods in get_endpoints(_get_after_request_handler)
+    for method in methods
+    if handler is not None and "/graphql" not in http_path
+}
 
 
 @catch_mlflow_exception
