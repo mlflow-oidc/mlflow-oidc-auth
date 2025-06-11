@@ -7,10 +7,6 @@ export interface PromptModel {
   tags: Record<string, unknown>;
 }
 
-export interface PromptPermissionsModel {
-  prompts: PromptPermissionModel[];
-}
-
 export interface PromptPermissionModel {
   name: string;
   permission: PermissionEnum;
