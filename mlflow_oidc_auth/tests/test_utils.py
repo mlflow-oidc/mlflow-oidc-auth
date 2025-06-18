@@ -1,12 +1,15 @@
 import unittest
 from unittest.mock import MagicMock, patch
+from flask import Flask, session, request
 
-from flask import Flask
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils import (
+    get_is_admin,
+    get_user_groups,
+    get_permission_from_store_or_default,
     PermissionResult,
     can_manage_experiment,
     can_manage_registered_model,
@@ -49,6 +52,7 @@ from mlflow_oidc_auth.utils import (
 class TestUtils(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
+        self.app.secret_key = 'test_secret_key'
         self.app.config["TESTING"] = True
         self.app_context = self.app.app_context()
         self.app_context.push()
@@ -198,6 +202,72 @@ class TestUtils(unittest.TestCase):
             # Admin always allowed
             mock_get_is_admin.return_value = True
             self.assertEqual(mock_func(), "success")
+
+    @patch("importlib.import_module")
+    @patch("mlflow_oidc_auth.utils.app")
+    @patch('mlflow_oidc_auth.utils.config')
+    @patch('mlflow_oidc_auth.utils.validate_token')
+    def test_get_user_groups_from_plugin(self, mock_validate_token,
+                                               mock_config, mock_app,
+                                               mock_import_module):
+        mock_validate_token.return_value = {"test_oidc_groups":
+                                            ['group1', 'group2']}
+        mock_config.OIDC_GROUPS_ATTRIBUTE = "test_oidc_groups"
+        mock_config.OIDC_GROUP_NAME = ["group1", "group2"]
+        mock_config.OIDC_GROUP_DETECTION_PLUGIN = "groups_plugin"
+        mock_plugin = MagicMock()
+        mock_plugin.get_user_groups.return_value = ['group1', 'group2']
+        mock_import_module.return_value = mock_plugin
+        mock_app.logger.debug = MagicMock()
+
+        with self.app.test_request_context(headers={'Authorization':
+                                                    'Bearer test_token'}):
+            groups = get_user_groups()
+            assert groups == ['group1', 'group2']
+            mock_app.logger.debug.assert_called_once_with(
+                f"Groups from plugin: {groups}"
+                )
+
+    @patch("mlflow_oidc_auth.utils.app")
+    @patch('mlflow_oidc_auth.utils.config')
+    @patch('mlflow_oidc_auth.utils.validate_token')
+    def test_get_user_groups_from_bearer_token(self, mock_validate_token,
+                                               mock_config, mock_app):
+        mock_validate_token.return_value = {"test_oidc_groups":
+                                            ['group1', 'group2']}
+        mock_config.OIDC_GROUPS_ATTRIBUTE = "test_oidc_groups"
+        mock_config.OIDC_GROUP_NAME = ["group1", "group2"]
+        mock_config.OIDC_GROUP_DETECTION_PLUGIN = None
+        mock_app.logger.debug = MagicMock()
+
+        with self.app.test_request_context(headers={'Authorization':
+                                                    'Bearer test_token'}):
+            groups = get_user_groups()
+            assert groups == ['group1', 'group2']
+            mock_app.logger.debug.assert_called_once_with(
+                f"Groups from bearer token: {groups}"
+                )
+
+    @patch("mlflow_oidc_auth.utils.app")
+    @patch('mlflow_oidc_auth.utils.store.get_groups_for_user')
+    def test_get_user_groups_from_store(self, mock_get_groups_for_user,
+                                        mock_app):
+        mock_get_groups_for_user.return_value = ['group1', 'group2']
+        mock_app.logger.debug = MagicMock()
+
+        with self.app.test_request_context():
+            groups = get_user_groups(username='test_user')
+            assert groups == ['group1', 'group2']
+            mock_app.logger.debug.assert_called_once_with(
+                f"Groups from store: {groups}"
+                )
+
+    @patch("mlflow_oidc_auth.utils.app")
+    def test_get_user_groups_no_groups_found(self, mock_app):
+        with self.app.test_request_context():
+            groups = get_user_groups()
+            assert groups == []
+            mock_app.logger.debug.assert_not_called()
 
     @patch("mlflow_oidc_auth.utils.store")
     @patch("mlflow_oidc_auth.utils.get_is_admin")
