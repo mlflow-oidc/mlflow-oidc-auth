@@ -1,15 +1,11 @@
 import requests
-from mlflow_oidc_auth.config import config
 
 def get_user_groups(access_token):
     graph_url="https://graph.microsoft.com/v1.0/me/memberOf"
     headers={
-        "Authorization":f"Bearer{access_token}",
+        "Authorization":f"Bearer {access_token}",
         "Content-Type":"application/json",
     }
-
-    # Initialize an empty list to hold all groups
-    all_groups=[]
 
     while graph_url:
         # Make the request to get the user's groups
