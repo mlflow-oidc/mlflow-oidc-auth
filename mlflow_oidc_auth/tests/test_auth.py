@@ -255,10 +255,10 @@ class TestAuth:
         assert "No email provided" in str(errors)
         assert "No display name provided" in str(errors)
 
-    def test_handle_userinfo_missing_field_email_but_has_prefered_username_success(self):
+    def test_handle_userinfo_missing_field_email_but_has_preferred_username_success(self):
         from mlflow_oidc_auth.auth import handle_user_and_group_management
 
-        token = {"userinfo": {"name": "Test Tes", "preferred_username": "techaccount@example.net"}, "access_token": "token"}
+        token = {"userinfo": {"name": "Test Tes", "preferred_username": "techaccount@example.net", "groups": ["users"]}, "access_token": "token"}
         config = importlib.import_module("mlflow_oidc_auth.config").config
         config.OIDC_GROUP_DETECTION_PLUGIN = None
         config.OIDC_GROUPS_ATTRIBUTE = "groups"
