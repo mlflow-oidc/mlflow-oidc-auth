@@ -129,7 +129,7 @@ def handle_token_validation(oauth_instance: OAuth):
 def handle_user_and_group_management(token) -> list[str]:
     """Handle user and group management based on the token. Returns list of error messages or empty list."""
     errors = []
-    email = token["userinfo"].get("email")
+    email = token["userinfo"].get("email") or token["userinfo"].get("preferred_username")
     display_name = token["userinfo"].get("name")
     if not email:
         errors.append("User profile error: No email provided in OIDC userinfo.")
@@ -220,7 +220,7 @@ def process_oidc_callback(request, session) -> tuple[Optional[str], list[str]]:
     if not isinstance(userinfo, dict):
         errors.append("OIDC token error: 'userinfo' is missing or not a dictionary.")
         return None, errors
-    email = userinfo.get("email")
+    email = userinfo.get("email") or userinfo.get("preferred_username")
     if email is None:
         errors.append("OIDC token error: 'email' is missing in userinfo.")
         return None, errors
