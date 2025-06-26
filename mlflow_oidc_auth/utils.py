@@ -2,6 +2,7 @@ import re
 from functools import wraps
 from typing import Callable, Dict, List, NamedTuple, Optional
 from flask import request, session
+from sqlalchemy.exc import NoResultFound
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server import app
@@ -278,6 +279,74 @@ def get_username() -> str:
             app.logger.debug(f"Username from bearer token: {username}")
             return username
     raise MlflowException("Authentication required. Please see documentation for details: ")
+
+
+def get_user_groups(username: Optional[str] = None) -> list[str]:
+    """
+    Retrieve the groups associated with a user.
+
+    This function is designed to obtain the list of groups a user belongs to,
+    which can be used for permission and access control within the application.
+    It tries different approaches in order: bearer token
+    authentication, then store query to determine the user's group memberships.
+
+    Parameters
+    ----------
+    username : str, optional
+        The username of the user whose groups are being queried.
+
+    Returns
+    -------
+    list of str
+        A list of strings representing the user's groups. Returns an empty list
+        if no groups are found.
+    """
+    if request.authorization and request.authorization.type == "bearer":
+        if config.OIDC_GROUP_DETECTION_PLUGIN:
+            import importlib
+            groups_plugin = importlib.import_module(
+                config.OIDC_GROUP_DETECTION_PLUGIN
+                )
+            user_groups = groups_plugin.get_user_groups(
+                request.authorization.token
+                )
+            app.logger.debug(f"Groups from plugin: {user_groups}")
+        else:
+            user_groups = validate_token(request.authorization.token).get(
+                config.OIDC_GROUPS_ATTRIBUTE
+                )
+            app.logger.debug(f"Groups from bearer token: {user_groups}")
+        return filter_groups(user_groups)
+
+    if username:
+        try:
+            user_groups = store.get_groups_for_user(username)
+            app.logger.debug(f"Groups from store: {user_groups}")
+            return user_groups
+        except NoResultFound:
+            pass
+    return []
+
+
+def filter_groups(user_groups: list[str]) -> list[str]:
+    """
+    Filters the user groups to only include those that are allowed by the
+    application cofiguration.
+
+    Parameters
+    ----------
+    user_groups : list of str
+        A list of user group names to be filtered.
+
+    Returns
+    -------
+    list of str
+        A list containing only the user groups that are available.
+    """
+    available_groups = config.OIDC_GROUP_NAME + [config.OIDC_ADMIN_GROUP_NAME]
+    filtered_user_groups = list(filter(lambda x: x in available_groups,
+                                       user_groups))
+    return filtered_user_groups
 
 
 def get_is_admin() -> bool:
