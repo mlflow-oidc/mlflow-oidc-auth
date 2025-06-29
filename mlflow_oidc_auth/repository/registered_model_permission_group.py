@@ -98,6 +98,15 @@ class RegisteredModelPermissionGroupRepository:
             session.flush()
             return perm.to_mlflow_entity()
 
+    def rename(self, old_name: str, new_name: str):
+        with self._Session() as session:
+            perms = session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.name == old_name).all()
+            if not perms:
+                raise MlflowException(f"No registered model group permissions found for name: {old_name}", RESOURCE_DOES_NOT_EXIST)
+            for perm in perms:
+                perm.name = new_name
+            session.flush()
+
     def delete(self, group_name: str, name: str):
         with self._Session() as session:
             group = get_group(session, group_name)

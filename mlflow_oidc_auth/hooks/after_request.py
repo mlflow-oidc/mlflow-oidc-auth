@@ -1,7 +1,7 @@
 from flask import Response, request
 from mlflow.entities import Experiment
 from mlflow.entities.model_registry import RegisteredModel
-from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, SearchRegisteredModels
+from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, SearchRegisteredModels, RenameRegisteredModel
 from mlflow.protos.service_pb2 import CreateExperiment, SearchExperiments
 from mlflow.server.handlers import (
     _get_model_registry_store,
@@ -129,15 +129,29 @@ def _filter_search_registered_models(resp: Response):
     resp.data = message_to_json(response_message)
 
 
+def _rename_registered_model_permission(resp: Response):
+    """
+    A model registry can be assigned to multiple users or groups with different permissions.
+    Changing the model registry name must be propagated to all users or groups.
+    """
+    data = request.get_json(force=True, silent=True)
+    name = data.get("name") if data else None
+    new_name = data.get("new_name") if data else None
+    if not name or not new_name:
+        raise ValueError("Both 'name' and 'new_name' must be provided in the request data.")
+    store.rename_registered_model_permissions(name, new_name)
+    store.rename_group_model_permissions(name, new_name)
+
+
 AFTER_REQUEST_PATH_HANDLERS = {
     CreateExperiment: _set_can_manage_experiment_permission,
     CreateRegisteredModel: _set_can_manage_registered_model_permission,
     DeleteRegisteredModel: _delete_can_manage_registered_model_permission,
     SearchExperiments: _filter_search_experiments,
     SearchRegisteredModels: _filter_search_registered_models,
+    RenameRegisteredModel: _rename_registered_model_permission,
     # TODO: review if we need to add more handlers
     # SearchLoggedModels: filter_search_logged_models,
-    # RenameRegisteredModel: rename_registered_model_permission,
 }
 
 AFTER_REQUEST_HANDLERS = {

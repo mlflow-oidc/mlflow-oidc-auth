@@ -67,3 +67,67 @@ def test_filter_search_registered_models(mock_response, mock_store, mock_utils):
         with patch("mlflow_oidc_auth.hooks.after_request.can_read_registered_model", side_effect=lambda name, _: name != "test_model"):
             handler(mock_response)
             assert len(mock_response.json["registered_models"]) == 1
+
+
+def test_rename_registered_model_permission(mock_response, mock_store):
+    """Test _rename_registered_model_permission handler"""
+    from mlflow.protos.model_registry_pb2 import RenameRegisteredModel
+
+    handler = AFTER_REQUEST_PATH_HANDLERS[RenameRegisteredModel]
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/registered-models/rename",
+        method="PATCH",
+        json={"name": "old_model", "new_name": "new_model"},
+        headers={"Content-Type": "application/json"},
+    ):
+        handler(mock_response)
+        mock_store.rename_registered_model_permissions.assert_called_once_with("old_model", "new_model")
+        mock_store.rename_group_model_permissions.assert_called_once_with("old_model", "new_model")
+
+
+def test_rename_registered_model_permission_missing_name(mock_response, mock_store):
+    """Test _rename_registered_model_permission handler with missing name"""
+    from mlflow.protos.model_registry_pb2 import RenameRegisteredModel
+
+    handler = AFTER_REQUEST_PATH_HANDLERS[RenameRegisteredModel]
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/registered-models/rename",
+        method="PATCH",
+        json={"new_name": "new_model"},  # Missing 'name'
+        headers={"Content-Type": "application/json"},
+    ):
+        with pytest.raises(ValueError, match="Both 'name' and 'new_name' must be provided"):
+            handler(mock_response)
+
+
+def test_rename_registered_model_permission_missing_new_name(mock_response, mock_store):
+    """Test _rename_registered_model_permission handler with missing new_name"""
+    from mlflow.protos.model_registry_pb2 import RenameRegisteredModel
+
+    handler = AFTER_REQUEST_PATH_HANDLERS[RenameRegisteredModel]
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/registered-models/rename",
+        method="PATCH",
+        json={"name": "old_model"},  # Missing 'new_name'
+        headers={"Content-Type": "application/json"},
+    ):
+        with pytest.raises(ValueError, match="Both 'name' and 'new_name' must be provided"):
+            handler(mock_response)
+
+
+def test_rename_registered_model_permission_no_json(mock_response, mock_store):
+    """Test _rename_registered_model_permission handler with no JSON data"""
+    from mlflow.protos.model_registry_pb2 import RenameRegisteredModel
+
+    handler = AFTER_REQUEST_PATH_HANDLERS[RenameRegisteredModel]
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/registered-models/rename",
+        method="PATCH",
+        headers={"Content-Type": "application/json"},
+    ):
+        with pytest.raises(ValueError, match="Both 'name' and 'new_name' must be provided"):
+            handler(mock_response)
