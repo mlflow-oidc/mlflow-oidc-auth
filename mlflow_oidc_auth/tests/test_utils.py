@@ -30,6 +30,7 @@ from mlflow_oidc_auth.utils import (
     get_experiment_id,
     get_is_admin,
     get_model_name,
+    get_model_id,
     get_optional_request_param,
     get_permission_from_store_or_default,
     get_request_param,
@@ -970,6 +971,52 @@ class TestUtils(unittest.TestCase):
 
             # Verify
             self.assertEqual(len(result), 0)
+
+    def test_get_model_id(self):
+        from mlflow_oidc_auth.utils import get_model_id
+
+        # URL args (view_args)
+        with self.app.test_request_context("/model/123"):
+            with patch("mlflow_oidc_auth.utils.request") as mock_request:
+                mock_request.view_args = {"model_id": "123"}
+                mock_request.args = {}
+                mock_request.json = None
+                self.assertEqual(get_model_id(), "123")
+
+        # Query args
+        with self.app.test_request_context("/?model_id=456", method="GET"):
+            self.assertEqual(get_model_id(), "456")
+
+        # JSON data
+        with self.app.test_request_context("/", method="POST", json={"model_id": "789"}, content_type="application/json"):
+            self.assertEqual(get_model_id(), "789")
+
+        # Missing model_id
+        with self.app.test_request_context("/", method="GET"):
+            with patch("mlflow_oidc_auth.utils.request") as mock_request:
+                mock_request.view_args = None
+                mock_request.args = {}
+                mock_request.json = None
+                with self.assertRaises(MlflowException) as cm:
+                    get_model_id()
+                self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+                self.assertIn("Model ID must be provided", str(cm.exception))
+
+        # Empty view_args, but model_id in args
+        with self.app.test_request_context("/?model_id=args_id", method="GET"):
+            with patch("mlflow_oidc_auth.utils.request") as mock_request:
+                mock_request.view_args = {}
+                mock_request.args = {"model_id": "args_id"}
+                mock_request.json = None
+                self.assertEqual(get_model_id(), "args_id")
+
+        # Empty view_args and args, but model_id in json
+        with self.app.test_request_context("/", method="POST", json={"model_id": "json_id"}, content_type="application/json"):
+            with patch("mlflow_oidc_auth.utils.request") as mock_request:
+                mock_request.view_args = {}
+                mock_request.args = {}
+                mock_request.json = {"model_id": "json_id"}
+                self.assertEqual(get_model_id(), "json_id")
 
 
 if __name__ == "__main__":
