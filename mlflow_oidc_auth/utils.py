@@ -323,6 +323,24 @@ def get_experiment_id() -> str:
     )
 
 
+# TODO: refactor to avoid code duplication
+def get_model_id() -> str:
+    """
+    Helper function to get the model ID from the request.
+    Raises an exception if the model ID is not found.
+    """
+    if request.view_args and "model_id" in request.view_args:
+        return request.view_args["model_id"]
+    if request.args and "model_id" in request.args:
+        return request.args["model_id"]
+    if request.json and "model_id" in request.json:
+        return request.json["model_id"]
+    raise MlflowException(
+        "Model ID must be provided in the request data.",
+        INVALID_PARAMETER_VALUE,
+    )
+
+
 def get_model_name() -> str:
     """
     Helper function to get the model name from the request.
@@ -609,3 +627,62 @@ def fetch_readable_registered_models(
     readable_models = [model for model in all_models if can_read_registered_model(model.name, username)]
 
     return readable_models
+
+
+def fetch_readable_logged_models(
+    experiment_ids: Optional[List[str]] = None,
+    filter_string: Optional[str] = None,
+    order_by: Optional[List[dict]] = None,
+    max_results_per_page: int = 1000,
+    username: Optional[str] = None,
+) -> List:
+    """
+    Fetch ALL logged models that the user can read from the MLflow tracking store using pagination.
+    This ensures we get all readable logged models, not just the first page.
+
+    Args:
+        experiment_ids: List of experiment IDs to search within
+        filter_string: Filter string for the search
+        order_by: List of order by clauses
+        max_results_per_page: Maximum number of results to fetch per page (default: 1000)
+        username: Username to check permissions for (defaults to current user)
+
+    Returns:
+        List of LoggedModel objects that the user can read
+    """
+    from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
+
+    if username is None:
+        username = get_username()
+
+    # Get user permissions
+    perms = store.list_experiment_permissions(username)
+    can_read_perms = {p.experiment_id: get_permission(p.permission).can_read for p in perms}
+    default_can_read = get_permission(config.DEFAULT_MLFLOW_PERMISSION).can_read
+
+    all_models = []
+    page_token = None
+    tracking_store = _get_tracking_store()
+
+    # Parameters for search
+    params = {
+        "experiment_ids": experiment_ids or [],
+        "filter_string": filter_string,
+        "order_by": order_by,
+    }
+
+    while True:
+        result = tracking_store.search_logged_models(max_results=max_results_per_page, page_token=page_token, **params)
+
+        # Filter models based on read permissions
+        for model in result:
+            if can_read_perms.get(model.experiment_id, default_can_read):
+                all_models.append(model)
+
+        # Check if there are more pages
+        if hasattr(result, "token") and result.token:
+            page_token = result.token
+        else:
+            break
+
+    return all_models

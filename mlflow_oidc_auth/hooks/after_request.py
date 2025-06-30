@@ -1,30 +1,19 @@
 from flask import Response, request
-from mlflow.entities import Experiment
-from mlflow.entities.model_registry import RegisteredModel
-from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, SearchRegisteredModels, RenameRegisteredModel
-from mlflow.protos.service_pb2 import CreateExperiment, SearchExperiments
-from mlflow.server.handlers import (
-    _get_model_registry_store,
-    _get_request_message,
-    _get_tracking_store,
-    catch_mlflow_exception,
-    get_endpoints,
-)
-from mlflow.store.entities.paged_list import PagedList
+from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, RenameRegisteredModel, SearchRegisteredModels
+from mlflow.protos.service_pb2 import CreateExperiment, SearchExperiments, SearchLoggedModels
+from mlflow.server.handlers import _get_request_message, catch_mlflow_exception, get_endpoints
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
 
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
-    can_read_experiment,
-    can_read_registered_model,
-    get_is_admin,
-    get_username,
-    get_model_name,
-    fetch_registered_models_paginated,
-    fetch_readable_registered_models,
     fetch_readable_experiments,
+    fetch_readable_logged_models,
+    fetch_readable_registered_models,
+    get_is_admin,
+    get_model_name,
+    get_username,
 )
 
 
@@ -129,6 +118,77 @@ def _filter_search_registered_models(resp: Response):
     resp.data = message_to_json(response_message)
 
 
+def _filter_search_logged_models(resp: Response) -> None:
+    """
+    Filter out unreadable logged models from the search results.
+    """
+    if get_is_admin():
+        return
+
+    response_message = SearchLoggedModels.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    request_message = _get_request_message(SearchLoggedModels())
+
+    # Get current user
+    username = get_username()
+
+    # Get all readable logged models with the original parameters
+    readable_models = fetch_readable_logged_models(
+        experiment_ids=list(request_message.experiment_ids),
+        filter_string=request_message.filter or None,
+        order_by=(
+            [
+                {
+                    "field_name": ob.field_name,
+                    "ascending": ob.ascending,
+                    "dataset_name": ob.dataset_name,
+                    "dataset_digest": ob.dataset_digest,
+                }
+                for ob in request_message.order_by
+            ]
+            if request_message.order_by
+            else None
+        ),
+        username=username,
+    )
+
+    # Convert to proto format and apply max_results limit
+    readable_models_proto = [model.to_proto() for model in readable_models[: request_message.max_results]]
+
+    # Update response with filtered models
+    response_message.ClearField("models")
+    response_message.models.extend(readable_models_proto)
+
+    # Handle pagination token
+    if len(readable_models) > request_message.max_results:
+        # Set next page token if there are more results
+        from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
+
+        params = {
+            "experiment_ids": list(request_message.experiment_ids),
+            "filter_string": request_message.filter or None,
+            "order_by": (
+                [
+                    {
+                        "field_name": ob.field_name,
+                        "ascending": ob.ascending,
+                        "dataset_name": ob.dataset_name,
+                        "dataset_digest": ob.dataset_digest,
+                    }
+                    for ob in request_message.order_by
+                ]
+                if request_message.order_by
+                else None
+            ),
+        }
+        response_message.next_page_token = Token(offset=request_message.max_results, **params).encode()
+    else:
+        # Clear next page token if all results fit
+        response_message.next_page_token = ""
+
+    resp.data = message_to_json(response_message)
+
+
 def _rename_registered_model_permission(resp: Response):
     """
     A model registry can be assigned to multiple users or groups with different permissions.
@@ -148,10 +208,9 @@ AFTER_REQUEST_PATH_HANDLERS = {
     CreateRegisteredModel: _set_can_manage_registered_model_permission,
     DeleteRegisteredModel: _delete_can_manage_registered_model_permission,
     SearchExperiments: _filter_search_experiments,
+    SearchLoggedModels: _filter_search_logged_models,
     SearchRegisteredModels: _filter_search_registered_models,
     RenameRegisteredModel: _rename_registered_model_permission,
-    # TODO: review if we need to add more handlers
-    # SearchLoggedModels: filter_search_logged_models,
 }
 
 AFTER_REQUEST_HANDLERS = {

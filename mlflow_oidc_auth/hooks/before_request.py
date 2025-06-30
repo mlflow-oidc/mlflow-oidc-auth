@@ -1,9 +1,9 @@
+import re
 from typing import Any, Callable, Dict, Optional
 
-from flask import redirect, render_template, request, session, url_for
+from flask import Request, redirect, render_template, request, session, url_for
 from mlflow.protos.model_registry_pb2 import (
     CreateModelVersion,
-    CreateRegisteredModel,
     DeleteModelVersion,
     DeleteModelVersionTag,
     DeleteRegisteredModel,
@@ -15,7 +15,6 @@ from mlflow.protos.model_registry_pb2 import (
     GetModelVersionDownloadUri,
     GetRegisteredModel,
     RenameRegisteredModel,
-    SearchRegisteredModels,
     SetModelVersionTag,
     SetRegisteredModelAlias,
     SetRegisteredModelTag,
@@ -24,24 +23,29 @@ from mlflow.protos.model_registry_pb2 import (
     UpdateRegisteredModel,
 )
 from mlflow.protos.service_pb2 import (
-    CreateExperiment,
+    CreateLoggedModel,
     CreateRun,
     DeleteExperiment,
+    DeleteLoggedModel,
+    DeleteLoggedModelTag,
     DeleteRun,
     DeleteTag,
+    FinalizeLoggedModel,
     GetExperiment,
     GetExperimentByName,
+    GetLoggedModel,
     GetMetricHistory,
     GetRun,
     ListArtifacts,
     LogBatch,
+    LogLoggedModelParamsRequest,
     LogMetric,
     LogModel,
     LogParam,
     RestoreExperiment,
     RestoreRun,
-    SearchExperiments,
     SetExperimentTag,
+    SetLoggedModelTags,
     SetTag,
     UpdateExperiment,
     UpdateRun,
@@ -58,6 +62,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_create_user,
     validate_can_delete_experiment,
     validate_can_delete_experiment_artifact_proxy,
+    validate_can_delete_logged_model,
     validate_can_delete_registered_model,
     validate_can_delete_run,
     validate_can_delete_user,
@@ -67,10 +72,12 @@ from mlflow_oidc_auth.validators import (
     validate_can_read_experiment,
     validate_can_read_experiment_artifact_proxy,
     validate_can_read_experiment_by_name,
+    validate_can_read_logged_model,
     validate_can_read_registered_model,
     validate_can_read_run,
     validate_can_update_experiment,
     validate_can_update_experiment_artifact_proxy,
+    validate_can_update_logged_model,
     validate_can_update_registered_model,
     validate_can_update_run,
     validate_can_update_user_admin,
@@ -262,6 +269,37 @@ BEFORE_REQUEST_VALIDATORS.update(
 )
 
 
+LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
+    CreateLoggedModel: validate_can_update_experiment,
+    GetLoggedModel: validate_can_read_logged_model,
+    DeleteLoggedModel: validate_can_delete_logged_model,
+    FinalizeLoggedModel: validate_can_update_logged_model,
+    DeleteLoggedModelTag: validate_can_delete_logged_model,
+    SetLoggedModelTags: validate_can_update_logged_model,
+    LogLoggedModelParamsRequest: validate_can_update_logged_model,
+}
+
+
+def get_logged_model_before_request_handler(request_class):
+    return LOGGED_MODEL_BEFORE_REQUEST_HANDLERS.get(request_class)
+
+
+def _re_compile_path(path: str) -> re.Pattern:
+    """
+    Convert a path with angle brackets to a regex pattern. For example,
+    "/api/2.0/experiments/<experiment_id>" becomes "/api/2.0/experiments/([^/]+)".
+    """
+    return re.compile(re.sub(r"<([^>]+)>", r"([^/]+)", path))
+
+
+LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
+    # Paths for logged models contains path parameters (e.g. /mlflow/logged-models/<model_id>)
+    (_re_compile_path(http_path), method): handler
+    for http_path, handler, methods in get_endpoints(get_logged_model_before_request_handler)
+    for method in methods
+}
+
+
 def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[], bool]]:
     if view_args is None:
         return validate_can_read_experiment_artifact_proxy  # List
@@ -275,6 +313,21 @@ def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any
 
 def _is_proxy_artifact_path(path: str) -> bool:
     return path.startswith(f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts/")
+
+
+def _find_validator(req: Request) -> Optional[Callable[[], bool]]:
+    """
+    Finds the validator matching the request path and method.
+    """
+    if "/mlflow/logged-models" in req.path:
+        # logged model routes are not registered in the app
+        # so we need to check them manually
+        return next(
+            (v for (pat, method), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            None,
+        )
+    else:
+        return BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
 
 
 def before_request_hook():
@@ -304,7 +357,7 @@ def before_request_hook():
     if get_is_admin():
         return
     # authorization
-    if validator := BEFORE_REQUEST_VALIDATORS.get((request.path, request.method)):
+    if validator := _find_validator(request):
         if not validator():
             return responses.make_forbidden_response()
     elif _is_proxy_artifact_path(request.path):
