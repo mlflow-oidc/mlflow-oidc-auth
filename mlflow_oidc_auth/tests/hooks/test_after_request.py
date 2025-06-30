@@ -74,9 +74,9 @@ def test_filter_search_experiments(mock_response, mock_store, mock_utils):
             "mlflow_oidc_auth.hooks.after_request.fetch_readable_experiments", return_value=mock_readable_experiments
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ) as mock_parse, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": [{"experiment_id": "123", "name": "test_experiment"}]}'
-        ) as mock_to_json:
+        ):
             # Mock response message
             mock_response_message = MagicMock()
             mock_response_message.ClearField = MagicMock()
@@ -119,9 +119,9 @@ def test_filter_search_registered_models(mock_response, mock_store, mock_utils):
             "mlflow_oidc_auth.hooks.after_request.fetch_readable_registered_models", return_value=mock_readable_models
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ) as mock_parse, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"registered_models": [{"name": "test_model"}]}'
-        ) as mock_to_json:
+        ):
             # Mock response message
             mock_response_message = MagicMock()
             mock_response_message.ClearField = MagicMock()
@@ -247,9 +247,9 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_utils):
             "mlflow_oidc_auth.hooks.after_request.fetch_readable_logged_models", return_value=mock_readable_models
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ) as mock_parse, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": [{"experiment_id": "123", "name": "model1"}]}'
-        ) as mock_to_json:
+        ):
             # Mock response message
             mock_response_message = MagicMock()
             mock_response_message.ClearField = MagicMock()
@@ -298,9 +298,9 @@ def test_filter_search_logged_models_with_pagination(mock_response, mock_utils):
             "mlflow_oidc_auth.hooks.after_request.fetch_readable_logged_models", return_value=mock_readable_models
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ) as mock_parse, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": [], "next_page_token": "token123"}'
-        ) as mock_to_json:
+        ):
             # Mock response message
             mock_response_message = MagicMock()
             mock_response_message.ClearField = MagicMock()
@@ -358,9 +358,9 @@ def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_ut
             "mlflow_oidc_auth.hooks.after_request.fetch_readable_logged_models", return_value=mock_readable_models
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ) as mock_parse, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}'
-        ) as mock_to_json:
+        ):
             # Mock response message
             mock_response_message = MagicMock()
             mock_response_message.ClearField = MagicMock()
@@ -419,7 +419,7 @@ def test_after_request_hook_with_handler(mock_response, mock_store):
 
     with app.test_request_context(path="/api/2.0/mlflow/experiments/create", method="POST", headers={"Content-Type": "application/json"}), patch(
         "mlflow_oidc_auth.hooks.after_request.get_username", return_value="test_user"
-    ), patch("mlflow_oidc_auth.hooks.after_request.parse_dict") as mock_parse:
+    ), patch("mlflow_oidc_auth.hooks.after_request.parse_dict"):
         # Mock the response message
         mock_response_message = MagicMock()
         mock_response_message.experiment_id = "test_exp_123"
@@ -437,7 +437,7 @@ def test_set_can_manage_registered_model_permission(mock_response, mock_store):
 
     with app.test_request_context(path="/api/2.0/mlflow/registered-models/create", method="POST", headers={"Content-Type": "application/json"}), patch(
         "mlflow_oidc_auth.hooks.after_request.get_username", return_value="test_user"
-    ), patch("mlflow_oidc_auth.hooks.after_request.parse_dict") as mock_parse:
+    ), patch("mlflow_oidc_auth.hooks.after_request.parse_dict"):
         # Mock the response message
         mock_response_message = MagicMock()
         mock_response_message.registered_model.name = "test_model_123"
@@ -473,9 +473,9 @@ def test_filter_search_experiments_with_pagination(mock_response, mock_utils):
             "mlflow_oidc_auth.hooks.after_request.fetch_readable_experiments", return_value=mock_readable_experiments
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ) as mock_parse, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": []}'
-        ) as mock_to_json, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token", return_value="page_token_123"
         ) as mock_page_token:
             # Mock response message
@@ -516,9 +516,9 @@ def test_filter_search_registered_models_with_pagination(mock_response, mock_uti
             "mlflow_oidc_auth.hooks.after_request.fetch_readable_registered_models", return_value=mock_readable_models
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ) as mock_parse, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"registered_models": []}'
-        ) as mock_to_json, patch(
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token", return_value="page_token_456"
         ) as mock_page_token:
             # Mock response message
