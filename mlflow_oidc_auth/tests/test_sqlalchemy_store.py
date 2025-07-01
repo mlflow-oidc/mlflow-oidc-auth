@@ -104,6 +104,16 @@ class TestSqlAlchemyStore:
         store.delete_group_registered_model_regex_permission("group", 1)
         store.registered_model_group_regex_repo.revoke.assert_called_once_with(group_name="group", id=1)
 
+    def test_rename_registered_model_permissions(self, store: SqlAlchemyStore):
+        store.registered_model_repo = MagicMock()
+        store.rename_registered_model_permissions("old_model", "new_model")
+        store.registered_model_repo.rename.assert_called_once_with("old_model", "new_model")
+
+    def test_rename_group_model_permissions(self, store: SqlAlchemyStore):
+        store.registered_model_group_repo = MagicMock()
+        store.rename_group_model_permissions("old_model", "new_model")
+        store.registered_model_group_repo.rename.assert_called_once_with("old_model", "new_model")
+
     def test_create_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
         store.create_prompt_regex_permission(".*", 1, "READ", "user", prompt=True)

@@ -104,3 +104,28 @@ def test_wipe(repo, session):
     repo.wipe("name")
     assert session.delete.call_count == 2
     session.flush.assert_called_once()
+
+
+def test_rename_success(repo, session):
+    """Test rename method when permissions are found"""
+    perm1 = MagicMock()
+    perm2 = MagicMock()
+    session.query().filter().all.return_value = [perm1, perm2]
+    session.flush = MagicMock()
+
+    repo.rename("old_model", "new_model")
+
+    assert perm1.name == "new_model"
+    assert perm2.name == "new_model"
+    session.flush.assert_called_once()
+
+
+def test_rename_no_permissions_found(repo, session):
+    """Test rename method when no permissions are found"""
+    session.query().filter().all.return_value = []
+
+    with pytest.raises(MlflowException) as exc:
+        repo.rename("nonexistent_model", "new_model")
+
+    assert "No registered model group permissions found for name: nonexistent_model" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"

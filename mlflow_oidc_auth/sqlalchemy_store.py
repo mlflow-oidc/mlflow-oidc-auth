@@ -131,6 +131,9 @@ class SqlAlchemyStore:
     def update_registered_model_permission(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
         return self.registered_model_repo.update(name, username, permission)
 
+    def rename_registered_model_permissions(self, old_name: str, new_name: str):
+        return self.registered_model_repo.rename(old_name, new_name)
+
     def delete_registered_model_permission(self, name: str, username: str):
         return self.registered_model_repo.delete(name, username)
 
@@ -181,6 +184,9 @@ class SqlAlchemyStore:
 
     def create_group_model_permission(self, group_name: str, name: str, permission: str):
         return self.registered_model_group_repo.create(group_name, name, permission)
+
+    def rename_group_model_permissions(self, old_name: str, new_name: str):
+        return self.registered_model_group_repo.rename(old_name, new_name)
 
     def delete_group_model_permission(self, group_name: str, name: str):
         return self.registered_model_group_repo.delete(group_name, name)
