@@ -11,8 +11,7 @@
   <mat-tab label="Service Accounts">
     <div class="header-section">
       <button mat-button (click)="createServiceAccount()">
-        <mat-icon>add</mat-icon>
-        <span>Create Service Account</span>
+        + Create Service Account
       </button>
     </div>
     <ml-table
@@ -27,6 +26,6 @@
 
 <ng-template #loader>
   <div class="loader d-flex justify-content-center align-items-center my-5">
-    <mat-spinner [diameter]="40"></mat-spinner>
+    <span>Loading...</span>
   </div>
 </ng-template>

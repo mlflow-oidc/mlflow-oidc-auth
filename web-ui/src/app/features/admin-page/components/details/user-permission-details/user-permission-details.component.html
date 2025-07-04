@@ -1,5 +1,5 @@
 <mat-tab-group (selectedIndexChange)="handleTabSelection($event)" #userTabs>
-  <!--  Experiments-->
+  <!-- Experiments -->
   <mat-tab label="Experiments">
     <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[0]"
       (selectedIndexChange)="handleSubTabSelection($event)">
@@ -14,8 +14,7 @@
         <div class="my-3">
           <div class="header-section">
             <button mat-button (click)="openModalAddExperimentRegexPermissionToUser()">
-              <mat-icon>add</mat-icon>
-              <span>Add</span>
+              Add Regex Permission
             </button>
           </div>
         </div>
@@ -23,18 +22,16 @@
           *ngIf="experimentRegexDataSource.length" [actions]="experimentRegexActions"
           (action)="handleExperimentRegexActions($event)">
         </ml-table>
-        <div class="no-data" *ngIf="!experimentRegexDataSource.length">No experiment regex permissions found for this
-          user.</div>
+        <div class="no-data" *ngIf="!experimentRegexDataSource.length">No experiment regex permissions found for this user.</div>
       </mat-tab>
     </mat-tab-group>
   </mat-tab>
 
-  <!--  Models-->
+  <!-- Models -->
   <mat-tab label="Models">
     <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[1]"
       (selectedIndexChange)="handleSubTabSelection($event)">
       <mat-tab label="Permissions">
-
         <ml-table [columnConfig]="modelsColumnConfig" [data]="modelsDataSource" *ngIf="modelsDataSource.length"
           [actions]="modelsActions" (action)="handleModelActions($event)">
         </ml-table>
@@ -44,8 +41,7 @@
         <div class="my-3">
           <div class="header-section">
             <button mat-button (click)="openModalAddModelRegexPermissionToUser()">
-              <mat-icon>add</mat-icon>
-              <span>Add</span>
+              Add Regex Permission
             </button>
           </div>
         </div>
@@ -55,9 +51,9 @@
         <div class="no-data" *ngIf="!modelRegexDataSource.length">No model regex permissions found for this user.</div>
       </mat-tab>
     </mat-tab-group>
-
-    <!--  Prompts-->
   </mat-tab>
+
+  <!-- Prompts -->
   <mat-tab label="Prompts">
     <mat-tab-group mat-stretch-tabs [selectedIndex]="selectedSubTabIndexes[2]"
       (selectedIndexChange)="handleSubTabSelection($event)">
@@ -71,16 +67,14 @@
         <div class="my-3">
           <div class="header-section">
             <button mat-button (click)="openModalAddPromptRegexPermissionToUser()">
-              <mat-icon>add</mat-icon>
-              <span>Add</span>
+              Add Regex Permission
             </button>
           </div>
         </div>
         <ml-table [columnConfig]="promptRegexColumnConfig" [data]="promptRegexDataSource"
           *ngIf="promptRegexDataSource.length" [actions]="promptRegexActions"
           (action)="handlePromptRegexActions($event)"></ml-table>
-        <div class="no-data" *ngIf="!promptRegexDataSource.length">No prompt regex permissions found for this user.
-        </div>
+        <div class="no-data" *ngIf="!promptRegexDataSource.length">No prompt regex permissions found for this user.</div>
       </mat-tab>
     </mat-tab-group>
   </mat-tab>
