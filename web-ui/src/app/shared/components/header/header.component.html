@@ -5,16 +5,13 @@
         <span class="pe-5 fs-16">MLFlow Permission Manager</span>
 
         <button mat-button [routerLink]="['/home']">
-            <mat-icon>home</mat-icon>
             Home
         </button>
         <a mat-button href="/" target="_self" class="ms-3">
-            <mat-icon>dashboard</mat-icon>
-            MLflow
+            MLflow UI
         </a>
         <button mat-button [routerLink]="['/manage']" class="ms-3">
-            <mat-icon>manage_accounts</mat-icon>
-            Manage
+            User Management
         </button>
         <span class="spacer"></span>
 
@@ -23,8 +20,7 @@
             <ng-container *ngIf="admin">(Admin)</ng-container>
         </span>
         <button mat-button (click)="logout()">
-            <mat-icon>exit_to_app</mat-icon>
-            <span>Logout</span>
+            Logout
         </button>
     </div>
 
