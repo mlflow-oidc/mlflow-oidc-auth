@@ -304,6 +304,22 @@ class TestAuth:
             errors = handle_user_and_group_management(token)
             assert "Group detection error: Failed to get user groups" in errors
 
+    def test_handle_user_and_group_management_group_missing_error(self):
+        from mlflow_oidc_auth.auth import handle_user_and_group_management
+
+        token = {
+            "userinfo": {"email": "user@example.com", "name": "User"},
+            "access_token": "token",
+        }
+
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = None
+        config.OIDC_GROUPS_ATTRIBUTE = "groups"
+
+        with patch("mlflow_oidc_auth.auth.app"):
+            errors = handle_user_and_group_management(token)
+            assert "Group detection error: Failed to get user groups" in errors
+
     def test_handle_user_and_group_management_db_error(self):
         from mlflow_oidc_auth.auth import handle_user_and_group_management
 
