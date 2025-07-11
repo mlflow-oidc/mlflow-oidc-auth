@@ -312,6 +312,10 @@ class TestAuth:
             "access_token": "token",
         }
 
+        config = importlib.import_module("mlflow_oidc_auth.config").config
+        config.OIDC_GROUP_DETECTION_PLUGIN = None
+        config.OIDC_GROUPS_ATTRIBUTE = "groups"
+
         with patch("mlflow_oidc_auth.auth.app"):
             errors = handle_user_and_group_management(token)
             assert "Group detection error: Failed to get user groups" in errors
