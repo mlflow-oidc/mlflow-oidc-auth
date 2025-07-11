@@ -145,7 +145,7 @@ def handle_user_and_group_management(token) -> list[str]:
 
             user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
         else:
-            user_groups = token["userinfo"].get(config.OIDC_GROUPS_ATTRIBUTE, [])
+            user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
     except Exception as e:
         app.logger.error(f"Group detection error: {str(e)}")
         errors.append("Group detection error: Failed to get user groups")
