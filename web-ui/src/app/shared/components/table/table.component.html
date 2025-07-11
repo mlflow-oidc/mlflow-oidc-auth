@@ -12,24 +12,22 @@
 
   <ng-container *ngFor="let column of columnConfig">
     <ng-container [matColumnDef]="column.key">
-      <th mat-header-cell *matHeaderCellDef> {{column.title}}</th>
-      <td mat-cell *matCellDef="let element"> {{element[column.key]}} </td>
+      <th mat-header-cell *matHeaderCellDef>{{column.title}}</th>
+      <td mat-cell *matCellDef="let element">{{element[column.key]}}</td>
     </ng-container>
   </ng-container>
-
 
   <!--Actions column-->
   <ng-container [matColumnDef]="columnActionName">
     <th mat-header-cell *matHeaderCellDef>Actions</th>
     <td mat-cell *matCellDef="let item">
-      <button mat-icon-button [matMenuTriggerFor]="menu">
-        <mat-icon>more_vert</mat-icon>
+      <button mat-button [matMenuTriggerFor]="menu">
+        ▼
       </button>
       <mat-menu #menu="matMenu">
         <ng-container *ngFor="let action of actions">
           <button mat-menu-item (click)="handleActionClick(item, action)">
-            <mat-icon>{{action.icon}}</mat-icon>
-            <span>{{action.name}}</span>
+            {{action.name}}
           </button>
         </ng-container>
       </mat-menu>

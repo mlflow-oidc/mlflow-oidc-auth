@@ -10,7 +10,9 @@
       <mat-form-field appearance="outline" class="date-picker" [color]="form.controls['expirationDate'].invalid ? 'warn' : 'primary'">
         <mat-label>Expiration Date</mat-label>
         <input matInput [matDatepicker]="picker" formControlName="expirationDate" (dateChange)="onDateChange($event)">
-        <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
+        <mat-datepicker-toggle matSuffix [for]="picker">
+          <span class="date-toggle">Select Date</span>
+        </mat-datepicker-toggle>
         <mat-datepicker #picker></mat-datepicker>
       </mat-form-field>
       <button mat-raised-button color="primary" class="request-button" (click)="requestToken()" [disabled]="form.invalid">Request Token</button>
@@ -19,8 +21,8 @@
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>Access Key</mat-label>
       <input matInput type="text" [value]="token" readonly>
-      <button mat-icon-button matSuffix aria-label="Copy" (click)="copyInputMessage()">
-        <mat-icon>content_copy</mat-icon>
+      <button mat-button matSuffix aria-label="Copy" (click)="copyInputMessage()">
+        Copy
       </button>
     </mat-form-field>
   </form>
