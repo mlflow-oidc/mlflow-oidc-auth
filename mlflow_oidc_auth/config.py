@@ -33,6 +33,7 @@ class AppConfig:
         self.OIDC_ALEMBIC_VERSION_TABLE = os.environ.get("OIDC_ALEMBIC_VERSION_TABLE", "alembic_version")
         self.PERMISSION_SOURCE_ORDER = [source.strip() for source in os.environ.get("PERMISSION_SOURCE_ORDER", "user,group,regex,group-regex").split(",")]
         self.EXTEND_MLFLOW_MENU = get_bool_env_variable("EXTEND_MLFLOW_MENU", True)
+        self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = get_bool_env_variable("DEFAULT_LANDING_PAGE_IS_PERMISSIONS", True)
 
         # session
         self.SESSION_TYPE = os.environ.get("SESSION_TYPE", "cachelib")
