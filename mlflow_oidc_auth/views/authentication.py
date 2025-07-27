@@ -25,7 +25,7 @@ def logout():
             username=None,
             provide_display_name=config.OIDC_PROVIDER_DISPLAY_NAME,
         )
-    return redirect("/")
+    return redirect(url_for("serve"))
 
 
 def callback():
@@ -40,4 +40,6 @@ def callback():
             error_messages=errors,
         )
     session["username"] = email
-    return redirect(url_for("oidc_ui"))
+    if config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS:
+        return redirect(url_for("oidc_ui"))
+    return redirect(url_for("serve"))

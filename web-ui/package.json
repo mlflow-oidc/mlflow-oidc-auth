@@ -31,6 +31,7 @@
     "@ng-bootstrap/ng-bootstrap": "^18.0.0",
     "@popperjs/core": "^2.10.2",
     "bootstrap": "^5.3.5",
+    "material-design-icons-iconfont": "^6.7.0",
     "rxjs": "~7.8.2",
     "tslib": "^2.8.1",
     "xng-breadcrumb": "^8.0.2",
