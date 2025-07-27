@@ -17,6 +17,23 @@ h1 {
     color: #1f4e79;
 }
 
+/* Icon Styles */
+.icon-github, .icon-exclamation {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 5px;
+}
+
+.icon-github {
+    width: 16px;
+    height: 16px;
+}
+
+.icon-exclamation {
+    width: 16px;
+    height: 16px;
+}
+
 /* Button Styles */
 button {
     background-color: #1f4e79;
