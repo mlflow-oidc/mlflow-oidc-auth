@@ -34,7 +34,6 @@
     "material-design-icons-iconfont": "^6.7.0",
     "rxjs": "~7.8.2",
     "tslib": "^2.8.1",
-    "typeface-roboto": "^1.1.13",
     "xng-breadcrumb": "^8.0.2",
     "zone.js": "~0.15.0"
   },

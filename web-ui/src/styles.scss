@@ -1,9 +1,8 @@
 /* You can add global styles to this file, and also import other style files */
 @use 'bootstrap/scss/bootstrap';
-@use 'typeface-roboto/index.css';
-@use 'material-design-icons-iconfont/dist/material-design-icons.css';
+@import 'material-design-icons-iconfont/dist/material-design-icons.css';
 
 html, body { height: 100%; }
-body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; padding-bottom: 4rem; }
+body { margin: 0; font-family: "Helvetica Neue", sans-serif; padding-bottom: 4rem; }
 .content { padding-bottom: 4rem; }
 table.mat-table { margin-bottom: 4rem; }
