@@ -18,7 +18,8 @@ app.template_folder = template_dir
 static_folder = app.static_folder
 
 # Add links to MLFlow UI
-app.view_functions["serve"] = views.index
+if config.EXTEND_MLFLOW_MENU:
+    app.view_functions["serve"] = views.index
 
 # OIDC routes
 app.add_url_rule(rule=routes.LOGIN, methods=["GET"], view_func=views.login)
