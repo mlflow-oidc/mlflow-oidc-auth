@@ -1,3 +1,0 @@
-# Session storage
-
-# Caching
