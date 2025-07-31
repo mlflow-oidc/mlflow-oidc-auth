@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { FaIconLibrary } from '@fortawesome/angular-fontawesome';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
+import { faBook } from '@fortawesome/free-solid-svg-icons';
 
 @Component({
   selector: 'ml-footer',
@@ -14,5 +15,6 @@ import { faGithub } from '@fortawesome/free-brands-svg-icons';
 export class FooterComponent {
   constructor(library: FaIconLibrary) {
     library.addIcons(faGithub);
+    library.addIcons(faBook);
   }
 }

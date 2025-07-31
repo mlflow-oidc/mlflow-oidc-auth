@@ -8,10 +8,10 @@
             <mat-icon>home</mat-icon>
             Home
         </button>
-        <a mat-button href="/" target="_self" class="ms-3">
+        <button mat-button (click)="redirectToMLflow()" class="ms-3">
             <mat-icon>dashboard</mat-icon>
             MLflow
-        </a>
+        </button>
         <button mat-button [routerLink]="['/manage']" class="ms-3">
             <mat-icon>manage_accounts</mat-icon>
             Manage

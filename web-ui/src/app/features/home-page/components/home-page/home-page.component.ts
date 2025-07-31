@@ -5,6 +5,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 
 import { AccessKeyModalComponent } from 'src/app/shared/components';
 import { AuthService } from 'src/app/shared/services';
+import { NavigationUrlService } from 'src/app/shared/services/navigation-url.service';
+import { API_URL } from 'src/app/core/configs/api-urls';
 import { EXPERIMENTS_COLUMN_CONFIG, MODELS_COLUMN_CONFIG, PROMPTS_COLUMN_CONFIG } from './home-page.config';
 import { AccessKeyDialogData } from 'src/app/shared/components/modals/access-key-modal/access-key-modal.interface';
 import { UserDataService } from 'src/app/shared/services/data/user-data.service';
@@ -39,9 +41,10 @@ export class HomePageComponent implements OnInit, AfterViewInit {
     private readonly dialog: MatDialog,
     private readonly authService: AuthService,
     private readonly userDataService: UserDataService,
+    private readonly navigationUrlService: NavigationUrlService,
     private readonly router: Router,
     private readonly route: ActivatedRoute
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.currentUserInfo = this.authService.getUserInfo();
@@ -66,7 +69,7 @@ export class HomePageComponent implements OnInit, AfterViewInit {
   }
 
   redirectToMLFlow() {
-    window.location.href = '/';
+    this.navigationUrlService.navigateTo(API_URL.HOME);
   }
 
   handleTabSelection(index: number) {

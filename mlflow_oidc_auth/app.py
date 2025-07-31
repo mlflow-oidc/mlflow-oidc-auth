@@ -7,6 +7,7 @@ from mlflow.server import app
 from mlflow_oidc_auth import routes, views
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Configure custom Flask app
 template_dir = os.path.dirname(__file__)
@@ -16,6 +17,21 @@ app.config.from_object(config)
 app.secret_key = app.config["SECRET_KEY"].encode("utf8")
 app.template_folder = template_dir
 static_folder = app.static_folder
+
+# Configure ProxyFix middleware to handle reverse proxy headers
+app.wsgi_app = ProxyFix(
+    app.wsgi_app,
+    x_for=config.PROXY_FIX_X_FOR,
+    x_proto=config.PROXY_FIX_X_PROTO,
+    x_host=config.PROXY_FIX_X_HOST,
+    x_port=config.PROXY_FIX_X_PORT,
+    x_prefix=config.PROXY_FIX_X_PREFIX,
+)
+
+app.logger.debug(
+    f"ProxyFix middleware configured - x_for={config.PROXY_FIX_X_FOR}, x_proto={config.PROXY_FIX_X_PROTO}, x_host={config.PROXY_FIX_X_HOST}, x_port={config.PROXY_FIX_X_PORT}, x_prefix={config.PROXY_FIX_X_PREFIX}"
+)
+
 
 # Add links to MLFlow UI
 if config.EXTEND_MLFLOW_MENU:
@@ -30,6 +46,9 @@ app.add_url_rule(rule=routes.CALLBACK, methods=["GET"], view_func=views.callback
 app.add_url_rule(rule=routes.STATIC, methods=["GET"], view_func=views.oidc_static)
 app.add_url_rule(rule=routes.UI, methods=["GET"], view_func=views.oidc_ui)
 app.add_url_rule(rule=routes.UI_ROOT, methods=["GET"], view_func=views.oidc_ui)
+
+# Runtime configuration endpoint under UI path
+app.add_url_rule(rule=routes.UI_CONFIG, methods=["GET"], view_func=views.get_runtime_config)
 
 # User token
 app.add_url_rule(rule=routes.CREATE_ACCESS_TOKEN, methods=["PATCH"], view_func=views.create_user_access_token)

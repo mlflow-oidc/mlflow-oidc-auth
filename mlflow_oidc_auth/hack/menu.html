@@ -56,8 +56,8 @@
                 return;
             }
             var username = response.display_name;
-            var oidcLink = "/oidc/ui/";
-            var logoutLink = "/logout";
+            var oidcLink = "oidc/ui/";
+            var logoutLink = "logout";
             waitForDocsLink(function(docsLink) {
                 addLinks(username, oidcLink, logoutLink, docsLink);
             });
