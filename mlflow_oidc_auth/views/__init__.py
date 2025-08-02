@@ -1,4 +1,5 @@
 from mlflow_oidc_auth.views.authentication import *
+from mlflow_oidc_auth.views.config import *
 from mlflow_oidc_auth.views.experiment import *
 from mlflow_oidc_auth.views.experiment_regex import *
 from mlflow_oidc_auth.views.group import *

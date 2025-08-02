@@ -9,6 +9,9 @@ STATIC = "/oidc/static/<path:filename>"
 UI = "/oidc/ui/<path:filename>"
 UI_ROOT = "/oidc/ui/"
 
+# Runtime configuration endpoint under UI path
+UI_CONFIG = "/oidc/ui/config.json"
+
 ########### API refactoring ###########
 # USER, EXPERIMENT, PATTERN
 USER_EXPERIMENT_PERMISSIONS = _get_rest_path("/mlflow/permissions/users/<string:username>/experiments")

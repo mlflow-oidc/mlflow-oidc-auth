@@ -74,7 +74,7 @@ Instructions for generating high-quality Angular applications with TypeScript, u
 - Implement server-side rendering (SSR) or static site generation (SSG) with Angular Universal (if specified)
 
 ### Testing
-- Write unit tests for components, services, and pipes using Jasmine and Karma
+- Write unit tests for components, services, and pipes using Jest
 - Use Angular's `TestBed` for component testing with mocked dependencies
 - Test signal-based state updates using Angular's testing utilities
 - Write end-to-end tests with Cypress or Playwright (if specified)

@@ -1,4 +1,7 @@
 export const API_URL = {
+  LOGOUT: '/logout',
+  HOME: '/',
+
   // List endpoints
   ALL_GROUPS: '/api/2.0/mlflow/permissions/groups',
   ALL_EXPERIMENTS: '/api/2.0/mlflow/permissions/experiments',

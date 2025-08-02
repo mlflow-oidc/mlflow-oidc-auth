@@ -7,6 +7,7 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { SharedModule } from './shared/shared.module';
 import { HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ErrorHandlerInterceptor } from './shared/interceptors/error-handler.interceptor';
+import { RuntimeConfigInterceptor } from './core/interceptors/runtime-config.interceptor';
 import { FooterComponent } from './shared/components/footer/footer.component';
 import { MatNativeDateModule } from '@angular/material/core';
 
@@ -26,7 +27,12 @@ import { MatNativeDateModule } from '@angular/material/core';
       useClass: ErrorHandlerInterceptor,
       multi: true,
     },
+    {
+      provide: HTTP_INTERCEPTORS,
+      useClass: RuntimeConfigInterceptor,
+      multi: true,
+    },
   ],
   bootstrap: [AppComponent],
 })
-export class AppModule {}
+export class AppModule { }
