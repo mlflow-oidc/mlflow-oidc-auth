@@ -20,7 +20,8 @@
     "module": "es2020",
     "lib": ["es2020", "dom"],
     "useDefineForClassFields": false,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "typeRoots": ["node_modules/@types", "src/types"]
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

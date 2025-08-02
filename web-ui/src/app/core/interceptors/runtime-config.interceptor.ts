@@ -15,7 +15,7 @@ export class RuntimeConfigInterceptor implements HttpInterceptor {
    * Get the current runtime configuration from global scope
    */
   private getCurrentConfig(): RuntimeConfig {
-    return (window as any).__RUNTIME_CONFIG__ || DEFAULT_RUNTIME_CONFIG;
+    return window.__RUNTIME_CONFIG__ || DEFAULT_RUNTIME_CONFIG;
   }
 
   /**

@@ -146,8 +146,17 @@ describe('HomePageComponent', () => {
   });
 
   it('should handle empty currentUserInfo gracefully in ngOnInit', () => {
+    // Reset the mock to return null
     authServiceMock.getUserInfo.mockReturnValue(null);
+
+    // Reset the component's data sources to their initial state
+    component.experimentsDataSource = [];
+    component.modelsDataSource = [];
+    component.promptsDataSource = [];
+
+    // Call ngOnInit with the updated mock
     component.ngOnInit();
+
     expect(component.currentUserInfo).toBeNull();
     expect(component.experimentsDataSource).toEqual([]);
     expect(component.modelsDataSource).toEqual([]);

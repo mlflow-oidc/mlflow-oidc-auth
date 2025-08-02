@@ -120,7 +120,6 @@ def _get_base_url_from_request() -> str:
         raise RuntimeError("_get_base_url_from_request() requires an active Flask request context")
 
     parsed_url = urlparse(request.url)
-    print(f"Script root: {request.script_root}")  # Debugging output
     # Use script_root for the base path (proxy prefix), default to "/" if empty
     base_path = request.script_root if request.script_root else ""
 
