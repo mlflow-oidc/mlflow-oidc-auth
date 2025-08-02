@@ -55,6 +55,10 @@ export class HomePageComponent implements OnInit, AfterViewInit {
       this.modelsDataSource = models;
       this.experimentsDataSource = experiments;
       this.promptsDataSource = prompts;
+    } else {
+      this.experimentsDataSource = [];
+      this.modelsDataSource = [];
+      this.promptsDataSource = [];
     }
   }
 
