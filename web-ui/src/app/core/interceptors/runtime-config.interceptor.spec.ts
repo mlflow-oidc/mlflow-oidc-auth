@@ -12,7 +12,7 @@ describe('RuntimeConfigInterceptor', () => {
         handler = {
             handle: jest.fn((req: HttpRequest<any>) => of(new HttpResponse({ status: 200, url: req.url })))
         };
-        (window as any).__RUNTIME_CONFIG__ = undefined;
+        window.__RUNTIME_CONFIG__ = undefined;
     });
 
     it('should use DEFAULT_RUNTIME_CONFIG if global config is not set', () => {
@@ -20,17 +20,17 @@ describe('RuntimeConfigInterceptor', () => {
     });
 
     it('should use global __RUNTIME_CONFIG__ if set', () => {
-        (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy' };
+        window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui' };
         expect((interceptor as any).getCurrentConfig().basePath).toBe('/proxy');
     });
 
     it('should build URL with basePath and relative path', () => {
-        (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy' };
+        window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui' };
         expect((interceptor as any).buildUrl('api/test')).toBe('/proxy/api/test');
     });
 
     it('should build URL with basePath and absolute path', () => {
-        (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy/' };
+        window.__RUNTIME_CONFIG__ = { basePath: '/proxy/', uiPath: '/ui' };
         expect((interceptor as any).buildUrl('/api/test')).toBe('/proxy/api/test');
     });
 
@@ -41,7 +41,7 @@ describe('RuntimeConfigInterceptor', () => {
     });
 
     it('should not modify already prefixed URLs', () => {
-        (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy' };
+        window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui' };
         const req = new HttpRequest('GET', '/proxy/api/test');
         interceptor.intercept(req, handler).subscribe();
         expect(handler.handle).toHaveBeenCalledWith(req);
@@ -54,7 +54,7 @@ describe('RuntimeConfigInterceptor', () => {
     });
 
     it('should add basePath to relative URLs', () => {
-        (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy' };
+        window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui' };
         const req = new HttpRequest('GET', 'api/test');
         interceptor.intercept(req, handler).subscribe((event: HttpEvent<any>) => {
             expect((event as HttpResponse<any>).url).toBe('/proxy/api/test');
@@ -62,7 +62,7 @@ describe('RuntimeConfigInterceptor', () => {
     });
 
     it('should handle empty basePath gracefully', () => {
-        (window as any).__RUNTIME_CONFIG__ = { basePath: '' };
+        window.__RUNTIME_CONFIG__ = { basePath: '', uiPath: '/ui' };
         const req = new HttpRequest('GET', 'api/test');
         interceptor.intercept(req, handler).subscribe((event: HttpEvent<any>) => {
             expect((event as HttpResponse<any>).url).toBe('api/test');

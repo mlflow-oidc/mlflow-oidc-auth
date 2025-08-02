@@ -25,7 +25,7 @@ async function bootstrap(): Promise<void> {
   }
 
   // Store the configuration globally for services to access
-  (window as any).__RUNTIME_CONFIG__ = runtimeConfig;
+  window.__RUNTIME_CONFIG__ = runtimeConfig;
 
   // Bootstrap the Angular application
   try {

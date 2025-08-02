@@ -48,7 +48,7 @@ async function createBootstrapFunction(): Promise<void> {
   }
 
   // Store the configuration globally for services to access
-  (window as any).__RUNTIME_CONFIG__ = runtimeConfig;
+  window.__RUNTIME_CONFIG__ = runtimeConfig;
 
   // Bootstrap the Angular application
   try {
@@ -79,7 +79,7 @@ describe('main.ts bootstrap', () => {
     mockLoadRuntimeConfig.mockResolvedValue(mockRuntimeConfig);
     mockUpdateBaseHref.mockImplementation(() => {});
 
-    (window as any).__RUNTIME_CONFIG__ = undefined;
+    window.__RUNTIME_CONFIG__ = undefined;
   });
 
   it('should enable prod mode if environment.production is true', async () => {
@@ -98,7 +98,7 @@ describe('main.ts bootstrap', () => {
     await createBootstrapFunction();
     expect(mockLoadRuntimeConfig).toHaveBeenCalled();
     expect(mockUpdateBaseHref).toHaveBeenCalledWith('/test-ui');
-    expect((window as any).__RUNTIME_CONFIG__).toEqual(mockRuntimeConfig);
+    expect(window.__RUNTIME_CONFIG__).toEqual(mockRuntimeConfig);
   });
 
   it('should not update base href if uiPath does not exist', async () => {

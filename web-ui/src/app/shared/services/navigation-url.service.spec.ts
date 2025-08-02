@@ -7,7 +7,7 @@ describe('NavigationUrlService', () => {
   beforeEach(() => {
     service = new NavigationUrlService();
     // Reset global config before each test
-    (window as any).__RUNTIME_CONFIG__ = undefined;
+    window.__RUNTIME_CONFIG__ = undefined;
   });
 
   describe('getCurrentConfig', () => {
@@ -16,15 +16,15 @@ describe('NavigationUrlService', () => {
     });
 
     it('should return global config if set', () => {
-      const customConfig = { basePath: '/proxy', apiUrl: '/api' };
-      (window as any).__RUNTIME_CONFIG__ = customConfig;
+      const customConfig = { basePath: '/proxy', uiPath: '/ui' };
+      window.__RUNTIME_CONFIG__ = customConfig;
       expect((service as any).getCurrentConfig()).toEqual(customConfig);
     });
   });
 
   describe('buildNavigationUrl', () => {
     beforeEach(() => {
-      (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy', apiUrl: '/api' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui' };
     });
 
     it('should prefix path with basePath and handle leading slash', () => {
@@ -33,12 +33,12 @@ describe('NavigationUrlService', () => {
     });
 
     it('should remove trailing slash from basePath', () => {
-      (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy/', apiUrl: '/api' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/proxy/', uiPath: '/ui' };
       expect(service.buildNavigationUrl('/admin')).toBe('/proxy/admin');
     });
 
     it('should remove double slashes except protocol', () => {
-      (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy/', apiUrl: '/api' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/proxy/', uiPath: '/ui' };
       expect(service.buildNavigationUrl('//admin')).toBe('/proxy/admin');
     });
 
@@ -47,14 +47,14 @@ describe('NavigationUrlService', () => {
     });
 
     it('should handle basePath as root', () => {
-      (window as any).__RUNTIME_CONFIG__ = { basePath: '/', apiUrl: '/api' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/', uiPath: '/ui' };
       expect(service.buildNavigationUrl('/test')).toBe('/test');
     });
   });
 
   describe('navigateTo', () => {
     it('should set window.location.href to the built URL', () => {
-      (window as any).__RUNTIME_CONFIG__ = { basePath: '/proxy', apiUrl: '/api' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui' };
       const originalHref = window.location.href;
       let hrefValue = '';
       Object.defineProperty(window, 'location', {
