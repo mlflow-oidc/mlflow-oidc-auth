@@ -176,8 +176,8 @@ class TestPermissions(unittest.TestCase):
         from mlflow_oidc_auth.entities import RegisteredModelRegexPermission
 
         regex_perms = [
-            RegisteredModelRegexPermission(regex="test.*", permission="READ", priority=1, user_id=1),
-            RegisteredModelRegexPermission(regex="prod.*", permission="MANAGE", priority=2, user_id=1),
+            RegisteredModelRegexPermission(id_=1, regex="test.*", permission="READ", priority=1, user_id=1),
+            RegisteredModelRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, user_id=1),
         ]
 
         # Match found
@@ -200,8 +200,8 @@ class TestPermissions(unittest.TestCase):
         mock_tracking_store.return_value.get_experiment.return_value = mock_experiment
 
         regex_perms = [
-            ExperimentRegexPermission(regex="test.*", permission="READ", priority=1, user_id=1),
-            ExperimentRegexPermission(regex="prod.*", permission="MANAGE", priority=2, user_id=1),
+            ExperimentRegexPermission(id_=1, regex="test.*", permission="READ", priority=1, user_id=1),
+            ExperimentRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, user_id=1),
         ]
 
         # Match found
