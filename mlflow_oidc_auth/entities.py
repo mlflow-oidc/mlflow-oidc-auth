@@ -431,17 +431,23 @@ class ExperimentGroupRegexPermission:
 class RegisteredModelRegexPermission:
     def __init__(
         self,
+        id_,
         regex,
         priority,
         user_id,
         permission,
         prompt=False,
     ):
+        self._id = id_
         self._regex = regex
         self._priority = priority
         self._user_id = user_id
         self._permission = permission
         self._prompt = prompt
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def regex(self):
@@ -477,6 +483,7 @@ class RegisteredModelRegexPermission:
 
     def to_json(self):
         return {
+            "id": self.id,
             "regex": self.regex,
             "priority": self.priority,
             "user_id": self.user_id,
@@ -487,6 +494,7 @@ class RegisteredModelRegexPermission:
     @classmethod
     def from_json(cls, dictionary):
         return cls(
+            id_=dictionary["id"],
             regex=dictionary["regex"],
             priority=dictionary["priority"],
             user_id=dictionary["user_id"],
@@ -498,15 +506,21 @@ class RegisteredModelRegexPermission:
 class ExperimentRegexPermission:
     def __init__(
         self,
+        id_,
         regex,
         priority,
         user_id,
         permission,
     ):
+        self._id = id_
         self._regex = regex
         self._priority = priority
         self._user_id = user_id
         self._permission = permission
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def regex(self):
@@ -534,6 +548,7 @@ class ExperimentRegexPermission:
 
     def to_json(self):
         return {
+            "id": self.id,
             "regex": self.regex,
             "priority": self.priority,
             "user_id": self.user_id,
@@ -543,6 +558,7 @@ class ExperimentRegexPermission:
     @classmethod
     def from_json(cls, dictionary):
         return cls(
+            id_=dictionary["id"],
             regex=dictionary["regex"],
             priority=dictionary["priority"],
             user_id=dictionary["user_id"],
