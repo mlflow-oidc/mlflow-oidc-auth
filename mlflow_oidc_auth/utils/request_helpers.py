@@ -1,11 +1,13 @@
 from flask import request, session
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE, INTERNAL_ERROR
-from mlflow.server import app
+from mlflow.protos.databricks_pb2 import BAD_REQUEST, INTERNAL_ERROR, INVALID_PARAMETER_VALUE
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.auth import validate_token
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.store import store
+
+logger = get_logger()
 
 
 def _experiment_id_from_name(experiment_name: str) -> str:
@@ -64,7 +66,7 @@ def get_optional_url_param(param: str) -> str | None:
     """
     view_args = request.view_args
     if not view_args or param not in view_args:
-        app.logger.debug(f"Optional URL parameter '{param}' not found in request path.")
+        logger.debug(f"Optional URL parameter '{param}' not found in request path.")
         return None
     return view_args[param]
 
@@ -139,7 +141,7 @@ def get_optional_request_param(param: str) -> str | None:
         )
 
     if not args or param not in args:
-        app.logger.debug(f"Optional parameter '{param}' not found in request data.")
+        logger.debug(f"Optional parameter '{param}' not found in request data.")
         return None
     return args[param]
 
@@ -156,11 +158,11 @@ def get_username() -> str:
     try:
         username = session.get("username")
         if username:
-            app.logger.debug(f"Username from session: {username}")
+            logger.debug(f"Username from session: {username}")
             return username
         elif request.authorization is not None:
             if request.authorization.type == "basic":
-                app.logger.debug(f"Username from basic auth: {request.authorization.username}")
+                logger.debug(f"Username from basic auth: {request.authorization.username}")
                 if request.authorization.username is not None:
                     username = store.get_user(request.authorization.username).username
                     return username
@@ -168,18 +170,18 @@ def get_username() -> str:
             if request.authorization.type == "bearer":
                 token_data = validate_token(request.authorization.token)
                 username = token_data.get("email")
-                app.logger.debug(f"Username from bearer token: {username}")
+                logger.debug(f"Username from bearer token: {username}")
                 if username is not None:
                     return username
                 raise MlflowException("Email claim is missing in bearer token.", INVALID_PARAMETER_VALUE)
             raise MlflowException(f"Unsupported authorization type: {request.authorization.type}", INVALID_PARAMETER_VALUE)
-        app.logger.debug("No username found in session or authorization headers.")
+        logger.debug("No username found in session or authorization headers.")
         raise MlflowException("Authentication required. Please see documentation for details.", INVALID_PARAMETER_VALUE)
     except Exception as e:
         if isinstance(e, MlflowException):
             raise
         # Handle unexpected errors
-        app.logger.error(f"Error getting username: {e}")
+        logger.error(f"Error getting username: {e}")
         raise MlflowException("Authentication required. Please see documentation for details.", INTERNAL_ERROR)
 
 

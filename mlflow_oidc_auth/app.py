@@ -3,11 +3,14 @@ import os
 from flask_caching import Cache
 from flask_session import Session
 from mlflow.server import app
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from mlflow_oidc_auth import routes, views
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
-from werkzeug.middleware.proxy_fix import ProxyFix
+from mlflow_oidc_auth.logger import get_logger
+
+logger = get_logger()
 
 # Configure custom Flask app
 template_dir = os.path.dirname(__file__)
@@ -28,10 +31,9 @@ app.wsgi_app = ProxyFix(
     x_prefix=config.PROXY_FIX_X_PREFIX,
 )
 
-app.logger.debug(
+logger.debug(
     f"ProxyFix middleware configured - x_for={config.PROXY_FIX_X_FOR}, x_proto={config.PROXY_FIX_X_PROTO}, x_host={config.PROXY_FIX_X_HOST}, x_port={config.PROXY_FIX_X_PORT}, x_prefix={config.PROXY_FIX_X_PREFIX}"
 )
-
 
 # Add links to MLFlow UI
 if config.EXTEND_MLFLOW_MENU:

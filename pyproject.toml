@@ -39,6 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 full = ["mlflow<4,>=2.21.0"]
+fastapi = ["fastapi>=0.100.0", "uvicorn>=0.20.0"]
 caching-redis = ["redis[hiredis]<6"]
 dev = [
   "black<26,>=24.8.0",
@@ -61,7 +62,9 @@ documentation = "https://github.com/mlflow-oidc/mlflow-oidc-auth/tree/main/docs/
 repository = "https://github.com/mlflow-oidc/mlflow-oidc-auth"
 
 [project.entry-points."mlflow.app"]
-oidc-auth = "mlflow_oidc_auth.app:app"
+oidc-auth = "mlflow_oidc_auth.fastapi_app:app"
+oidc-auth-flask = "mlflow_oidc_auth.app:app"
+oidc-auth-fastapi = "mlflow_oidc_auth.fastapi_app:app"
 
 [project.entry-points."mlflow_oidc_auth.client"]
 basic-auth = "mlflow_oidc_auth.client:AuthServiceClient"

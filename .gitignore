@@ -189,3 +189,6 @@ integration-tests/
 
 # until it ready
 web-react/
+
+nginx.conf
+.kiro/
