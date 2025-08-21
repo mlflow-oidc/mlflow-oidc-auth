@@ -27,7 +27,7 @@ To get the full version (with entire MLflow and all dependencies), run:
 python3 -m venv venv
 source venv/bin/activate
 python3 -m pip install mlflow-oidc-auth[full]
-mlflow server --dev --app-name oidc-auth --host 0.0.0.0 --port 8080
+mlflow server --app-name oidc-auth --host 0.0.0.0 --port 8080
 ```
 
 ## Development

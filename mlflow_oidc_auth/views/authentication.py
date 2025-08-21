@@ -5,7 +5,10 @@ from mlflow.server import app
 
 from mlflow_oidc_auth.auth import get_oauth_instance, process_oidc_callback
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri
+
+logger = get_logger()
 
 
 def login():
@@ -20,11 +23,11 @@ def login():
     session["oauth_state"] = state
     oauth_instance = get_oauth_instance(app)
     if oauth_instance is None or oauth_instance.oidc is None:
-        app.logger.error("OAuth instance or OIDC is not properly initialized")
+        logger.error("OAuth instance or OIDC is not properly initialized")
         return "Internal Server Error", 500
 
     redirect_uri = get_configured_or_dynamic_redirect_uri(config.OIDC_REDIRECT_URI)
-    app.logger.debug(f"Redirect URI for OIDC login: {redirect_uri}")
+    logger.debug(f"Redirect URI for OIDC login: {redirect_uri}")
 
     return oauth_instance.oidc.authorize_redirect(redirect_uri, state=state)
 

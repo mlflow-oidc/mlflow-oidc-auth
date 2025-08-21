@@ -3,10 +3,12 @@ import os
 import secrets
 
 from dotenv import load_dotenv
-from mlflow.server import app
+
+from mlflow_oidc_auth.logger import get_logger
 
 load_dotenv()  # take environment variables from .env.
-app.logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+logger = get_logger()
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 
 def get_bool_env_variable(variable, default_value):
@@ -53,23 +55,23 @@ class AppConfig:
         if self.SESSION_TYPE:
             try:
                 session_module = importlib.import_module(f"mlflow_oidc_auth.session.{(self.SESSION_TYPE).lower()}")
-                app.logger.debug(f"Session module for {self.SESSION_TYPE} imported.")
+                logger.debug(f"Session module for {self.SESSION_TYPE} imported.")
                 for attr in dir(session_module):
                     if attr.isupper():
                         setattr(self, attr, getattr(session_module, attr))
             except ImportError:
-                app.logger.error(f"Session module for {self.SESSION_TYPE} could not be imported.")
+                logger.error(f"Session module for {self.SESSION_TYPE} could not be imported.")
         # cache
         self.CACHE_TYPE = os.environ.get("CACHE_TYPE", "FileSystemCache")
         if self.CACHE_TYPE:
             try:
                 cache_module = importlib.import_module(f"mlflow_oidc_auth.cache.{(self.CACHE_TYPE).lower()}")
-                app.logger.debug(f"Cache module for {self.CACHE_TYPE} imported.")
+                logger.debug(f"Cache module for {self.CACHE_TYPE} imported.")
                 for attr in dir(cache_module):
                     if attr.isupper():
                         setattr(self, attr, getattr(cache_module, attr))
             except ImportError:
-                app.logger.error(f"Cache module for {self.CACHE_TYPE} could not be imported.")
+                logger.error(f"Cache module for {self.CACHE_TYPE} could not be imported.")
 
 
 config = AppConfig()

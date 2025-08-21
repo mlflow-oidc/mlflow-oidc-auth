@@ -3,7 +3,6 @@ from typing import Callable, Dict, List
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
-from mlflow.server import app
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.config import config
@@ -13,9 +12,12 @@ from mlflow_oidc_auth.entities import (
     RegisteredModelGroupRegexPermission,
     RegisteredModelRegexPermission,
 )
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import get_permission
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.types import PermissionResult
+
+logger = get_logger()
 
 
 def _permission_prompt_sources_config(model_name: str, username: str) -> Dict[str, Callable[[], str]]:
@@ -60,7 +62,7 @@ def _permission_registered_model_sources_config(model_name: str, username: str) 
 def _get_registered_model_permission_from_regex(regexes: List[RegisteredModelRegexPermission], model_name: str) -> str:
     for regex in regexes:
         if re.match(regex.regex, model_name):
-            app.logger.debug(f"Regex permission found for model name {model_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
+            logger.debug(f"Regex permission found for model name {model_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
             return regex.permission
     raise MlflowException(
         f"model name {model_name}",
@@ -72,7 +74,7 @@ def _get_experiment_permission_from_regex(regexes: List[ExperimentRegexPermissio
     experiment_name = _get_tracking_store().get_experiment(experiment_id).name
     for regex in regexes:
         if re.match(regex.regex, experiment_name):
-            app.logger.debug(
+            logger.debug(
                 f"Regex permission found for experiment id {experiment_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
             )
             return regex.permission
@@ -85,9 +87,7 @@ def _get_experiment_permission_from_regex(regexes: List[ExperimentRegexPermissio
 def _get_registered_model_group_permission_from_regex(regexes: List[RegisteredModelGroupRegexPermission], model_name: str) -> str:
     for regex in regexes:
         if re.match(regex.regex, model_name):
-            app.logger.debug(
-                f"Regex group permission found for model name {model_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
-            )
+            logger.debug(f"Regex group permission found for model name {model_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
             return regex.permission
     raise MlflowException(
         f"model name {model_name}",
@@ -99,7 +99,7 @@ def _get_experiment_group_permission_from_regex(regexes: List[ExperimentGroupReg
     experiment_name = _get_tracking_store().get_experiment(experiment_id).name
     for regex in regexes:
         if re.match(regex.regex, experiment_name):
-            app.logger.debug(
+            logger.debug(
                 f"Regex group permission found for experiment id {experiment_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
             )
             return regex.permission
@@ -189,16 +189,16 @@ def get_permission_from_store_or_default(PERMISSION_SOURCES_CONFIG: Dict[str, Ca
                 permission_func = PERMISSION_SOURCES_CONFIG[source_name]
                 # Call the function to get the permission
                 perm = permission_func()
-                app.logger.debug(f"Permission found using source: {source_name}")
+                logger.debug(f"Permission found using source: {source_name}")
                 return PermissionResult(get_permission(perm), source_name)
             except MlflowException as e:
                 if e.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
                     raise  # Re-raise exceptions other than RESOURCE_DOES_NOT_EXIST
-                app.logger.debug(f"Permission not found using source {source_name}: {e}")
+                logger.debug(f"Permission not found using source {source_name}: {e}")
         else:
-            app.logger.warning(f"Invalid permission source configured: {source_name}")
+            logger.warning(f"Invalid permission source configured: {source_name}")
 
     # If no permission is found, use the default
     perm = config.DEFAULT_MLFLOW_PERMISSION
-    app.logger.debug("Default permission used")
+    logger.debug("Default permission used")
     return PermissionResult(get_permission(perm), "fallback")
