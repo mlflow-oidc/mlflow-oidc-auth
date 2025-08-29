@@ -5,6 +5,8 @@ on:
       - opened
       - edited
       - synchronize
+    paths:
+      - mlflow_oidc_auth/**
 
 jobs:
   main:
