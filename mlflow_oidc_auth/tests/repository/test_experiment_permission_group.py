@@ -206,6 +206,26 @@ def test_get_group_permission_for_user_experiment_none_found(mock_get_experiment
 
 @patch("mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._list_user_groups")
 @patch("mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._get_experiment_group_permission")
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.compare_permissions")
+def test_get_group_permission_for_user_experiment_compare_permissions_attribute_error(
+    mock_compare_permissions, mock_get_experiment_group_permission, mock_list_user_groups, repo
+):
+    """Test get_group_permission_for_user_experiment when compare_permissions raises AttributeError - covers lines 117-118"""
+    session = MagicMock()
+    repo._Session.return_value.__enter__.return_value = session
+    mock_list_user_groups.return_value = ["g1", "g2"]
+
+    perm1 = make_permission(permission="READ")
+    perm2 = make_permission(permission="WRITE")
+    mock_get_experiment_group_permission.side_effect = [perm1, perm2]
+    mock_compare_permissions.side_effect = AttributeError("test error")
+
+    result = repo.get_group_permission_for_user_experiment("exp1", "user1")
+    assert result == perm2.to_mlflow_entity()
+
+
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._list_user_groups")
+@patch("mlflow_oidc_auth.repository.experiment_permission_group.ExperimentPermissionGroupRepository._get_experiment_group_permission")
 def test_get_group_permission_for_user_experiment_attribute_error(mock_get_experiment_group_permission, mock_list_user_groups, repo):
     session = MagicMock()
     repo._Session.return_value.__enter__.return_value = session

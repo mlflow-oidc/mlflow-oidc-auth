@@ -24,6 +24,23 @@ def repo(session_maker):
     return RegisteredModelPermissionRepository(session_maker)
 
 
+def test_create_success(repo, session):
+    """Test successful create to cover line 54"""
+    user = MagicMock(id=2)
+    perm = MagicMock()
+    perm.to_mlflow_entity.return_value = "entity"
+    session.add = MagicMock()
+    session.flush = MagicMock()
+
+    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_user", return_value=user), patch(
+        "mlflow_oidc_auth.db.models.SqlRegisteredModelPermission", return_value=perm
+    ), patch("mlflow_oidc_auth.repository.registered_model_permission._validate_permission"):
+        result = repo.create("user", "test_model", "READ")
+        assert result is not None
+        session.add.assert_called_once()
+        session.flush.assert_called_once()
+
+
 def test_create_integrity_error(repo, session):
     user = MagicMock(id=2)
     session.add = MagicMock()
