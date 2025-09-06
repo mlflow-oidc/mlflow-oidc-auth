@@ -15,7 +15,7 @@ from mlflow_oidc_auth.entities import (
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import get_permission
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils.types import PermissionResult
+from mlflow_oidc_auth.models import PermissionResult
 
 logger = get_logger()
 

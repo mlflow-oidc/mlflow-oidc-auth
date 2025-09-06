@@ -5,23 +5,17 @@ from mlflow.server.handlers import _get_request_message, catch_mlflow_exception,
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
 
+from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import (
-    fetch_readable_experiments,
-    fetch_readable_logged_models,
-    fetch_readable_registered_models,
-    get_is_admin,
-    get_model_name,
-    get_username,
-)
+from mlflow_oidc_auth.utils import fetch_readable_experiments, fetch_readable_logged_models, fetch_readable_registered_models, get_model_name
 
 
 def _set_can_manage_experiment_permission(resp: Response):
     response_message = CreateExperiment.Response()  # type: ignore
     parse_dict(resp.json, response_message)
     experiment_id = response_message.experiment_id
-    username = get_username()
+    username = get_fastapi_username()
     store.create_experiment_permission(experiment_id, username, MANAGE.name)
 
 
@@ -29,7 +23,7 @@ def _set_can_manage_registered_model_permission(resp: Response):
     response_message = CreateRegisteredModel.Response()  # type: ignore
     parse_dict(resp.json, response_message)
     name = response_message.registered_model.name
-    username = get_username()
+    username = get_fastapi_username()
     store.create_registered_model_permission(name, username, MANAGE.name)
 
 
@@ -53,7 +47,7 @@ def _get_after_request_handler(request_class):
 
 
 def _filter_search_experiments(resp: Response):
-    if get_is_admin():
+    if get_fastapi_admin_status():
         return
 
     response_message = SearchExperiments.Response()  # type: ignore
@@ -61,11 +55,14 @@ def _filter_search_experiments(resp: Response):
     request_message = _get_request_message(SearchExperiments())
 
     # Get current user
-    username = get_username()
+    username = get_fastapi_username()
 
     # Get all readable experiments with the original filter and order
     readable_experiments = fetch_readable_experiments(
-        view_type=request_message.view_type, order_by=request_message.order_by, filter_string=request_message.filter, username=username
+        username=username,
+        view_type=request_message.view_type,
+        order_by=request_message.order_by,
+        filter_string=request_message.filter,
     )
 
     # Convert to proto format and apply max_results limit
@@ -87,7 +84,7 @@ def _filter_search_experiments(resp: Response):
 
 
 def _filter_search_registered_models(resp: Response):
-    if get_is_admin():
+    if get_fastapi_admin_status():
         return
 
     response_message = SearchRegisteredModels.Response()  # type: ignore
@@ -95,10 +92,10 @@ def _filter_search_registered_models(resp: Response):
     request_message = _get_request_message(SearchRegisteredModels())
 
     # Get current user
-    username = get_username()
+    username = get_fastapi_username()
 
     # Get all readable models with the original filter and order
-    readable_models = fetch_readable_registered_models(filter_string=request_message.filter, order_by=request_message.order_by, username=username)
+    readable_models = fetch_readable_registered_models(username=username, filter_string=request_message.filter, order_by=request_message.order_by)
 
     # Convert to proto format and apply max_results limit
     readable_models_proto = [model.to_proto() for model in readable_models[: request_message.max_results]]
@@ -122,7 +119,7 @@ def _filter_search_logged_models(resp: Response) -> None:
     """
     Filter out unreadable logged models from the search results.
     """
-    if get_is_admin():
+    if get_fastapi_admin_status():
         return
 
     response_message = SearchLoggedModels.Response()  # type: ignore
@@ -130,10 +127,11 @@ def _filter_search_logged_models(resp: Response) -> None:
     request_message = _get_request_message(SearchLoggedModels())
 
     # Get current user
-    username = get_username()
+    username = get_fastapi_username()
 
     # Get all readable logged models with the original parameters
     readable_models = fetch_readable_logged_models(
+        username=username,
         experiment_ids=list(request_message.experiment_ids),
         filter_string=request_message.filter or None,
         order_by=(
@@ -149,7 +147,6 @@ def _filter_search_logged_models(resp: Response) -> None:
             if request_message.order_by
             else None
         ),
-        username=username,
     )
 
     # Convert to proto format and apply max_results limit

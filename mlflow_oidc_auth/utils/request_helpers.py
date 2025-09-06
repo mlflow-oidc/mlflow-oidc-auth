@@ -1,4 +1,4 @@
-from flask import request, session
+from flask import request
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import BAD_REQUEST, INTERNAL_ERROR, INVALID_PARAMETER_VALUE
 from mlflow.server.handlers import _get_tracking_store
@@ -146,47 +146,47 @@ def get_optional_request_param(param: str) -> str | None:
     return args[param]
 
 
-def get_username() -> str:
-    """Extract username from session or authentication headers.
+# def get_username() -> str:
+#     """Extract username from session or authentication headers.
 
-    Returns:
-        str: The authenticated username
+#     Returns:
+#         str: The authenticated username
 
-    Raises:
-        MlflowException: If authentication is required but not provided
-    """
-    try:
-        username = session.get("username")
-        if username:
-            logger.debug(f"Username from session: {username}")
-            return username
-        elif request.authorization is not None:
-            if request.authorization.type == "basic":
-                logger.debug(f"Username from basic auth: {request.authorization.username}")
-                if request.authorization.username is not None:
-                    username = store.get_user(request.authorization.username).username
-                    return username
-                raise MlflowException("Username not found in basic auth.", INVALID_PARAMETER_VALUE)
-            if request.authorization.type == "bearer":
-                token_data = validate_token(request.authorization.token)
-                username = token_data.get("email")
-                logger.debug(f"Username from bearer token: {username}")
-                if username is not None:
-                    return username
-                raise MlflowException("Email claim is missing in bearer token.", INVALID_PARAMETER_VALUE)
-            raise MlflowException(f"Unsupported authorization type: {request.authorization.type}", INVALID_PARAMETER_VALUE)
-        logger.debug("No username found in session or authorization headers.")
-        raise MlflowException("Authentication required. Please see documentation for details.", INVALID_PARAMETER_VALUE)
-    except Exception as e:
-        if isinstance(e, MlflowException):
-            raise
-        # Handle unexpected errors
-        logger.error(f"Error getting username: {e}")
-        raise MlflowException("Authentication required. Please see documentation for details.", INTERNAL_ERROR)
+#     Raises:
+#         MlflowException: If authentication is required but not provided
+#     """
+#     try:
+#         username = session.get("username")
+#         if username:
+#             logger.debug(f"Username from session: {username}")
+#             return username
+#         elif request.authorization is not None:
+#             if request.authorization.type == "basic":
+#                 logger.debug(f"Username from basic auth: {request.authorization.username}")
+#                 if request.authorization.username is not None:
+#                     username = store.get_user(request.authorization.username).username
+#                     return username
+#                 raise MlflowException("Username not found in basic auth.", INVALID_PARAMETER_VALUE)
+#             if request.authorization.type == "bearer":
+#                 token_data = validate_token(request.authorization.token)
+#                 username = token_data.get("email")
+#                 logger.debug(f"Username from bearer token: {username}")
+#                 if username is not None:
+#                     return username
+#                 raise MlflowException("Email claim is missing in bearer token.", INVALID_PARAMETER_VALUE)
+#             raise MlflowException(f"Unsupported authorization type: {request.authorization.type}", INVALID_PARAMETER_VALUE)
+#         logger.debug("No username found in session or authorization headers.")
+#         raise MlflowException("Authentication required. Please see documentation for details.", INVALID_PARAMETER_VALUE)
+#     except Exception as e:
+#         if isinstance(e, MlflowException):
+#             raise
+#         # Handle unexpected errors
+#         logger.error(f"Error getting username: {e}")
+#         raise MlflowException("Authentication required. Please see documentation for details.", INTERNAL_ERROR)
 
 
-def get_is_admin() -> bool:
-    return bool(store.get_user(get_username()).is_admin)
+# def get_is_admin() -> bool:
+#     return bool(store.get_user(get_username()).is_admin)
 
 
 def get_experiment_id() -> str:

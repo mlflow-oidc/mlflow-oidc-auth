@@ -97,7 +97,7 @@ class User:
             "username": self.username,
             "is_admin": self.is_admin,
             "is_service_account": self.is_service_account,
-            "password_expiration": self.password_expiration,
+            "password_expiration": self.password_expiration.isoformat() if self.password_expiration else None,
             "display_name": self.display_name,
             "groups": [g.to_json() for g in self.groups] if self.groups else [],
         }
