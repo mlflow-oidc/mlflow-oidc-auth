@@ -1,9 +1,8 @@
 """
-Unified logging module for MLflow OIDC Auth Plugin.
+Logging module for MLflow OIDC Auth Plugin.
 
-This module provides a centralized logging solution that works consistently
-across both Flask and FastAPI modes. It automatically detects the server mode
-and configures appropriate loggers.
+This module provides a centralized logging solution for the FastAPI application.
+It configures appropriate loggers for the FastAPI server environment.
 """
 
 import logging
@@ -12,81 +11,48 @@ import sys
 from typing import Optional
 
 
-class UnifiedLogger:
+class FastAPILogger:
     """
-    Unified logger that works seamlessly in both Flask and FastAPI modes.
+    Logger for FastAPI application.
 
-    This class automatically detects the server mode and provides a consistent
-    logging interface across the application. It supports configuration through
-    environment variables and provides proper formatting for different server types.
+    This class provides a consistent logging interface for the FastAPI application.
+    It supports configuration through environment variables and provides proper
+    formatting for the FastAPI server.
     """
 
-    _instance: Optional["UnifiedLogger"] = None
+    _instance: Optional["FastAPILogger"] = None
     _logger: Optional[logging.Logger] = None
-    _server_mode: Optional[str] = None
 
-    def __new__(cls) -> "UnifiedLogger":
+    def __new__(cls) -> "FastAPILogger":
         """Singleton pattern to ensure only one logger instance."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:
-        """Initialize the unified logger with automatic server mode detection."""
+        """Initialize the FastAPI logger."""
         if self._logger is None:
-            self._detect_server_mode()
             self._setup_logger()
-
-    def _detect_server_mode(self) -> None:
-        """
-        Detect the server mode (Flask or FastAPI) based on available modules.
-
-        This method checks the current runtime environment to determine whether
-        the application is running in Flask mode (MLflow server) or FastAPI mode.
-        """
-        try:
-            # Check if we're in a FastAPI context
-            import uvicorn
-
-            if "uvicorn" in sys.modules or "fastapi" in sys.modules:
-                self._server_mode = "fastapi"
-            else:
-                self._server_mode = "flask"
-        except ImportError:
-            # Fall back to Flask mode if FastAPI modules are not available
-            self._server_mode = "flask"
 
     def _setup_logger(self) -> None:
         """
-        Set up the logger based on the detected server mode.
+        Set up the logger for FastAPI application.
 
-        This method configures the appropriate logger for the current server mode:
-        - Flask mode: Uses mlflow.server.app logger or creates a new one
-        - FastAPI mode: Uses uvicorn logger or creates a compatible one
+        This method configures the appropriate logger for FastAPI:
+        - Uses uvicorn logger if available
+        - Falls back to custom logger with proper formatting
         """
         log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 
-        if self._server_mode == "fastapi":
-            # For FastAPI mode, use uvicorn logger or create a compatible one
-            try:
-                self._logger = logging.getLogger("uvicorn")
-                if not self._logger.handlers:
-                    # If uvicorn logger doesn't have handlers, set up our own
-                    self._setup_custom_logger("mlflow_oidc_auth.fastapi", log_level)
-            except Exception:
-                # Fallback to custom logger if uvicorn logger is not available
-                self._setup_custom_logger("mlflow_oidc_auth.fastapi", log_level)
-        else:
-            # For Flask mode, try to use app.logger or create a custom logger
-            try:
-                from mlflow.server import app
-
-                self._logger = app.logger
-                # Ensure the logger level is set according to environment
-                self._logger.setLevel(getattr(logging, log_level, logging.INFO))
-            except (ImportError, AttributeError):
-                # Fallback to custom logger if Flask app is not available
-                self._setup_custom_logger("mlflow_oidc_auth.flask", log_level)
+        # Try to use uvicorn logger first
+        try:
+            self._logger = logging.getLogger("uvicorn")
+            if not self._logger.handlers:
+                # If uvicorn logger doesn't have handlers, set up our own
+                self._setup_custom_logger("mlflow_oidc_auth", log_level)
+        except Exception:
+            # Fallback to custom logger if uvicorn logger is not available
+            self._setup_custom_logger("mlflow_oidc_auth", log_level)
 
     def _setup_custom_logger(self, logger_name: str, log_level: str) -> None:
         """
@@ -116,22 +82,13 @@ class UnifiedLogger:
         Get the configured logger instance.
 
         Returns:
-            logging.Logger: The configured logger instance for the current server mode
+            logging.Logger: The configured logger instance for the FastAPI application
         """
         if self._logger is None:
             self._setup_logger()
         # Type assertion is safe here as _setup_logger always sets _logger
         assert self._logger is not None, "Logger should be initialized"
         return self._logger
-
-    def get_server_mode(self) -> str:
-        """
-        Get the detected server mode.
-
-        Returns:
-            str: The detected server mode ('flask' or 'fastapi')
-        """
-        return self._server_mode or "unknown"
 
     # Convenience methods for direct logging
     def debug(self, message: str, *args, **kwargs) -> None:
@@ -156,17 +113,17 @@ class UnifiedLogger:
 
 
 # Create the global logger instance
-_unified_logger = UnifiedLogger()
+_fastapi_logger = FastAPILogger()
 
 
 # Export convenience functions for easy import and use
 def get_logger() -> logging.Logger:
     """
-    Get the unified logger instance.
+    Get the FastAPI logger instance.
 
-    This function provides easy access to the configured logger that works
-    in both Flask and FastAPI modes. Use this in your modules instead of
-    creating separate loggers.
+    This function provides easy access to the configured logger for the
+    FastAPI application. Use this in your modules instead of creating
+    separate loggers.
 
     Returns:
         logging.Logger: The configured logger instance
@@ -174,42 +131,32 @@ def get_logger() -> logging.Logger:
     Example:
         from mlflow_oidc_auth.logger import get_logger
         logger = get_logger()
-        logger.info("This works in both Flask and FastAPI modes")
+        logger.info("This works with FastAPI")
     """
-    return _unified_logger.get_logger()
-
-
-def get_server_mode() -> str:
-    """
-    Get the detected server mode.
-
-    Returns:
-        str: The detected server mode ('flask' or 'fastapi')
-    """
-    return _unified_logger.get_server_mode()
+    return _fastapi_logger.get_logger()
 
 
 # Export convenience logging functions
 def debug(message: str, *args, **kwargs) -> None:
-    """Log a debug message using the unified logger."""
-    _unified_logger.debug(message, *args, **kwargs)
+    """Log a debug message using the FastAPI logger."""
+    _fastapi_logger.debug(message, *args, **kwargs)
 
 
 def info(message: str, *args, **kwargs) -> None:
-    """Log an info message using the unified logger."""
-    _unified_logger.info(message, *args, **kwargs)
+    """Log an info message using the FastAPI logger."""
+    _fastapi_logger.info(message, *args, **kwargs)
 
 
 def warning(message: str, *args, **kwargs) -> None:
-    """Log a warning message using the unified logger."""
-    _unified_logger.warning(message, *args, **kwargs)
+    """Log a warning message using the FastAPI logger."""
+    _fastapi_logger.warning(message, *args, **kwargs)
 
 
 def error(message: str, *args, **kwargs) -> None:
-    """Log an error message using the unified logger."""
-    _unified_logger.error(message, *args, **kwargs)
+    """Log an error message using the FastAPI logger."""
+    _fastapi_logger.error(message, *args, **kwargs)
 
 
 def critical(message: str, *args, **kwargs) -> None:
-    """Log a critical message using the unified logger."""
-    _unified_logger.critical(message, *args, **kwargs)
+    """Log a critical message using the FastAPI logger."""
+    _fastapi_logger.critical(message, *args, **kwargs)

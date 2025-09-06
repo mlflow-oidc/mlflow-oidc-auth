@@ -33,22 +33,20 @@ from .request_helpers import (
     get_optional_url_param,
     get_request_param,
     get_optional_request_param,
-    get_username,
-    get_is_admin,
     get_experiment_id,
     get_model_id,
     get_model_name,
     _experiment_id_from_name,
 )
 
-from .decorators import (
-    check_experiment_permission,
-    check_registered_model_permission,
-    check_prompt_permission,
-    check_admin_permission,
+from .request_helpers_fastapi import (
+    get_username,
+    get_is_admin,
+    get_base_path,
 )
 
-from .uri_helpers import (
+
+from .uri import (
     get_configured_or_dynamic_redirect_uri,
     normalize_url_port,
 )
@@ -84,12 +82,8 @@ __all__ = [
     "get_model_id",
     "get_model_name",
     "_experiment_id_from_name",
-    # Decorators
-    "check_experiment_permission",
-    "check_registered_model_permission",
-    "check_prompt_permission",
-    "check_admin_permission",
     # URI utilities
     "get_configured_or_dynamic_redirect_uri",
     "normalize_url_port",
+    "get_base_path",
 ]

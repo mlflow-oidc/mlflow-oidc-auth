@@ -1,15 +1,22 @@
-<ng-container *ngIf="!loading && this.user; else loader">
-  <ml-header
-    [name]="user.display_name"
-    [admin]="user.is_admin">
-  </ml-header>
-  <div class="container content">
-    <div class="my-3">
-        <xng-breadcrumb></xng-breadcrumb>
+<ng-container *ngIf="!loading; else loader">
+  <ng-container *ngIf="isAuthenticated && user; else unauthenticatedContent">
+    <ml-header
+      [name]="user.display_name"
+      [admin]="user.is_admin">
+    </ml-header>
+    <div class="container content">
+      <div class="my-3">
+          <xng-breadcrumb></xng-breadcrumb>
+      </div>
+      <router-outlet> </router-outlet>
     </div>
-    <router-outlet> </router-outlet>
-  </div>
+  </ng-container>
+
+  <ng-template #unauthenticatedContent>
+    <router-outlet></router-outlet>
+  </ng-template>
 </ng-container>
+
 <ml-footer></ml-footer>
 
 <ng-template #loader>

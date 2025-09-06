@@ -41,11 +41,11 @@ class AppConfig:
 
         # Proxy configuration for ProxyFix middleware
         # These settings determine how many reverse proxies to trust for each header type
-        self.PROXY_FIX_X_FOR = int(os.environ.get("PROXY_FIX_X_FOR", "1"))  # X-Forwarded-For (client IP)
-        self.PROXY_FIX_X_PROTO = int(os.environ.get("PROXY_FIX_X_PROTO", "1"))  # X-Forwarded-Proto (https/http)
-        self.PROXY_FIX_X_HOST = int(os.environ.get("PROXY_FIX_X_HOST", "1"))  # X-Forwarded-Host (original host)
-        self.PROXY_FIX_X_PORT = int(os.environ.get("PROXY_FIX_X_PORT", "1"))  # X-Forwarded-Port (original port)
-        self.PROXY_FIX_X_PREFIX = int(os.environ.get("PROXY_FIX_X_PREFIX", "1"))  # X-Forwarded-Prefix (path prefix)
+        # self.PROXY_FIX_X_FOR = int(os.environ.get("PROXY_FIX_X_FOR", "1"))  # X-Forwarded-For (client IP)
+        # self.PROXY_FIX_X_PROTO = int(os.environ.get("PROXY_FIX_X_PROTO", "1"))  # X-Forwarded-Proto (https/http)
+        # self.PROXY_FIX_X_HOST = int(os.environ.get("PROXY_FIX_X_HOST", "1"))  # X-Forwarded-Host (original host)
+        # self.PROXY_FIX_X_PORT = int(os.environ.get("PROXY_FIX_X_PORT", "1"))  # X-Forwarded-Port (original port)
+        # self.PROXY_FIX_X_PREFIX = int(os.environ.get("PROXY_FIX_X_PREFIX", "1"))  # X-Forwarded-Prefix (path prefix)
 
         # session
         self.SESSION_TYPE = os.environ.get("SESSION_TYPE", "cachelib")
