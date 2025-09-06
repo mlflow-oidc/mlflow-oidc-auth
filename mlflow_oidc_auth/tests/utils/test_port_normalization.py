@@ -7,7 +7,7 @@ handles various URL formats, port combinations, and edge cases.
 """
 
 import unittest
-from mlflow_oidc_auth.utils.uri_helpers import normalize_url_port
+from mlflow_oidc_auth.utils.uri import normalize_url_port
 
 
 class TestPortNormalization(unittest.TestCase):

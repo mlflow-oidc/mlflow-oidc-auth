@@ -49,11 +49,14 @@ dev = [
 test = [
   "pytest<9,>=8.3.2",
   "pytest-cov<6,>=5.0.0",
+  "httpx<1",
+  "pytest-asyncio<2",
+  "redis[hiredis]<6",
 ]
 
 [[project.maintainers]]
 name = "Alexander Kharkevich"
-email = "alexander_kharkevich@outlook.com"
+email = "alex@kharkevich.org"
 
 [project.urls]
 homepage = "https://github.com/mlflow-oidc/mlflow-oidc-auth"

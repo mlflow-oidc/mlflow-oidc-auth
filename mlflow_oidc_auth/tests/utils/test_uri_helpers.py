@@ -2,13 +2,14 @@
 Tests for dynamic OIDC redirect URI calculation.
 
 These tests verify that the redirect URI is correctly calculated
-from request headers in various proxy scenarios using ProxyFix middleware.
+from request headers in various proxy scenarios.
 """
 
 import unittest
-from unittest.mock import Mock, patch
-from flask import Flask
-from mlflow_oidc_auth.utils.uri_helpers import _get_dynamic_redirect_uri, get_configured_or_dynamic_redirect_uri, _get_base_url_from_request, normalize_url_port
+from unittest.mock import Mock, patch, MagicMock
+from urllib.parse import urlparse
+from fastapi import Request
+from mlflow_oidc_auth.utils.uri import _get_dynamic_redirect_uri, get_configured_or_dynamic_redirect_uri, _get_base_url_from_request, normalize_url_port
 
 
 class TestDynamicRedirectUri(unittest.TestCase):
@@ -16,58 +17,67 @@ class TestDynamicRedirectUri(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        from werkzeug.middleware.proxy_fix import ProxyFix
-
-        self.app = Flask(__name__)
-        self.app.wsgi_app = ProxyFix(self.app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
-        self.app.config["TESTING"] = True
-        self.app_context = self.app.app_context()
-        self.app_context.push()
+        pass
 
     def tearDown(self):
         """Clean up test fixtures."""
-        self.app_context.pop()
-
-    def test_script_root_base(self):
-        """Test redirect URI calculation using only request.script_root for base path."""
-        cases = [
-            # (base_url, script_root, expected_redirect)
-            ("http://localhost:5000/", "", "http://localhost:5000/callback"),
-            ("https://example.com/mlflow/", "/mlflow", "https://example.com/callback"),
-            ("https://corp.example.com/apps/ml-platform/", "/apps/ml-platform", "https://corp.example.com/callback"),
-            ("http://localhost:5000/myapp/", "/myapp", "http://localhost:5000/callback"),
-            ("https://k8s-cluster.example.com/v1/ml-platform/", "/v1/ml-platform", "https://k8s-cluster.example.com/callback"),
-            ("https://example.com:8443/my-app/", "/my-app", "https://example.com:8443/callback"),
-            ("http://localhost:8080/", "", "http://localhost:8080/callback"),
-            ("http://localhost:5000/", "", "http://localhost:5000/callback"),
-            ("https://example.com:443/my-app/", "/my-app", "https://example.com/callback"),
-            ("http://example.com:80/my-app/", "/my-app", "http://example.com/callback"),
-        ]
-        for url, script_root, expected in cases:
-            # Ensure the URL path matches SCRIPT_NAME for correct script_root
-            if script_root:
-                # Ensure the path in the URL starts with script_root
-                url = url.rstrip("/") + script_root + "/"
-            environ_base = {"SCRIPT_NAME": script_root} if script_root else {}
-            with self.app.test_request_context(url, environ_base=environ_base):
-                result = get_configured_or_dynamic_redirect_uri(None)
-                self.assertEqual(result, expected)
-
-    def test_http_standard_port_omitted(self):
-        """Test redirect URI calculation where HTTP standard port 80 is omitted."""
-        url = "http://example.com:80/my-app/"
-        with self.app.test_request_context(url, environ_base={"SCRIPT_NAME": "/my-app"}):
-            result = _get_dynamic_redirect_uri()
-            expected = "http://example.com/callback"
-            self.assertEqual(result, expected)
+        pass
 
     def test_get_base_url_from_request(self):
-        """Test getting base URL from request context."""
-        url = "https://example.com/my-app/"
-        with self.app.test_request_context(url, environ_base={"SCRIPT_NAME": "/my-app"}):
-            result = _get_base_url_from_request()
-            expected = "https://example.com"
-            self.assertEqual(result, expected)
+        """Test base URL extraction from FastAPI request."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.url = "https://example.com/my-app/endpoint"
+        mock_request.scope = {"root_path": "/my-app"}
+
+        result = _get_base_url_from_request(mock_request)
+        expected = "https://example.com/my-app"
+        self.assertEqual(result, expected)
+
+    def test_get_base_url_from_request_no_root_path(self):
+        """Test base URL extraction without root path."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.url = "https://example.com/endpoint"
+        mock_request.scope = {}
+
+        result = _get_base_url_from_request(mock_request)
+        expected = "https://example.com"
+        self.assertEqual(result, expected)
+
+    def test_get_base_url_from_request_none_request(self):
+        """Test base URL extraction with None request."""
+        with self.assertRaises(RuntimeError) as cm:
+            _get_base_url_from_request(None)
+        self.assertIn("requires an active FastAPI request context", str(cm.exception))
+
+    def test_get_dynamic_redirect_uri(self):
+        """Test dynamic redirect URI calculation."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.url = "https://example.com/my-app/endpoint"
+        mock_request.scope = {"root_path": "/my-app"}
+
+        result = _get_dynamic_redirect_uri(mock_request, "/callback")
+        expected = "https://example.com/my-app/callback"
+        self.assertEqual(result, expected)
+
+    def test_get_dynamic_redirect_uri_empty_callback(self):
+        """Test dynamic redirect URI with empty callback path."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.url = "https://example.com/endpoint"
+        mock_request.scope = {}
+
+        result = _get_dynamic_redirect_uri(mock_request, "")
+        expected = "https://example.com/"
+        self.assertEqual(result, expected)
+
+    def test_get_dynamic_redirect_uri_callback_without_slash(self):
+        """Test dynamic redirect URI with callback path without leading slash."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.url = "https://example.com/endpoint"
+        mock_request.scope = {}
+
+        result = _get_dynamic_redirect_uri(mock_request, "callback")
+        expected = "https://example.com/callback"
+        self.assertEqual(result, expected)
 
 
 class TestPortNormalization(unittest.TestCase):
@@ -137,46 +147,86 @@ class TestPortNormalization(unittest.TestCase):
         self.assertEqual(result, expected)
 
 
-class TestRequestContextRequirement(unittest.TestCase):
-    """Test cases for functions that require Flask request context."""
+class TestConfiguredOrDynamicRedirectUri(unittest.TestCase):
+    """Test cases for configured or dynamic redirect URI calculation."""
 
-    def setUp(self):
-        """Set up test fixtures."""
-        self.app = Flask(__name__)
-        self.app.config["TESTING"] = True
-
-    def test_get_base_url_from_request_no_context(self):
-        """Test that _get_base_url_from_request raises RuntimeError without request context."""
-        with self.assertRaises(RuntimeError) as context:
-            _get_base_url_from_request()
-        self.assertIn("requires an active Flask request context", str(context.exception))
-
-    def test_get_dynamic_redirect_uri_no_context(self):
-        """Test that _get_dynamic_redirect_uri raises RuntimeError without request context."""
-        with self.assertRaises(RuntimeError) as context:
-            _get_dynamic_redirect_uri()
-        self.assertIn("requires an active Flask request context", str(context.exception))
-
-    def test_get_dynamic_redirect_uri_empty_callback_path(self):
-        """Test redirect URI calculation with empty callback path."""
-        with self.app.test_request_context("http://localhost:5000/"):
-            result = _get_dynamic_redirect_uri("")
-            expected = "http://localhost:5000/"
-            self.assertEqual(result, expected)
+    def test_configured_or_dynamic_redirect_uri_with_configured(self):
+        """Test that configured URI is used when provided."""
+        mock_request = MagicMock(spec=Request)
+        result = get_configured_or_dynamic_redirect_uri(mock_request, "/callback", "https://configured.example.com/callback")
+        expected = "https://configured.example.com/callback"
+        self.assertEqual(result, expected)
 
     def test_configured_or_dynamic_redirect_uri_whitespace_config(self):
         """Test that whitespace-only configured URI falls back to dynamic calculation."""
-        with self.app.test_request_context("http://localhost:5000/"):
-            result = get_configured_or_dynamic_redirect_uri("   ")
-            expected = "http://localhost:5000/callback"
-            self.assertEqual(result, expected)
+        mock_request = MagicMock(spec=Request)
+        mock_request.url = "http://localhost:5000/endpoint"
+        mock_request.scope = {}
+
+        result = get_configured_or_dynamic_redirect_uri(mock_request, "/callback", "   ")
+        expected = "http://localhost:5000/callback"
+        self.assertEqual(result, expected)
 
     def test_configured_or_dynamic_redirect_uri_empty_string_config(self):
         """Test that empty string configured URI falls back to dynamic calculation."""
-        with self.app.test_request_context("http://localhost:5000/"):
-            result = get_configured_or_dynamic_redirect_uri("")
-            expected = "http://localhost:5000/callback"
-            self.assertEqual(result, expected)
+        mock_request = MagicMock(spec=Request)
+        mock_request.url = "http://localhost:5000/endpoint"
+        mock_request.scope = {}
+
+        result = get_configured_or_dynamic_redirect_uri(mock_request, "/callback", "")
+        expected = "http://localhost:5000/callback"
+        self.assertEqual(result, expected)
+
+    def test_configured_or_dynamic_redirect_uri_none_config(self):
+        """Test that None configured URI falls back to dynamic calculation."""
+        mock_request = MagicMock(spec=Request)
+        mock_request.url = "http://localhost:5000/endpoint"
+        mock_request.scope = {}
+
+        result = get_configured_or_dynamic_redirect_uri(mock_request, "/callback", None)
+        expected = "http://localhost:5000/callback"
+        self.assertEqual(result, expected)
+
+    def test_normalize_url_port_none_input(self):
+        """Test normalize_url_port with None input."""
+        with self.assertRaises(TypeError):
+            normalize_url_port(None)
+
+    def test_normalize_url_port_empty_string(self):
+        """Test normalize_url_port with empty string."""
+        result = normalize_url_port("")
+        self.assertEqual(result, "")
+
+    def test_normalize_url_port_with_userinfo_standard_port(self):
+        """Test normalize_url_port with userinfo and standard port."""
+        url = "http://user:pass@example.com:80/path"
+        result = normalize_url_port(url)
+        expected = "http://user:pass@example.com/path"
+        self.assertEqual(result, expected)
+
+    def test_normalize_url_port_with_userinfo_custom_port(self):
+        """Test normalize_url_port with userinfo and custom port."""
+        url = "https://user:pass@example.com:8443/path"
+        result = normalize_url_port(url)
+        expected = "https://user:pass@example.com:8443/path"
+        self.assertEqual(result, expected)
+
+    def test_normalize_url_port_malformed_url_with_logging(self):
+        """Test normalize_url_port with malformed URL and logging."""
+        from flask import Flask
+
+        app = Flask(__name__)
+        with app.app_context():
+            # Test that malformed URL is handled gracefully
+            url = "not-a-valid-url"
+            result = normalize_url_port(url)
+            self.assertEqual(result, url)  # Should return original URL unchanged
+
+    def test_normalize_url_port_malformed_url_no_flask_context(self):
+        """Test normalize_url_port with malformed URL and no Flask context."""
+        url = "not-a-valid-url"
+        result = normalize_url_port(url)
+        self.assertEqual(result, url)  # Should return original URL unchanged
 
 
 if __name__ == "__main__":

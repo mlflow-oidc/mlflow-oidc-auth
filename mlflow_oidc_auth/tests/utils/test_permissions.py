@@ -13,7 +13,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import BAD_REQUEST, RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.permissions import Permission
-from mlflow_oidc_auth.utils.types import PermissionResult
+from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth.utils import (
     can_manage_experiment,
     can_manage_registered_model,

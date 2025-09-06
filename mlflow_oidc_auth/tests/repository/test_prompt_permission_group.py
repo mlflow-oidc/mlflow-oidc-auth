@@ -24,6 +24,23 @@ def repo(session_maker):
     return PromptPermissionGroupRepository(session_maker)
 
 
+def test_grant_prompt_permission_to_group(repo, session):
+    """Test grant_prompt_permission_to_group to cover lines 55-61"""
+    group = MagicMock(id=1)
+    perm = MagicMock()
+    perm.to_mlflow_entity.return_value = "entity"
+    session.add = MagicMock()
+    session.flush = MagicMock()
+
+    with patch("mlflow_oidc_auth.repository.prompt_permission_group.get_group", return_value=group), patch(
+        "mlflow_oidc_auth.db.models.SqlRegisteredModelGroupPermission", return_value=perm
+    ), patch("mlflow_oidc_auth.repository.prompt_permission_group._validate_permission"):
+        result = repo.grant_prompt_permission_to_group("test_group", "test_prompt", "READ")
+        assert result is not None
+        session.add.assert_called_once()
+        session.flush.assert_called_once()
+
+
 def test_list_prompt_permissions_for_group(repo, session):
     group = MagicMock(id=2)
     perm = MagicMock()

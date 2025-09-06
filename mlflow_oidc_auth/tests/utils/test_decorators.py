@@ -10,10 +10,9 @@ from unittest.mock import patch
 
 from flask import Flask
 
-from mlflow_oidc_auth.utils import (
+from mlflow_oidc_auth.dependencies import (
     check_experiment_permission,
     check_registered_model_permission,
-    check_prompt_permission,
     check_admin_permission,
 )
 
@@ -102,63 +101,6 @@ class TestDecorators(unittest.TestCase):
             self.assertEqual(mock_func(), "success")
 
             # Admin always allowed
-            mock_get_is_admin.return_value = True
-            self.assertEqual(mock_func(), "success")
-
-    @patch("mlflow_oidc_auth.utils.decorators.store")
-    @patch("mlflow_oidc_auth.utils.decorators.get_is_admin")
-    @patch("mlflow_oidc_auth.utils.decorators.get_username")
-    @patch("mlflow_oidc_auth.utils.decorators.get_model_name")
-    @patch("mlflow_oidc_auth.utils.decorators.can_manage_registered_model")
-    @patch("mlflow_oidc_auth.utils.decorators.make_forbidden_response")
-    def test_check_prompt_permission(
-        self,
-        mock_make_forbidden_response,
-        mock_can_manage_registered_model,
-        mock_get_model_name,
-        mock_get_username,
-        mock_get_is_admin,
-        mock_store,
-    ):
-        """Test prompt permission decorator functionality."""
-        with self.app.test_request_context():
-            mock_get_is_admin.return_value = False
-            mock_get_username.return_value = "user"
-            mock_get_model_name.return_value = "prompt_name"
-            mock_can_manage_registered_model.return_value = False
-            mock_make_forbidden_response.return_value = "forbidden"
-
-            @check_prompt_permission
-            def mock_func():
-                return "success"
-
-            self.assertEqual(mock_func(), "forbidden")
-
-            mock_can_manage_registered_model.return_value = True
-            self.assertEqual(mock_func(), "success")
-
-            # Admin always allowed
-            mock_get_is_admin.return_value = True
-            self.assertEqual(mock_func(), "success")
-
-    @patch("mlflow_oidc_auth.utils.decorators.store")
-    @patch("mlflow_oidc_auth.utils.decorators.get_username")
-    @patch("mlflow_oidc_auth.utils.decorators.get_is_admin")
-    @patch("mlflow_oidc_auth.utils.decorators.make_forbidden_response")
-    def test_check_admin_permission(self, mock_make_forbidden_response, mock_get_is_admin, mock_get_username, mock_store):
-        """Test admin permission decorator functionality."""
-        with self.app.test_request_context():
-            mock_get_username.return_value = "user"
-            mock_get_is_admin.return_value = False
-            mock_make_forbidden_response.return_value = "forbidden"
-
-            @check_admin_permission
-            def mock_func():
-                return "success"
-
-            self.assertEqual(mock_func(), "forbidden")
-
-            # Admin allowed
             mock_get_is_admin.return_value = True
             self.assertEqual(mock_func(), "success")
 

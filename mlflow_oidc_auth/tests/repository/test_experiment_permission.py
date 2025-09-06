@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from sqlalchemy.exc import NoResultFound, MultipleResultsFound
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound, IntegrityError
 from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.repository.experiment_permission import ExperimentPermissionRepository
@@ -24,16 +24,34 @@ def repo(session_maker):
     return ExperimentPermissionRepository(session_maker)
 
 
+def test_grant_permission_success(repo, session):
+    """Test successful grant_permission to cover line 62"""
+    user = MagicMock(id=2)
+    perm = MagicMock()
+    perm.to_mlflow_entity.return_value = "entity"
+    session.add = MagicMock()
+    session.flush = MagicMock()
+
+    with patch("mlflow_oidc_auth.repository.experiment_permission.get_user", return_value=user), patch(
+        "mlflow_oidc_auth.db.models.SqlExperimentPermission", return_value=perm
+    ), patch("mlflow_oidc_auth.repository.experiment_permission._validate_permission"):
+        result = repo.grant_permission("exp2", "user", "READ")
+        assert result is not None
+        session.add.assert_called_once()
+        session.flush.assert_called_once()
+
+
 def test_grant_permission_integrity_error(repo, session):
     user = MagicMock(id=2)
     session.add = MagicMock()
-    session.flush = MagicMock(side_effect=Exception("IntegrityError"))
+    session.flush = MagicMock(side_effect=IntegrityError("statement", "params", "orig"))
     with patch("mlflow_oidc_auth.repository.experiment_permission.get_user", return_value=user), patch(
         "mlflow_oidc_auth.db.models.SqlExperimentPermission", return_value=MagicMock()
-    ):
-        with patch("mlflow_oidc_auth.repository.experiment_permission.IntegrityError", Exception):
-            with pytest.raises(MlflowException):
-                repo.grant_permission("exp2", "user", "READ")
+    ), patch("mlflow_oidc_auth.repository.experiment_permission._validate_permission"):
+        with pytest.raises(MlflowException) as exc:
+            repo.grant_permission("exp2", "user", "READ")
+        assert "Experiment permission already exists" in str(exc.value)
+        assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
 
 
 def test_get_permission(repo, session):
