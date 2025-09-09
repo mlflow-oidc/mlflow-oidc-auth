@@ -56,7 +56,7 @@ from mlflow.server.handlers import get_endpoints
 from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
 import mlflow_oidc_auth.responses as responses
-from mlflow_oidc_auth import logger
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
     validate_can_delete_experiment,
     validate_can_delete_experiment_artifact_proxy,
@@ -123,6 +123,8 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteRegisteredModelAlias: validate_can_delete_registered_model,
     GetModelVersionByAlias: validate_can_read_registered_model,
 }
+
+logger = get_logger()
 
 
 def _get_before_request_handler(request_class):
