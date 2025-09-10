@@ -5,12 +5,10 @@ This module provides comprehensive fixtures for testing FastAPI routers includin
 authentication mocking, database setup, and test client configuration.
 """
 
-import pytest
-
 import os
 import tempfile
+from typing import Any, Dict, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Dict, Any, Optional
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,19 +16,20 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from mlflow_oidc_auth.db.models import Base
-from mlflow_oidc_auth.entities import User, ExperimentPermission as ExperimentPermissionEntity
+from mlflow_oidc_auth.entities import ExperimentPermission as ExperimentPermissionEntity
+from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.permissions import Permission
 
 # Import shared fixtures
 from mlflow_oidc_auth.tests.routers.shared_fixtures import (
+    TestClientWrapper,
     _deleg_can_manage_experiment,
     _deleg_can_manage_registered_model,
-    TestClientWrapper,
-    mock_store,
-    mock_oauth,
-    mock_tracking_store,
-    mock_permissions,
     _patch_router_stores,
+    mock_oauth,
+    mock_permissions,
+    mock_store,
+    mock_tracking_store,
 )
 
 
@@ -134,9 +133,9 @@ class TestClientWrapper:
         json_body = kwargs.pop("json", None)
 
         if data is not None:
-            # If data is a string, send as raw data; otherwise send as json
+            # If data is a string, send as raw content to avoid httpx deprecation
             if isinstance(data, str):
-                return self._client.request("DELETE", url, data=data, **kwargs)
+                return self._client.request("DELETE", url, content=data, **kwargs)
             else:
                 return self._client.request("DELETE", url, json=data, **kwargs)
 
@@ -160,16 +159,53 @@ class TestClientWrapper:
     def post(self, url, **kwargs):
         if "allow_redirects" in kwargs:
             kwargs["follow_redirects"] = kwargs.pop("allow_redirects")
+        data = kwargs.pop("data", None)
+        json_body = kwargs.pop("json", None)
+
+        if data is not None:
+            # If data is a string, send as raw content to avoid httpx deprecation
+            if isinstance(data, str):
+                return self._client.request("POST", url, content=data, **kwargs)
+            else:
+                return self._client.request("POST", url, json=data, **kwargs)
+
+        if json_body is not None:
+            return self._client.request("POST", url, json=json_body, **kwargs)
+
         return self._client.request("POST", url, **kwargs)
 
     def put(self, url, **kwargs):
         if "allow_redirects" in kwargs:
             kwargs["follow_redirects"] = kwargs.pop("allow_redirects")
+        data = kwargs.pop("data", None)
+        json_body = kwargs.pop("json", None)
+
+        if data is not None:
+            if isinstance(data, str):
+                return self._client.request("PUT", url, content=data, **kwargs)
+            else:
+                return self._client.request("PUT", url, json=data, **kwargs)
+
+        if json_body is not None:
+            return self._client.request("PUT", url, json=json_body, **kwargs)
+
         return self._client.request("PUT", url, **kwargs)
 
     def patch(self, url, **kwargs):
         if "allow_redirects" in kwargs:
             kwargs["follow_redirects"] = kwargs.pop("allow_redirects")
+        data = kwargs.pop("data", None)
+        json_body = kwargs.pop("json", None)
+
+        if data is not None:
+            if isinstance(data, str):
+                return self._client.request("PATCH", url, content=data, **kwargs)
+            else:
+                return self._client.request("PATCH", url, json=data, **kwargs)
+
+        if json_body is not None:
+            return self._client.request("PATCH", url, json=json_body, **kwargs)
+
         return self._client.request("PATCH", url, **kwargs)
 
     def head(self, url, **kwargs):
@@ -256,8 +292,13 @@ def mock_permissions():
     permissions_mock = {
         "can_manage_experiment": MagicMock(return_value=True),
         "can_manage_registered_model": MagicMock(return_value=True),
-        "get_username": AsyncMock(return_value="test@example.com"),
-        "get_is_admin": AsyncMock(return_value=False),
+        # Permission helpers may be called synchronously in some test setup;
+        # use MagicMock to provide a regular callable that returns the value.
+        "get_username": MagicMock(return_value="test@example.com"),
+        "get_is_admin": MagicMock(return_value=False),
+        # Async variants for FastAPI dependencies which are awaited
+        "get_username_async": AsyncMock(return_value="test@example.com"),
+        "get_is_admin_async": AsyncMock(return_value=False),
     }
     return permissions_mock
 
@@ -326,10 +367,12 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
         patch("mlflow.server.handlers._get_tracking_store", return_value=mock_tracking_store),
         patch("mlflow_oidc_auth.utils.can_manage_experiment", mock_permissions["can_manage_experiment"]),
         patch("mlflow_oidc_auth.utils.can_manage_registered_model", mock_permissions["can_manage_registered_model"]),
+        # utils.* are used synchronously in some places; leave those as MagicMock
         patch("mlflow_oidc_auth.utils.get_username", mock_permissions["get_username"]),
         patch("mlflow_oidc_auth.utils.get_is_admin", mock_permissions["get_is_admin"]),
-        patch("mlflow_oidc_auth.dependencies.get_username", mock_permissions["get_username"]),
-        patch("mlflow_oidc_auth.dependencies.get_is_admin", mock_permissions["get_is_admin"]),
+        # dependencies.* are awaited by FastAPI; patch them with AsyncMock variants
+        patch("mlflow_oidc_auth.dependencies.get_username", mock_permissions["get_username_async"]),
+        patch("mlflow_oidc_auth.dependencies.get_is_admin", mock_permissions["get_is_admin_async"]),
         patch("mlflow_oidc_auth.dependencies.can_manage_experiment", _deleg_can_manage_experiment),
         patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", _deleg_can_manage_registered_model),
         # Patch names imported directly into router modules (they were imported at module-import time)
@@ -349,6 +392,7 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
         # Build a local FastAPI app similar to production but avoid mounting the real Flask app
         from fastapi import FastAPI
         from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
+
         from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
         from mlflow_oidc_auth.routers import get_all_routers
 
@@ -403,10 +447,12 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
         patch("mlflow.server.handlers._get_tracking_store", return_value=mock_tracking_store),
         patch("mlflow_oidc_auth.utils.can_manage_experiment", admin_permissions["can_manage_experiment"]),
         patch("mlflow_oidc_auth.utils.can_manage_registered_model", admin_permissions["can_manage_registered_model"]),
+        # utils.* remain sync mocks
         patch("mlflow_oidc_auth.utils.get_username", admin_permissions["get_username"]),
         patch("mlflow_oidc_auth.utils.get_is_admin", admin_permissions["get_is_admin"]),
-        patch("mlflow_oidc_auth.dependencies.get_username", admin_permissions["get_username"]),
-        patch("mlflow_oidc_auth.dependencies.get_is_admin", admin_permissions["get_is_admin"]),
+        # dependencies.* patched to async variants for FastAPI awaits
+        patch("mlflow_oidc_auth.dependencies.get_username", admin_permissions["get_username_async"]),
+        patch("mlflow_oidc_auth.dependencies.get_is_admin", admin_permissions["get_is_admin_async"]),
         # Also patch router-level imported names for admin app
         patch("mlflow_oidc_auth.routers.experiment_permissions.get_is_admin", admin_permissions["get_is_admin"]),
         patch("mlflow_oidc_auth.routers.experiment_permissions.get_username", admin_permissions["get_username"]),
@@ -415,7 +461,7 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
         patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", _deleg_can_manage_registered_model),
         # Patch request helper module-level store
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
-        patch("mlflow_oidc_auth.routers.prompt_permissions.check_admin_permission", AsyncMock(return_value="admin@example.com")),
+        patch("mlflow_oidc_auth.routers.prompt_permissions.check_admin_permission", MagicMock(return_value="admin@example.com")),
         patch("mlflow_oidc_auth.routers.prompt_permissions.get_username", admin_permissions["get_username"]),
         patch("mlflow_oidc_auth.routers.prompt_permissions.get_is_admin", admin_permissions["get_is_admin"]),
     ]
@@ -426,6 +472,7 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
     try:
         from fastapi import FastAPI
         from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
+
         from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
         from mlflow_oidc_auth.routers import get_all_routers
 
@@ -490,7 +537,11 @@ def admin_permissions():
     permissions_mock = {
         "can_manage_experiment": MagicMock(return_value=True),
         "can_manage_registered_model": MagicMock(return_value=True),
-        "get_username": AsyncMock(return_value="admin@example.com"),
-        "get_is_admin": AsyncMock(return_value=True),
+        # Admin permission helpers used in fixture wiring are sync-callable
+        "get_username": MagicMock(return_value="admin@example.com"),
+        "get_is_admin": MagicMock(return_value=True),
+        # Async variants for dependencies
+        "get_username_async": AsyncMock(return_value="admin@example.com"),
+        "get_is_admin_async": AsyncMock(return_value=True),
     }
     return permissions_mock
