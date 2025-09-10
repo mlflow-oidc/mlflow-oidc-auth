@@ -14,6 +14,7 @@ from mlflow_oidc_auth.routers.experiment_permissions import experiment_permissio
 from mlflow_oidc_auth.routers.group_permissions import group_permissions_router
 from mlflow_oidc_auth.routers.prompt_permissions import prompt_permissions_router
 from mlflow_oidc_auth.routers.registered_model_permissions import registered_model_permissions_router
+from mlflow_oidc_auth.routers.health import health_check_router
 from mlflow_oidc_auth.routers.ui import ui_router
 from mlflow_oidc_auth.routers.user_permissions import user_permissions_router
 from mlflow_oidc_auth.routers.users import users_router
@@ -24,6 +25,7 @@ __all__ = [
     "group_permissions_router",
     "prompt_permissions_router",
     "registered_model_permissions_router",
+    "health_check_router",
     "ui_router",
     "user_permissions_router",
     "users_router",
@@ -43,6 +45,7 @@ def get_all_routers() -> List[APIRouter]:
         group_permissions_router,
         prompt_permissions_router,
         registered_model_permissions_router,
+        health_check_router,
         ui_router,
         user_permissions_router,
         users_router,

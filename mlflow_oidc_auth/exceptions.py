@@ -47,6 +47,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code = 400  # Bad request
         elif exc.error_code == "UNAUTHORIZED":
             status_code = 401  # Unauthorized
+        elif exc.error_code == "UNAUTHENTICATED":
+            status_code = 401  # Unauthorized
         elif exc.error_code == "PERMISSION_DENIED":
             status_code = 403  # Forbidden
 

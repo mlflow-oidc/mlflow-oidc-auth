@@ -12,7 +12,7 @@ from fastapi import HTTPException
 
 from mlflow_oidc_auth.routers.prompt_permissions import prompt_permissions_router, get_prompt_users, list_prompts, LIST_PROMPTS, PROMPT_USER_PERMISSIONS
 from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
-from mlflow_oidc_auth.permissions import Permission
+from mlflow_oidc_auth.permissions import Permission, MANAGE, READ, EDIT, NO_PERMISSIONS
 
 
 class TestPromptPermissionsRouter:
@@ -39,23 +39,32 @@ class TestGetPromptUsersEndpoint:
         """Test successful retrieval of prompt users."""
         # Mock users with prompt permissions (stored as registered model permissions)
         user1 = User(
+            id_=1,
             username="user1@example.com",
+            password_hash="hash1",
+            password_expiration=None,
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
-            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-prompt", permission=Permission.MANAGE)],
+            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-prompt", permission=MANAGE)],
         )
 
         user2 = User(
+            id_=2,
             username="service@example.com",
+            password_hash="hash2",
+            password_expiration=None,
             display_name="Service Account",
             is_admin=False,
             is_service_account=True,
-            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-prompt", permission=Permission.READ)],
+            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-prompt", permission=READ)],
         )
 
         user3 = User(
+            id_=3,
             username="user3@example.com",
+            password_hash="hash3",
+            password_expiration=None,
             display_name="User 3",
             is_admin=False,
             is_service_account=False,
@@ -64,31 +73,41 @@ class TestGetPromptUsersEndpoint:
 
         mock_store.list_users.return_value = [user1, user2, user3]
 
-        result = await get_prompt_users(prompt_name="test-prompt", admin_username="admin@example.com")
+        with patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store):
+            result = await get_prompt_users(prompt_name="test-prompt", admin_username="admin@example.com")
 
         assert result.status_code == 200
 
         # Parse response content
         import json
 
-        content = json.loads(result.body.decode())
+        content = json.loads(bytes(result.body).decode())
 
         assert len(content) == 2  # Only users with permissions for test-prompt
 
         # Check first user
         assert content[0]["username"] == "user1@example.com"
-        assert content[0]["permission"] == Permission.MANAGE
+        assert content[0]["permission"] == "MANAGE"
         assert content[0]["kind"] == "user"
 
         # Check service account
         assert content[1]["username"] == "service@example.com"
-        assert content[1]["permission"] == Permission.READ
+        assert content[1]["permission"] == "READ"
         assert content[1]["kind"] == "service-account"
 
     @pytest.mark.asyncio
     async def test_get_prompt_users_no_permissions(self, mock_store):
         """Test getting prompt users when no users have permissions."""
-        user1 = User(username="user1@example.com", display_name="User 1", is_admin=False, is_service_account=False, registered_model_permissions=[])
+        user1 = User(
+            id_=1,
+            username="user1@example.com",
+            password_hash="hash1",
+            password_expiration=None,
+            display_name="User 1",
+            is_admin=False,
+            is_service_account=False,
+            registered_model_permissions=[],
+        )
 
         mock_store.list_users.return_value = [user1]
 
@@ -98,43 +117,53 @@ class TestGetPromptUsersEndpoint:
 
         import json
 
-        content = json.loads(result.body.decode())
+        content = json.loads(bytes(result.body).decode())
         assert len(content) == 0
 
     @pytest.mark.asyncio
     async def test_get_prompt_users_multiple_prompts(self, mock_store):
         """Test getting users for specific prompt when users have multiple prompt permissions."""
         user1 = User(
+            id_=1,
             username="user1@example.com",
+            password_hash="hash1",
+            password_expiration=None,
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
             registered_model_permissions=[
-                RegisteredModelPermissionEntity(name="prompt-1", permission=Permission.MANAGE),
-                RegisteredModelPermissionEntity(name="prompt-2", permission=Permission.READ),
+                RegisteredModelPermissionEntity(name="prompt-1", permission=MANAGE),
+                RegisteredModelPermissionEntity(name="prompt-2", permission=READ),
             ],
         )
 
-        mock_store.list_users.return_value = [user1]
-
-        result = await get_prompt_users(prompt_name="prompt-1", admin_username="admin@example.com")
+        with patch("mlflow_oidc_auth.routers.prompt_permissions.store.list_users", return_value=[user1]):
+            result = await get_prompt_users(prompt_name="prompt-1", admin_username="admin@example.com")
 
         assert result.status_code == 200
 
         import json
 
-        content = json.loads(result.body.decode())
+        content = json.loads(bytes(result.body).decode())
 
         assert len(content) == 1
         assert content[0]["username"] == "user1@example.com"
-        assert content[0]["permission"] == Permission.MANAGE  # Should get permission for prompt-1
+        assert content[0]["permission"] == "MANAGE"  # Should get permission for prompt-1
 
     @pytest.mark.asyncio
     async def test_get_prompt_users_no_registered_model_permissions_attr(self, mock_store):
         """Test getting users when user object doesn't have registered_model_permissions attribute."""
-        user1 = User(username="user1@example.com", display_name="User 1", is_admin=False, is_service_account=False)
-        # Remove the registered_model_permissions attribute
-        delattr(user1, "registered_model_permissions")
+        user1 = User(
+            id_=1,
+            username="user1@example.com",
+            password_hash="hash1",
+            password_expiration=None,
+            display_name="User 1",
+            is_admin=False,
+            is_service_account=False,
+        )
+        # Set registered_model_permissions to None to simulate missing attribute
+        user1._registered_model_permissions = None
 
         mock_store.list_users.return_value = [user1]
 
@@ -144,7 +173,7 @@ class TestGetPromptUsersEndpoint:
 
         import json
 
-        content = json.loads(result.body.decode())
+        content = json.loads(bytes(result.body).decode())
         assert len(content) == 0
 
     def test_get_prompt_users_integration(self, admin_client):
@@ -197,7 +226,7 @@ class TestListPromptsEndpoint:
 
             import json
 
-            content = json.loads(result.body.decode())
+            content = json.loads(bytes(result.body).decode())
 
             assert len(content) == 2
             assert content[0]["name"] == "prompt-1"
@@ -235,7 +264,7 @@ class TestListPromptsEndpoint:
 
             import json
 
-            content = json.loads(result.body.decode())
+            content = json.loads(bytes(result.body).decode())
 
             assert len(content) == 1  # Only prompt-1 should be returned
             assert content[0]["name"] == "prompt-1"
@@ -260,7 +289,7 @@ class TestListPromptsEndpoint:
 
             import json
 
-            content = json.loads(result.body.decode())
+            content = json.loads(bytes(result.body).decode())
 
             assert len(content) == 0
 
@@ -276,7 +305,7 @@ class TestListPromptsEndpoint:
 
             import json
 
-            content = json.loads(result.body.decode())
+            content = json.loads(bytes(result.body).decode())
 
             assert len(content) == 0
 
@@ -298,7 +327,7 @@ class TestListPromptsEndpoint:
 
             import json
 
-            content = json.loads(result.body.decode())
+            content = json.loads(bytes(result.body).decode())
 
             assert len(content) == 1
             assert content[0]["name"] == "prompt-1"

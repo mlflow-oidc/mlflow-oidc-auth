@@ -43,6 +43,7 @@ from .request_helpers_fastapi import (
     get_username,
     get_is_admin,
     get_base_path,
+    is_authenticated,
 )
 
 
@@ -86,4 +87,5 @@ __all__ = [
     "get_configured_or_dynamic_redirect_uri",
     "normalize_url_port",
     "get_base_path",
+    "is_authenticated",
 ]

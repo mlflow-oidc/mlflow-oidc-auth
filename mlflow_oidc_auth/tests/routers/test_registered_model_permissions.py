@@ -18,7 +18,7 @@ from mlflow_oidc_auth.routers.registered_model_permissions import (
     REGISTERED_MODEL_USER_PERMISSIONS,
 )
 from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
-from mlflow_oidc_auth.permissions import Permission
+from mlflow_oidc_auth.permissions import Permission, MANAGE, READ, EDIT, NO_PERMISSIONS
 
 
 class TestRegisteredModelPermissionsRouter:
@@ -45,23 +45,32 @@ class TestGetRegisteredModelUsersEndpoint:
         """Test successful retrieval of registered model users."""
         # Mock users with registered model permissions
         user1 = User(
+            id_=1,
             username="user1@example.com",
+            password_hash="hash1",
+            password_expiration=None,
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
-            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-model", permission=Permission.MANAGE)],
+            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-model", permission=MANAGE)],
         )
 
         user2 = User(
+            id_=2,
             username="service@example.com",
+            password_hash="hash2",
+            password_expiration=None,
             display_name="Service Account",
             is_admin=False,
             is_service_account=True,
-            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-model", permission=Permission.READ)],
+            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-model", permission=READ)],
         )
 
         user3 = User(
+            id_=3,
             username="user3@example.com",
+            password_hash="hash3",
+            password_expiration=None,
             display_name="User 3",
             is_admin=False,
             is_service_account=False,
@@ -70,25 +79,26 @@ class TestGetRegisteredModelUsersEndpoint:
 
         mock_store.list_users.return_value = [user1, user2, user3]
 
-        result = await get_registered_model_users(name="test-model", admin_username="admin@example.com")
+        with patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store):
+            result = await get_registered_model_users(name="test-model", admin_username="admin@example.com")
 
         assert result.status_code == 200
 
         # Parse response content
         import json
 
-        content = json.loads(result.body.decode())
+        content = json.loads(bytes(result.body).decode())
 
         assert len(content) == 2  # Only users with permissions for test-model
 
         # Check first user
         assert content[0]["username"] == "user1@example.com"
-        assert content[0]["permission"] == Permission.MANAGE
+        assert content[0]["permission"] == "MANAGE"
         assert content[0]["kind"] == "user"
 
         # Check service account
         assert content[1]["username"] == "service@example.com"
-        assert content[1]["permission"] == Permission.READ
+        assert content[1]["permission"] == "READ"
         assert content[1]["kind"] == "service-account"
 
     @pytest.mark.asyncio
@@ -116,8 +126,8 @@ class TestGetRegisteredModelUsersEndpoint:
             is_admin=False,
             is_service_account=False,
             registered_model_permissions=[
-                RegisteredModelPermissionEntity(name="model-1", permission=Permission.MANAGE),
-                RegisteredModelPermissionEntity(name="model-2", permission=Permission.READ),
+                RegisteredModelPermissionEntity(name="model-1", permission=MANAGE),
+                RegisteredModelPermissionEntity(name="model-2", permission=READ),
             ],
         )
 
@@ -133,7 +143,7 @@ class TestGetRegisteredModelUsersEndpoint:
 
         assert len(content) == 1
         assert content[0]["username"] == "user1@example.com"
-        assert content[0]["permission"] == Permission.MANAGE  # Should get permission for model-1
+        assert content[0]["permission"] == "MANAGE"  # Should get permission for model-1
 
     @pytest.mark.asyncio
     async def test_get_registered_model_users_no_registered_model_permissions_attr(self, mock_store):

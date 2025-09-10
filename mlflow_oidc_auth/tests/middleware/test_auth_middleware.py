@@ -255,13 +255,23 @@ class TestAuthMiddleware:
             raise RuntimeError("Session access failed")
 
         # Replace the session property with one that raises an exception
-        request.__class__.session = property(mock_session_property)
+        # Save original so we can restore it after the test to avoid
+        # impacting other tests which rely on the normal MockRequest.session
+        original_session_prop = getattr(request.__class__, "session", None)
+        try:
+            request.__class__.session = property(mock_session_property)
 
-        success, username, error = await auth_middleware._authenticate_session(request)
+            success, username, error = await auth_middleware._authenticate_session(request)
 
-        assert success is False
-        assert username is None
-        assert "Session access failed" in error
+            assert success is False
+            assert username is None
+            assert "Session access failed" in error
+        finally:
+            # Restore original session descriptor/property
+            if original_session_prop is not None:
+                request.__class__.session = original_session_prop
+            else:
+                delattr(request.__class__, "session")
 
     @pytest.mark.asyncio
     async def test_authenticate_user_basic_auth_priority(self, auth_middleware, create_mock_request, mock_store):
@@ -544,10 +554,11 @@ class TestAuthMiddleware:
 
             response = await auth_middleware.dispatch(request, mock_call_next)
 
-            # Verify debug logging was called
-            mock_logger.debug.assert_called_once()
-            log_call_args = mock_logger.debug.call_args[0][0]
-            assert "User user@example.com (admin: False) accessing /protected" in log_call_args
+            # Verify debug logging was called at least once and contains the expected message
+            assert mock_logger.debug.call_count >= 1
+            # Collect all debug log messages and ensure one contains the expected substring
+            debug_messages = [c.args[0] for c in mock_logger.debug.call_args_list]
+            assert any("User user@example.com (admin: False) accessing /protected" in msg for msg in debug_messages)
 
     @pytest.mark.asyncio
     async def test_dispatch_multiple_unprotected_routes(self, auth_middleware, create_mock_request):

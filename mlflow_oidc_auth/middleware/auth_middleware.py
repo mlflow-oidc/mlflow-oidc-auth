@@ -10,7 +10,7 @@ from typing import Optional, Tuple
 import base64
 
 from fastapi import Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
@@ -217,6 +217,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Proceed to the next middleware/handler
             return await call_next(request)
         else:
-            # Authentication failed - redirect to login
+            # Authentication failed - for API routes return 401 JSON, else redirect to login
             logger.info(f"Authentication failed for {path}: {error_msg}")
+            if path.startswith("/api"):
+                return JSONResponse(status_code=401, content={"detail": "Authentication required"})
             return await self._handle_auth_redirect(request)

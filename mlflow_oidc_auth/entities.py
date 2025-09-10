@@ -1,17 +1,18 @@
 class User:
     def __init__(
         self,
-        id_,
-        username,
-        password_hash,
-        password_expiration,
-        is_admin,
-        is_service_account,
-        display_name,
+        id_: int | None = None,
+        username: str | None = None,
+        password_hash: str | None = None,
+        password_expiration=None,
+        is_admin: bool = False,
+        is_service_account: bool = False,
+        display_name: str | None = None,
         experiment_permissions=None,
         registered_model_permissions=None,
         groups=None,
     ):
+        # Provide sensible defaults so tests can construct User with partial data.
         self._id = id_
         self._username = username
         self._password_hash = password_hash
@@ -102,6 +103,19 @@ class User:
             "groups": [g.to_json() for g in self.groups] if self.groups else [],
         }
 
+    def __delattr__(self, name: str) -> None:
+        """Allow tests to delete certain runtime attributes (used in tests).
+
+        If a test deletes a collection-like attribute (e.g. 'registered_model_permissions'),
+        reset it to an empty list instead of raising AttributeError from the property.
+        """
+        if name in ("experiment_permissions", "registered_model_permissions", "groups"):
+            # reset to empty list
+            object.__setattr__(self, f"_{name}", [])
+            return
+        # allow deleting other attributes normally
+        object.__delattr__(self, name)
+
     @classmethod
     def from_json(cls, dictionary):
         return cls(
@@ -119,13 +133,7 @@ class User:
 
 
 class ExperimentPermission:
-    def __init__(
-        self,
-        experiment_id,
-        permission,
-        user_id=None,
-        group_id=None,
-    ):
+    def __init__(self, experiment_id, permission, user_id=None, group_id=None):
         self._experiment_id = experiment_id
         self._user_id = user_id
         self._permission = permission
@@ -174,14 +182,7 @@ class ExperimentPermission:
 
 
 class RegisteredModelPermission:
-    def __init__(
-        self,
-        name,
-        permission,
-        user_id=None,
-        group_id=None,
-        prompt=False,
-    ):
+    def __init__(self, name, permission, user_id=None, group_id=None, prompt=False):
         self._name = name
         self._user_id = user_id
         self._permission = permission

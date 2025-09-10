@@ -160,7 +160,7 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
         response = asyncio.run(handler(self.mock_request, exc))
 
         self.assertIsInstance(response, JSONResponse)
-        self.assertEqual(response.status_code, 500)  # Default since UNAUTHENTICATED != UNAUTHORIZED
+        self.assertEqual(response.status_code, 401)  # UNAUTHENTICATED should map to 401
 
         response_content = response.body.decode("utf-8")
         self.assertIn("UNAUTHENTICATED", response_content)
