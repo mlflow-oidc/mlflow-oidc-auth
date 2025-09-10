@@ -3,12 +3,10 @@ import os
 import secrets
 
 from dotenv import load_dotenv
-
 from mlflow_oidc_auth.logger import get_logger
 
 load_dotenv()  # take environment variables from .env.
 logger = get_logger()
-logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 
 def get_bool_env_variable(variable, default_value):
@@ -38,15 +36,6 @@ class AppConfig:
         self.PERMISSION_SOURCE_ORDER = [source.strip() for source in os.environ.get("PERMISSION_SOURCE_ORDER", "user,group,regex,group-regex").split(",")]
         self.EXTEND_MLFLOW_MENU = get_bool_env_variable("EXTEND_MLFLOW_MENU", True)
         self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = get_bool_env_variable("DEFAULT_LANDING_PAGE_IS_PERMISSIONS", True)
-
-        # Proxy configuration for ProxyFix middleware
-        # These settings determine how many reverse proxies to trust for each header type
-        # self.PROXY_FIX_X_FOR = int(os.environ.get("PROXY_FIX_X_FOR", "1"))  # X-Forwarded-For (client IP)
-        # self.PROXY_FIX_X_PROTO = int(os.environ.get("PROXY_FIX_X_PROTO", "1"))  # X-Forwarded-Proto (https/http)
-        # self.PROXY_FIX_X_HOST = int(os.environ.get("PROXY_FIX_X_HOST", "1"))  # X-Forwarded-Host (original host)
-        # self.PROXY_FIX_X_PORT = int(os.environ.get("PROXY_FIX_X_PORT", "1"))  # X-Forwarded-Port (original port)
-        # self.PROXY_FIX_X_PREFIX = int(os.environ.get("PROXY_FIX_X_PREFIX", "1"))  # X-Forwarded-Prefix (path prefix)
-
         # session
         self.SESSION_TYPE = os.environ.get("SESSION_TYPE", "cachelib")
         self.SESSION_PERMANENT = get_bool_env_variable("SESSION_PERMANENT", False)

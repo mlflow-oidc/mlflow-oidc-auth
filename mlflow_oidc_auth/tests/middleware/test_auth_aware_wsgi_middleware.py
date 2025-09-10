@@ -254,7 +254,7 @@ class TestAuthAwareWSGIMiddleware:
     @pytest.mark.asyncio
     async def test_call_lifespan_request(self, mock_flask_app, mock_receive, mock_send):
         """Test middleware call with lifespan request."""
-        lifespan_scope = {
+        sample_asgi_scope = {
             "type": "lifespan",
             "asgi": {"version": "3.0"},
         }

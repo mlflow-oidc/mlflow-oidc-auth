@@ -74,7 +74,7 @@ async def get_prompt_users(
             users.append(
                 {
                     "username": user.username,
-                    "permission": user_models[prompt_name],
+                    "permission": user_models[prompt_name].name,
                     "kind": "user" if not user.is_service_account else "service-account",
                 }
             )

@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBasic, HTTPBasicCredentials, HTTPBearer
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
+from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, UNAUTHENTICATED
 
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.logger import get_logger
@@ -197,11 +197,40 @@ async def get_username(request: Request) -> str:
         )
     except HTTPException as e:
         # Convert FastAPI exception to MLflow exception for backward compatibility
-        raise MlflowException(e.detail, INVALID_PARAMETER_VALUE)
+        if "Authentication" in e.detail or "credentials" in e.detail:
+            raise MlflowException(e.detail, UNAUTHENTICATED)
+        else:
+            raise MlflowException(e.detail, INVALID_PARAMETER_VALUE)
 
 
 async def get_is_admin(request: Request) -> bool:
     return bool(store.get_user(await get_username(request=request)).is_admin)
+
+
+async def is_authenticated(request: Request) -> bool:
+    """
+    Check if the user is authenticated.
+
+    This function returns True if the user is authenticated via session,
+    basic auth, or bearer token. Otherwise, it returns False.
+
+    Parameters:
+    -----------
+    request : Request
+        The FastAPI request object.
+
+    Returns:
+    --------
+    bool
+        True if the user is authenticated, False otherwise.
+    """
+    try:
+        username = await get_authenticated_username(
+            request=request, basic_username=await get_username_from_basic_auth(None), bearer_username=await get_username_from_bearer_token(None)
+        )
+        return bool(username)
+    except HTTPException:
+        return False
 
 
 async def get_base_path(request: Request) -> str:

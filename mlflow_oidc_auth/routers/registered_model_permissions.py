@@ -74,7 +74,7 @@ async def get_registered_model_users(
             users.append(
                 {
                     "username": user.username,
-                    "permission": user_models[name],
+                    "permission": user_models[name].name,
                     "kind": "user" if not user.is_service_account else "service-account",
                 }
             )

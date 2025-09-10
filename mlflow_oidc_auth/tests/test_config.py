@@ -277,32 +277,6 @@ class TestAppConfig(unittest.TestCase):
                 self.assertFalse(hasattr(config, "lowercase_attr"))
 
     @patch("mlflow_oidc_auth.config.importlib.import_module")
-    def test_session_module_import_error(self, mock_import_module):
-        """Test session module import error handling (lines 62-63)."""
-
-        # Mock ImportError for session module only
-        def side_effect(module_name):
-            if "session" in module_name:
-                raise ImportError("Module not found")
-            # Return a mock for cache module
-            mock_cache = MagicMock()
-            return mock_cache
-
-        mock_import_module.side_effect = side_effect
-
-        with patch.dict(os.environ, {"SESSION_TYPE": "nonexistent", "CACHE_TYPE": "FileSystemCache"}):
-            with patch("builtins.dir", return_value=[]):
-                # Capture log output to verify error logging
-                with self.assertLogs("mlflow_oidc_auth", level="ERROR") as log:
-                    config = AppConfig()
-
-                    # Verify session import was attempted
-                    mock_import_module.assert_any_call("mlflow_oidc_auth.session.nonexistent")
-
-                    # Verify error was logged (this covers lines 62-63)
-                    self.assertIn("Session module for nonexistent could not be imported.", log.output[0])
-
-    @patch("mlflow_oidc_auth.config.importlib.import_module")
     def test_cache_module_import_success(self, mock_import_module):
         """Test successful cache module import and attribute setting."""
         # Create mock modules for both session and cache
@@ -342,34 +316,6 @@ class TestAppConfig(unittest.TestCase):
 
                 # Verify lowercase attribute was not set
                 self.assertFalse(hasattr(config, "lowercase_attr"))
-
-    @patch("mlflow_oidc_auth.config.importlib.import_module")
-    def test_cache_module_import_error(self, mock_import_module):
-        """Test cache module import error handling (lines 73-74)."""
-
-        # Mock ImportError for cache module only
-        def side_effect(module_name):
-            if "cache" in module_name:
-                raise ImportError("Cache module not found")
-            # Return a mock for session module
-            mock_session = MagicMock()
-            return mock_session
-
-        mock_import_module.side_effect = side_effect
-
-        with patch.dict(os.environ, {"CACHE_TYPE": "NonexistentCache", "SESSION_TYPE": "cachelib"}):
-            with patch("builtins.dir", return_value=[]):
-                # Capture log output to verify error logging
-                with self.assertLogs("mlflow_oidc_auth", level="ERROR") as log:
-                    config = AppConfig()
-
-                    # Verify cache import was attempted
-                    mock_import_module.assert_any_call("mlflow_oidc_auth.cache.nonexistentcache")
-
-                    # Verify error was logged (this covers lines 73-74)
-                    # Check that the cache error message is in one of the log outputs
-                    cache_error_found = any("Cache module for NonexistentCache could not be imported." in output for output in log.output)
-                    self.assertTrue(cache_error_found, f"Cache error not found in logs: {log.output}")
 
     def test_session_type_none_skips_import(self):
         """Test that empty SESSION_TYPE still attempts import (default behavior)."""

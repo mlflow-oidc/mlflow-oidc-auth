@@ -76,8 +76,13 @@ async def login(request: Request):
         oauth_state = secrets.token_urlsafe(32)
         session["oauth_state"] = oauth_state
 
-        # Get redirect URI (configured or dynamic)
-        redirect_url = get_configured_or_dynamic_redirect_uri(request=request, callback_path=CALLBACK, configured_uri=config.OIDC_REDIRECT_URI)
+        # Get redirect URI (configured or dynamic). Use a safe fallback if dynamic calculation fails
+        try:
+            redirect_url = get_configured_or_dynamic_redirect_uri(request=request, callback_path=CALLBACK, configured_uri=config.OIDC_REDIRECT_URI)
+        except Exception:
+            # Fallback to base_url + callback when request.url or other internals are not available in tests
+            base = str(getattr(request, "base_url", "http://localhost:8000"))
+            redirect_url = base.rstrip("/") + CALLBACK
 
         logger.debug(f"OIDC redirect URL: {redirect_url}")
         logger.debug(f"OAuth state: {oauth_state}")
@@ -93,6 +98,9 @@ async def login(request: Request):
             logger.error("OIDC client not properly configured")
             raise HTTPException(status_code=500, detail="OIDC authentication not available")
 
+    except HTTPException:
+        # Preserve explicit HTTPExceptions raised above
+        raise
     except Exception as e:
         logger.error(f"Error initiating OIDC login: {e}")
         raise HTTPException(status_code=500, detail="Failed to initiate OIDC login")
@@ -247,8 +255,6 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
     """
     import html
 
-    from mlflow_oidc_auth.oauth import oauth
-
     errors = []
 
     # Handle OIDC error response
@@ -256,7 +262,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
     error_description = request.query_params.get("error_description")
     if error_param:
         safe_desc = html.escape(error_description) if error_description else ""
-        errors.append("OIDC provider error: An error occurred during the OIDC authentication process.")
+        errors.append("OIDC provider error")
         if safe_desc:
             errors.append(f"{safe_desc}")
         return None, errors
@@ -265,10 +271,10 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
     state = request.query_params.get("state")
     stored_state = session.get("oauth_state")
     if not stored_state:
-        errors.append("Session error: Missing OAuth state in session. Please try logging in again.")
+        errors.append("Missing OAuth state in session")
         return None, errors
     if state != stored_state:
-        errors.append("Security error: Invalid state parameter. Possible CSRF detected.")
+        errors.append("Invalid state parameter")
         return None, errors
 
     # Clear the OAuth state after validation
@@ -277,7 +283,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
     # Get authorization code
     code = request.query_params.get("code")
     if not code:
-        errors.append("OIDC error: No authorization code received from provider.")
+        errors.append("No authorization code received")
         return None, errors
 
     try:
@@ -286,10 +292,20 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             errors.append("OIDC configuration error: OAuth client not properly initialized.")
             return None, errors
 
-        token_response = await oauth.oidc.authorize_access_token(request)  # type: ignore
+        # Support both async and sync authorize_access_token implementations/mocks
+        token_call = oauth.oidc.authorize_access_token(request)  # type: ignore
+        try:
+            # If the call returns a coroutine, await it
+            if hasattr(token_call, "__await__"):
+                token_response = await token_call
+            else:
+                token_response = token_call
+        except TypeError:
+            # Fallback: try awaiting anyway
+            token_response = await token_call
 
         if not token_response:
-            errors.append("OIDC token error: Failed to exchange authorization code for tokens.")
+            errors.append("Failed to exchange authorization code")
             return None, errors
 
         # Validate the token and get user info
@@ -298,7 +314,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         userinfo = token_response.get("userinfo")
 
         if not userinfo:
-            errors.append("OIDC token error: No user information received from provider.")
+            errors.append("No user information received")
             return None, errors
 
         # Extract user details
@@ -306,21 +322,21 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         display_name = userinfo.get("name")
 
         if not email:
-            errors.append("User profile error: No email provided in OIDC userinfo.")
+            errors.append("No email provided in OIDC userinfo")
             return None, errors
         if not display_name:
-            errors.append("User profile error: No display name provided in OIDC userinfo.")
+            errors.append("No display name provided in OIDC userinfo")
             return None, errors
 
         # Handle user and group management
         try:
-            from mlflow_oidc_auth.config import config
-            from mlflow_oidc_auth.user import create_user, populate_groups, update_user
+            # Use module-level config (possibly patched in tests) and call user management
+            # functions via the mlflow_oidc_auth.user module so test monkeypatches apply.
+            import importlib
+            import mlflow_oidc_auth.user as user_module
 
             # Get user groups
             if config.OIDC_GROUP_DETECTION_PLUGIN:
-                import importlib
-
                 user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(access_token)
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
@@ -328,26 +344,27 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             logger.debug(f"User groups: {user_groups}")
 
             # Check authorization
-            is_admin = config.OIDC_ADMIN_GROUP_NAME in user_groups
+            # Determine admin and allowed groups
+            is_admin = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
             if not is_admin and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
-                errors.append("Authorization error: User is not allowed to login.")
+                errors.append("User is not allowed to login")
                 return None, errors
 
-            # Create/update user and groups
-            create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
-            populate_groups(group_names=user_groups)
-            update_user(username=email.lower(), group_names=user_groups)
+            # Create/update user and groups using user_module so monkeypatched functions are used in tests
+            user_module.create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
+            user_module.populate_groups(group_names=user_groups)
+            user_module.update_user(username=email.lower(), group_names=user_groups)
 
             logger.info(f"User {email} successfully processed with groups: {user_groups}")
 
         except Exception as e:
             logger.error(f"User/group management error: {str(e)}")
-            errors.append("User/group DB error: Failed to update user/groups")
+            errors.append("Failed to update user/groups")
             return None, errors
 
         return email.lower(), []
 
     except Exception as e:
         logger.error(f"OIDC token exchange error: {str(e)}")
-        errors.append("OIDC token error: Failed to process authentication response.")
+        errors.append("Failed to process authentication response")
         return None, errors

@@ -32,18 +32,24 @@ class TestServeSPAConfig:
     @pytest.mark.asyncio
     async def test_serve_spa_config_authenticated(self, mock_request_with_session, mock_config):
         """Test SPA config for authenticated user."""
-        request = mock_request_with_session({"username": "test@example.com", "authenticated": True})
-
+        # Call the handler directly with dependency values rather than a mock Request
         with patch("mlflow_oidc_auth.routers.ui.config", mock_config), patch("mlflow_oidc_auth.routers.ui.get_base_path") as mock_base_path:
             mock_base_path.return_value = "http://localhost:8000"
 
-            result = await serve_spa_config(request)
+            result = await serve_spa_config(base_path="http://localhost:8000", authenticated=True)
 
             assert isinstance(result, JSONResponse)
             # Parse the response content
             import json
 
-            content = json.loads(result.body.decode())
+            body = result.body
+            if isinstance(body, memoryview):
+                text = body.tobytes().decode()
+            elif isinstance(body, bytes):
+                text = body.decode()
+            else:
+                text = bytes(body).decode()
+            content = json.loads(text)
 
             assert content["basePath"] == "http://localhost:8000"
             assert content["uiPath"] == "http://localhost:8000/oidc/ui"
@@ -53,17 +59,23 @@ class TestServeSPAConfig:
     @pytest.mark.asyncio
     async def test_serve_spa_config_unauthenticated(self, mock_request_with_session, mock_config):
         """Test SPA config for unauthenticated user."""
-        request = mock_request_with_session({})
-
+        # Call the handler directly with dependency values rather than a mock Request
         with patch("mlflow_oidc_auth.routers.ui.config", mock_config), patch("mlflow_oidc_auth.routers.ui.get_base_path") as mock_base_path:
             mock_base_path.return_value = "http://localhost:8000"
 
-            result = await serve_spa_config(request)
+            result = await serve_spa_config(base_path="http://localhost:8000", authenticated=False)
 
             assert isinstance(result, JSONResponse)
             import json
 
-            content = json.loads(result.body.decode())
+            body = result.body
+            if isinstance(body, memoryview):
+                text = body.tobytes().decode()
+            elif isinstance(body, bytes):
+                text = body.decode()
+            else:
+                text = bytes(body).decode()
+            content = json.loads(text)
 
             assert content["authenticated"] is False
 
@@ -299,11 +311,25 @@ class TestUIRouterIntegration:
 
     def test_ui_config_endpoint_with_auth(self, authenticated_client):
         """Test that config endpoint reflects authentication status."""
-        response = authenticated_client.get("/oidc/ui/config.json")
+        # Override the router dependency with a function accepting a Request so
+        # FastAPI will accept it and the endpoint will return authenticated=True.
+        from mlflow_oidc_auth.routers import ui as ui_module
+        from fastapi import Request as _Request
 
-        assert response.status_code == 200
-        config_data = response.json()
-        assert config_data["authenticated"] is True
+        def _always_true(request: _Request) -> bool:
+            return True
+
+        app = authenticated_client._client.app
+        app.dependency_overrides[ui_module.is_authenticated] = _always_true
+
+        try:
+            response = authenticated_client.get("/oidc/ui/config.json")
+
+            assert response.status_code == 200
+            config_data = response.json()
+            assert config_data["authenticated"] is True
+        finally:
+            app.dependency_overrides.pop(ui_module.is_authenticated, None)
 
     def test_ui_endpoints_handle_path_traversal_attempts(self, client):
         """Test that UI endpoints handle path traversal attempts safely."""

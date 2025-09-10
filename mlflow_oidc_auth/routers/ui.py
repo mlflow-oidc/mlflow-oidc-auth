@@ -6,11 +6,11 @@ This router handles serving the OIDC management UI and static assets.
 
 import os
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.utils import get_base_path
+from mlflow_oidc_auth.utils import get_base_path, is_authenticated
 
 from ._prefix import UI_ROUTER_PREFIX
 
@@ -27,16 +27,13 @@ ui_directory = os.path.join(os.path.dirname(__file__), "..", "ui")
 
 
 @ui_router.get("/config.json")
-async def serve_spa_config(request: Request):
-    session = request.session
-    username = session.get("username")
-    base_path = await get_base_path(request)
+async def serve_spa_config(base_path: str = Depends(get_base_path), authenticated: bool = Depends(is_authenticated)):
     return JSONResponse(
         content={
             "basePath": base_path,
             "uiPath": f"{base_path}{UI_ROUTER_PREFIX}",
             "provider": config.OIDC_PROVIDER_DISPLAY_NAME,
-            "authenticated": bool(username),
+            "authenticated": authenticated,
         }
     )
 
