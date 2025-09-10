@@ -7,12 +7,9 @@ scenarios, error responses, and security configuration settings.
 """
 
 import os
-import secrets
-import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 from mlflow_oidc_auth.config import AppConfig, get_bool_env_variable
 
@@ -418,7 +415,7 @@ class TestAppConfig(unittest.TestCase):
         # Test session module case conversion
         with patch.dict(os.environ, {"SESSION_TYPE": "REDIS", "CACHE_TYPE": ""}):
             with patch("builtins.dir", side_effect=mock_dir):
-                config = AppConfig()
+                AppConfig()
                 mock_import_module.assert_any_call("mlflow_oidc_auth.session.redis")
 
         # Reset mock for next test
@@ -427,7 +424,7 @@ class TestAppConfig(unittest.TestCase):
         # Test cache module case conversion
         with patch.dict(os.environ, {"CACHE_TYPE": "REDISCACHE", "SESSION_TYPE": ""}):
             with patch("builtins.dir", side_effect=mock_dir):
-                config = AppConfig()
+                AppConfig()
                 mock_import_module.assert_any_call("mlflow_oidc_auth.cache.rediscache")
 
     def test_permanent_session_lifetime_type(self):

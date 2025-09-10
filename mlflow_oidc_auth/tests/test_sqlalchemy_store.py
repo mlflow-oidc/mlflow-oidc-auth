@@ -1,7 +1,6 @@
 from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 import time
 
 import pytest

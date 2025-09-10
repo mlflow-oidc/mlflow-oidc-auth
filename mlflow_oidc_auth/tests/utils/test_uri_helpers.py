@@ -6,8 +6,7 @@ from request headers in various proxy scenarios.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-from urllib.parse import urlparse
+from unittest.mock import MagicMock
 from fastapi import Request
 from mlflow_oidc_auth.utils.uri import _get_dynamic_redirect_uri, get_configured_or_dynamic_redirect_uri, _get_base_url_from_request, normalize_url_port
 
@@ -17,11 +16,9 @@ class TestDynamicRedirectUri(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        pass
 
     def tearDown(self):
         """Clean up test fixtures."""
-        pass
 
     def test_get_base_url_from_request(self):
         """Test base URL extraction from FastAPI request."""

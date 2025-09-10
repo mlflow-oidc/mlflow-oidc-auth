@@ -10,7 +10,6 @@ import os
 import unittest
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 from mlflow_oidc_auth.cache import filesystemcache
 
@@ -455,7 +454,7 @@ class TestFileSystemCacheIntegration(unittest.TestCase):
         from mlflow_oidc_auth.config import AppConfig
 
         with patch.dict(os.environ, {"CACHE_TYPE": "FileSystemCache"}):
-            config = AppConfig()
+            AppConfig()
 
             # Verify import was attempted
             mock_import_module.assert_called_with("mlflow_oidc_auth.cache.filesystemcache")

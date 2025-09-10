@@ -1,11 +1,9 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from flask import Flask, Response
-from mlflow.protos.service_pb2 import CreateExperiment, SearchExperiments, SearchLoggedModels
-from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, SearchRegisteredModels, RenameRegisteredModel
+from mlflow.protos.service_pb2 import CreateExperiment
 from mlflow_oidc_auth.hooks.after_request import (
     after_request_hook,
-    AFTER_REQUEST_PATH_HANDLERS,
     _set_can_manage_experiment_permission,
     _set_can_manage_registered_model_permission,
     _delete_can_manage_registered_model_permission,

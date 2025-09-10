@@ -7,9 +7,8 @@ error handler registration, and application startup/shutdown procedures.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch, Mock
+from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
-from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
 
 from mlflow_oidc_auth.app import create_app
 
@@ -143,7 +142,7 @@ class TestCreateApp:
             mock_getattr.return_value = True
 
             # Call the function
-            result = create_app()
+            create_app()
 
             # Verify that the hack module was imported and used
             # We check that the view_functions dictionary has the "serve" key
@@ -189,7 +188,7 @@ class TestCreateApp:
             mock_getattr.return_value = True
 
             # Call the function
-            result = create_app()
+            create_app()
 
             # Verify all routers were retrieved
             mock_get_all_routers.assert_called_once()
@@ -226,7 +225,7 @@ class TestCreateApp:
             mock_getattr.return_value = True
 
             # Call the function
-            result = create_app()
+            create_app()
 
             # Verify AuthAwareWSGIMiddleware was called with Flask app
             mock_auth_aware_wsgi_middleware.assert_called_once_with(mock_flask_app)
@@ -262,7 +261,7 @@ class TestCreateApp:
             mock_getattr.return_value = True
 
             # Call the function
-            result = create_app()
+            create_app()
 
             # Verify logging occurred
             mock_logger.info.assert_called_once_with("MLflow Flask app mounted at / with FastAPI auth info passing")
@@ -330,7 +329,7 @@ class TestCreateApp:
             mock_getattr.return_value = True
 
             # Call the function
-            result = create_app()
+            create_app()
 
             # Verify Flask hooks were registered
             mock_flask_app.before_request.assert_called_once_with(mock_before_request_hook)
@@ -366,7 +365,7 @@ class TestCreateApp:
             mock_getattr.return_value = True
 
             # Call the function
-            result = create_app()
+            create_app()
 
             # Verify Flask app secret key was set
             assert mock_flask_app.secret_key == test_secret_key
@@ -573,7 +572,7 @@ class TestAppErrorHandling:
             mock_config.EXTEND_MLFLOW_MENU = False
 
             # Call the function
-            result = create_app()
+            create_app()
 
             # Verify that no hack module functionality was added
             assert "serve" not in mock_flask_app.view_functions
@@ -660,7 +659,7 @@ class TestAppConfiguration:
                 mock_getattr.return_value = True
 
                 # Call the function
-                result = create_app()
+                create_app()
 
                 # Verify secret key is set correctly
                 assert mock_flask_app.secret_key == secret_key

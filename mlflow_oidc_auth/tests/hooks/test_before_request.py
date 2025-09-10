@@ -1,5 +1,4 @@
 import pytest
-import re
 from unittest.mock import patch, MagicMock
 from flask import Flask, Response
 from mlflow_oidc_auth.hooks.before_request import (

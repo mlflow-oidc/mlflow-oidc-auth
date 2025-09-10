@@ -10,14 +10,13 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.utils import (
     get_url_param,
     get_optional_url_param,
     get_request_param,
     get_optional_request_param,
-    get_username,
     get_is_admin,
     get_experiment_id,
     get_model_id,
@@ -45,7 +44,6 @@ class TestRequestHelpers(unittest.TestCase):
     def test_get_is_admin(self, mock_store):
         """Test admin status retrieval for current user."""
         from fastapi import Request
-        from unittest.mock import AsyncMock
 
         # Create a mock FastAPI request
         mock_request = MagicMock(spec=Request)

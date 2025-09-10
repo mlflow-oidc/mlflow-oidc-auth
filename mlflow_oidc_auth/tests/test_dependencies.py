@@ -6,9 +6,8 @@ including experiment permissions, admin permissions, and registered model permis
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import HTTPException, Request, Path
-from fastapi.testclient import TestClient
+from unittest.mock import MagicMock, patch
+from fastapi import HTTPException, Request
 
 from mlflow_oidc_auth.dependencies import (
     check_experiment_permission,

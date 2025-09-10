@@ -6,14 +6,9 @@ implementation, error scenarios, security measures, token validation,
 and OIDC provider integration.
 """
 
-import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock, Mock
-
-import pytest
-
-from mlflow_oidc_auth.config import AppConfig
+from unittest.mock import patch
 
 
 class TestOAuthModule(unittest.TestCase):

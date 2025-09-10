@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.validators import experiment
 

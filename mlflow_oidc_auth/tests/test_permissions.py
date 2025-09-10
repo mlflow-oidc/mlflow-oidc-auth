@@ -7,7 +7,6 @@ including permission objects, validation, comparison, and edge cases.
 
 import pytest
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 
 from mlflow_oidc_auth.permissions import (
     Permission,

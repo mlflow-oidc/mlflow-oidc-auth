@@ -7,9 +7,8 @@ and information disclosure, achieving 100% line and branch coverage.
 """
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -19,7 +18,6 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_DOES_NOT_EXIST,
     INVALID_PARAMETER_VALUE,
     PERMISSION_DENIED,
-    INTERNAL_ERROR,
     UNAUTHENTICATED,
 )
 from mlflow_oidc_auth.exceptions import register_exception_handlers
@@ -401,7 +399,6 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
     def test_concurrent_exception_handling(self):
         """Test that exception handling works correctly under concurrent access."""
         import threading
-        import time
 
         register_exception_handlers(self.app)
 

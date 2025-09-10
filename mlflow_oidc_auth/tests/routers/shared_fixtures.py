@@ -2,18 +2,12 @@
 Shared fixtures for router tests extracted from conftest.py.
 Keep this file minimal: common mocks and helpers used across router test modules.
 """
-import os
-import tempfile
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Dict, Any, Optional
 
 from fastapi.testclient import TestClient
 
 from mlflow_oidc_auth.entities import User
-from mlflow_oidc_auth.entities import RegisteredModelPermission as RegisteredModelPermissionEntity
-from mlflow_oidc_auth.entities import ExperimentPermission as ExperimentPermissionEntity
-from mlflow_oidc_auth.permissions import Permission
 
 
 # Delegator helpers: ensure dependencies.can_manage_* call the utils implementation at runtime

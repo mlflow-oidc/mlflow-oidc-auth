@@ -8,7 +8,6 @@ authorization, and error handling.
 
 import pytest
 from unittest.mock import MagicMock, patch
-from fastapi import HTTPException
 
 from mlflow_oidc_auth.routers.registered_model_permissions import (
     registered_model_permissions_router,
@@ -18,7 +17,7 @@ from mlflow_oidc_auth.routers.registered_model_permissions import (
     REGISTERED_MODEL_USER_PERMISSIONS,
 )
 from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
-from mlflow_oidc_auth.permissions import Permission, MANAGE, READ, EDIT, NO_PERMISSIONS
+from mlflow_oidc_auth.permissions import MANAGE, READ
 
 
 class TestRegisteredModelPermissionsRouter:

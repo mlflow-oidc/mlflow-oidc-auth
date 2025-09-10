@@ -10,8 +10,7 @@ This module tests WSGI middleware functionality including:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from typing import Dict, Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware, AuthInjectingWSGIApp
 
@@ -162,7 +161,7 @@ class TestAuthInjectingWSGIApp:
         # Mock start_response
         start_response = MagicMock()
 
-        result = app(sample_wsgi_environ, start_response)
+        app(sample_wsgi_environ, start_response)
 
         # Verify existing environ variables are preserved
         assert sample_wsgi_environ["EXISTING_VAR"] == "existing_value"

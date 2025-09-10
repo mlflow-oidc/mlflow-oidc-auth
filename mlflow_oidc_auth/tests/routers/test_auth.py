@@ -6,7 +6,7 @@ and auth status with various scenarios including success, failure, and edge case
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 
@@ -89,7 +89,7 @@ class TestLoginEndpoint:
             mock_redirect.return_value = "http://localhost:8000/callback"
             mock_token.return_value = "test_state_token"
 
-            result = await login(request)
+            await login(request)
 
             # Verify state was set in session
             assert request.session["oauth_state"] == "test_state_token"

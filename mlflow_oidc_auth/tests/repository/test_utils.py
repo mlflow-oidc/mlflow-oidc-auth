@@ -1,5 +1,4 @@
 import pytest
-import warnings
 from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow_oidc_auth.repository import utils

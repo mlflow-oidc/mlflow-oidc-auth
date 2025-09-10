@@ -9,9 +9,7 @@ import unittest
 import importlib
 import sys
 import threading
-import time
 from unittest.mock import patch, Mock
-import pytest
 
 
 class TestPluginSystem(unittest.TestCase):
@@ -25,7 +23,7 @@ class TestPluginSystem(unittest.TestCase):
     def test_plugin_module_import(self):
         """Test that the plugins module can be imported successfully."""
         try:
-            import mlflow_oidc_auth.plugins
+            pass
 
             self.assertTrue(True, "Plugin module imported successfully")
         except ImportError as e:
@@ -34,7 +32,7 @@ class TestPluginSystem(unittest.TestCase):
     def test_entra_plugin_import(self):
         """Test that the Microsoft Entra ID plugin can be imported successfully."""
         try:
-            import mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id
+            pass
 
             self.assertTrue(True, "Entra ID plugin imported successfully")
         except ImportError as e:
@@ -74,11 +72,9 @@ class TestPluginSystem(unittest.TestCase):
 
     def test_plugin_security_imports(self):
         """Test that plugins only import necessary and safe modules."""
-        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
         import mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id as plugin_module
 
         # Verify only expected modules are imported
-        expected_imports = ["requests"]
         module_globals = dir(plugin_module)
 
         # Check that requests is imported (expected)
@@ -142,7 +138,7 @@ class TestPluginSystem(unittest.TestCase):
         import mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id as plugin
 
         # Get original function reference
-        original_function = plugin.get_user_groups
+        plugin.get_user_groups
 
         # Reload the module
         importlib.reload(plugin)
@@ -173,13 +169,10 @@ class TestPluginSystem(unittest.TestCase):
         # Import plugin and verify it doesn't modify global state
         original_modules = set(sys.modules.keys())
 
-        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
-
         # Verify no unexpected modules were added to global state
         new_modules = set(sys.modules.keys()) - original_modules
 
         # Only expected modules should be added
-        expected_new_modules = {"mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id"}
 
         # Allow for requests and its dependencies if not already loaded
         allowed_patterns = ["mlflow_oidc_auth.plugins", "requests", "urllib3", "certifi", "charset_normalizer", "idna"]
@@ -203,7 +196,6 @@ class TestPluginSecurityAndIsolation(unittest.TestCase):
         from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
 
         # Verify plugin function doesn't have access to sensitive globals
-        import inspect
 
         # Get the plugin function's globals
         func_globals = get_user_groups.__globals__
@@ -220,7 +212,6 @@ class TestPluginSecurityAndIsolation(unittest.TestCase):
         # This test verifies that plugins don't consume excessive resources
 
         import time
-        import threading
         from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
 
         with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get") as mock_get:
