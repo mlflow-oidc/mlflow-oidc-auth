@@ -8,9 +8,8 @@ error scenarios, and security aspects of Redis session management.
 
 import os
 import unittest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 
-import pytest
 import redis
 
 from mlflow_oidc_auth.session import redis as redis_session

@@ -1,15 +1,13 @@
 import os
 import sys
 from tempfile import mkstemp
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from alembic.config import Config
-from alembic.script import ScriptDirectory
-from alembic.migration import MigrationContext
 
 from mlflow_oidc_auth.db.utils import migrate, migrate_if_needed, _get_alembic_dir, _get_alembic_config
 

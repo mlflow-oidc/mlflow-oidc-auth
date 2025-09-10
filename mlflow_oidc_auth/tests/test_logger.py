@@ -8,7 +8,6 @@ to achieve 100% test coverage.
 import logging
 import os
 from unittest.mock import Mock, patch
-import pytest
 
 from mlflow_oidc_auth.logger import get_logger
 
@@ -18,7 +17,6 @@ class TestGetLogger:
 
     def setup_method(self):
         """Reset the global logger instance before each test."""
-        from mlflow_oidc_auth.logger import _logger
 
         # Reset the global _logger to None
         import mlflow_oidc_auth.logger

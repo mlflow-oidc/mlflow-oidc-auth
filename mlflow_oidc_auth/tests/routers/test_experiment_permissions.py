@@ -9,7 +9,6 @@ authorization, and error handling.
 from fastapi.testclient import TestClient
 import pytest
 from unittest.mock import MagicMock, patch
-from fastapi import HTTPException
 from typing import Any
 
 from mlflow_oidc_auth.routers.experiment_permissions import (
@@ -19,9 +18,9 @@ from mlflow_oidc_auth.routers.experiment_permissions import (
     LIST_EXPERIMENTS,
     EXPERIMENT_USER_PERMISSIONS,
 )
-from mlflow_oidc_auth.models import ExperimentSummary, ExperimentUserPermission
+from mlflow_oidc_auth.models import ExperimentSummary
 from mlflow_oidc_auth.entities import User, ExperimentPermission as ExperimentPermissionEntity
-from mlflow_oidc_auth.permissions import Permission, MANAGE, READ
+from mlflow_oidc_auth.permissions import MANAGE, READ
 
 
 class TestExperimentPermissionsRouter:

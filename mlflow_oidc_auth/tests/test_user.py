@@ -1,7 +1,5 @@
-import pytest
 import string
-import secrets
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth import user

@@ -6,13 +6,12 @@ including parameter extraction, authentication, and user information retrieval.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 import asyncio
 
 from fastapi import HTTPException, Request
 from fastapi.security import HTTPBasicCredentials, HTTPAuthorizationCredentials
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 
 from mlflow_oidc_auth.utils.request_helpers_fastapi import (
     get_username_from_session,
@@ -30,11 +29,9 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test environment."""
-        pass
 
     def tearDown(self) -> None:
         """Clean up test environment."""
-        pass
 
     def test_get_username_from_session_with_state(self):
         """Test username extraction from request state."""

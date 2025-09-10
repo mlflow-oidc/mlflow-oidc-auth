@@ -3,8 +3,7 @@ Tests for bridge.user module - Flask/FastAPI compatibility layer
 """
 
 import pytest
-import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from mlflow_oidc_auth.bridge.user import get_fastapi_username, get_fastapi_admin_status
 
 
@@ -399,7 +398,6 @@ class TestBridgeDataValidation:
     def test_bridge_concurrent_access_simulation(self):
         """Test bridge behavior under simulated concurrent access"""
         import threading
-        import time
 
         results = []
         errors = []

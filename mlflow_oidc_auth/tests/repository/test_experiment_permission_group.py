@@ -1,12 +1,10 @@
 import pytest
-from unittest.mock import MagicMock, patch, ANY
-from sqlalchemy.exc import NoResultFound, MultipleResultsFound
+from unittest.mock import MagicMock, patch
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.repository.experiment_permission_group import ExperimentPermissionGroupRepository
-from mlflow_oidc_auth.db.models import SqlExperimentGroupPermission, SqlGroup, SqlUserGroup
+from mlflow_oidc_auth.db.models import SqlExperimentGroupPermission, SqlGroup
 
 
 @pytest.fixture

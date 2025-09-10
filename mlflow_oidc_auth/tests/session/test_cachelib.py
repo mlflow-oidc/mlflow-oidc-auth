@@ -7,12 +7,9 @@ and security aspects of filesystem-based session management.
 """
 
 import os
-import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 
-import pytest
-from cachelib import FileSystemCache
 
 from mlflow_oidc_auth.session import cachelib as cachelib_session
 

@@ -14,8 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware as StarletteSessionM
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.exceptions import register_exception_handlers
-from mlflow_oidc_auth.hooks.after_request import after_request_hook
-from mlflow_oidc_auth.hooks.before_request import before_request_hook
+from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware import AuthAwareWSGIMiddleware, AuthMiddleware
 from mlflow_oidc_auth.routers import get_all_routers

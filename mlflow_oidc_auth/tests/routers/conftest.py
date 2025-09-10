@@ -10,17 +10,15 @@ import pytest
 import os
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from mlflow_oidc_auth.db.models import Base
-from mlflow_oidc_auth.entities import User, Group, ExperimentPermission as ExperimentPermissionEntity
+from mlflow_oidc_auth.entities import User, ExperimentPermission as ExperimentPermissionEntity
 from mlflow_oidc_auth.permissions import Permission
 
 # Import shared fixtures
@@ -319,7 +317,6 @@ def admin_session():
 def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_permissions):
     """Create a test FastAPI application with all routers."""
     # Build test app using the production factory so mounts/middleware match prod
-    from mlflow_oidc_auth.app import create_app
 
     # Patch runtime dependencies used by middleware, routers and Flask mount
     patches = [
@@ -397,7 +394,6 @@ def admin_client(test_app_admin):
 @pytest.fixture
 def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, admin_permissions):
     """Create a test FastAPI application with all routers for admin tests."""
-    from mlflow_oidc_auth.app import create_app
 
     patches = [
         patch("mlflow_oidc_auth.store.store", mock_store),

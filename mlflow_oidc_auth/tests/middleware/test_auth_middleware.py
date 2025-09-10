@@ -10,10 +10,9 @@ This module tests authentication middleware behavior including:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import Request, Response
+from unittest.mock import MagicMock, patch
+from fastapi import Response
 from fastapi.responses import RedirectResponse
-from starlette.types import ASGIApp
 
 from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
 
@@ -534,7 +533,7 @@ class TestAuthMiddleware:
             async def mock_call_next(req):
                 pytest.fail("call_next should not be called for unauthenticated user")
 
-            response = await auth_middleware.dispatch(request, mock_call_next)
+            await auth_middleware.dispatch(request, mock_call_next)
 
             # Verify logging was called
             mock_logger.info.assert_called_once()
@@ -552,7 +551,7 @@ class TestAuthMiddleware:
             async def mock_call_next(req):
                 return Response(content="OK", status_code=200)
 
-            response = await auth_middleware.dispatch(request, mock_call_next)
+            await auth_middleware.dispatch(request, mock_call_next)
 
             # Verify debug logging was called at least once and contains the expected message
             assert mock_logger.debug.call_count >= 1
@@ -624,12 +623,12 @@ class TestAuthMiddleware:
             async def mock_call_next(req):
                 return Response(content="OK", status_code=200)
 
-            response1 = await auth_middleware.dispatch(request1, mock_call_next)
+            await auth_middleware.dispatch(request1, mock_call_next)
 
             # Second request with different user
             request2 = create_mock_request(path="/protected", session={"username": "admin@example.com"})
 
-            response2 = await auth_middleware.dispatch(request2, mock_call_next)
+            await auth_middleware.dispatch(request2, mock_call_next)
 
             # Verify each request has correct isolated state
             assert request1.state.username == "user@example.com"
@@ -655,7 +654,7 @@ class TestAuthMiddleware:
                 assert req.scope["mlflow_oidc_auth"]["is_admin"] is True
                 return Response(content="OK", status_code=200)
 
-            response = await auth_middleware.dispatch(request, mock_call_next)
+            await auth_middleware.dispatch(request, mock_call_next)
 
             # Verify scope still has auth info after processing
             assert "mlflow_oidc_auth" in request.scope

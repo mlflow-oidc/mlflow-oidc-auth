@@ -1,7 +1,7 @@
 import pytest
 import json
-from flask import Flask, jsonify
-from unittest.mock import patch, MagicMock
+from flask import Flask
+from unittest.mock import patch
 from mlflow_oidc_auth.responses.client_error import (
     make_auth_required_response,
     make_forbidden_response,

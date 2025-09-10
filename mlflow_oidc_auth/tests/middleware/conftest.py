@@ -6,14 +6,11 @@ including authentication mocking, ASGI/WSGI setup, and request/response simulati
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Dict, Any, Optional, Callable, Awaitable
+from unittest.mock import MagicMock
+from typing import Dict, Any, Optional
 import base64
 
-from fastapi import FastAPI, Request, Response
-from fastapi.testclient import TestClient
-from starlette.types import ASGIApp, Scope, Receive, Send
-from starlette.responses import JSONResponse
+from fastapi import FastAPI, Request
 
 from mlflow_oidc_auth.entities import User
 

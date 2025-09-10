@@ -6,7 +6,6 @@ with various scenarios and response validation.
 """
 
 import pytest
-from fastapi.testclient import TestClient
 
 from mlflow_oidc_auth.routers.health import health_check_router, health_check_ready, health_check_live, health_check_startup
 
@@ -149,7 +148,6 @@ class TestHealthCheckIntegration:
     def test_health_endpoints_concurrent_requests(self, client):
         """Test that health endpoints handle concurrent requests properly."""
         import concurrent.futures
-        import threading
 
         def make_request(endpoint):
             return client.get(endpoint)

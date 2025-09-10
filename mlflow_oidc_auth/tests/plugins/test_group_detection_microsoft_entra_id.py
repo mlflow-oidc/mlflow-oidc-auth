@@ -1,6 +1,5 @@
 import unittest
 from unittest.mock import Mock, patch
-import pytest
 from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
 
 

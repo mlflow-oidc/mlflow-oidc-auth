@@ -5,10 +5,8 @@ This module tests all CLI commands, argument parsing, validation,
 error handling, and security aspects of the database CLI.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
-from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError, OperationalError, DatabaseError
 
 from mlflow_oidc_auth.db.cli import commands, upgrade
@@ -214,7 +212,7 @@ class TestCLIArgumentParsing:
             with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
                 mock_engine.return_value = MagicMock()
 
-                result = self.runner.invoke(upgrade, ["--url", url])
+                self.runner.invoke(upgrade, ["--url", url])
 
                 # Should not fail due to URL format (actual connection might fail)
                 mock_engine.assert_called_once_with(url)
@@ -253,7 +251,7 @@ class TestCLIArgumentParsing:
             with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
                 mock_engine.return_value = MagicMock()
 
-                result = self.runner.invoke(upgrade, ["--url", url])
+                self.runner.invoke(upgrade, ["--url", url])
 
                 mock_engine.assert_called_once_with(url)
 
@@ -278,7 +276,7 @@ class TestCLIArgumentParsing:
             ]
 
             for args in orders:
-                result = self.runner.invoke(upgrade, args)
+                self.runner.invoke(upgrade, args)
 
                 mock_migrate.assert_called()
                 call_args = mock_migrate.call_args
@@ -390,7 +388,7 @@ class TestCLISecurity:
         with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
             mock_engine.return_value = MagicMock()
 
-            result = self.runner.invoke(upgrade, ["--url", sensitive_url])
+            self.runner.invoke(upgrade, ["--url", sensitive_url])
 
             # The URL should be passed to create_engine as-is
             mock_engine.assert_called_once_with(sensitive_url)
@@ -430,7 +428,7 @@ class TestCLISecurity:
                 # SQLAlchemy should handle path validation
                 mock_engine.return_value = MagicMock()
 
-                result = self.runner.invoke(upgrade, ["--url", path])
+                self.runner.invoke(upgrade, ["--url", path])
 
                 # The path should be passed to create_engine for validation
                 mock_engine.assert_called_once_with(path)
@@ -448,7 +446,7 @@ class TestCLISecurity:
             with patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
                 mock_engine.return_value = MagicMock()
 
-                result = self.runner.invoke(upgrade, ["--url", url])
+                self.runner.invoke(upgrade, ["--url", url])
 
                 # The URL should be passed as-is to create_engine
                 # SQLAlchemy should handle URL parsing and validation
@@ -562,7 +560,7 @@ class TestCLIEdgeCases:
         with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
             mock_engine.return_value = MagicMock()
 
-            result = self.runner.invoke(upgrade, ["--url", long_url, "--revision", long_revision])
+            self.runner.invoke(upgrade, ["--url", long_url, "--revision", long_revision])
 
             # Should handle long parameters without crashing
             mock_engine.assert_called_once_with(long_url)
@@ -575,7 +573,7 @@ class TestCLIEdgeCases:
         with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
             mock_engine.return_value = MagicMock()
 
-            result = self.runner.invoke(upgrade, ["--url", unicode_url, "--revision", unicode_revision])
+            self.runner.invoke(upgrade, ["--url", unicode_url, "--revision", unicode_revision])
 
             # Should handle Unicode characters properly
             mock_engine.assert_called_once_with(unicode_url)
@@ -591,7 +589,7 @@ class TestCLIEdgeCases:
         with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
             mock_engine.return_value = MagicMock()
 
-            result = self.runner.invoke(upgrade, ["--url", url_with_spaces, "--revision", revision_with_spaces])
+            self.runner.invoke(upgrade, ["--url", url_with_spaces, "--revision", revision_with_spaces])
 
             # Should preserve whitespace as provided
             mock_engine.assert_called_once_with(url_with_spaces)
