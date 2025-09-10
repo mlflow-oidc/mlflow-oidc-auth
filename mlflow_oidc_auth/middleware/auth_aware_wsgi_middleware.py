@@ -5,8 +5,10 @@ This middleware passes FastAPI authentication information to Flask via WSGI envi
 It acts as a bridge between FastAPI's authentication middleware and Flask's WSGI application.
 """
 
-from starlette.middleware.wsgi import WSGIMiddleware
+from asgiref.wsgi import WsgiToAsgi as WSGIMiddleware
+
 from starlette.types import Receive, Scope, Send
+import asyncio
 
 from mlflow_oidc_auth.logger import get_logger
 
@@ -61,9 +63,23 @@ class AuthAwareWSGIMiddleware:
             # Create auth-injecting wrapper for this request
             auth_injecting_app = AuthInjectingWSGIApp(self.flask_app, scope)
 
-            # Use WSGIMiddleware to handle the actual ASGI-to-WSGI conversion
-            wsgi_middleware = WSGIMiddleware(auth_injecting_app)
-            await wsgi_middleware(scope, receive, send)
+            # Use asgiref's WsgiToAsgi adapter to handle ASGI-to-WSGI conversion.
+            # This avoids the deprecated starlette.middleware.wsgi dependency.
+            wsgi_adapter = WSGIMiddleware(auth_injecting_app)
+            await wsgi_adapter(scope, receive, send)
         else:
-            # For non-HTTP requests, just pass through
-            await self.flask_app(scope, receive, send)
+            # For non-HTTP requests (websocket/lifespan) try calling the
+            # provided Flask app directly. If it is a callable that returns
+            # an awaitable (e.g. AsyncMock or an ASGI-wrapped app), await it.
+            # Otherwise, fall back to WSGI->ASGI adaptation which will likely
+            # raise for unsupported scope types (mirroring asgiref behaviour).
+            if callable(self.flask_app):
+                result = self.flask_app(scope, receive, send)
+                # If the call returned an awaitable, await it.
+                if asyncio.iscoroutine(result) or asyncio.isfuture(result):
+                    await result
+                    return
+
+            # Fall back to WSGI->ASGI adaptation for non-callable or sync WSGI apps
+            adapter = WSGIMiddleware(self.flask_app)
+            await adapter(scope, receive, send)

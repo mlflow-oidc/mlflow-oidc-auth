@@ -172,8 +172,15 @@ def mock_permissions():
     permissions_mock = {
         "can_manage_experiment": MagicMock(return_value=True),
         "can_manage_registered_model": MagicMock(return_value=True),
-        "get_username": AsyncMock(return_value="test@example.com"),
-        "get_is_admin": AsyncMock(return_value=False),
+        # Use MagicMock for permission helpers because some code calls these
+        # synchronously during tests; providing a sync callable avoids
+        # 'coroutine was never awaited' warnings when the mock isn't awaited.
+        "get_username": MagicMock(return_value="test@example.com"),
+        "get_is_admin": MagicMock(return_value=False),
+        # Async variants for dependencies that are awaited by FastAPI/dependencies
+        # Keep both so tests that call the helpers synchronously still work.
+        "get_username_async": AsyncMock(return_value="test@example.com"),
+        "get_is_admin_async": AsyncMock(return_value=False),
     }
     return permissions_mock
 
