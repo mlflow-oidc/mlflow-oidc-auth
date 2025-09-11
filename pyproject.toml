@@ -53,6 +53,7 @@ test = [
   "pytest-cov<6,>=5.0.0",
   "pytest-asyncio<2",
   "redis[hiredis]<6",
+  "httpx<1,>=0.28.1",
 ]
 
 [[project.maintainers]]
