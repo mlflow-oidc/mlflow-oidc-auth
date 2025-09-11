@@ -16,7 +16,7 @@ describe('NavigationUrlService', () => {
     });
 
     it('should return global config if set', () => {
-      const customConfig = { basePath: '/proxy', uiPath: '/ui' };
+      const customConfig = { basePath: '/proxy', uiPath: '/ui', authenticated: false };
       window.__RUNTIME_CONFIG__ = customConfig;
       expect((service as any).getCurrentConfig()).toEqual(customConfig);
     });
@@ -24,7 +24,7 @@ describe('NavigationUrlService', () => {
 
   describe('buildNavigationUrl', () => {
     beforeEach(() => {
-      window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui', authenticated: false };
     });
 
     it('should prefix path with basePath and handle leading slash', () => {
@@ -33,12 +33,12 @@ describe('NavigationUrlService', () => {
     });
 
     it('should remove trailing slash from basePath', () => {
-      window.__RUNTIME_CONFIG__ = { basePath: '/proxy/', uiPath: '/ui' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/proxy/', uiPath: '/ui', authenticated: false };
       expect(service.buildNavigationUrl('/admin')).toBe('/proxy/admin');
     });
 
     it('should remove double slashes except protocol', () => {
-      window.__RUNTIME_CONFIG__ = { basePath: '/proxy/', uiPath: '/ui' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/proxy/', uiPath: '/ui', authenticated: false };
       expect(service.buildNavigationUrl('//admin')).toBe('/proxy/admin');
     });
 
@@ -47,14 +47,14 @@ describe('NavigationUrlService', () => {
     });
 
     it('should handle basePath as root', () => {
-      window.__RUNTIME_CONFIG__ = { basePath: '/', uiPath: '/ui' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/', uiPath: '/ui', authenticated: false };
       expect(service.buildNavigationUrl('/test')).toBe('/test');
     });
   });
 
   describe('navigateTo', () => {
     it('should set window.location.href to the built URL', () => {
-      window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui' };
+      window.__RUNTIME_CONFIG__ = { basePath: '/proxy', uiPath: '/ui', authenticated: false };
       const originalHref = window.location.href;
       let hrefValue = '';
       Object.defineProperty(window, 'location', {

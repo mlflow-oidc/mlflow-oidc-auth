@@ -21,9 +21,9 @@ describe('AppComponent', () => {
     };
 
     mockRuntimeConfigService = {
-      loadConfig: jasmine.createSpy('loadConfig').and.returnValue(of(mockConfig)),
-      getCurrentConfig: jasmine.createSpy('getCurrentConfig').and.returnValue(mockConfig),
-      isAuthenticated: jasmine.createSpy('isAuthenticated').and.returnValue(true),
+      loadConfig: jest.fn().mockReturnValue(of(mockConfig)),
+      getCurrentConfig: jest.fn().mockReturnValue(mockConfig),
+      isAuthenticated: jest.fn().mockReturnValue(true),
       config$: of(mockConfig)
     };
 

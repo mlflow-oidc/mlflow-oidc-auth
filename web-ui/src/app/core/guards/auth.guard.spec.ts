@@ -10,8 +10,8 @@ describe('AuthGuard', () => {
   let mockRuntimeConfigService: any;
 
   beforeEach(() => {
-    const routerSpy = jasmine.createSpyObj('Router', ['navigate']);
-    const configServiceSpy = jasmine.createSpyObj('RuntimeConfigService', ['getCurrentConfig']);
+    const routerSpy = { navigate: jest.fn() };
+    const configServiceSpy = { getCurrentConfig: jest.fn() };
 
     TestBed.configureTestingModule({
       providers: [
@@ -31,7 +31,7 @@ describe('AuthGuard', () => {
   });
 
   it('should allow access when authenticated', () => {
-    mockRuntimeConfigService.getCurrentConfig.and.returnValue({
+    mockRuntimeConfigService.getCurrentConfig.mockReturnValue({
       basePath: '',
       uiPath: '',
       authenticated: true,
@@ -43,7 +43,7 @@ describe('AuthGuard', () => {
   });
 
   it('should deny access and redirect when not authenticated', () => {
-    mockRuntimeConfigService.getCurrentConfig.and.returnValue({
+    mockRuntimeConfigService.getCurrentConfig.mockReturnValue({
       basePath: '',
       uiPath: '',
       authenticated: false,
