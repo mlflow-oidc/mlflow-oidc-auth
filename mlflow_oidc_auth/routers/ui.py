@@ -4,9 +4,9 @@ UI router for FastAPI application.
 This router handles serving the OIDC management UI and static assets.
 """
 
-import os
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.config import config
@@ -14,7 +14,6 @@ from mlflow_oidc_auth.utils import get_base_path, is_authenticated
 
 from ._prefix import UI_ROUTER_PREFIX
 
-# Create placeholder router - to be implemented
 ui_router = APIRouter(
     prefix=UI_ROUTER_PREFIX,
     tags=["ui"],
@@ -23,7 +22,16 @@ ui_router = APIRouter(
     },
 )
 
-ui_directory = os.path.join(os.path.dirname(__file__), "..", "ui")
+
+def _get_ui_directory() -> tuple[Path, Path]:
+    ui_directory = Path(__file__).parent.parent / "ui"
+    ui_dir_path = ui_directory.resolve()
+    index_file = ui_dir_path / "index.html"
+    if not ui_dir_path.is_dir():
+        raise RuntimeError(f"UI directory not found at {ui_dir_path}")
+    if not index_file.is_file():
+        raise RuntimeError(f"UI index.html not found at {index_file}")
+    return ui_dir_path, index_file
 
 
 @ui_router.get("/config.json")
@@ -43,13 +51,8 @@ async def serve_spa_root():
     """
     Serve the main SPA index.html for the root UI route.
     """
-    index_file = os.path.join(ui_directory, "index.html")
-    if os.path.isfile(index_file):
-        return FileResponse(index_file)
-    else:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=404, detail="UI not found")
+    _, index_file = _get_ui_directory()
+    return FileResponse(str(index_file))
 
 
 @ui_router.get("/{filename:path}")
@@ -60,22 +63,18 @@ async def serve_spa(filename: str):
     For static files (CSS, JS, images), serve them directly.
     For SPA routes (including auth with parameters), serve index.html.
     """
-    file_path = os.path.join(ui_directory, filename)
+    ui_dir_path, index_file = _get_ui_directory()
+    requested_path = (ui_dir_path / filename).resolve()
+
+    # Ensure the resolved path is within ui_directory
+    if not requested_path.is_relative_to(ui_dir_path):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # If it's a real file and exists, serve it
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
+    if requested_path.is_file():
+        return FileResponse(str(requested_path))
 
-    # For SPA routes (like auth, home, etc.), always return index.html
-    # This allows Angular router to handle routes like #/auth?error=...
-    index_file = os.path.join(ui_directory, "index.html")
-    if os.path.isfile(index_file):
-        return FileResponse(index_file)
-    else:
-        # Fallback if index.html doesn't exist
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=404, detail="UI not found")
+    return FileResponse(str(index_file))
 
 
 @ui_router.get("")
