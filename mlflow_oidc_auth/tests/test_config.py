@@ -121,7 +121,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(len(config.SECRET_KEY), 32)  # secrets.token_hex(16) produces 32 chars
         self.assertEqual(config.OIDC_USERS_DB_URI, "sqlite:///auth.db")
         self.assertEqual(config.OIDC_GROUP_NAME, ["mlflow"])
-        self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, "mlflow-admin")
+        self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, ["mlflow-admin"])
         self.assertEqual(config.OIDC_PROVIDER_DISPLAY_NAME, "Login with OIDC")
         self.assertIsNone(config.OIDC_DISCOVERY_URL)
         self.assertEqual(config.OIDC_GROUPS_ATTRIBUTE, "groups")
@@ -176,7 +176,7 @@ class TestAppConfig(unittest.TestCase):
             self.assertEqual(config.SECRET_KEY, "custom-secret-key")
             self.assertEqual(config.OIDC_USERS_DB_URI, "postgresql://user:pass@localhost/db")
             self.assertEqual(config.OIDC_GROUP_NAME, ["group1", "group2", "group3"])
-            self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, "admin-group")
+            self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, ["admin-group"])
             self.assertEqual(config.OIDC_PROVIDER_DISPLAY_NAME, "Custom OIDC Login")
             self.assertEqual(config.OIDC_DISCOVERY_URL, "https://provider.example.com/.well-known/openid_configuration")
             self.assertEqual(config.OIDC_GROUPS_ATTRIBUTE, "custom_groups")
