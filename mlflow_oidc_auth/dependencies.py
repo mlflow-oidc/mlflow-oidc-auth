@@ -131,9 +131,6 @@ async def check_admin_permission(
     return await get_username(request=request)
 
 
-# ... existing dependencies ...
-
-
 async def check_experiment_manage_permission(
     request: Request,
     experiment_id: str = Path(..., description="The experiment ID"),
