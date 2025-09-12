@@ -66,12 +66,7 @@ async def serve_spa(filename: str):
     ui_dir_path, index_file = _get_ui_directory()
     requested_path = (ui_dir_path / filename).resolve()
 
-    # Ensure the resolved path is within ui_directory
-    if not requested_path.is_relative_to(ui_dir_path):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    # If it's a real file and exists, serve it
-    if requested_path.is_file():
+    if requested_path.is_relative_to(ui_dir_path) and requested_path.is_file():
         return FileResponse(str(requested_path))
 
     return FileResponse(str(index_file))
