@@ -739,7 +739,7 @@ async def get_group_experiment_pattern_permissions(
     """
     try:
         patterns = store.list_group_experiment_regex_permissions(group_name)
-        return JSONResponse(content={"patterns": [pattern.__dict__ for pattern in patterns]})
+        return JSONResponse(content=[pattern.to_json() for pattern in patterns])
     except Exception as e:
         logger.error(f"Error getting group experiment pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permissions: {str(e)}")
@@ -784,7 +784,7 @@ async def get_group_experiment_pattern_permission(
     """
     try:
         pattern = store.get_group_experiment_regex_permission(group_name, pattern_id)
-        return JSONResponse(content={"pattern": pattern.__dict__})
+        return JSONResponse(content={"pattern": pattern.to_json()})
     except Exception as e:
         logger.error(f"Error getting group experiment pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permission: {str(e)}")
@@ -849,7 +849,7 @@ async def get_group_registered_model_pattern_permissions(
     """
     try:
         patterns = store.list_group_registered_model_regex_permissions(group_name)
-        return JSONResponse(content={"patterns": [pattern.__dict__ for pattern in patterns]})
+        return JSONResponse(content=[pattern.to_json() for pattern in patterns])
     except Exception as e:
         logger.error(f"Error getting group registered model pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permissions: {str(e)}")
@@ -894,7 +894,7 @@ async def get_group_registered_model_pattern_permission(
     """
     try:
         pattern = store.get_group_registered_model_regex_permission(group_name, pattern_id)
-        return JSONResponse(content={"pattern": pattern.__dict__})
+        return JSONResponse(content={"pattern": pattern.to_json()})
     except Exception as e:
         logger.error(f"Error getting group registered model pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permission: {str(e)}")
@@ -959,7 +959,7 @@ async def get_group_prompt_pattern_permissions(
     """
     try:
         patterns = store.list_group_prompt_regex_permissions(group_name)
-        return JSONResponse(content={"patterns": [pattern.__dict__ for pattern in patterns]})
+        return JSONResponse(content=[pattern.to_json() for pattern in patterns])
     except Exception as e:
         logger.error(f"Error getting group prompt pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permissions: {str(e)}")
@@ -1004,7 +1004,7 @@ async def get_group_prompt_pattern_permission(
     """
     try:
         pattern = store.get_group_prompt_regex_permission(pattern_id, group_name)
-        return JSONResponse(content={"pattern": pattern.__dict__})
+        return JSONResponse(content={"pattern": pattern.to_json()})
     except Exception as e:
         logger.error(f"Error getting group prompt pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permission: {str(e)}")
