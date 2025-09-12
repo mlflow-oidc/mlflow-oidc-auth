@@ -43,7 +43,6 @@ class ExperimentRegexCreate(BaseModel):
     permission: str = Field(..., description="Permission level for matching experiments")
 
 
-# Add this to your existing models file
 class ExperimentPermissionSummary(BaseModel):
     """
     Summary of an experiment with its associated permission for a user.
