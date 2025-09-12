@@ -85,7 +85,6 @@ async def login(request: Request):
             redirect_url = base.rstrip("/") + CALLBACK
 
         logger.debug(f"OIDC redirect URL: {redirect_url}")
-        logger.debug(f"OAuth state: {oauth_state}")
 
         # Redirect to OIDC provider
         if hasattr(oauth.oidc, "authorize_redirect"):
