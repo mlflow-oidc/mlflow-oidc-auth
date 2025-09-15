@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 from mlflow_oidc_auth.routers.prompt_permissions import prompt_permissions_router, get_prompt_users, list_prompts, LIST_PROMPTS, PROMPT_USER_PERMISSIONS
 from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
-from mlflow_oidc_auth.permissions import MANAGE, READ
 
 
 class TestPromptPermissionsRouter:
@@ -45,7 +44,7 @@ class TestGetPromptUsersEndpoint:
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
-            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-prompt", permission=MANAGE)],
+            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-prompt", permission="MANAGE")],
         )
 
         user2 = User(
@@ -56,7 +55,7 @@ class TestGetPromptUsersEndpoint:
             display_name="Service Account",
             is_admin=False,
             is_service_account=True,
-            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-prompt", permission=READ)],
+            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-prompt", permission="READ")],
         )
 
         user3 = User(
@@ -131,8 +130,8 @@ class TestGetPromptUsersEndpoint:
             is_admin=False,
             is_service_account=False,
             registered_model_permissions=[
-                RegisteredModelPermissionEntity(name="prompt-1", permission=MANAGE),
-                RegisteredModelPermissionEntity(name="prompt-2", permission=READ),
+                RegisteredModelPermissionEntity(name="prompt-1", permission="MANAGE"),
+                RegisteredModelPermissionEntity(name="prompt-2", permission="READ"),
             ],
         )
 

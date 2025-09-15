@@ -17,7 +17,6 @@ from mlflow_oidc_auth.routers.registered_model_permissions import (
     REGISTERED_MODEL_USER_PERMISSIONS,
 )
 from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
-from mlflow_oidc_auth.permissions import MANAGE, READ
 
 
 class TestRegisteredModelPermissionsRouter:
@@ -51,7 +50,7 @@ class TestGetRegisteredModelUsersEndpoint:
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
-            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-model", permission=MANAGE)],
+            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-model", permission="MANAGE")],
         )
 
         user2 = User(
@@ -62,7 +61,7 @@ class TestGetRegisteredModelUsersEndpoint:
             display_name="Service Account",
             is_admin=False,
             is_service_account=True,
-            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-model", permission=READ)],
+            registered_model_permissions=[RegisteredModelPermissionEntity(name="test-model", permission="READ")],
         )
 
         user3 = User(
@@ -125,8 +124,8 @@ class TestGetRegisteredModelUsersEndpoint:
             is_admin=False,
             is_service_account=False,
             registered_model_permissions=[
-                RegisteredModelPermissionEntity(name="model-1", permission=MANAGE),
-                RegisteredModelPermissionEntity(name="model-2", permission=READ),
+                RegisteredModelPermissionEntity(name="model-1", permission="MANAGE"),
+                RegisteredModelPermissionEntity(name="model-2", permission="READ"),
             ],
         )
 
