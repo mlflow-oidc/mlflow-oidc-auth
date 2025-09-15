@@ -11,7 +11,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_permission, check_registered_model_permission
+from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission, check_registered_model_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
     ExperimentPermission,
@@ -49,7 +49,7 @@ USER_REGISTERED_MODEL_PERMISSION_DETAIL = "/{username}/registered-models/{name}"
 USER_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{username}/registered-models-patterns"
 USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{username}/registered-models-patterns/{pattern_id}"
 USER_PROMPT_PERMISSIONS = "/{username}/prompts"
-USER_PROMPT_PERMISSION_DETAIL = "/{username}/prompts/{prompt_name}"
+USER_PROMPT_PERMISSION_DETAIL = "/{username}/prompts/{name}"
 USER_PROMPT_PATTERN_PERMISSIONS = "/{username}/prompts-patterns"
 USER_PROMPT_PATTERN_PERMISSION_DETAIL = "/{username}/prompts-patterns/{pattern_id}"
 
@@ -163,7 +163,7 @@ async def create_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
     experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
     permission_data: ExperimentPermission = Body(..., description="The permission level to grant"),
-    _: None = Depends(check_experiment_permission),
+    _: None = Depends(check_experiment_manage_permission),
 ) -> JSONResponse:
     store.create_experiment_permission(
         experiment_id,
@@ -177,7 +177,7 @@ async def create_user_experiment_permission(
 async def get_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
     experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
-    _: None = Depends(check_experiment_permission),
+    _: None = Depends(check_experiment_manage_permission),
 ):
     ep = store.get_experiment_permission(experiment_id, username)
     return JSONResponse(content={"experiment_permission": ep.to_json()})
@@ -188,7 +188,7 @@ async def update_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
     experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
     permission_data: ExperimentPermission = Body(..., description="The permission level to grant"),
-    _: None = Depends(check_experiment_permission),
+    _: None = Depends(check_experiment_manage_permission),
 ):
     store.update_experiment_permission(
         experiment_id,
@@ -196,6 +196,16 @@ async def update_user_experiment_permission(
         permission_data.permission,
     )
     return JSONResponse(content={"message": "Experiment permission has been changed."})
+
+
+@user_permissions_router.delete(USER_EXPERIMENT_PERMISSION_DETAIL)
+async def delete_user_experiment_permission(
+    username: str = Path(..., description="The username to revoke permissions from"),
+    experiment_id: str = Path(..., description="The experiment ID to revoke permissions for"),
+    _: None = Depends(check_experiment_manage_permission),
+):
+    store.delete_experiment_permission(experiment_id, username)
+    return JSONResponse(content={"message": "Experiment permission has been deleted."})
 
 
 @user_permissions_router.post(
@@ -481,9 +491,9 @@ async def get_user_prompts(
 )
 async def create_user_prompt_permission(
     username: str = Path(..., description="The username to grant prompt permission to"),
-    prompt_name: str = Path(..., description="The prompt name to set permissions for"),
+    name: str = Path(..., description="The prompt name to set permissions for"),
     permission_data: PromptPermission = Body(..., description="The permission details"),
-    _: str = Depends(check_registered_model_permission),
+    _: str = Depends(check_registered_model_manage_permission),
 ) -> JSONResponse:
     """
     Create a permission for a user to access a prompt.
@@ -494,7 +504,7 @@ async def create_user_prompt_permission(
         The FastAPI request object.
     username : str
         The username to grant permissions to.
-    prompt_name : str
+    name : str
         The name of the prompt to grant permissions for.
     permission_data : PromptPermission
         The permission data containing the permission level.
@@ -506,11 +516,11 @@ async def create_user_prompt_permission(
     """
     try:
         store.create_registered_model_permission(
-            name=prompt_name,
+            name=name,
             username=username,
             permission=permission_data.permission,
         )
-        return JSONResponse(content={"status": "success", "message": f"Prompt permission created for {username} on {prompt_name}"}, status_code=201)
+        return JSONResponse(content={"status": "success", "message": f"Prompt permission created for {username} on {name}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating prompt permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create prompt permission: {str(e)}")
@@ -521,8 +531,8 @@ async def create_user_prompt_permission(
 )
 async def get_user_prompt_permission(
     username: str = Path(..., description="The username to get prompt permission for"),
-    prompt_name: str = Path(..., description="The prompt name to get permissions for"),
-    _: str = Depends(check_registered_model_permission),
+    name: str = Path(..., description="The prompt name to get permissions for"),
+    _: str = Depends(check_registered_model_manage_permission),
 ) -> JSONResponse:
     """
     Get the permission for a user on a prompt.
@@ -533,7 +543,7 @@ async def get_user_prompt_permission(
         The FastAPI request object.
     username : str
         The username to get permissions for.
-    prompt_name : str
+    name : str
         The name of the prompt to get permissions for.
 
     Returns:
@@ -542,7 +552,7 @@ async def get_user_prompt_permission(
         A response containing the prompt permission details.
     """
     try:
-        rmp = store.get_registered_model_permission(prompt_name, username)
+        rmp = store.get_registered_model_permission(name, username)
         return JSONResponse(content={"prompt_permission": rmp.to_json()})
     except Exception as e:
         logger.error(f"Error getting prompt permission: {str(e)}")
@@ -554,9 +564,9 @@ async def get_user_prompt_permission(
 )
 async def update_user_prompt_permission(
     username: str = Path(..., description="The username to update prompt permission for"),
-    prompt_name: str = Path(..., description="The prompt name to update permissions for"),
+    name: str = Path(..., description="The prompt name to update permissions for"),
     permission_data: PromptPermission = Body(..., description="Updated permission details"),
-    _: str = Depends(check_registered_model_permission),
+    _: str = Depends(check_registered_model_manage_permission),
 ) -> JSONResponse:
     """
     Update the permission for a user on a prompt.
@@ -567,7 +577,7 @@ async def update_user_prompt_permission(
         The FastAPI request object.
     username : str
         The username to update permissions for.
-    prompt_name : str
+    name : str
         The name of the prompt to update permissions for.
     permission_data : PromptPermission
         The updated permission data.
@@ -578,11 +588,11 @@ async def update_user_prompt_permission(
     """
     try:
         store.update_registered_model_permission(
-            name=prompt_name,
+            name=name,
             username=username,
             permission=permission_data.permission,
         )
-        return JSONResponse(content={"status": "success", "message": f"Prompt permission updated for {username} on {prompt_name}"})
+        return JSONResponse(content={"status": "success", "message": f"Prompt permission updated for {username} on {name}"})
     except Exception as e:
         logger.error(f"Error updating prompt permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to update prompt permission: {str(e)}")
@@ -593,8 +603,8 @@ async def update_user_prompt_permission(
 )
 async def delete_user_prompt_permission(
     username: str = Path(..., description="The username to delete prompt permission for"),
-    prompt_name: str = Path(..., description="The prompt name to delete permissions for"),
-    _: str = Depends(check_registered_model_permission),
+    name: str = Path(..., description="The prompt name to delete permissions for"),
+    _: str = Depends(check_registered_model_manage_permission),
 ) -> JSONResponse:
     """
     Delete the permission for a user on a prompt.
@@ -605,7 +615,7 @@ async def delete_user_prompt_permission(
         The FastAPI request object.
     username : str
         The username to delete permissions for.
-    prompt_name : str
+    name : str
         The name of the prompt to delete permissions for.
 
     Returns:
@@ -614,8 +624,8 @@ async def delete_user_prompt_permission(
         A response indicating success.
     """
     try:
-        store.delete_registered_model_permission(prompt_name, username)
-        return JSONResponse(content={"status": "success", "message": f"Prompt permission deleted for {username} on {prompt_name}"})
+        store.delete_registered_model_permission(name, username)
+        return JSONResponse(content={"status": "success", "message": f"Prompt permission deleted for {username} on {name}"})
     except Exception as e:
         logger.error(f"Error deleting prompt permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete prompt permission: {str(e)}")
@@ -881,7 +891,7 @@ async def create_user_registered_model_permission(
     username: str = Path(..., description="The username to grant registered model permission to"),
     name: str = Path(..., description="The registered model name to set permissions for"),
     permission_data: RegisteredModelPermission = Body(..., description="The permission details"),
-    _: str = Depends(check_registered_model_permission),
+    _: str = Depends(check_registered_model_manage_permission),
 ) -> JSONResponse:
     """
     Create a permission for a user to access a registered model.
@@ -921,7 +931,7 @@ async def create_user_registered_model_permission(
 async def get_user_registered_model_permission(
     username: str = Path(..., description="The username to get registered model permission for"),
     name: str = Path(..., description="The registered model name to get permissions for"),
-    _: str = Depends(check_registered_model_permission),
+    _: str = Depends(check_registered_model_manage_permission),
 ) -> JSONResponse:
     """
     Get the permission for a user on a registered model.
@@ -957,7 +967,7 @@ async def update_user_registered_model_permission(
     username: str = Path(..., description="The username to update registered model permission for"),
     name: str = Path(..., description="The registered model name to update permissions for"),
     permission_data: RegisteredModelPermission = Body(..., description="Updated permission details"),
-    _: str = Depends(check_registered_model_permission),
+    _: str = Depends(check_registered_model_manage_permission),
 ) -> JSONResponse:
     """
     Update the permission for a user on a registered model.
@@ -999,7 +1009,7 @@ async def update_user_registered_model_permission(
 async def delete_user_registered_model_permission(
     username: str = Path(..., description="The username to delete registered model permission for"),
     name: str = Path(..., description="The registered model name to delete permissions for"),
-    _: str = Depends(check_registered_model_permission),
+    _: str = Depends(check_registered_model_manage_permission),
 ) -> JSONResponse:
     """
     Delete the permission for a user on a registered model.
