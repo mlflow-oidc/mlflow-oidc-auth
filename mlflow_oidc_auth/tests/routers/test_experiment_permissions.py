@@ -20,7 +20,6 @@ from mlflow_oidc_auth.routers.experiment_permissions import (
 )
 from mlflow_oidc_auth.models import ExperimentSummary
 from mlflow_oidc_auth.entities import User, ExperimentPermission as ExperimentPermissionEntity
-from mlflow_oidc_auth.permissions import MANAGE, READ
 
 
 class TestExperimentPermissionsRouter:
@@ -55,7 +54,7 @@ class TestGetExperimentUsersEndpoint:
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
-            experiment_permissions=[ExperimentPermissionEntity(experiment_id="123", permission=MANAGE)],
+            experiment_permissions=[ExperimentPermissionEntity(experiment_id="123", permission="MANAGE")],
         )
 
         user2 = User(
@@ -66,7 +65,7 @@ class TestGetExperimentUsersEndpoint:
             display_name="Service Account",
             is_admin=False,
             is_service_account=True,
-            experiment_permissions=[ExperimentPermissionEntity(experiment_id="123", permission=READ)],
+            experiment_permissions=[ExperimentPermissionEntity(experiment_id="123", permission="READ")],
         )
 
         user3 = User(
@@ -132,8 +131,8 @@ class TestGetExperimentUsersEndpoint:
             is_admin=False,
             is_service_account=False,
             experiment_permissions=[
-                ExperimentPermissionEntity(experiment_id="123", permission=MANAGE),
-                ExperimentPermissionEntity(experiment_id="456", permission=READ),
+                ExperimentPermissionEntity(experiment_id="123", permission="MANAGE"),
+                ExperimentPermissionEntity(experiment_id="456", permission="READ"),
             ],
         )
 
