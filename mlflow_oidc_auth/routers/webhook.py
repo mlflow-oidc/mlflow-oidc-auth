@@ -15,12 +15,10 @@ Supported webhook events:
 - model_version_alias.deleted: Triggered when an alias is deleted from a model version
 """
 
-import functools
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from mlflow.entities.webhook import Webhook, WebhookEvent, WebhookStatus
-from mlflow.exceptions import MlflowException
 from mlflow.store.db.db_types import DATABASE_ENGINES
 from mlflow.tracking._model_registry.registry import ModelRegistryStoreRegistry
 from mlflow.webhooks.delivery import test_webhook
@@ -107,23 +105,6 @@ webhook_router = APIRouter(
 )
 
 
-def _handle_mlflow_exception(func):
-    """Decorator to handle MLflow exceptions and convert them to HTTP exceptions."""
-
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except MlflowException as e:
-            logger.error(f"MLflow exception in {func.__name__}: {e}")
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"Unexpected exception in {func.__name__}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
-
-    return wrapper
-
-
 def _webhook_to_response(webhook: Webhook) -> WebhookResponse:
     """Convert MLflow Webhook entity to WebhookResponse."""
     return WebhookResponse(
@@ -144,7 +125,6 @@ def _webhook_to_response(webhook: Webhook) -> WebhookResponse:
     summary="Create a webhook",
     description="Create a new webhook. Only admin users can create webhooks.",
 )
-@_handle_mlflow_exception
 def create_webhook(
     webhook_data: WebhookCreateRequest,
     admin_username: str = Depends(check_admin_permission),
@@ -167,37 +147,32 @@ def create_webhook(
     """
     logger.info(f"Admin {admin_username} creating webhook: {webhook_data.name}")
 
-    try:
-        store = _get_model_registry_store()
+    store = _get_model_registry_store()
 
-        # Convert event strings to WebhookEvent objects
-        webhook_events = []
-        for event in webhook_data.events:
-            try:
-                webhook_events.append(WebhookEvent.from_str(event))  # type: ignore
-            except Exception as e:
-                logger.error(f"Invalid event type: {event}, error: {e}")
-                raise HTTPException(status_code=400, detail=f"Invalid event type: {event}")
+    # Convert event strings to WebhookEvent objects
+    webhook_events = []
+    for event in webhook_data.events:
+        try:
+            webhook_events.append(WebhookEvent.from_str(event))  # type: ignore
+        except Exception as e:
+            logger.error(f"Invalid event type: {event}, error: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid event type: {event}")
 
-        # Convert status string to WebhookStatus enum
-        status = WebhookStatus(webhook_data.status) if webhook_data.status else WebhookStatus.ACTIVE
+    # Convert status string to WebhookStatus enum
+    status = WebhookStatus(webhook_data.status) if webhook_data.status else WebhookStatus.ACTIVE
 
-        # Create webhook using MLflow store
-        webhook = store.create_webhook(
-            name=webhook_data.name,
-            url=webhook_data.url,
-            events=webhook_events,
-            description=webhook_data.description,
-            secret=webhook_data.secret,
-            status=status,
-        )
+    # Create webhook using MLflow store
+    webhook = store.create_webhook(
+        name=webhook_data.name,
+        url=webhook_data.url,
+        events=webhook_events,
+        description=webhook_data.description,
+        secret=webhook_data.secret,
+        status=status,
+    )
 
-        logger.info(f"Webhook {webhook.webhook_id} created successfully by {admin_username}")
-        return _webhook_to_response(webhook)
-
-    except Exception as e:
-        logger.error(f"Failed to create webhook for {admin_username}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create webhook: {str(e)}")
+    logger.info(f"Webhook {webhook.webhook_id} created successfully by {admin_username}")
+    return _webhook_to_response(webhook)
 
 
 @webhook_router.get(
@@ -206,7 +181,6 @@ def create_webhook(
     summary="List webhooks",
     description="List all webhooks with pagination support. Only admin users can view webhooks.",
 )
-@_handle_mlflow_exception
 def list_webhooks(
     max_results: Optional[int] = Query(None, description="Maximum number of webhooks to return", ge=1, le=1000),
     page_token: Optional[str] = Query(None, description="Token for pagination"),
@@ -231,28 +205,23 @@ def list_webhooks(
     """
     logger.info(f"Admin {admin_username} listing webhooks")
 
-    try:
-        store = _get_model_registry_store()
-        logger.debug(f"Store obtained: {store}")
+    store = _get_model_registry_store()
+    logger.debug(f"Store obtained: {store}")
 
-        # Get webhooks from MLflow store
-        webhooks_page = store.list_webhooks(
-            max_results=max_results,
-            page_token=page_token,
-        )
+    # Get webhooks from MLflow store
+    webhooks_page = store.list_webhooks(
+        max_results=max_results,
+        page_token=page_token,
+    )
 
-        # Convert to response format
-        webhook_responses = [_webhook_to_response(webhook) for webhook in webhooks_page]
+    # Convert to response format
+    webhook_responses = [_webhook_to_response(webhook) for webhook in webhooks_page]
 
-        logger.info(f"Retrieved {len(webhook_responses)} webhooks for {admin_username}")
-        return WebhookListResponse(
-            webhooks=webhook_responses,
-            next_page_token=webhooks_page.token,
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to list webhooks for {admin_username}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list webhooks: {str(e)}")
+    logger.info(f"Retrieved {len(webhook_responses)} webhooks for {admin_username}")
+    return WebhookListResponse(
+        webhooks=webhook_responses,
+        next_page_token=webhooks_page.token,
+    )
 
 
 @webhook_router.get(
@@ -261,7 +230,6 @@ def list_webhooks(
     summary="Get webhook details",
     description="Get details of a specific webhook by ID. Only admin users can view webhooks.",
 )
-@_handle_mlflow_exception
 def get_webhook(
     webhook_id: str = Path(..., description="The webhook ID"),
     admin_username: str = Depends(check_admin_permission),
@@ -284,22 +252,13 @@ def get_webhook(
     """
     logger.info(f"Admin {admin_username} retrieving webhook: {webhook_id}")
 
-    try:
-        store = _get_model_registry_store()
+    store = _get_model_registry_store()
 
-        # Get webhook from MLflow store
-        webhook = store.get_webhook(webhook_id=webhook_id)
+    # Get webhook from MLflow store
+    webhook = store.get_webhook(webhook_id=webhook_id)
 
-        logger.info(f"Retrieved webhook {webhook_id} for {admin_username}")
-        return _webhook_to_response(webhook)
-
-    except MlflowException as e:
-        if "RESOURCE_DOES_NOT_EXIST" in str(e):
-            raise HTTPException(status_code=404, detail=f"Webhook {webhook_id} not found")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to get webhook {webhook_id} for {admin_username}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get webhook: {str(e)}")
+    logger.info(f"Retrieved webhook {webhook_id} for {admin_username}")
+    return _webhook_to_response(webhook)
 
 
 @webhook_router.put(
@@ -308,7 +267,6 @@ def get_webhook(
     summary="Update webhook",
     description="Update a webhook's configuration. Only admin users can update webhooks.",
 )
-@_handle_mlflow_exception
 def update_webhook(
     webhook_id: str = Path(..., description="The webhook ID"),
     *,
@@ -334,46 +292,37 @@ def update_webhook(
     """
     logger.info(f"Admin {admin_username} updating webhook: {webhook_id}")
 
-    try:
-        store = _get_model_registry_store()
+    store = _get_model_registry_store()
 
-        # Convert event strings to WebhookEvent objects if provided
-        webhook_events = None
-        if webhook_data.events is not None:
-            webhook_events = []
-            for event in webhook_data.events:
-                try:
-                    webhook_events.append(WebhookEvent.from_str(event))  # type: ignore
-                except Exception as e:
-                    logger.error(f"Invalid event type: {event}, error: {e}")
-                    raise HTTPException(status_code=400, detail=f"Invalid event type: {event}")
+    # Convert event strings to WebhookEvent objects if provided
+    webhook_events = None
+    if webhook_data.events is not None:
+        webhook_events = []
+        for event in webhook_data.events:
+            try:
+                webhook_events.append(WebhookEvent.from_str(event))  # type: ignore
+            except Exception as e:
+                logger.error(f"Invalid event type: {event}, error: {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid event type: {event}")
 
-        # Convert status string to WebhookStatus enum if provided
-        status = None
-        if webhook_data.status is not None:
-            status = WebhookStatus(webhook_data.status)
+    # Convert status string to WebhookStatus enum if provided
+    status = None
+    if webhook_data.status is not None:
+        status = WebhookStatus(webhook_data.status)
 
-        # Update webhook using MLflow store
-        webhook = store.update_webhook(
-            webhook_id=webhook_id,
-            name=webhook_data.name,
-            description=webhook_data.description,
-            url=webhook_data.url,
-            events=webhook_events,
-            secret=webhook_data.secret,
-            status=status,
-        )
+    # Update webhook using MLflow store
+    webhook = store.update_webhook(
+        webhook_id=webhook_id,
+        name=webhook_data.name,
+        description=webhook_data.description,
+        url=webhook_data.url,
+        events=webhook_events,
+        secret=webhook_data.secret,
+        status=status,
+    )
 
-        logger.info(f"Webhook {webhook_id} updated successfully by {admin_username}")
-        return _webhook_to_response(webhook)
-
-    except MlflowException as e:
-        if "RESOURCE_DOES_NOT_EXIST" in str(e):
-            raise HTTPException(status_code=404, detail=f"Webhook {webhook_id} not found")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to update webhook {webhook_id} for {admin_username}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update webhook: {str(e)}")
+    logger.info(f"Webhook {webhook_id} updated successfully by {admin_username}")
+    return _webhook_to_response(webhook)
 
 
 @webhook_router.delete(
@@ -381,7 +330,6 @@ def update_webhook(
     summary="Delete webhook",
     description="Delete a webhook. Only admin users can delete webhooks.",
 )
-@_handle_mlflow_exception
 def delete_webhook(
     webhook_id: str = Path(..., description="The webhook ID"),
     admin_username: str = Depends(check_admin_permission),
@@ -404,22 +352,13 @@ def delete_webhook(
     """
     logger.info(f"Admin {admin_username} deleting webhook: {webhook_id}")
 
-    try:
-        store = _get_model_registry_store()
+    store = _get_model_registry_store()
 
-        # Delete webhook using MLflow store
-        store.delete_webhook(webhook_id=webhook_id)
+    # Delete webhook using MLflow store
+    store.delete_webhook(webhook_id=webhook_id)
 
-        logger.info(f"Webhook {webhook_id} deleted successfully by {admin_username}")
-        return {"message": f"Webhook {webhook_id} deleted successfully"}
-
-    except MlflowException as e:
-        if "RESOURCE_DOES_NOT_EXIST" in str(e):
-            raise HTTPException(status_code=404, detail=f"Webhook {webhook_id} not found")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to delete webhook {webhook_id} for {admin_username}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete webhook: {str(e)}")
+    logger.info(f"Webhook {webhook_id} deleted successfully by {admin_username}")
+    return {"message": f"Webhook {webhook_id} deleted successfully"}
 
 
 @webhook_router.post(
@@ -428,7 +367,6 @@ def delete_webhook(
     summary="Test webhook",
     description="Test a webhook by sending a sample payload. Only admin users can test webhooks.",
 )
-@_handle_mlflow_exception
 def test_webhook_endpoint(
     webhook_id: str = Path(..., description="The webhook ID"),
     test_data: Optional[WebhookTestRequest] = None,
@@ -454,37 +392,28 @@ def test_webhook_endpoint(
     """
     logger.info(f"Admin {admin_username} testing webhook: {webhook_id}")
 
-    try:
-        store = _get_model_registry_store()
+    store = _get_model_registry_store()
 
-        # Get webhook from store
-        webhook = store.get_webhook(webhook_id=webhook_id)
+    # Get webhook from store
+    webhook = store.get_webhook(webhook_id=webhook_id)
 
-        # Determine event to test with
-        event = None
-        if test_data and test_data.event_type:
-            try:
-                event = WebhookEvent.from_str(test_data.event_type)  # type: ignore
-            except Exception as e:
-                logger.error(f"Invalid event type: {test_data.event_type}, error: {e}")
-                raise HTTPException(status_code=400, detail=f"Invalid event type: {test_data.event_type}")
+    # Determine event to test with
+    event = None
+    if test_data and test_data.event_type:
+        try:
+            event = WebhookEvent.from_str(test_data.event_type)  # type: ignore
+        except Exception as e:
+            logger.error(f"Invalid event type: {test_data.event_type}, error: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid event type: {test_data.event_type}")
 
-        # Test webhook using MLflow's test function
-        test_result = test_webhook(webhook=webhook, event=event)
+    # Test webhook using MLflow's test function
+    test_result = test_webhook(webhook=webhook, event=event)
 
-        logger.info(f"Webhook {webhook_id} test completed for {admin_username}: success={test_result.success}")
+    logger.info(f"Webhook {webhook_id} test completed for {admin_username}: success={test_result.success}")
 
-        return WebhookTestResponse(
-            success=test_result.success,
-            response_status=test_result.response_status,
-            response_body=test_result.response_body,
-            error_message=test_result.error_message,
-        )
-
-    except MlflowException as e:
-        if "RESOURCE_DOES_NOT_EXIST" in str(e):
-            raise HTTPException(status_code=404, detail=f"Webhook {webhook_id} not found")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to test webhook {webhook_id} for {admin_username}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to test webhook: {str(e)}")
+    return WebhookTestResponse(
+        success=test_result.success,
+        response_status=test_result.response_status,
+        response_body=test_result.response_body,
+        error_message=test_result.error_message,
+    )
