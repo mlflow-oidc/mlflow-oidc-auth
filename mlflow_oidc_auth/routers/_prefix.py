@@ -13,3 +13,5 @@ REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX = "/api/2.0/mlflow/permissions/regist
 UI_ROUTER_PREFIX = "/oidc/ui"
 USER_PERMISSIONS_ROUTER_PREFIX = "/api/2.0/mlflow/permissions/users"
 USERS_ROUTER_PREFIX = "/api/2.0/mlflow/users"
+TRASH_ROUTER_PREFIX = "/oidc/trash"
+WEBHOOK_ROUTER_PREFIX = "/oidc/webhook"
