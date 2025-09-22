@@ -90,7 +90,7 @@ async def get_current_user_information(current_username: str = Depends(get_usern
         return JSONResponse(content=store.get_user(current_username).to_json())
     except Exception as e:
         logger.error(f"Error getting current user information: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"User not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"User not found")
 
 
 @user_permissions_router.get(
@@ -255,7 +255,7 @@ async def create_user_experiment_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Experiment pattern permission created for {username}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create experiment pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create experiment pattern permission")
 
 
 @user_permissions_router.get(
@@ -297,7 +297,7 @@ async def list_user_experiment_pattern_permissions(
         ]
     except Exception as e:
         logger.error(f"Error listing experiment pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve experiment pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve experiment pattern permissions")
 
 
 @user_permissions_router.get(
@@ -340,7 +340,7 @@ async def get_user_experiment_pattern_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error getting experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Experiment pattern permission not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Experiment pattern permission not found")
 
 
 @user_permissions_router.patch(
@@ -387,7 +387,7 @@ async def update_user_experiment_pattern_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error updating experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update experiment pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update experiment pattern permission")
 
 
 @user_permissions_router.delete(
@@ -429,7 +429,7 @@ async def delete_user_experiment_pattern_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error deleting experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete experiment pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete experiment pattern permission")
 
 
 @user_permissions_router.get(
@@ -523,7 +523,7 @@ async def create_user_prompt_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt permission created for {username} on {name}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create prompt permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create prompt permission")
 
 
 @user_permissions_router.get(
@@ -556,7 +556,7 @@ async def get_user_prompt_permission(
         return JSONResponse(content={"prompt_permission": rmp.to_json()})
     except Exception as e:
         logger.error(f"Error getting prompt permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Prompt permission not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Prompt permission not found")
 
 
 @user_permissions_router.patch(
@@ -595,7 +595,7 @@ async def update_user_prompt_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt permission updated for {username} on {name}"})
     except Exception as e:
         logger.error(f"Error updating prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update prompt permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update prompt permission")
 
 
 @user_permissions_router.delete(
@@ -628,7 +628,7 @@ async def delete_user_prompt_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt permission deleted for {username} on {name}"})
     except Exception as e:
         logger.error(f"Error deleting prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete prompt permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete prompt permission")
 
 
 @user_permissions_router.get(
@@ -662,7 +662,7 @@ async def get_user_prompt_pattern_permissions(
         return JSONResponse(content=[r.to_json() for r in rm], status_code=200)
     except Exception as e:
         logger.error(f"Error listing prompt pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve prompt pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve prompt pattern permissions")
 
 
 @user_permissions_router.post(
@@ -705,7 +705,7 @@ async def create_user_prompt_regex_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt pattern permission created for {username}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create prompt pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create prompt pattern permission")
 
 
 @user_permissions_router.get(
@@ -744,7 +744,7 @@ async def get_user_prompt_regex_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error getting prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Prompt pattern permission not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Prompt pattern permission not found")
 
 
 @user_permissions_router.patch(
@@ -792,7 +792,7 @@ async def update_user_prompt_regex_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error updating prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update prompt pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update prompt pattern permission")
 
 
 @user_permissions_router.delete(
@@ -831,7 +831,7 @@ async def delete_user_prompt_regex_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error deleting prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete prompt pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete prompt pattern permission")
 
 
 @user_permissions_router.get(
@@ -920,7 +920,7 @@ async def create_user_registered_model_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model permission created for {username} on {name}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create registered model permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create registered model permission")
 
 
 @user_permissions_router.get(
@@ -955,7 +955,7 @@ async def get_user_registered_model_permission(
         return JSONResponse(content={"registered_model_permission": rmp.to_json()})
     except Exception as e:
         logger.error(f"Error getting registered model permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Registered model permission not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Registered model permission not found")
 
 
 @user_permissions_router.patch(
@@ -998,7 +998,7 @@ async def update_user_registered_model_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model permission updated for {username} on {name}"})
     except Exception as e:
         logger.error(f"Error updating registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update registered model permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update registered model permission")
 
 
 @user_permissions_router.delete(
@@ -1035,7 +1035,7 @@ async def delete_user_registered_model_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model permission deleted for {username} on {name}"})
     except Exception as e:
         logger.error(f"Error deleting registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete registered model permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete registered model permission")
 
 
 @user_permissions_router.get(
@@ -1069,7 +1069,7 @@ async def get_user_registered_model_regex_permissions(
         return JSONResponse(content=[r.to_json() for r in rm], status_code=200)
     except Exception as e:
         logger.error(f"Error listing registered model pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve registered model pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve registered model pattern permissions")
 
 
 @user_permissions_router.post(
@@ -1112,7 +1112,7 @@ async def create_user_registered_model_regex_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model pattern permission created for {username}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create registered model pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create registered model pattern permission")
 
 
 @user_permissions_router.get(
@@ -1151,7 +1151,7 @@ async def get_user_registered_model_regex_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error getting registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Registered model pattern permission not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Registered model pattern permission not found")
 
 
 @user_permissions_router.patch(
@@ -1199,7 +1199,7 @@ async def update_user_registered_model_regex_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error updating registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update registered model pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update registered model pattern permission")
 
 
 @user_permissions_router.delete(
@@ -1238,4 +1238,4 @@ async def delete_user_registered_model_regex_permission(
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
         logger.error(f"Error deleting registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete registered model pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete registered model pattern permission")

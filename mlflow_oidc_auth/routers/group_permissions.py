@@ -95,7 +95,7 @@ async def list_groups(username: str = Depends(get_username)) -> JSONResponse:
 
     except Exception as e:
         logger.error(f"Error listing groups: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve groups: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve groups")
 
 
 @group_permissions_router.get(
@@ -135,7 +135,7 @@ async def get_group_users(
         return [GroupUser(username=user.username, is_admin=user.is_admin) for user in users]
     except Exception as e:
         logger.error(f"Error getting group users: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Group not found or error retrieving users: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Group not found or error retrieving users")
 
 
 @group_permissions_router.get(
@@ -200,7 +200,7 @@ async def get_group_experiments(
 
     except Exception as e:
         logger.error(f"Error retrieving group experiment permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve group experiment permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve group experiment permissions")
 
 
 @group_permissions_router.post(
@@ -245,7 +245,7 @@ async def create_group_experiment_permission(
         )
     except Exception as e:
         logger.error(f"Error creating group experiment permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group experiment permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create group experiment permission")
 
 
 @group_permissions_router.patch(
@@ -287,7 +287,7 @@ async def update_group_experiment_permission(
         return JSONResponse(content={"status": "success", "message": f"Experiment permission updated for group {group_name} on experiment {experiment_id}"})
     except Exception as e:
         logger.error(f"Error updating group experiment permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group experiment permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update group experiment permission")
 
 
 @group_permissions_router.delete(
@@ -322,7 +322,7 @@ async def delete_group_experiment_permission(
         return JSONResponse(content={"status": "success", "message": f"Experiment permission deleted for group {group_name} on experiment {experiment_id}"})
     except Exception as e:
         logger.error(f"Error deleting group experiment permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group experiment permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete group experiment permission")
 
 
 @group_permissions_router.get(
@@ -384,7 +384,7 @@ async def get_group_registered_models(
 
     except Exception as e:
         logger.error(f"Error retrieving group registered model permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve group registered model permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve group registered model permissions")
 
 
 @group_permissions_router.post(
@@ -435,7 +435,7 @@ async def create_group_registered_model_permission(
         )
     except Exception as e:
         logger.error(f"Error creating group registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group registered model permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create group registered model permission")
 
 
 @group_permissions_router.patch(
@@ -483,7 +483,7 @@ async def update_group_registered_model_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model permission updated for group {group_name} on model {name}"})
     except Exception as e:
         logger.error(f"Error updating group registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group registered model permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update group registered model permission")
 
 
 @group_permissions_router.delete(
@@ -524,7 +524,7 @@ async def delete_group_registered_model_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model permission deleted for group {group_name} on model {name}"})
     except Exception as e:
         logger.error(f"Error deleting group registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group registered model permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete group registered model permission")
 
 
 @group_permissions_router.get(
@@ -583,7 +583,7 @@ async def get_group_prompts(
         return JSONResponse(content=formatted_prompts)
     except Exception as e:
         logger.error(f"Error getting group prompt permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group prompt permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get group prompt permissions")
 
 
 @group_permissions_router.post(
@@ -635,7 +635,7 @@ async def create_group_prompt_permission(
         )
     except Exception as e:
         logger.error(f"Error creating group prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group prompt permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create group prompt permission")
 
 
 @group_permissions_router.patch(
@@ -682,7 +682,7 @@ async def update_group_prompt_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt permission updated for group {group_name} on prompt {prompt_name}"})
     except Exception as e:
         logger.error(f"Error updating group prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group prompt permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update group prompt permission")
 
 
 @group_permissions_router.delete(
@@ -722,7 +722,7 @@ async def delete_group_prompt_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt permission deleted for group {group_name} on prompt {prompt_name}"})
     except Exception as e:
         logger.error(f"Error deleting group prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group prompt permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete group prompt permission")
 
 
 @group_permissions_router.get(
@@ -742,7 +742,7 @@ async def get_group_experiment_pattern_permissions(
         return JSONResponse(content=[pattern.to_json() for pattern in patterns])
     except Exception as e:
         logger.error(f"Error getting group experiment pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permissions")
 
 
 @group_permissions_router.post(
@@ -766,7 +766,7 @@ async def create_group_experiment_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Experiment pattern permission created for group {group_name}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating group experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group experiment pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create group experiment pattern permission")
 
 
 @group_permissions_router.get(
@@ -787,7 +787,7 @@ async def get_group_experiment_pattern_permission(
         return JSONResponse(content={"pattern": pattern.to_json()})
     except Exception as e:
         logger.error(f"Error getting group experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permission")
 
 
 @group_permissions_router.patch(
@@ -811,7 +811,7 @@ async def update_group_experiment_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Experiment pattern permission updated for group {group_name}"})
     except Exception as e:
         logger.error(f"Error updating group experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group experiment pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update group experiment pattern permission")
 
 
 @group_permissions_router.delete(
@@ -832,7 +832,7 @@ async def delete_group_experiment_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Experiment pattern permission deleted for group {group_name}"})
     except Exception as e:
         logger.error(f"Error deleting group experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group experiment pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete group experiment pattern permission")
 
 
 @group_permissions_router.get(
@@ -852,7 +852,7 @@ async def get_group_registered_model_pattern_permissions(
         return JSONResponse(content=[pattern.to_json() for pattern in patterns])
     except Exception as e:
         logger.error(f"Error getting group registered model pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permissions")
 
 
 @group_permissions_router.post(
@@ -876,7 +876,7 @@ async def create_group_registered_model_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model pattern permission created for group {group_name}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating group registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group registered model pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create group registered model pattern permission")
 
 
 @group_permissions_router.get(
@@ -897,7 +897,7 @@ async def get_group_registered_model_pattern_permission(
         return JSONResponse(content={"pattern": pattern.to_json()})
     except Exception as e:
         logger.error(f"Error getting group registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permission")
 
 
 @group_permissions_router.patch(
@@ -921,7 +921,7 @@ async def update_group_registered_model_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model pattern permission updated for group {group_name}"})
     except Exception as e:
         logger.error(f"Error updating group registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group registered model pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update group registered model pattern permission")
 
 
 @group_permissions_router.delete(
@@ -942,7 +942,7 @@ async def delete_group_registered_model_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Registered model pattern permission deleted for group {group_name}"})
     except Exception as e:
         logger.error(f"Error deleting group registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group registered model pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete group registered model pattern permission")
 
 
 @group_permissions_router.get(
@@ -962,7 +962,7 @@ async def get_group_prompt_pattern_permissions(
         return JSONResponse(content=[pattern.to_json() for pattern in patterns])
     except Exception as e:
         logger.error(f"Error getting group prompt pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permissions")
 
 
 @group_permissions_router.post(
@@ -986,7 +986,7 @@ async def create_group_prompt_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt pattern permission created for group {group_name}"}, status_code=201)
     except Exception as e:
         logger.error(f"Error creating group prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group prompt pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create group prompt pattern permission")
 
 
 @group_permissions_router.get(
@@ -1007,7 +1007,7 @@ async def get_group_prompt_pattern_permission(
         return JSONResponse(content={"pattern": pattern.to_json()})
     except Exception as e:
         logger.error(f"Error getting group prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permission")
 
 
 @group_permissions_router.patch(
@@ -1031,7 +1031,7 @@ async def update_group_prompt_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt pattern permission updated for group {group_name}"})
     except Exception as e:
         logger.error(f"Error updating group prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group prompt pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update group prompt pattern permission")
 
 
 @group_permissions_router.delete(
@@ -1052,4 +1052,4 @@ async def delete_group_prompt_pattern_permission(
         return JSONResponse(content={"status": "success", "message": f"Prompt pattern permission deleted for group {group_name}"})
     except Exception as e:
         logger.error(f"Error deleting group prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group prompt pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete group prompt pattern permission")

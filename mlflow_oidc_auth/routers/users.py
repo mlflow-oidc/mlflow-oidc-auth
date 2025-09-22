@@ -84,7 +84,7 @@ async def create_access_token(token_request: Optional[CreateAccessTokenRequest] 
                 if expiration > now + timedelta(days=366):
                     raise HTTPException(status_code=400, detail="Expiration date must be less than 1 year in the future")
             except ValueError as e:
-                raise HTTPException(status_code=400, detail=f"Invalid expiration date format: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid expiration date format")
 
         # Check if the target user exists
         user = store.get_user(target_username)
@@ -104,7 +104,7 @@ async def create_access_token(token_request: Optional[CreateAccessTokenRequest] 
         # Log unexpected errors and return a generic error response
 
         logger.error(f"Error creating access token: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create access token: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create access token")
 
 
 @users_router.get(LIST_USERS, summary="List users", description="Retrieves a list of users in the system.")
@@ -143,7 +143,7 @@ async def list_users(service: bool = False, username: str = Depends(get_username
 
     except Exception as e:
         logger.error(f"Error listing users: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve users: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve users")
 
 
 @users_router.post(
@@ -195,7 +195,7 @@ async def create_new_user(
 
     except Exception as e:
         logger.error(f"Error creating user: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create user")
 
 
 @users_router.delete(DELETE_USER, summary="Delete a user", description="Deletes a user from the system. Only admins can delete users.")
@@ -241,4 +241,4 @@ async def delete_user(
         raise
     except Exception as e:
         logger.error(f"Error deleting user {username}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete user")

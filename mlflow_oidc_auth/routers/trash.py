@@ -88,7 +88,7 @@ async def list_deleted_experiments(
 
     except Exception as e:
         logger.error(f"Error listing deleted experiments for admin '{admin_username}': {str(e)}")
-        return JSONResponse(status_code=500, content={"error": f"Failed to retrieve deleted experiments: {str(e)}"})
+        return JSONResponse(status_code=500, content={"error": "Failed to retrieve deleted experiments."})
 
 
 @trash_router.post(
@@ -159,7 +159,7 @@ async def permanently_delete_all_trashed_entities(
                 time_delta = _parse_time_delta(older_than)
             except MlflowException as e:
                 logger.error(f"Invalid time format '{older_than}': {str(e)}")
-                return JSONResponse(status_code=400, content={"error": f"Invalid time format: {str(e)}"})
+                return JSONResponse(status_code=400, content={"error": f"Invalid time format"})
 
         # Get deleted runs that match the time criteria
         try:
@@ -309,7 +309,7 @@ async def permanently_delete_all_trashed_entities(
 
     except Exception as e:
         logger.error(f"Error in cleanup operation for admin '{admin_username}': {str(e)}")
-        return JSONResponse(status_code=500, content={"error": f"Cleanup operation failed: {str(e)}"})
+        return JSONResponse(status_code=500, content={"error": f"Cleanup operation failed"})
 
 
 def _parse_time_delta(older_than: str) -> int:

@@ -27,7 +27,7 @@ def _experiment_id_from_name(experiment_name: str) -> str:
     except Exception as e:
         # Convert other exceptions to MLflow exceptions
         raise MlflowException(
-            f"Error looking up experiment '{experiment_name}': {str(e)}",
+            f"Error looking up experiment '{experiment_name}'",
             INVALID_PARAMETER_VALUE,
         )
 
