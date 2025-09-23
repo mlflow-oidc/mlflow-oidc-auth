@@ -23,7 +23,6 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import get_permission
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.permissions import can_read_experiment, can_read_registered_model
-from mlflow_oidc_auth.utils.request_helpers import get_username
 
 
 def fetch_all_registered_models(
@@ -167,11 +166,11 @@ def fetch_experiments_paginated(
 
 
 def fetch_readable_experiments(
+    username: str,
     view_type: int = 1,
     max_results_per_page: int = 1000,
     order_by: Optional[List[str]] = None,
     filter_string: Optional[str] = None,
-    username: Optional[str] = None,  # ACTIVE_ONLY
 ) -> List[Experiment]:
     """
     Fetch ALL experiments that the user can read from the MLflow tracking store using pagination.
@@ -187,9 +186,6 @@ def fetch_readable_experiments(
     Returns:
         List of Experiment objects that the user can read
     """
-    if username is None:
-        username = get_username()
-
     # Get all experiments matching the filter
     all_experiments = fetch_all_experiments(view_type=view_type, max_results_per_page=max_results_per_page, order_by=order_by, filter_string=filter_string)
 
@@ -200,7 +196,10 @@ def fetch_readable_experiments(
 
 
 def fetch_readable_registered_models(
-    filter_string: Optional[str] = None, order_by: Optional[List[str]] = None, max_results_per_page: int = 1000, username: Optional[str] = None
+    username: str,
+    filter_string: Optional[str] = None,
+    order_by: Optional[List[str]] = None,
+    max_results_per_page: int = 1000,
 ) -> List[RegisteredModel]:
     """
     Fetch ALL registered models that the user can read from the MLflow model registry using pagination.
@@ -215,8 +214,6 @@ def fetch_readable_registered_models(
     Returns:
         List of RegisteredModel objects that the user can read
     """
-    if username is None:
-        username = get_username()
 
     # Get all models matching the filter
     all_models = fetch_all_registered_models(filter_string=filter_string, order_by=order_by, max_results_per_page=max_results_per_page)
@@ -228,11 +225,11 @@ def fetch_readable_registered_models(
 
 
 def fetch_readable_logged_models(
+    username: str,
     experiment_ids: Optional[List[str]] = None,
     filter_string: Optional[str] = None,
     order_by: Optional[List[dict]] = None,
     max_results_per_page: int = 1000,
-    username: Optional[str] = None,
 ) -> List:
     """
     Fetch ALL logged models that the user can read from the MLflow tracking store using pagination.
@@ -248,9 +245,6 @@ def fetch_readable_logged_models(
     Returns:
         List of LoggedModel objects that the user can read
     """
-
-    if username is None:
-        username = get_username()
 
     # Get user permissions
     perms = store.list_experiment_permissions(username)

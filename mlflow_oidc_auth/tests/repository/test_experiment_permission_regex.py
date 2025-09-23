@@ -2,7 +2,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, INVALID_STATE
 
 from mlflow_oidc_auth.repository.experiment_permission_regex import ExperimentPermissionRegexRepository
 
@@ -23,6 +22,25 @@ def session_maker(session):
 @pytest.fixture
 def repo(session_maker):
     return ExperimentPermissionRegexRepository(session_maker)
+
+
+def test_grant_success(repo, session):
+    """Test successful grant to cover line 60"""
+    user = MagicMock(id=2)
+    perm = MagicMock()
+    perm.to_mlflow_entity.return_value = "entity"
+    session.add = MagicMock()
+    session.flush = MagicMock()
+
+    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user), patch(
+        "mlflow_oidc_auth.db.models.SqlExperimentRegexPermission", return_value=perm
+    ), patch("mlflow_oidc_auth.repository.experiment_permission_regex._validate_permission"), patch(
+        "mlflow_oidc_auth.repository.experiment_permission_regex.validate_regex"
+    ):
+        result = repo.grant("test_regex", 1, "READ", "user")
+        assert result is not None
+        session.add.assert_called_once()
+        session.flush.assert_called_once()
 
 
 def test_grant_integrity_error(repo, session):

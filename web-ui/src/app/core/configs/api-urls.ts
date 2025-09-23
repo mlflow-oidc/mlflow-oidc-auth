@@ -7,7 +7,7 @@ export const API_URL = {
   ALL_EXPERIMENTS: '/api/2.0/mlflow/permissions/experiments',
   ALL_MODELS: '/api/2.0/mlflow/permissions/registered-models',
   ALL_PROMPTS: '/api/2.0/mlflow/permissions/prompts',
-  ALL_USERS: '/api/2.0/mlflow/permissions/users',
+  ALL_USERS: '/api/2.0/mlflow/users',
 
   // User management
   CREATE_USER: '/api/2.0/mlflow/users/create',
@@ -15,7 +15,7 @@ export const API_URL = {
   UPDATE_USER_PASSWORD: '/api/2.0/mlflow/users/update-password',
   UPDATE_USER_ADMIN: '/api/2.0/mlflow/users/update-admin',
   DELETE_USER: '/api/2.0/mlflow/users/delete',
-  CREATE_ACCESS_TOKEN: '/api/2.0/mlflow/permissions/users/access-token',
+  CREATE_ACCESS_TOKEN: '/api/2.0/mlflow/users/access-token',
   GET_CURRENT_USER: '/api/2.0/mlflow/permissions/users/current',
 
   // User permissions for resources

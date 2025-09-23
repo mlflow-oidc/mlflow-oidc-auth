@@ -133,11 +133,9 @@ class TestDataFetching(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.data_fetching.fetch_all_experiments")
     @patch("mlflow_oidc_auth.utils.data_fetching.can_read_experiment")
-    @patch("mlflow_oidc_auth.utils.data_fetching.get_username")
-    def test_fetch_readable_experiments(self, mock_get_username, mock_can_read, mock_fetch_all):
+    def test_fetch_readable_experiments(self, mock_can_read, mock_fetch_all):
         """Test fetching experiments filtered by read permissions."""
         with self.app.test_request_context():
-            mock_get_username.return_value = "user"
             mock_exp1 = MagicMock()
             mock_exp1.experiment_id = "1"
             mock_exp2 = MagicMock()
@@ -150,10 +148,9 @@ class TestDataFetching(unittest.TestCase):
 
             mock_can_read.side_effect = mock_can_read_side_effect
 
-            result = fetch_readable_experiments()
+            result = fetch_readable_experiments("user")
 
             # Verify the calls were made correctly
-            mock_get_username.assert_called_once()
             mock_fetch_all.assert_called_once()
             mock_can_read.assert_any_call("1", "user")
             mock_can_read.assert_any_call("2", "user")
@@ -165,11 +162,9 @@ class TestDataFetching(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.data_fetching.fetch_all_registered_models")
     @patch("mlflow_oidc_auth.utils.data_fetching.can_read_registered_model")
-    @patch("mlflow_oidc_auth.utils.data_fetching.get_username")
-    def test_fetch_readable_registered_models(self, mock_get_username, mock_can_read, mock_fetch_all):
+    def test_fetch_readable_registered_models(self, mock_can_read, mock_fetch_all):
         """Test fetching registered models filtered by read permissions."""
         with self.app.test_request_context():
-            mock_get_username.return_value = "user"
             mock_model1 = MagicMock()
             mock_model1.name = "model1"
             mock_model2 = MagicMock()
@@ -182,10 +177,9 @@ class TestDataFetching(unittest.TestCase):
 
             mock_can_read.side_effect = mock_can_read_side_effect
 
-            result = fetch_readable_registered_models()
+            result = fetch_readable_registered_models("user")
 
             # Verify the calls were made correctly
-            mock_get_username.assert_called_once()
             mock_fetch_all.assert_called_once()
             mock_can_read.assert_any_call("model1", "user")
             mock_can_read.assert_any_call("model2", "user")
@@ -199,12 +193,10 @@ class TestDataFetching(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils.data_fetching.store")
     @patch("mlflow_oidc_auth.utils.data_fetching.config")
     @patch("mlflow_oidc_auth.utils.data_fetching.get_permission")
-    @patch("mlflow_oidc_auth.utils.data_fetching.get_username")
-    def test_fetch_readable_logged_models_default_username(self, mock_get_username, mock_get_permission, mock_config, mock_store, mock_tracking_store):
-        """Test fetch_readable_logged_models with default username."""
+    def test_fetch_readable_logged_models_default_username(self, mock_get_permission, mock_config, mock_store, mock_tracking_store):
+        """Test fetch_readable_logged_models with explicit username."""
         with self.app.test_request_context():
             # Setup mocks
-            mock_get_username.return_value = "test_user"
             mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
 
             # Mock permission
@@ -226,10 +218,9 @@ class TestDataFetching(unittest.TestCase):
             mock_tracking_store.return_value.search_logged_models.return_value = mock_search_result
 
             # Call function
-            result = fetch_readable_logged_models()
+            result = fetch_readable_logged_models("test_user")
 
             # Verify
-            mock_get_username.assert_called_once()
             mock_store.list_experiment_permissions.assert_called_once_with("test_user")
             self.assertEqual(len(result), 1)
             self.assertEqual(result[0].experiment_id, "exp1")

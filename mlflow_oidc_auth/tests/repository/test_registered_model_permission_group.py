@@ -22,6 +22,41 @@ def repo(session_maker):
     return RegisteredModelPermissionGroupRepository(session_maker)
 
 
+def test_create(repo, session):
+    """Test create method to cover lines 33-39"""
+    group = MagicMock(id=1)
+    perm = MagicMock()
+    perm.to_mlflow_entity.return_value = "entity"
+    session.add = MagicMock()
+    session.flush = MagicMock()
+
+    with patch("mlflow_oidc_auth.repository.registered_model_permission_group.get_group", return_value=group), patch(
+        "mlflow_oidc_auth.db.models.SqlRegisteredModelGroupPermission", return_value=perm
+    ), patch("mlflow_oidc_auth.repository.registered_model_permission_group._validate_permission"):
+        result = repo.create("test_group", "test_model", "READ")
+        assert result is not None
+        session.add.assert_called_once()
+        session.flush.assert_called_once()
+
+
+def test__get_registered_model_group_permission_group_not_found(repo, session):
+    """Test _get_registered_model_group_permission when group is not found - covers lines 20-22"""
+    session.query().filter().one_or_none.return_value = None
+
+    result = repo._get_registered_model_group_permission(session, "test_model", "nonexistent_group")
+    assert result is None
+
+
+def test__get_registered_model_group_permission_found(repo, session):
+    """Test _get_registered_model_group_permission when permission is found - covers line 23"""
+    group = MagicMock(id=1)
+    perm = MagicMock()
+    session.query().filter().one_or_none.side_effect = [group, perm]
+
+    result = repo._get_registered_model_group_permission(session, "test_model", "test_group")
+    assert result == perm
+
+
 def test_get(repo, session):
     group = MagicMock(id=2)
     perm = MagicMock()
@@ -37,6 +72,38 @@ def test_get_for_user_found(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
     with patch.object(repo, "_get_registered_model_group_permission", side_effect=[perm]):
+        result = repo.get_for_user("name", "user")
+        assert result == "entity"
+
+
+def test_get_for_user_compare_permissions_true(repo, session):
+    """Test get_for_user when compare_permissions returns True - covers line 60"""
+    repo._group_repo.list_groups_for_user = MagicMock(return_value=["g1", "g2"])
+    perm1 = MagicMock()
+    perm1.permission = "READ"
+    perm2 = MagicMock()
+    perm2.permission = "WRITE"
+    perm2.to_mlflow_entity.return_value = "entity"
+
+    with patch.object(repo, "_get_registered_model_group_permission", side_effect=[perm1, perm2]), patch(
+        "mlflow_oidc_auth.repository.registered_model_permission_group.compare_permissions", return_value=True
+    ):
+        result = repo.get_for_user("name", "user")
+        assert result == "entity"
+
+
+def test_get_for_user_compare_permissions_attribute_error(repo, session):
+    """Test get_for_user when compare_permissions raises AttributeError - covers lines 60-61"""
+    repo._group_repo.list_groups_for_user = MagicMock(return_value=["g1", "g2"])
+    perm1 = MagicMock()
+    perm1.permission = "READ"
+    perm2 = MagicMock()
+    perm2.permission = "WRITE"
+    perm2.to_mlflow_entity.return_value = "entity"
+
+    with patch.object(repo, "_get_registered_model_group_permission", side_effect=[perm1, perm2]), patch(
+        "mlflow_oidc_auth.repository.registered_model_permission_group.compare_permissions", side_effect=AttributeError("test error")
+    ):
         result = repo.get_for_user("name", "user")
         assert result == "entity"
 

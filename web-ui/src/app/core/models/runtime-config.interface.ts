@@ -4,6 +4,8 @@
 export interface RuntimeConfig {
     basePath: string;
     uiPath: string;
+    provider?: string;
+    authenticated: boolean;
 }
 
 /**
@@ -12,4 +14,6 @@ export interface RuntimeConfig {
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
     basePath: '',
     uiPath: '/oidc/ui',
+    provider: 'Login with Test',
+    authenticated: false,
 };

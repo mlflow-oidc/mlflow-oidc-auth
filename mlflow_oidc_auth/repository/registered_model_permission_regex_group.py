@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional
+from typing import Callable, List
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_DOES_NOT_EXIST

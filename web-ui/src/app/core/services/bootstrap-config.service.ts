@@ -57,6 +57,8 @@ export class BootstrapConfigService {
         return {
             basePath: inferredBasePath,
             uiPath: `${inferredBasePath}/oidc/ui`,
+            authenticated: false, // Default to not authenticated when config fails to load
+            provider: 'Login with Test'
         };
     }
 
