@@ -5,16 +5,15 @@ on:
       - opened
       - edited
       - synchronize
+    paths:
+      - mlflow_oidc_auth/**
 
 jobs:
   main:
     name: Run bandit
     runs-on: ubuntu-latest
     steps:
-      - uses: mdegis/bandit-action@v1.0
+      - uses: PyCQA/bandit-action@v1.0.1
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          path: "."
-          level: high
+          severity: high
           confidence: high
-          exit_zero: true
