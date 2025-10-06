@@ -187,8 +187,5 @@ scripts/mysql/mysql_data
 # until it ready
 integration-tests/
 
-# until it ready
-web-react/
-
 nginx.conf
 .kiro/
