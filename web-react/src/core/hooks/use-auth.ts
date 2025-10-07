@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import type { User } from "../models/user";
-import { http } from "../api/http";
+import type { User } from "../types/user";
+import { http } from "../services/http";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);

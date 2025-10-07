@@ -1,5 +1,4 @@
 import DarkModeToggle from "./shared/components/dark-mode-toggle";
-import "./app.css";
 
 export default function App() {
   return (
