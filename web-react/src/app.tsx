@@ -1,13 +1,18 @@
-import DarkModeToggle from "./shared/components/dark-mode-toggle";
+import React from "react";
+import { Routes, Route, Navigate } from "react-router";
+
+const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
+const UserPage = React.lazy(() => import("./features/user/user-page"));
+const ManagePage = React.lazy(() => import("./features/manage/manage-page"));
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 text-black dark:text-white p-8">
-      <DarkModeToggle />
-      <h1 className="mt-8 text-3xl font-bold">Dark Mode Test</h1>
-      <p className="mt-4">
-        This is some sample text to see the light/dark mode toggle in action.
-      </p>
-    </div>
+    <Routes>
+      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/user" element={<UserPage />} />
+      <Route path="/manage" element={<ManagePage />} />
+
+      <Route path="*" element={<Navigate to="/user" replace />} />
+    </Routes>
   );
 }
