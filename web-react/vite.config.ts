@@ -4,10 +4,11 @@ import react from "@vitejs/plugin-react-swc";
 import { configDefaults } from "vitest/config";
 
 export default defineConfig({
-  base: "/",
+  base: "/oidc/ui/",
   plugins: [react(), tailwindcss()],
   build: {
-    outDir: "dist",
+    outDir: "../mlflow_oidc_auth/ui",
+    emptyOutDir: true,
   },
   test: {
     globals: true,
