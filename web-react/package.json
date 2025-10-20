@@ -12,6 +12,7 @@
     "watch": "tsc -b && vite build --watch"
   },
   "dependencies": {
+    "dompurify": "^3.3.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
