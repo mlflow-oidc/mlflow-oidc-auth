@@ -6,6 +6,8 @@ import App from "./app.tsx";
 type AppConfig = {
   basePath: string;
   uiPath: string;
+  provider: string;
+  authenticated: boolean;
 };
 
 async function init() {
@@ -17,8 +19,12 @@ async function init() {
 
   const config = (await res.json()) as AppConfig;
 
-  const basePath = config.basePath || "";
-  const uiPath = config.uiPath || "/";
+  const basePath = config.basePath;
+  const uiPath = config.uiPath;
+  const provider = config.provider;
+  const authenticated = config.authenticated;
+
+  console.log("App Config:", { basePath, uiPath, provider, authenticated });
 
   const basename = `${basePath}${uiPath}`.replace(/\/+$/, "");
 
