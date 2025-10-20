@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchAuthStatus } from "../service/auth-service";
+import { fetchAuthStatus } from "../services/auth-service";
 
 type UseAuthResult = {
   loading: boolean;
