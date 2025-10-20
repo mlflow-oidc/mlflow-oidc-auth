@@ -2,6 +2,7 @@ import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./app.tsx";
+import { LoadingSpinner } from "./shared/components/loading-spinner.tsx";
 
 type AppConfig = {
   basePath: string;
@@ -30,7 +31,7 @@ async function init() {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <BrowserRouter basename={basename}>
-        <Suspense fallback={<div>Loading...</div>}>
+        <Suspense fallback={<LoadingSpinner />}>
           <App btnText={provider} />
         </Suspense>
       </BrowserRouter>
