@@ -1,14 +1,30 @@
 export const AuthPage = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <div className="text-center p-6 bg-white dark:bg-gray-800 rounded shadow">
-        <h1 className="text-2xl font-semibold mb-6">Sign in</h1>
+    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+      <div className="w-full max-w-md p-8 rounded-md shadow bg-white dark:bg-gray-800">
+        <h1 className="text-2xl font-semibold mb-6 text-gray-900 dark:text-gray-100">
+          Sign in
+        </h1>
+
+        {/* Error placeholder */}
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-4 rounded-md border border-transparent p-3 text-lg dark:text-gray-400"
+        >
+          Future error messages will render here
+        </div>
+
         <a href="/login">
           <button
             type="button"
-            className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full rounded-md text-white
+              bg-[rgb(34,114,180)] hover:bg-[rgb(14,83,139)] active:brightness-90
+              px-[12px] py-[4px]
+              focus:outline-none focus:ring-2 focus:ring-blue-400
+              dark:hover:brightness-95 dark:active:brightness-90 cursor-pointer"
           >
-            Sign in with Demo OIDC Provider
+            Sign in with OIDC Provider
           </button>
         </a>
       </div>
