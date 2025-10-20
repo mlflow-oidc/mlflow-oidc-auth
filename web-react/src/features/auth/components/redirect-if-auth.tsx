@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router";
-import { fetchAuthStatus } from "../service/auth-service";
+import { fetchAuthStatus } from "../services/auth-service";
 
 type Props = {
   children: React.ReactNode;
