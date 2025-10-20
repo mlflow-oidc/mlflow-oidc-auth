@@ -48,7 +48,7 @@ export default function RedirectIfAuth({
     };
   }, [key]);
 
-  if (loading) return <>{fallback ?? <div>Loading...</div>}</>;
+  if (loading) return <>{fallback}</>;
   if (authenticated) return <Navigate to={to} replace />;
   return <>{children}</>;
 }
