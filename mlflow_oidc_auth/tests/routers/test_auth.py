@@ -52,7 +52,7 @@ class TestBuildUIUrl:
 
         result = _build_ui_url(request, "/auth")
 
-        assert result == "http://localhost:8000/oidc/ui/#/auth"
+        assert result == "http://localhost:8000/oidc/ui/auth"
 
     def test_build_ui_url_with_query_params(self, mock_request_with_session):
         """Test building UI URL with query parameters."""
@@ -61,7 +61,7 @@ class TestBuildUIUrl:
 
         result = _build_ui_url(request, "/auth", {"error": "test_error", "code": "123"})
 
-        assert "http://localhost:8000/oidc/ui/#/auth?" in result
+        assert "http://localhost:8000/oidc/ui/auth?" in result
         assert "error=test_error" in result
         assert "code=123" in result
 
@@ -72,7 +72,7 @@ class TestBuildUIUrl:
 
         result = _build_ui_url(request, "/home")
 
-        assert result == "http://localhost:8000/oidc/ui/#/home"
+        assert result == "http://localhost:8000/oidc/ui/home"
 
 
 class TestLoginEndpoint:
@@ -163,7 +163,7 @@ class TestLogoutEndpoint:
             # Verify redirect to auth page
             assert isinstance(result, RedirectResponse)
             assert result.status_code == 302
-            assert "/oidc/ui/#/auth" in result.headers["location"]
+            assert "/oidc/ui/auth" in result.headers["location"]
 
     @pytest.mark.asyncio
     async def test_logout_exception_handling(self, mock_request_with_session):
@@ -178,7 +178,7 @@ class TestLogoutEndpoint:
 
             # Should still redirect to auth page even with exception
             assert isinstance(result, RedirectResponse)
-            assert "/oidc/ui/#/auth" in result.headers["location"]
+            assert "/oidc/ui/auth" in result.headers["location"]
 
     @pytest.mark.asyncio
     async def test_logout_unauthenticated_user(self, mock_request_with_session, mock_oauth):
@@ -215,7 +215,7 @@ class TestCallbackEndpoint:
             # Verify redirect to home page
             assert isinstance(result, RedirectResponse)
             assert result.status_code == 302
-            assert "/oidc/ui/#/home" in result.headers["location"]
+            assert "/oidc/ui/home" in result.headers["location"]
 
     @pytest.mark.asyncio
     async def test_callback_with_errors(self, mock_request_with_session):
@@ -230,7 +230,7 @@ class TestCallbackEndpoint:
             # Verify redirect to auth page with errors
             assert isinstance(result, RedirectResponse)
             assert result.status_code == 302
-            assert "/oidc/ui/#/auth" in result.headers["location"]
+            assert "/oidc/ui/auth" in result.headers["location"]
             assert "error=" in result.headers["location"]
 
     @pytest.mark.asyncio
