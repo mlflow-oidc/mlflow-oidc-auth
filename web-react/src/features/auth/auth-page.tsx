@@ -1,4 +1,6 @@
-export const AuthPage = () => {
+import type { AuthPageProps } from "../../core/types/pages";
+
+export const AuthPage = ({ btnText }: AuthPageProps) => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-900">
       <div className="w-full max-w-md p-8 rounded-md shadow bg-white dark:bg-gray-800">
@@ -24,7 +26,7 @@ export const AuthPage = () => {
               focus:outline-none focus:ring-2 focus:ring-blue-400
               dark:hover:brightness-95 dark:active:brightness-90 cursor-pointer"
           >
-            Sign in with OIDC Provider
+            {btnText}
           </button>
         </a>
       </div>
