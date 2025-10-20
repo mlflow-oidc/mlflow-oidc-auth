@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import DOMPurify from "dompurify";
 
 export const useAuthErrors = (): string[] => {
   const errors = useMemo(() => {
@@ -9,7 +10,12 @@ export const useAuthErrors = (): string[] => {
     const sanitizedErrors = rawErrors
       .map((error) => {
         const decodedError = error.replace(/\+/g, " ");
-        return decodedError.trim();
+
+        const purifiedError = DOMPurify.sanitize(decodedError, {
+          ALLOWED_TAGS: [],
+          ALLOWED_ATTR: [],
+        });
+        return purifiedError.trim();
       })
       .filter((error) => error.length > 0);
 
