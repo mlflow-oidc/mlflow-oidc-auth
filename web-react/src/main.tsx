@@ -22,9 +22,6 @@ async function init() {
   const basePath = config.basePath;
   const uiPath = config.uiPath;
   const provider = config.provider;
-  const authenticated = config.authenticated;
-
-  console.log("App Config:", { basePath, uiPath, provider, authenticated });
 
   const basename = `${basePath}${uiPath}`.replace(/\/+$/, "");
 
@@ -34,7 +31,7 @@ async function init() {
     <StrictMode>
       <BrowserRouter basename={basename}>
         <Suspense fallback={<div>Loading...</div>}>
-          <App />
+          <App btnText={provider} />
         </Suspense>
       </BrowserRouter>
     </StrictMode>

@@ -2,19 +2,20 @@ import React from "react";
 import { Routes, Route, Navigate } from "react-router";
 import ProtectedRoute from "./features/auth/components/protected-route";
 import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
+import type { AuthPageProps } from "./core/types/pages";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
 const ManagePage = React.lazy(() => import("./features/manage/manage-page"));
 
-export default function App() {
+export default function App({ btnText }: AuthPageProps) {
   return (
     <Routes>
       <Route
         path="/auth"
         element={
           <RedirectIfAuth fallback={<div>Loading...</div>}>
-            <AuthPage />
+            <AuthPage btnText={btnText} />
           </RedirectIfAuth>
         }
       />
