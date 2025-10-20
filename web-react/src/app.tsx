@@ -1,7 +1,7 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router";
-import ProtectedRoute from "./features/auth/protected-route";
-import RedirectIfAuth from "./features/auth/redirect-if-auth";
+import ProtectedRoute from "./features/auth/components/protected-route";
+import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
