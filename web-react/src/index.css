@@ -17,7 +17,7 @@
   --color-btn-primary-text: rgb(255, 255, 255);
 
   /* Icon/Menu */
-  --color-text-secondary: rgb(95, 114, 129);
+  --color-text-primary: rgb(95, 114, 129);
   --color-text-primary-hover: rgb(14, 83, 139);
   --color-bg-primary-hover: rgba(34, 114, 180, 0.08);
 
@@ -30,7 +30,7 @@
   --color-btn-primary-hover-dark: rgb(138, 202, 255);
   --color-btn-primary-text-dark: rgb(17, 23, 28);
 
-  --color-text-secondary-dark: rgb(146, 164, 179);
+  --color-text-primary-dark: rgb(146, 164, 179);
   --color-text-primary-hover-dark: rgb(138, 202, 255);
   --color-bg-primary-hover-dark: rgba(138, 202, 255, 0.08);
 }
