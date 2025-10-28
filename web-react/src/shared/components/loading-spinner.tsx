@@ -5,12 +5,14 @@ export const LoadingSpinner: React.FC = () => {
     <div className="flex justify-center items-center w-full h-screen min-h-64">
       <div className="flex flex-col items-center">
         <div
-          className=" w-12 h-12 border-4 border-gray-200 border-t-[rgb(34,114,180)] rounded-full animate-fast-spin"
+          className=" w-12 h-12 border-4 border-ui-secondary-bg dark:border-ui-secondary-bg-dark border-t-btn-primary dark:border-t-btn-primary-dark rounded-full animate-fast-spin"
           role="status"
           aria-label="Loading"
         ></div>
 
-        <div className="mt-4 text-gray-600 text-lg font-sans">Loading...</div>
+        <div className="mt-4 text-text-secondary text-lg font-sans">
+          Loading...
+        </div>
       </div>
     </div>
   );

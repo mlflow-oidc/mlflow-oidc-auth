@@ -10,8 +10,8 @@ export const UserPage = () => {
       <div
         className="
           p-8 shadow-md min-h-screen
-          bg-[rgb(255,255,255)] text-[rgb(17,23,28)]
-          dark:bg-[rgb(17,23,28)] dark:text-[rgb(232,236,240)]
+          bg-ui-bg text-ui-text
+          dark:bg-ui-bg-dark dark:text-ui-text-dark
         "
       >
         <h1 className="mt-8 text-3xl font-bold">Dark Mode Test</h1>

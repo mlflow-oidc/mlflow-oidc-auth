@@ -29,9 +29,9 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
   }, [isMenuOpen]);
 
   return (
-    <header className="p-2 shadow-md bg-[rgb(246,247,249)] dark:bg-[rgb(31,39,45)]">
+    <header className="p-2 shadow-md bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark">
       <div className="sticky z-3 flex justify-between items-center">
-        <Link to="/" className="text-xl font-extrabold text-[#2374bb]">
+        <Link to="/" className="text-xl font-extrabold text-logo">
           MlflowOidcAuth
         </Link>
 
@@ -40,7 +40,7 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
             <DarkModeToggle />
             <button
               type="button"
-              className="sm:hidden fill-current text-[rgb(95,114,129)] hover:text-[rgb(14,83,139)] hover:bg-[rgba(34,114,180,0.08)] dark:text-[rgb(186,225,252)] dark:hover:text-[rgb(138,202,255)] dark:hover:bg-[rgba(138,202,255,0.08)] cursor-pointer p-1 rounded transition-colors"
+              className="sm:hidden fill-current text-text-primary hover:text-text-primary-hover hover:bg-bg-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark dark:hover:bg-bg-primary-hover-dark cursor-pointer p-1 rounded transition-colors"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               aria-expanded={isMenuOpen}
               aria-controls="mobile-menu"
