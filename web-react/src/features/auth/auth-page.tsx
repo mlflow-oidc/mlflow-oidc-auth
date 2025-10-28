@@ -37,11 +37,10 @@ export const AuthPage = ({ btnText }: AuthPageProps) => {
         <a href="/login">
           <button
             type="button"
-            className="w-full rounded-md text-white
-              bg-[rgb(34,114,180)] hover:bg-[rgb(14,83,139)] active:brightness-90
+            className="w-full rounded-md text-btn-primary-text
+              bg-btn-primary hover:bg-btn-primary-hover dark:bg-btn-primary-dark dark:hover:bg-btn-primary-hover-dark dark:text-btn-primary-text-dark
               px-[12px] py-[4px]
-              focus:outline-none focus:ring-2 focus:ring-blue-400
-              dark:hover:brightness-95 dark:active:brightness-90 cursor-pointer"
+               cursor-pointer"
           >
             {btnText}
           </button>

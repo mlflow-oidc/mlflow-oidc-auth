@@ -48,7 +48,7 @@ const DarkModeToggle: React.FC = () => {
   }, []);
 
   const buttonClasses = `
-    flex items-center justify-center space-x-2 px-2 py-2 rounded transition-colors duration-200 cursor-pointer fill-current text-[rgb(95,114,129)] hover:text-[rgb(14,83,139)] hover:bg-[rgba(34,114,180,0.08)] dark:text-[rgb(186,225,252)] dark:hover:text-[rgb(138,202,255)] dark:hover:bg-[rgba(138,202,255,0.08)] 
+    flex items-center justify-center space-x-2 px-2 py-2 rounded transition-colors duration-200 cursor-pointer fill-current text-text-primary hover:text-text-primary-hover hover:bg-bg-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark dark:hover:bg-bg-primary-hover-dark
   `;
 
   return (

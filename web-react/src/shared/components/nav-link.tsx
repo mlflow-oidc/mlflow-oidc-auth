@@ -7,7 +7,7 @@ interface NavLinkProps extends React.PropsWithChildren {
 
 const NavLink: React.FC<NavLinkProps> = ({ href, children, onClick }) => {
   const baseClasses =
-    "p-2 w-full sm:w-auto text-[rgb(95,114,129)] hover:text-[rgb(14,83,139)] dark:text-[rgb(146,164,179)] dark:hover:text-[rgb(138,202,255)] text-lg sm:text-sm font-medium transition-colors text-left sm:text-center rounded-md";
+    "p-2 w-full sm:w-auto text-text-primary hover:text-text-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark text-lg sm:text-sm font-medium transition-colors text-left sm:text-center rounded-md";
   return (
     <a href={href} className={baseClasses} onClick={onClick}>
       {children}

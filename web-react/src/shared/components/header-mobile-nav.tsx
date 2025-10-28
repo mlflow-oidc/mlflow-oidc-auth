@@ -17,7 +17,7 @@ const HeaderMobileNav: React.FC<HeaderMobileNavProps> = ({
     <div
       id="mobile-menu"
       className={`
-        fixed inset-0 pt-[48px] p-4 sm:hidden z-2 transition-transform duration-300 ease-in-out bg-[rgb(246,247,249)] dark:bg-[rgb(31,39,45)]
+        fixed inset-0 pt-[48px] p-4 sm:hidden z-2 transition-transform duration-300 ease-in-out bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark
           ${isMenuOpen ? "translate-x-0" : "translate-x-full"} 
       `}
     >
