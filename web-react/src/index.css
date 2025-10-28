@@ -2,6 +2,39 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --color-ui-bg: rgb(255, 255, 255);
+  --color-ui-text: rgb(17, 23, 28);
+
+  /* Header/Sidebar BG */
+  --color-ui-secondary-bg: rgb(246, 247, 249);
+
+  --color-logo: #2374bb;
+
+  /* Buttons */
+  --color-btn-primary: rgb(34, 114, 180);
+  --color-btn-primary-hover: rgb(14, 83, 139);
+  --color-btn-primary-text: rgb(255, 255, 255);
+
+  /* Icon/Menu */
+  --color-text-secondary: rgb(95, 114, 129);
+  --color-text-primary-hover: rgb(14, 83, 139);
+  --color-bg-primary-hover: rgba(34, 114, 180, 0.08);
+
+  /* Dark Mode */
+  --color-ui-bg-dark: rgb(17, 23, 28);
+  --color-ui-text-dark: rgb(232, 236, 240);
+  --color-ui-secondary-bg-dark: rgb(31, 39, 45);
+
+  --color-btn-primary-dark: rgb(66, 153, 224);
+  --color-btn-primary-hover-dark: rgb(138, 202, 255);
+  --color-btn-primary-text-dark: rgb(17, 23, 28);
+
+  --color-text-secondary-dark: rgb(146, 164, 179);
+  --color-text-primary-hover-dark: rgb(138, 202, 255);
+  --color-bg-primary-hover-dark: rgba(138, 202, 255, 0.08);
+}
+
 @keyframes fastSpin {
   from {
     transform: rotate(0deg);
