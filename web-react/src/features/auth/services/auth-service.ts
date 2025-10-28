@@ -9,8 +9,20 @@ export type RuntimeConfig = {
 
 export type AuthStatus = Pick<RuntimeConfig, "authenticated">;
 
-// TODO: Replace with the user shape when available
-export type CurrentUser = unknown;
+export type Group = {
+  group_name: string;
+  id: number;
+};
+
+export type CurrentUser = {
+  display_name: string;
+  groups: Group[];
+  id: number;
+  is_admin: boolean;
+  is_service_account: boolean;
+  password_expiration: string | null;
+  username: string;
+};
 
 export const AUTH_ENDPOINTS = {
   RUNTIME_CONFIG: "config.json",
