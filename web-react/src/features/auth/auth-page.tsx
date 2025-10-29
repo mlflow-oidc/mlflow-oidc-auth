@@ -10,11 +10,16 @@ export const AuthPage = ({ btnText }: AuthPageProps) => {
     : "border-transparent text-lg dark:text-gray-400";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-900">
-      <div className="w-full max-w-md p-8 rounded-md shadow bg-white dark:bg-gray-800">
-        <h1 className="text-2xl font-semibold mb-6 text-gray-900 dark:text-gray-100">
-          Sign in
-        </h1>
+    <div
+      className="min-h-screen flex items-center justify-center 
+    bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark"
+    >
+      <div
+        className="w-full max-w-md p-8 rounded-md shadow
+         bg-ui-bg text-ui-text
+         dark:bg-ui-bg-dark dark:text-ui-text-dark"
+      >
+        <h1 className="text-2xl font-semibold mb-6">Sign in</h1>
 
         <div
           role="status"
@@ -37,10 +42,9 @@ export const AuthPage = ({ btnText }: AuthPageProps) => {
         <a href="/login">
           <button
             type="button"
-            className="w-full rounded-md text-btn-primary-text
-              bg-btn-primary hover:bg-btn-primary-hover dark:bg-btn-primary-dark dark:hover:bg-btn-primary-hover-dark dark:text-btn-primary-text-dark
-              px-[12px] py-[4px]
-               cursor-pointer"
+            className="w-full rounded-md px-[12px] py-[4px] cursor-pointer
+            text-btn-primary-text bg-btn-primary hover:bg-btn-primary-hover 
+            dark:text-btn-primary-text-dark dark:bg-btn-primary-dark dark:hover:bg-btn-primary-hover-dark"
           >
             {btnText}
           </button>
