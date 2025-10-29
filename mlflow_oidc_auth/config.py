@@ -50,17 +50,6 @@ class AppConfig:
                         setattr(self, attr, getattr(session_module, attr))
             except ImportError:
                 logger.error(f"Session module for {self.SESSION_TYPE} could not be imported.")
-        # cache
-        self.CACHE_TYPE = os.environ.get("CACHE_TYPE", "FileSystemCache")
-        if self.CACHE_TYPE:
-            try:
-                cache_module = importlib.import_module(f"mlflow_oidc_auth.cache.{(self.CACHE_TYPE).lower()}")
-                logger.debug(f"Cache module for {self.CACHE_TYPE} imported.")
-                for attr in dir(cache_module):
-                    if attr.isupper():
-                        setattr(self, attr, getattr(cache_module, attr))
-            except ImportError:
-                logger.error(f"Cache module for {self.CACHE_TYPE} could not be imported.")
 
 
 config = AppConfig()

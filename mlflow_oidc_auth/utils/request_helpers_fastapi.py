@@ -236,10 +236,36 @@ async def is_authenticated(request: Request) -> bool:
 async def get_base_path(request: Request) -> str:
     """
     Helper function to get the base path from the request.
+
+    This function extracts the base path for the application, taking into account
+    proxy headers set by reverse proxies (nginx, etc.). The base path is used
+    for constructing proper URLs and redirects when the application is behind a proxy.
+
+    Priority order:
+    1. X-Forwarded-Prefix header (most common proxy setup)
+    2. root_path from ASGI scope (set by ProxyHeadersMiddleware)
+    3. request.base_url.path (direct access)
+    4. Empty string (default)
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Base path string (without trailing slash)
     """
+    # First check X-Forwarded-Prefix header (nginx, apache, etc.)
     forwarded_prefix = request.headers.get("x-forwarded-prefix", "")
     if forwarded_prefix:
         return forwarded_prefix.rstrip("/")
-    elif request.base_url.path:
+
+    # Then check root_path from ASGI scope (set by ProxyHeadersMiddleware or ASGI server)
+    root_path = request.scope.get("root_path", "")
+    if root_path:
+        return root_path.rstrip("/")
+
+    # Fallback to base URL path for direct access
+    if request.base_url.path and request.base_url.path != "/":
         return request.base_url.path.rstrip("/")
+
+    # Default to empty string (no prefix)
     return ""

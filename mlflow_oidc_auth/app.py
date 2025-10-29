@@ -16,7 +16,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.exceptions import register_exception_handlers
 from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.middleware import AuthAwareWSGIMiddleware, AuthMiddleware
+from mlflow_oidc_auth.middleware import AuthAwareWSGIMiddleware, AuthMiddleware, ProxyHeadersMiddleware
 from mlflow_oidc_auth.routers import get_all_routers
 
 logger = get_logger()
@@ -35,6 +35,8 @@ def create_app() -> Any:
         openapi_url="/openapi.json" if getattr(config, "ENABLE_API_DOCS", True) else None,
     )
     register_exception_handlers(oidc_app)
+
+    oidc_app.add_middleware(ProxyHeadersMiddleware)
     oidc_app.add_middleware(AuthMiddleware)
     oidc_app.add_middleware(StarletteSessionMiddleware, secret_key=config.SECRET_KEY)
 

@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.oauth import oauth
+from mlflow_oidc_auth.oauth import oauth, is_oidc_configured
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri
 
 from ._prefix import UI_ROUTER_PREFIX
@@ -69,6 +69,11 @@ async def login(request: Request):
     logger.info("Starting OIDC login flow")
 
     try:
+        # Check if OIDC is properly configured before proceeding
+        if not is_oidc_configured():
+            logger.error("OIDC is not properly configured")
+            raise HTTPException(status_code=500, detail="OIDC authentication not available - configuration error")
+
         # Get session for storing OAuth state (using Starlette's built-in session)
         session = request.session
 
@@ -79,7 +84,8 @@ async def login(request: Request):
         # Get redirect URI (configured or dynamic). Use a safe fallback if dynamic calculation fails
         try:
             redirect_url = get_configured_or_dynamic_redirect_uri(request=request, callback_path=CALLBACK, configured_uri=config.OIDC_REDIRECT_URI)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get dynamic redirect URI: {e}")
             # Fallback to base_url + callback when request.url or other internals are not available in tests
             base = str(getattr(request, "base_url", "http://localhost:8000"))
             redirect_url = base.rstrip("/") + CALLBACK
@@ -87,15 +93,19 @@ async def login(request: Request):
         logger.debug(f"OIDC redirect URL: {redirect_url}")
 
         # Redirect to OIDC provider
-        if hasattr(oauth.oidc, "authorize_redirect"):
-            return await oauth.oidc.authorize_redirect(  # type: ignore
-                request,
-                redirect_uri=redirect_url,
-                state=oauth_state,
-            )
-        else:
-            logger.error("OIDC client not properly configured")
-            raise HTTPException(status_code=500, detail="OIDC authentication not available")
+        try:
+            if hasattr(oauth.oidc, "authorize_redirect"):
+                return await oauth.oidc.authorize_redirect(  # type: ignore
+                    request,
+                    redirect_uri=redirect_url,
+                    state=oauth_state,
+                )
+            else:
+                logger.error("OIDC client authorize_redirect method not available")
+                raise HTTPException(status_code=500, detail="OIDC authentication not available")
+        except Exception as e:
+            logger.error(f"Failed to initiate OAuth redirect: {e}")
+            raise HTTPException(status_code=500, detail="Failed to initiate OIDC authentication")
 
     except HTTPException:
         # Preserve explicit HTTPExceptions raised above

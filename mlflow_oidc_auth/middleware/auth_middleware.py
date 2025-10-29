@@ -179,10 +179,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             Appropriate response (redirect or auth page)
         """
-        if config.AUTOMATIC_LOGIN_REDIRECT:
-            return RedirectResponse(url="/login", status_code=302)
+        # Import here to avoid circular imports
+        from mlflow_oidc_auth.utils import get_base_path
 
-        return RedirectResponse(url="/oidc/ui", status_code=302)
+        base_path = await get_base_path(request)
+
+        if config.AUTOMATIC_LOGIN_REDIRECT:
+            login_url = f"{base_path}/login"
+            return RedirectResponse(url=login_url, status_code=302)
+
+        ui_url = f"{base_path}/oidc/ui"
+        return RedirectResponse(url=ui_url, status_code=302)
 
     async def dispatch(self, request: Request, call_next) -> Response:
         """
