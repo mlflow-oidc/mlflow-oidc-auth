@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./app.tsx";
 import { LoadingSpinner } from "./shared/components/loading-spinner.tsx";
+import { initializeTheme } from "./shared/utils/theme-utils.ts";
 
 type AppConfig = {
   basePath: string;
@@ -12,6 +13,7 @@ type AppConfig = {
 };
 
 async function init() {
+  initializeTheme();
   const res = await fetch("./config.json", { cache: "no-store" });
 
   if (!res.ok) {
