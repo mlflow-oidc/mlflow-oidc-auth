@@ -15,4 +15,5 @@ export enum EntityEnum {
 export enum RoutePath {
   Home = 'home',
   Manage = 'manage',
+  Auth = 'auth',
 }

@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
+from sqlalchemy.exc import IntegrityError
 from mlflow_oidc_auth.repository.user import UserRepository
 from mlflow.exceptions import MlflowException
 from datetime import datetime, timedelta
@@ -23,14 +24,32 @@ def repo(session_maker):
     return UserRepository(session_maker)
 
 
+def test_create_success(repo, session):
+    """Test successful create to cover line 34"""
+    user = MagicMock()
+    user.to_mlflow_entity.return_value = "entity"
+    session.add = MagicMock()
+    session.flush = MagicMock()
+
+    with patch("mlflow_oidc_auth.db.models.SqlUser", return_value=user), patch(
+        "mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"
+    ), patch("mlflow_oidc_auth.repository.user._validate_username"):
+        result = repo.create("user", "pw", "disp")
+        assert result is not None
+        session.add.assert_called_once()
+        session.flush.assert_called_once()
+
+
 def test_create_integrity_error(repo, session):
     session.add = MagicMock()
-    session.flush = MagicMock(side_effect=Exception("IntegrityError"))
+    session.flush = MagicMock(side_effect=IntegrityError("statement", "params", "orig"))
     with patch("mlflow_oidc_auth.db.models.SqlUser", return_value=MagicMock()), patch(
         "mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"
-    ), patch("mlflow_oidc_auth.repository.user.IntegrityError", Exception):
-        with pytest.raises(MlflowException):
+    ), patch("mlflow_oidc_auth.repository.user._validate_username"):
+        with pytest.raises(MlflowException) as exc:
             repo.create("user", "pw", "disp")
+        assert "User 'user' already exists" in str(exc.value)
+        assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
 
 
 def test_get_found(repo, session):
@@ -91,6 +110,20 @@ def test_update_all_fields(repo, session):
     ):
         result = repo.update("user", password="new_pw", is_admin=True, is_service_account=True)
         assert result == "entity"
+        session.flush.assert_called_once()
+
+
+def test_update_password_expiration(repo, session):
+    """Test update with password_expiration to cover line 71"""
+    user = MagicMock()
+    user.to_mlflow_entity.return_value = "entity"
+    session.flush = MagicMock()
+    expiration_date = datetime.now() + timedelta(days=30)
+
+    with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user):
+        result = repo.update("user", password_expiration=expiration_date)
+        assert result == "entity"
+        assert user.password_expiration == expiration_date
         session.flush.assert_called_once()
 
 

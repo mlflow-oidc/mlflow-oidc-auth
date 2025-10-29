@@ -10,14 +10,13 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.utils import (
     get_url_param,
     get_optional_url_param,
     get_request_param,
     get_optional_request_param,
-    get_username,
     get_is_admin,
     get_experiment_id,
     get_model_id,
@@ -41,16 +40,32 @@ class TestRequestHelpers(unittest.TestCase):
         """Clean up test environment."""
         self.app_context.pop()
 
-    @patch("mlflow_oidc_auth.utils.request_helpers.store")
-    @patch("mlflow_oidc_auth.utils.request_helpers.get_username")
-    def test_get_is_admin(self, mock_get_username, mock_store):
+    @patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store")
+    def test_get_is_admin(self, mock_store):
         """Test admin status retrieval for current user."""
-        with self.app.test_request_context():
-            mock_get_username.return_value = "user"
-            mock_store.get_user.return_value.is_admin = True
-            self.assertTrue(get_is_admin())
-            mock_store.get_user.return_value.is_admin = False
-            self.assertFalse(get_is_admin())
+        from fastapi import Request
+
+        # Create a mock FastAPI request
+        mock_request = MagicMock(spec=Request)
+        mock_request.state = MagicMock()
+        mock_request.state.username = "user"
+        mock_request.session = {}
+
+        mock_store.get_user.return_value.is_admin = True
+
+        # Test with async function
+        import asyncio
+
+        async def test_async():
+            result = await get_is_admin(mock_request)
+            return result
+
+        result = asyncio.run(test_async())
+        self.assertTrue(result)
+
+        mock_store.get_user.return_value.is_admin = False
+        result = asyncio.run(test_async())
+        self.assertFalse(result)
 
     def test_get_request_param(self):
         """Test request parameter extraction from various sources."""
@@ -78,6 +93,13 @@ class TestRequestHelpers(unittest.TestCase):
                 get_request_param("param")
             self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
 
+        # Unsupported HTTP method
+        with self.app.test_request_context("/", method="PUT"):
+            with self.assertRaises(MlflowException) as cm:
+                get_request_param("param")
+            self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
+            self.assertIn("Unsupported HTTP method", str(cm.exception))
+
     def test_get_optional_request_param(self):
         """Test optional request parameter extraction."""
         # Query args
@@ -91,6 +113,13 @@ class TestRequestHelpers(unittest.TestCase):
         # Missing parameter without default
         with self.app.test_request_context("/", method="GET"):
             self.assertIsNone(get_optional_request_param("missing_param"))
+
+        # Unsupported HTTP method
+        with self.app.test_request_context("/", method="PUT"):
+            with self.assertRaises(MlflowException) as cm:
+                get_optional_request_param("param")
+            self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
+            self.assertIn("Unsupported HTTP method", str(cm.exception))
 
     @patch("mlflow_oidc_auth.utils.request_helpers._get_tracking_store")
     def test_get_experiment_id(self, mock_tracking_store):
@@ -113,26 +142,6 @@ class TestRequestHelpers(unittest.TestCase):
                 get_experiment_id()
             self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
 
-    @patch("mlflow_oidc_auth.utils.request_helpers.validate_token")
-    @patch("mlflow_oidc_auth.utils.request_helpers.store")
-    def test_get_username(self, mock_store, mock_validate_token):
-        """Test username extraction from authentication headers."""
-        # Basic auth
-        with self.app.test_request_context("/", headers={"Authorization": "Basic dGVzdDp0ZXN0"}):
-            mock_store.get_user.return_value.username = "test"
-            self.assertEqual(get_username(), "test")
-
-        # Bearer token
-        mock_validate_token.return_value = {"email": "user@example.com"}
-        with self.app.test_request_context("/", headers={"Authorization": "Bearer token123"}):
-            self.assertEqual(get_username(), "user@example.com")
-
-        # No auth header
-        with self.app.test_request_context("/"):
-            with self.assertRaises(MlflowException) as cm:
-                get_username()
-            self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
-
     @patch("mlflow_oidc_auth.utils.request_helpers._get_tracking_store")
     def test_get_experiment_id_experiment_name_not_found(self, mock_tracking_store):
         """Test experiment ID extraction when experiment name is not found."""
@@ -147,13 +156,27 @@ class TestRequestHelpers(unittest.TestCase):
         """Test URL parameter extraction from view arguments."""
         with self.app.test_request_context("/user/123"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock to avoid AsyncMock coroutines
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = {"param": "value"}
                 self.assertEqual(get_url_param("param"), "value")
 
         # Missing parameter
         with self.app.test_request_context("/"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
+                with self.assertRaises(MlflowException) as cm:
+                    get_url_param("missing_param")
+                self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+
+        # No view_args at all
+        with self.app.test_request_context("/"):
+            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
+                mock_request.view_args = None
                 with self.assertRaises(MlflowException) as cm:
                     get_url_param("missing_param")
                 self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
@@ -162,19 +185,31 @@ class TestRequestHelpers(unittest.TestCase):
         """Test optional URL parameter extraction."""
         with self.app.test_request_context("/user/123"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = {"param": "value"}
                 self.assertEqual(get_optional_url_param("param"), "value")
 
         # Missing parameter (note: function doesn't support default, just returns None)
         with self.app.test_request_context("/"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
                 self.assertIsNone(get_optional_url_param("missing_param"))
 
         # Missing parameter without default
         with self.app.test_request_context("/"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
+                self.assertIsNone(get_optional_url_param("missing_param"))
+
+        # No view_args at all
+        with self.app.test_request_context("/"):
+            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                mock_request.view_args = None
                 self.assertIsNone(get_optional_url_param("missing_param"))
 
     def test_get_model_name(self):
@@ -182,6 +217,8 @@ class TestRequestHelpers(unittest.TestCase):
         # View args
         with self.app.test_request_context("/model/test_model"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = {"name": "test_model"}
                 mock_request.args = {}
                 mock_request.json = None
@@ -198,6 +235,8 @@ class TestRequestHelpers(unittest.TestCase):
         # Missing name
         with self.app.test_request_context("/", method="GET"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
                 mock_request.args = {}
                 mock_request.json = None
@@ -214,6 +253,24 @@ class TestRequestHelpers(unittest.TestCase):
         result = _experiment_id_from_name("test_experiment")
         self.assertEqual(result, "789")
         mock_tracking_store.return_value.get_experiment_by_name.assert_called_once_with("test_experiment")
+
+    @patch("mlflow_oidc_auth.utils.request_helpers._get_tracking_store")
+    def test_experiment_id_from_name_not_found(self, mock_tracking_store):
+        """Test experiment ID lookup when experiment name returns None."""
+        mock_tracking_store.return_value.get_experiment_by_name.return_value = None
+        with self.assertRaises(MlflowException) as cm:
+            _experiment_id_from_name("nonexistent")
+        self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+        self.assertIn("not found", str(cm.exception))
+
+    @patch("mlflow_oidc_auth.utils.request_helpers._get_tracking_store")
+    def test_experiment_id_from_name_generic_exception(self, mock_tracking_store):
+        """Test experiment ID lookup with generic exception."""
+        mock_tracking_store.return_value.get_experiment_by_name.side_effect = ValueError("Database error")
+        with self.assertRaises(MlflowException) as cm:
+            _experiment_id_from_name("test_experiment")
+        self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+        self.assertIn("Error looking up experiment", str(cm.exception))
 
     def test_get_request_param_run_id_fallback(self):
         """Test request parameter extraction with run_id fallback."""
@@ -265,25 +322,6 @@ class TestRequestHelpers(unittest.TestCase):
             self.assertEqual(get_experiment_id(), "789")
             mock_tracking_store.return_value.get_experiment_by_name.assert_called_with("test_exp")
 
-    def test_get_username_bearer_missing_email(self):
-        """Test username extraction from bearer token with missing email."""
-        with self.app.test_request_context("/", headers={"Authorization": "Bearer token123"}):
-            with patch("mlflow_oidc_auth.utils.request_helpers.validate_token") as mock_validate_token:
-                mock_validate_token.return_value = {"sub": "user123"}  # No email field
-
-                with self.assertRaises(MlflowException) as cm:
-                    get_username()
-                self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
-                self.assertIn("Email claim is missing", str(cm.exception))
-
-    def test_get_username_unknown_auth_type(self):
-        """Test username extraction with unknown authentication type."""
-        with self.app.test_request_context("/", headers={"Authorization": "Unknown token123"}):
-            with self.assertRaises(MlflowException) as cm:
-                get_username()
-            self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
-            self.assertIn("Unsupported authorization type", str(cm.exception))
-
     def test_get_model_id(self):
         """Test model ID extraction from request parameters."""
         # View args
@@ -305,6 +343,8 @@ class TestRequestHelpers(unittest.TestCase):
         # Missing model_id
         with self.app.test_request_context("/", method="GET"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = None
                 mock_request.args = {}
                 mock_request.json = None
@@ -324,10 +364,54 @@ class TestRequestHelpers(unittest.TestCase):
         # Empty view_args and args, but model_id in json
         with self.app.test_request_context("/", method="POST", json={"model_id": "json_id"}, content_type="application/json"):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
                 mock_request.args = {}
                 mock_request.json = {"model_id": "json_id"}
                 self.assertEqual(get_model_id(), "json_id")
+
+    def test_get_model_id_json_exception(self):
+        """Test model ID extraction when JSON parsing raises exception."""
+        with self.app.test_request_context("/", method="POST"):
+            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
+                mock_request.view_args = None
+                mock_request.args = None
+                mock_request.json = None
+                mock_request.get_json.side_effect = Exception("JSON parsing error")
+                with self.assertRaises(MlflowException) as cm:
+                    get_model_id()
+                self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+
+    def test_get_model_name_json_exception(self):
+        """Test model name extraction when JSON parsing raises exception."""
+        with self.app.test_request_context("/", method="POST"):
+            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
+                mock_request.view_args = None
+                mock_request.args = None
+                mock_request.json = None
+                mock_request.get_json.side_effect = Exception("JSON parsing error")
+                with self.assertRaises(MlflowException) as cm:
+                    get_model_name()
+                self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
+
+    def test_get_experiment_id_json_exception(self):
+        """Test experiment ID extraction when JSON parsing raises exception."""
+        with self.app.test_request_context("/", method="POST"):
+            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+                # Ensure get_json is a synchronous MagicMock
+                mock_request.get_json = MagicMock()
+                mock_request.view_args = None
+                mock_request.args = None
+                mock_request.json = None
+                mock_request.get_json.side_effect = Exception("JSON parsing error")
+                with self.assertRaises(MlflowException) as cm:
+                    get_experiment_id()
+                self.assertEqual(cm.exception.error_code, "INVALID_PARAMETER_VALUE")
 
 
 if __name__ == "__main__":
