@@ -3,20 +3,19 @@ import { Routes, Route, Navigate } from "react-router";
 import ProtectedRoute from "./features/auth/components/protected-route";
 import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 import { LoadingSpinner } from "./shared/components/loading-spinner";
-import type { AuthPageProps } from "./core/types/pages";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
 const ManagePage = React.lazy(() => import("./features/manage/manage-page"));
 
-export default function App({ btnText }: AuthPageProps) {
+export default function App() {
   return (
     <Routes>
       <Route
         path="/auth"
         element={
           <RedirectIfAuth fallback={<LoadingSpinner />}>
-            <AuthPage btnText={btnText} />
+            <AuthPage />
           </RedirectIfAuth>
         }
       />
