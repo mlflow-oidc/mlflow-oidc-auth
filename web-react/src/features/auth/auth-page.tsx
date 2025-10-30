@@ -1,7 +1,12 @@
-import type { AuthPageProps } from "../../core/types/pages";
+import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 import { useAuthErrors } from "./hooks/use-auth-errors";
 
-export const AuthPage = ({ btnText }: AuthPageProps) => {
+export const AuthPage = () => {
+  const config = useRuntimeConfig();
+
+  const buttonText = config.provider;
+  const loginHref = `${config.basePath}/login`;
+
   const errors = useAuthErrors();
   const hasErrors = errors.length > 0;
 
@@ -39,14 +44,14 @@ export const AuthPage = ({ btnText }: AuthPageProps) => {
           )}
         </div>
 
-        <a href="/login">
+        <a href={loginHref}>
           <button
             type="button"
             className="w-full rounded-md px-[12px] py-[4px] cursor-pointer
             text-btn-primary-text bg-btn-primary hover:bg-btn-primary-hover 
             dark:text-btn-primary-text-dark dark:bg-btn-primary-dark dark:hover:bg-btn-primary-hover-dark"
           >
-            {btnText}
+            {buttonText}
           </button>
         </a>
       </div>
