@@ -1,11 +1,8 @@
 import { http } from "../../../core/services/http";
-
-export type RuntimeConfig = {
-  basePath: string;
-  uiPath: string;
-  provider: string;
-  authenticated: boolean;
-};
+import {
+  getRuntimeConfig,
+  type RuntimeConfig,
+} from "../../../shared/services/runtime-config";
 
 export type AuthStatus = Pick<RuntimeConfig, "authenticated">;
 
@@ -25,7 +22,6 @@ export type CurrentUser = {
 };
 
 export const AUTH_ENDPOINTS = {
-  RUNTIME_CONFIG: "config.json",
   CURRENT_USER: (basePath: string) =>
     `${basePath}/api/2.0/mlflow/permissions/users/current`,
 } as const;
@@ -33,62 +29,8 @@ export const AUTH_ENDPOINTS = {
 export async function fetchRuntimeConfig(
   signal?: AbortSignal
 ): Promise<RuntimeConfig> {
-  const maybeGlobal = (
-    globalThis as unknown as {
-      __RUNTIME_CONFIG__?: RuntimeConfig;
-    }
-  ).__RUNTIME_CONFIG__;
-
-  if (maybeGlobal) {
-    return maybeGlobal;
-  }
-
-  const maybeGlobalPromise = (
-    globalThis as unknown as {
-      __RUNTIME_CONFIG_PROMISE__?: Promise<RuntimeConfig>;
-    }
-  ).__RUNTIME_CONFIG_PROMISE__;
-
-  if (maybeGlobalPromise) {
-    runtimeConfigPromise = maybeGlobalPromise
-      .then((cfg) => {
-        (
-          globalThis as unknown as { __RUNTIME_CONFIG__?: RuntimeConfig }
-        ).__RUNTIME_CONFIG__ = cfg;
-        runtimeConfigPromise = null;
-        return cfg;
-      })
-      .catch((err) => {
-        runtimeConfigPromise = null;
-        throw err;
-      });
-
-    return runtimeConfigPromise;
-  }
-
-  if (runtimeConfigPromise) return runtimeConfigPromise;
-
-  runtimeConfigPromise = http<RuntimeConfig>(AUTH_ENDPOINTS.RUNTIME_CONFIG, {
-    method: "GET",
-    headers: { "Cache-Control": "no-store" },
-    signal,
-  })
-    .then((cfg) => {
-      (
-        globalThis as unknown as { __RUNTIME_CONFIG__?: RuntimeConfig }
-      ).__RUNTIME_CONFIG__ = cfg;
-      runtimeConfigPromise = null;
-      return cfg;
-    })
-    .catch((err) => {
-      runtimeConfigPromise = null;
-      throw err;
-    });
-
-  return runtimeConfigPromise;
+  return getRuntimeConfig(signal);
 }
-
-let runtimeConfigPromise: Promise<RuntimeConfig> | null = null;
 
 export async function fetchAuthStatus(
   signal?: AbortSignal
