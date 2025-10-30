@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useLocation } from "react-router";
-import { fetchAuthStatus } from "../services/auth-service";
+import React from "react";
+import { Navigate } from "react-router";
+import { useAuth } from "../hooks/use-auth";
 
 type Props = {
   children: React.ReactNode;
@@ -8,47 +8,11 @@ type Props = {
   to?: string; // default /user
 };
 
-export default function RedirectIfAuth({
-  children,
-  fallback,
-  to = "/user",
-}: Props) {
-  const location = useLocation();
-  const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+export default function RedirectIfAuth({ children, to = "/user" }: Props) {
+  const { isAuthenticated } = useAuth();
+  if (isAuthenticated) {
+    return <Navigate to={to} replace />;
+  }
 
-  const key = useMemo(() => location.pathname, [location.pathname]);
-
-  useEffect(() => {
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-
-    let active = true;
-    setLoading(true);
-
-    fetchAuthStatus(ac.signal)
-      .then(({ authenticated }) => {
-        if (!active) return;
-        setAuthenticated(authenticated);
-      })
-      .catch(() => {
-        if (!active) return;
-        setAuthenticated(false);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-      ac.abort();
-    };
-  }, [key]);
-
-  if (loading) return <>{fallback}</>;
-  if (authenticated) return <Navigate to={to} replace />;
   return <>{children}</>;
 }
