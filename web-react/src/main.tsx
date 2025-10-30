@@ -14,19 +14,29 @@ type AppConfig = {
 
 async function init() {
   initializeTheme();
-  const res = await fetch("./config.json", { cache: "no-store" });
+  const runtimeConfigPromise = fetch("./config.json", {
+    cache: "no-store",
+  }).then(async (res) => {
+    if (!res.ok)
+      throw new Error(`Failed to load config.json: ${res.statusText}`);
+    return (await res.json()) as AppConfig;
+  });
 
-  if (!res.ok) {
-    throw new Error(`Failed to load config.json: ${res.statusText}`);
-  }
+  (
+    globalThis as unknown as { __RUNTIME_CONFIG_PROMISE__?: Promise<AppConfig> }
+  ).__RUNTIME_CONFIG_PROMISE__ = runtimeConfigPromise;
 
-  const config = (await res.json()) as AppConfig;
+  const config = await runtimeConfigPromise;
 
-  const basePath = config.basePath;
+  (
+    globalThis as unknown as { __RUNTIME_CONFIG__?: AppConfig }
+  ).__RUNTIME_CONFIG__ = config;
+
+  // const basePath = config.basePath;
   const uiPath = config.uiPath;
   const provider = config.provider;
 
-  const basename = `${basePath}${uiPath}`.replace(/\/+$/, "");
+  const basename = `${uiPath}`.replace(/\/+$/, "");
 
   const { BrowserRouter } = await import("react-router");
 
