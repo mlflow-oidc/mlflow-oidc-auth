@@ -8,7 +8,10 @@ export type NavigationData = {
   userControls: NavLinkData[];
 };
 
-export const getNavigationData = (userName: string): NavigationData => ({
+export const getNavigationData = (
+  userName: string,
+  basePath: string
+): NavigationData => ({
   mainLinks: [
     { label: "MLFlow", href: "#" },
     { label: "GitHub", href: "#" },
@@ -16,6 +19,6 @@ export const getNavigationData = (userName: string): NavigationData => ({
   ],
   userControls: [
     { label: `Hello, ${userName}`, href: "#" },
-    { label: "Logout", href: "#" },
+    { label: "Logout", href: `${basePath}/logout` },
   ],
 });
