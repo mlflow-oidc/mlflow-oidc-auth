@@ -6,6 +6,7 @@ import CloseIcon from "../icons/close-icon";
 import { getNavigationData } from "./navigation-data";
 import HeaderDesktopNav from "./header-desktop-nav";
 import HeaderMobileNav from "./header-mobile-nav";
+import { useRuntimeConfig } from "../context/use-runtime-config";
 
 interface HeaderProps {
   userName?: string;
@@ -14,7 +15,9 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const handleLinkClick = () => setIsMenuOpen(false);
-  const navigationData = getNavigationData(userName);
+  const config = useRuntimeConfig();
+
+  const navigationData = getNavigationData(userName, config.basePath);
 
   useEffect(() => {
     if (isMenuOpen) {
