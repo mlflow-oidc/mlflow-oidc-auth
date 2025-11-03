@@ -1,6 +1,7 @@
 export type NavLinkData = {
   label: string;
   href: string;
+  isInternalLink?: boolean;
 };
 
 export type NavigationData = {
@@ -24,7 +25,7 @@ export const getNavigationData = (
     },
   ],
   userControls: [
-    { label: `Hello, ${userName}`, href: "#" },
+    { label: `Hello, ${userName}`, href: "/user", isInternalLink: true },
     { label: "Logout", href: `${basePath}/logout` },
   ],
 });

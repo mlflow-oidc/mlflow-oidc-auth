@@ -10,14 +10,22 @@ const HeaderDesktopNav: React.FC<NavigationData> = ({
     <div className="hidden sm:flex justify-between items-center">
       <nav className="flex flex-col sm:flex-row space-y-2 sm:space-y-0">
         {mainLinks.map((link) => (
-          <NavLink key={link.label} href={link.href}>
+          <NavLink
+            key={link.label}
+            href={link.href}
+            isInternalLink={link.isInternalLink}
+          >
             {link.label}
           </NavLink>
         ))}
       </nav>
       <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0">
         {userControls.map((link) => (
-          <NavLink key={link.label} href={link.href}>
+          <NavLink
+            key={link.label}
+            href={link.href}
+            isInternalLink={link.isInternalLink}
+          >
             {link.label}
           </NavLink>
         ))}

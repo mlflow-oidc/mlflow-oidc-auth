@@ -24,7 +24,12 @@ const HeaderMobileNav: React.FC<HeaderMobileNavProps> = ({
       <div className="flex flex-col space-y-4">
         <nav className="flex flex-col sm:flex-row space-y-2 sm:space-y-0">
           {mainLinks.map((link) => (
-            <NavLink key={link.label} href={link.href} onClick={onLinkClick}>
+            <NavLink
+              key={link.label}
+              href={link.href}
+              onClick={onLinkClick}
+              isInternalLink={link.isInternalLink}
+            >
               {link.label}
             </NavLink>
           ))}
@@ -34,7 +39,12 @@ const HeaderMobileNav: React.FC<HeaderMobileNavProps> = ({
 
         <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0">
           {userControls.map((link) => (
-            <NavLink key={link.label} href={link.href} onClick={onLinkClick}>
+            <NavLink
+              key={link.label}
+              href={link.href}
+              onClick={onLinkClick}
+              isInternalLink={link.isInternalLink}
+            >
               {link.label}
             </NavLink>
           ))}
