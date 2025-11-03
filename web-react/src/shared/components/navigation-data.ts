@@ -13,7 +13,7 @@ export const getNavigationData = (
   basePath: string
 ): NavigationData => ({
   mainLinks: [
-    { label: "MLFlow", href: "#" },
+    { label: "MLFlow", href: `${basePath}/` },
     {
       label: "GitHub",
       href: "https://github.com/mlflow-oidc/mlflow-oidc-auth",
