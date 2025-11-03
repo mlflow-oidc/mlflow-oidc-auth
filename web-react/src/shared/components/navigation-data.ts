@@ -14,8 +14,14 @@ export const getNavigationData = (
 ): NavigationData => ({
   mainLinks: [
     { label: "MLFlow", href: "#" },
-    { label: "GitHub", href: "#" },
-    { label: "Docs", href: "#" },
+    {
+      label: "GitHub",
+      href: "https://github.com/mlflow-oidc/mlflow-oidc-auth",
+    },
+    {
+      label: "Docs",
+      href: "https://mlflow-oidc.github.io/mlflow-oidc-auth/#/",
+    },
   ],
   userControls: [
     { label: `Hello, ${userName}`, href: "#" },
