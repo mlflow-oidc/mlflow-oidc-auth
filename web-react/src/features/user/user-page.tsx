@@ -1,5 +1,6 @@
 import Header from "../../shared/components/header";
 import { useCurrentUser } from "../../features/auth/hooks/use-current-user";
+import { UserDetailsCard } from "./components/user-details-card";
 
 export const UserPage = () => {
   const { currentUser, loading, error } = useCurrentUser();
@@ -8,81 +9,40 @@ export const UserPage = () => {
     currentUser?.display_name || currentUser?.username || "Guest";
 
   return (
-    <>
+    <div className="min-h-screen bg-ui-bg text-ui-text dark:bg-ui-bg-dark dark:text-ui-text-dark">
       <Header userName={userName} />
-      <div
-        className="
-          p-8 shadow-md min-h-screen
-          bg-ui-bg text-ui-text
-          dark:bg-ui-bg-dark dark:text-ui-text-dark
-        "
-      >
-        <div className="p-6 mt-12 border border-gray-300 dark:border-gray-700 rounded-lg">
-          <h2 className="text-2xl font-bold mb-4 text-center">
-            User Information
-          </h2>
+      <div className="p-4 md:p-6 mx-auto md:mt-12">
+        <h2 className="text-3xl font-semibold mb-6 text-center">
+          User Information
+        </h2>
 
-          {loading && (
-            <p className="text-center">Loading user information...</p>
-          )}
+        {loading && (
+          <div className="text-center p-8">
+            <p className="text-lg font-medium animate-pulse">
+              Loading user information...
+            </p>
+          </div>
+        )}
 
-          {error && (
-            <p className="text-red-500 text-center">
+        {error && (
+          <div className="text-center p-8 border border-red-400 bg-red-50 dark:bg-red-900 rounded-lg">
+            <p className="text-red-600 dark:text-red-300 font-semibold">
               Error loading user information: {error.message}
             </p>
-          )}
+          </div>
+        )}
 
-          {!loading && !error && (
-            <div className="text-left max-w-lg mx-auto p-4 bg-ui-control-bg dark:bg-ui-control-bg-dark rounded-md">
-              {currentUser ? (
-                <ul className="space-y-2">
-                  <li className="flex justify-between border-b dark:border-gray-700 pb-1">
-                    <strong className="font-semibold">Display Name:</strong>
-                    <span>{currentUser.display_name}</span>
-                  </li>
-                  <li className="flex justify-between border-b dark:border-gray-700 pb-1">
-                    <strong className="font-semibold">Username:</strong>
-                    <span>{currentUser.username}</span>
-                  </li>
-                  <li className="flex justify-between border-b dark:border-gray-700 pb-1">
-                    <strong className="font-semibold">User ID:</strong>
-                    <span>{currentUser.id}</span>
-                  </li>
-                  <li className="flex justify-between border-b dark:border-gray-700 pb-1">
-                    <strong className="font-semibold">Is Admin:</strong>
-                    <span>{currentUser.is_admin ? "Yes" : "No"}</span>
-                  </li>
-                  <li className="flex justify-between pb-1">
-                    <strong className="font-semibold">Service Account:</strong>
-                    <span>{currentUser.is_service_account ? "Yes" : "No"}</span>
-                  </li>
-                  <li className="pt-2">
-                    <strong className="font-semibold block mb-1">
-                      Groups:
-                    </strong>
-                    <ul className="list-disc list-inside ml-4 text-sm">
-                      {currentUser.groups.map((group) => (
-                        <li key={group.id}>{group.group_name}</li>
-                      ))}
-                    </ul>
-                  </li>
+        {!loading && !error && currentUser && (
+          <UserDetailsCard currentUser={currentUser} />
+        )}
 
-                  <li className="text-xs pt-2 text-gray-500 dark:text-gray-400">
-                    {currentUser.password_expiration == null
-                      ? "You have no access token yet"
-                      : `Your token expires on: ${currentUser.password_expiration}`}
-                  </li>
-                </ul>
-              ) : (
-                <p className="text-center">
-                  User is not logged in or no data was returned.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+        {!loading && !error && !currentUser && (
+          <p className="text-center p-8 text-lg font-medium text-gray-600 dark:text-gray-400">
+            User is not logged in or no data was returned.
+          </p>
+        )}
       </div>
-    </>
+    </div>
   );
 };
 
