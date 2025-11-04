@@ -3,23 +3,9 @@ import {
   getRuntimeConfig,
   type RuntimeConfig,
 } from "../../../shared/services/runtime-config";
+import type { CurrentUser } from "../../../shared/types/user";
 
 export type AuthStatus = Pick<RuntimeConfig, "authenticated">;
-
-export type Group = {
-  group_name: string;
-  id: number;
-};
-
-export type CurrentUser = {
-  display_name: string;
-  groups: Group[];
-  id: number;
-  is_admin: boolean;
-  is_service_account: boolean;
-  password_expiration: string | null;
-  username: string;
-};
 
 export const AUTH_ENDPOINTS = {
   CURRENT_USER: (basePath: string) =>

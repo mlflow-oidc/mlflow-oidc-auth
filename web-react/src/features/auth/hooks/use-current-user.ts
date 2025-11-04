@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { type CurrentUser, fetchCurrentUser } from "../services/auth-service";
+import { fetchCurrentUser } from "../services/auth-service";
+import type { CurrentUser } from "../../../shared/types/user";
 
 type UseCurrentUserResult = {
   loading: boolean;

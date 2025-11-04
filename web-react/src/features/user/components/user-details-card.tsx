@@ -1,4 +1,4 @@
-import type { CurrentUser } from "../../auth/services/auth-service";
+import type { CurrentUser } from "../../../shared/types/user";
 
 interface UserDetailsCardProps {
   currentUser: CurrentUser;
