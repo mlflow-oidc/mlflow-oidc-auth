@@ -7,6 +7,7 @@ import { LoadingSpinner } from "./shared/components/loading-spinner.tsx";
 import { initializeTheme } from "./shared/utils/theme-utils.ts";
 import { getRuntimeConfig } from "./shared/services/runtime-config";
 import { RuntimeConfigProvider } from "./shared/context/runtime-config-provider.tsx";
+import { UserProvider } from "./shared/context/user-provider.tsx";
 
 async function init() {
   initializeTheme();
@@ -20,7 +21,9 @@ async function init() {
       <BrowserRouter basename={basename}>
         <Suspense fallback={<LoadingSpinner />}>
           <RuntimeConfigProvider config={config}>
-            <App />
+            <UserProvider>
+              <App />
+            </UserProvider>
           </RuntimeConfigProvider>
         </Suspense>
       </BrowserRouter>

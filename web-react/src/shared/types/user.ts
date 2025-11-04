@@ -16,5 +16,5 @@ export type CurrentUser = {
 export interface UserContextType {
   currentUser: CurrentUser | null;
   isLoading: boolean;
-  error: string | null;
+  error: Error | null;
 }

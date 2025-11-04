@@ -1,9 +1,9 @@
 import Header from "../../shared/components/header";
-import { useCurrentUser } from "../../features/auth/hooks/use-current-user";
+import { useUserData } from "../../shared/context/use-user-data";
 import { UserDetailsCard } from "./components/user-details-card";
 
 export const UserPage = () => {
-  const { currentUser, loading, error } = useCurrentUser();
+  const { currentUser, isLoading, error } = useUserData();
 
   const userName =
     currentUser?.display_name || currentUser?.username || "Guest";
@@ -16,7 +16,7 @@ export const UserPage = () => {
           User Information
         </h2>
 
-        {loading && (
+        {isLoading && (
           <div className="text-center p-8">
             <p className="text-lg font-medium animate-pulse">
               Loading user information...
@@ -32,11 +32,11 @@ export const UserPage = () => {
           </div>
         )}
 
-        {!loading && !error && currentUser && (
+        {!isLoading && !error && currentUser && (
           <UserDetailsCard currentUser={currentUser} />
         )}
 
-        {!loading && !error && !currentUser && (
+        {!isLoading && !error && !currentUser && (
           <p className="text-center p-8 text-lg font-medium text-gray-600 dark:text-gray-400">
             User is not logged in or no data was returned.
           </p>
