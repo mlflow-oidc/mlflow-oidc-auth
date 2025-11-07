@@ -15,6 +15,9 @@ export type CurrentUser = {
 
 export interface UserContextType {
   currentUser: CurrentUser | null;
+  setCurrentUser: (user: CurrentUser | null) => void;
   isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
   error: Error | null;
+  setError: (error: Error | null) => void;
 }
