@@ -1,15 +1,17 @@
-import React, {
-  createContext,
-  useState,
-  useEffect,
-  useMemo,
-  type ReactNode,
-} from "react";
+import React, { createContext, useState, useMemo, type ReactNode } from "react";
 
 import type { CurrentUser, UserContextType } from "../types/user";
-import { fetchCurrentUser } from "../../features/auth/services/auth-service";
 
-const UserContext = createContext<UserContextType | undefined>(undefined);
+const initialContext: UserContextType = {
+  currentUser: null,
+  setCurrentUser: () => {},
+  isLoading: false,
+  setIsLoading: () => {},
+  error: null,
+  setError: () => {},
+};
+
+const UserContext = createContext<UserContextType>(initialContext);
 
 interface UserProviderProps {
   children: ReactNode;
@@ -20,40 +22,14 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    const abortController = new AbortController();
-
-    async function loadCurrentUser() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const user = await fetchCurrentUser(abortController.signal);
-        setCurrentUser(user);
-      } catch (err) {
-        if (!abortController.signal.aborted) {
-          console.error("UserProvider: failed to load user info", err);
-          setError(err as Error);
-          setCurrentUser(null);
-        }
-      } finally {
-        if (!abortController.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void loadCurrentUser();
-
-    return () => {
-      abortController.abort();
-    };
-  }, []);
-
   const contextValue = useMemo(
     () => ({
       currentUser,
+      setCurrentUser,
       isLoading,
+      setIsLoading,
       error,
+      setError,
     }),
     [currentUser, isLoading, error]
   );
