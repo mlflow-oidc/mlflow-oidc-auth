@@ -5,11 +5,10 @@ import { useAuth } from "./use-auth";
 
 export const useLoadCurrentUser = () => {
   const { isAuthenticated } = useAuth();
-  const { currentUser, isLoading, setCurrentUser, setIsLoading, setError } =
-    useUserData();
+  const { currentUser, setCurrentUser, setIsLoading, setError } = useUserData();
 
   useEffect(() => {
-    if (isAuthenticated && !currentUser && !isLoading) {
+    if (isAuthenticated && !currentUser) {
       const abortController = new AbortController();
 
       const loadUser = async () => {
@@ -38,12 +37,5 @@ export const useLoadCurrentUser = () => {
       void loadUser();
       return () => abortController.abort();
     }
-  }, [
-    isAuthenticated,
-    currentUser,
-    isLoading,
-    setCurrentUser,
-    setIsLoading,
-    setError,
-  ]);
+  }, [isAuthenticated, currentUser, setCurrentUser, setIsLoading, setError]);
 };
