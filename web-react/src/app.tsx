@@ -23,7 +23,7 @@ export default function App() {
       <Route
         path="/user/*"
         element={
-          <ProtectedRoute fallback={<LoadingSpinner />}>
+          <ProtectedRoute>
             <UserPage />
           </ProtectedRoute>
         }
@@ -32,7 +32,7 @@ export default function App() {
       <Route
         path="/manage/*"
         element={
-          <ProtectedRoute fallback={<LoadingSpinner />}>
+          <ProtectedRoute>
             <ManagePage />
           </ProtectedRoute>
         }
