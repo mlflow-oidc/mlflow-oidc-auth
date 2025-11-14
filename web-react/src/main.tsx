@@ -1,3 +1,26 @@
+import { library } from "@fortawesome/fontawesome-svg-core";
+import {
+  faUser,
+  // faGear,
+  faScrewdriver,
+  faUserGroup,
+  faMicroscope,
+  faSquareShareNodes,
+  faHexagonNodes,
+  faTrash,
+  faWrench,
+} from "@fortawesome/free-solid-svg-icons";
+library.add(
+  faUser,
+  faScrewdriver,
+  faUserGroup,
+  faMicroscope,
+  faSquareShareNodes,
+  faHexagonNodes,
+  faTrash,
+  faWrench
+);
+
 import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
