@@ -82,8 +82,11 @@ class AppConfig:
         self.OIDC_GROUPS_ATTRIBUTE = config_manager.get("OIDC_GROUPS_ATTRIBUTE", "groups")
 
         # Group settings
-        self.OIDC_GROUP_NAME = config_manager.get_list("OIDC_GROUP_NAME", default=["mlflow"])
-        self.OIDC_ADMIN_GROUP_NAME = config_manager.get_list("OIDC_ADMIN_GROUP_NAME", default=["mlflow-admin"])
+        # OIDC_GROUP_NAME_DELIMITER allows custom delimiter for group names (default: comma)
+        # This is useful when group names contain commas, e.g., "CN=mygroup,OU=Groups,..."
+        self.OIDC_GROUP_NAME_DELIMITER = config_manager.get("OIDC_GROUP_NAME_DELIMITER", ",")
+        self.OIDC_GROUP_NAME = config_manager.get_list("OIDC_GROUP_NAME", default=["mlflow"], separator=self.OIDC_GROUP_NAME_DELIMITER)
+        self.OIDC_ADMIN_GROUP_NAME = config_manager.get_list("OIDC_ADMIN_GROUP_NAME", default=["mlflow-admin"], separator=self.OIDC_GROUP_NAME_DELIMITER)
         self.OIDC_GROUP_DETECTION_PLUGIN = config_manager.get("OIDC_GROUP_DETECTION_PLUGIN")
 
         # Database migration settings
