@@ -15,6 +15,12 @@
   --color-btn-primary: rgb(34, 114, 180);
   --color-btn-primary-hover: rgb(14, 83, 139);
   --color-btn-primary-text: rgb(255, 255, 255);
+  --color-btn-secondary: rgba(34, 114, 180, 0);
+  --color-btn-secondary-hover: rgba(34, 114, 180, 0.08);
+  --color-btn-secondary-border: rgb(192, 205, 216);
+  --color-btn-secondary-border-hover: rgb(34, 114, 180);
+  --color-btn-secondary-text: rgb(17, 23, 28);
+  --color-btn-secondary-text-hover: rgb(14, 83, 139);
 
   /* Icon/Menu */
   --color-text-primary: rgb(95, 114, 129);
@@ -29,6 +35,12 @@
   --color-btn-primary-dark: rgb(66, 153, 224);
   --color-btn-primary-hover-dark: rgb(138, 202, 255);
   --color-btn-primary-text-dark: rgb(17, 23, 28);
+  --color-btn-secondary-dark: rgba(138, 202, 255, 0);
+  --color-btn-secondary-hover-dark: rgba(138, 202, 255, 0.08);
+  --color-btn-secondary-border-dark: rgb(55, 68, 79);
+  --color-btn-secondary-border-hover-dark: rgb(138, 202, 255);
+  --color-btn-secondary-text-dark: rgb(232, 236, 240);
+  --color-btn-secondary-text-hover-dark: rgb(138, 202, 255);
 
   --color-text-primary-dark: rgb(146, 164, 179);
   --color-text-primary-hover-dark: rgb(138, 202, 255);
@@ -46,4 +58,8 @@
 
 .animate-fast-spin {
   animation: fastSpin 0.7s linear infinite;
+}
+
+#root {
+  height: 100vh;
 }
