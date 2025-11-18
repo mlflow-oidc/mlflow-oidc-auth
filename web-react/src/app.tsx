@@ -3,10 +3,17 @@ import { Routes, Route, Navigate } from "react-router";
 import ProtectedRoute from "./features/auth/components/protected-route";
 import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 import { LoadingSpinner } from "./shared/components/loading-spinner";
+import MainLayout from "./shared/components/main-layout";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
 const ManagePage = React.lazy(() => import("./features/manage/manage-page"));
+
+const ProtectedLayoutRoute = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute>
+    <MainLayout>{children}</MainLayout>
+  </ProtectedRoute>
+);
 
 export default function App() {
   return (
@@ -23,18 +30,18 @@ export default function App() {
       <Route
         path="/user/*"
         element={
-          <ProtectedRoute>
+          <ProtectedLayoutRoute>
             <UserPage />
-          </ProtectedRoute>
+          </ProtectedLayoutRoute>
         }
       />
 
       <Route
         path="/manage/*"
         element={
-          <ProtectedRoute>
+          <ProtectedLayoutRoute>
             <ManagePage />
-          </ProtectedRoute>
+          </ProtectedLayoutRoute>
         }
       />
 
