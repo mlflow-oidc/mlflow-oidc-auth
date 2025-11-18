@@ -27,6 +27,7 @@ class AppConfig:
         self.OIDC_DISCOVERY_URL = os.environ.get("OIDC_DISCOVERY_URL", None)
         self.OIDC_GROUPS_ATTRIBUTE = os.environ.get("OIDC_GROUPS_ATTRIBUTE", "groups")
         self.OIDC_SCOPE = os.environ.get("OIDC_SCOPE", "openid,email,profile")
+        self.OIDC_CODE_CHALLENGE = os.environ.get("OIDC_CODE_CHALLENGE", None)
         self.OIDC_GROUP_DETECTION_PLUGIN = os.environ.get("OIDC_GROUP_DETECTION_PLUGIN", None)
         # OIDC_REDIRECT_URI: If not set, will be calculated dynamically based on request headers
         # This enables automatic proxy path detection for OIDC callbacks

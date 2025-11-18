@@ -29,7 +29,10 @@ def get_oauth_instance(app) -> OAuth:
             client_id=config.OIDC_CLIENT_ID,
             client_secret=config.OIDC_CLIENT_SECRET,
             server_metadata_url=config.OIDC_DISCOVERY_URL,
-            client_kwargs={"scope": config.OIDC_SCOPE},
+            client_kwargs={
+                "scope": config.OIDC_SCOPE,
+                "code_challenge_method": config.OIDC_CODE_CHALLENGE
+            },
         )
     return _oauth_instance
 
