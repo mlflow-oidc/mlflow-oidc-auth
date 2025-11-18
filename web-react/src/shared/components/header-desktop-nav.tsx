@@ -7,7 +7,7 @@ const HeaderDesktopNav: React.FC<NavigationData> = ({
   userControls,
 }) => {
   const linkClasses =
-    "p-2 w-full sm:w-auto text-text-primary hover:text-text-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark text-lg sm:text-sm font-medium transition-colors text-left sm:text-center rounded-md";
+    "p-2 w-full sm:w-auto text-text-primary hover:text-text-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark text-sm font-medium transition-colors text-left sm:text-center rounded-md";
   return (
     <div className="hidden sm:flex justify-between items-center">
       <nav className="flex flex-col sm:flex-row space-y-2 sm:space-y-0">
