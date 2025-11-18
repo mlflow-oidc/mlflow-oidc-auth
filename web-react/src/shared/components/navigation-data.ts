@@ -1,7 +1,10 @@
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+
 export type NavLinkData = {
   label: string;
   href: string;
   isInternalLink?: boolean;
+  icon?: IconDefinition;
 };
 
 export type NavigationData = {
