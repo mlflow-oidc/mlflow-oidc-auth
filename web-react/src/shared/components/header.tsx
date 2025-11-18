@@ -32,31 +32,29 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
   }, [isMenuOpen]);
 
   return (
-    <header className="p-2 shadow-md bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark">
-      <div className="sticky z-3 flex justify-between items-center">
-        <Link to="/" className="text-xl font-extrabold text-logo">
-          MlflowOidcAuth
-        </Link>
+    <header className="flex items-center justify-between px-4 py-2">
+      <Link to="/" className="text-xl font-extrabold text-logo">
+        MlflowOidcAuth
+      </Link>
 
-        <div className="flex">
-          <div className="flex items-center">
-            <DarkModeToggle />
-            <button
-              type="button"
-              className="sm:hidden fill-current text-text-primary hover:text-text-primary-hover hover:bg-bg-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark dark:hover:bg-bg-primary-hover-dark cursor-pointer p-1 rounded transition-colors"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              aria-expanded={isMenuOpen}
-              aria-controls="mobile-menu"
-            >
-              {isMenuOpen ? <CloseIcon /> : <MenuIcon />}
-            </button>
-          </div>
-
-          <HeaderDesktopNav
-            mainLinks={navigationData.mainLinks}
-            userControls={navigationData.userControls}
-          />
+      <div className="flex">
+        <div className="flex items-center">
+          <DarkModeToggle />
+          <button
+            type="button"
+            className="sm:hidden fill-current text-text-primary hover:text-text-primary-hover hover:bg-bg-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark dark:hover:bg-bg-primary-hover-dark cursor-pointer p-1 rounded transition-colors"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-expanded={isMenuOpen}
+            aria-controls="mobile-menu"
+          >
+            {isMenuOpen ? <CloseIcon /> : <MenuIcon />}
+          </button>
         </div>
+
+        <HeaderDesktopNav
+          mainLinks={navigationData.mainLinks}
+          userControls={navigationData.userControls}
+        />
       </div>
 
       <HeaderMobileNav
