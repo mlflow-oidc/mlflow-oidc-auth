@@ -24,6 +24,7 @@ class TestAuth:
         mock_config.OIDC_CLIENT_SECRET = "client_secret"
         mock_config.OIDC_DISCOVERY_URL = "discovery_url"
         mock_config.OIDC_SCOPE = "scope"
+        mock_config.OIDC_CODE_CHALLENGE = None
 
         result = get_oauth_instance(mock_app)
 
@@ -33,7 +34,10 @@ class TestAuth:
             client_id="client_id",
             client_secret="client_secret",
             server_metadata_url="discovery_url",
-            client_kwargs={"scope": "scope"},
+            client_kwargs={
+                "scope": "scope",
+                "code_challenge_method": None
+            },
         )
         assert result == mock_oauth_instance
 
