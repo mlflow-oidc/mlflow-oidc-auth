@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import DarkModeToggle from "./dark-mode-toggle";
-import MenuIcon from "../icons/menu-icon";
-import CloseIcon from "../icons/close-icon";
+import MenuIcon from "../../icons/menu-icon";
+import CloseIcon from "../../icons/close-icon";
 import { getNavigationData } from "./navigation-data";
 import HeaderDesktopNav from "./header-desktop-nav";
 import HeaderMobileNav from "./header-mobile-nav";
-import { useRuntimeConfig } from "../context/use-runtime-config";
+import { useRuntimeConfig } from "../../context/use-runtime-config";
 
 interface HeaderProps {
   userName?: string;

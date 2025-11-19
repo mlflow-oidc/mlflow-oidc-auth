@@ -1,6 +1,6 @@
-import SunIcon from "../icons/sun-icon";
-import MoonIcon from "../icons/moon-icon";
-import { useTheme } from "../utils/theme-utils";
+import SunIcon from "../../icons/sun-icon";
+import MoonIcon from "../../icons/moon-icon";
+import { useTheme } from "../../utils/theme-utils";
 
 const DarkModeToggle: React.FC = () => {
   const { isDark, toggleTheme } = useTheme();
