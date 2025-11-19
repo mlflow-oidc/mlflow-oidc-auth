@@ -22,7 +22,7 @@ from mlflow.store.entities.paged_list import PagedList
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import get_permission
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils.permissions import can_read_experiment, can_read_registered_model
+from mlflow_oidc_auth.utils.permissions import can_read_experiment, can_read_registered_model, effective_experiment_permission
 from mlflow_oidc_auth.utils.request_helpers import get_username
 
 
@@ -252,11 +252,6 @@ def fetch_readable_logged_models(
     if username is None:
         username = get_username()
 
-    # Get user permissions
-    perms = store.list_experiment_permissions(username)
-    can_read_perms = {p.experiment_id: get_permission(p.permission).can_read for p in perms}
-    default_can_read = get_permission(config.DEFAULT_MLFLOW_PERMISSION).can_read
-
     all_models = []
     page_token = None
     tracking_store = _get_tracking_store()
@@ -273,7 +268,7 @@ def fetch_readable_logged_models(
 
         # Filter models based on read permissions
         for model in result:
-            if can_read_perms.get(model.experiment_id, default_can_read):
+            if effective_experiment_permission(model.experiment_id, username).permission.can_read:
                 all_models.append(model)
 
         # Check if there are more pages
