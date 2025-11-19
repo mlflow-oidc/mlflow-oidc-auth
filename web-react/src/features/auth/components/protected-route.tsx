@@ -7,9 +7,13 @@ import { LoadingSpinner } from "../../../shared/components/loading-spinner";
 
 type Props = {
   children: React.ReactNode;
+  isAdminRequired?: boolean;
 };
 
-export default function ProtectedRoute({ children }: Props) {
+export default function ProtectedRoute({
+  children,
+  isAdminRequired = false,
+}: Props) {
   const { isAuthenticated } = useAuth();
   const { currentUser, isLoading, error } = useUserData();
 
@@ -25,6 +29,10 @@ export default function ProtectedRoute({ children }: Props) {
 
   if (error) {
     return <div>Error loading user data: {error.message}</div>;
+  }
+
+  if (isAdminRequired && !currentUser.is_admin) {
+    return <Navigate to="/403" replace />;
   }
 
   return <>{children}</>;

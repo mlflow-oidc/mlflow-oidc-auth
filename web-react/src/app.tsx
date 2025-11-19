@@ -22,8 +22,14 @@ const WebhooksPage = React.lazy(
   () => import("./features/webhooks/webhooks-page")
 );
 
-const ProtectedLayoutRoute = ({ children }: { children: React.ReactNode }) => (
-  <ProtectedRoute>
+const ProtectedLayoutRoute = ({
+  children,
+  isAdminRequired = false,
+}: {
+  children: React.ReactNode;
+  isAdminRequired?: boolean;
+}) => (
+  <ProtectedRoute isAdminRequired={isAdminRequired}>
     <MainLayout>{children}</MainLayout>
   </ProtectedRoute>
 );
@@ -82,7 +88,7 @@ export default function App() {
       <Route
         path="/trash/"
         element={
-          <ProtectedLayoutRoute>
+          <ProtectedLayoutRoute isAdminRequired={true}>
             <TrashPage />
           </ProtectedLayoutRoute>
         }
@@ -106,7 +112,7 @@ export default function App() {
       <Route
         path="/webhooks/"
         element={
-          <ProtectedLayoutRoute>
+          <ProtectedLayoutRoute isAdminRequired={true}>
             <WebhooksPage />
           </ProtectedLayoutRoute>
         }
