@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import DarkModeToggle from "./dark-mode-toggle";
-import MenuIcon from "../../icons/menu-icon";
-import CloseIcon from "../../icons/close-icon";
 import { getNavigationData } from "./navigation-data";
 import HeaderDesktopNav from "./header-desktop-nav";
 import HeaderMobileNav from "./header-mobile-nav";
 import { useRuntimeConfig } from "../../context/use-runtime-config";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faTimes } from "@fortawesome/free-solid-svg-icons/faTimes";
+import { faBars } from "@fortawesome/free-solid-svg-icons/faBars";
 
 interface HeaderProps {
   userName?: string;
@@ -37,8 +38,8 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
         MlflowOidcAuth
       </Link>
 
-      <div className="flex">
-        <div className="flex items-center">
+      <div className="flex z-3">
+        <div className="flex items-center z-1">
           <DarkModeToggle />
           <button
             type="button"
@@ -47,7 +48,7 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
             aria-expanded={isMenuOpen}
             aria-controls="mobile-menu"
           >
-            {isMenuOpen ? <CloseIcon /> : <MenuIcon />}
+            <FontAwesomeIcon icon={isMenuOpen ? faTimes : faBars} size="sm" />
           </button>
         </div>
 
