@@ -4,6 +4,7 @@ import ProtectedRoute from "./features/auth/components/protected-route";
 import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 import { LoadingSpinner } from "./shared/components/loading-spinner";
 import MainLayout from "./shared/components/main-layout";
+import ForbiddenPage from "./features/forbidden/forbidden-page";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const ExperimentsPage = React.lazy(
@@ -118,7 +119,7 @@ export default function App() {
         }
       />
 
-      <Route path="/403" element={<div>Forbidden</div>} />
+      <Route path="/403" element={<ForbiddenPage />} />
       <Route path="*" element={<Navigate to="/user" replace />} />
     </Routes>
   );
