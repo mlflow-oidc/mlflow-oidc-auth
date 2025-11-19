@@ -1,6 +1,6 @@
-import SunIcon from "../../icons/sun-icon";
-import MoonIcon from "../../icons/moon-icon";
 import { useTheme } from "../../utils/theme-utils";
+import { faMoon, faSun } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 const DarkModeToggle: React.FC = () => {
   const { isDark, toggleTheme } = useTheme();
@@ -17,11 +17,7 @@ const DarkModeToggle: React.FC = () => {
       title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
       aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
     >
-      {isDark ? (
-        <MoonIcon className="w-4 h-5" />
-      ) : (
-        <SunIcon className="w-4 h-5" />
-      )}
+      <FontAwesomeIcon icon={isDark ? faMoon : faSun} size="1x" />
     </button>
   );
 };
