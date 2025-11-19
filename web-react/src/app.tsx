@@ -6,8 +6,21 @@ import { LoadingSpinner } from "./shared/components/loading-spinner";
 import MainLayout from "./shared/components/main-layout";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
+const ExperimentsPage = React.lazy(
+  () => import("./features/experiments/experiments-page")
+);
+const GroupsPage = React.lazy(() => import("./features/groups/groups-page"));
+const ModelsPage = React.lazy(() => import("./features/models/models-page"));
+const PromptsPage = React.lazy(() => import("./features/prompts/prompts-page"));
+const ServiceAccountsPage = React.lazy(
+  () => import("./features/service-accounts/service-accounts-page")
+);
+const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
-const ManagePage = React.lazy(() => import("./features/manage/manage-page"));
+const UsersPage = React.lazy(() => import("./features/users/users-page"));
+const WebhooksPage = React.lazy(
+  () => import("./features/webhooks/webhooks-page")
+);
 
 const ProtectedLayoutRoute = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute>
@@ -26,7 +39,54 @@ export default function App() {
           </RedirectIfAuth>
         }
       />
-
+      <Route
+        path="/experiments/"
+        element={
+          <ProtectedLayoutRoute>
+            <ExperimentsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/groups/"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/models/"
+        element={
+          <ProtectedLayoutRoute>
+            <ModelsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/prompts/"
+        element={
+          <ProtectedLayoutRoute>
+            <PromptsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/service-accounts/"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/trash/"
+        element={
+          <ProtectedLayoutRoute>
+            <TrashPage />
+          </ProtectedLayoutRoute>
+        }
+      />
       <Route
         path="/user/*"
         element={
@@ -35,12 +95,19 @@ export default function App() {
           </ProtectedLayoutRoute>
         }
       />
-
       <Route
-        path="/manage/*"
+        path="/users/"
         element={
           <ProtectedLayoutRoute>
-            <ManagePage />
+            <UsersPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/webhooks/"
+        element={
+          <ProtectedLayoutRoute>
+            <WebhooksPage />
           </ProtectedLayoutRoute>
         }
       />
