@@ -1,6 +1,6 @@
 import React from "react";
 import { type NavigationData } from "./navigation-data";
-import AppLink from "./app-link";
+import AppLink from "../app-link";
 
 const HeaderDesktopNav: React.FC<NavigationData> = ({
   mainLinks,

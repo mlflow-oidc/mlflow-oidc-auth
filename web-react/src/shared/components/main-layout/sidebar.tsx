@@ -1,9 +1,9 @@
 import React from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faAnglesLeft } from "@fortawesome/free-solid-svg-icons";
-import AppLink from "./app-link";
+import AppLink from "../app-link";
 import { getSidebarData } from "./sidebar-data";
-import { useUserData } from "../context/use-user-data";
+import { useUserData } from "../../context/use-user-data";
 
 interface SidebarProps {
   isOpen: boolean;

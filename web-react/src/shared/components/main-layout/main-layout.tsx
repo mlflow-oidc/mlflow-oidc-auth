@@ -1,7 +1,7 @@
 import React, { useState, type ReactNode } from "react";
 import Header from "./header";
 import Sidebar from "./sidebar";
-import { useUserData } from "../context/use-user-data";
+import { useUserData } from "../../context/use-user-data";
 
 interface MainLayoutProps {
   children: ReactNode;
