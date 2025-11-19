@@ -6,13 +6,13 @@ export const UserPage = () => {
 
   return (
     <>
-      <h2 className="text-3xl font-semibold mb-6 text-center">
+      <h2 className="text-3xl font-semibold mb-6 text-center text-ui-text dark:text-ui-text-dark">
         User Information
       </h2>
 
       {isLoading && (
         <div className="text-center p-8">
-          <p className="text-lg font-medium animate-pulse">
+          <p className="text-lg font-medium animate-pulse text-text-primary dark:text-text-primary-dark">
             Loading user information...
           </p>
         </div>
@@ -31,7 +31,7 @@ export const UserPage = () => {
       )}
 
       {!isLoading && !error && !currentUser && (
-        <p className="text-center p-8 text-lg font-medium text-gray-600 dark:text-gray-400">
+        <p className="text-center p-8 text-lg font-medium text-text-primary dark:text-text-primary-dark">
           User is not logged in or no data was returned.
         </p>
       )}
