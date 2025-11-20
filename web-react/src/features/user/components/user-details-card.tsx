@@ -10,6 +10,20 @@ export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
 }) => {
   return (
     <div className="max-w-2xl mx-auto">
+      <div className="flex flex-row flex-wrap gap-3 mb-3 justify-around items-center text-center text-text-primary dark:text-text-primary-dark">
+        {currentUser.password_expiration == null ? (
+          <>
+            <p>You have no access token yet</p>
+          </>
+        ) : (
+          `Your token expires on: ${new Date(
+            currentUser.password_expiration
+          ).toLocaleDateString()} at ${new Date(
+            currentUser.password_expiration
+          ).toLocaleTimeString()}`
+        )}
+        <CreateAccessTokenButton username={currentUser.username} />
+      </div>
       <ul
         className="divide-y divide-btn-secondary-border dark:divide-btn-secondary-border-dark 
                    border border-btn-secondary-border dark:border-btn-secondary-border-dark 
@@ -60,21 +74,6 @@ export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
           )}
         </li>
       </ul>
-
-      <div className="flex flex-row flex-wrap gap-1 justify-around items-center pt-4 text-center text-text-primary dark:text-text-primary-dark">
-        {currentUser.password_expiration == null ? (
-          <>
-            <p>You have no access token yet</p>
-            <CreateAccessTokenButton username={currentUser.username} />
-          </>
-        ) : (
-          `🔑 Your token expires on: ${new Date(
-            currentUser.password_expiration
-          ).toLocaleDateString()} at ${new Date(
-            currentUser.password_expiration
-          ).toLocaleTimeString()}`
-        )}
-      </div>
     </div>
   );
 };
