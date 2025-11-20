@@ -1,17 +1,32 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCopy, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { http } from "../../core/services/http";
+
+const CREATE_ACCESS_TOKEN_ENDPOINT = "/api/2.0/mlflow/users/access-token";
+
+interface TokenModel {
+  token: string;
+  message: string;
+}
 
 const requestAccessTokenApi = async (
-  expirationDate: string
+  username: string,
+  expiration: Date
 ): Promise<string> => {
-  console.log(`Requesting token with expiration: ${expirationDate}`);
-  // Simulate an API delay
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  // Return a mock token for development
-  return `MLFLOW_TOKEN_${Math.random()
-    .toString(36)
-    .substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+  const tokenModel = await http<TokenModel>(CREATE_ACCESS_TOKEN_ENDPOINT, {
+    method: "PATCH",
+    body: JSON.stringify({
+      username: username,
+      expiration: expiration.toISOString(),
+    }),
+  });
+
+  if (!tokenModel.token) {
+    throw new Error("API response did not contain an access_key.");
+  }
+
+  return tokenModel.token;
 };
 
 interface AccessTokenModalProps {
@@ -40,14 +55,16 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
     setIsLoading(true);
     setAccessToken("");
     try {
-      const token = await requestAccessTokenApi(expirationDate);
+      const expirationDateObject = new Date(expirationDate);
+
+      const token = await requestAccessTokenApi(username, expirationDateObject);
       setAccessToken(token);
     } catch (error) {
       console.error("Error requesting access token:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [expirationDate]);
+  }, [expirationDate, username]);
 
   const handleCopyToken = useCallback(() => {
     if (accessToken && tokenInputRef.current) {

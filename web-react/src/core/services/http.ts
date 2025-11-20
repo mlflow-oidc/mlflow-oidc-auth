@@ -1,6 +1,6 @@
-// Minimal fetch wrapper / API client
 export type RequestOptions = Omit<RequestInit, "body"> & {
   params?: Record<string, string>;
+  body?: string;
 };
 
 const buildUrl = (url: string, params?: Record<string, string>) => {
