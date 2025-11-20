@@ -1,3 +1,4 @@
+import { CreateAccessTokenButton } from "../../../shared/components/create-access-token-button";
 import type { CurrentUser } from "../../../shared/types/user";
 
 interface UserDetailsCardProps {
@@ -60,15 +61,20 @@ export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
         </li>
       </ul>
 
-      <p className="text-xs pt-4 text-center text-text-primary dark:text-text-primary-dark">
-        {currentUser.password_expiration == null
-          ? "You have no access token yet."
-          : `🔑 Your token expires on: ${new Date(
-              currentUser.password_expiration
-            ).toLocaleDateString()} at ${new Date(
-              currentUser.password_expiration
-            ).toLocaleTimeString()}`}
-      </p>
+      <div className="flex flex-row flex-wrap gap-1 justify-around items-center pt-4 text-center text-text-primary dark:text-text-primary-dark">
+        {currentUser.password_expiration == null ? (
+          <>
+            <p>You have no access token yet</p>
+            <CreateAccessTokenButton username={currentUser.username} />
+          </>
+        ) : (
+          `🔑 Your token expires on: ${new Date(
+            currentUser.password_expiration
+          ).toLocaleDateString()} at ${new Date(
+            currentUser.password_expiration
+          ).toLocaleTimeString()}`
+        )}
+      </div>
     </div>
   );
 };
