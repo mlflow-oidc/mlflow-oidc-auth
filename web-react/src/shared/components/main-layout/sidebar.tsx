@@ -24,7 +24,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const ADMIN_LINKS_START_INDEX = 6;
 
   const baseSidebarClasses =
-    "flex-shrink-0 mb-1 text-sm bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark";
+    "flex-shrink-0 text-sm bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark";
 
   if (isLoading) {
     return (

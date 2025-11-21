@@ -59,7 +59,3 @@
 .animate-fast-spin {
   animation: fastSpin 0.7s linear infinite;
 }
-
-#root {
-  height: 100vh;
-}

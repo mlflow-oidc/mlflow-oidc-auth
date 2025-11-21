@@ -27,15 +27,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     : SIDEBAR_WIDTH_CLOSED_CLASS;
 
   return (
-    <div className="flex flex-col relative h-full bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark">
+    <div className="flex flex-col h-screen overflow-hidden relative bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark">
       <Header userName={userName} />
-      <main className="flex grow flex-row h-full ml-1">
+      <main className="flex flex-1 overflow-hidden">
         <Sidebar
           isOpen={isSidebarOpen}
           toggleSidebar={toggleSidebar}
           widthClass={sidebarWidthClass}
         />
-        <div className="grow p-4 rounded-xl mr-3 ml-1 mb-3 shadow-xl bg-ui-bg text-ui-text dark:bg-ui-bg-dark dark:text-ui-text-dark">
+        <div className="flex flex-col flex-1 overflow-hidden p-4 rounded-xl shadow-xl bg-ui-bg text-ui-text dark:bg-ui-bg-dark dark:text-ui-text-dark">
           {children}
         </div>
       </main>
