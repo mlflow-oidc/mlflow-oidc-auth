@@ -36,7 +36,9 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   return (
     <form
       onSubmit={onSubmit}
-      className="flex h-8 rounded border border-text-primary-hover dark:border-text-primary-hover-dark bg-ui-bg dark:bg-ui-bg-dark overflow-hidden"
+      className="flex-shrink-0 flex h-8 mb-3 rounded border 
+      border-text-primary-hover dark:border-text-primary-hover-dark 
+      bg-ui-bg dark:bg-ui-bg-dark overflow-hidden"
       style={{ minWidth: "100px", maxWidth: "300px" }}
     >
       <input
@@ -45,9 +47,10 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         onChange={onInputChange}
         placeholder={placeholder}
         name="searchTerm"
-        className={`flex-grow min-w-0 px-3 py-1 text-ui-text dark:text-ui-text-dark bg-ui-bg dark:bg-ui-bg-dark placeholder-text-primary dark:placeholder-text-primary-dark focus:outline-none ${
-          showClearButton ? "pr-1" : "pr-3"
-        }`}
+        className={`flex-grow min-w-0 px-3 py-1 text-ui-text dark:text-ui-text-dark bg-ui-bg 
+          dark:bg-ui-bg-dark placeholder-text-primary dark:placeholder-text-primary-dark focus:outline-none ${
+            showClearButton ? "pr-1" : "pr-3"
+          }`}
         {...rest}
       />
 
@@ -65,7 +68,10 @@ export const SearchInput: React.FC<SearchInputProps> = ({
       <button
         type="submit"
         title="Search"
-        className="h-full w-8 flex-shrink-0 flex items-center justify-center border-l border-text-primary-hover dark:border-text-primary-hover-dark text-text-primary dark:text-text-primary-dark hover:bg-bg-primary-hover dark:hover:bg-bg-primary-hover-dark focus:outline-none cursor-pointer"
+        className="h-full w-8 flex-shrink-0 flex items-center justify-center border-l 
+        border-text-primary-hover dark:border-text-primary-hover-dark 
+        text-text-primary dark:text-text-primary-dark hover:bg-bg-primary-hover 
+        dark:hover:bg-bg-primary-hover-dark focus:outline-none cursor-pointer"
       >
         <FontAwesomeIcon icon={faSearch} size="sm" />
       </button>

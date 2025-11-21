@@ -19,7 +19,8 @@ const HeaderMobileNav: React.FC<HeaderMobileNavProps> = ({
     <div
       id="mobile-menu"
       className={`
-        fixed inset-0 pt-[48px] p-4 sm:hidden transition-transform duration-300 ease-in-out bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark
+        fixed inset-0 pt-[48px] z-3 p-4 sm:hidden transition-transform duration-300 ease-in-out 
+        bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark
           ${isMenuOpen ? "translate-x-0" : "translate-x-full"} 
       `}
     >
@@ -38,7 +39,7 @@ const HeaderMobileNav: React.FC<HeaderMobileNavProps> = ({
           ))}
         </nav>
 
-        <div className="h-0 border-t border-gray-300 dark:border-gray-700"></div>
+        <div className="h-0 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark"></div>
 
         <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0">
           {userControls.map((link) => (

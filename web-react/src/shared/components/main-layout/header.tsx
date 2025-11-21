@@ -33,13 +33,13 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
   }, [isMenuOpen]);
 
   return (
-    <header className="flex items-center justify-between px-4 py-2">
+    <header className="h-[52px] flex-shrink-0 flex items-center justify-between px-4 py-2">
       <Link to="/" className="text-xl font-extrabold text-logo">
         MlflowOidcAuth
       </Link>
 
-      <div className="flex z-3">
-        <div className="flex items-center z-1">
+      <div className="flex z-4">
+        <div className="flex items-center">
           <DarkModeToggle />
           <button
             type="button"
