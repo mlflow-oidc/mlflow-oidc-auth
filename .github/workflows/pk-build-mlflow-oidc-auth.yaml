@@ -1,0 +1,69 @@
+name: Build MLflow OIDC Auth Image
+
+on:
+  push:
+    branches:
+      - 'pk-internal-build-branch'
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'mlflow_oidc_auth/**'
+      - 'web-ui/**'
+      - 'pyproject.toml'
+      - 'buildfiles/**'
+      - '.github/workflows/build-mlflow-oidc-auth.yaml'
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: "mlflow-oidc-auth"
+  IMAGE_PUSH_PATH: "${{ secrets.GCP_ARTIFACT_REGISTRY_PATH }}"
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Auth GCloud CLI
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Docker Login to Google Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: europe-west3-docker.pkg.dev
+          username: _json_key
+          password: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Build and push image
+        run: |
+          # Extract MLflow version from pyproject.toml in buildfiles
+          MLFLOW_VERSION=$(grep 'mlflow ==' buildfiles/pyproject.toml | sed 's/.*mlflow == "\([0-9.]*\)".*/\1/')
+          
+          if [ -z "$MLFLOW_VERSION" ]; then
+            echo "MLflow version not found"
+            exit 1
+          fi
+
+          # Copy mlflow-oidc-auth source into docker build context
+          cp -r mlflow_oidc_auth buildfiles/
+          cp -r web-ui buildfiles/
+          cp pyproject.toml buildfiles/mlflow_oidc_auth_pyproject.toml
+
+          LATEST_TAG=${{ env.IMAGE_PUSH_PATH }}/${{ env.IMAGE_NAME }}:latest
+          COMMIT_TAG=${{ env.IMAGE_PUSH_PATH }}/${{ env.IMAGE_NAME }}:commit-${{ github.sha }}
+          MLFLOW_VERSION_TAG=${{ env.IMAGE_PUSH_PATH }}/${{ env.IMAGE_NAME }}:mlflow-${MLFLOW_VERSION}
+          
+          docker build --platform linux/amd64 \
+            -t $LATEST_TAG \
+            -f buildfiles/Dockerfile \
+            buildfiles/
+          
+          docker tag $LATEST_TAG $COMMIT_TAG
+          docker tag $LATEST_TAG $MLFLOW_VERSION_TAG
+          docker push $LATEST_TAG
+          docker push $COMMIT_TAG
+          docker push $MLFLOW_VERSION_TAG

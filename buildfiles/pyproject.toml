@@ -1,0 +1,15 @@
+[project]
+name = "mlflow-docker"
+version = "1.1.0"
+description = "MLFlow with OIDC docker image"
+authors = [{ name = "Alexander Kharkevich", email = "alex@kharkevich.org" }]
+requires-python = ">=3.12, <3.13.dev0"
+dependencies = [
+    # mlflow-oidc-auth will be installed from local source
+    "mlflow==3.6.0",
+    "boto3>=1.37.34",
+    "azure-storage-blob>=12.25.1",
+    "azure-identity>=1.21.0",
+    "google-cloud-storage>=3.1.0",
+    "psycopg2-binary==2.9.10",
+]
