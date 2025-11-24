@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
+import { useUserData } from "../../shared/context/use-user-data";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCopy, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { http } from "../../core/services/http";
@@ -38,6 +39,8 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   onClose,
   username,
 }) => {
+  const { setCurrentUser, currentUser } = useUserData();
+
   const [expirationDate, setExpirationDate] = useState<string>("");
   const [accessToken, setAccessToken] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -59,12 +62,18 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
 
       const token = await requestAccessTokenApi(username, expirationDateObject);
       setAccessToken(token);
+      if (currentUser) {
+        setCurrentUser({
+          ...currentUser,
+          password_expiration: expirationDate,
+        });
+      }
     } catch (error) {
       console.error("Error requesting access token:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [expirationDate, username]);
+  }, [expirationDate, username, currentUser, setCurrentUser]);
 
   const handleCopyToken = useCallback(() => {
     if (accessToken && tokenInputRef.current) {
