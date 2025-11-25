@@ -22,7 +22,7 @@ export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
             currentUser.password_expiration
           ).toLocaleTimeString()}`
         )}
-        <CreateAccessTokenButton username={currentUser.username} />
+        <CreateAccessTokenButton />
       </div>
       <ul
         className="divide-y divide-btn-secondary-border dark:divide-btn-secondary-border-dark 

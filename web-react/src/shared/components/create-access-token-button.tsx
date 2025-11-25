@@ -1,13 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { AccessTokenModal } from "./access-token-modal";
 
-interface CreateAccessTokenButtonProps {
-  username: string;
-}
-
-export const CreateAccessTokenButton: React.FC<
-  CreateAccessTokenButtonProps
-> = ({ username }) => {
+export const CreateAccessTokenButton: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const openModal = useCallback(() => setIsModalOpen(true), []);
@@ -29,9 +23,7 @@ export const CreateAccessTokenButton: React.FC<
         Create access token
       </button>
 
-      {isModalOpen && (
-        <AccessTokenModal onClose={closeModal} username={username} />
-      )}
+      {isModalOpen && <AccessTokenModal onClose={closeModal} />}
     </>
   );
 };
