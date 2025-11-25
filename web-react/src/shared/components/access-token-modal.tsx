@@ -24,7 +24,9 @@ const requestAccessTokenApi = async (
   });
 
   if (!tokenModel.token) {
-    throw new Error("API response did not contain an access_key.");
+    throw new Error(
+      "API response did not contain an access token (token field)."
+    );
   }
 
   return tokenModel.token;
@@ -39,9 +41,14 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   onClose,
   username,
 }) => {
+  const today = new Date().toISOString().split("T")[0];
+  const maxDate = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
+    .toISOString()
+    .split("T")[0];
+
   const { setCurrentUser, currentUser } = useUserData();
 
-  const [expirationDate, setExpirationDate] = useState<string>("");
+  const [expirationDate, setExpirationDate] = useState<string>(maxDate);
   const [accessToken, setAccessToken] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
@@ -90,11 +97,6 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
         });
     }
   }, [accessToken]);
-
-  const today = new Date().toISOString().split("T")[0];
-  const maxDate = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
-    .toISOString()
-    .split("T")[0];
 
   return (
     <div
