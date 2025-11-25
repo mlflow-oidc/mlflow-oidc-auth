@@ -1,7 +1,7 @@
 import React, { useState, type ReactNode } from "react";
 import Header from "./header";
 import Sidebar from "./sidebar";
-import { useUserData } from "../../context/use-user-data";
+import { useUser } from "../../context/use-user";
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -17,7 +17,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     setIsSidebarOpen((prev) => !prev);
   };
 
-  const { currentUser } = useUserData();
+  const { currentUser } = useUser();
 
   const userName =
     currentUser?.display_name || currentUser?.username || "Guest";

@@ -1,7 +1,7 @@
 import { createContext, use } from "react";
 import type { RuntimeConfig } from "../services/runtime-config";
 
-const RuntimeConfigContext = createContext<RuntimeConfig | null>(null);
+export const RuntimeConfigContext = createContext<RuntimeConfig | null>(null);
 
 export function useRuntimeConfig(): RuntimeConfig {
   const ctx = use(RuntimeConfigContext);
@@ -12,5 +12,3 @@ export function useRuntimeConfig(): RuntimeConfig {
   }
   return ctx;
 }
-
-export { RuntimeConfigContext };

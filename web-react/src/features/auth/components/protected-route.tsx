@@ -1,8 +1,6 @@
-import React from "react";
 import { Navigate } from "react-router";
 import { useAuth } from "../hooks/use-auth";
-import { useUserData } from "../../../shared/context/use-user-data";
-import { useLoadCurrentUser } from "../hooks/use-load-current-user";
+import { useUser } from "../../../shared/context/use-user";
 import { LoadingSpinner } from "../../../shared/components/loading-spinner";
 
 type Props = {
@@ -15,20 +13,14 @@ export default function ProtectedRoute({
   isAdminRequired = false,
 }: Props) {
   const { isAuthenticated } = useAuth();
-  const { currentUser, isLoading, error } = useUserData();
+  const { currentUser, isLoading, error } = useUser();
 
-  useLoadCurrentUser();
+  if (!isAuthenticated) return <Navigate to="/auth" replace />;
 
-  if (!isAuthenticated) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  if (isLoading || !currentUser) {
-    return <LoadingSpinner />;
-  }
+  if (isLoading || !currentUser) return <LoadingSpinner />;
 
   if (error) {
-    return <div>Error loading user data: {error.message}</div>;
+    return <div>Error loading user: {error.message}</div>;
   }
 
   if (isAdminRequired && !currentUser.is_admin) {
