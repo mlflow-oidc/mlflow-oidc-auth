@@ -34,19 +34,17 @@ const requestAccessTokenApi = async (
 
 interface AccessTokenModalProps {
   onClose: () => void;
-  username: string;
 }
 
 export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   onClose,
-  username,
 }) => {
   const today = new Date().toISOString().split("T")[0];
   const maxDate = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
     .toISOString()
     .split("T")[0];
 
-  const { refresh } = useUser();
+  const { currentUser, refresh } = useUser();
 
   const [expirationDate, setExpirationDate] = useState<string>(maxDate);
   const [accessToken, setAccessToken] = useState<string>("");
@@ -62,12 +60,17 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   }, []);
 
   const handleRequestToken = useCallback(async () => {
+    if (!currentUser) return null;
+
     setIsLoading(true);
     setAccessToken("");
     try {
       const expirationDateObject = new Date(expirationDate);
 
-      const token = await requestAccessTokenApi(username, expirationDateObject);
+      const token = await requestAccessTokenApi(
+        currentUser.username,
+        expirationDateObject
+      );
       setAccessToken(token);
 
       refresh();
@@ -76,7 +79,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [expirationDate, username, refresh]);
+  }, [expirationDate, currentUser, refresh]);
 
   const handleCopyToken = useCallback(() => {
     if (accessToken && tokenInputRef.current) {
@@ -114,7 +117,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
 
         <div className="mb-2">
           <h4 className="text-lg text-ui-text dark:text-ui-text-dark">
-            Generate Access Token for {username}
+            Generate Access Token for {currentUser?.username}
           </h4>
         </div>
 
