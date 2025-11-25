@@ -1,8 +1,8 @@
-import { useUserData } from "../../shared/context/use-user-data";
+import { useUser } from "../../shared/context/use-user";
 import { UserDetailsCard } from "./components/user-details-card";
 
 export const UserPage = () => {
-  const { currentUser, isLoading, error } = useUserData();
+  const { currentUser, isLoading, error } = useUser();
 
   return (
     <>

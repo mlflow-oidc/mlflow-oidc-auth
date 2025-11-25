@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faAnglesLeft } from "@fortawesome/free-solid-svg-icons";
 import AppLink from "../app-link";
 import { getSidebarData } from "./sidebar-data";
-import { useUserData } from "../../context/use-user-data";
+import { useUser } from "../../context/use-user";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -16,7 +16,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   toggleSidebar,
   widthClass,
 }) => {
-  const { currentUser, isLoading } = useUserData();
+  const { currentUser, isLoading } = useUser();
   const isAdmin = currentUser?.is_admin ?? false;
 
   const sidebarData = getSidebarData(isAdmin);
