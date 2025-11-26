@@ -1,4 +1,4 @@
-import { CreateAccessTokenButton } from "../../../shared/components/create-access-token-button";
+import { CreateAccessTokenButton } from "../../../core/components/create-access-token-button";
 import type { CurrentUser } from "../../../shared/types/user";
 
 interface UserDetailsCardProps {

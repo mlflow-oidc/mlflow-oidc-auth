@@ -1,6 +1,6 @@
 import { use } from "react";
 import { createContext } from "react";
-import type { CurrentUser } from "../types/user";
+import type { CurrentUser } from "../../shared/types/user";
 
 type UserContextValue = {
   currentUser: CurrentUser | null;

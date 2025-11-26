@@ -1,6 +1,6 @@
 import React from "react";
 import { type NavigationData } from "./navigation-data";
-import AppLink from "../app-link";
+import { AppLink } from "./app-link";
 
 interface HeaderMobileNavProps extends NavigationData {
   isMenuOpen: boolean;

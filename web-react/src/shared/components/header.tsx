@@ -4,10 +4,9 @@ import DarkModeToggle from "./dark-mode-toggle";
 import { getNavigationData } from "./navigation-data";
 import HeaderDesktopNav from "./header-desktop-nav";
 import HeaderMobileNav from "./header-mobile-nav";
-import { useRuntimeConfig } from "../../context/use-runtime-config";
+import { useRuntimeConfig } from "../context/use-runtime-config";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTimes } from "@fortawesome/free-solid-svg-icons/faTimes";
-import { faBars } from "@fortawesome/free-solid-svg-icons/faBars";
+import { faTimes, faBars } from "@fortawesome/free-solid-svg-icons";
 
 interface HeaderProps {
   userName?: string;

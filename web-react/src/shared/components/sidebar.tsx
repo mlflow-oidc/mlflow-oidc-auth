@@ -1,22 +1,23 @@
 import React from "react";
+import { AppLink } from "./app-link";
+import { getSidebarData } from "./sidebar-data";
+import type { CurrentUser } from "../types/user";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faAnglesLeft } from "@fortawesome/free-solid-svg-icons";
-import AppLink from "../app-link";
-import { getSidebarData } from "./sidebar-data";
-import { useUser } from "../../context/use-user";
 
 interface SidebarProps {
+  currentUser: CurrentUser | null;
   isOpen: boolean;
   toggleSidebar: () => void;
   widthClass: string;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
+  currentUser,
   isOpen,
   toggleSidebar,
   widthClass,
 }) => {
-  const { currentUser, isLoading } = useUser();
   const isAdmin = currentUser?.is_admin ?? false;
 
   const sidebarData = getSidebarData(isAdmin);
@@ -26,13 +27,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const baseSidebarClasses =
     "flex-shrink-0 text-sm bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark";
 
-  if (isLoading) {
-    return (
-      <aside className={`${baseSidebarClasses} ${widthClass}`}>
-        <div className="p-2 ml-2 text-btn-secondary-text dark:text-btn-secondary-text-dark"></div>
-      </aside>
-    );
-  }
   return (
     <aside className={`${baseSidebarClasses} ${widthClass} overflow-y-auto`}>
       <div className="flex flex-col h-full">

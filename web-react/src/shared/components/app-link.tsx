@@ -12,7 +12,7 @@ const isExternalLink = (href: string): boolean => {
   return href.startsWith("http") || href.startsWith("https");
 };
 
-const AppLink = ({
+export const AppLink = ({
   href,
   children,
   onClick,
@@ -38,5 +38,3 @@ const AppLink = ({
     </a>
   );
 };
-
-export default AppLink;

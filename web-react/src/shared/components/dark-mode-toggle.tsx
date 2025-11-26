@@ -1,4 +1,4 @@
-import { useTheme } from "../../utils/theme-utils";
+import { useTheme } from "../utils/theme-utils";
 import { faMoon, faSun } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 

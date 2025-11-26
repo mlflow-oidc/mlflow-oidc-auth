@@ -1,6 +1,6 @@
 import { Navigate } from "react-router";
-import { useAuth } from "../hooks/use-auth";
-import { useUser } from "../../../shared/context/use-user";
+import { useAuth } from "../../../core/hooks/use-auth";
+import { useUser } from "../../../core/hooks/use-user";
 import { LoadingSpinner } from "../../../shared/components/loading-spinner";
 
 type Props = {

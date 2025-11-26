@@ -1,4 +1,4 @@
-import { useRuntimeConfig } from "../../../shared/context/use-runtime-config";
+import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 
 type UseAuthResult = {
   isAuthenticated: boolean;

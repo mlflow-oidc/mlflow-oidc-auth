@@ -1,6 +1,6 @@
 import React from "react";
 import { Navigate } from "react-router";
-import { useAuth } from "../hooks/use-auth";
+import { useAuth } from "../../../core/hooks/use-auth";
 
 type Props = {
   children: React.ReactNode;

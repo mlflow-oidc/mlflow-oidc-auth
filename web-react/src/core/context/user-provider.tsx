@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
-import { useAuth } from "../../features/auth/hooks/use-auth";
-import { useCurrentUser } from "../../features/auth/hooks/use-current-user";
-import { UserContext } from "./use-user";
+import { useAuth } from "../hooks/use-auth";
+import { useCurrentUser } from "../hooks/use-current-user";
+import { UserContext } from "../hooks/use-user";
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();

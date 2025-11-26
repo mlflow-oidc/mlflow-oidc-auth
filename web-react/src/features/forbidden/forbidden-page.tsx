@@ -1,4 +1,4 @@
-import MainLayout from "../../shared/components/main-layout/main-layout";
+import MainLayout from "../../core/components/main-layout";
 
 export default function ForbiddenPage() {
   return (

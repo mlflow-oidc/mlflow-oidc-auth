@@ -7,7 +7,7 @@ import { LoadingSpinner } from "./shared/components/loading-spinner.tsx";
 import { initializeTheme } from "./shared/utils/theme-utils.ts";
 import { getRuntimeConfig } from "./shared/services/runtime-config";
 import { RuntimeConfigProvider } from "./shared/context/runtime-config-provider.tsx";
-import { UserProvider } from "./shared/context/user-provider.tsx";
+import { UserProvider } from "./core/context/user-provider.tsx";
 
 async function init() {
   initializeTheme();

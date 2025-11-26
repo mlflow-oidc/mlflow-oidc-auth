@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchCurrentUser } from "../services/auth-service";
-import type { CurrentUser } from "../../../shared/types/user";
+import { fetchCurrentUser } from "../services/user-service";
+import type { CurrentUser } from "../../shared/types/user";
 
 export function useCurrentUser(isAuthenticated: boolean) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);

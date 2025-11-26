@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from "react-router";
 import ProtectedRoute from "./features/auth/components/protected-route";
 import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 import { LoadingSpinner } from "./shared/components/loading-spinner";
-import MainLayout from "./shared/components/main-layout/main-layout";
+import MainLayout from "./core/components/main-layout";
 import ForbiddenPage from "./features/forbidden/forbidden-page";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));

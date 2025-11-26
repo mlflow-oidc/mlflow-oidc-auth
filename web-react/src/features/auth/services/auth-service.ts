@@ -1,9 +1,7 @@
-import { http } from "../../../core/services/http";
 import {
   getRuntimeConfig,
   type RuntimeConfig,
 } from "../../../shared/services/runtime-config";
-import type { CurrentUser } from "../../../shared/types/user";
 
 export type AuthStatus = Pick<RuntimeConfig, "authenticated">;
 
@@ -23,16 +21,4 @@ export async function fetchAuthStatus(
 ): Promise<AuthStatus> {
   const cfg = await fetchRuntimeConfig(signal);
   return { authenticated: !!cfg.authenticated };
-}
-
-export async function fetchCurrentUser(
-  signal?: AbortSignal
-): Promise<CurrentUser> {
-  const cfg = await fetchRuntimeConfig(signal);
-  const currentUserUrl = AUTH_ENDPOINTS.CURRENT_USER(cfg.basePath);
-  return http<CurrentUser>(currentUserUrl, {
-    method: "GET",
-    headers: { "Cache-Control": "no-store" },
-    signal,
-  });
 }
