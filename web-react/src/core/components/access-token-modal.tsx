@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { useUser } from "../context/use-user";
+import { useUser } from "../hooks/use-user";
+import { http } from "../services/http";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCopy, faXmark } from "@fortawesome/free-solid-svg-icons";
-import { http } from "../../core/services/http";
 
 const CREATE_ACCESS_TOKEN_ENDPOINT = "/api/2.0/mlflow/users/access-token";
 

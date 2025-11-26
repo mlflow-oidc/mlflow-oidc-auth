@@ -1,7 +1,7 @@
 import React, { useState, type ReactNode } from "react";
-import Header from "./header";
-import Sidebar from "./sidebar";
-import { useUser } from "../../context/use-user";
+import Header from "../../shared/components/header";
+import Sidebar from "../../shared/components/sidebar";
+import { useUser } from "../hooks/use-user";
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -31,6 +31,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <Header userName={userName} />
       <main className="flex flex-1 overflow-hidden">
         <Sidebar
+          currentUser={currentUser}
           isOpen={isSidebarOpen}
           toggleSidebar={toggleSidebar}
           widthClass={sidebarWidthClass}

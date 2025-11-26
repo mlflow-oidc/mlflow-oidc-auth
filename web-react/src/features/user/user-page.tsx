@@ -1,4 +1,4 @@
-import { useUser } from "../../shared/context/use-user";
+import { useUser } from "../../core/hooks/use-user";
 import { UserDetailsCard } from "./components/user-details-card";
 
 export const UserPage = () => {
