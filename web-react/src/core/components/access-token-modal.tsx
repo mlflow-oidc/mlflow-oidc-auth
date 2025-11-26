@@ -1,10 +1,9 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useUser } from "../hooks/use-user";
 import { http } from "../services/http";
+import { API_ENDPOINTS } from "../configs/api-endpoints";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCopy, faXmark } from "@fortawesome/free-solid-svg-icons";
-
-const CREATE_ACCESS_TOKEN_ENDPOINT = "/api/2.0/mlflow/users/access-token";
 
 interface TokenModel {
   token: string;
@@ -15,7 +14,7 @@ const requestAccessTokenApi = async (
   username: string,
   expiration: Date
 ): Promise<string> => {
-  const tokenModel = await http<TokenModel>(CREATE_ACCESS_TOKEN_ENDPOINT, {
+  const tokenModel = await http<TokenModel>(API_ENDPOINTS.CREATE_ACCESS_TOKEN, {
     method: "PATCH",
     body: JSON.stringify({
       username: username,

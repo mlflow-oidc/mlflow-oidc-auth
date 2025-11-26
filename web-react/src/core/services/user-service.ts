@@ -1,10 +1,11 @@
 import { http } from "./http";
 import { getRuntimeConfig } from "../../shared/services/runtime-config";
 import type { CurrentUser } from "../../shared/types/user";
+import { API_ENDPOINTS } from "../configs/api-endpoints";
 
 export const AUTH_ENDPOINTS = {
   CURRENT_USER: (basePath: string) =>
-    `${basePath}/api/2.0/mlflow/permissions/users/current`,
+    `${basePath}${API_ENDPOINTS.GET_CURRENT_USER}`,
 } as const;
 
 export async function fetchCurrentUser(

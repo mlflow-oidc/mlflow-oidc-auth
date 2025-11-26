@@ -5,11 +5,6 @@ import {
 
 export type AuthStatus = Pick<RuntimeConfig, "authenticated">;
 
-export const AUTH_ENDPOINTS = {
-  CURRENT_USER: (basePath: string) =>
-    `${basePath}/api/2.0/mlflow/permissions/users/current`,
-} as const;
-
 export async function fetchRuntimeConfig(
   signal?: AbortSignal
 ): Promise<RuntimeConfig> {
