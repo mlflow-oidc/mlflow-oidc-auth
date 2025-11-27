@@ -1,46 +1,58 @@
-import { useState, useEffect, useCallback } from "react";
-import { http, type RequestOptions } from "../services/http";
+import { useCallback, useEffect, useState } from "react";
 
-type UseApiOptions<T> = RequestOptions & {
-  manual?: boolean;
-  initialData?: T;
-  onSuccess?: (data: T) => void;
-};
+export interface ApiState<T> {
+  data: T | null;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
 
-export function useApi<T = unknown>(
-  url: string,
-  options: UseApiOptions<T> = {}
-) {
-  const { manual = false, initialData, onSuccess, ...requestOptions } = options;
-
-  const [data, setData] = useState<T | null>(initialData ?? null);
-  const [loading, setLoading] = useState(!manual);
+export function useApi<T>(
+  isAuthenticated: boolean,
+  fetcher: (signal?: AbortSignal) => Promise<T>
+): ApiState<T> {
+  const [data, setData] = useState<T | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const run = useCallback(async () => {
-    if (!url) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await http<T>(url, requestOptions);
-      setData(result);
-      onSuccess?.(result);
-      return result;
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [onSuccess, requestOptions, url]);
-
   useEffect(() => {
-    if (!manual && url) {
-      void run();
-    }
-  }, [manual, url, run]);
+    if (isAuthenticated && !data) {
+      const controller = new AbortController();
 
-  return { data, loading, error, run };
+      const fetchData = async () => {
+        setIsLoading(true);
+        setError(null);
+
+        try {
+          const data = await fetcher(controller.signal);
+          setData(data);
+        } catch (err) {
+          if (!controller.signal.aborted) {
+            setError(err instanceof Error ? err : new Error(String(err)));
+            setData(null);
+          }
+        } finally {
+          if (!controller.signal.aborted) {
+            setIsLoading(false);
+          }
+        }
+      };
+
+      void fetchData();
+
+      return () => controller.abort();
+    }
+  }, [isAuthenticated, data, fetcher]);
+
+  const refetch = useCallback(() => {
+    const controller = new AbortController();
+    fetcher(controller.signal)
+      .then(setData)
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setError(err instanceof Error ? err : new Error(String(err)));
+      });
+  }, [fetcher]);
+
+  return { data, isLoading, error, refetch };
 }
