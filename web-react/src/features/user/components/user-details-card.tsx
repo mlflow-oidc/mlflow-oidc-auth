@@ -8,6 +8,18 @@ interface UserDetailsCardProps {
 export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
   currentUser,
 }) => {
+  const expirationDate = new Date(currentUser.password_expiration || "");
+  const formattedDate = expirationDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const formattedTime = expirationDate.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="flex flex-row flex-wrap gap-3 mb-3 justify-around items-center text-center text-text-primary dark:text-text-primary-dark">
@@ -16,11 +28,7 @@ export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
             <p>You have no access token yet</p>
           </>
         ) : (
-          `Your token expires on: ${new Date(
-            currentUser.password_expiration
-          ).toLocaleDateString()} at ${new Date(
-            currentUser.password_expiration
-          ).toLocaleTimeString()}`
+          <p>{`Your token expires on: ${formattedDate} at ${formattedTime}`}</p>
         )}
         <CreateAccessTokenButton />
       </div>
