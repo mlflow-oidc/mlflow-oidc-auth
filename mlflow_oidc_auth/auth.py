@@ -149,6 +149,9 @@ def handle_user_and_group_management(token) -> list[str]:
             user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token["access_token"])
         else:
             user_groups = token["userinfo"][config.OIDC_GROUPS_ATTRIBUTE]
+        # Ensure user_groups is always a list (handles string attributes like 'hd')
+        if isinstance(user_groups, str):
+            user_groups = [user_groups]
     except Exception as e:
         logger.error(f"Group detection error: {str(e)}")
         errors.append("Group detection error: Failed to get user groups")
