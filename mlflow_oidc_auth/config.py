@@ -51,7 +51,7 @@ class AppConfig:
         self.SESSION_TYPE = os.environ.get("SESSION_TYPE", "cachelib")
         self.SESSION_PERMANENT = get_bool_env_variable("SESSION_PERMANENT", False)
         self.SESSION_KEY_PREFIX = os.environ.get("SESSION_KEY_PREFIX", "mlflow_oidc:")
-        self.PERMANENT_SESSION_LIFETIME = os.environ.get("PERMANENT_SESSION_LIFETIME", 86400)
+        self.PERMANENT_SESSION_LIFETIME = int(os.environ.get("PERMANENT_SESSION_LIFETIME", "86400"))
         if self.SESSION_TYPE:
             try:
                 session_module = importlib.import_module(f"mlflow_oidc_auth.session.{(self.SESSION_TYPE).lower()}")
