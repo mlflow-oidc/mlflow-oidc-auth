@@ -5,7 +5,7 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission
-from mlflow_oidc_auth.utils import effective_experiment_permission, get_experiment_id, get_request_param, get_username
+from mlflow_oidc_auth.utils import effective_experiment_permission, get_experiment_id, get_request_param, get_username, get_is_admin
 
 
 def _get_permission_from_experiment_id() -> Permission:
@@ -60,7 +60,23 @@ def validate_can_delete_experiment():
 
 
 def validate_can_manage_experiment():
+    """Validate permission for a specific experiment (requires experiment_id)."""
     return _get_permission_from_experiment_id().can_manage
+
+
+def validate_can_list_user_experiment_permissions():
+    """Validate permission to list experiment permissions for a user.
+    
+    This is for LIST endpoints like:
+    - GET /api/2.0/mlflow/permissions/users/<username>/experiments
+    
+    Returns True if:
+    - User is admin, OR
+    - User is requesting their own permissions
+    """
+    username = get_username()
+    requested_user = request.view_args.get('username')
+    return get_is_admin() or username == requested_user
 
 
 def validate_can_read_experiment_artifact_proxy():
