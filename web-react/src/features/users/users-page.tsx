@@ -1,31 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { SearchInput } from "../../shared/components/search-input";
-
-// Mock user data
-const ALL_USERS = [
-  { id: 1, name: "Alice Johnson" },
-  { id: 2, name: "Bob Smith" },
-  { id: 3, name: "Charlie Brown" },
-  { id: 4, name: "David Lee" },
-  { id: 5, name: "Amy Wilson" },
-  { id: 6, name: "Alice Johnson" },
-  { id: 7, name: "Bob Smith" },
-  { id: 8, name: "Charlie Brown" },
-  { id: 9, name: "David Lee" },
-  { id: 10, name: "Amy Wilson" },
-  { id: 11, name: "Alice Johnson" },
-  { id: 12, name: "Bob Smith" },
-  { id: 13, name: "Charlie Brown" },
-  { id: 14, name: "David Lee" },
-  { id: 15, name: "Amy Wilson" },
-];
+import { useAllUsers } from "../../core/hooks/use-all-users";
 
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [submittedTerm, setSubmittedTerm] = useState("");
 
-  const filteredUsers = ALL_USERS.filter((user) =>
-    user.name.toLowerCase().includes(submittedTerm.toLowerCase())
+  const { isLoading, error, refresh, allUsers } = useAllUsers(true);
+
+  const usersList = allUsers || [];
+
+  const filteredUsers = usersList.filter((username) =>
+    username.toLowerCase().includes(submittedTerm.toLowerCase())
   );
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,6 +31,31 @@ export default function UsersPage() {
     console.log("Search cleared. Showing full list.");
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex h-full justify-center items-center p-8">
+        <p className="text-lg font-medium animate-pulse text-text-primary dark:text-text-primary-dark">
+          Loading users list...
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-wrap h-full justify-center content-center items-center gap-2 text-red-600">
+        <p className="text-xl">Error fetching users: {error.message}</p>
+        <button
+          type="button"
+          onClick={() => refresh()}
+          className="ml-4 p-2 bg-red-100 rounded hover:bg-red-200 cursor-pointer"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       <h2 className="flex-shrink-0 text-3xl font-semibold mb-6 text-center">
@@ -59,7 +70,7 @@ export default function UsersPage() {
         placeholder="Search users..."
       />
 
-      <h3 className="text-xl font-medium mb-2">
+      <h3 className="text-base font-medium p-1 mb-1">
         Results ({filteredUsers.length})
       </h3>
 
@@ -67,21 +78,21 @@ export default function UsersPage() {
         <div role="rowgroup" className="flex-shrink-0">
           <div
             role="row"
-            className="flex border-b p-1 font-semibold 
+            className="flex border-b p-1 font-semibold
             border-btn-secondary-border dark:border-btn-secondary-border-dark"
           >
             Username
           </div>
         </div>
         <div role="rowgroup" className="flex-1 overflow-y-auto">
-          {filteredUsers.map((user) => (
+          {filteredUsers.map((username) => (
             <div
-              key={user.id}
+              key={username}
               role="row"
-              className="p-1 border-b 
+              className="p-2 border-b
               border-btn-secondary-border dark:border-btn-secondary-border-dark"
             >
-              {user.name}
+              {username}
             </div>
           ))}
           {filteredUsers.length === 0 && (
