@@ -41,7 +41,7 @@ jobs:
       - name: Build and push image
         run: |
           # Extract MLflow version from pyproject.toml in buildfiles
-          MLFLOW_VERSION=$(grep 'mlflow ==' buildfiles/pyproject.toml | sed 's/.*mlflow == "\([0-9.]*\)".*/\1/')
+          MLFLOW_VERSION=$(grep 'mlflow==' buildfiles/pyproject.toml | sed 's/.*mlflow==\([0-9.]*\).*/\1/')
           
           if [ -z "$MLFLOW_VERSION" ]; then
             echo "MLflow version not found"
