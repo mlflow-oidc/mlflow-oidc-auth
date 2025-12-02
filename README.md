@@ -1,7 +1,7 @@
 # mlflow-oidc-auth
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI Downloads](https://static.pepy.tech/badge/mlflow-oidc-auth/month)](https://pepy.tech/projects/mlflow-oidc-auth)
-[![CodeQL](https://github.com/felipeolifre/mlflow-oidc-auth/actions/workflows/codeql.yml/badge.svg)](https://github.com/felipeolifre/mlflow-oidc-auth/actions/workflows/codeql.yml)
+[![CodeQL](https://github.com/mlflow-oidc/mlflow-oidc-auth/actions/workflows/codeql.yml/badge.svg)](https://github.com/mlflow-oidc/mlflow-oidc-auth/actions/workflows/codeql.yml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mlflow-oidc/mlflow-oidc-auth)
 
 MLflow auth plugin to use OpenID Connect (OIDC) as authentication and authorization provider.
