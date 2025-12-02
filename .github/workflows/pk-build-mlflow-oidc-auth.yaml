@@ -67,3 +67,11 @@ jobs:
           docker push $LATEST_TAG
           docker push $COMMIT_TAG
           docker push $MLFLOW_VERSION_TAG
+          
+          # If triggered by a git tag, also push with that tag name
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            GIT_TAG="${{ github.ref_name }}"
+            echo "Git tag detected: $GIT_TAG"
+            docker tag $LATEST_TAG ${{ env.IMAGE_PUSH_PATH }}/${{ env.IMAGE_NAME }}:$GIT_TAG
+            docker push ${{ env.IMAGE_PUSH_PATH }}/${{ env.IMAGE_NAME }}:$GIT_TAG
+          fi
