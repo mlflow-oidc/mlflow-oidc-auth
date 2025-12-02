@@ -1,0 +1,108 @@
+version: 2
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+        update-types: ["security"]
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    groups:
+      mlflow:
+        patterns:
+          - "mlflow*"
+      testing:
+        patterns:
+          - "pytest*"
+      development:
+        patterns:
+          - "black"
+          - "pre-commit"
+      security:
+        patterns:
+          - "authlib"
+          - "requests"
+
+  # npm dependencies for Angular web UI
+  - package-ecosystem: "npm"
+    directory: "/web-ui"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+        update-types: ["security"]
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "web-ui"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    groups:
+      angular:
+        patterns:
+          - "@angular/*"
+          - "@angular-*/*"
+      angular-material:
+        patterns:
+          - "@angular/material"
+          - "@angular/cdk"
+      fontawesome:
+        patterns:
+          - "@fortawesome/*"
+      testing:
+        patterns:
+          - "jest*"
+          - "@types/jest"
+          - "ts-jest"
+      build-tools:
+        patterns:
+          - "@angular-devkit/*"
+          - "@angular/cli"
+          - "typescript"
+          - "vite"
+    ignore:
+      # Ignore major version updates for Angular to control migration timing
+      - dependency-name: "@angular/*"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    allow:
+      - dependency-type: "direct"
+        update-types: ["security"]
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci-cd"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
