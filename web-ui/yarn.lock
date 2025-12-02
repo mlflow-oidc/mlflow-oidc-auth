@@ -265,10 +265,10 @@
     tslib "^2.3.0"
     yargs "^17.2.1"
 
-"@angular/compiler@^19.0.6":
-  version "19.2.7"
-  resolved "https://registry.yarnpkg.com/@angular/compiler/-/compiler-19.2.7.tgz#33d98a6a9050b770161cd5cb1370d7c516178b14"
-  integrity sha512-YHXqDX7VVhfZpRa+ljJZW+PONKjg/LGwdGBBGk3955Ww4Ql+Gjrnv0OxFhChUdwCgsl3yTSXfVep29jYCp6dbA==
+"@angular/compiler@^19.2.17":
+  version "19.2.17"
+  resolved "https://registry.yarnpkg.com/@angular/compiler/-/compiler-19.2.17.tgz#e74a321e2d20f52bbd809498e4a810028e16020f"
+  integrity sha512-qo8psYASAlDiQ8fAL8i/E2JfWH2nPTpZDKKZxSWvgBVA8o+zUEjYAJu6/k6btnu+4Qcb425T0rmM/zao6EU9Aw==
   dependencies:
     tslib "^2.3.0"
 
