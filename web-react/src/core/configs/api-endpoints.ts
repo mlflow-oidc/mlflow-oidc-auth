@@ -1,8 +1,8 @@
 export const API_ENDPOINTS = {
-  //   ALL_GROUPS: "/api/2.0/mlflow/permissions/groups",
-  //   ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
-  //   ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
-  //   ALL_PROMPTS: "/api/2.0/mlflow/permissions/prompts",
+  ALL_GROUPS: "/api/2.0/mlflow/permissions/groups",
+  ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
+  ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
+  ALL_PROMPTS: "/api/2.0/mlflow/permissions/prompts",
   ALL_USERS: "/api/2.0/mlflow/users",
 
   // User management
