@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from "react";
 import { SearchInput } from "../../shared/components/search-input";
 import { useAllExperiments } from "../../core/hooks/use-all-experiments";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import type { ExperimentListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
+import { useSearch } from "../../core/hooks/use-search";
 
 const experimentColumns: ColumnConfig<ExperimentListItem>[] = [
   {
@@ -24,8 +24,13 @@ const experimentColumns: ColumnConfig<ExperimentListItem>[] = [
 ];
 
 export default function ExperimentsPage() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [submittedTerm, setSubmittedTerm] = useState("");
+  const {
+    searchTerm,
+    submittedTerm,
+    handleInputChange,
+    handleSearchSubmit,
+    handleClearSearch,
+  } = useSearch();
 
   const { isLoading, error, refresh, allExperiments } = useAllExperiments(true);
 
@@ -34,23 +39,6 @@ export default function ExperimentsPage() {
   const filteredExperiments = experimentsList.filter((experiment) =>
     experiment.name.toLowerCase().includes(submittedTerm.toLowerCase())
   );
-
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    setSubmittedTerm(searchTerm);
-    console.log(`Submitting search for: "${searchTerm}"."`);
-  };
-
-  const handleClearSearch = () => {
-    setSearchTerm("");
-    setSubmittedTerm("");
-    console.log("Search cleared. Showing full list.");
-  };
 
   if (isLoading) {
     return (
