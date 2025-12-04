@@ -1,11 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { SearchInput } from "../../shared/components/search-input";
 import { useAllExperiments } from "../../core/hooks/use-all-experiments";
-import {
-  EntityListTable,
-  type ColumnConfig,
-} from "../../shared/components/entity-list-table";
+import { EntityListTable } from "../../shared/components/entity-list-table";
 import type { ExperimentListItem } from "../../shared/types/entity";
+import type { ColumnConfig } from "../../shared/types/table";
 
 const experimentColumns: ColumnConfig<ExperimentListItem>[] = [
   {
@@ -33,7 +31,6 @@ export default function ExperimentsPage() {
 
   const experimentsList = allExperiments || [];
 
-  console.log("ExperimentsList:", experimentsList);
   const filteredExperiments = experimentsList.filter((experiment) =>
     experiment.name.toLowerCase().includes(submittedTerm.toLowerCase())
   );
@@ -99,6 +96,7 @@ export default function ExperimentsPage() {
       </h3>
 
       <EntityListTable
+        mode="object"
         data={filteredExperiments}
         columns={experimentColumns}
         searchTerm={submittedTerm}

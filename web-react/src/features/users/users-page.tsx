@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { SearchInput } from "../../shared/components/search-input";
 import { useAllUsers } from "../../core/hooks/use-all-users";
+import { EntityListTable } from "../../shared/components/entity-list-table";
 
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -74,40 +75,11 @@ export default function UsersPage() {
         Results ({filteredUsers.length})
       </h3>
 
-      <div role="table" className="flex flex-col flex-1 overflow-hidden">
-        <div role="rowgroup" className="flex-shrink-0">
-          <div
-            role="row"
-            className="flex border-b p-1 font-semibold
-            border-btn-secondary-border dark:border-btn-secondary-border-dark"
-          >
-            Username
-          </div>
-        </div>
-        <div role="rowgroup" className="flex-1 overflow-y-auto">
-          {filteredUsers.map((username) => (
-            <div
-              key={username}
-              role="row"
-              className="p-2 border-b
-              border-btn-secondary-border dark:border-btn-secondary-border-dark"
-            >
-              {username}
-            </div>
-          ))}
-          {filteredUsers.length === 0 && (
-            <p className="text-btn-secondary-text dark:text-btn-secondary-text-dark italic">
-              No users found for "{submittedTerm}"
-            </p>
-          )}
-        </div>
-        <div
-          id="pagination-footer"
-          className="flex-shrink-0 italic text-right pt-2"
-        >
-          placeholder for pagination
-        </div>
-      </div>
+      <EntityListTable
+        mode="primitive"
+        data={filteredUsers}
+        searchTerm={searchTerm}
+      />
     </>
   );
 }
