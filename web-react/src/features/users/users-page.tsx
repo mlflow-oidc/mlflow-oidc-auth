@@ -1,11 +1,16 @@
-import { useState, type FormEvent } from "react";
 import { SearchInput } from "../../shared/components/search-input";
 import { useAllUsers } from "../../core/hooks/use-all-users";
 import { EntityListTable } from "../../shared/components/entity-list-table";
+import { useSearch } from "../../core/hooks/use-search";
 
 export default function UsersPage() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [submittedTerm, setSubmittedTerm] = useState("");
+  const {
+    searchTerm,
+    submittedTerm,
+    handleInputChange,
+    handleSearchSubmit,
+    handleClearSearch,
+  } = useSearch();
 
   const { isLoading, error, refresh, allUsers } = useAllUsers(true);
 
@@ -14,23 +19,6 @@ export default function UsersPage() {
   const filteredUsers = usersList.filter((username) =>
     username.toLowerCase().includes(submittedTerm.toLowerCase())
   );
-
-  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    setSubmittedTerm(searchTerm);
-    console.log(`Submitting search for: "${searchTerm}"."`);
-  };
-
-  const handleClearSearch = () => {
-    setSearchTerm("");
-    setSubmittedTerm("");
-    console.log("Search cleared. Showing full list.");
-  };
 
   if (isLoading) {
     return (
