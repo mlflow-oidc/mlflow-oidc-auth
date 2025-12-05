@@ -37,7 +37,7 @@ export default function ModelsPage() {
     return (
       <div className="flex h-full justify-center items-center p-8">
         <p className="text-lg font-medium animate-pulse text-text-primary dark:text-text-primary-dark">
-          Loading experiments list...
+          Loading models list...
         </p>
       </div>
     );
@@ -46,7 +46,7 @@ export default function ModelsPage() {
   if (error) {
     return (
       <div className="flex flex-wrap h-full justify-center content-center items-center gap-2 text-red-600">
-        <p className="text-xl">Error fetching users: {error.message}</p>
+        <p className="text-xl">Error fetching models: {error.message}</p>
         <button
           type="button"
           onClick={() => refresh()}
