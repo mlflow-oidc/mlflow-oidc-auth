@@ -32,7 +32,7 @@ export default function ExperimentsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allExperiments } = useAllExperiments(true);
+  const { isLoading, error, refresh, allExperiments } = useAllExperiments();
 
   const experimentsList = allExperiments || [];
 

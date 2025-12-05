@@ -12,7 +12,7 @@ export default function UsersPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allUsers } = useAllUsers(true);
+  const { isLoading, error, refresh, allUsers } = useAllUsers();
 
   const usersList = allUsers || [];
 
