@@ -25,7 +25,7 @@ export default function ModelsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allModels } = useAllModels(true);
+  const { isLoading, error, refresh, allModels } = useAllModels();
 
   const modelsList = allModels || [];
 

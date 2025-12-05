@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "./use-auth";
 
 export interface ApiState<T> {
   data: T | null;
@@ -8,12 +9,15 @@ export interface ApiState<T> {
 }
 
 export function useApi<T>(
-  isAuthenticated: boolean,
   fetcher: (signal?: AbortSignal) => Promise<T>
 ): ApiState<T> {
   const [data, setData] = useState<T | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  const { isAuthenticated } = useAuth();
+
+  const initialFetcher = useCallback(fetcher, [fetcher]);
 
   useEffect(() => {
     if (isAuthenticated && !data) {
@@ -24,7 +28,7 @@ export function useApi<T>(
         setError(null);
 
         try {
-          const data = await fetcher(controller.signal);
+          const data = await initialFetcher(controller.signal);
           setData(data);
         } catch (err) {
           if (!controller.signal.aborted) {
@@ -42,7 +46,7 @@ export function useApi<T>(
 
       return () => controller.abort();
     }
-  }, [isAuthenticated, data, fetcher]);
+  }, [isAuthenticated, data, initialFetcher]);
 
   const refetch = useCallback(() => {
     const controller = new AbortController();
