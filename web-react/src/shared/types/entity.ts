@@ -10,3 +10,5 @@ export type ModelListItem = {
   name: string;
   tags: Record<string, string>;
 };
+
+export type PromptListItem = ModelListItem;

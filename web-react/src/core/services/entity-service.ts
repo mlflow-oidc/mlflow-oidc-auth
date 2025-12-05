@@ -4,6 +4,7 @@ import { API_ENDPOINTS } from "../configs/api-endpoints";
 import type {
   ExperimentListItem,
   ModelListItem,
+  PromptListItem,
 } from "../../shared/types/entity";
 
 export async function fetchAllGroups(signal?: AbortSignal): Promise<string[]> {
@@ -28,8 +29,10 @@ export async function fetchAllModels(
   return http<ModelListItem[]>(url, { method: "GET", signal });
 }
 
-export async function fetchAllPrompts(signal?: AbortSignal): Promise<string[]> {
+export async function fetchAllPrompts(
+  signal?: AbortSignal
+): Promise<PromptListItem[]> {
   const cfg = await getRuntimeConfig(signal);
   const url = `${cfg.basePath}${API_ENDPOINTS.ALL_PROMPTS}`;
-  return http<string[]>(url, { method: "GET", signal });
+  return http<PromptListItem[]>(url, { method: "GET", signal });
 }
