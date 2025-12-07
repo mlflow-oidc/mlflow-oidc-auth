@@ -1,39 +1,23 @@
-import { http } from "./http";
-import { getRuntimeConfig } from "../../shared/services/runtime-config";
+import { createApiFetcher } from "./api-utils";
 import type { CurrentUser } from "../../shared/types/user";
-import { API_ENDPOINTS } from "../configs/api-endpoints";
 
-export async function fetchCurrentUser(
-  signal?: AbortSignal
-): Promise<CurrentUser> {
-  const cfg = await getRuntimeConfig(signal);
-  const currentUserUrl = `${cfg.basePath}${API_ENDPOINTS.GET_CURRENT_USER}`;
+export const fetchCurrentUser = createApiFetcher<CurrentUser>({
+  endpointKey: "GET_CURRENT_USER",
+  responseType: {} as CurrentUser,
+  headers: {
+    "Cache-Control": "no-store",
+  },
+});
 
-  return http<CurrentUser>(currentUserUrl, {
-    method: "GET",
-    headers: { "Cache-Control": "no-store" },
-    signal,
-  });
-}
+export const fetchAllUsers = createApiFetcher<string[]>({
+  endpointKey: "ALL_USERS",
+  responseType: [] as string[],
+});
 
-export async function fetchAllUsers(signal?: AbortSignal): Promise<string[]> {
-  const cfg = await getRuntimeConfig(signal);
-  const allUsersUrl = `${cfg.basePath}${API_ENDPOINTS.ALL_USERS}`;
-
-  return http<string[]>(allUsersUrl, {
-    method: "GET",
-    signal,
-  });
-}
-
-export async function fetchAllServiceAccounts(
-  signal?: AbortSignal
-): Promise<string[]> {
-  const cfg = await getRuntimeConfig(signal);
-  const allServiceAccountsUrl = `${cfg.basePath}${API_ENDPOINTS.ALL_USERS}?service=true`;
-
-  return http<string[]>(allServiceAccountsUrl, {
-    method: "GET",
-    signal,
-  });
-}
+export const fetchAllServiceAccounts = createApiFetcher<string[]>({
+  endpointKey: "ALL_USERS",
+  responseType: [] as string[],
+  queryParams: {
+    service: true,
+  },
+});

@@ -1,38 +1,26 @@
-import { http } from "./http";
-import { getRuntimeConfig } from "../../shared/services/runtime-config";
-import { API_ENDPOINTS } from "../configs/api-endpoints";
+import { createApiFetcher } from "./api-utils";
 import type {
   ExperimentListItem,
   ModelListItem,
   PromptListItem,
 } from "../../shared/types/entity";
 
-export async function fetchAllGroups(signal?: AbortSignal): Promise<string[]> {
-  const cfg = await getRuntimeConfig(signal);
-  const url = `${cfg.basePath}${API_ENDPOINTS.ALL_GROUPS}`;
-  return http<string[]>(url, { method: "GET", signal });
-}
+export const fetchAllGroups = createApiFetcher<string[]>({
+  endpointKey: "ALL_GROUPS",
+  responseType: [] as string[],
+});
 
-export async function fetchAllExperiments(
-  signal?: AbortSignal
-): Promise<ExperimentListItem[]> {
-  const cfg = await getRuntimeConfig(signal);
-  const url = `${cfg.basePath}${API_ENDPOINTS.ALL_EXPERIMENTS}`;
-  return http<ExperimentListItem[]>(url, { method: "GET", signal });
-}
+export const fetchAllExperiments = createApiFetcher<ExperimentListItem[]>({
+  endpointKey: "ALL_EXPERIMENTS",
+  responseType: [] as ExperimentListItem[],
+});
 
-export async function fetchAllModels(
-  signal?: AbortSignal
-): Promise<ModelListItem[]> {
-  const cfg = await getRuntimeConfig(signal);
-  const url = `${cfg.basePath}${API_ENDPOINTS.ALL_MODELS}`;
-  return http<ModelListItem[]>(url, { method: "GET", signal });
-}
+export const fetchAllModels = createApiFetcher<ModelListItem[]>({
+  endpointKey: "ALL_MODELS",
+  responseType: [] as ModelListItem[],
+});
 
-export async function fetchAllPrompts(
-  signal?: AbortSignal
-): Promise<PromptListItem[]> {
-  const cfg = await getRuntimeConfig(signal);
-  const url = `${cfg.basePath}${API_ENDPOINTS.ALL_PROMPTS}`;
-  return http<PromptListItem[]>(url, { method: "GET", signal });
-}
+export const fetchAllPrompts = createApiFetcher<PromptListItem[]>({
+  endpointKey: "ALL_PROMPTS",
+  responseType: [] as PromptListItem[],
+});
