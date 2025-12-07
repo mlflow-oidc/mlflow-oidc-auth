@@ -25,3 +25,15 @@ export async function fetchAllUsers(signal?: AbortSignal): Promise<string[]> {
     signal,
   });
 }
+
+export async function fetchAllServiceAccounts(
+  signal?: AbortSignal
+): Promise<string[]> {
+  const cfg = await getRuntimeConfig(signal);
+  const allServiceAccountsUrl = `${cfg.basePath}${API_ENDPOINTS.ALL_USERS}?service=true`;
+
+  return http<string[]>(allServiceAccountsUrl, {
+    method: "GET",
+    signal,
+  });
+}
