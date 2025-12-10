@@ -4,6 +4,9 @@ import type { ModelListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import { useSearch } from "../../core/hooks/use-search";
 import { useAllModels } from "../../core/hooks/use-all-models";
+import PageContainer from "../../shared/components/page/page-container";
+import PageStatus from "../../shared/components/page/page-status";
+import ResultsHeader from "../../shared/components/page/results-header";
 
 const modelsColumns: ColumnConfig<ModelListItem>[] = [
   {
@@ -29,59 +32,37 @@ export default function ModelsPage() {
 
   const modelsList = allModels || [];
 
-  const filteredModels = modelsList.filter((model) =>
-    model.name.toLowerCase().includes(submittedTerm.toLowerCase())
+  const filteredModels = modelsList.filter((m) =>
+    m.name.toLowerCase().includes(submittedTerm.toLowerCase())
   );
 
-  if (isLoading) {
-    return (
-      <div className="flex h-full justify-center items-center p-8">
-        <p className="text-lg font-medium animate-pulse text-text-primary dark:text-text-primary-dark">
-          Loading models list...
-        </p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-wrap h-full justify-center content-center items-center gap-2 text-red-600">
-        <p className="text-xl">Error fetching models: {error.message}</p>
-        <button
-          type="button"
-          onClick={() => refresh()}
-          className="ml-4 p-2 bg-red-100 rounded hover:bg-red-200 cursor-pointer"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <>
-      <h2 className="flex-shrink-0 text-3xl font-semibold mb-6 text-center">
-        Models Page
-      </h2>
-
-      <SearchInput
-        value={searchTerm}
-        onInputChange={handleInputChange}
-        onSubmit={handleSearchSubmit}
-        onClear={handleClearSearch}
-        placeholder="Search models..."
+    <PageContainer title="Models Page">
+      <PageStatus
+        isLoading={isLoading}
+        loadingText="Loading models list..."
+        error={error}
+        onRetry={refresh}
       />
 
-      <h3 className="text-base font-medium p-1 mb-1">
-        Results ({filteredModels.length})
-      </h3>
-
-      <EntityListTable
-        mode="object"
-        data={filteredModels}
-        columns={modelsColumns}
-        searchTerm={submittedTerm}
-      />
-    </>
+      {!isLoading && !error && (
+        <>
+          <SearchInput
+            value={searchTerm}
+            onInputChange={handleInputChange}
+            onSubmit={handleSearchSubmit}
+            onClear={handleClearSearch}
+            placeholder="Search models..."
+          />
+          <ResultsHeader count={filteredModels.length} />
+          <EntityListTable
+            mode="object"
+            data={filteredModels}
+            columns={modelsColumns}
+            searchTerm={submittedTerm}
+          />
+        </>
+      )}
+    </PageContainer>
   );
 }
