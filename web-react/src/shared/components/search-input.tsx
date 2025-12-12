@@ -36,7 +36,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   return (
     <form
       onSubmit={onSubmit}
-      className="flex-shrink-0 flex h-8 mb-3 rounded border 
+      className="flex-shrink-0 flex h-8 mb-3 rounded border text-sm
       border-text-primary-hover dark:border-text-primary-hover-dark 
       bg-ui-bg dark:bg-ui-bg-dark overflow-hidden"
       style={{ minWidth: "100px", maxWidth: "300px" }}

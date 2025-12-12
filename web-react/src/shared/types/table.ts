@@ -19,6 +19,15 @@ export type ObjectMode<T extends Identifiable & Record<string, unknown>> = {
   searchTerm: string;
 };
 
+export interface ObjectTableRowProps<
+  T extends Identifiable & Record<string, unknown>
+> {
+  item: T;
+  columns: ColumnConfig<T>[];
+  fallbackKey: string | number;
+  index: number;
+}
+
 export type EntityListTableProps<
   T extends Identifiable & Record<string, unknown>
 > = PrimitiveMode | ObjectMode<T>;

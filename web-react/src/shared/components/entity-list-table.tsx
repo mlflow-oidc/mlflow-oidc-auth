@@ -11,15 +11,17 @@ export function EntityListTable<
     const { data, searchTerm } = props;
 
     return (
-      <div role="table" className="flex flex-col flex-1 overflow-hidden">
+      <div
+        role="table"
+        className="flex flex-col flex-1 overflow-hidden text-sm"
+      >
         <div role="rowgroup" className="flex-shrink-0">
           <div
             role="row"
-            className="flex border-b
-          border-btn-secondary-border dark:border-btn-secondary-border-dark
-          font-semibold text-left"
+            className="flex border-b font-semibold text-left
+                    border-btn-secondary-border dark:border-btn-secondary-border-dark"
           >
-            <div role="columnheader" className="p-2 flex-1 min-w-0">
+            <div role="columnheader" className="p-1 flex-1 min-w-0">
               Items
             </div>
           </div>
@@ -44,7 +46,7 @@ export function EntityListTable<
   const { data, columns, searchTerm } = props;
 
   return (
-    <div role="table" className="flex flex-col flex-1 overflow-hidden">
+    <div role="table" className="flex flex-col flex-1 overflow-hidden text-sm">
       <TableHeader columns={columns} />
 
       <div role="rowgroup" className="flex-1 overflow-y-auto">
@@ -55,6 +57,7 @@ export function EntityListTable<
               item={item}
               columns={columns}
               fallbackKey={i}
+              index={i}
             />
           ))
         ) : (

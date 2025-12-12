@@ -1,18 +1,15 @@
-import { SearchInput } from "../../shared/components/search-input";
 import { useAllExperiments } from "../../core/hooks/use-all-experiments";
+import { useSearch } from "../../core/hooks/use-search";
+import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import type { ExperimentListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
-import { useSearch } from "../../core/hooks/use-search";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import ResultsHeader from "../../shared/components/page/results-header";
+import { RowActionButton } from "../../shared/components/row-action-button";
 
 const experimentColumns: ColumnConfig<ExperimentListItem>[] = [
-  {
-    header: "ID",
-    render: (item) => item.id,
-  },
   {
     header: "Experiment Name",
     render: (item) => item.name,
@@ -43,6 +40,25 @@ export default function ExperimentsPage() {
     experiment.name.toLowerCase().includes(submittedTerm.toLowerCase())
   );
 
+  const renderPermissionsButton = (experiment: ExperimentListItem) => (
+    <div className="invisible group-hover:visible">
+      <RowActionButton
+        entityId={experiment.id}
+        baseRoute="/experiments"
+        buttonText="Manage permissions"
+      />
+    </div>
+  );
+
+  const columnsWithAction: ColumnConfig<ExperimentListItem>[] = [
+    ...experimentColumns,
+    {
+      header: "Permissions",
+      render: (item) => renderPermissionsButton(item),
+      className: "flex-shrink-0",
+    },
+  ];
+
   return (
     <PageContainer title="Experiments Page">
       <PageStatus
@@ -67,7 +83,7 @@ export default function ExperimentsPage() {
           <EntityListTable
             mode="object"
             data={filteredExperiments}
-            columns={experimentColumns}
+            columns={columnsWithAction}
             searchTerm={submittedTerm}
           />
         </>

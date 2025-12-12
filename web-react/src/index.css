@@ -27,6 +27,9 @@
   --color-text-primary-hover: rgb(14, 83, 139);
   --color-bg-primary-hover: rgba(34, 114, 180, 0.08);
 
+  /* Table */
+  --color-table-row-hover: rgba(68, 83, 95, 0.04);
+
   /* Dark Mode */
   --color-ui-bg-dark: rgb(17, 23, 28);
   --color-ui-text-dark: rgb(232, 236, 240);
@@ -45,6 +48,8 @@
   --color-text-primary-dark: rgb(146, 164, 179);
   --color-text-primary-hover-dark: rgb(138, 202, 255);
   --color-bg-primary-hover-dark: rgba(138, 202, 255, 0.08);
+
+  --color-table-row-hover-dark: rgba(189, 205, 219, 0.04);
 }
 
 @keyframes fastSpin {

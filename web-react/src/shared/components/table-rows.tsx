@@ -1,4 +1,4 @@
-import type { Identifiable, ColumnConfig } from "../types/table";
+import type { Identifiable, ObjectTableRowProps } from "../types/table";
 
 export function PrimitiveTableRow({
   value,
@@ -15,11 +15,11 @@ export function PrimitiveTableRow({
       role="row"
       key={index}
       onClick={handleClick}
-      className="flex border-b text-base
+      className="flex border-b 
               border-btn-secondary-border dark:border-btn-secondary-border-dark
-              hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+              hover:bg-table-row-hover dark:hover:bg-table-row-hover"
     >
-      <div role="cell" className="p-2 flex-1 min-w-0">
+      <div role="cell" className="p-1 flex-1 min-w-0">
         {value}
       </div>
     </div>
@@ -28,35 +28,23 @@ export function PrimitiveTableRow({
 
 export function ObjectTableRow<
   T extends Identifiable & Record<string, unknown>
->({
-  item,
-  columns,
-  fallbackKey,
-}: {
-  item: T;
-  columns: ColumnConfig<T>[];
-  fallbackKey: string | number;
-}) {
+>(props: ObjectTableRowProps<T>) {
+  const { item, columns, fallbackKey } = props;
+
   const key = item.id ?? fallbackKey;
-
-  const handleClick = () => {
-    console.log("row-click:", item.id ?? key);
-  };
-
   return (
     <div
       key={key}
       role="row"
-      onClick={handleClick}
-      className="flex border-b text-base
+      className="flex items-center border-b group
               border-btn-secondary-border dark:border-btn-secondary-border-dark
-              hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+              hover:bg-table-row-hover dark:hover:bg-table-row-hover "
     >
       {columns.map((column) => (
         <div
           key={column.header}
           role="cell"
-          className={`p-2 flex-1 min-w-0 ${column.className || ""}`}
+          className={`p-1 flex-1 min-w-0 ${column.className || ""}`}
         >
           {column.render(item)}
         </div>
