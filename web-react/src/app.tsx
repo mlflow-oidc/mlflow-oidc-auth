@@ -10,6 +10,9 @@ const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const ExperimentsPage = React.lazy(
   () => import("./features/experiments/experiments-page")
 );
+const ExperimentPermissionsPage = React.lazy(
+  () => import("./features/experiments/experiment-permissions-page")
+);
 const GroupsPage = React.lazy(() => import("./features/groups/groups-page"));
 const ModelsPage = React.lazy(() => import("./features/models/models-page"));
 const PromptsPage = React.lazy(() => import("./features/prompts/prompts-page"));
@@ -51,6 +54,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <ExperimentsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/experiments/:experimentId/"
+        element={
+          <ProtectedLayoutRoute>
+            <ExperimentPermissionsPage />
           </ProtectedLayoutRoute>
         }
       />
