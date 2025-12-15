@@ -1,4 +1,12 @@
-export const API_ENDPOINTS = {
+export type DynamicPathParams = {
+  experimentId: string | number;
+  // userName: string;
+  // modelName: string;
+  // promptName: string;
+  // groupName: string;
+};
+
+export const STATIC_API_ENDPOINTS = {
   ALL_GROUPS: "/api/2.0/mlflow/permissions/groups",
   ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
   ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
@@ -13,7 +21,9 @@ export const API_ENDPOINTS = {
   //   DELETE_USER: "/api/2.0/mlflow/users/delete",
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/permissions/users/current",
+} as const;
 
+export const DYNAMIC_API_ENDPOINTS = {
   //   // User permissions for resources
   //   USER_EXPERIMENT_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/users/${userName}/experiments",
@@ -43,9 +53,11 @@ export const API_ENDPOINTS = {
   //     "/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns/${patternId}",
 
   // Resource user permissions
-  //   EXPERIMENT_USER_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/experiments/${experimentId}/users",
-  //   REGISTERED_MODEL_USER_PERMISSIONS:
+  EXPERIMENT_USER_PERMISSIONS: (experimentId: string | number) =>
+    `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
+      String(experimentId)
+    )}/users`,
+  // REGISTERED_MODEL_USER_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/registered-models/${modelName}/users",
   //   PROMPT_USER_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/prompts/${promptName}/users",
@@ -89,6 +101,14 @@ export const API_ENDPOINTS = {
   // Group user permissions
   //   GROUP_USER_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/groups/${groupName}/users",
-};
+} as const;
 
-export type ApiEndpointKey = keyof typeof API_ENDPOINTS;
+export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;
+export type DynamicEndpointKey = keyof typeof DYNAMIC_API_ENDPOINTS;
+
+type DynamicEndpointFunction<K extends DynamicEndpointKey> =
+  (typeof DYNAMIC_API_ENDPOINTS)[K];
+
+export type PathParams<K extends DynamicEndpointKey> = Parameters<
+  DynamicEndpointFunction<K>
+>;

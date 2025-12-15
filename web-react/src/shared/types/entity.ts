@@ -12,3 +12,13 @@ export type ModelListItem = {
 };
 
 export type PromptListItem = ModelListItem;
+
+export type PermissionLevel = "READ" | "WRITE" | "MANAGE";
+
+export type PermissionKind = "user" | "group";
+
+export type EntityPermission = {
+  kind: PermissionKind;
+  permission: PermissionLevel;
+  username: string;
+};
