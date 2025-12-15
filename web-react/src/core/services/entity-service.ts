@@ -1,4 +1,7 @@
-import { createStaticApiFetcher, createDynamicApiFetcher } from "./api-utils";
+import {
+  createStaticApiFetcher,
+  createDynamicApiFetcher,
+} from "./create-api-fetcher.ts";
 import type {
   EntityPermission,
   ExperimentListItem,

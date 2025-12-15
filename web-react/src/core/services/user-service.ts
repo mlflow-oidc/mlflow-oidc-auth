@@ -1,4 +1,4 @@
-import { createStaticApiFetcher } from "./api-utils";
+import { createStaticApiFetcher } from "./create-api-fetcher";
 import type { CurrentUser } from "../../shared/types/user";
 
 export const fetchCurrentUser = createStaticApiFetcher<CurrentUser>({
