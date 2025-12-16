@@ -97,6 +97,10 @@ def _is_unprotected_route(path: str) -> bool:
         )
     )
 
+def _is_otlp_ingest_route(path: str) -> bool:
+    # OTLP endpoints are machine-to-machine; do not redirect/render HTML when auth is missing.
+    return path.startswith(("/v1/traces",))
+
 
 BEFORE_REQUEST_HANDLERS = {
     # Routes for experiments
@@ -337,6 +341,12 @@ def before_request_hook():
     the view function for the matched route is called and returns a response"""
     if _is_unprotected_route(request.path):
         return
+
+    # For OTLP ingest endpoints, never return HTML or redirects when auth is missing.
+    # These endpoints are called by SDKs/exporters that expect a plain 401/403 response.
+    if _is_otlp_ingest_route(request.path) and request.authorization is None and session.get("username") is None:
+        return responses.make_auth_required_response()
+
     if request.authorization is not None:
         if request.authorization.type == "basic":
             if not authenticate_request_basic_auth():

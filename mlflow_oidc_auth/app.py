@@ -44,6 +44,9 @@ app.add_url_rule(rule=routes.LOGIN, methods=["GET"], view_func=views.login)
 app.add_url_rule(rule=routes.LOGOUT, methods=["GET"], view_func=views.logout)
 app.add_url_rule(rule=routes.CALLBACK, methods=["GET"], view_func=views.callback)
 
+# MLflow Tracing OTLP ingest (machine-to-machine; authenticated via basic/bearer/session)
+app.add_url_rule(rule=routes.OTLP_TRACES, methods=["POST"], view_func=views.ingest_otlp_traces)
+
 # UI routes
 app.add_url_rule(rule=routes.STATIC, methods=["GET"], view_func=views.oidc_static)
 app.add_url_rule(rule=routes.UI, methods=["GET"], view_func=views.oidc_ui)

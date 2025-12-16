@@ -17,6 +17,8 @@ class TestRoutes:
                 routes.LOGIN,
                 routes.LOGOUT,
                 routes.CALLBACK,
+                # OTLP ingest
+                routes.OTLP_TRACES,
                 routes.STATIC,
                 routes.UI,
                 routes.UI_ROOT,
