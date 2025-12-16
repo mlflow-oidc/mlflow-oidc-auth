@@ -1,5 +1,5 @@
 export type DynamicPathParams = {
-  experimentId: string | number;
+  experimentId: string;
   // userName: string;
   // modelName: string;
   // promptName: string;
@@ -53,7 +53,9 @@ export const DYNAMIC_API_ENDPOINTS = {
   //     "/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns/${patternId}",
 
   // Resource user permissions
-  EXPERIMENT_USER_PERMISSIONS: (experimentId: string | number) =>
+  EXPERIMENT_USER_PERMISSIONS: (
+    experimentId: DynamicPathParams["experimentId"]
+  ) =>
     `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
       String(experimentId)
     )}/users`,
