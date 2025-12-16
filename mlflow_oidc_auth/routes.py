@@ -5,6 +5,9 @@ LOGIN = "/login"
 LOGOUT = "/logout"
 CALLBACK = "/callback"
 
+# OTLP ingest endpoints (MLflow Tracing)
+OTLP_TRACES = "/v1/traces"
+
 STATIC = "/oidc/static/<path:filename>"
 UI = "/oidc/ui/<path:filename>"
 UI_ROOT = "/oidc/ui/"

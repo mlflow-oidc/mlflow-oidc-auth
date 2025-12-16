@@ -9,6 +9,7 @@ from mlflow_oidc_auth.views.group_prompt import *
 from mlflow_oidc_auth.views.group_prompt_regex import *
 from mlflow_oidc_auth.views.group_registered_model import *
 from mlflow_oidc_auth.views.group_registered_model_regex import *
+from mlflow_oidc_auth.views.otlp import *
 from mlflow_oidc_auth.views.prompt import *
 from mlflow_oidc_auth.views.prompt_regex import *
 from mlflow_oidc_auth.views.registered_model import *

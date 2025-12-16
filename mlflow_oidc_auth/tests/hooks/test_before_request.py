@@ -66,6 +66,16 @@ def test_session_redirect(client):
             assert response.location.endswith("/login")  # type: ignore
 
 
+def test_otlp_ingest_no_auth_returns_401(client):
+    """OTLP ingest endpoints must not redirect or render HTML when auth is missing."""
+    with app.test_request_context(path="/v1/traces", method="POST"):
+        session.clear()
+        with patch("mlflow_oidc_auth.hooks.before_request.config.AUTOMATIC_LOGIN_REDIRECT", True):
+            response = before_request_hook()
+            assert response is not None
+            assert response.status_code == 401  # type: ignore
+
+
 def test_authorization_failure(client):
     with app.test_request_context(path="/protected", method="GET"):
         with patch("mlflow_oidc_auth.hooks.before_request.get_is_admin", return_value=False), patch(
