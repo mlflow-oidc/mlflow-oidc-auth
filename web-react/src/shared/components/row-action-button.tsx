@@ -2,21 +2,22 @@ import React from "react";
 import { useNavigate } from "react-router";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLock } from "@fortawesome/free-solid-svg-icons";
+import { useRuntimeConfig } from "../context/use-runtime-config";
 
 interface RowActionButtonProps {
   entityId: string;
-  baseRoute: string;
+  route: string;
   buttonText: string;
 }
 
 export function RowActionButton({
   entityId,
-  baseRoute,
+  route,
   buttonText,
 }: RowActionButtonProps) {
   const navigate = useNavigate();
-
-  const targetRoute = `${baseRoute}/${entityId}`;
+  const basePath = useRuntimeConfig().basePath;
+  const targetRoute = `${basePath}/${route}/${entityId}`;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();

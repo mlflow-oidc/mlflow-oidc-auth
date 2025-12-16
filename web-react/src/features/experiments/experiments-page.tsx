@@ -44,7 +44,7 @@ export default function ExperimentsPage() {
     <div className="invisible group-hover:visible">
       <RowActionButton
         entityId={experiment.id}
-        baseRoute="/experiments"
+        route="/experiments"
         buttonText="Manage permissions"
       />
     </div>
