@@ -1,13 +1,53 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web-react</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    (function () {
+      // Synchronously find config.json to set the correct base path
+      // We scan up the directory tree to support arbitrary nesting depths.
+      var paths = ["./config.json"];
+      var depth = window.location.pathname.split("/").length;
+      var prefix = "";
+      for (var i = 0; i < depth; i++) {
+        prefix += "../";
+        paths.push(prefix + "config.json");
+      }
+
+      var config = null;
+
+      for (var i = 0; i < paths.length; i++) {
+        try {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", paths[i], false); // Synchronous fetch
+          xhr.send(null);
+
+          if (xhr.status === 200) {
+            config = JSON.parse(xhr.responseText);
+            break;
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      if (config) {
+        window.__RUNTIME_CONFIG__ = config;
+        var basePath = config.uiPath || "/";
+        if (!basePath.endsWith("/")) basePath += "/";
+        document.write('<base href="' + basePath + '">');
+      } else {
+        console.error("Critical: Could not load runtime config.json");
+      }
+    })();
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>web-react</title>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>
