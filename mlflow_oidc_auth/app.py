@@ -12,9 +12,6 @@ from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
 
-# NOTE: MLflow imports this module at startup to attach routes/middleware to the
-# underlying `mlflow.server.app` Flask app.
-
 # Configure custom Flask app
 template_dir = os.path.dirname(__file__)
 template_dir = os.path.join(template_dir, "templates")
@@ -199,7 +196,5 @@ def init_session(flask_app, session_type: str | None) -> None:
     if (session_type or "").lower() not in ("cookie", "securecookie"):
         Session(flask_app)
 
-
-# Set up session (conditionally) and cache
 init_session(app, getattr(config, "SESSION_TYPE", None))
 cache = Cache(app)
