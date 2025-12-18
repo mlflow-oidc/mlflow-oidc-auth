@@ -49,10 +49,21 @@ class AppConfig:
 
         # session
         self.SESSION_TYPE = os.environ.get("SESSION_TYPE", "cachelib")
+        if (self.SESSION_TYPE or "").lower() == "securecookie":
+            # Alias for clarity/backwards-compat with common naming.
+            self.SESSION_TYPE = "cookie"
+        if (self.SESSION_TYPE or "").lower() == "cookie" and os.environ.get("SECRET_KEY") is None:
+            logger.warning(
+                "SESSION_TYPE=cookie is enabled but SECRET_KEY is not set. "
+                "A random SECRET_KEY was generated, which will break sessions across replicas. "
+                "Set SECRET_KEY to a consistent value across all pods."
+            )
+
         self.SESSION_PERMANENT = get_bool_env_variable("SESSION_PERMANENT", False)
         self.SESSION_KEY_PREFIX = os.environ.get("SESSION_KEY_PREFIX", "mlflow_oidc:")
         self.PERMANENT_SESSION_LIFETIME = os.environ.get("PERMANENT_SESSION_LIFETIME", 86400)
-        if self.SESSION_TYPE:
+        normalized_session_type = (self.SESSION_TYPE or "").lower()
+        if normalized_session_type and normalized_session_type not in ("cookie", "securecookie"):
             try:
                 session_module = importlib.import_module(f"mlflow_oidc_auth.session.{(self.SESSION_TYPE).lower()}")
                 logger.debug(f"Session module for {self.SESSION_TYPE} imported.")
