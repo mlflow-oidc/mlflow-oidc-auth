@@ -362,7 +362,7 @@ class TestUIRouterIntegration:
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
                 mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
                 # These should work without authentication
-                endpoints = ["/oidc/ui/", "/oidc/ui/styles.css", "/oidc/ui/auth", "/oidc/ui/home"]  # SPA route  # SPA route
+                endpoints = ["/oidc/ui/", "/oidc/ui/styles.css", "/oidc/ui/auth"]  # SPA route
 
                 for endpoint in endpoints:
                     response = client.get(endpoint)

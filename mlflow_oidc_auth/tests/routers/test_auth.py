@@ -107,11 +107,11 @@ class TestLoginEndpoint:
         # Remove authorize_redirect method to simulate misconfiguration
         del mock_oauth.oidc.authorize_redirect
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), pytest.raises(HTTPException) as exc_info:
+        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), pytest.raises(HTTPException) as exc_info:
             await login(request)
 
         assert exc_info.value.status_code == 500
-        assert "OIDC authentication not available" in str(exc_info.value.detail)
+        assert "Failed to initiate OIDC authentication" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     async def test_login_exception_handling(self, mock_request_with_session, mock_oauth):
@@ -120,11 +120,11 @@ class TestLoginEndpoint:
 
         mock_oauth.oidc.authorize_redirect.side_effect = Exception("OAuth error")
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), pytest.raises(HTTPException) as exc_info:
+        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), pytest.raises(HTTPException) as exc_info:
             await login(request)
 
         assert exc_info.value.status_code == 500
-        assert "Failed to initiate OIDC login" in str(exc_info.value.detail)
+        assert "Failed to initiate OIDC authentication" in str(exc_info.value.detail)
 
 
 class TestLogoutEndpoint:
@@ -215,7 +215,7 @@ class TestCallbackEndpoint:
             # Verify redirect to home page
             assert isinstance(result, RedirectResponse)
             assert result.status_code == 302
-            assert "/oidc/ui/home" in result.headers["location"]
+            assert "/oidc/ui/user" in result.headers["location"]
 
     @pytest.mark.asyncio
     async def test_callback_with_errors(self, mock_request_with_session):

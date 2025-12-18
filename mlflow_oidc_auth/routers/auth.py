@@ -207,7 +207,7 @@ async def callback(request: Request):
             default_redirect = session.pop("redirect_after_login", None)
             if not default_redirect:
                 # Default to UI home page using the helper function
-                default_redirect = _build_ui_url(request, "/home")
+                default_redirect = _build_ui_url(request, "/user")
 
             return RedirectResponse(url=default_redirect, status_code=302)
         else:
