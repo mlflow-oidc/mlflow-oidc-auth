@@ -63,7 +63,7 @@ class AppConfig:
         self.SESSION_KEY_PREFIX = os.environ.get("SESSION_KEY_PREFIX", "mlflow_oidc:")
         self.PERMANENT_SESSION_LIFETIME = os.environ.get("PERMANENT_SESSION_LIFETIME", 86400)
         normalized_session_type = (self.SESSION_TYPE or "").lower()
-        if normalized_session_type and normalized_session_type not in ("cookie", "securecookie"):
+        if normalized_session_type and normalized_session_type != "cookie":
             try:
                 session_module = importlib.import_module(f"mlflow_oidc_auth.session.{(self.SESSION_TYPE).lower()}")
                 logger.debug(f"Session module for {self.SESSION_TYPE} imported.")
