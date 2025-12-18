@@ -72,6 +72,15 @@ The application can be configured through environment variables, dotenv files, o
 | `REDIS_SSL` | Boolean | `false` | Use SSL connection to Redis |
 | `REDIS_USERNAME` | String | None | Redis username for authentication |
 
+### Session Backend: Cookie
+*Used when `SESSION_TYPE=cookie`*
+
+This backend is intended for running multiple instances behind a load balancer (no sticky sessions). You must set a consistent `SECRET_KEY` across all instances.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SECRET_KEY` ⚠️ | String | None | Application secret key used to sign and encrypt session cookies. Must be set and identical across all instances. |
+| *(none)* | - | - | No additional cookie-backend-specific variables are required beyond the core session configuration. |
 ### Cache Configuration
 
 | Variable | Type | Default | Description |

@@ -191,6 +191,10 @@ app.add_url_rule(rule=routes.GROUP_PROMPT_PATTERN_PERMISSION_DETAIL, methods=["D
 app.before_request(before_request_hook)
 app.after_request(after_request_hook)
 
-# Set up session
-Session(app)
+def init_session(flask_app, session_type: str | None) -> None:
+    """Initialize Flask-Session only for server-side backends (not cookie sessions)."""
+    if (session_type or "").lower() not in ("cookie", "securecookie"):
+        Session(flask_app)
+
+init_session(app, getattr(config, "SESSION_TYPE", None))
 cache = Cache(app)
