@@ -53,7 +53,7 @@ export default function App() {
         }
       />
       <Route
-        path="/experiments/"
+        path="/experiments"
         element={
           <ProtectedLayoutRoute>
             <ExperimentsPage />
@@ -61,7 +61,7 @@ export default function App() {
         }
       />
       <Route
-        path="/experiments/:experimentId/"
+        path="/experiments/:experimentId"
         element={
           <ProtectedLayoutRoute>
             <ExperimentPermissionsPage />
@@ -69,7 +69,7 @@ export default function App() {
         }
       />
       <Route
-        path="/groups/"
+        path="/groups"
         element={
           <ProtectedLayoutRoute>
             <GroupsPage />
@@ -77,7 +77,7 @@ export default function App() {
         }
       />
       <Route
-        path="/models/"
+        path="/models"
         element={
           <ProtectedLayoutRoute>
             <ModelsPage />
@@ -85,7 +85,7 @@ export default function App() {
         }
       />
       <Route
-        path="/prompts/"
+        path="/prompts"
         element={
           <ProtectedLayoutRoute>
             <PromptsPage />
@@ -93,7 +93,7 @@ export default function App() {
         }
       />
       <Route
-        path="/service-accounts/"
+        path="/service-accounts"
         element={
           <ProtectedLayoutRoute>
             <ServiceAccountsPage />
@@ -101,7 +101,7 @@ export default function App() {
         }
       />
       <Route
-        path="/trash/"
+        path="/trash"
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <TrashPage />
@@ -109,7 +109,7 @@ export default function App() {
         }
       />
       <Route
-        path="/user/"
+        path="/user"
         element={
           <ProtectedLayoutRoute>
             <UserPage />
@@ -117,7 +117,7 @@ export default function App() {
         }
       />
       <Route
-        path="/users/"
+        path="/users"
         element={
           <ProtectedLayoutRoute>
             <UsersPage />
@@ -125,7 +125,7 @@ export default function App() {
         }
       />
       <Route
-        path="/webhooks/"
+        path="/webhooks"
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <WebhooksPage />
