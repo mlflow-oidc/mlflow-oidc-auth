@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route, Navigate } from "react-router";
+import { Routes, Route } from "react-router";
 import ProtectedRoute from "./features/auth/components/protected-route";
 import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 import { LoadingSpinner } from "./shared/components/loading-spinner";
@@ -24,6 +24,9 @@ const UserPage = React.lazy(() => import("./features/user/user-page"));
 const UsersPage = React.lazy(() => import("./features/users/users-page"));
 const WebhooksPage = React.lazy(
   () => import("./features/webhooks/webhooks-page")
+);
+const NotFoundPage = React.lazy(
+  () => import("./features/not-found/not-found-page")
 );
 
 const ProtectedLayoutRoute = ({
@@ -106,7 +109,7 @@ export default function App() {
         }
       />
       <Route
-        path="/user/*"
+        path="/user/"
         element={
           <ProtectedLayoutRoute>
             <UserPage />
@@ -131,7 +134,14 @@ export default function App() {
       />
 
       <Route path="/403" element={<ForbiddenPage />} />
-      <Route path="*" element={<Navigate to="/user" replace />} />
+      <Route
+        path="*"
+        element={
+          <ProtectedLayoutRoute>
+            <NotFoundPage />
+          </ProtectedLayoutRoute>
+        }
+      />
     </Routes>
   );
 }
