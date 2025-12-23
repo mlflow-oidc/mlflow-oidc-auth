@@ -4,6 +4,7 @@ import { getSidebarData } from "./sidebar-data";
 import type { CurrentUser } from "../types/user";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faAnglesLeft } from "@fortawesome/free-solid-svg-icons";
+import { Button } from "./button";
 
 interface SidebarProps {
   currentUser: CurrentUser | null;
@@ -53,10 +54,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <span
                     className={`
                       whitespace-nowrap
-                      ${
-                        isOpen
-                          ? "opacity-100 max-w-xs ml-2"
-                          : "opacity-0 max-w-0"
+                      ${isOpen
+                        ? "opacity-100 max-w-xs ml-2"
+                        : "opacity-0 max-w-0"
                       }
                     `}
                   >
@@ -69,22 +69,15 @@ const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         <div className="p-2 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark ">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             onClick={toggleSidebar}
-            className={`
-              text-text-primary hover:text-text-primary-hover hover:bg-bg-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark dark:hover:bg-bg-primary-hover-dark cursor-pointer p-1 rounded transition-colors flex items-center w-full
-              ${isOpen ? "justify-end" : "justify-center"}
-            `}
+            className={`w-full ${isOpen ? "justify-end" : "justify-center"}`}
             aria-label={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
-          >
-            <FontAwesomeIcon
-              icon={faAnglesLeft}
-              className={`w-5 h-5 transition-transform duration-150 ${
-                isOpen ? "rotate-0" : "rotate-180"
+            icon={faAnglesLeft}
+            iconClassName={`w-5 h-5 transition-transform duration-150 ${isOpen ? "rotate-0" : "rotate-180"
               }`}
-            />
-          </button>
+          />
         </div>
       </div>
     </aside>
