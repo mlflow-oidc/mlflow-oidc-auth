@@ -56,7 +56,7 @@ export default function ExperimentPermissionsPage() {
     <PageContainer title={`Permissions for Experiment ${experimentId}`}>
       <PageStatus
         isLoading={isLoading}
-        loadingText="Loading prompts list..."
+        loadingText="Loading permissions list..."
         error={error}
         onRetry={refresh}
       />
@@ -68,7 +68,7 @@ export default function ExperimentPermissionsPage() {
             onInputChange={handleInputChange}
             onSubmit={handleSearchSubmit}
             onClear={handleClearSearch}
-            placeholder="Search prompts..."
+            placeholder="Search permissions..."
           />
           <ResultsHeader count={filteredPermissions.length} />
           <EntityListTable
