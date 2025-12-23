@@ -5,6 +5,8 @@ import { useSearch } from "../../core/hooks/use-search";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import ResultsHeader from "../../shared/components/page/results-header";
+import { RowActionButton } from "../../shared/components/row-action-button";
+import type { ColumnConfig } from "../../shared/types/table";
 
 export default function UsersPage() {
   const {
@@ -22,6 +24,33 @@ export default function UsersPage() {
   const filteredUsers = usersList.filter((username) =>
     username.toLowerCase().includes(submittedTerm.toLowerCase())
   );
+
+  const tableData = filteredUsers.map((username) => ({
+    id: username,
+    username,
+  }));
+
+  const renderPermissionsButton = (item: string) => (
+    <div className="invisible group-hover:visible">
+      <RowActionButton
+        entityId={item}
+        route="/users"
+        buttonText="Manage permissions"
+      />
+    </div>
+  );
+
+  const columnsWithAction: ColumnConfig<{ id: string; username: string }>[] = [
+    {
+      header: "Username",
+      render: ({ username }) => username,
+    },
+    {
+      header: "Permissions",
+      render: ({ username }) => renderPermissionsButton(username),
+      className: "flex-shrink-0",
+    },
+  ];
 
   return (
     <PageContainer title="Users Page">
@@ -43,9 +72,10 @@ export default function UsersPage() {
           />
           <ResultsHeader count={filteredUsers.length} />
           <EntityListTable
-            mode="primitive"
-            data={filteredUsers}
+            mode="object"
+            data={tableData}
             searchTerm={submittedTerm}
+            columns={columnsWithAction}
           />
         </>
       )}

@@ -22,6 +22,9 @@ const ServiceAccountsPage = React.lazy(
 const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
 const UsersPage = React.lazy(() => import("./features/users/users-page"));
+const UserPermissionsPage = React.lazy(
+  () => import("./features/users/user-permissions-page")
+);
 const WebhooksPage = React.lazy(
   () => import("./features/webhooks/webhooks-page")
 );
@@ -121,6 +124,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <UsersPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage />
           </ProtectedLayoutRoute>
         }
       />

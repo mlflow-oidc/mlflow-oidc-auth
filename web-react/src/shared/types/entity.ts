@@ -22,3 +22,10 @@ export type EntityPermission = {
   permission: PermissionLevel;
   username: string;
 };
+
+export type ExperimentPermission = {
+  name: string;
+  id: string;
+  permission: PermissionLevel;
+  type: PermissionKind;
+};

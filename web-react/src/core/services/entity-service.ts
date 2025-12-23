@@ -4,6 +4,7 @@ import {
 } from "./create-api-fetcher.ts";
 import type {
   EntityPermission,
+  ExperimentPermission,
   ExperimentListItem,
   ModelListItem,
   PromptListItem,
@@ -37,4 +38,12 @@ export const fetchExperimentUserPermissions = createDynamicApiFetcher<
 >({
   endpointKey: "EXPERIMENT_USER_PERMISSIONS",
   responseType: [] as EntityPermission[],
+});
+
+export const fetchUserExperimentPermissions = createDynamicApiFetcher<
+  ExperimentPermission[],
+  "USER_EXPERIMENT_PERMISSIONS"
+>({
+  endpointKey: "USER_EXPERIMENT_PERMISSIONS",
+  responseType: [] as ExperimentPermission[],
 });

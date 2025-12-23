@@ -24,9 +24,11 @@ export const STATIC_API_ENDPOINTS = {
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {
-  //   // User permissions for resources
+  // User permissions for resources
   //   USER_EXPERIMENT_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/users/${userName}/experiments",
+  USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/experiments`,
   //   USER_EXPERIMENT_PERMISSION:
   //     "/api/2.0/mlflow/permissions/users/${userName}/experiments/${experimentId}",
   //   USER_REGISTERED_MODEL_PERMISSIONS:
