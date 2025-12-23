@@ -5,6 +5,8 @@ import {
 import type {
   EntityPermission,
   ExperimentPermission,
+  ModelPermission,
+  PromptPermission,
   ExperimentListItem,
   ModelListItem,
   PromptListItem,
@@ -46,4 +48,20 @@ export const fetchUserExperimentPermissions = createDynamicApiFetcher<
 >({
   endpointKey: "USER_EXPERIMENT_PERMISSIONS",
   responseType: [] as ExperimentPermission[],
+});
+
+export const fetchUserRegisteredModelPermissions = createDynamicApiFetcher<
+  ModelPermission[],
+  "USER_REGISTERED_MODEL_PERMISSIONS"
+>({
+  endpointKey: "USER_REGISTERED_MODEL_PERMISSIONS",
+  responseType: [] as ModelPermission[],
+});
+
+export const fetchUserPromptPermissions = createDynamicApiFetcher<
+  PromptPermission[],
+  "USER_PROMPT_PERMISSIONS"
+>({
+  endpointKey: "USER_PROMPT_PERMISSIONS",
+  responseType: [] as PromptPermission[],
 });

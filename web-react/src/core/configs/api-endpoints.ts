@@ -31,12 +31,12 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/users/${userName}/experiments`,
   //   USER_EXPERIMENT_PERMISSION:
   //     "/api/2.0/mlflow/permissions/users/${userName}/experiments/${experimentId}",
-  //   USER_REGISTERED_MODEL_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/users/${userName}/registered-models",
+  USER_REGISTERED_MODEL_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/registered-models`,
   //   USER_MODEL_PERMISSION:
   //     "/api/2.0/mlflow/permissions/users/${userName}/registered-models/${modelName}",
-  //   USER_PROMPT_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/users/${userName}/prompts",
+  USER_PROMPT_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/prompts`,
   //   USER_PROMPT_PERMISSION:
   //     "/api/2.0/mlflow/permissions/users/${userName}/prompts/${promptName}",
 

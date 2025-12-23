@@ -13,9 +13,11 @@ export type ModelListItem = {
 
 export type PromptListItem = ModelListItem;
 
-export type PermissionLevel = "READ" | "WRITE" | "MANAGE";
+export type PermissionLevel = "READ" | "WRITE" | "MANAGE" | "NO_PERMISSIONS";
 
 export type PermissionKind = "user" | "group";
+
+export type PermissionType = "experiments" | "models" | "prompts";
 
 export type EntityPermission = {
   kind: PermissionKind;
@@ -29,3 +31,11 @@ export type ExperimentPermission = {
   permission: PermissionLevel;
   type: PermissionKind;
 };
+
+export type ModelPermission = {
+  name: string;
+  permission: PermissionLevel;
+  type: PermissionKind;
+};
+
+export type PromptPermission = ModelPermission;

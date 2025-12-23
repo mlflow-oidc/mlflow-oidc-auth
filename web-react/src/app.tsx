@@ -128,10 +128,26 @@ export default function App() {
         }
       />
       <Route
-        path="/users/:username"
+        path="/users/:username/experiments"
         element={
           <ProtectedLayoutRoute>
-            <UserPermissionsPage />
+            <UserPermissionsPage type="experiments" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/models"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="models" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/prompts"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="prompts" />
           </ProtectedLayoutRoute>
         }
       />
