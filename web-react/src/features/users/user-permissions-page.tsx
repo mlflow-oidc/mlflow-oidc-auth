@@ -1,9 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router";
+import { EditPermissionModal } from "./components/edit-permission-modal";
 import PageContainer from "../../shared/components/page/page-container";
 import type { ColumnConfig } from "../../shared/types/table";
 import type {
     PermissionType,
+    PermissionItem,
 } from "../../shared/types/entity";
 import { useSearch } from "../../core/hooks/use-search";
 import { useUserExperimentPermissions } from "../../core/hooks/use-user-experiment-permissions";
@@ -20,30 +22,6 @@ interface UserPermissionsPageProps {
     type: PermissionType;
 }
 
-const permissionColumns: ColumnConfig<any>[] = [
-    { header: "Name", render: (item) => item.name },
-    { header: "Permission", render: (item) => item.permission },
-    { header: "Kind", render: (item) => item.type },
-    {
-        header: "Actions",
-        render: (item) => (
-            <div className="flex space-x-2">
-                <IconButton
-                    icon={faEdit}
-                    title="Edit permission"
-                    onClick={() => console.log(`Edit permission for: ${item.name}`)}
-                />
-                <IconButton
-                    icon={faTrash}
-                    title="Remove permission"
-                    onClick={() => console.log(`Remove permission for: ${item.name}`)}
-                />
-            </div>
-        ),
-        className: "w-24",
-    },
-];
-
 export default function UserPermissionsPage({ type }: UserPermissionsPageProps) {
     const { username: routeUsername } = useParams<{ username: string }>();
     const username = routeUsername || null;
@@ -52,6 +30,9 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
     const modelHook = useUserRegisteredModelPermissions({ username });
     const promptHook = useUserPromptPermissions({ username });
 
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState<PermissionItem | null>(null);
+
     const {
         searchTerm,
         submittedTerm,
@@ -59,6 +40,49 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
         handleSearchSubmit,
         handleClearSearch,
     } = useSearch();
+
+    useEffect(() => {
+        handleClearSearch();
+    }, [type, handleClearSearch]);
+
+    const handleEditClick = (item: PermissionItem) => {
+        setEditingItem(item);
+        setIsModalOpen(true);
+    };
+
+    const handleSavePermission = (newPermission: string) => {
+        console.log(`Saving new permission: ${newPermission} for item:`, editingItem);
+        // call an API to update the permission
+    };
+
+    const handleModalClose = () => {
+        setIsModalOpen(false);
+        setEditingItem(null);
+    };
+
+    const permissionColumns: ColumnConfig<PermissionItem>[] = [
+        { header: "Name", render: (item) => item.name },
+        { header: "Permission", render: (item) => item.permission },
+        { header: "Kind", render: (item) => item.type },
+        {
+            header: "Actions",
+            render: (item) => (
+                <div className="flex space-x-2">
+                    <IconButton
+                        icon={faEdit}
+                        title="Edit permission"
+                        onClick={() => handleEditClick(item)}
+                    />
+                    <IconButton
+                        icon={faTrash}
+                        title="Remove permission"
+                        onClick={() => console.log(`Remove permission for: ${item.name}`)}
+                    />
+                </div>
+            ),
+            className: "w-24",
+        },
+    ];
 
     if (!username) {
         return <div>Username is required.</div>;
@@ -73,13 +97,9 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
     const { isLoading, error, refresh, permissions } = activeHook;
     const loadingText = `Loading user's ${type.replace(/s$/, "")} permissions...`;
 
-    const filteredData = permissions.filter((p: any) =>
+    const filteredData = permissions.filter((p: PermissionItem) =>
         p.name.toLowerCase().includes(submittedTerm.toLowerCase())
     );
-
-    useEffect(() => {
-        handleClearSearch();
-    }, [type, handleClearSearch]);
 
     const tabs = [
         { id: "experiments", label: "Experiments" },
@@ -129,6 +149,15 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
                     />
                 </>
             )}
+
+            <EditPermissionModal
+                isOpen={isModalOpen}
+                onClose={handleModalClose}
+                onSave={handleSavePermission}
+                item={editingItem}
+                username={username}
+                type={type}
+            />
         </PageContainer>
     );
 }

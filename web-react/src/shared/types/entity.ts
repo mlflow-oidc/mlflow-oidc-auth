@@ -39,3 +39,5 @@ export type ModelPermission = {
 };
 
 export type PromptPermission = ModelPermission;
+
+export type PermissionItem = ExperimentPermission | ModelPermission;
