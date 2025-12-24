@@ -20,23 +20,26 @@ export function useApi<T>(
   const initialFetcher = useCallback(fetcher, [fetcher]);
 
   useEffect(() => {
-    if (isAuthenticated && !data) {
+    if (isAuthenticated) {
       const controller = new AbortController();
+      let aborted = false;
 
       const fetchData = async () => {
         setIsLoading(true);
         setError(null);
 
         try {
-          const data = await initialFetcher(controller.signal);
-          setData(data);
+          const result = await initialFetcher(controller.signal);
+          if (!aborted) {
+            setData(result);
+          }
         } catch (err) {
-          if (!controller.signal.aborted) {
+          if (!aborted) {
             setError(err instanceof Error ? err : new Error(String(err)));
             setData(null);
           }
         } finally {
-          if (!controller.signal.aborted) {
+          if (!aborted) {
             setIsLoading(false);
           }
         }
@@ -44,9 +47,12 @@ export function useApi<T>(
 
       void fetchData();
 
-      return () => controller.abort();
+      return () => {
+        aborted = true;
+        controller.abort();
+      };
     }
-  }, [isAuthenticated, data, initialFetcher]);
+  }, [isAuthenticated, initialFetcher]);
 
   const refetch = useCallback(() => {
     const controller = new AbortController();
