@@ -28,7 +28,7 @@ export function useUserRegisteredModelPermissions({
     } = useApi<ModelPermission[]>(fetcher);
 
     return {
-        userModelPermissions: data ?? [],
+        permissions: data ?? [],
         isLoading,
         error,
         refresh,

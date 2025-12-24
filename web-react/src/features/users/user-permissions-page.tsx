@@ -3,9 +3,6 @@ import { useParams, Link } from "react-router";
 import PageContainer from "../../shared/components/page/page-container";
 import type { ColumnConfig } from "../../shared/types/table";
 import type {
-    ExperimentPermission,
-    ModelPermission,
-    PromptPermission,
     PermissionType,
 } from "../../shared/types/entity";
 import { useSearch } from "../../core/hooks/use-search";
@@ -23,55 +20,7 @@ interface UserPermissionsPageProps {
     type: PermissionType;
 }
 
-const experimentColumns: ColumnConfig<ExperimentPermission>[] = [
-    { header: "Name", render: (item) => item.name },
-    { header: "Permission", render: (item) => item.permission },
-    { header: "Kind", render: (item) => item.type },
-    {
-        header: "Actions",
-        render: (item) => (
-            <div className="flex space-x-2">
-                <IconButton
-                    icon={faEdit}
-                    title="Edit permission"
-                    onClick={() => console.log(`Edit permission for: ${item.name}`)}
-                />
-                <IconButton
-                    icon={faTrash}
-                    title="Remove permission"
-                    onClick={() => console.log(`Remove permission for: ${item.name}`)}
-                />
-            </div>
-        ),
-        className: "w-24",
-    },
-];
-
-const modelColumns: ColumnConfig<ModelPermission>[] = [
-    { header: "Name", render: (item) => item.name },
-    { header: "Permission", render: (item) => item.permission },
-    { header: "Kind", render: (item) => item.type },
-    {
-        header: "Actions",
-        render: (item) => (
-            <div className="flex space-x-2">
-                <IconButton
-                    icon={faEdit}
-                    title="Edit permission"
-                    onClick={() => console.log(`Edit permission for: ${item.name}`)}
-                />
-                <IconButton
-                    icon={faTrash}
-                    title="Remove permission"
-                    onClick={() => console.log(`Remove permission for: ${item.name}`)}
-                />
-            </div>
-        ),
-        className: "w-24",
-    },
-];
-
-const promptColumns: ColumnConfig<PromptPermission>[] = [
+const permissionColumns: ColumnConfig<any>[] = [
     { header: "Name", render: (item) => item.name },
     { header: "Permission", render: (item) => item.permission },
     { header: "Kind", render: (item) => item.type },
@@ -115,41 +64,16 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
         return <div>Username is required.</div>;
     }
 
-    let isLoading = false;
-    let error: Error | null = null;
-    let refresh = () => { };
-    let data: (ExperimentPermission | ModelPermission | PromptPermission)[] = [];
-    let columns: ColumnConfig<any>[] = [];
-    let loadingText = "";
+    const activeHook = {
+        experiments: experimentHook,
+        models: modelHook,
+        prompts: promptHook,
+    }[type];
 
-    switch (type) {
-        case "experiments":
-            isLoading = experimentHook.isLoading;
-            error = experimentHook.error;
-            refresh = experimentHook.refresh;
-            data = experimentHook.userExperimentPermissions;
-            columns = experimentColumns;
-            loadingText = "Loading user's experiment permissions...";
-            break;
-        case "models":
-            isLoading = modelHook.isLoading;
-            error = modelHook.error;
-            refresh = modelHook.refresh;
-            data = modelHook.userModelPermissions;
-            columns = modelColumns;
-            loadingText = "Loading user's model permissions...";
-            break;
-        case "prompts":
-            isLoading = promptHook.isLoading;
-            error = promptHook.error;
-            refresh = promptHook.refresh;
-            data = promptHook.userPromptPermissions;
-            columns = promptColumns;
-            loadingText = "Loading user's prompt permissions...";
-            break;
-    }
+    const { isLoading, error, refresh, permissions } = activeHook;
+    const loadingText = `Loading user's ${type.replace(/s$/, "")} permissions...`;
 
-    const filteredData = data.filter((p) =>
+    const filteredData = permissions.filter((p: any) =>
         p.name.toLowerCase().includes(submittedTerm.toLowerCase())
     );
 
@@ -200,7 +124,7 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
                     <EntityListTable
                         mode="object"
                         data={filteredData}
-                        columns={columns}
+                        columns={permissionColumns}
                         searchTerm={submittedTerm}
                     />
                 </>

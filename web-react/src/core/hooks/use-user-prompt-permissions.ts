@@ -28,7 +28,7 @@ export function useUserPromptPermissions({
     } = useApi<PromptPermission[]>(fetcher);
 
     return {
-        userPromptPermissions: data ?? [],
+        permissions: data ?? [],
         isLoading,
         error,
         refresh,

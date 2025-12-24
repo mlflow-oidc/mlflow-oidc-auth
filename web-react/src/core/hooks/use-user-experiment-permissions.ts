@@ -28,7 +28,7 @@ export function useUserExperimentPermissions({
     } = useApi<ExperimentPermission[]>(fetcher);
 
     return {
-        userExperimentPermissions: data ?? [],
+        permissions: data ?? [],
         isLoading,
         error,
         refresh,
