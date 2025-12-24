@@ -2,7 +2,7 @@ import React from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
 
-export type ButtonVariant = "action" | "ghost";
+export type ButtonVariant = "action" | "ghost" | "primary";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: ButtonVariant;
@@ -21,6 +21,12 @@ export function Button({
     const baseClasses = "flex items-center justify-center transition-all duration-50 ease-in-out cursor-pointer rounded";
 
     const variantClasses = {
+        primary: `
+      px-4 py-2 font-medium shadow-md
+      bg-btn-primary dark:bg-btn-primary-dark
+      text-btn-primary-text dark:text-btn-primary-text-dark
+      hover:bg-btn-primary-hover dark:hover:bg-btn-primary-hover-dark
+    `,
         action: `
       p-1 border text-xs
       bg-btn-secondary dark:bg-btn-secondary-dark

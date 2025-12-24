@@ -2,8 +2,8 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useUser } from "../hooks/use-user";
 import { http } from "../services/http";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCopy, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { Button } from "../../shared/components/button";
 
 interface TokenModel {
   token: string;
@@ -122,14 +122,14 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
         className="relative bg-ui-bg dark:bg-ui-bg-dark rounded-lg shadow-xl w-full max-w-xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          className="absolute cursor-pointer top-0.5 right-1 text-text-primary dark:text-text-primary-dark hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark transition-colors p-1"
-          onClick={onClose}
-          aria-label="Close modal"
-        >
-          <FontAwesomeIcon icon={faXmark} size="1x" />
-        </button>
+        <div className="absolute top-0.5 right-1">
+          <Button
+            onClick={onClose}
+            aria-label="Close modal"
+            variant="ghost"
+            icon={faXmark}
+          />
+        </div>
 
         <div className="mb-2">
           <h4 className="text-lg text-ui-text dark:text-ui-text-dark">
@@ -169,21 +169,14 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
               />
             </div>
 
-            <button
-              type="button"
+            <Button
               onClick={handleRequestToken as () => void}
               disabled={isLoading || !expirationDate}
-              className={`
-                px-4 py-2 rounded-md font-medium transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed 
-                ${
-                  isLoading
-                    ? "opacity-70 cursor-not-allowed bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark"
-                    : "bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark hover:bg-btn-primary-hover dark:hover:bg-btn-primary-hover-dark"
-                }
-              `}
+              variant="primary"
+              className={isLoading ? "opacity-70 cursor-not-allowed" : ""}
             >
               {isLoading ? "Requesting..." : "Request Token"}
-            </button>
+            </Button>
           </div>
 
           <div className="relative">
@@ -207,23 +200,22 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
                          read-only:cursor-default"
             />
 
-            <button
-              type="button"
-              onClick={handleCopyToken}
-              disabled={!accessToken}
-              title="Copy Access Token"
-              className="absolute right-2 top-2
-                         text-text-primary dark:text-text-primary-dark hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark cursor-pointer 
-                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <FontAwesomeIcon icon={faCopy} size="1x" />
-            </button>
+            <div className="absolute right-1 top-1">
+              <Button
+                onClick={handleCopyToken}
+                disabled={!accessToken}
+                title="Copy Access Token"
+                variant="ghost"
+                icon={faCopy}
+              />
+            </div>
 
             {copyFeedback && (
               <span
-                className={`absolute right-10 bottom-2 bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark text-xs px-2 py-1 rounded transition-opacity duration-300 ${
-                  copyFeedback === "Copied!" ? "opacity-100" : "opacity-0"
-                }`}
+                className={`absolute right-10 bottom-2 text-xs px-2 py-1 rounded 
+                  bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark 
+                  transition-opacity duration-300 
+                  ${copyFeedback === "Copied!" ? "opacity-100" : "opacity-0"}`}
               >
                 {copyFeedback}
               </span>

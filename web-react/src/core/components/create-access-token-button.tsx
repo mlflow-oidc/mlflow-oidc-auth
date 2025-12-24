@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { AccessTokenModal } from "./access-token-modal";
+import { Button } from "../../shared/components/button";
 
 export const CreateAccessTokenButton: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -9,19 +10,12 @@ export const CreateAccessTokenButton: React.FC = () => {
 
   return (
     <>
-      <button
-        type="button"
+      <Button
         onClick={openModal}
-        className="
-          px-4 py-2 rounded-md font-medium transition-colors duration-200 
-          bg-btn-primary dark:bg-btn-primary-dark 
-          text-btn-primary-text dark:text-btn-primary-text-dark 
-          hover:bg-btn-primary-hover dark:hover:bg-btn-primary-hover-dark
-          shadow-md cursor-pointer
-        "
+        variant="primary"
       >
         Create access token
-      </button>
+      </Button>
 
       {isModalOpen && <AccessTokenModal onClose={closeModal} />}
     </>
