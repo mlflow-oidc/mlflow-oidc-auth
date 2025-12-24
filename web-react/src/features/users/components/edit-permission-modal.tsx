@@ -10,13 +10,14 @@ import type {
 interface EditPermissionModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (newPermission: PermissionLevel) => void;
+    onSave: (newPermission: PermissionLevel) => Promise<void>;
     item: PermissionItem | null;
     username: string;
     type: PermissionType;
+    isLoading?: boolean;
 }
 
-const PERMISSION_LEVELS: PermissionLevel[] = ["READ", "WRITE", "MANAGE", "NO_PERMISSIONS"];
+const PERMISSION_LEVELS: PermissionLevel[] = ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"];
 
 export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
     isOpen,
@@ -25,6 +26,7 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
     item,
     username,
     type,
+    isLoading = false,
 }) => {
     const [selectedPermission, setSelectedPermission] = useState<PermissionLevel>(
         item?.permission || "READ"
@@ -58,9 +60,8 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
 
     if (!isOpen || !item) return null;
 
-    const handleSave = () => {
-        onSave(selectedPermission);
-        onClose();
+    const handleSave = async () => {
+        await onSave(selectedPermission);
     };
 
     const identifier = 'id' in item ? item.id : item.name;
@@ -118,11 +119,11 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
                     </div>
 
                     <div className="flex justify-end space-x-3">
-                        <Button onClick={onClose} variant="ghost">
+                        <Button onClick={onClose} variant="ghost" disabled={isLoading}>
                             Cancel
                         </Button>
-                        <Button onClick={handleSave} variant="primary">
-                            Ok
+                        <Button onClick={() => { void handleSave(); }} variant="primary" disabled={isLoading}>
+                            {isLoading ? "Saving..." : "Ok"}
                         </Button>
                     </div>
                 </div>

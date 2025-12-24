@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router";
+import { DYNAMIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
+import { http } from "../../core/services/http";
 import { EditPermissionModal } from "./components/edit-permission-modal";
 import PageContainer from "../../shared/components/page/page-container";
 import type { ColumnConfig } from "../../shared/types/table";
@@ -32,6 +34,7 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<PermissionItem | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     const {
         searchTerm,
@@ -50,9 +53,36 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
         setIsModalOpen(true);
     };
 
-    const handleSavePermission = (newPermission: string) => {
-        console.log(`Saving new permission: ${newPermission} for item:`, editingItem);
-        // call an API to update the permission
+    const handleSavePermission = async (newPermission: string) => {
+        if (!username || !editingItem) return;
+
+        setIsSaving(true);
+        try {
+            let url = "";
+            const identifier = 'id' in editingItem ? editingItem.id : editingItem.name;
+
+            if (type === "experiments") {
+                url = DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(username, identifier);
+            } else if (type === "models") {
+                url = DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(username, identifier);
+            } else if (type === "prompts") {
+                url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(username, identifier);
+            }
+
+            await http(url, {
+                method: "PATCH",
+                body: JSON.stringify({ permission: newPermission }),
+            });
+
+            alert(`Permission for ${editingItem.name} has been updated.`);
+            refresh();
+            handleModalClose();
+        } catch (error) {
+            console.error("Failed to update permission:", error);
+            alert("Failed to update permission. Please try again.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleModalClose = () => {
@@ -157,6 +187,7 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
                 item={editingItem}
                 username={username}
                 type={type}
+                isLoading={isSaving}
             />
         </PageContainer>
     );

@@ -29,16 +29,16 @@ export const DYNAMIC_API_ENDPOINTS = {
   //     "/api/2.0/mlflow/permissions/users/${userName}/experiments",
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${userName}/experiments`,
-  //   USER_EXPERIMENT_PERMISSION:
-  //     "/api/2.0/mlflow/permissions/users/${userName}/experiments/${experimentId}",
+  USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/experiments/${experimentId}`,
   USER_REGISTERED_MODEL_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${userName}/registered-models`,
-  //   USER_MODEL_PERMISSION:
-  //     "/api/2.0/mlflow/permissions/users/${userName}/registered-models/${modelName}",
+  USER_REGISTERED_MODEL_PERMISSION: (userName: string, modelName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/registered-models/${modelName}`,
   USER_PROMPT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${userName}/prompts`,
-  //   USER_PROMPT_PERMISSION:
-  //     "/api/2.0/mlflow/permissions/users/${userName}/prompts/${promptName}",
+  USER_PROMPT_PERMISSION: (userName: string, promptName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/prompts/${promptName}`,
 
   // User pattern permissions
   //   USER_EXPERIMENT_PATTERN_PERMISSIONS:
