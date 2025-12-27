@@ -72,8 +72,11 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
                 url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(username, identifier);
             }
 
+            const isFallback = editingItem.type === "fallback";
+            const method = isFallback ? "POST" : "PATCH";
+
             await http(url, {
-                method: "PATCH",
+                method,
                 body: JSON.stringify({ permission: newPermission }),
             });
 
