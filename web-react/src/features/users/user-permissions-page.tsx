@@ -90,6 +90,36 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
         }
     };
 
+    const handleRemovePermission = async (item: PermissionItem) => {
+        if (!username) return;
+
+        if (!window.confirm(`Are you sure you want to remove permission for ${item.name}?`)) {
+            return;
+        }
+
+        try {
+            let url = "";
+            const identifier = 'id' in item ? item.id : item.name;
+
+            if (type === "experiments") {
+                url = DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(username, identifier);
+            } else if (type === "models") {
+                url = DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(username, identifier);
+            } else if (type === "prompts") {
+                url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(username, identifier);
+            }
+
+            await http(url, {
+                method: "DELETE",
+            });
+
+            showToast(`Permission for ${item.name} has been removed.`, "success");
+            refresh();
+        } catch {
+            showToast("Failed to remove permission. Please try again.", "error");
+        }
+    };
+
     const handleModalClose = () => {
         setIsModalOpen(false);
         setEditingItem(null);
@@ -111,7 +141,7 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
                     <IconButton
                         icon={faTrash}
                         title="Remove permission"
-                        onClick={() => console.log(`Remove permission for: ${item.name}`)}
+                        onClick={() => { void handleRemovePermission(item); }}
                     />
                 </div>
             ),
