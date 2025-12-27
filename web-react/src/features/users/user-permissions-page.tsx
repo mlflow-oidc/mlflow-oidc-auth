@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router";
 import { DYNAMIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
 import { http } from "../../core/services/http";
+import { useToast } from "../../shared/components/toast/use-toast";
 import { EditPermissionModal } from "./components/edit-permission-modal";
 import PageContainer from "../../shared/components/page/page-container";
 import type { ColumnConfig } from "../../shared/types/table";
@@ -31,6 +32,8 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
     const experimentHook = useUserExperimentPermissions({ username });
     const modelHook = useUserRegisteredModelPermissions({ username });
     const promptHook = useUserPromptPermissions({ username });
+
+    const { showToast } = useToast();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<PermissionItem | null>(null);
@@ -74,12 +77,11 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
                 body: JSON.stringify({ permission: newPermission }),
             });
 
-            alert(`Permission for ${editingItem.name} has been updated.`);
+            showToast(`Permission for ${editingItem.name} has been updated.`, "success");
             refresh();
             handleModalClose();
-        } catch (error) {
-            console.error("Failed to update permission:", error);
-            alert("Failed to update permission. Please try again.");
+        } catch {
+            showToast("Failed to update permission. Please try again.", "error");
         } finally {
             setIsSaving(false);
         }
