@@ -8,6 +8,7 @@ import { initializeTheme } from "./shared/utils/theme-utils.ts";
 import { getRuntimeConfig } from "./shared/services/runtime-config";
 import { RuntimeConfigProvider } from "./shared/context/runtime-config-provider.tsx";
 import { UserProvider } from "./core/context/user-provider.tsx";
+import { ToastProvider } from "./shared/components/toast/toast-context.tsx";
 
 async function init() {
   initializeTheme();
@@ -22,7 +23,9 @@ async function init() {
         <Suspense fallback={<LoadingSpinner />}>
           <RuntimeConfigProvider config={config}>
             <UserProvider>
-              <App />
+              <ToastProvider>
+                <App />
+              </ToastProvider>
             </UserProvider>
           </RuntimeConfigProvider>
         </Suspense>
