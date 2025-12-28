@@ -55,12 +55,21 @@ export function useApi<T>(
   }, [isAuthenticated, initialFetcher]);
 
   const refetch = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
     const controller = new AbortController();
     fetcher(controller.signal)
-      .then(setData)
+      .then((result) => {
+        setData(result);
+      })
       .catch((err) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
           setError(err instanceof Error ? err : new Error(String(err)));
+          setData(null);
+        }
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   }, [fetcher]);
 
