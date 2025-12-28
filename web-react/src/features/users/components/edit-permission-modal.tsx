@@ -63,8 +63,7 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
     const handleSave = async () => {
         await onSave(selectedPermission);
     };
-
-    const identifier = 'id' in item ? item.id : item.name;
+    
     const formattedType = type.charAt(0).toUpperCase() + type.slice(1, -1);
 
     return (
@@ -87,7 +86,7 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
 
                 <div className="mb-4">
                     <h4 className="text-lg text-ui-text dark:text-ui-text-dark font-semibold">
-                        Edit {formattedType} {identifier} permissions for {username}
+                        Edit {formattedType} {item.name} permissions for {username}
                     </h4>
                 </div>
 

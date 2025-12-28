@@ -93,10 +93,6 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
     const handleRemovePermission = async (item: PermissionItem) => {
         if (!username) return;
 
-        if (!window.confirm(`Are you sure you want to remove permission for ${item.name}?`)) {
-            return;
-        }
-
         try {
             let url = "";
             const identifier = 'id' in item ? item.id : item.name;
