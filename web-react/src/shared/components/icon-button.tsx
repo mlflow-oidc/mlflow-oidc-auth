@@ -6,12 +6,15 @@ interface IconButtonProps {
     icon: IconDefinition;
     onClick: (e: React.MouseEvent) => void;
     title?: string;
+    disabled?: boolean;
 }
 
-export function IconButton({ icon, onClick, title }: IconButtonProps) {
+export function IconButton({ icon, onClick, title, disabled }: IconButtonProps) {
     const handleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        onClick(e);
+        if (!disabled) {
+            onClick(e);
+        }
     };
 
     return (
@@ -20,6 +23,7 @@ export function IconButton({ icon, onClick, title }: IconButtonProps) {
             title={title}
             icon={icon}
             className="w-8 h-8"
+            disabled={disabled}
         />
     );
 }

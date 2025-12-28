@@ -16,9 +16,11 @@ export function Button({
     iconClassName = "text-sm",
     children,
     className = "",
+    disabled,
     ...props
 }: ButtonProps) {
-    const baseClasses = "flex items-center justify-center transition-all duration-50 ease-in-out cursor-pointer rounded";
+    const baseClasses = "flex items-center justify-center transition-all duration-50 ease-in-out rounded";
+    const cursorClass = disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer";
 
     const variantClasses = {
         primary: `
@@ -44,10 +46,10 @@ export function Button({
     `,
     };
 
-    const combinedClasses = `${baseClasses} ${variantClasses[variant]} ${className}`.replace(/\s+/g, " ").trim();
+    const combinedClasses = `${baseClasses} ${cursorClass} ${variantClasses[variant]} ${className}`.replace(/\s+/g, " ").trim();
 
     return (
-        <button type="button" className={combinedClasses} {...props}>
+        <button type="button" className={combinedClasses} disabled={disabled} {...props}>
             {icon && <FontAwesomeIcon icon={icon} className={iconClassName} />}
             {children && <span className={icon ? "ml-1" : ""}>{children}</span>}
         </button>

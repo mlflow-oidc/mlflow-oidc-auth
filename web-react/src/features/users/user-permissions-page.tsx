@@ -19,7 +19,7 @@ import PageStatus from "../../shared/components/page/page-status";
 import ResultsHeader from "../../shared/components/page/results-header";
 import { SearchInput } from "../../shared/components/search-input";
 import { IconButton } from "../../shared/components/icon-button";
-import { faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 
 interface UserPermissionsPageProps {
     type: PermissionType;
@@ -127,20 +127,28 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
         { header: "Kind", render: (item) => item.type },
         {
             header: "Actions",
-            render: (item) => (
-                <div className="flex space-x-2">
-                    <IconButton
-                        icon={faEdit}
-                        title="Edit permission"
-                        onClick={() => handleEditClick(item)}
-                    />
-                    <IconButton
-                        icon={faTrash}
-                        title="Remove permission"
-                        onClick={() => { void handleRemovePermission(item); }}
-                    />
-                </div>
-            ),
+            render: (item) => {
+                const isFallback = item.type === "fallback";
+                const isUserType = item.type === "user";
+                const editIcon = isFallback ? faPlus : faEdit;
+                const deleteDisabled = !isUserType;
+
+                return (
+                    <div className="flex space-x-2">
+                        <IconButton
+                            icon={editIcon}
+                            title={isFallback ? "Add permission" : "Edit permission"}
+                            onClick={() => handleEditClick(item)}
+                        />
+                        <IconButton
+                            icon={faTrash}
+                            title="Remove permission"
+                            onClick={() => { void handleRemovePermission(item); }}
+                            disabled={deleteDisabled}
+                        />
+                    </div>
+                );
+            },
             className: "w-24",
         },
     ];
