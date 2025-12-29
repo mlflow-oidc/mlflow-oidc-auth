@@ -1,3 +1,5 @@
+import { Button } from "../button";
+
 export default function PageStatus({
   isLoading,
   loadingText,
@@ -21,16 +23,12 @@ export default function PageStatus({
 
   if (error) {
     return (
-      <div className="flex flex-wrap h-full justify-center content-center items-center gap-2 text-red-600">
-        <p className="text-xl">{`Error: ${error.message}`}</p>
+      <div className="flex flex-wrap h-full justify-center content-center items-center gap-4 text-status-danger dark:text-status-danger-dark p-8">
+        <p className="text-xl font-medium">{`Error: ${error.message}`}</p>
         {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="ml-4 p-2 bg-red-100 rounded hover:bg-red-200 cursor-pointer"
-          >
+          <Button variant="danger" onClick={onRetry}>
             Try Again
-          </button>
+          </Button>
         )}
       </div>
     );
