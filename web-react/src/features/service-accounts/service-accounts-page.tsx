@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { faPlus } from "@fortawesome/free-solid-svg-icons";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import { useSearch } from "../../core/hooks/use-search";
@@ -70,8 +71,9 @@ export default function ServiceAccountsPage() {
           {isAdmin && (
             <div className="mb-4">
               <Button
-                variant="primary"
+                variant="secondary"
                 onClick={() => setIsModalOpen(true)}
+                icon={faPlus}
               >
                 Create Service Account
               </Button>

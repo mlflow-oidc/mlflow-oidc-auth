@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { AccessTokenModal } from "./access-token-modal";
 import { Button } from "../../shared/components/button";
+import { faPlus } from "@fortawesome/free-solid-svg-icons";
 
 export const CreateAccessTokenButton: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -12,9 +13,10 @@ export const CreateAccessTokenButton: React.FC = () => {
     <>
       <Button
         onClick={openModal}
-        variant="primary"
+        variant="secondary"
+        icon={faPlus}
       >
-        Create access token
+        Create Access Token
       </Button>
 
       {isModalOpen && <AccessTokenModal onClose={closeModal} />}
