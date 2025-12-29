@@ -16,7 +16,10 @@ export const NotFoundPage = () => {
                     </p>
                 </div>
                 <button
-                    onClick={() => navigate("/user")}
+                    type="button"
+                    onClick={() => {
+                        void navigate("/user");
+                    }}
                     className="
             px-4 py-2 rounded-md font-medium transition-colors duration-200
             bg-btn-primary dark:bg-btn-primary-dark
