@@ -14,7 +14,7 @@ export const STATIC_API_ENDPOINTS = {
   ALL_USERS: "/api/2.0/mlflow/users",
 
   // User management
-  //   CREATE_USER: "/api/2.0/mlflow/users/create",
+  CREATE_USER: "/api/2.0/mlflow/users/create",
   //   GET_USER: "/api/2.0/mlflow/users/get",
   //   UPDATE_USER_PASSWORD: "/api/2.0/mlflow/users/update-password",
   //   UPDATE_USER_ADMIN: "/api/2.0/mlflow/users/update-admin",

@@ -9,7 +9,7 @@ interface CreateServiceAccountModalProps {
         name: string;
         display_name: string;
         is_admin: boolean;
-    }) => void;
+    }) => void | Promise<void>;
 }
 
 export const CreateServiceAccountModal: React.FC<CreateServiceAccountModalProps> = ({
@@ -70,9 +70,9 @@ export const CreateServiceAccountModal: React.FC<CreateServiceAccountModalProps>
         setIsDisplayNameManual(true);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!name || !displayName) return;
-        onSave({
+        await onSave({
             name,
             display_name: displayName,
             is_admin: isAdmin,
@@ -175,7 +175,9 @@ export const CreateServiceAccountModal: React.FC<CreateServiceAccountModalProps>
                             Cancel
                         </Button>
                         <Button
-                            onClick={handleSave}
+                            onClick={() => {
+                                void handleSave();
+                            }}
                             variant="primary"
                             disabled={!isFormValid}
                         >

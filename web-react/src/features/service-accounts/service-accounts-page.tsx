@@ -9,6 +9,8 @@ import ResultsHeader from "../../shared/components/page/results-header";
 import { useCurrentUser } from "../../core/hooks/use-current-user";
 import { Button } from "../../shared/components/button";
 import { CreateServiceAccountModal } from "./components/create-service-account-modal";
+import { createServiceAccount } from "../../core/services/user-service";
+import { useToast } from "../../shared/components/toast/use-toast";
 
 export default function ServiceAccountsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,6 +25,7 @@ export default function ServiceAccountsPage() {
   const { isLoading, error, refresh, allServiceAccounts } =
     useAllServiceAccounts();
   const { currentUser } = useCurrentUser();
+  const { showToast } = useToast();
 
   const serviceAccountsList = allServiceAccounts || [];
 
@@ -30,13 +33,25 @@ export default function ServiceAccountsPage() {
     username.toLowerCase().includes(submittedTerm.toLowerCase())
   );
 
-  const handleCreateServiceAccount = (data: {
+  const handleCreateServiceAccount = async (data: {
     name: string;
     display_name: string;
     is_admin: boolean;
   }) => {
-    console.log("Creating Service Account:", data);
-    // Future API call here
+    try {
+      await createServiceAccount({
+        username: data.name,
+        display_name: data.display_name,
+        is_admin: data.is_admin,
+        is_service_account: true,
+      });
+      showToast(`Service account ${data.name} created successfully.`, "success");
+      refresh();
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error("Failed to create service account:", err);
+      showToast("Failed to create service account. Please try again.", "error");
+    }
   };
 
   const isAdmin = currentUser?.is_admin === true;
@@ -79,7 +94,9 @@ export default function ServiceAccountsPage() {
           <CreateServiceAccountModal
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}
-            onSave={handleCreateServiceAccount}
+            onSave={(data) => {
+              void handleCreateServiceAccount(data);
+            }}
           />
         </>
       )}
