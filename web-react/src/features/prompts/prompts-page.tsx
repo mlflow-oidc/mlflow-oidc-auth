@@ -7,6 +7,7 @@ import { useAllPrompts } from "../../core/hooks/use-all-prompts";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import ResultsHeader from "../../shared/components/page/results-header";
+import { RowActionButton } from "../../shared/components/row-action-button";
 
 const promptsColumns: ColumnConfig<PromptListItem>[] = [
   {
@@ -36,6 +37,25 @@ export default function PromptsPage() {
     p.name.toLowerCase().includes(submittedTerm.toLowerCase())
   );
 
+  const renderPermissionsButton = (prompt: PromptListItem) => (
+    <div className="invisible group-hover:visible">
+      <RowActionButton
+        entityId={prompt.name}
+        route="/prompts"
+        buttonText="Manage permissions"
+      />
+    </div>
+  );
+
+  const columnsWithAction: ColumnConfig<PromptListItem>[] = [
+    ...promptsColumns,
+    {
+      header: "Permissions",
+      render: (item) => renderPermissionsButton(item),
+      className: "flex-shrink-0",
+    },
+  ];
+
   return (
     <PageContainer title="Prompts Page">
       <PageStatus
@@ -58,7 +78,7 @@ export default function PromptsPage() {
           <EntityListTable
             mode="object"
             data={filteredPrompts}
-            columns={promptsColumns}
+            columns={columnsWithAction}
             searchTerm={submittedTerm}
           />
         </>

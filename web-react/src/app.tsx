@@ -15,7 +15,13 @@ const ExperimentPermissionsPage = React.lazy(
 );
 const GroupsPage = React.lazy(() => import("./features/groups/groups-page"));
 const ModelsPage = React.lazy(() => import("./features/models/models-page"));
+const ModelPermissionsPage = React.lazy(
+  () => import("./features/models/model-permissions-page")
+);
 const PromptsPage = React.lazy(() => import("./features/prompts/prompts-page"));
+const PromptPermissionsPage = React.lazy(
+  () => import("./features/prompts/prompt-permissions-page")
+);
 const ServiceAccountsPage = React.lazy(
   () => import("./features/service-accounts/service-accounts-page")
 );
@@ -88,10 +94,26 @@ export default function App() {
         }
       />
       <Route
+        path="/models/:modelName"
+        element={
+          <ProtectedLayoutRoute>
+            <ModelPermissionsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/prompts"
         element={
           <ProtectedLayoutRoute>
             <PromptsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/prompts/:promptName"
+        element={
+          <ProtectedLayoutRoute>
+            <PromptPermissionsPage />
           </ProtectedLayoutRoute>
         }
       />

@@ -7,6 +7,7 @@ import { useAllModels } from "../../core/hooks/use-all-models";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import ResultsHeader from "../../shared/components/page/results-header";
+import { RowActionButton } from "../../shared/components/row-action-button";
 
 const modelsColumns: ColumnConfig<ModelListItem>[] = [
   {
@@ -36,6 +37,25 @@ export default function ModelsPage() {
     m.name.toLowerCase().includes(submittedTerm.toLowerCase())
   );
 
+  const renderPermissionsButton = (model: ModelListItem) => (
+    <div className="invisible group-hover:visible">
+      <RowActionButton
+        entityId={model.name}
+        route="/models"
+        buttonText="Manage permissions"
+      />
+    </div>
+  );
+
+  const columnsWithAction: ColumnConfig<ModelListItem>[] = [
+    ...modelsColumns,
+    {
+      header: "Permissions",
+      render: (item) => renderPermissionsButton(item),
+      className: "flex-shrink-0",
+    },
+  ];
+
   return (
     <PageContainer title="Models Page">
       <PageStatus
@@ -58,7 +78,7 @@ export default function ModelsPage() {
           <EntityListTable
             mode="object"
             data={filteredModels}
-            columns={modelsColumns}
+            columns={columnsWithAction}
             searchTerm={submittedTerm}
           />
         </>

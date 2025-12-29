@@ -1,8 +1,8 @@
 export type DynamicPathParams = {
   experimentId: string;
+  modelName: string;
+  promptName: string;
   // userName: string;
-  // modelName: string;
-  // promptName: string;
   // groupName: string;
 };
 
@@ -61,10 +61,16 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
       String(experimentId)
     )}/users`,
-  // REGISTERED_MODEL_USER_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/registered-models/${modelName}/users",
-  //   PROMPT_USER_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/prompts/${promptName}/users",
+  REGISTERED_MODEL_USER_PERMISSIONS: (
+    modelName: DynamicPathParams["modelName"]
+  ) =>
+    `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(
+      String(modelName)
+    )}/users`,
+  PROMPT_USER_PERMISSIONS: (promptName: DynamicPathParams["promptName"]) =>
+    `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(
+      String(promptName)
+    )}/users`,
 
   // Group permissions for resources
   //   GROUP_EXPERIMENT_PERMISSIONS:

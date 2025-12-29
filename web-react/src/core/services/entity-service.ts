@@ -65,3 +65,19 @@ export const fetchUserPromptPermissions = createDynamicApiFetcher<
   endpointKey: "USER_PROMPT_PERMISSIONS",
   responseType: [] as PromptPermission[],
 });
+
+export const fetchModelUserPermissions = createDynamicApiFetcher<
+  EntityPermission[],
+  "REGISTERED_MODEL_USER_PERMISSIONS"
+>({
+  endpointKey: "REGISTERED_MODEL_USER_PERMISSIONS",
+  responseType: [] as EntityPermission[],
+});
+
+export const fetchPromptUserPermissions = createDynamicApiFetcher<
+  EntityPermission[],
+  "PROMPT_USER_PERMISSIONS"
+>({
+  endpointKey: "PROMPT_USER_PERMISSIONS",
+  responseType: [] as EntityPermission[],
+});
