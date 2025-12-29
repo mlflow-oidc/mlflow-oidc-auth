@@ -72,8 +72,8 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
                 url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(username, identifier);
             }
 
-            const isFallback = editingItem.type === "fallback";
-            const method = isFallback ? "POST" : "PATCH";
+            const isCreate = editingItem.type !== "user";
+            const method = isCreate ? "POST" : "PATCH";
 
             await http(url, {
                 method,
@@ -130,14 +130,15 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
             render: (item) => {
                 const isFallback = item.type === "fallback";
                 const isUserType = item.type === "user";
-                const editIcon = isFallback ? faPlus : faEdit;
+                const isCreate = !isUserType || isFallback;
+                const editIcon = isCreate ? faPlus : faEdit;
                 const deleteDisabled = !isUserType;
 
                 return (
                     <div className="flex space-x-2">
                         <IconButton
                             icon={editIcon}
-                            title={isFallback ? "Add permission" : "Edit permission"}
+                            title={isCreate ? "Add permission" : "Edit permission"}
                             onClick={() => handleEditClick(item)}
                         />
                         <IconButton
