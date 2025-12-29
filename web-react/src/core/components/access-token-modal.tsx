@@ -160,7 +160,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
                 min={today}
                 max={maxDate}
                 required
-                className="w-full px-3 py-2 border rounded-md focus:outline-none 
+                className="w-full px-3 py-1.5 text-sm border rounded-md focus:outline-none 
                            text-ui-text dark:text-ui-text-dark
                            bg-ui-bg dark:bg-ui-secondary-bg-dark
                            border-ui-secondary-bg dark:border-ui-secondary-bg-dark
