@@ -33,7 +33,7 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
 
   return (
     <header className="h-[52px] flex-shrink-0 flex items-center justify-between px-4 py-2">
-      <Link to="/" className="text-xl font-extrabold text-logo">
+      <Link to="/user" className="text-xl font-extrabold text-logo">
         MlflowOidcAuth
       </Link>
 
