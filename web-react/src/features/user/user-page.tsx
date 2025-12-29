@@ -9,19 +9,13 @@ export const UserPage = () => {
   return (
     <PageContainer title="User Information">
       <PageStatus
-        isLoading={isLoading}
+        isLoading={isLoading && !currentUser}
         loadingText="Loading user information..."
         error={error}
       />
 
-      {!isLoading && !error && currentUser && (
+      {(currentUser || (!isLoading && !error)) && currentUser && (
         <UserDetailsCard currentUser={currentUser} />
-      )}
-
-      {!isLoading && !error && !currentUser && (
-        <p className="text-center p-8 text-lg font-medium text-text-primary dark:text-text-primary-dark">
-          User is not logged in or no data was returned.
-        </p>
       )}
     </PageContainer>
   );
