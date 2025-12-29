@@ -4,6 +4,7 @@ import { http } from "../services/http";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import { faCopy, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "../../shared/components/button";
+import { useToast } from "../../shared/components/toast/use-toast";
 
 interface TokenModel {
   token: string;
@@ -52,6 +53,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   const [accessToken, setAccessToken] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const { showToast } = useToast();
   const tokenInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -89,13 +91,15 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
       );
       setAccessToken(token);
 
+      showToast("Access token generated successfully!", "success");
       refresh();
     } catch (error) {
       console.error("Error requesting access token:", error);
+      showToast("Failed to generate access token", "error");
     } finally {
       setIsLoading(false);
     }
-  }, [expirationDate, currentUser, refresh]);
+  }, [expirationDate, currentUser, refresh, showToast]);
 
   const handleCopyToken = useCallback(() => {
     if (accessToken && tokenInputRef.current) {
