@@ -21,7 +21,7 @@ export function EntityListTable<
             className="flex border-b font-semibold text-left
                     border-btn-secondary-border dark:border-btn-secondary-border-dark"
           >
-            <div role="columnheader" className="p-1 flex-1 min-w-0">
+            <div role="columnheader" className="p-1 flex-1 min-w-0 truncate">
               Items
             </div>
           </div>

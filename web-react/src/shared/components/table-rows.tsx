@@ -19,7 +19,7 @@ export function PrimitiveTableRow({
               border-btn-secondary-border dark:border-btn-secondary-border-dark
               hover:bg-table-row-hover dark:hover:bg-table-row-hover"
     >
-      <div role="cell" className="p-1 flex-1 min-w-0">
+      <div role="cell" className="p-1 flex-1 min-w-0 truncate">
         {value}
       </div>
     </div>
@@ -44,7 +44,7 @@ export function ObjectTableRow<
         <div
           key={column.header}
           role="cell"
-          className={`p-1 flex-1 min-w-0 ${column.className || ""}`}
+          className={`p-1 flex-1 min-w-0 truncate ${column.className || ""}`}
         >
           {column.render(item)}
         </div>

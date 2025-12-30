@@ -17,7 +17,7 @@ export function TableHeader<T extends Record<string, unknown>>({
           <div
             key={column.header}
             role="columnheader"
-            className={`p-1 flex-1 min-w-0 ${column.className || ""}`}
+            className={`p-1 flex-1 min-w-0 truncate ${column.className || ""}`}
           >
             {column.header}
           </div>
