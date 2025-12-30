@@ -19,6 +19,7 @@ export default function PromptPermissionsPage() {
     <PageContainer title={`Permissions for Prompt ${promptName}`}>
       <EntityPermissionsManager
         resourceId={promptName}
+        resourceName={promptName}
         resourceType="prompts"
         permissions={promptUserPermissions || []}
         isLoading={isLoading}

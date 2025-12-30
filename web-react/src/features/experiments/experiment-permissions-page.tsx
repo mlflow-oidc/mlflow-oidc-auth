@@ -27,6 +27,7 @@ export default function ExperimentPermissionsPage() {
     <PageContainer title={`Permissions for Experiment ${experimentName}`}>
       <EntityPermissionsManager
         resourceId={experimentId}
+        resourceName={experimentName}
         resourceType="experiments"
         permissions={experimentUserPermissions || []}
         isLoading={isLoading}

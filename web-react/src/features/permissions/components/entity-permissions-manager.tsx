@@ -12,9 +12,15 @@ import type {
     EntityPermission,
     PermissionType,
 } from "../../../shared/types/entity";
+import { useAllUsers } from "../../../core/hooks/use-all-users";
+import { useAllServiceAccounts } from "../../../core/hooks/use-all-accounts";
+import { Button } from "../../../shared/components/button";
+import { GrantPermissionModal } from "./grant-permission-modal";
+import { useState } from "react";
 
 interface EntityPermissionsManagerProps {
     resourceId: string;
+    resourceName: string;
     resourceType: PermissionType;
     permissions: EntityPermission[];
     isLoading: boolean;
@@ -24,6 +30,7 @@ interface EntityPermissionsManagerProps {
 
 export function EntityPermissionsManager({
     resourceId,
+    resourceName,
     resourceType,
     permissions,
     isLoading,
@@ -38,11 +45,18 @@ export function EntityPermissionsManager({
         handleSavePermission,
         handleRemovePermission,
         handleModalClose,
+        handleGrantPermission,
     } = usePermissionsManagement({
         resourceId,
         resourceType,
         refresh,
     });
+
+    const { allUsers } = useAllUsers();
+    const { allServiceAccounts } = useAllServiceAccounts();
+
+    const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+    const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
 
     const {
         searchTerm,
@@ -100,6 +114,20 @@ export function EntityPermissionsManager({
 
             {!isLoading && !error && (
                 <>
+                    <div className="flex items-center space-x-2 mb-4">
+                        <Button
+                            variant="secondary"
+                            onClick={() => setIsAddUserModalOpen(true)}
+                        >
+                            + Add
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            onClick={() => setIsAddAccountModalOpen(true)}
+                        >
+                            + Add Service Account
+                        </Button>
+                    </div>
                     <SearchInput
                         value={searchTerm}
                         onInputChange={handleInputChange}
@@ -124,6 +152,32 @@ export function EntityPermissionsManager({
                 item={editingItem}
                 username={editingItem?.name || ""}
                 type={resourceType}
+                isLoading={isSaving}
+            />
+
+            <GrantPermissionModal
+                isOpen={isAddUserModalOpen}
+                onClose={() => setIsAddUserModalOpen(false)}
+                onSave={async (username, permission) => {
+                    const success = await handleGrantPermission(username, permission);
+                    if (success) setIsAddUserModalOpen(false);
+                }}
+                title={`Grant user permissions for ${resourceName}`}
+                label="User"
+                options={allUsers || []}
+                isLoading={isSaving}
+            />
+
+            <GrantPermissionModal
+                isOpen={isAddAccountModalOpen}
+                onClose={() => setIsAddAccountModalOpen(false)}
+                onSave={async (username, permission) => {
+                    const success = await handleGrantPermission(username, permission);
+                    if (success) setIsAddAccountModalOpen(false);
+                }}
+                title={`Grant service account permissions for ${resourceName}`}
+                label="Service account"
+                options={allServiceAccounts || []}
                 isLoading={isSaving}
             />
         </>

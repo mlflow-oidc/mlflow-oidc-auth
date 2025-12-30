@@ -91,6 +91,34 @@ export function usePermissionsManagement({
         setEditingItem(null);
     }, []);
 
+    const handleGrantPermission = useCallback(async (username: string, permission: PermissionLevel) => {
+        setIsSaving(true);
+        try {
+            let url = "";
+            if (resourceType === "experiments") {
+                url = DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(username, resourceId);
+            } else if (resourceType === "models") {
+                url = DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(username, resourceId);
+            } else if (resourceType === "prompts") {
+                url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(username, resourceId);
+            }
+
+            await http(url, {
+                method: "POST",
+                body: JSON.stringify({ permission }),
+            });
+
+            showToast(`Permission for ${username} has been granted.`, "success");
+            refresh();
+            return true;
+        } catch {
+            showToast("Failed to grant permission. Please try again.", "error");
+            return false;
+        } finally {
+            setIsSaving(false);
+        }
+    }, [resourceId, resourceType, refresh, showToast]);
+
     return {
         isModalOpen,
         editingItem,
@@ -99,5 +127,6 @@ export function usePermissionsManagement({
         handleSavePermission,
         handleRemovePermission,
         handleModalClose,
+        handleGrantPermission,
     };
 }

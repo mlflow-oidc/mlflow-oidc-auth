@@ -19,6 +19,7 @@ export default function ModelPermissionsPage() {
     <PageContainer title={`Permissions for Model ${modelName}`}>
       <EntityPermissionsManager
         resourceId={modelName}
+        resourceName={modelName}
         resourceType="models"
         permissions={modelUserPermissions || []}
         isLoading={isLoading}
