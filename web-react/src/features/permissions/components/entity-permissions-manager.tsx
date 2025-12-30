@@ -58,6 +58,15 @@ export function EntityPermissionsManager({
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
 
+    const existingUsernames = new Set(permissions.map((p) => p.username));
+
+    const availableUsers = (allUsers || []).filter(
+        (username) => !existingUsernames.has(username)
+    );
+    const availableAccounts = (allServiceAccounts || []).filter(
+        (username) => !existingUsernames.has(username)
+    );
+
     const {
         searchTerm,
         submittedTerm,
@@ -118,12 +127,24 @@ export function EntityPermissionsManager({
                         <Button
                             variant="secondary"
                             onClick={() => setIsAddUserModalOpen(true)}
+                            disabled={availableUsers.length === 0}
+                            title={
+                                availableUsers.length === 0
+                                    ? "All users already have permissions"
+                                    : "Add user permission"
+                            }
                         >
                             + Add
                         </Button>
                         <Button
                             variant="secondary"
                             onClick={() => setIsAddAccountModalOpen(true)}
+                            disabled={availableAccounts.length === 0}
+                            title={
+                                availableAccounts.length === 0
+                                    ? "All service accounts already have permissions"
+                                    : "Add service account permission"
+                            }
                         >
                             + Add Service Account
                         </Button>
@@ -164,7 +185,7 @@ export function EntityPermissionsManager({
                 }}
                 title={`Grant user permissions for ${resourceName}`}
                 label="User"
-                options={allUsers || []}
+                options={availableUsers}
                 isLoading={isSaving}
             />
 
@@ -177,7 +198,7 @@ export function EntityPermissionsManager({
                 }}
                 title={`Grant service account permissions for ${resourceName}`}
                 label="Service account"
-                options={allServiceAccounts || []}
+                options={availableAccounts}
                 isLoading={isSaving}
             />
         </>
