@@ -1,24 +1,146 @@
+import { useEffect } from "react";
+import { Link, useParams } from "react-router";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { useUser } from "../../core/hooks/use-user";
 import { UserDetailsCard } from "./components/user-details-card";
+import { useSearch } from "../../core/hooks/use-search";
+import { useUserExperimentPermissions } from "../../core/hooks/use-user-experiment-permissions";
+import { useUserRegisteredModelPermissions } from "../../core/hooks/use-user-model-permissions";
+import { useUserPromptPermissions } from "../../core/hooks/use-user-prompt-permissions";
+import { EntityListTable } from "../../shared/components/entity-list-table";
+import ResultsHeader from "../../shared/components/page/results-header";
+import { SearchInput } from "../../shared/components/search-input";
+import type { ColumnConfig } from "../../shared/types/table";
+import type { PermissionItem } from "../../shared/types/entity";
+import { CreateAccessTokenButton } from "../../core/components/create-access-token-button";
 
 export const UserPage = () => {
-  const { currentUser, isLoading, error } = useUser();
+    const { tab = "info" } = useParams<{ tab?: string }>();
+    const { currentUser, isLoading: isUserLoading, error: userError } = useUser();
+    const username = currentUser?.username || null;
 
-  return (
-    <PageContainer title="User Information">
-      <PageStatus
-        isLoading={isLoading && !currentUser}
-        loadingText="Loading user information..."
-        error={error}
-      />
+    const experimentHook = useUserExperimentPermissions({ username });
+    const modelHook = useUserRegisteredModelPermissions({ username });
+    const promptHook = useUserPromptPermissions({ username });
 
-      {(currentUser || (!isLoading && !error)) && currentUser && (
-        <UserDetailsCard currentUser={currentUser} />
-      )}
-    </PageContainer>
-  );
+    const activeHook = {
+        info: null,
+        experiments: experimentHook,
+        models: modelHook,
+        prompts: promptHook,
+    }[tab as "info" | "experiments" | "models" | "prompts"] || null;
+
+    const {
+        searchTerm,
+        submittedTerm,
+        handleInputChange,
+        handleSearchSubmit,
+        handleClearSearch,
+    } = useSearch();
+
+    useEffect(() => {
+        handleClearSearch();
+    }, [tab, handleClearSearch]);
+
+    const tabs = [
+        { id: "info", label: "Info" },
+        { id: "experiments", label: "Experiments" },
+        { id: "prompts", label: "Prompts" },
+        { id: "models", label: "Models" },
+    ];
+
+    const permissionColumns: ColumnConfig<PermissionItem>[] = [
+        { header: "Name", render: (item) => item.name },
+        { header: "Permission", render: (item) => item.permission },
+        { header: "Kind", render: (item) => item.type },
+    ];
+
+    const isLoading = isUserLoading || (activeHook?.isLoading ?? false);
+    const error = userError || (activeHook?.error ?? null);
+
+    const filteredPermissions = activeHook?.permissions.filter((p: PermissionItem) =>
+        p.name.toLowerCase().includes(submittedTerm.toLowerCase())
+    ) ?? [];
+
+    const expirationDate = currentUser?.password_expiration ? new Date(currentUser.password_expiration) : null;
+    const formattedDate = expirationDate?.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+    });
+    const formattedTime = expirationDate?.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+    });
+
+    return (
+        <PageContainer title="User Page">
+            {currentUser && (
+                <div className="flex flex-col gap-2 items-start p-2 mb-2 bg-ui-bg dark:bg-ui-secondary-bg-dark">
+                    <div className="text-text-primary dark:text-text-primary-dark">
+                        {currentUser.password_expiration == null ? (
+                            <p className="font-medium">You have no access token yet</p>
+                        ) : (
+                            <p className="font-medium">{`Your token expires on: ${formattedDate} at ${formattedTime}`}</p>
+                        )}
+                    </div>
+                    <CreateAccessTokenButton />
+                </div>
+            )}
+
+            <div className="flex space-x-4 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
+                {tabs.map((tabItem) => (
+                    <Link
+                        key={tabItem.id}
+                        to={`/user/${tabItem.id}`}
+                        className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 ${tab === tabItem.id
+                            ? "border-btn-primary text-btn-primary dark:border-btn-primary-dark dark:text-btn-primary-dark"
+                            : "border-transparent text-text-primary dark:text-text-primary-dark hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark hover:border-btn-secondary-border dark:hover:border-btn-secondary-border-dark"
+                            }`}
+                    >
+                        {tabItem.label}
+                    </Link>
+                ))}
+            </div>
+
+            <PageStatus
+                isLoading={isLoading && (!currentUser || (tab !== "info" && !activeHook?.permissions))}
+                loadingText="Loading information..."
+                error={error}
+                onRetry={tab === "info" ? undefined : activeHook?.refresh}
+            />
+
+            {!isLoading && !error && currentUser && (
+                <>
+                    {tab === "info" && (
+                        <UserDetailsCard currentUser={currentUser} />
+                    )}
+                    {tab !== "info" && activeHook && (
+                        <>
+                        <div className="flex flex-row items-center gap-3 mb-2">
+                            <ResultsHeader count={filteredPermissions.length} />
+                            <SearchInput
+                                value={searchTerm}
+                                onInputChange={handleInputChange}
+                                onSubmit={handleSearchSubmit}
+                                onClear={handleClearSearch}
+                                placeholder={`Search ${tab}...`}
+                            />
+                        </div>
+                            <EntityListTable
+                                mode="object"
+                                data={filteredPermissions}
+                                columns={permissionColumns}
+                                searchTerm={submittedTerm}
+                            />
+                        </>
+                    )}
+                </>
+            )}
+        </PageContainer>
+    );
 };
 
 export default UserPage;

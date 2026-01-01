@@ -1,4 +1,3 @@
-import { CreateAccessTokenButton } from "../../../core/components/create-access-token-button";
 import type { CurrentUser } from "../../../shared/types/user";
 
 interface UserDetailsCardProps {
@@ -8,80 +7,59 @@ interface UserDetailsCardProps {
 export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
   currentUser,
 }) => {
-  const expirationDate = new Date(currentUser.password_expiration || "");
-  const formattedDate = expirationDate.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-  const formattedTime = expirationDate.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const rowClasses = "flex flex-row p-1 hover:bg-table-row-hover dark:hover:bg-table-row-hover transition-colors duration-150 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark";
+  const labelClasses = "w-1/3 font-semibold text-text-primary dark:text-text-primary-dark";
+  const valueClasses = "w-2/3 text-ui-text dark:text-ui-text-dark font-mono break-all";
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="flex flex-row flex-wrap gap-3 mb-3 justify-around items-center text-center text-text-primary dark:text-text-primary-dark">
-        {currentUser.password_expiration == null ? (
-          <>
-            <p>You have no access token yet</p>
-          </>
-        ) : (
-          <p>{`Your token expires on: ${formattedDate} at ${formattedTime}`}</p>
-        )}
-        <CreateAccessTokenButton />
-      </div>
-      <ul
-        className="divide-y divide-btn-secondary-border dark:divide-btn-secondary-border-dark 
-                   border border-btn-secondary-border dark:border-btn-secondary-border-dark 
-                   rounded-lg px-4 bg-ui-bg dark:bg-ui-secondary-bg-dark shadow-md"
-      >
+    <div className="flex flex-col text-sm">
+      <div className="divide-y divide-btn-secondary-border dark:divide-btn-secondary-border-dark">
         {[
           { label: "Display Name", value: currentUser.display_name },
           { label: "Username", value: currentUser.username },
         ].map(({ label, value }) => (
-          <li key={label} className="flex justify-between items-center py-3">
-            <strong className="font-medium text-text-primary dark:text-text-primary-dark">
-              {label}:
-            </strong>
-            <span className="text-right text-ui-text dark:text-ui-text-dark font-mono break-all ml-4">
+          <div key={label} className={rowClasses}>
+            <div className={labelClasses}>
+              {label}
+            </div>
+            <div className={valueClasses}>
               {value || "N/A"}
-            </span>
-          </li>
+            </div>
+          </div>
         ))}
 
+        <div className={rowClasses}>
+          <div className={labelClasses}>
+            Groups
+          </div>
+          <div className="w-2/3">
+            {currentUser.groups && currentUser.groups.length > 0 ? (
+              <div className="flex flex-wrap gap-2 py-0.5">
+                {currentUser.groups.map((group) => (
+                  <span
+                    key={group.id}
+                    className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-btn-secondary-bg dark:bg-btn-secondary-bg-dark text-text-primary dark:text-text-primary-dark border border-btn-secondary-border dark:border-btn-secondary-border-dark"
+                  >
+                    {group.group_name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="italic text-text-primary dark:text-text-primary-dark opacity-60">
+                This user is not a member of any groups.
+              </p>
+            )}
+          </div>
+        </div>
+
         {currentUser.is_admin && (
-          <div className="py-2 px-3 my-2 border-none">
-            <p className="text-sm text-logo">
-              You have <b>administrator privileges</b>. Additional management
-              options are available to you.
+          <div className="p-1 bg-logo/5">
+            <p className="text-logo font-medium">
+              You have administrator privileges. Additional management options are available to you.
             </p>
           </div>
         )}
-
-        <li className="py-3 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark">
-          <strong className="font-medium block mb-2 text-text-primary dark:text-text-primary-dark">
-            Groups:
-          </strong>
-          {currentUser.groups && currentUser.groups.length > 0 ? (
-            <ul className="list-disc list-inside ml-4 text-sm space-y-1">
-              {currentUser.groups.map((group) => (
-                <li
-                  key={group.id}
-                  className="text-ui-text dark:text-ui-text-dark"
-                >
-                  {group.group_name}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm italic text-text-primary dark:text-text-primary-dark ml-4">
-              This user is not a member of any groups.
-            </p>
-          )}
-        </li>
-      </ul>
+      </div>
     </div>
   );
 };

@@ -134,7 +134,7 @@ export default function App() {
         }
       />
       <Route
-        path="/user"
+        path="/user/:tab?"
         element={
           <ProtectedLayoutRoute>
             <UserPage />
