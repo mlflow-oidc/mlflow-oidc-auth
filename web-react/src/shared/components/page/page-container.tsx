@@ -7,7 +7,7 @@ export default function PageContainer({
 }) {
   return (
     <>
-      <h2 className="flex-shrink-0 text-3xl font-semibold mb-6 text-center">
+      <h2 className="flex-shrink-0 text-2xl font-medium mb-3 text-center">
         {title}
       </h2>
 
