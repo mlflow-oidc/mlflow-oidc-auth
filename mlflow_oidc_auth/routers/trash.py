@@ -87,7 +87,7 @@ async def list_deleted_experiments(
 
     except Exception as e:
         logger.error(f"Error listing deleted experiments for admin '{admin_username}': {str(e)}")
-        return JSONResponse(status_code=500, content={"error": f"Failed to retrieve deleted experiments: {str(e)}"})
+        return JSONResponse(status_code=500, content={"error": "Failed to retrieve deleted experiments"})
 
 
 @trash_router.post(

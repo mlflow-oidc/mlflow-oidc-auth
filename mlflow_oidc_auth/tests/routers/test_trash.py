@@ -79,7 +79,6 @@ class TestListDeletedExperimentsEndpoint:
 
         response_data = json.loads(result.body)
         assert "error" in response_data
-        assert "MLflow error" in response_data["error"]
 
     def test_list_deleted_experiments_integration_admin(self, admin_client: TestClient):
         """Test the endpoint through FastAPI test client as admin."""
