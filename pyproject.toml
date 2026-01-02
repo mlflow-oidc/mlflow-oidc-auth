@@ -35,6 +35,7 @@ dependencies = [
   "uvicorn>=0.20.0",
   "fastapi>=0.100.0",
   "asgiref>=3.0.0",
+  "httpx>=0.28.1"
 ]
 
 [project.optional-dependencies]
@@ -87,6 +88,9 @@ line-length = 160
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["mlflow_oidc_auth/tests"]
+markers = [
+  "integration: end-to-end tests that require a running server",
+]
 norecursedirs = [
   "integration-tests",
   "mlruns",

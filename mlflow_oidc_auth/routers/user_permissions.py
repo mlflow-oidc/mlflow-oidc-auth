@@ -8,6 +8,8 @@ from typing import List
 
 from fastapi import APIRouter, Body, Depends, Path
 from fastapi.exceptions import HTTPException
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
 from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
@@ -521,9 +523,16 @@ async def create_user_prompt_permission(
             permission=permission_data.permission,
         )
         return JSONResponse(content={"status": "success", "message": f"Prompt permission created for {username} on {name}"}, status_code=201)
+    except MlflowException as e:
+        logger.error(f"Error creating prompt permission: {str(e)}")
+        if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
+            raise HTTPException(status_code=409, detail="Prompt permission already exists")
+        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
+            raise HTTPException(status_code=400, detail=str(e))
+        raise
     except Exception as e:
         logger.error(f"Error creating prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create prompt permission")
+        raise HTTPException(status_code=500, detail="Failed to create prompt permission")
 
 
 @user_permissions_router.get(
@@ -593,9 +602,16 @@ async def update_user_prompt_permission(
             permission=permission_data.permission,
         )
         return JSONResponse(content={"status": "success", "message": f"Prompt permission updated for {username} on {name}"})
+    except MlflowException as e:
+        logger.error(f"Error updating prompt permission: {str(e)}")
+        if getattr(e, "error_code", None) == RESOURCE_DOES_NOT_EXIST:
+            raise HTTPException(status_code=404, detail="Prompt permission does not exist")
+        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
+            raise HTTPException(status_code=400, detail=str(e))
+        raise
     except Exception as e:
         logger.error(f"Error updating prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update prompt permission")
+        raise HTTPException(status_code=500, detail="Failed to update prompt permission")
 
 
 @user_permissions_router.delete(
@@ -918,9 +934,16 @@ async def create_user_registered_model_permission(
             permission=permission_data.permission,
         )
         return JSONResponse(content={"status": "success", "message": f"Registered model permission created for {username} on {name}"}, status_code=201)
+    except MlflowException as e:
+        logger.error(f"Error creating registered model permission: {str(e)}")
+        if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
+            raise HTTPException(status_code=409, detail="Registered model permission already exists")
+        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
+            raise HTTPException(status_code=400, detail=str(e))
+        raise
     except Exception as e:
         logger.error(f"Error creating registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create registered model permission")
+        raise HTTPException(status_code=500, detail="Failed to create registered model permission")
 
 
 @user_permissions_router.get(
@@ -996,9 +1019,16 @@ async def update_user_registered_model_permission(
             permission=permission_data.permission,
         )
         return JSONResponse(content={"status": "success", "message": f"Registered model permission updated for {username} on {name}"})
+    except MlflowException as e:
+        logger.error(f"Error updating registered model permission: {str(e)}")
+        if getattr(e, "error_code", None) == RESOURCE_DOES_NOT_EXIST:
+            raise HTTPException(status_code=404, detail="Registered model permission does not exist")
+        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
+            raise HTTPException(status_code=400, detail=str(e))
+        raise
     except Exception as e:
         logger.error(f"Error updating registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update registered model permission")
+        raise HTTPException(status_code=500, detail="Failed to update registered model permission")
 
 
 @user_permissions_router.delete(

@@ -8,6 +8,16 @@ health_check_router = APIRouter(
 )
 
 
+@health_check_router.get("")
+async def health_check_root():
+    """Health check endpoint root.
+
+    Many deployment environments probe `/health` by default. We serve it here
+    to avoid falling through to the mounted MLflow WSGI app.
+    """
+    return {"status": "ok"}
+
+
 @health_check_router.get("/ready")
 async def health_check_ready():
     """Health check endpoint for readiness."""
