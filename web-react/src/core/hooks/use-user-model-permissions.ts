@@ -4,33 +4,33 @@ import { useApi } from "./use-api";
 import { useCallback } from "react";
 
 interface UseUserRegisteredModelPermissionsProps {
-    username: string | null;
+  username: string | null;
 }
 
 export function useUserRegisteredModelPermissions({
-    username,
+  username,
 }: UseUserRegisteredModelPermissionsProps) {
-    const fetcher = useCallback(
-        (signal?: AbortSignal) => {
-            if (username === null) {
-                return Promise.resolve([]) as Promise<ModelPermission[]>;
-            }
-            return fetchUserRegisteredModelPermissions(username, signal);
-        },
-        [username]
-    );
+  const fetcher = useCallback(
+    (signal?: AbortSignal) => {
+      if (username === null) {
+        return Promise.resolve([]) as Promise<ModelPermission[]>;
+      }
+      return fetchUserRegisteredModelPermissions(username, signal);
+    },
+    [username]
+  );
 
-    const {
-        data,
-        isLoading,
-        error,
-        refetch: refresh,
-    } = useApi<ModelPermission[]>(fetcher);
+  const {
+    data,
+    isLoading,
+    error,
+    refetch: refresh,
+  } = useApi<ModelPermission[]>(fetcher);
 
-    return {
-        permissions: data ?? [],
-        isLoading,
-        error,
-        refresh,
-    };
+  return {
+    permissions: data ?? [],
+    isLoading,
+    error,
+    refresh,
+  };
 }

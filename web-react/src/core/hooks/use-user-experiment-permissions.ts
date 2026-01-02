@@ -4,33 +4,33 @@ import { useApi } from "./use-api";
 import { useCallback } from "react";
 
 interface UseUserExperimentPermissionsProps {
-    username: string | null;
+  username: string | null;
 }
 
 export function useUserExperimentPermissions({
-    username,
+  username,
 }: UseUserExperimentPermissionsProps) {
-    const fetcher = useCallback(
-        (signal?: AbortSignal) => {
-            if (username === null) {
-                return Promise.resolve([]) as Promise<ExperimentPermission[]>;
-            }
-            return fetchUserExperimentPermissions(username, signal);
-        },
-        [username]
-    );
+  const fetcher = useCallback(
+    (signal?: AbortSignal) => {
+      if (username === null) {
+        return Promise.resolve([]) as Promise<ExperimentPermission[]>;
+      }
+      return fetchUserExperimentPermissions(username, signal);
+    },
+    [username]
+  );
 
-    const {
-        data,
-        isLoading,
-        error,
-        refetch: refresh,
-    } = useApi<ExperimentPermission[]>(fetcher);
+  const {
+    data,
+    isLoading,
+    error,
+    refetch: refresh,
+  } = useApi<ExperimentPermission[]>(fetcher);
 
-    return {
-        permissions: data ?? [],
-        isLoading,
-        error,
-        refresh,
-    };
+  return {
+    permissions: data ?? [],
+    isLoading,
+    error,
+    refresh,
+  };
 }
