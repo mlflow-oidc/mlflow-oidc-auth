@@ -24,24 +24,20 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-  "cachelib<1",
   "mlflow<4,>=3.3.1",
   "python-dotenv<2",
   "requests<3,>=2.31.0",
   "sqlalchemy<3,>=1.4.0",
   "flask<4",
-  "flask-session>=0.7.0",
   "gunicorn<24; platform_system != 'Windows'",
   "alembic<2,!=1.10.0",
   "authlib<2",
-  "flask-caching<3",
   "uvicorn>=0.20.0",
   "fastapi>=0.100.0",
   "asgiref>=3.0.0",
 ]
 
 [project.optional-dependencies]
-caching-redis = ["redis[hiredis]<6"]
 dev = [
   "black<26,>=24.8.0",
   "pytest<9,>=8.3.2",
@@ -52,7 +48,6 @@ test = [
   "pytest<9,>=8.3.2",
   "pytest-cov<6,>=5.0.0",
   "pytest-asyncio<2",
-  "redis[hiredis]<6",
   "httpx<1,>=0.28.1",
 ]
 

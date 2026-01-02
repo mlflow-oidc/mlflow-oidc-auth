@@ -39,68 +39,20 @@ The application can be configured through environment variables, dotenv files, o
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `SECRET_KEY` | String | Auto-generated | Flask secret key for session signing |
+| `SECRET_KEY` | String | Auto-generated | Secret used to sign the Starlette session cookie and also set the mounted MLflow (Flask) app secret |
 | `AUTOMATIC_LOGIN_REDIRECT` | Boolean | `false` | Automatically redirect to the OIDC login page |
 
-### Session Configuration
+### Sessions
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `SESSION_TYPE` | String | `cachelib` | Session storage backend type |
-| `SESSION_PERMANENT` | Boolean | `false` | Whether sessions should be permanent |
-| `SESSION_KEY_PREFIX` | String | `mlflow_oidc:` | Prefix for session keys |
-| `PERMANENT_SESSION_LIFETIME` | Integer | `86400` | Lifetime of permanent sessions (seconds) |
+This FastAPI implementation uses Starlette's built-in cookie-based sessions.
 
-### Session Backend: CacheLib (File System)
-*Used when `SESSION_TYPE=cachelib`*
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `SESSION_CACHE_DIR` | String | `/tmp/flask_session` | Directory for session file storage |
-| `SESSION_CACHE_THRESHOLD` | Integer | `500` | Maximum number of session files before cleanup |
-
-### Session Backend: Redis
-*Used when `SESSION_TYPE=redis`*
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `REDIS_HOST` | String | `localhost` | Redis server hostname |
-| `REDIS_PORT` | Integer | `6379` | Redis server port |
-| `REDIS_DB` | Integer | `0` | Redis database number |
-| `REDIS_PASSWORD` | String | None | Redis server password |
-| `REDIS_SSL` | Boolean | `false` | Use SSL connection to Redis |
-| `REDIS_USERNAME` | String | None | Redis username for authentication |
-
-### Cache Configuration
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `CACHE_TYPE` | String | `FileSystemCache` | Cache backend type |
-
-### Cache Backend: File System
-*Used when `CACHE_TYPE=FileSystemCache`*
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `CACHE_DEFAULT_TIMEOUT` | Integer | `300` | Default cache timeout (seconds) |
-| `CACHE_IGNORE_ERRORS` | Boolean | `true` | Whether to ignore cache errors |
-| `CACHE_DIR` | String | `/tmp/flask_cache` | Directory for cache file storage |
-| `CACHE_THRESHOLD` | Integer | `500` | Maximum number of cache files before cleanup |
-
-### Cache Backend: Redis
-*Used when `CACHE_TYPE=RedisCache`*
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `CACHE_DEFAULT_TIMEOUT` | Integer | `300` | Default cache timeout (seconds) |
-| `CACHE_KEY_PREFIX` | String | `mlflow_oidc:` | Prefix for cache keys |
-| `CACHE_REDIS_HOST` | String | `localhost` | Redis server hostname for caching |
-| `CACHE_REDIS_PORT` | Integer | `6379` | Redis server port for caching |
-| `CACHE_REDIS_PASSWORD` | String | None | Redis server password for caching |
-| `CACHE_REDIS_DB` | Integer | `4` | Redis database number for caching |
+- Session data is stored client-side in a signed cookie.
+- No server-side session backend (Redis/filesystem) is required.
+- For multi-instance deployments, all instances must use the same `SECRET_KEY` so they can validate the session cookie.
 
 ### Logging Configuration
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `LOG_LEVEL` | String | `INFO` | Application logging level |
+| `LOGGING_LOGGER_NAME` | String | `uvicorn` | Logger name to configure (defaults to the Uvicorn logger) |

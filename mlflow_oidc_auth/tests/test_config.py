@@ -102,11 +102,6 @@ class TestAppConfig(unittest.TestCase):
             "PERMISSION_SOURCE_ORDER",
             "EXTEND_MLFLOW_MENU",
             "DEFAULT_LANDING_PAGE_IS_PERMISSIONS",
-            "SESSION_TYPE",
-            "SESSION_PERMANENT",
-            "SESSION_KEY_PREFIX",
-            "PERMANENT_SESSION_LIFETIME",
-            "CACHE_TYPE",
         ]
 
         for var in env_vars_to_clear:
@@ -135,11 +130,6 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["user", "group", "regex", "group-regex"])
         self.assertTrue(config.EXTEND_MLFLOW_MENU)
         self.assertTrue(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
-        self.assertEqual(config.SESSION_TYPE, "cachelib")
-        self.assertFalse(config.SESSION_PERMANENT)
-        self.assertEqual(config.SESSION_KEY_PREFIX, "mlflow_oidc:")
-        self.assertEqual(config.PERMANENT_SESSION_LIFETIME, 86400)
-        self.assertEqual(config.CACHE_TYPE, "FileSystemCache")
 
     def test_app_config_environment_variable_override(self):
         """Test that environment variables override default values."""
@@ -162,11 +152,6 @@ class TestAppConfig(unittest.TestCase):
             "PERMISSION_SOURCE_ORDER": "group,user,regex",
             "EXTEND_MLFLOW_MENU": "false",
             "DEFAULT_LANDING_PAGE_IS_PERMISSIONS": "false",
-            "SESSION_TYPE": "redis",
-            "SESSION_PERMANENT": "true",
-            "SESSION_KEY_PREFIX": "custom:",
-            "PERMANENT_SESSION_LIFETIME": "3600",
-            "CACHE_TYPE": "RedisCache",
         }
 
         with patch.dict(os.environ, test_env):
@@ -190,11 +175,6 @@ class TestAppConfig(unittest.TestCase):
             self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["group", "user", "regex"])
             self.assertFalse(config.EXTEND_MLFLOW_MENU)
             self.assertFalse(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
-            self.assertEqual(config.SESSION_TYPE, "redis")
-            self.assertTrue(config.SESSION_PERMANENT)
-            self.assertEqual(config.SESSION_KEY_PREFIX, "custom:")
-            self.assertEqual(config.PERMANENT_SESSION_LIFETIME, "3600")
-            self.assertEqual(config.CACHE_TYPE, "RedisCache")
 
     def test_app_config_group_name_parsing(self):
         """Test that OIDC_GROUP_NAME is correctly parsed from comma-separated values."""
@@ -240,100 +220,6 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(len(config1.SECRET_KEY), 32)
         self.assertEqual(len(config2.SECRET_KEY), 32)
 
-    @patch("mlflow_oidc_auth.config.importlib.import_module")
-    def test_session_module_import_success(self, mock_import_module):
-        """Test successful session module import and attribute setting."""
-        # Create a mock session module
-        mock_session_module = MagicMock()
-
-        # Set up the attributes directly on the mock
-        mock_session_module.SESSION_COOKIE_NAME = "test_session"
-        mock_session_module.SESSION_COOKIE_DOMAIN = "example.com"
-        mock_session_module.lowercase_attr = "should_be_ignored"
-        mock_session_module.ANOTHER_SETTING = "test_value"
-
-        # Configure dir() to return the attributes
-        def mock_dir(obj):
-            return ["SESSION_COOKIE_NAME", "SESSION_COOKIE_DOMAIN", "lowercase_attr", "ANOTHER_SETTING"]
-
-        mock_import_module.return_value = mock_session_module
-
-        with patch.dict(os.environ, {"SESSION_TYPE": "redis", "CACHE_TYPE": ""}):
-            with patch("builtins.dir", side_effect=mock_dir):
-                config = AppConfig()
-
-                # Verify import was called correctly
-                mock_import_module.assert_called_with("mlflow_oidc_auth.session.redis")
-
-                # Verify uppercase attributes were set
-                self.assertEqual(config.SESSION_COOKIE_NAME, "test_session")
-                self.assertEqual(config.SESSION_COOKIE_DOMAIN, "example.com")
-                self.assertEqual(config.ANOTHER_SETTING, "test_value")
-
-                # Verify lowercase attribute was not set
-                self.assertFalse(hasattr(config, "lowercase_attr"))
-
-    @patch("mlflow_oidc_auth.config.importlib.import_module")
-    def test_cache_module_import_success(self, mock_import_module):
-        """Test successful cache module import and attribute setting."""
-        # Create mock modules for both session and cache
-        mock_session_module = MagicMock()
-        mock_cache_module = MagicMock()
-
-        # Set up cache module attributes
-        mock_cache_module.CACHE_DEFAULT_TIMEOUT = 300
-        mock_cache_module.CACHE_KEY_PREFIX = "cache:"
-        mock_cache_module.lowercase_attr = "should_be_ignored"
-        mock_cache_module.CACHE_REDIS_URL = "redis://localhost:6379"
-
-        # Configure dir() to return the attributes
-        def mock_dir(obj):
-            if obj == mock_cache_module:
-                return ["CACHE_DEFAULT_TIMEOUT", "CACHE_KEY_PREFIX", "lowercase_attr", "CACHE_REDIS_URL"]
-            return []
-
-        def side_effect(module_name):
-            if "cache" in module_name:
-                return mock_cache_module
-            return mock_session_module
-
-        mock_import_module.side_effect = side_effect
-
-        with patch.dict(os.environ, {"CACHE_TYPE": "RedisCache", "SESSION_TYPE": "cachelib"}):
-            with patch("builtins.dir", side_effect=mock_dir):
-                config = AppConfig()
-
-                # Verify import was called correctly
-                mock_import_module.assert_any_call("mlflow_oidc_auth.cache.rediscache")
-
-                # Verify uppercase attributes were set
-                self.assertEqual(config.CACHE_DEFAULT_TIMEOUT, 300)
-                self.assertEqual(config.CACHE_KEY_PREFIX, "cache:")
-                self.assertEqual(config.CACHE_REDIS_URL, "redis://localhost:6379")
-
-                # Verify lowercase attribute was not set
-                self.assertFalse(hasattr(config, "lowercase_attr"))
-
-    def test_session_type_none_skips_import(self):
-        """Test that empty SESSION_TYPE still attempts import (default behavior)."""
-        with patch.dict(os.environ, {"SESSION_TYPE": "", "CACHE_TYPE": ""}):
-            with patch("mlflow_oidc_auth.config.importlib.import_module") as mock_import:
-                config = AppConfig()
-
-                # Empty string is still truthy in the if condition, so import is attempted
-                # This is the actual behavior of the code
-                self.assertEqual(config.SESSION_TYPE, "")
-
-    def test_cache_type_none_skips_import(self):
-        """Test that empty CACHE_TYPE still attempts import (default behavior)."""
-        with patch.dict(os.environ, {"CACHE_TYPE": "", "SESSION_TYPE": ""}):
-            with patch("mlflow_oidc_auth.config.importlib.import_module") as mock_import:
-                config = AppConfig()
-
-                # Empty string is still truthy in the if condition, so import is attempted
-                # This is the actual behavior of the code
-                self.assertEqual(config.CACHE_TYPE, "")
-
     def test_boolean_environment_variables_edge_cases(self):
         """Test edge cases for boolean environment variable parsing."""
         # Test with whitespace - note: get_bool_env_variable doesn't strip whitespace
@@ -347,10 +233,6 @@ class TestAppConfig(unittest.TestCase):
             self.assertTrue(config.EXTEND_MLFLOW_MENU)
 
         # Test with numeric values
-        with patch.dict(os.environ, {"SESSION_PERMANENT": "1"}):
-            config = AppConfig()
-            self.assertTrue(config.SESSION_PERMANENT)
-
         with patch.dict(os.environ, {"DEFAULT_LANDING_PAGE_IS_PERMISSIONS": "0"}):
             config = AppConfig()
             self.assertFalse(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
@@ -371,7 +253,9 @@ class TestAppConfig(unittest.TestCase):
 
     def test_security_configuration_settings(self):
         """Test security-related configuration settings."""
-        # Test that SECRET_KEY is properly set and has sufficient length
+        # Test that a generated SECRET_KEY is properly set and has sufficient length
+        if "SECRET_KEY" in os.environ:
+            del os.environ["SECRET_KEY"]
         config = AppConfig()
         self.assertIsNotNone(config.SECRET_KEY)
         self.assertGreaterEqual(len(config.SECRET_KEY), 32)
@@ -400,45 +284,6 @@ class TestAppConfig(unittest.TestCase):
             with patch.dict(os.environ, {"OIDC_USERS_DB_URI": uri}):
                 config = AppConfig()
                 self.assertEqual(config.OIDC_USERS_DB_URI, uri)
-
-    @patch("mlflow_oidc_auth.config.importlib.import_module")
-    def test_module_import_case_sensitivity(self, mock_import_module):
-        """Test that module names are properly lowercased for import."""
-        mock_module = MagicMock()
-
-        # Configure dir() to return empty list
-        def mock_dir(obj):
-            return []
-
-        mock_import_module.return_value = mock_module
-
-        # Test session module case conversion
-        with patch.dict(os.environ, {"SESSION_TYPE": "REDIS", "CACHE_TYPE": ""}):
-            with patch("builtins.dir", side_effect=mock_dir):
-                AppConfig()
-                mock_import_module.assert_any_call("mlflow_oidc_auth.session.redis")
-
-        # Reset mock for next test
-        mock_import_module.reset_mock()
-
-        # Test cache module case conversion
-        with patch.dict(os.environ, {"CACHE_TYPE": "REDISCACHE", "SESSION_TYPE": ""}):
-            with patch("builtins.dir", side_effect=mock_dir):
-                AppConfig()
-                mock_import_module.assert_any_call("mlflow_oidc_auth.cache.rediscache")
-
-    def test_permanent_session_lifetime_type(self):
-        """Test that PERMANENT_SESSION_LIFETIME maintains its type."""
-        # Test default value
-        config = AppConfig()
-        self.assertEqual(config.PERMANENT_SESSION_LIFETIME, 86400)
-        self.assertIsInstance(config.PERMANENT_SESSION_LIFETIME, int)
-
-        # Test custom value (should remain as string from environment)
-        with patch.dict(os.environ, {"PERMANENT_SESSION_LIFETIME": "3600"}):
-            config = AppConfig()
-            self.assertEqual(config.PERMANENT_SESSION_LIFETIME, "3600")
-            self.assertIsInstance(config.PERMANENT_SESSION_LIFETIME, str)
 
 
 if __name__ == "__main__":
