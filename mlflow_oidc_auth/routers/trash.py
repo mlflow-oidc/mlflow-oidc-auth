@@ -15,6 +15,7 @@ from mlflow.utils.time import get_current_time_millis
 
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.utils.data_fetching import fetch_all_experiments
 
 from ._prefix import TRASH_ROUTER_PREFIX
 
@@ -65,8 +66,6 @@ async def list_deleted_experiments(
     """
     try:
         # Fetch all deleted experiments using view_type=2 for DELETED_ONLY
-        from mlflow_oidc_auth.utils.data_fetching import fetch_all_experiments
-
         deleted_experiments = fetch_all_experiments(view_type=2)  # ViewType.DELETED_ONLY
 
         # Format the response data
@@ -88,7 +87,7 @@ async def list_deleted_experiments(
 
     except Exception as e:
         logger.error(f"Error listing deleted experiments for admin '{admin_username}': {str(e)}")
-        return JSONResponse(status_code=500, content={"error": "Failed to retrieve deleted experiments."})
+        return JSONResponse(status_code=500, content={"error": f"Failed to retrieve deleted experiments: {str(e)}"})
 
 
 @trash_router.post(

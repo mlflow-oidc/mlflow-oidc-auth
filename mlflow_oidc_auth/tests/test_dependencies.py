@@ -36,9 +36,11 @@ class TestCheckAdminPermission:
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.dependencies.get_is_admin")
-    async def test_check_admin_permission_denied(self, mock_get_is_admin):
+    @patch("mlflow_oidc_auth.dependencies.get_username")
+    async def test_check_admin_permission_denied(self, mock_get_username, mock_get_is_admin):
         """Test admin permission check when user is not admin."""
         mock_request = MagicMock(spec=Request)
+        mock_get_username.return_value = "user@example.com"
         mock_get_is_admin.return_value = False
 
         with pytest.raises(HTTPException) as exc_info:
@@ -47,18 +49,23 @@ class TestCheckAdminPermission:
         assert exc_info.value.status_code == 403
         assert "Administrator privileges required for this operation" in str(exc_info.value.detail)
         mock_get_is_admin.assert_called_once_with(request=mock_request)
+        mock_get_username.assert_called_once_with(request=mock_request)
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.dependencies.get_is_admin")
-    async def test_check_admin_permission_none_result(self, mock_get_is_admin):
+    @patch("mlflow_oidc_auth.dependencies.get_username")
+    async def test_check_admin_permission_none_result(self, mock_get_username, mock_get_is_admin):
         """Test admin permission check when get_is_admin returns None."""
         mock_request = MagicMock(spec=Request)
+        mock_get_username.return_value = "user@example.com"
         mock_get_is_admin.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
             await check_admin_permission(mock_request)
 
         assert exc_info.value.status_code == 403
+        mock_get_is_admin.assert_called_once_with(request=mock_request)
+        mock_get_username.assert_called_once_with(request=mock_request)
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.dependencies.get_is_admin")
@@ -69,18 +76,24 @@ class TestCheckAdminPermission:
         mock_get_is_admin.return_value = True
         mock_get_username.side_effect = Exception("Username retrieval failed")
 
-        with pytest.raises(Exception, match="Username retrieval failed"):
+        with pytest.raises(HTTPException) as exc_info:
             await check_admin_permission(mock_request)
+
+        assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.dependencies.get_is_admin")
-    async def test_check_admin_permission_get_is_admin_exception(self, mock_get_is_admin):
+    @patch("mlflow_oidc_auth.dependencies.get_username")
+    async def test_check_admin_permission_get_is_admin_exception(self, mock_get_username, mock_get_is_admin):
         """Test admin permission check when get_is_admin raises an exception."""
         mock_request = MagicMock(spec=Request)
+        mock_get_username.return_value = "user@example.com"
         mock_get_is_admin.side_effect = Exception("Admin check failed")
 
-        with pytest.raises(Exception, match="Admin check failed"):
+        with pytest.raises(HTTPException) as exc_info:
             await check_admin_permission(mock_request)
+
+        assert exc_info.value.status_code == 403
 
 
 class TestCheckExperimentManagePermission:

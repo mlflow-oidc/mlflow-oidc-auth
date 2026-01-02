@@ -94,18 +94,20 @@ async def login(request: Request):
 
         # Redirect to OIDC provider
         try:
-            if hasattr(oauth.oidc, "authorize_redirect"):
-                return await oauth.oidc.authorize_redirect(  # type: ignore
-                    request,
-                    redirect_uri=redirect_url,
-                    state=oauth_state,
-                )
-            else:
+            if not hasattr(oauth.oidc, "authorize_redirect"):
                 logger.error("OIDC client authorize_redirect method not available")
                 raise HTTPException(status_code=500, detail="OIDC authentication not available")
+
+            return await oauth.oidc.authorize_redirect(  # type: ignore
+                request,
+                redirect_uri=redirect_url,
+                state=oauth_state,
+            )
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Failed to initiate OAuth redirect: {e}")
-            raise HTTPException(status_code=500, detail="Failed to initiate OIDC authentication")
+            raise HTTPException(status_code=500, detail="Failed to initiate OIDC login")
 
     except HTTPException:
         # Preserve explicit HTTPExceptions raised above

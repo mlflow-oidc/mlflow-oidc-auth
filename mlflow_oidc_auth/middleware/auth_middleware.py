@@ -226,6 +226,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         else:
             # Authentication failed - for API routes return 401 JSON, else redirect to login
             logger.info(f"Authentication failed for {path}: {error_msg}")
+            # Treat certain non-/api routes as API-style endpoints (no redirects)
+            # so callers get an HTTP error instead of a redirected 200.
             if path.startswith("/api"):
                 return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+            if path.startswith("/oidc/trash"):
+                return JSONResponse(status_code=403, content={"detail": "Administrator privileges required for this operation"})
             return await self._handle_auth_redirect(request)

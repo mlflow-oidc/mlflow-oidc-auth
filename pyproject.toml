@@ -83,3 +83,14 @@ version = {attr = "mlflow_oidc_auth.version"}
 
 [tool.black]
 line-length = 160
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["mlflow_oidc_auth/tests"]
+norecursedirs = [
+  "integration-tests",
+  "mlruns",
+  "mlruns.old",
+  "htmlcov",
+  "__pycache__",
+]

@@ -23,6 +23,11 @@ class TestGetLogger:
 
         mlflow_oidc_auth.logger._logger = None
 
+        # Ensure ambient shell env doesn't affect default-level tests
+        for key in ["LOGGING_LOGGER_NAME", "LOG_LEVEL"]:
+            if key in os.environ:
+                del os.environ[key]
+
     def teardown_method(self):
         """Clean up after each test."""
         # Reset the global _logger

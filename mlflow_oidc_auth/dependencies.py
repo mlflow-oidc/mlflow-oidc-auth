@@ -34,13 +34,18 @@ async def check_admin_permission(
     HTTPException
         If the user is not authenticated or doesn't have admin permissions.
     """
-    # Check if user is authenticated and has admin permissions
-    is_admin = await get_is_admin(request=request)
+    try:
+        username = await get_username(request=request)
+        is_admin = await get_is_admin(request=request)
+    except Exception:
+        # Keep behavior simple for callers: admin-only endpoints always respond
+        # with 403 when the user cannot be identified or checked.
+        raise HTTPException(status_code=403, detail="Administrator privileges required for this operation")
+
     if not is_admin:
         raise HTTPException(status_code=403, detail="Administrator privileges required for this operation")
 
-    # Return the username for use in the endpoint function
-    return await get_username(request=request)
+    return username
 
 
 async def check_experiment_manage_permission(

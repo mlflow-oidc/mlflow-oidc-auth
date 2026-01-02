@@ -254,18 +254,22 @@ async def get_base_path(request: Request) -> str:
         Base path string (without trailing slash)
     """
     # First check X-Forwarded-Prefix header (nginx, apache, etc.)
-    forwarded_prefix = request.headers.get("x-forwarded-prefix", "")
+    headers = getattr(request, "headers", {}) or {}
+    forwarded_prefix = headers.get("x-forwarded-prefix", "")
     if forwarded_prefix:
         return forwarded_prefix.rstrip("/")
 
     # Then check root_path from ASGI scope (set by ProxyHeadersMiddleware or ASGI server)
-    root_path = request.scope.get("root_path", "")
+    scope = getattr(request, "scope", None) or {}
+    root_path = scope.get("root_path", "")
     if root_path:
         return root_path.rstrip("/")
 
     # Fallback to base URL path for direct access
-    if request.base_url.path and request.base_url.path != "/":
-        return request.base_url.path.rstrip("/")
+    base_url = getattr(request, "base_url", None)
+    base_url_path = getattr(base_url, "path", "") if base_url is not None else ""
+    if base_url_path and base_url_path != "/":
+        return base_url_path.rstrip("/")
 
     # Default to empty string (no prefix)
     return ""
