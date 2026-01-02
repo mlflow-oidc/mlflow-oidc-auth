@@ -6,7 +6,6 @@ import { useSearch } from "../../core/hooks/use-search";
 import { useAllServiceAccounts } from "../../core/hooks/use-all-accounts";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import ResultsHeader from "../../shared/components/page/results-header";
 import { useCurrentUser } from "../../core/hooks/use-current-user";
 import { Button } from "../../shared/components/button";
 import { CreateServiceAccountModal } from "./components/create-service-account-modal";
@@ -58,7 +57,7 @@ export default function ServiceAccountsPage() {
   const isAdmin = currentUser?.is_admin === true;
 
   return (
-    <PageContainer title="Service Accounts Page">
+    <PageContainer title="Service Accounts">
       <PageStatus
         isLoading={isLoading}
         loadingText="Loading service accounts list..."
@@ -79,14 +78,16 @@ export default function ServiceAccountsPage() {
               </Button>
             </div>
           )}
-          <SearchInput
-            value={searchTerm}
-            onInputChange={handleInputChange}
-            onSubmit={handleSearchSubmit}
-            onClear={handleClearSearch}
-            placeholder="Search service accounts..."
-          />
-          <ResultsHeader count={filteredServiceAccounts.length} />
+          <div className="mb-2">
+            <SearchInput
+              value={searchTerm}
+              onInputChange={handleInputChange}
+              onSubmit={handleSearchSubmit}
+              onClear={handleClearSearch}
+              placeholder="Search service accounts..."
+            />
+          </div>
+          
           <EntityListTable
             mode="primitive"
             data={filteredServiceAccounts}

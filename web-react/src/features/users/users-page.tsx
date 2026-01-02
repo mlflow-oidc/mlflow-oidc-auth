@@ -4,7 +4,6 @@ import { EntityListTable } from "../../shared/components/entity-list-table";
 import { useSearch } from "../../core/hooks/use-search";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import ResultsHeader from "../../shared/components/page/results-header";
 import { RowActionButton } from "../../shared/components/row-action-button";
 import type { ColumnConfig } from "../../shared/types/table";
 
@@ -53,7 +52,7 @@ export default function UsersPage() {
   ];
 
   return (
-    <PageContainer title="Users Page">
+    <PageContainer title="Users">
       <PageStatus
         isLoading={isLoading}
         loadingText="Loading users list..."
@@ -63,14 +62,15 @@ export default function UsersPage() {
 
       {!isLoading && !error && (
         <>
-          <SearchInput
-            value={searchTerm}
-            onInputChange={handleInputChange}
-            onSubmit={handleSearchSubmit}
-            onClear={handleClearSearch}
-            placeholder="Search users..."
-          />
-          <ResultsHeader count={filteredUsers.length} />
+          <div className="flex flex-row items-center gap-3 mb-2">
+            <SearchInput
+              value={searchTerm}
+              onInputChange={handleInputChange}
+              onSubmit={handleSearchSubmit}
+              onClear={handleClearSearch}
+              placeholder="Search users..."
+            />
+          </div>
           <EntityListTable
             mode="object"
             data={tableData}

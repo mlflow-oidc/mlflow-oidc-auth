@@ -1,7 +1,6 @@
 import { useSearch } from "../../../core/hooks/use-search";
 import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
-import ResultsHeader from "../../../shared/components/page/results-header";
 import { SearchInput } from "../../../shared/components/search-input";
 import { IconButton } from "../../../shared/components/icon-button";
 import { faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
@@ -149,14 +148,16 @@ export function EntityPermissionsManager({
                             + Add Service Account
                         </Button>
                     </div>
-                    <SearchInput
-                        value={searchTerm}
-                        onInputChange={handleInputChange}
-                        onSubmit={handleSearchSubmit}
-                        onClear={handleClearSearch}
-                        placeholder="Search permissions..."
-                    />
-                    <ResultsHeader count={filteredPermissions.length} />
+                    <div className="mb-2">
+                        <SearchInput
+                            value={searchTerm}
+                            onInputChange={handleInputChange}
+                            onSubmit={handleSearchSubmit}
+                            onClear={handleClearSearch}
+                            placeholder="Search permissions..."
+                        />
+                    </div>
+                    
                     <EntityListTable
                         mode="object"
                         data={filteredPermissions}

@@ -9,7 +9,6 @@ import { useUserExperimentPermissions } from "../../core/hooks/use-user-experime
 import { useUserRegisteredModelPermissions } from "../../core/hooks/use-user-model-permissions";
 import { useUserPromptPermissions } from "../../core/hooks/use-user-prompt-permissions";
 import { EntityListTable } from "../../shared/components/entity-list-table";
-import ResultsHeader from "../../shared/components/page/results-header";
 import { SearchInput } from "../../shared/components/search-input";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { PermissionItem } from "../../shared/types/entity";
@@ -119,8 +118,7 @@ export const UserPage = () => {
                     )}
                     {tab !== "info" && activeHook && (
                         <>
-                        <div className="flex flex-row items-center gap-3 mb-2">
-                            <ResultsHeader count={filteredPermissions.length} />
+                        <div className="mb-2">
                             <SearchInput
                                 value={searchTerm}
                                 onInputChange={handleInputChange}

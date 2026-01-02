@@ -2,7 +2,6 @@ import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import ResultsHeader from "../../shared/components/page/results-header";
 import { useSearch } from "../../core/hooks/use-search";
 import { useAllGroups } from "../../core/hooks/use-all-groups";
 
@@ -24,7 +23,7 @@ export default function GroupsPage() {
   );
 
   return (
-    <PageContainer title="Groups Page">
+    <PageContainer title="Groups">
       <PageStatus
         isLoading={isLoading}
         loadingText="Loading groups list..."
@@ -34,15 +33,15 @@ export default function GroupsPage() {
 
       {!isLoading && !error && (
         <>
-          <SearchInput
-            value={searchTerm}
-            onInputChange={handleInputChange}
-            onSubmit={handleSearchSubmit}
-            onClear={handleClearSearch}
-            placeholder="Search groups..."
-          />
-
-          <ResultsHeader count={filteredGroups.length} />
+          <div className="mb-2">
+            <SearchInput
+              value={searchTerm}
+              onInputChange={handleInputChange}
+              onSubmit={handleSearchSubmit}
+              onClear={handleClearSearch}
+              placeholder="Search groups..."
+             />
+          </div>
 
           <EntityListTable
             mode="primitive"

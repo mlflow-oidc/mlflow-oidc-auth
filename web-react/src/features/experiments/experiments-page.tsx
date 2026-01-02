@@ -6,7 +6,6 @@ import type { ExperimentListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import ResultsHeader from "../../shared/components/page/results-header";
 import { RowActionButton } from "../../shared/components/row-action-button";
 
 const experimentColumns: ColumnConfig<ExperimentListItem>[] = [
@@ -60,7 +59,7 @@ export default function ExperimentsPage() {
   ];
 
   return (
-    <PageContainer title="Experiments Page">
+    <PageContainer title="Experiments">
       <PageStatus
         isLoading={isLoading}
         loadingText="Loading experiments list..."
@@ -70,15 +69,15 @@ export default function ExperimentsPage() {
 
       {!isLoading && !error && (
         <>
-          <SearchInput
-            value={searchTerm}
-            onInputChange={handleInputChange}
-            onSubmit={handleSearchSubmit}
-            onClear={handleClearSearch}
-            placeholder="Search experiments..."
-          />
-
-          <ResultsHeader count={filteredExperiments.length} />
+          <div className="mb-2">
+            <SearchInput
+              value={searchTerm}
+              onInputChange={handleInputChange}
+              onSubmit={handleSearchSubmit}
+              onClear={handleClearSearch}
+              placeholder="Search experiments..."
+            />
+          </div>
 
           <EntityListTable
             mode="object"

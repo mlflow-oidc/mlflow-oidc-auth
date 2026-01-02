@@ -6,7 +6,6 @@ import { useSearch } from "../../core/hooks/use-search";
 import { useAllPrompts } from "../../core/hooks/use-all-prompts";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import ResultsHeader from "../../shared/components/page/results-header";
 import { RowActionButton } from "../../shared/components/row-action-button";
 
 const promptsColumns: ColumnConfig<PromptListItem>[] = [
@@ -57,7 +56,7 @@ export default function PromptsPage() {
   ];
 
   return (
-    <PageContainer title="Prompts Page">
+    <PageContainer title="Prompts">
       <PageStatus
         isLoading={isLoading}
         loadingText="Loading prompts list..."
@@ -67,14 +66,16 @@ export default function PromptsPage() {
 
       {!isLoading && !error && (
         <>
-          <SearchInput
-            value={searchTerm}
-            onInputChange={handleInputChange}
-            onSubmit={handleSearchSubmit}
-            onClear={handleClearSearch}
-            placeholder="Search prompts..."
-          />
-          <ResultsHeader count={filteredPrompts.length} />
+          <div className="mb-2">
+            <SearchInput
+              value={searchTerm}
+              onInputChange={handleInputChange}
+              onSubmit={handleSearchSubmit}
+              onClear={handleClearSearch}
+              placeholder="Search prompts..."
+            />
+          </div>
+          
           <EntityListTable
             mode="object"
             data={filteredPrompts}

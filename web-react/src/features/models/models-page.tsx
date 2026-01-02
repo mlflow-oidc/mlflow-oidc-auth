@@ -6,7 +6,6 @@ import { useSearch } from "../../core/hooks/use-search";
 import { useAllModels } from "../../core/hooks/use-all-models";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import ResultsHeader from "../../shared/components/page/results-header";
 import { RowActionButton } from "../../shared/components/row-action-button";
 
 const modelsColumns: ColumnConfig<ModelListItem>[] = [
@@ -57,7 +56,7 @@ export default function ModelsPage() {
   ];
 
   return (
-    <PageContainer title="Models Page">
+    <PageContainer title="Models">
       <PageStatus
         isLoading={isLoading}
         loadingText="Loading models list..."
@@ -67,14 +66,16 @@ export default function ModelsPage() {
 
       {!isLoading && !error && (
         <>
-          <SearchInput
-            value={searchTerm}
-            onInputChange={handleInputChange}
-            onSubmit={handleSearchSubmit}
-            onClear={handleClearSearch}
-            placeholder="Search models..."
-          />
-          <ResultsHeader count={filteredModels.length} />
+          <div className="mb-2">
+            <SearchInput
+              value={searchTerm}
+              onInputChange={handleInputChange}
+              onSubmit={handleSearchSubmit}
+              onClear={handleClearSearch}
+              placeholder="Search models..."
+             />
+          </div>
+          
           <EntityListTable
             mode="object"
             data={filteredModels}

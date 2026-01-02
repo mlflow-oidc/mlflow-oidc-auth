@@ -16,7 +16,6 @@ import { useUserRegisteredModelPermissions } from "../../core/hooks/use-user-mod
 import { useUserPromptPermissions } from "../../core/hooks/use-user-prompt-permissions";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import PageStatus from "../../shared/components/page/page-status";
-import ResultsHeader from "../../shared/components/page/results-header";
 import { SearchInput } from "../../shared/components/search-input";
 import { IconButton } from "../../shared/components/icon-button";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
@@ -179,7 +178,7 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
 
     return (
         <PageContainer title={`Permissions for ${username}`}>
-            <div className="flex space-x-4 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-6">
+            <div className="flex space-x-4 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
                 {tabs.map((tab) => (
                     <Link
                         key={tab.id}
@@ -203,14 +202,15 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
 
             {!isLoading && !error && (
                 <>
-                    <SearchInput
-                        value={searchTerm}
-                        onInputChange={handleInputChange}
-                        onSubmit={handleSearchSubmit}
-                        onClear={handleClearSearch}
-                        placeholder={`Search ${type}...`}
-                    />
-                    <ResultsHeader count={filteredData.length} />
+                    <div className="mb-3 mt-2">
+                        <SearchInput
+                            value={searchTerm}
+                            onInputChange={handleInputChange}
+                            onSubmit={handleSearchSubmit}
+                            onClear={handleClearSearch}
+                            placeholder={`Search ${type}...`}
+                        />
+                    </div>
                     <EntityListTable
                         mode="object"
                         data={filteredData}
