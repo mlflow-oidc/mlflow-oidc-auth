@@ -8,17 +8,6 @@ import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { RowActionButton } from "../../shared/components/row-action-button";
 
-const modelsColumns: ColumnConfig<ModelListItem>[] = [
-  {
-    header: "Name",
-    render: (item) => item.name,
-  },
-  {
-    header: "Description",
-    render: (item) => item.description,
-  },
-];
-
 export default function ModelsPage() {
   const {
     searchTerm,
@@ -47,7 +36,10 @@ export default function ModelsPage() {
   );
 
   const columnsWithAction: ColumnConfig<ModelListItem>[] = [
-    ...modelsColumns,
+    {
+      header: "Name",
+      render: (item) => item.name,
+    },
     {
       header: "Permissions",
       render: (item) => renderPermissionsButton(item),

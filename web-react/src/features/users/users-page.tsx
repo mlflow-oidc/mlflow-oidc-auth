@@ -62,7 +62,7 @@ export default function UsersPage() {
 
       {!isLoading && !error && (
         <>
-          <div className="flex flex-row items-center gap-3 mb-2">
+          <div className="mb-2">
             <SearchInput
               value={searchTerm}
               onInputChange={handleInputChange}

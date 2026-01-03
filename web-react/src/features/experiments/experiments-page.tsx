@@ -8,20 +8,6 @@ import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { RowActionButton } from "../../shared/components/row-action-button";
 
-const experimentColumns: ColumnConfig<ExperimentListItem>[] = [
-  {
-    header: "Experiment Name",
-    render: (item) => item.name,
-  },
-  {
-    header: "Tags",
-    render: (item) =>
-      Object.entries(item.tags)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join(", "),
-  },
-];
-
 export default function ExperimentsPage() {
   const {
     searchTerm,
@@ -50,7 +36,10 @@ export default function ExperimentsPage() {
   );
 
   const columnsWithAction: ColumnConfig<ExperimentListItem>[] = [
-    ...experimentColumns,
+    {
+      header: "Experiment Name",
+      render: (item) => item.name,
+    },
     {
       header: "Permissions",
       render: (item) => renderPermissionsButton(item),
