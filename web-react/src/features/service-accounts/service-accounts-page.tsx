@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { faPlus } from "@fortawesome/free-solid-svg-icons";
+import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { RowActionButton } from "../../shared/components/row-action-button";
+import { IconButton } from "../../shared/components/icon-button";
+import { http } from "../../core/services/http";
+import { STATIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
+import type { ColumnConfig } from "../../shared/types/table";
+
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import { useSearch } from "../../core/hooks/use-search";
@@ -54,7 +60,65 @@ export default function ServiceAccountsPage() {
     }
   };
 
+  const handleRemoveServiceAccount = async (username: string) => {
+    try {
+      await http(STATIC_API_ENDPOINTS.DELETE_USER, {
+        method: "DELETE",
+        body: JSON.stringify({ username }),
+      });
+      showToast(`Service account ${username} removed successfully.`, "success");
+      refresh();
+    } catch (err) {
+      console.error("Failed to remove service account:", err);
+      showToast("Failed to remove service account. Please try again.", "error");
+    }
+  };
+
+
   const isAdmin = currentUser?.is_admin === true;
+
+  const tableData = filteredServiceAccounts.map((username) => ({
+    id: username,
+    username,
+  }));
+
+  const columns: ColumnConfig<{ id: string; username: string }>[] = [
+    {
+      header: "Service Account Name",
+      render: ({ username }) => username,
+    },
+    {
+      header: "Permissions",
+      render: ({ username }) => (
+        <div className="invisible group-hover:visible">
+          <RowActionButton
+            entityId={username}
+            route="service-accounts"
+            buttonText="Manage permissions"
+          />
+        </div>
+      ),
+      className: "w-48",
+    },
+    ...(isAdmin
+      ? [
+          {
+            header: "Actions",
+            render: ({ username }: { username: string }) => (
+              <IconButton
+                icon={faTrash}
+                title="Remove service account"
+                onClick={() => {
+                  void handleRemoveServiceAccount(username);
+                }}
+              />
+            ),
+            className: "w-24",
+          },
+        ]
+      : []),
+  ];
+
 
   return (
     <PageContainer title="Service Accounts">
@@ -68,7 +132,7 @@ export default function ServiceAccountsPage() {
       {!isLoading && !error && (
         <>
           {isAdmin && (
-            <div className="mb-4">
+            <div className="mb-2">
               <Button
                 variant="secondary"
                 onClick={() => setIsModalOpen(true)}
@@ -89,8 +153,9 @@ export default function ServiceAccountsPage() {
           </div>
           
           <EntityListTable
-            mode="primitive"
-            data={filteredServiceAccounts}
+            mode="object"
+            data={tableData}
+            columns={columns}
             searchTerm={submittedTerm}
           />
 

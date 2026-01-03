@@ -25,6 +25,10 @@ const PromptPermissionsPage = React.lazy(
 const ServiceAccountsPage = React.lazy(
   () => import("./features/service-accounts/service-accounts-page")
 );
+const ServiceAccountPermissionPage = React.lazy(
+  () => import("./features/service-accounts/service-account-permission-page")
+);
+
 const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
 const UsersPage = React.lazy(() => import("./features/users/users-page"));
@@ -125,6 +129,15 @@ export default function App() {
           </ProtectedLayoutRoute>
         }
       />
+      <Route
+        path="/service-accounts/:username"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+
       <Route
         path="/trash"
         element={
