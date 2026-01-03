@@ -70,3 +70,25 @@ def validate_can_update_experiment_artifact_proxy(username: str):
 
 def validate_can_delete_experiment_artifact_proxy(username: str):
     return _get_permission_from_experiment_id_artifact_proxy(username).can_delete
+
+
+def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
+    """Validate READ permission for requests that include an experiment_ids list."""
+    experiment_ids = []
+
+    if request.method == "POST" and request.is_json:
+        data = request.get_json(silent=True) or {}
+        experiment_ids = data.get("experiment_ids", []) or []
+    else:
+        experiment_ids = request.args.getlist("experiment_ids")
+
+    for experiment_id in experiment_ids:
+        if not effective_experiment_permission(experiment_id, username).permission.can_read:
+            return False
+    return True
+
+
+def validate_can_update_experiment_from_experiment_id(username: str) -> bool:
+    """Validate UPDATE permission using an explicit experiment_id parameter."""
+    experiment_id = get_request_param("experiment_id")
+    return effective_experiment_permission(experiment_id, username).permission.can_update

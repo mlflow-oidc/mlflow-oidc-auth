@@ -7,7 +7,7 @@ dependency injection system for common authorization and validation tasks.
 
 from fastapi import Depends, Request, HTTPException, Path
 
-from mlflow_oidc_auth.utils import can_manage_experiment, get_username, get_is_admin, can_manage_registered_model
+from mlflow_oidc_auth.utils import can_manage_experiment, can_manage_registered_model, can_manage_scorer, get_is_admin, get_username
 
 
 async def check_admin_permission(
@@ -106,5 +106,39 @@ async def check_registered_model_manage_permission(
     """
     if not is_admin and not can_manage_registered_model(name, current_username):
         raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage {name}")
+
+    return None
+
+
+async def check_scorer_manage_permission(
+    request: Request,
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Check if the current user can manage the scorer from the incoming request.
+
+    This dependency supports MLflow v3 scorer permission routes:
+    - GET: parameters in query string
+    - POST/PATCH/DELETE: parameters in JSON body (with query fallback)
+    """
+
+    experiment_id = request.query_params.get("experiment_id")
+    scorer_name = request.query_params.get("scorer_name")
+
+    if request.method in {"POST", "PATCH", "DELETE"}:
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+
+        if isinstance(body, dict):
+            experiment_id = experiment_id or body.get("experiment_id")
+            scorer_name = scorer_name or body.get("scorer_name")
+
+    if not experiment_id or not scorer_name:
+        raise HTTPException(status_code=400, detail="Missing required parameters: experiment_id and scorer_name")
+
+    if not is_admin and not can_manage_scorer(str(experiment_id), str(scorer_name), str(current_username)):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage scorer {scorer_name}")
 
     return None

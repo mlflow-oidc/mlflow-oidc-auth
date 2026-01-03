@@ -1,6 +1,5 @@
 import re
 from typing import Any, Callable, Dict, Optional
-from mlflow_oidc_auth.bridge import get_fastapi_username, get_fastapi_admin_status
 
 from flask import Request, request
 from mlflow.protos.model_registry_pb2 import (
@@ -51,10 +50,17 @@ from mlflow.protos.service_pb2 import (
     SetTag,
     UpdateExperiment,
     UpdateRun,
+    RegisterScorer,
+    ListScorers,
+    GetScorer,
+    DeleteScorer,
+    ListScorerVersions,
 )
-from mlflow.server.handlers import get_endpoints
+
+from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
 from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
+from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 import mlflow_oidc_auth.responses as responses
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
@@ -76,12 +82,52 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_logged_model,
     validate_can_update_registered_model,
     validate_can_update_run,
+    validate_can_read_experiments_from_experiment_ids,
+    validate_can_update_experiment_from_experiment_id,
+    validate_can_read_metric_history_bulk_interval,
+    validate_can_read_traces_from_experiment_ids,
+    validate_can_read_trace,
+    validate_can_update_trace_from_experiment_id,
+    validate_can_update_trace_from_run_id,
+    validate_can_update_trace,
+    validate_can_delete_traces_from_experiment_id,
+    validate_can_delete_scorer,
+    validate_can_manage_scorer,
+    validate_can_manage_scorer_permission,
+    validate_can_read_scorer,
+    validate_can_update_scorer,
+    validate_can_read_run_artifact,
+    validate_can_update_run_artifact,
+    validate_can_read_model_version_artifact,
+    validate_can_read_trace_artifact,
+    validate_can_read_metric_history_bulk,
+    validate_can_search_datasets,
+    validate_can_create_promptlab_run,
+    validate_gateway_proxy,
 )
+
+
+def _is_unprotected_route(path: str) -> bool:
+    return path.startswith(("/static", "/favicon.ico", "/health", "/metrics", "/docs", "/redoc", "/openapi.json"))
+
+
+def _get_auth_context() -> tuple[Optional[str], bool]:
+    """Best-effort retrieval of auth context injected by FastAPI."""
+    try:
+        username = get_fastapi_username()
+    except Exception:
+        username = None
+
+    try:
+        is_admin = get_fastapi_admin_status()
+    except Exception:
+        is_admin = False
+
+    return username, is_admin
 
 
 BEFORE_REQUEST_HANDLERS = {
     # Routes for experiments
-    ## CreateExperiment: _validate_can_manage_experiment,
     GetExperiment: validate_can_read_experiment,
     GetExperimentByName: validate_can_read_experiment_by_name,
     DeleteExperiment: validate_can_delete_experiment,
@@ -89,7 +135,7 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateExperiment: validate_can_update_experiment,
     SetExperimentTag: validate_can_update_experiment,
     DeleteExperimentTag: validate_can_update_experiment,
-    # # Routes for runs
+    # Routes for runs
     CreateRun: validate_can_update_experiment,
     GetRun: validate_can_read_run,
     DeleteRun: validate_can_delete_run,
@@ -103,7 +149,7 @@ BEFORE_REQUEST_HANDLERS = {
     LogParam: validate_can_update_run,
     GetMetricHistory: validate_can_read_run,
     ListArtifacts: validate_can_read_run,
-    # # Routes for model registry
+    # Routes for model registry
     GetRegisteredModel: validate_can_read_registered_model,
     DeleteRegisteredModel: validate_can_delete_registered_model,
     UpdateRegisteredModel: validate_can_update_registered_model,
@@ -122,7 +168,19 @@ BEFORE_REQUEST_HANDLERS = {
     SetRegisteredModelAlias: validate_can_update_registered_model,
     DeleteRegisteredModelAlias: validate_can_delete_registered_model,
     GetModelVersionByAlias: validate_can_read_registered_model,
+    # Routes for scorers
+    RegisterScorer: validate_can_update_experiment,
+    ListScorers: validate_can_read_experiment,
+    GetScorer: validate_can_read_scorer,
+    DeleteScorer: validate_can_delete_scorer,
+    ListScorerVersions: validate_can_read_scorer,
 }
+
+# `mlflow.server.handlers.get_endpoints()` also includes non-protobuf endpoints like `/graphql`
+# and Gateway discovery routes, whose handlers are *not* our auth validators. We must not treat
+# those as validators (they don't accept `username`), otherwise the hook will crash at runtime.
+_PROTO_VALIDATORS = set(BEFORE_REQUEST_HANDLERS.values())
+
 
 logger = get_logger()
 
@@ -131,8 +189,41 @@ def _get_before_request_handler(request_class):
     return BEFORE_REQUEST_HANDLERS.get(request_class)
 
 
-BEFORE_REQUEST_VALIDATORS = {(http_path, method): handler for http_path, handler, methods in get_endpoints(_get_before_request_handler) for method in methods}
+BEFORE_REQUEST_VALIDATORS = {
+    (http_path, method): handler
+    for http_path, handler, methods in get_endpoints(_get_before_request_handler)
+    for method in methods
+    if handler in _PROTO_VALIDATORS
+}
 
+from mlflow.server.handlers import _add_static_prefix, _get_ajax_path
+
+# Flask routes (not part of Protobuf API)
+GET_ARTIFACT = _add_static_prefix("/get-artifact")
+UPLOAD_ARTIFACT = _get_ajax_path("/mlflow/upload-artifact")
+GET_MODEL_VERSION_ARTIFACT = _add_static_prefix("/model-versions/get-artifact")
+GET_TRACE_ARTIFACT = _get_ajax_path("/mlflow/get-trace-artifact")
+GET_METRIC_HISTORY_BULK = _get_ajax_path("/mlflow/metrics/get-history-bulk")
+GET_METRIC_HISTORY_BULK_INTERVAL = _get_ajax_path("/mlflow/metrics/get-history-bulk-interval")
+SEARCH_DATASETS = _get_ajax_path("/mlflow/experiments/search-datasets")
+CREATE_PROMPTLAB_RUN = _get_ajax_path("/mlflow/runs/create-promptlab-run")
+GATEWAY_PROXY = _get_ajax_path("/mlflow/gateway-proxy")
+
+# Flask routes (no proto mapping)
+BEFORE_REQUEST_VALIDATORS.update(
+    {
+        (GET_ARTIFACT, "GET"): validate_can_read_run_artifact,
+        (UPLOAD_ARTIFACT, "POST"): validate_can_update_run_artifact,
+        (GET_MODEL_VERSION_ARTIFACT, "GET"): validate_can_read_model_version_artifact,
+        (GET_TRACE_ARTIFACT, "GET"): validate_can_read_trace_artifact,
+        (GET_METRIC_HISTORY_BULK, "GET"): validate_can_read_metric_history_bulk,
+        (GET_METRIC_HISTORY_BULK_INTERVAL, "GET"): validate_can_read_metric_history_bulk_interval,
+        (SEARCH_DATASETS, "POST"): validate_can_search_datasets,
+        (CREATE_PROMPTLAB_RUN, "POST"): validate_can_create_promptlab_run,
+        (GATEWAY_PROXY, "GET"): validate_gateway_proxy,
+        (GATEWAY_PROXY, "POST"): validate_gateway_proxy,
+    }
+)
 
 LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
     CreateLoggedModel: validate_can_update_experiment,
@@ -198,8 +289,14 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
 def before_request_hook():
     """Called before each request. If it did not return a response,
     the view function for the matched route is called and returns a response"""
-    username = get_fastapi_username()
-    is_admin = get_fastapi_admin_status()
+
+    if _is_unprotected_route(request.path):
+        return
+
+    username, is_admin = _get_auth_context()
+    if username is None:
+        return responses.make_auth_required_response()
+
     logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
     if is_admin:
         return
@@ -211,3 +308,6 @@ def before_request_hook():
         if validator := _get_proxy_artifact_validator(request.method, request.view_args):
             if not validator(username):
                 return responses.make_forbidden_response()
+
+
+before_request_hook = catch_mlflow_exception(before_request_hook)

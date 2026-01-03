@@ -11,6 +11,10 @@ from mlflow_oidc_auth.entities import (
     RegisteredModelGroupRegexPermission,
     RegisteredModelPermission,
     RegisteredModelRegexPermission,
+    ScorerGroupPermission,
+    ScorerGroupRegexPermission,
+    ScorerPermission,
+    ScorerRegexPermission,
     User,
     UserGroup,
 )
@@ -31,6 +35,7 @@ class SqlUser(Base):
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
     experiment_permissions: Mapped[list["SqlExperimentPermission"]] = relationship("SqlExperimentPermission", backref="users")
     registered_model_permissions: Mapped[list["SqlRegisteredModelPermission"]] = relationship("SqlRegisteredModelPermission", backref="users")
+    scorer_permissions: Mapped[list["SqlScorerPermission"]] = relationship("SqlScorerPermission", backref="users")
     groups: Mapped[list["SqlGroup"]] = relationship(
         "SqlGroup",
         secondary="user_groups",
@@ -48,6 +53,7 @@ class SqlUser(Base):
             is_service_account=self.is_service_account,
             experiment_permissions=[p.to_mlflow_entity() for p in self.experiment_permissions],
             registered_model_permissions=[p.to_mlflow_entity() for p in self.registered_model_permissions],
+            scorer_permissions=[p.to_mlflow_entity() for p in self.scorer_permissions],
             groups=[g.to_mlflow_entity() for g in self.groups],
         )
 
@@ -227,4 +233,78 @@ class SqlRegisteredModelGroupRegexPermission(Base):
             group_id=self.group_id,
             permission=self.permission,
             prompt=bool(self.prompt),
+        )
+
+
+class SqlScorerPermission(Base):
+    __tablename__ = "scorer_permissions"
+    id: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    experiment_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    scorer_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    permission: Mapped[str] = mapped_column(String(255))
+    __table_args__ = (UniqueConstraint("experiment_id", "scorer_name", "user_id", name="unique_scorer_user"),)
+
+    def to_mlflow_entity(self):
+        return ScorerPermission(
+            experiment_id=self.experiment_id,
+            scorer_name=self.scorer_name,
+            user_id=self.user_id,
+            permission=self.permission,
+        )
+
+
+class SqlScorerGroupPermission(Base):
+    __tablename__ = "scorer_group_permissions"
+    id: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    experiment_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    scorer_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
+    permission: Mapped[str] = mapped_column(String(255))
+    __table_args__ = (UniqueConstraint("experiment_id", "scorer_name", "group_id", name="unique_scorer_group"),)
+
+    def to_mlflow_entity(self):
+        return ScorerGroupPermission(
+            experiment_id=self.experiment_id,
+            scorer_name=self.scorer_name,
+            group_id=self.group_id,
+            permission=self.permission,
+        )
+
+
+class SqlScorerRegexPermission(Base):
+    __tablename__ = "scorer_regex_permissions"
+    id: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    regex: Mapped[str] = mapped_column(String(255), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer(), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    permission: Mapped[str] = mapped_column(String(255))
+    __table_args__ = (UniqueConstraint("regex", "user_id", name="unique_scorer_user_regex"),)
+
+    def to_mlflow_entity(self):
+        return ScorerRegexPermission(
+            id_=self.id,
+            regex=self.regex,
+            priority=self.priority,
+            user_id=self.user_id,
+            permission=self.permission,
+        )
+
+
+class SqlScorerGroupRegexPermission(Base):
+    __tablename__ = "scorer_group_regex_permissions"
+    id: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    regex: Mapped[str] = mapped_column(String(255), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer(), nullable=False)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
+    permission: Mapped[str] = mapped_column(String(255))
+    __table_args__ = (UniqueConstraint("regex", "group_id", name="unique_scorer_group_regex"),)
+
+    def to_mlflow_entity(self):
+        return ScorerGroupRegexPermission(
+            id_=self.id,
+            regex=self.regex,
+            priority=self.priority,
+            group_id=self.group_id,
+            permission=self.permission,
         )

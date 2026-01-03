@@ -1,14 +1,14 @@
 from flask import Response, request
 from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, RenameRegisteredModel, SearchRegisteredModels
-from mlflow.protos.service_pb2 import CreateExperiment, SearchExperiments, SearchLoggedModels
-from mlflow.server.handlers import _get_request_message, catch_mlflow_exception, get_endpoints
+from mlflow.protos.service_pb2 import CreateExperiment, DeleteScorer, RegisterScorer, SearchExperiments, SearchLoggedModels
+from mlflow.server.handlers import _get_model_registry_store, _get_request_message, _get_tracking_store, catch_mlflow_exception, get_endpoints
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import fetch_readable_experiments, fetch_readable_logged_models, fetch_readable_registered_models, get_model_name
+from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_model_name
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -38,6 +38,8 @@ def _delete_can_manage_registered_model_permission(resp: Response):
     """
     # Get model name from request context because it's not available in the response
     model_name = get_model_name()
+    if not model_name:
+        return
     store.wipe_group_model_permissions(model_name)
     store.wipe_registered_model_permissions(model_name)
 
@@ -54,31 +56,36 @@ def _filter_search_experiments(resp: Response):
     parse_dict(resp.json, response_message)
     request_message = _get_request_message(SearchExperiments())
 
-    # Get current user
     username = get_fastapi_username()
 
-    # Get all readable experiments with the original filter and order
-    readable_experiments = fetch_readable_experiments(
-        username=username,
-        view_type=request_message.view_type,
-        order_by=request_message.order_by,
-        filter_string=request_message.filter,
-    )
+    # Filter out unreadable experiments from the current response page.
+    for e in list(response_message.experiments):
+        if not can_read_experiment(e.experiment_id, username):
+            response_message.experiments.remove(e)
 
-    # Convert to proto format and apply max_results limit
-    readable_experiments_proto = [experiment.to_proto() for experiment in readable_experiments[: request_message.max_results]]
+    # Re-fetch to fill max_results, preserving MLflow pagination semantics.
+    tracking_store = _get_tracking_store()
+    while len(response_message.experiments) < request_message.max_results and response_message.next_page_token != "":
+        refetched = tracking_store.search_experiments(
+            view_type=request_message.view_type,
+            max_results=request_message.max_results,
+            order_by=request_message.order_by,
+            filter_string=request_message.filter,
+            page_token=response_message.next_page_token,
+        )
 
-    # Update response with filtered experiments
-    response_message.ClearField("experiments")
-    response_message.experiments.extend(readable_experiments_proto)
+        remaining = request_message.max_results - len(response_message.experiments)
+        refetched = refetched[:remaining]
+        if len(refetched) == 0:
+            response_message.next_page_token = ""
+            break
 
-    # Handle pagination token
-    if len(readable_experiments) > request_message.max_results:
-        # Set next page token if there are more results
-        response_message.next_page_token = SearchUtils.create_page_token(request_message.max_results)
-    else:
-        # Clear next page token if all results fit
-        response_message.next_page_token = ""
+        readable_proto = [e.to_proto() for e in refetched if can_read_experiment(e.experiment_id, username)]
+        response_message.experiments.extend(readable_proto)
+
+        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+        final_offset = start_offset + len(refetched)
+        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
 
     resp.data = message_to_json(response_message)
 
@@ -91,26 +98,34 @@ def _filter_search_registered_models(resp: Response):
     parse_dict(resp.json, response_message)
     request_message = _get_request_message(SearchRegisteredModels())
 
-    # Get current user
     username = get_fastapi_username()
 
-    # Get all readable models with the original filter and order
-    readable_models = fetch_readable_registered_models(username=username, filter_string=request_message.filter, order_by=request_message.order_by)
+    # Filter out unreadable models from the current response page.
+    for rm in list(response_message.registered_models):
+        if not can_read_registered_model(rm.name, username):
+            response_message.registered_models.remove(rm)
 
-    # Convert to proto format and apply max_results limit
-    readable_models_proto = [model.to_proto() for model in readable_models[: request_message.max_results]]
+    # Re-fetch to fill max_results, preserving MLflow pagination semantics.
+    model_registry_store = _get_model_registry_store()
+    while len(response_message.registered_models) < request_message.max_results and response_message.next_page_token != "":
+        refetched = model_registry_store.search_registered_models(
+            filter_string=request_message.filter,
+            max_results=request_message.max_results,
+            order_by=request_message.order_by,
+            page_token=response_message.next_page_token,
+        )
+        remaining = request_message.max_results - len(response_message.registered_models)
+        refetched = refetched[:remaining]
+        if len(refetched) == 0:
+            response_message.next_page_token = ""
+            break
 
-    # Update response with filtered models
-    response_message.ClearField("registered_models")
-    response_message.registered_models.extend(readable_models_proto)
+        readable_proto = [rm.to_proto() for rm in refetched if can_read_registered_model(rm.name, username)]
+        response_message.registered_models.extend(readable_proto)
 
-    # Handle pagination token
-    if len(readable_models) > request_message.max_results:
-        # Set next page token if there are more results
-        response_message.next_page_token = SearchUtils.create_page_token(request_message.max_results)
-    else:
-        # Clear next page token if all results fit
-        response_message.next_page_token = ""
+        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+        final_offset = start_offset + len(refetched)
+        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
 
     resp.data = message_to_json(response_message)
 
@@ -126,15 +141,20 @@ def _filter_search_logged_models(resp: Response) -> None:
     parse_dict(resp.json, response_message)
     request_message = _get_request_message(SearchLoggedModels())
 
-    # Get current user
     username = get_fastapi_username()
 
-    # Get all readable logged models with the original parameters
-    readable_models = fetch_readable_logged_models(
-        username=username,
-        experiment_ids=list(request_message.experiment_ids),
-        filter_string=request_message.filter or None,
-        order_by=(
+    # Remove unreadable models from the current response page.
+    for m in list(response_message.models):
+        if not can_read_experiment(m.info.experiment_id, username):
+            response_message.models.remove(m)
+
+    from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
+
+    max_results = request_message.max_results
+    params = {
+        "experiment_ids": list(request_message.experiment_ids),
+        "filter_string": request_message.filter or None,
+        "order_by": (
             [
                 {
                     "field_name": ob.field_name,
@@ -147,42 +167,29 @@ def _filter_search_logged_models(resp: Response) -> None:
             if request_message.order_by
             else None
         ),
-    )
+    }
 
-    # Convert to proto format and apply max_results limit
-    readable_models_proto = [model.to_proto() for model in readable_models[: request_message.max_results]]
+    next_page_token = response_message.next_page_token or None
+    tracking_store = _get_tracking_store()
 
-    # Update response with filtered models
-    response_message.ClearField("models")
-    response_message.models.extend(readable_models_proto)
+    while len(response_message.models) < max_results and next_page_token is not None:
+        batch = tracking_store.search_logged_models(max_results=max_results, page_token=next_page_token, **params)
+        is_last_page = batch.token is None
+        offset = Token.decode(next_page_token).offset if next_page_token else 0
+        last_index = len(batch) - 1
 
-    # Handle pagination token
-    if len(readable_models) > request_message.max_results:
-        # Set next page token if there are more results
-        from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
+        for index, model in enumerate(batch):
+            if not can_read_experiment(model.experiment_id, username):
+                continue
 
-        params = {
-            "experiment_ids": list(request_message.experiment_ids),
-            "filter_string": request_message.filter or None,
-            "order_by": (
-                [
-                    {
-                        "field_name": ob.field_name,
-                        "ascending": ob.ascending,
-                        "dataset_name": ob.dataset_name,
-                        "dataset_digest": ob.dataset_digest,
-                    }
-                    for ob in request_message.order_by
-                ]
-                if request_message.order_by
-                else None
-            ),
-        }
-        response_message.next_page_token = Token(offset=request_message.max_results, **params).encode()
-    else:
-        # Clear next page token if all results fit
-        response_message.next_page_token = ""
+            response_message.models.append(model.to_proto())
+            if len(response_message.models) >= max_results:
+                next_page_token = None if is_last_page and index == last_index else Token(offset=offset + index + 1, **params).encode()
+                break
+        else:
+            next_page_token = None if is_last_page else Token(offset=offset + max_results, **params).encode()
 
+    response_message.next_page_token = next_page_token or ""
     resp.data = message_to_json(response_message)
 
 
@@ -195,9 +202,31 @@ def _rename_registered_model_permission(resp: Response):
     name = data.get("name") if data else None
     new_name = data.get("new_name") if data else None
     if not name or not new_name:
-        raise ValueError("Both 'name' and 'new_name' must be provided in the request data.")
+        # Defensive no-op: avoid turning a successful rename into a 500 in after_request.
+        return
     store.rename_registered_model_permissions(name, new_name)
     store.rename_group_model_permissions(name, new_name)
+
+
+def _set_can_manage_scorer_permission(resp: Response):
+    """Create MANAGE scorer permission for the scorer creator."""
+
+    response_message = RegisterScorer.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    experiment_id = response_message.experiment_id
+    scorer_name = response_message.name
+    username = get_fastapi_username()
+    store.create_scorer_permission(experiment_id, scorer_name, username, MANAGE.name)
+
+
+def _delete_scorer_permissions_cascade(resp: Response):
+    """Delete all scorer permissions when a scorer is deleted."""
+
+    data = request.get_json(force=True, silent=True) or {}
+    experiment_id = data.get("experiment_id")
+    scorer_name = data.get("name")
+    if experiment_id and scorer_name:
+        store.delete_scorer_permissions_for_scorer(str(experiment_id), str(scorer_name))
 
 
 AFTER_REQUEST_PATH_HANDLERS = {
@@ -208,6 +237,8 @@ AFTER_REQUEST_PATH_HANDLERS = {
     SearchLoggedModels: _filter_search_logged_models,
     SearchRegisteredModels: _filter_search_registered_models,
     RenameRegisteredModel: _rename_registered_model_permission,
+    RegisterScorer: _set_can_manage_scorer_permission,
+    DeleteScorer: _delete_scorer_permissions_cascade,
 }
 
 AFTER_REQUEST_HANDLERS = {

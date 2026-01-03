@@ -14,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware as StarletteSessionM
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.exceptions import register_exception_handlers
+from mlflow_oidc_auth.graphql import install_mlflow_graphql_authorization_middleware
 from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware import AuthAwareWSGIMiddleware, AuthMiddleware, ProxyHeadersMiddleware
@@ -60,6 +61,9 @@ def create_app() -> Any:
     oidc_app.mount("/", AuthAwareWSGIMiddleware(app))
 
     logger.info("MLflow Flask app mounted at / with FastAPI auth info passing")
+    # Ensure MLflow's `/graphql` route applies our per-field authorization middleware.
+    install_mlflow_graphql_authorization_middleware()
+
     return oidc_app
 
 

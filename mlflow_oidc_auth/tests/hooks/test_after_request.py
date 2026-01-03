@@ -17,6 +17,14 @@ from mlflow_oidc_auth.hooks.after_request import (
 app = Flask(__name__)
 
 
+class _FakePagedList(list):
+    """Lightweight stand-in for MLflow's PagedList in unit tests."""
+
+    def __init__(self, items, token=None):
+        super().__init__(items)
+        self.token = token
+
+
 @pytest.fixture
 def mock_response():
     response = MagicMock(spec=Response)
@@ -137,12 +145,6 @@ def test_filter_search_experiments_non_admin(mock_response, mock_bridge):
     """Test _filter_search_experiments for non-admin user"""
     mock_response.json = {"experiments": [{"experiment_id": "123"}]}
 
-    # Mock readable experiments
-    mock_readable_experiments = [
-        MagicMock(experiment_id="123", name="test_experiment"),
-    ]
-    mock_readable_experiments[0].to_proto.return_value = {"experiment_id": "123", "name": "test_experiment"}
-
     # Mock request message
     mock_request_message = MagicMock()
     mock_request_message.view_type = 1
@@ -152,44 +154,28 @@ def test_filter_search_experiments_non_admin(mock_response, mock_bridge):
 
     with app.test_request_context(path="/api/2.0/mlflow/experiments/search", method="POST", headers={"Content-Type": "application/json"}):
         with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.fetch_readable_experiments", return_value=mock_readable_experiments
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
+            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
+        ) as mock_can_read, patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
         ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": [{"experiment_id": "123", "name": "test_experiment"}]}'
+            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": [{"experiment_id": "123"}]}'
         ):
-            # Mock response message
+            exp = MagicMock()
+            exp.experiment_id = "123"
             mock_response_message = MagicMock()
-            mock_response_message.ClearField = MagicMock()
-            mock_response_message.experiments = MagicMock()
-            mock_response_message.experiments.extend = MagicMock()
+            mock_response_message.experiments = [exp]
             mock_response_message.next_page_token = ""
 
             with patch("mlflow_oidc_auth.hooks.after_request.SearchExperiments.Response", return_value=mock_response_message):
                 _filter_search_experiments(mock_response)
 
-                # Verify fetch_readable_experiments was called with correct parameters
-                from mlflow_oidc_auth.hooks.after_request import fetch_readable_experiments
-
-                fetch_readable_experiments.assert_called_once_with(username="test_user", view_type=1, order_by=[], filter_string=None)
-
-                # Verify response was updated
-                mock_response_message.ClearField.assert_called_once_with("experiments")
-                mock_response_message.experiments.extend.assert_called_once()
+                mock_can_read.assert_called_once_with("123", "test_user")
+                assert len(mock_response_message.experiments) == 1
 
 
 def test_filter_search_experiments_with_pagination(mock_response, mock_bridge):
     """Test _filter_search_experiments with pagination needed"""
     mock_response.json = {"experiments": []}
-
-    # Create more experiments than max_results to test pagination
-    mock_readable_experiments = []
-    for i in range(15):  # More than max_results (10)
-        experiment = MagicMock()
-        experiment.experiment_id = f"exp_{i}"
-        experiment.name = f"experiment_{i}"
-        experiment.to_proto.return_value = {"experiment_id": f"exp_{i}", "name": f"experiment_{i}"}
-        mock_readable_experiments.append(experiment)
 
     # Mock request message with small max_results
     mock_request_message = MagicMock()
@@ -199,25 +185,36 @@ def test_filter_search_experiments_with_pagination(mock_response, mock_bridge):
     mock_request_message.max_results = 10
 
     with app.test_request_context(path="/api/2.0/mlflow/experiments/search", method="POST", headers={"Content-Type": "application/json"}):
+        exp_entities = []
+        for i in range(10):
+            e = MagicMock()
+            e.experiment_id = f"exp_{i}"
+            e.to_proto.return_value = {"experiment_id": f"exp_{i}"}
+            exp_entities.append(e)
+
+        tracking_store = MagicMock()
+        tracking_store.search_experiments.return_value = _FakePagedList(exp_entities, token=None)
+
         with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.fetch_readable_experiments", return_value=mock_readable_experiments
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
+            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
+        ), patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store), patch(
+            "mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
         ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": []}'
         ), patch(
+            "mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token", return_value=0
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token", return_value="page_token_123"
         ) as mock_page_token:
-            # Mock response message
             mock_response_message = MagicMock()
-            mock_response_message.ClearField = MagicMock()
-            mock_response_message.experiments = MagicMock()
-            mock_response_message.experiments.extend = MagicMock()
+            mock_response_message.experiments = []
+            mock_response_message.next_page_token = "page_token_0"
 
             with patch("mlflow_oidc_auth.hooks.after_request.SearchExperiments.Response", return_value=mock_response_message):
                 _filter_search_experiments(mock_response)
 
-                # Verify pagination token was set
                 mock_page_token.assert_called_once_with(10)
                 assert mock_response_message.next_page_token == "page_token_123"
 
@@ -225,15 +222,6 @@ def test_filter_search_experiments_with_pagination(mock_response, mock_bridge):
 def test_filter_search_experiments_no_pagination(mock_response, mock_bridge):
     """Test _filter_search_experiments when no pagination is needed"""
     mock_response.json = {"experiments": []}
-
-    # Create fewer experiments than max_results
-    mock_readable_experiments = []
-    for i in range(5):  # Less than max_results (10)
-        experiment = MagicMock()
-        experiment.experiment_id = f"exp_{i}"
-        experiment.name = f"experiment_{i}"
-        experiment.to_proto.return_value = {"experiment_id": f"exp_{i}", "name": f"experiment_{i}"}
-        mock_readable_experiments.append(experiment)
 
     # Mock request message
     mock_request_message = MagicMock()
@@ -244,23 +232,19 @@ def test_filter_search_experiments_no_pagination(mock_response, mock_bridge):
 
     with app.test_request_context(path="/api/2.0/mlflow/experiments/search", method="POST", headers={"Content-Type": "application/json"}):
         with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.fetch_readable_experiments", return_value=mock_readable_experiments
+            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
         ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": []}'
         ):
-            # Mock response message
             mock_response_message = MagicMock()
-            mock_response_message.ClearField = MagicMock()
-            mock_response_message.experiments = MagicMock()
-            mock_response_message.experiments.extend = MagicMock()
+            mock_response_message.experiments = []
             mock_response_message.next_page_token = ""
 
             with patch("mlflow_oidc_auth.hooks.after_request.SearchExperiments.Response", return_value=mock_response_message):
                 _filter_search_experiments(mock_response)
 
-                # Verify no pagination token was set (next_page_token should be empty)
                 assert mock_response_message.next_page_token == ""
 
 
@@ -281,12 +265,6 @@ def test_filter_search_registered_models_non_admin(mock_response, mock_bridge):
     """Test _filter_search_registered_models for non-admin user"""
     mock_response.json = {"registered_models": [{"name": "test_model"}]}
 
-    # Mock readable models
-    mock_readable_models = [
-        MagicMock(name="test_model"),
-    ]
-    mock_readable_models[0].to_proto.return_value = {"name": "test_model"}
-
     # Mock request message
     mock_request_message = MagicMock()
     mock_request_message.filter = None
@@ -295,43 +273,28 @@ def test_filter_search_registered_models_non_admin(mock_response, mock_bridge):
 
     with app.test_request_context(path="/api/2.0/mlflow/registered-models/search", method="POST", headers={"Content-Type": "application/json"}):
         with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.fetch_readable_registered_models", return_value=mock_readable_models
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
+            "mlflow_oidc_auth.hooks.after_request.can_read_registered_model", return_value=True
+        ) as mock_can_read, patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
         ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"registered_models": [{"name": "test_model"}]}'
         ):
-            # Mock response message
+            rm = MagicMock()
+            rm.name = "test_model"
             mock_response_message = MagicMock()
-            mock_response_message.ClearField = MagicMock()
-            mock_response_message.registered_models = MagicMock()
-            mock_response_message.registered_models.extend = MagicMock()
+            mock_response_message.registered_models = [rm]
             mock_response_message.next_page_token = ""
 
             with patch("mlflow_oidc_auth.hooks.after_request.SearchRegisteredModels.Response", return_value=mock_response_message):
                 _filter_search_registered_models(mock_response)
 
-                # Verify fetch_readable_registered_models was called with correct parameters
-                from mlflow_oidc_auth.hooks.after_request import fetch_readable_registered_models
-
-                fetch_readable_registered_models.assert_called_once_with(username="test_user", filter_string=None, order_by=[])
-
-                # Verify response was updated
-                mock_response_message.ClearField.assert_called_once_with("registered_models")
-                mock_response_message.registered_models.extend.assert_called_once()
+                mock_can_read.assert_called_once_with("test_model", "test_user")
+                assert len(mock_response_message.registered_models) == 1
 
 
 def test_filter_search_registered_models_with_pagination(mock_response, mock_bridge):
     """Test _filter_search_registered_models with pagination needed"""
     mock_response.json = {"registered_models": []}
-
-    # Create more models than max_results to test pagination
-    mock_readable_models = []
-    for i in range(15):  # More than max_results (10)
-        model = MagicMock()
-        model.name = f"model_{i}"
-        model.to_proto.return_value = {"name": f"model_{i}"}
-        mock_readable_models.append(model)
 
     # Mock request message with small max_results
     mock_request_message = MagicMock()
@@ -340,25 +303,36 @@ def test_filter_search_registered_models_with_pagination(mock_response, mock_bri
     mock_request_message.max_results = 10
 
     with app.test_request_context(path="/api/2.0/mlflow/registered-models/search", method="POST", headers={"Content-Type": "application/json"}):
+        rm_entities = []
+        for i in range(10):
+            rm = MagicMock()
+            rm.name = f"model_{i}"
+            rm.to_proto.return_value = {"name": f"model_{i}"}
+            rm_entities.append(rm)
+
+        model_registry_store = MagicMock()
+        model_registry_store.search_registered_models.return_value = _FakePagedList(rm_entities, token=None)
+
         with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.fetch_readable_registered_models", return_value=mock_readable_models
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
+            "mlflow_oidc_auth.hooks.after_request.can_read_registered_model", return_value=True
+        ), patch("mlflow_oidc_auth.hooks.after_request._get_model_registry_store", return_value=model_registry_store), patch(
+            "mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
         ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"registered_models": []}'
         ), patch(
+            "mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token", return_value=0
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token", return_value="page_token_456"
         ) as mock_page_token:
-            # Mock response message
             mock_response_message = MagicMock()
-            mock_response_message.ClearField = MagicMock()
-            mock_response_message.registered_models = MagicMock()
-            mock_response_message.registered_models.extend = MagicMock()
+            mock_response_message.registered_models = []
+            mock_response_message.next_page_token = "page_token_0"
 
             with patch("mlflow_oidc_auth.hooks.after_request.SearchRegisteredModels.Response", return_value=mock_response_message):
                 _filter_search_registered_models(mock_response)
 
-                # Verify pagination token was set
                 mock_page_token.assert_called_once_with(10)
                 assert mock_response_message.next_page_token == "page_token_456"
 
@@ -384,8 +358,9 @@ def test_rename_registered_model_permission_missing_name(mock_response, mock_sto
         json={"new_name": "new_model"},  # Missing 'name'
         headers={"Content-Type": "application/json"},
     ):
-        with pytest.raises(ValueError, match="Both 'name' and 'new_name' must be provided"):
-            _rename_registered_model_permission(mock_response)
+        _rename_registered_model_permission(mock_response)
+        mock_store.rename_registered_model_permissions.assert_not_called()
+        mock_store.rename_group_model_permissions.assert_not_called()
 
 
 def test_rename_registered_model_permission_missing_new_name(mock_response, mock_store):
@@ -396,8 +371,9 @@ def test_rename_registered_model_permission_missing_new_name(mock_response, mock
         json={"name": "old_model"},  # Missing 'new_name'
         headers={"Content-Type": "application/json"},
     ):
-        with pytest.raises(ValueError, match="Both 'name' and 'new_name' must be provided"):
-            _rename_registered_model_permission(mock_response)
+        _rename_registered_model_permission(mock_response)
+        mock_store.rename_registered_model_permissions.assert_not_called()
+        mock_store.rename_group_model_permissions.assert_not_called()
 
 
 def test_rename_registered_model_permission_no_json(mock_response, mock_store):
@@ -407,8 +383,9 @@ def test_rename_registered_model_permission_no_json(mock_response, mock_store):
         method="PATCH",
         headers={"Content-Type": "application/json"},
     ):
-        with pytest.raises(ValueError, match="Both 'name' and 'new_name' must be provided"):
-            _rename_registered_model_permission(mock_response)
+        _rename_registered_model_permission(mock_response)
+        mock_store.rename_registered_model_permissions.assert_not_called()
+        mock_store.rename_group_model_permissions.assert_not_called()
 
 
 def test_filter_search_logged_models_admin(mock_response, mock_bridge):
@@ -428,12 +405,6 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
     """Test _filter_search_logged_models for non-admin user"""
     mock_response.json = {"models": [{"experiment_id": "123", "name": "model1"}, {"experiment_id": "456", "name": "model2"}]}
 
-    # Mock readable models
-    mock_readable_models = [
-        MagicMock(experiment_id="123", name="model1"),
-    ]
-    mock_readable_models[0].to_proto.return_value = {"experiment_id": "123", "name": "model1"}
-
     # Mock request message
     mock_request_message = MagicMock()
     mock_request_message.experiment_ids = ["123", "456"]
@@ -442,45 +413,36 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
     mock_request_message.max_results = 1000
 
     with app.test_request_context(path="/api/2.0/mlflow/logged-models/search", method="POST", headers={"Content-Type": "application/json"}):
+
+        def fake_can_read(exp_id: str, _user: str) -> bool:
+            return exp_id == "123"
+
         with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.fetch_readable_logged_models", return_value=mock_readable_models
+            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", side_effect=fake_can_read
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
         ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": [{"experiment_id": "123", "name": "model1"}]}'
+            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}'
         ):
-            # Mock response message
+            m1 = MagicMock()
+            m1.info.experiment_id = "123"
+            m2 = MagicMock()
+            m2.info.experiment_id = "456"
+
             mock_response_message = MagicMock()
-            mock_response_message.ClearField = MagicMock()
-            mock_response_message.models = MagicMock()
-            mock_response_message.models.extend = MagicMock()
+            mock_response_message.models = [m1, m2]
             mock_response_message.next_page_token = ""
 
             with patch("mlflow_oidc_auth.hooks.after_request.SearchLoggedModels.Response", return_value=mock_response_message):
                 _filter_search_logged_models(mock_response)
 
-                # Verify fetch_readable_logged_models was called with correct parameters
-                from mlflow_oidc_auth.hooks.after_request import fetch_readable_logged_models
-
-                fetch_readable_logged_models.assert_called_once_with(username="test_user", experiment_ids=["123", "456"], filter_string=None, order_by=None)
-
-                # Verify response was updated
-                mock_response_message.ClearField.assert_called_once_with("models")
-                mock_response_message.models.extend.assert_called_once()
+                assert len(mock_response_message.models) == 1
+                assert mock_response_message.models[0].info.experiment_id == "123"
 
 
 def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge):
     """Test _filter_search_logged_models with pagination needed"""
     mock_response.json = {"models": []}
-
-    # Create more models than max_results to test pagination
-    mock_readable_models = []
-    for i in range(15):  # More than max_results (10)
-        model = MagicMock()
-        model.experiment_id = f"exp_{i}"
-        model.name = f"model_{i}"
-        model.to_proto.return_value = {"experiment_id": f"exp_{i}", "name": f"model_{i}"}
-        mock_readable_models.append(model)
 
     # Mock request message with small max_results
     mock_request_message = MagicMock()
@@ -490,54 +452,46 @@ def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge)
     mock_request_message.max_results = 10
 
     with app.test_request_context(path="/api/2.0/mlflow/logged-models/search", method="POST", headers={"Content-Type": "application/json"}):
+        batch_models = []
+        for i in range(10):
+            model = MagicMock()
+            model.experiment_id = f"exp_{i}"
+            model.to_proto.return_value = {"experiment_id": f"exp_{i}"}
+            batch_models.append(model)
+
+        tracking_store = MagicMock()
+        tracking_store.search_logged_models.return_value = _FakePagedList(batch_models, token=None)
+
+        mock_token_class = MagicMock()
+        mock_token_class.decode.return_value = MagicMock(offset=0)
+        mock_token_class.return_value.encode.return_value = "encoded_token"
+
         with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.fetch_readable_logged_models", return_value=mock_readable_models
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
+            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
+        ), patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store), patch(
+            "mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message
+        ), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
         ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": [], "next_page_token": "token123"}'
+        ), patch(
+            "mlflow.utils.search_utils.SearchLoggedModelsPaginationToken", mock_token_class
         ):
-            # Mock response message
             mock_response_message = MagicMock()
-            mock_response_message.ClearField = MagicMock()
-            mock_response_message.models = MagicMock()
-            mock_response_message.models.extend = MagicMock()
+            mock_response_message.models = []
+            mock_response_message.next_page_token = "token123"
 
-            # Mock Token for pagination
-            mock_token = MagicMock()
-            mock_token.encode.return_value = "encoded_token"
-
-            with patch("mlflow_oidc_auth.hooks.after_request.SearchLoggedModels.Response", return_value=mock_response_message), patch(
-                "mlflow.utils.search_utils.SearchLoggedModelsPaginationToken", return_value=mock_token
-            ) as mock_token_class:
+            with patch("mlflow_oidc_auth.hooks.after_request.SearchLoggedModels.Response", return_value=mock_response_message):
                 _filter_search_logged_models(mock_response)
 
-                # Verify fetch_readable_logged_models was called with order_by
-                from mlflow_oidc_auth.hooks.after_request import fetch_readable_logged_models
-
-                fetch_readable_logged_models.assert_called_once_with(
-                    username="test_user",
-                    experiment_ids=["exp_1", "exp_2"],
-                    filter_string="filter_string",
-                    order_by=[{"field_name": "name", "ascending": True, "dataset_name": "", "dataset_digest": ""}],
-                )
-
-                # Verify pagination token was set
-                mock_token_class.assert_called_once()
+                tracking_store.search_logged_models.assert_called_once()
+                assert len(mock_response_message.models) == 10
+                assert mock_response_message.next_page_token == ""
 
 
 def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_bridge):
     """Test _filter_search_logged_models when no pagination is needed"""
     mock_response.json = {"models": []}
-
-    # Create fewer models than max_results
-    mock_readable_models = []
-    for i in range(5):  # Less than max_results (10)
-        model = MagicMock()
-        model.experiment_id = f"exp_{i}"
-        model.name = f"model_{i}"
-        model.to_proto.return_value = {"experiment_id": f"exp_{i}", "name": f"model_{i}"}
-        mock_readable_models.append(model)
 
     # Mock request message
     mock_request_message = MagicMock()
@@ -548,23 +502,20 @@ def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_br
 
     with app.test_request_context(path="/api/2.0/mlflow/logged-models/search", method="POST", headers={"Content-Type": "application/json"}):
         with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.fetch_readable_logged_models", return_value=mock_readable_models
+            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
         ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
             "mlflow_oidc_auth.hooks.after_request.parse_dict"
         ), patch(
             "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}'
         ):
-            # Mock response message
+            m = MagicMock()
+            m.info.experiment_id = "exp_1"
             mock_response_message = MagicMock()
-            mock_response_message.ClearField = MagicMock()
-            mock_response_message.models = MagicMock()
-            mock_response_message.models.extend = MagicMock()
+            mock_response_message.models = [m]
             mock_response_message.next_page_token = ""
 
             with patch("mlflow_oidc_auth.hooks.after_request.SearchLoggedModels.Response", return_value=mock_response_message):
                 _filter_search_logged_models(mock_response)
-
-                # Verify no pagination token was set (next_page_token should be empty)
                 assert mock_response_message.next_page_token == ""
 
 
@@ -629,6 +580,6 @@ def test_rename_registered_model_permission_invalid_json(mock_response, mock_sto
         data="invalid json",
         headers={"Content-Type": "application/json"},
     ):
-        # Should handle invalid JSON gracefully and raise ValueError for missing data
-        with pytest.raises(ValueError, match="Both 'name' and 'new_name' must be provided"):
-            _rename_registered_model_permission(mock_response)
+        _rename_registered_model_permission(mock_response)
+        mock_store.rename_registered_model_permissions.assert_not_called()
+        mock_store.rename_group_model_permissions.assert_not_called()

@@ -25,6 +25,7 @@ from mlflow_oidc_auth.tests.routers.shared_fixtures import (
     TestClientWrapper,
     _deleg_can_manage_experiment,
     _deleg_can_manage_registered_model,
+    _deleg_can_manage_scorer,
     _patch_router_stores,
     mock_oauth,
     mock_permissions,
@@ -292,6 +293,7 @@ def mock_permissions():
     permissions_mock = {
         "can_manage_experiment": MagicMock(return_value=True),
         "can_manage_registered_model": MagicMock(return_value=True),
+        "can_manage_scorer": MagicMock(return_value=True),
         # Permission helpers may be called synchronously in some test setup;
         # use MagicMock to provide a regular callable that returns the value.
         "get_username": MagicMock(return_value="test@example.com"),
@@ -315,9 +317,12 @@ def _patch_router_stores(mock_store):
         patch("mlflow_oidc_auth.store.store", mock_store),
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
         patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store),
+        patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store),
+        patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.users.store", mock_store),
         patch("mlflow_oidc_auth.routers.experiment_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store),
+        patch("mlflow_oidc_auth.routers.scorers_permissions.store", mock_store),
     ]
 
     for p in patches:
@@ -374,6 +379,7 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
         patch("mlflow_oidc_auth.config.config", mock_config),
         patch("mlflow.server.handlers._get_tracking_store", return_value=mock_tracking_store),
         patch("mlflow_oidc_auth.utils.can_manage_experiment", mock_permissions["can_manage_experiment"]),
+        patch("mlflow_oidc_auth.utils.can_manage_scorer", mock_permissions["can_manage_scorer"]),
         patch("mlflow_oidc_auth.utils.can_manage_registered_model", mock_permissions["can_manage_registered_model"]),
         # utils.* are used synchronously in some places; leave those as MagicMock
         patch("mlflow_oidc_auth.utils.get_username", mock_permissions["get_username"]),
@@ -382,10 +388,12 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
         patch("mlflow_oidc_auth.dependencies.get_username", mock_permissions["get_username_async"]),
         patch("mlflow_oidc_auth.dependencies.get_is_admin", mock_permissions["get_is_admin_async"]),
         patch("mlflow_oidc_auth.dependencies.can_manage_experiment", _deleg_can_manage_experiment),
+        patch("mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer),
         patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", _deleg_can_manage_registered_model),
         # Patch names imported directly into router modules (they were imported at module-import time)
         patch("mlflow_oidc_auth.routers.experiment_permissions.get_is_admin", mock_permissions["get_is_admin"]),
         patch("mlflow_oidc_auth.routers.experiment_permissions.get_username", mock_permissions["get_username"]),
+        patch("mlflow_oidc_auth.routers.scorers_permissions.check_scorer_manage_permission", MagicMock(return_value=None)),
         patch("mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment", mock_permissions["can_manage_experiment"]),
         # Patch the module-level 'store' used by request helper functions
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
@@ -466,6 +474,7 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
         patch("mlflow.server.handlers._get_tracking_store", return_value=mock_tracking_store),
         patch("mlflow_oidc_auth.utils.can_manage_experiment", admin_permissions["can_manage_experiment"]),
         patch("mlflow_oidc_auth.utils.can_manage_registered_model", admin_permissions["can_manage_registered_model"]),
+        patch("mlflow_oidc_auth.utils.can_manage_scorer", MagicMock(return_value=True)),
         # utils.* remain sync mocks
         patch("mlflow_oidc_auth.utils.get_username", admin_permissions["get_username"]),
         patch("mlflow_oidc_auth.utils.get_is_admin", admin_permissions["get_is_admin"]),
@@ -478,11 +487,13 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
         patch("mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment", admin_permissions["can_manage_experiment"]),
         patch("mlflow_oidc_auth.dependencies.can_manage_experiment", _deleg_can_manage_experiment),
         patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", _deleg_can_manage_registered_model),
+        patch("mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer),
         # Patch request helper module-level store
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
         patch("mlflow_oidc_auth.routers.prompt_permissions.check_admin_permission", MagicMock(return_value="admin@example.com")),
         patch("mlflow_oidc_auth.routers.prompt_permissions.get_username", admin_permissions["get_username"]),
         patch("mlflow_oidc_auth.routers.prompt_permissions.get_is_admin", admin_permissions["get_is_admin"]),
+        patch("mlflow_oidc_auth.routers.scorers_permissions.check_scorer_manage_permission", MagicMock(return_value=None)),
     ]
 
     for p in patches:

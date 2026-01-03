@@ -23,6 +23,12 @@ def _deleg_can_manage_registered_model(model_name, username):
     return _utils.can_manage_registered_model(model_name, username)
 
 
+def _deleg_can_manage_scorer(experiment_id, scorer_name, username):
+    from mlflow_oidc_auth import utils as _utils
+
+    return _utils.can_manage_scorer(experiment_id, scorer_name, username)
+
+
 @pytest.fixture
 def mock_store():
     """Mock the store module with comprehensive user and permission data."""

@@ -28,12 +28,14 @@ class TestUser(unittest.TestCase):
             groups=[Group("group1", "Group 1")],
         )
 
-        # expected_json updated to include "password_expiration"
         expected_json = {
             "id": "123",
             "username": "test_user",
             "is_admin": True,
             "is_service_account": False,
+            "experiment_permissions": [{"experiment_id": "exp1", "permission": "read", "user_id": None, "group_id": None}],
+            "registered_model_permissions": [{"name": "model1", "user_id": None, "permission": "EDIT", "group_id": None, "prompt": False}],
+            "scorer_permissions": [],
             "password_expiration": None,
             "display_name": "Test User",
             "groups": [{"id": "group1", "group_name": "Group 1"}],
@@ -64,6 +66,7 @@ class TestUser(unittest.TestCase):
         self.assertEqual(len(user.registered_model_permissions), 1)
         self.assertEqual(user.registered_model_permissions[0].name, "model1")
         self.assertEqual(user.registered_model_permissions[0].permission, "EDIT")
+        self.assertEqual(user.scorer_permissions, [])
         self.assertEqual(len(user.groups), 1)
         self.assertEqual(user.groups[0].id, "group1")
         self.assertEqual(user.groups[0].group_name, "Group 1")
@@ -82,12 +85,14 @@ class TestUser(unittest.TestCase):
             groups=None,
         )
 
-        # expected_json updated to include "password_expiration"
         expected_json = {
             "id": "123",
             "username": "test_user",
             "is_admin": True,
             "is_service_account": False,
+            "experiment_permissions": [],
+            "registered_model_permissions": [],
+            "scorer_permissions": [],
             "password_expiration": None,
             "display_name": "Test User",
             "groups": [],
@@ -114,6 +119,7 @@ class TestUser(unittest.TestCase):
         self.assertEqual(user.display_name, "Test User")
         self.assertEqual(user.experiment_permissions, [])
         self.assertEqual(user.registered_model_permissions, [])
+        self.assertEqual(user.scorer_permissions, [])
         self.assertEqual(user.groups, [])
 
 
@@ -253,6 +259,20 @@ class TestUserPropertiesSetters(unittest.TestCase):
 
         json_data = user.to_json()
         self.assertEqual(json_data["password_expiration"], "2024-12-31T23:59:59")
+
+    def test_user_from_json_parses_password_expiration(self):
+        json_data = {
+            "id": "123",
+            "username": "test_user",
+            "is_admin": False,
+            "password_expiration": "2024-12-31T23:59:59",
+            "experiment_permissions": [],
+            "registered_model_permissions": [],
+            "groups": [],
+        }
+        user = User.from_json(json_data)
+        self.assertIsInstance(user.password_expiration, datetime)
+        self.assertEqual(user.password_expiration.isoformat(), "2024-12-31T23:59:59")
 
     def test_user_from_json_with_is_service_account_default(self):
         json_data = {

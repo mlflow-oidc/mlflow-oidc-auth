@@ -192,3 +192,4 @@ web-react/
 
 nginx.conf
 .kiro/
+E2E_TEST_CASES.md

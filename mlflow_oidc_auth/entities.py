@@ -1,3 +1,29 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+
+def _parse_optional_datetime(value: Any) -> datetime | None:
+    """Parse an optional datetime from JSON-ish inputs.
+
+    Accepts:
+    - None
+    - datetime
+    - ISO 8601 strings (optionally ending with 'Z')
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        candidate = value
+        if candidate.endswith("Z"):
+            candidate = candidate[:-1] + "+00:00"
+        return datetime.fromisoformat(candidate)
+    raise TypeError(f"Unsupported datetime value type: {type(value).__name__}")
+
+
 class User:
     def __init__(
         self,
@@ -10,6 +36,7 @@ class User:
         display_name: str | None = None,
         experiment_permissions=None,
         registered_model_permissions=None,
+        scorer_permissions=None,
         groups=None,
     ):
         # Provide sensible defaults so tests can construct User with partial data.
@@ -21,6 +48,7 @@ class User:
         self._is_service_account = is_service_account
         self._experiment_permissions = experiment_permissions or []
         self._registered_model_permissions = registered_model_permissions or []
+        self._scorer_permissions = scorer_permissions or []
         self._display_name = display_name
         self._groups = groups or []
 
@@ -77,6 +105,14 @@ class User:
         self._registered_model_permissions = registered_model_permissions
 
     @property
+    def scorer_permissions(self):
+        return self._scorer_permissions
+
+    @scorer_permissions.setter
+    def scorer_permissions(self, scorer_permissions):
+        self._scorer_permissions = scorer_permissions
+
+    @property
     def display_name(self):
         return self._display_name
 
@@ -98,6 +134,9 @@ class User:
             "username": self.username,
             "is_admin": self.is_admin,
             "is_service_account": self.is_service_account,
+            "experiment_permissions": [p.to_json() for p in self.experiment_permissions],
+            "registered_model_permissions": [p.to_json() for p in self.registered_model_permissions],
+            "scorer_permissions": [p.to_json() for p in self.scorer_permissions],
             "password_expiration": self.password_expiration.isoformat() if self.password_expiration else None,
             "display_name": self.display_name,
             "groups": [g.to_json() for g in self.groups] if self.groups else [],
@@ -119,16 +158,17 @@ class User:
     @classmethod
     def from_json(cls, dictionary):
         return cls(
-            id_=dictionary["id"],
-            username=dictionary["username"],
-            display_name=dictionary["display_name"],
+            id_=dictionary.get("id"),
+            username=dictionary.get("username"),
+            display_name=dictionary.get("display_name"),
             password_hash="REDACTED",
-            password_expiration=dictionary.get("password_expiration"),
-            is_admin=dictionary["is_admin"],
+            password_expiration=_parse_optional_datetime(dictionary.get("password_expiration")),
+            is_admin=bool(dictionary.get("is_admin", False)),
             is_service_account=dictionary.get("is_service_account", False),
-            experiment_permissions=[ExperimentPermission.from_json(p) for p in dictionary["experiment_permissions"]],
-            registered_model_permissions=[RegisteredModelPermission.from_json(p) for p in dictionary["registered_model_permissions"]],
-            groups=[Group.from_json(g) for g in dictionary["groups"]],
+            experiment_permissions=[ExperimentPermission.from_json(p) for p in dictionary.get("experiment_permissions", [])],
+            registered_model_permissions=[RegisteredModelPermission.from_json(p) for p in dictionary.get("registered_model_permissions", [])],
+            scorer_permissions=[ScorerPermission.from_json(p) for p in dictionary.get("scorer_permissions", [])],
+            groups=[Group.from_json(g) for g in dictionary.get("groups", [])],
         )
 
 
@@ -176,7 +216,7 @@ class ExperimentPermission:
         return cls(
             experiment_id=dictionary["experiment_id"],
             permission=dictionary["permission"],
-            user_id=dictionary["user_id"],
+            user_id=dictionary.get("user_id"),
             group_id=dictionary.get("group_id"),
         )
 
@@ -234,7 +274,7 @@ class RegisteredModelPermission:
     def from_json(cls, dictionary):
         return cls(
             name=dictionary["name"],
-            user_id=dictionary["user_id"],
+            user_id=dictionary.get("user_id"),
             permission=dictionary["permission"],
             group_id=dictionary.get("group_id"),
             prompt=bool(dictionary.get("prompt", False)),
@@ -563,5 +603,233 @@ class ExperimentRegexPermission:
             regex=dictionary["regex"],
             priority=dictionary["priority"],
             user_id=dictionary["user_id"],
+            permission=dictionary["permission"],
+        )
+
+
+class ScorerPermission:
+    def __init__(
+        self,
+        experiment_id,
+        scorer_name,
+        user_id,
+        permission,
+    ):
+        self._experiment_id = experiment_id
+        self._scorer_name = scorer_name
+        self._user_id = user_id
+        self._permission = permission
+
+    @property
+    def experiment_id(self):
+        return self._experiment_id
+
+    @property
+    def scorer_name(self):
+        return self._scorer_name
+
+    @property
+    def user_id(self):
+        return self._user_id
+
+    @property
+    def permission(self):
+        return self._permission
+
+    @permission.setter
+    def permission(self, permission):
+        self._permission = permission
+
+    def to_json(self):
+        return {
+            "experiment_id": self.experiment_id,
+            "scorer_name": self.scorer_name,
+            "user_id": self.user_id,
+            "permission": self.permission,
+        }
+
+    @classmethod
+    def from_json(cls, dictionary):
+        return cls(
+            experiment_id=dictionary["experiment_id"],
+            scorer_name=dictionary["scorer_name"],
+            user_id=dictionary["user_id"],
+            permission=dictionary["permission"],
+        )
+
+
+class ScorerGroupPermission:
+    def __init__(
+        self,
+        experiment_id,
+        scorer_name,
+        group_id,
+        permission,
+    ):
+        self._experiment_id = experiment_id
+        self._scorer_name = scorer_name
+        self._group_id = group_id
+        self._permission = permission
+
+    @property
+    def experiment_id(self):
+        return self._experiment_id
+
+    @property
+    def scorer_name(self):
+        return self._scorer_name
+
+    @property
+    def group_id(self):
+        return self._group_id
+
+    @property
+    def permission(self):
+        return self._permission
+
+    @permission.setter
+    def permission(self, permission):
+        self._permission = permission
+
+    def to_json(self):
+        return {
+            "experiment_id": self.experiment_id,
+            "scorer_name": self.scorer_name,
+            "group_id": self.group_id,
+            "permission": self.permission,
+        }
+
+    @classmethod
+    def from_json(cls, dictionary):
+        return cls(
+            experiment_id=dictionary["experiment_id"],
+            scorer_name=dictionary["scorer_name"],
+            group_id=dictionary["group_id"],
+            permission=dictionary["permission"],
+        )
+
+
+class ScorerRegexPermission:
+    def __init__(
+        self,
+        id_,
+        regex,
+        priority,
+        user_id,
+        permission,
+    ):
+        self._id = id_
+        self._regex = regex
+        self._priority = priority
+        self._user_id = user_id
+        self._permission = permission
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def regex(self):
+        return self._regex
+
+    @property
+    def priority(self):
+        return self._priority
+
+    @priority.setter
+    def priority(self, priority):
+        self._priority = priority
+
+    @property
+    def user_id(self):
+        return self._user_id
+
+    @property
+    def permission(self):
+        return self._permission
+
+    @permission.setter
+    def permission(self, permission):
+        self._permission = permission
+
+    def to_json(self):
+        return {
+            "id": self.id,
+            "regex": self.regex,
+            "priority": self.priority,
+            "user_id": self.user_id,
+            "permission": self.permission,
+        }
+
+    @classmethod
+    def from_json(cls, dictionary):
+        return cls(
+            id_=dictionary["id"],
+            regex=dictionary["regex"],
+            priority=dictionary["priority"],
+            user_id=dictionary["user_id"],
+            permission=dictionary["permission"],
+        )
+
+
+class ScorerGroupRegexPermission:
+    def __init__(
+        self,
+        id_,
+        regex,
+        priority,
+        group_id,
+        permission,
+    ):
+        self._id = id_
+        self._regex = regex
+        self._priority = priority
+        self._group_id = group_id
+        self._permission = permission
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def regex(self):
+        return self._regex
+
+    @property
+    def priority(self):
+        return self._priority
+
+    @priority.setter
+    def priority(self, priority):
+        self._priority = priority
+
+    @property
+    def group_id(self):
+        return self._group_id
+
+    @property
+    def permission(self):
+        return self._permission
+
+    @permission.setter
+    def permission(self, permission):
+        self._permission = permission
+
+    def to_json(self):
+        return {
+            "id": self.id,
+            "regex": self.regex,
+            "priority": self.priority,
+            "group_id": self.group_id,
+            "permission": self.permission,
+        }
+
+    @classmethod
+    def from_json(cls, dictionary):
+        return cls(
+            id_=dictionary["id"],
+            regex=dictionary["regex"],
+            priority=dictionary["priority"],
+            group_id=dictionary["group_id"],
             permission=dictionary["permission"],
         )
