@@ -30,7 +30,7 @@ export function Button({
       hover:bg-btn-primary-hover dark:hover:bg-btn-primary-hover-dark
   `,
     secondary: `
-      px-3 py-1.5 text-sm shadow-sm border
+      px-3 py-1.5 text-sm border
       bg-btn-secondary dark:bg-btn-secondary-dark
       text-btn-secondary-text dark:text-btn-secondary-text-dark
       border-btn-secondary-border dark:border-btn-secondary-border-dark
