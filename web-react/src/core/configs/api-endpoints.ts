@@ -2,8 +2,8 @@ export type DynamicPathParams = {
   experimentId: string;
   modelName: string;
   promptName: string;
-  // userName: string;
-  // groupName: string;
+  userName: string;
+  groupName: string;
 };
 
 export const STATIC_API_ENDPOINTS = {
@@ -68,18 +68,18 @@ export const DYNAMIC_API_ENDPOINTS = {
     )}/users`,
 
   // Group permissions for resources
-  //   GROUP_EXPERIMENT_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/groups/${groupName}/experiments",
-  //   GROUP_EXPERIMENT_PERMISSION_DETAIL:
-  //     "/api/2.0/mlflow/permissions/groups/${groupName}/experiments/${experimentId}",
-  //   GROUP_REGISTERED_MODEL_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/groups/${groupName}/registered-models",
-  //   GROUP_REGISTERED_MODEL_PERMISSION_DETAIL:
-  //     "/api/2.0/mlflow/permissions/groups/${groupName}/registered-models/${modelName}",
-  //   GROUP_PROMPT_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/groups/${groupName}/prompts",
-  //   GROUP_PROMPT_PERMISSION_DETAIL:
-  //     "/api/2.0/mlflow/permissions/groups/${groupName}/prompts/${promptName}",
+  GROUP_EXPERIMENT_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/experiments`,
+  GROUP_EXPERIMENT_PERMISSION: (groupName: string, experimentId: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/experiments/${experimentId}`,
+  GROUP_REGISTERED_MODEL_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models`,
+  GROUP_REGISTERED_MODEL_PERMISSION: (groupName: string, modelName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models/${modelName}`,
+  GROUP_PROMPT_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts`,
+  GROUP_PROMPT_PERMISSION: (groupName: string, promptName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts/${promptName}`,
 
   // Group pattern permissions
   //   GROUP_EXPERIMENT_PATTERN_PERMISSIONS:
@@ -96,16 +96,26 @@ export const DYNAMIC_API_ENDPOINTS = {
   //     "/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns/${patternId}",
 
   // Resource group permissions
-  //   EXPERIMENT_GROUP_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/experiments/${experimentId}/groups",
-  //   REGISTERED_MODEL_GROUP_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/registered-models/${modelName}/groups",
-  //   PROMPT_GROUP_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/prompts/${promptName}/groups",
+  EXPERIMENT_GROUP_PERMISSIONS: (
+    experimentId: DynamicPathParams["experimentId"]
+  ) =>
+    `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
+      String(experimentId)
+    )}/groups`,
+  REGISTERED_MODEL_GROUP_PERMISSIONS: (
+    modelName: DynamicPathParams["modelName"]
+  ) =>
+    `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(
+      String(modelName)
+    )}/groups`,
+  PROMPT_GROUP_PERMISSIONS: (promptName: DynamicPathParams["promptName"]) =>
+    `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(
+      String(promptName)
+    )}/groups`,
 
   // Group user permissions
-  //   GROUP_USER_PERMISSIONS:
-  //     "/api/2.0/mlflow/permissions/groups/${groupName}/users",
+  GROUP_MEMBERS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/users`,
 } as const;
 
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;
