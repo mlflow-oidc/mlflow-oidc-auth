@@ -77,7 +77,7 @@ export const UserPage = () => {
   return (
     <PageContainer title="User Page">
       {currentUser && (
-        <div className="flex flex-col gap-2 items-start p-2 mb-2 bg-ui-bg dark:bg-ui-secondary-bg-dark">
+        <div className="flex flex-col gap-2 items-start mb-2 bg-ui-bg dark:bg-ui-secondary-bg-dark">
           <div className="text-text-primary dark:text-text-primary-dark">
             {currentUser.password_expiration == null ? (
               <p className="font-medium">You have no access token yet</p>
