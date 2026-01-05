@@ -81,6 +81,31 @@ class UserRepository:
             user = get_user(session, username)
             if user is None:
                 raise MlflowException(f"User '{username}' not found.")
+
+            # Delete dependent rows first.
+            # Without this, SQLAlchemy may try to NULL-out non-nullable FKs
+            # (e.g. experiment_permissions.user_id), causing IntegrityError.
+            from mlflow_oidc_auth.db.models import (
+                SqlExperimentPermission,
+                SqlExperimentRegexPermission,
+                SqlRegisteredModelPermission,
+                SqlRegisteredModelRegexPermission,
+                SqlScorerPermission,
+                SqlScorerRegexPermission,
+                SqlUserGroup,
+            )
+
+            user_id = user.id
+            session.query(SqlExperimentPermission).filter(SqlExperimentPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlExperimentRegexPermission).filter(SqlExperimentRegexPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlRegisteredModelPermission).filter(SqlRegisteredModelPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlRegisteredModelRegexPermission).filter(SqlRegisteredModelRegexPermission.user_id == user_id).delete(
+                synchronize_session=False
+            )
+            session.query(SqlScorerPermission).filter(SqlScorerPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlScorerRegexPermission).filter(SqlScorerRegexPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user_id).delete(synchronize_session=False)
+
             session.delete(user)
             session.flush()
 
