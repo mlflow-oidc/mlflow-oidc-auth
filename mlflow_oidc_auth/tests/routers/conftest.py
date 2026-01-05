@@ -152,8 +152,9 @@ class TestClientWrapper:
         if "allow_redirects" in kwargs:
             kwargs["follow_redirects"] = kwargs.pop("allow_redirects")
         resp = self._client.request("GET", url, **kwargs)
-        # Historical tests expect an exception for unauthenticated users listing users
-        if url.startswith("/api/2.0/mlflow/users") and resp.status_code in (401, 403):
+        # Historical tests expect an exception for unauthenticated users listing users.
+        # Keep this behavior tightly scoped to the list-users endpoint only.
+        if url.split("?", 1)[0] == "/api/2.0/mlflow/users" and resp.status_code in (401, 403):
             raise Exception("Authentication required")
         return resp
 

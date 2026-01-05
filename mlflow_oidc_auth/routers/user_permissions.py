@@ -43,7 +43,6 @@ from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
 
 logger = get_logger()
 
-CURRENT_USER = "/current"
 USER_EXPERIMENT_PERMISSION = "/{username}/experiments"
 USER_EXPERIMENT_PERMISSION_DETAIL = "/{username}/experiments/{experiment_id}"
 USER_EXPERIMENT_PATTERN_PERMISSIONS = "/{username}/experiment-patterns"
@@ -72,34 +71,6 @@ user_permissions_router = APIRouter(
 )
 
 
-@user_permissions_router.get(CURRENT_USER, summary="Get current user information", description="Retrieves information about the currently authenticated user.")
-async def get_current_user_information(current_username: str = Depends(get_username)) -> JSONResponse:
-    """
-    Get information about the currently authenticated user.
-
-    This endpoint returns the user profile information for the authenticated user,
-    including username, display name, admin status, and other user attributes.
-
-    Parameters:
-    -----------
-    current_username : str
-        The authenticated username (injected by dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A JSON response containing the user's information.
-
-    Raises:
-    -------
-    HTTPException
-        If the user is not found or there's an error retrieving user information.
-    """
-    try:
-        return JSONResponse(content=store.get_user(current_username).to_json())
-    except Exception as e:
-        logger.error(f"Error getting current user information: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"User not found")
 
 
 @user_permissions_router.get(

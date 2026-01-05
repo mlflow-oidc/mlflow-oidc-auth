@@ -9,7 +9,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import CreateAccessTokenRequest, CreateUserRequest
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
-from mlflow_oidc_auth.utils import get_username
+from mlflow_oidc_auth.utils import get_is_admin, get_username
 
 from ._prefix import USERS_ROUTER_PREFIX
 
@@ -25,14 +25,18 @@ users_router = APIRouter(
 )
 
 
-LIST_USERS = ""
-CREATE_USER = "/create"
+USERS_ROOT = ""
 CREATE_ACCESS_TOKEN = "/access-token"
-DELETE_USER = "/delete"
+CURRENT_USER = "/current"
+USERNAME = "/{username}"
 
 
 @users_router.patch(CREATE_ACCESS_TOKEN, summary="Create user access token", description="Creates a new access token for the authenticated user.")
-async def create_access_token(token_request: Optional[CreateAccessTokenRequest] = Body(None), current_username: str = Depends(get_username)) -> JSONResponse:
+async def create_access_token(
+    token_request: Optional[CreateAccessTokenRequest] = Body(None),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> JSONResponse:
     """
     Create a new access token for the authenticated user.
 
@@ -41,12 +45,12 @@ async def create_access_token(token_request: Optional[CreateAccessTokenRequest] 
 
     Parameters:
     -----------
-    request : Request
-        The FastAPI request object.
     token_request : Optional[CreateAccessTokenRequest]
         Optional request body with token creation parameters.
     current_username : str
         The authenticated username (injected by dependency).
+    is_admin : bool
+        Whether the authenticated user has admin permissions.
 
     Returns:
     --------
@@ -59,10 +63,14 @@ async def create_access_token(token_request: Optional[CreateAccessTokenRequest] 
         If there is an error creating the access token.
     """
     try:
-        # Determine which username to use for token creation
-        # If no request body or username provided, use the authenticated user
+        # Determine which username to use for token creation.
+        # - Default: rotate the authenticated user's token.
+        # - Admins: may rotate tokens for other users.
+        # - Non-admins: may not rotate tokens for other users.
         if token_request and token_request.username:
             target_username = token_request.username
+            if target_username != current_username and not is_admin:
+                raise HTTPException(status_code=403, detail="Administrator privileges required for this operation")
         else:
             target_username = current_username
 
@@ -83,7 +91,7 @@ async def create_access_token(token_request: Optional[CreateAccessTokenRequest] 
 
                 if expiration > now + timedelta(days=366):
                     raise HTTPException(status_code=400, detail="Expiration date must be less than 1 year in the future")
-            except ValueError as e:
+            except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid expiration date format")
 
         # Check if the target user exists
@@ -107,7 +115,7 @@ async def create_access_token(token_request: Optional[CreateAccessTokenRequest] 
         raise HTTPException(status_code=500, detail=f"Failed to create access token")
 
 
-@users_router.get(LIST_USERS, summary="List users", description="Retrieves a list of users in the system.")
+@users_router.get(USERS_ROOT, summary="List users", description="Retrieves a list of users in the system.")
 async def list_users(service: bool = False, username: str = Depends(get_username)) -> JSONResponse:
     """
     List users in the system.
@@ -147,7 +155,7 @@ async def list_users(service: bool = False, username: str = Depends(get_username
 
 
 @users_router.post(
-    CREATE_USER,
+    USERS_ROOT,
     summary="Create a new user or service account",
     description="Creates a new user or service account in the system. Only admins can create users.",
 )
@@ -198,7 +206,7 @@ async def create_new_user(
         raise HTTPException(status_code=500, detail=f"Failed to create user")
 
 
-@users_router.delete(DELETE_USER, summary="Delete a user", description="Deletes a user from the system. Only admins can delete users.")
+@users_router.delete(USERS_ROOT, summary="Delete a user", description="Deletes a user from the system. Only admins can delete users.")
 async def delete_user(
     username: str = Body(..., description="The username to delete", embed=True), admin_username: str = Depends(check_admin_permission)
 ) -> JSONResponse:
@@ -242,3 +250,65 @@ async def delete_user(
     except Exception as e:
         logger.error(f"Error deleting user {username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete user")
+
+
+@users_router.get(CURRENT_USER, summary="Get current user information", description="Retrieves information about the currently authenticated user.")
+async def get_current_user_information(current_username: str = Depends(get_username)) -> JSONResponse:
+    """
+    Get information about the currently authenticated user.
+
+    This endpoint returns the user profile information for the authenticated user,
+    including username, display name, admin status, and other user attributes.
+
+    Parameters:
+    -----------
+    current_username : str
+        The authenticated username (injected by dependency).
+
+    Returns:
+    --------
+    JSONResponse
+        A JSON response containing the user's information.
+
+    Raises:
+    -------
+    HTTPException
+        If the user is not found or there's an error retrieving user information.
+    """
+    try:
+        return JSONResponse(content=store.get_user(current_username).to_json())
+    except Exception as e:
+        logger.error(f"Error getting current user information: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"User not found")
+
+
+@users_router.get(USERNAME, summary="Get user information", description="Retrieves information about a specified user.")
+async def get_user_information(username: str, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    """
+    Get information about a specified user.
+
+    This endpoint returns the user profile information for the specified user,
+    including username, display name, admin status, and other user attributes.
+
+    Parameters:
+    -----------
+    username : str
+        The username of the user to retrieve information for.
+    admin_username : str
+        The authenticated admin username (injected by dependency).
+
+    Returns:
+    --------
+    JSONResponse
+        A JSON response containing the user's information.
+
+    Raises:
+    -------
+    HTTPException
+        If the user is not found or there's an error retrieving user information.
+    """
+    try:
+        return JSONResponse(content=store.get_user(username).to_json())
+    except Exception as e:
+        logger.error(f"Error getting user information for {username}: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"User not found")
