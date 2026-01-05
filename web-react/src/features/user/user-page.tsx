@@ -12,7 +12,7 @@ import { EntityListTable } from "../../shared/components/entity-list-table";
 import { SearchInput } from "../../shared/components/search-input";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { PermissionItem } from "../../shared/types/entity";
-import { CreateAccessTokenButton } from "../../core/components/create-access-token-button";
+import { TokenInfoBlock } from "../../shared/components/token-info-block";
 
 export const UserPage = () => {
   const { tab = "info" } = useParams<{ tab?: string }>();
@@ -62,31 +62,13 @@ export const UserPage = () => {
     p.name.toLowerCase().includes(submittedTerm.toLowerCase())
   ) ?? [];
 
-  const expirationDate = currentUser?.password_expiration ? new Date(currentUser.password_expiration) : null;
-  const formattedDate = expirationDate?.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-  const formattedTime = expirationDate?.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-
   return (
     <PageContainer title="User Page">
       {currentUser && (
-        <div className="flex flex-col gap-2 items-start mb-2 bg-ui-bg dark:bg-ui-secondary-bg-dark">
-          <div className="text-text-primary dark:text-text-primary-dark">
-            {currentUser.password_expiration == null ? (
-              <p className="font-medium">You have no access token yet</p>
-            ) : (
-              <p className="font-medium">{`Your token expires on: ${formattedDate} at ${formattedTime}`}</p>
-            )}
-          </div>
-          <CreateAccessTokenButton />
-        </div>
+        <TokenInfoBlock
+          username={currentUser.username}
+          passwordExpiration={currentUser.password_expiration}
+        />
       )}
 
       <div className="flex space-x-4 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">

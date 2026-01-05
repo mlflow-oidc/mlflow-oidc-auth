@@ -37,17 +37,21 @@ const requestAccessTokenApi = async (
 
 interface AccessTokenModalProps {
   onClose: () => void;
+  username: string;
+  onTokenGenerated?: () => void;
 }
 
 export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   onClose,
+  username,
+  onTokenGenerated,
 }) => {
   const today = new Date().toISOString().split("T")[0];
   const maxDate = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
     .toISOString()
     .split("T")[0];
 
-  const { currentUser, refresh } = useUser();
+  const { refresh } = useUser();
 
   const [expirationDate, setExpirationDate] = useState<string>(maxDate);
   const [accessToken, setAccessToken] = useState<string>("");
@@ -78,28 +82,27 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   }, [onClose]);
 
   const handleRequestToken = useCallback(async () => {
-    if (!currentUser) return null;
-
     setIsLoading(true);
     setAccessToken("");
     try {
       const expirationDateObject = new Date(expirationDate);
 
       const token = await requestAccessTokenApi(
-        currentUser.username,
+        username,
         expirationDateObject
       );
       setAccessToken(token);
 
       showToast("Access token generated successfully!", "success");
       refresh();
+      onTokenGenerated?.();
     } catch (error) {
       console.error("Error requesting access token:", error);
       showToast("Failed to generate access token", "error");
     } finally {
       setIsLoading(false);
     }
-  }, [expirationDate, currentUser, refresh, showToast]);
+  }, [expirationDate, username, refresh, showToast, onTokenGenerated]);
 
   const handleCopyToken = useCallback(() => {
     if (accessToken && tokenInputRef.current) {
@@ -137,7 +140,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
 
         <div className="mb-2">
           <h4 className="text-lg text-ui-text dark:text-ui-text-dark">
-            Generate Access Token for {currentUser?.username}
+            Generate Access Token for {username}
           </h4>
         </div>
 

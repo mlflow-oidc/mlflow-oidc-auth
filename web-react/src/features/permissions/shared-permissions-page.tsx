@@ -19,10 +19,14 @@ import PageStatus from "../../shared/components/page/page-status";
 import { SearchInput } from "../../shared/components/search-input";
 import { IconButton } from "../../shared/components/icon-button";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
+import { TokenInfoBlock } from "../../shared/components/token-info-block";
+import { useUserDetails } from "../../core/hooks/use-user-details";
+
+import { useUser } from "../../core/hooks/use-user";
 
 interface SharedPermissionsPageProps {
   type: PermissionType;
-  baseRoute: string; // e.g., "/users" or "/service-accounts"
+  baseRoute: string;
 }
 
 export const SharedPermissionsPage = ({
@@ -31,6 +35,11 @@ export const SharedPermissionsPage = ({
 }: SharedPermissionsPageProps) => {
   const { username: routeUsername } = useParams<{ username: string }>();
   const username = routeUsername || null;
+
+  const { currentUser } = useUser();
+  const { user: userDetails, refetch: userDetailsRefetch } = useUserDetails({
+    username,
+  });
 
   const experimentHook = useUserExperimentPermissions({ username });
   const modelHook = useUserRegisteredModelPermissions({ username });
@@ -212,6 +221,13 @@ export const SharedPermissionsPage = ({
 
   return (
     <PageContainer title={`Permissions for ${username}`}>
+      {username && currentUser?.is_admin && (
+        <TokenInfoBlock
+          username={username}
+          passwordExpiration={userDetails?.password_expiration}
+          onTokenGenerated={userDetailsRefetch}
+        />
+      )}
       <div className="flex space-x-4 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
         {tabs.map((tab) => (
           <Link

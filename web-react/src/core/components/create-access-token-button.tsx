@@ -3,7 +3,10 @@ import { AccessTokenModal } from "./access-token-modal";
 import { Button } from "../../shared/components/button";
 import { faPlus } from "@fortawesome/free-solid-svg-icons";
 
-export const CreateAccessTokenButton: React.FC = () => {
+export const CreateAccessTokenButton: React.FC<{
+  username: string;
+  onTokenGenerated?: () => void;
+}> = ({ username, onTokenGenerated }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const openModal = useCallback(() => setIsModalOpen(true), []);
@@ -19,7 +22,13 @@ export const CreateAccessTokenButton: React.FC = () => {
         Create Access Token
       </Button>
 
-      {isModalOpen && <AccessTokenModal onClose={closeModal} />}
+      {isModalOpen && (
+        <AccessTokenModal
+          onClose={closeModal}
+          username={username}
+          onTokenGenerated={onTokenGenerated}
+        />
+      )}
     </>
   );
 };

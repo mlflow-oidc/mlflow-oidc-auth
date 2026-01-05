@@ -1,4 +1,4 @@
-import { createStaticApiFetcher } from "./create-api-fetcher";
+import { createDynamicApiFetcher, createStaticApiFetcher } from "./create-api-fetcher";
 import { http } from "./http";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import type { CurrentUser } from "../../shared/types/user";
@@ -22,6 +22,11 @@ export const fetchAllServiceAccounts = createStaticApiFetcher<string[]>({
   queryParams: {
     service: true,
   },
+});
+
+export const fetchUserDetails = createDynamicApiFetcher<CurrentUser, "GET_USER_DETAILS">({
+  endpointKey: "GET_USER_DETAILS",
+  responseType: {} as CurrentUser,
 });
 
 export const createUser = async (data: {
