@@ -5,7 +5,6 @@ import { IconButton } from "../../shared/components/icon-button";
 import { http } from "../../core/services/http";
 import { STATIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
 import type { ColumnConfig } from "../../shared/types/table";
-
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import { useSearch } from "../../core/hooks/use-search";
@@ -92,8 +91,8 @@ export default function ServiceAccountsPage() {
       render: ({ username }) => (
         <div className="invisible group-hover:visible">
           <RowActionButton
-            entityId={username}
-            route="service-accounts"
+            entityId={`${username}/experiments`}
+            route="/service-accounts"
             buttonText="Manage permissions"
           />
         </div>
@@ -118,7 +117,6 @@ export default function ServiceAccountsPage() {
         ]
       : []),
   ];
-
 
   return (
     <PageContainer title="Service Accounts">

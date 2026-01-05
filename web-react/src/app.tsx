@@ -130,10 +130,26 @@ export default function App() {
         }
       />
       <Route
-        path="/service-accounts/:username"
+        path="/service-accounts/:username/experiments"
         element={
           <ProtectedLayoutRoute>
-            <ServiceAccountPermissionPage />
+            <ServiceAccountPermissionPage type="experiments" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/service-accounts/:username/models"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="models" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/service-accounts/:username/prompts"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="prompts" />
           </ProtectedLayoutRoute>
         }
       />
