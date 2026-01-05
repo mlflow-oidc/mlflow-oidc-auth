@@ -163,7 +163,12 @@ export default function UserPermissionsPage({ type }: UserPermissionsPageProps) 
     prompts: promptHook,
   }[type];
 
-  const { isLoading, error, refresh, permissions } = activeHook;
+  const { isLoading, error, refresh, permissions } = activeHook || {
+    isLoading: false,
+    error: null,
+    refresh: () => {},
+    permissions: [],
+  };
   const loadingText = `Loading user's ${type.replace(/s$/, "")} permissions...`;
 
   const filteredData = permissions.filter((p: PermissionItem) =>
