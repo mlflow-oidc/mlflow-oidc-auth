@@ -11,16 +11,14 @@ export const STATIC_API_ENDPOINTS = {
   ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
   ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
   ALL_PROMPTS: "/api/2.0/mlflow/permissions/prompts",
-  ALL_USERS: "/api/2.0/mlflow/users",
+  USERS_RESOURCE: "/api/2.0/mlflow/users",
 
   // User management
-  CREATE_USER: "/api/2.0/mlflow/users/create",
   //   GET_USER: "/api/2.0/mlflow/users/get",
   //   UPDATE_USER_PASSWORD: "/api/2.0/mlflow/users/update-password",
   //   UPDATE_USER_ADMIN: "/api/2.0/mlflow/users/update-admin",
-  DELETE_USER: "/api/2.0/mlflow/users/delete",
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
-  GET_CURRENT_USER: "/api/2.0/mlflow/permissions/users/current",
+  GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {

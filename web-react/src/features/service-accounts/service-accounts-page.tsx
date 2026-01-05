@@ -2,8 +2,6 @@ import { useState } from "react";
 import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { RowActionButton } from "../../shared/components/row-action-button";
 import { IconButton } from "../../shared/components/icon-button";
-import { http } from "../../core/services/http";
-import { STATIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
 import type { ColumnConfig } from "../../shared/types/table";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
@@ -14,7 +12,7 @@ import PageStatus from "../../shared/components/page/page-status";
 import { useCurrentUser } from "../../core/hooks/use-current-user";
 import { Button } from "../../shared/components/button";
 import { CreateServiceAccountModal } from "./components/create-service-account-modal";
-import { createServiceAccount } from "../../core/services/user-service";
+import { createUser, deleteUser } from "../../core/services/user-service";
 import { useToast } from "../../shared/components/toast/use-toast";
 
 export default function ServiceAccountsPage() {
@@ -44,7 +42,7 @@ export default function ServiceAccountsPage() {
     is_admin: boolean;
   }) => {
     try {
-      await createServiceAccount({
+      await createUser({
         username: data.name,
         display_name: data.display_name,
         is_admin: data.is_admin,
@@ -61,10 +59,7 @@ export default function ServiceAccountsPage() {
 
   const handleRemoveServiceAccount = async (username: string) => {
     try {
-      await http(STATIC_API_ENDPOINTS.DELETE_USER, {
-        method: "DELETE",
-        body: JSON.stringify({ username }),
-      });
+      await deleteUser(username);
       showToast(`Service account ${username} removed successfully.`, "success");
       refresh();
     } catch (err) {

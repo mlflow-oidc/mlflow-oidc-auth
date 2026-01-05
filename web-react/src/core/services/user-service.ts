@@ -12,26 +12,33 @@ export const fetchCurrentUser = createStaticApiFetcher<CurrentUser>({
 });
 
 export const fetchAllUsers = createStaticApiFetcher<string[]>({
-  endpointKey: "ALL_USERS",
+  endpointKey: "USERS_RESOURCE",
   responseType: [] as string[],
 });
 
 export const fetchAllServiceAccounts = createStaticApiFetcher<string[]>({
-  endpointKey: "ALL_USERS",
+  endpointKey: "USERS_RESOURCE",
   responseType: [] as string[],
   queryParams: {
     service: true,
   },
 });
 
-export const createServiceAccount = async (data: {
+export const createUser = async (data: {
   username: string;
   display_name: string;
   is_admin: boolean;
   is_service_account: boolean;
 }) => {
-  return http(STATIC_API_ENDPOINTS.CREATE_USER, {
+  return http(STATIC_API_ENDPOINTS.USERS_RESOURCE, {
     method: "POST",
     body: JSON.stringify(data),
+  });
+};
+
+export const deleteUser = async (username: string) => {
+  return http(STATIC_API_ENDPOINTS.USERS_RESOURCE, {
+    method: "DELETE",
+    body: JSON.stringify({ username }),
   });
 };
