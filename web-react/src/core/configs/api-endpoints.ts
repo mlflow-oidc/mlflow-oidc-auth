@@ -99,8 +99,8 @@ export const DYNAMIC_API_ENDPOINTS = {
     )}/groups`,
 
   // Group user permissions
-  GROUP_MEMBERS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/users`,
+  // GROUP_MEMBERS: (groupName: string) =>
+  //   `/api/2.0/mlflow/permissions/groups/${groupName}/users`,
 } as const;
 
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;
