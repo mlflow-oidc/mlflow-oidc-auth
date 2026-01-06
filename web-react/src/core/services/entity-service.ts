@@ -81,3 +81,51 @@ export const fetchPromptUserPermissions = createDynamicApiFetcher<
   endpointKey: "PROMPT_USER_PERMISSIONS",
   responseType: [] as EntityPermission[],
 });
+
+export const fetchGroupExperimentPermissions = createDynamicApiFetcher<
+  ExperimentPermission[],
+  "GROUP_EXPERIMENT_PERMISSIONS"
+>({
+  endpointKey: "GROUP_EXPERIMENT_PERMISSIONS",
+  responseType: [] as ExperimentPermission[],
+});
+
+export const fetchGroupRegisteredModelPermissions = createDynamicApiFetcher<
+  ModelPermission[],
+  "GROUP_REGISTERED_MODEL_PERMISSIONS"
+>({
+  endpointKey: "GROUP_REGISTERED_MODEL_PERMISSIONS",
+  responseType: [] as ModelPermission[],
+});
+
+export const fetchGroupPromptPermissions = createDynamicApiFetcher<
+  PromptPermission[],
+  "GROUP_PROMPT_PERMISSIONS"
+>({
+  endpointKey: "GROUP_PROMPT_PERMISSIONS",
+  responseType: [] as PromptPermission[],
+});
+
+export const fetchExperimentGroupPermissions = createDynamicApiFetcher<
+  EntityPermission[],
+  "EXPERIMENT_GROUP_PERMISSIONS"
+>({
+  endpointKey: "EXPERIMENT_GROUP_PERMISSIONS",
+  responseType: [] as EntityPermission[],
+});
+
+export const fetchModelGroupPermissions = createDynamicApiFetcher<
+  EntityPermission[],
+  "REGISTERED_MODEL_GROUP_PERMISSIONS"
+>({
+  endpointKey: "REGISTERED_MODEL_GROUP_PERMISSIONS",
+  responseType: [] as EntityPermission[],
+});
+
+export const fetchPromptGroupPermissions = createDynamicApiFetcher<
+  EntityPermission[],
+  "PROMPT_GROUP_PERMISSIONS"
+>({
+  endpointKey: "PROMPT_GROUP_PERMISSIONS",
+  responseType: [] as EntityPermission[],
+});
