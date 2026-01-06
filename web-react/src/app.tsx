@@ -14,6 +14,9 @@ const ExperimentPermissionsPage = React.lazy(
   () => import("./features/experiments/experiment-permissions-page")
 );
 const GroupsPage = React.lazy(() => import("./features/groups/groups-page"));
+const GroupPermissionsPage = React.lazy(
+  () => import("./features/groups/group-permissions-page")
+);
 const ModelsPage = React.lazy(() => import("./features/models/models-page"));
 const ModelPermissionsPage = React.lazy(
   () => import("./features/models/model-permissions-page")
@@ -86,6 +89,30 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <GroupsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/groups/:groupName/experiments"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="experiments" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/groups/:groupName/models"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="models" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/groups/:groupName/prompts"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="prompts" />
           </ProtectedLayoutRoute>
         }
       />
