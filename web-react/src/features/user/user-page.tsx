@@ -52,7 +52,7 @@ export const UserPage = () => {
   const permissionColumns: ColumnConfig<PermissionItem>[] = [
     { header: "Name", render: (item) => item.name },
     { header: "Permission", render: (item) => item.permission },
-    { header: "Kind", render: (item) => item.type },
+    { header: "Kind", render: (item) => item.kind },
   ];
 
   const isLoading = isUserLoading || (activeHook?.isLoading ?? false);

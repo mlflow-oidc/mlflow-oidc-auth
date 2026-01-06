@@ -137,7 +137,7 @@ export const SharedPermissionsPage = ({
               );
       }
 
-      const isCreate = editingItem.type !== "user";
+      const isCreate = editingItem.kind !== "user";
       const method = isCreate ? "POST" : "PATCH";
 
       await http(url, {
@@ -219,12 +219,12 @@ export const SharedPermissionsPage = ({
   const permissionColumns: ColumnConfig<PermissionItem>[] = [
     { header: "Name", render: (item) => item.name },
     { header: "Permission", render: (item) => item.permission },
-    { header: "Kind", render: (item) => item.type },
+    { header: "Kind", render: (item) => item.kind },
     {
       header: "Actions",
       render: (item) => {
-        const isFallback = item.type === "fallback";
-        const isUserType = item.type === "user";
+        const isFallback = item.kind === "fallback";
+        const isUserType = item.kind === "user";
         const isCreate = !isUserType || isFallback;
         const editIcon = isCreate ? faPlus : faEdit;
         const deleteDisabled = !isUserType;

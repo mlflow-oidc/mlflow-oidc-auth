@@ -29,13 +29,13 @@ export type ExperimentPermission = {
   name: string;
   id: string;
   permission: PermissionLevel;
-  type: PermissionKind;
+  kind: PermissionKind;
 };
 
 export type ModelPermission = {
   name: string;
   permission: PermissionLevel;
-  type: PermissionKind;
+  kind: PermissionKind;
 };
 
 export type PromptPermission = ModelPermission;

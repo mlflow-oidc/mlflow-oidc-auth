@@ -29,7 +29,7 @@ export function usePermissionsManagement({
     setEditingItem({
       name: item.name,
       permission: item.permission,
-      type: item.kind,
+      kind: item.kind,
     });
     setIsModalOpen(true);
   }, []);
@@ -42,7 +42,7 @@ export function usePermissionsManagement({
       let url = "";
       if (resourceType === "experiments") {
         url =
-          editingItem.type === "group"
+          editingItem.kind === "group"
             ? DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
                 editingItem.name,
                 resourceId
@@ -53,7 +53,7 @@ export function usePermissionsManagement({
               );
       } else if (resourceType === "models") {
         url =
-          editingItem.type === "group"
+          editingItem.kind === "group"
             ? DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
                 editingItem.name,
                 resourceId
@@ -64,7 +64,7 @@ export function usePermissionsManagement({
               );
       } else if (resourceType === "prompts") {
         url =
-          editingItem.type === "group"
+          editingItem.kind === "group"
             ? DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
                 editingItem.name,
                 resourceId
