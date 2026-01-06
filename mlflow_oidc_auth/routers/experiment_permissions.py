@@ -15,7 +15,7 @@ logger = get_logger()
 
 experiment_permissions_router = APIRouter(
     prefix=EXPERIMENT_PERMISSIONS_ROUTER_PREFIX,
-    tags=["permissions"],
+    tags=["experiment permissions"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},

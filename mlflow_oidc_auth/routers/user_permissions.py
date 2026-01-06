@@ -63,7 +63,7 @@ USER_SCORER_PATTERN_PERMISSION_DETAIL = "/{username}/scorer-patterns/{pattern_id
 
 user_permissions_router = APIRouter(
     prefix=USER_PERMISSIONS_ROUTER_PREFIX,
-    tags=["permissions"],
+    tags=["user permissions"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},

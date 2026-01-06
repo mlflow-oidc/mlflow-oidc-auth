@@ -39,7 +39,7 @@ logger = get_logger()
 
 group_permissions_router = APIRouter(
     prefix=GROUP_PERMISSIONS_ROUTER_PREFIX,
-    tags=["permissions", "groups"],
+    tags=["group permissions"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},

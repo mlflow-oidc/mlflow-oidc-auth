@@ -17,7 +17,7 @@ logger = get_logger()
 
 registered_model_permissions_router = APIRouter(
     prefix=REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX,
-    tags=["permissions"],
+    tags=["registered model permissions"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},

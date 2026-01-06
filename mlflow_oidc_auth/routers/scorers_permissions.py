@@ -24,7 +24,7 @@ logger = get_logger()
 
 scorers_permissions_router = APIRouter(
     prefix=SCORERS_ROUTER_PREFIX,
-    tags=["permissions"],
+    tags=["scorer permissions"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},

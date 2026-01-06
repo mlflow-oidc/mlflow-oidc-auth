@@ -16,7 +16,7 @@ logger = get_logger()
 
 prompt_permissions_router = APIRouter(
     prefix=PROMPT_PERMISSIONS_ROUTER_PREFIX,
-    tags=["permissions"],
+    tags=["prompt permissions"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},

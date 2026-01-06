@@ -17,7 +17,7 @@ logger = get_logger()
 
 users_router = APIRouter(
     prefix=USERS_ROUTER_PREFIX,
-    tags=["permissions", "users"],
+    tags=["users"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},
