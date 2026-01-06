@@ -1,10 +1,3 @@
-export type DynamicPathParams = {
-  experimentId: string;
-  modelName: string;
-  promptName: string;
-  userName: string;
-  groupName: string;
-};
 
 export const STATIC_API_ENDPOINTS = {
   ALL_GROUPS: "/api/2.0/mlflow/permissions/groups",
@@ -50,19 +43,15 @@ export const DYNAMIC_API_ENDPOINTS = {
   //     "/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns/${patternId}",
 
   // Resource user permissions
-  EXPERIMENT_USER_PERMISSIONS: (
-    experimentId: DynamicPathParams["experimentId"]
-  ) =>
+  EXPERIMENT_USER_PERMISSIONS: (experimentId: string) =>
     `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
       String(experimentId)
     )}/users`,
-  REGISTERED_MODEL_USER_PERMISSIONS: (
-    modelName: DynamicPathParams["modelName"]
-  ) =>
+  REGISTERED_MODEL_USER_PERMISSIONS: (modelName: string) =>
     `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(
       String(modelName)
     )}/users`,
-  PROMPT_USER_PERMISSIONS: (promptName: DynamicPathParams["promptName"]) =>
+  PROMPT_USER_PERMISSIONS: (promptName: string) =>
     `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(
       String(promptName)
     )}/users`,
@@ -96,19 +85,15 @@ export const DYNAMIC_API_ENDPOINTS = {
   //     "/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns/${patternId}",
 
   // Resource group permissions
-  EXPERIMENT_GROUP_PERMISSIONS: (
-    experimentId: DynamicPathParams["experimentId"]
-  ) =>
+  EXPERIMENT_GROUP_PERMISSIONS: (experimentId: string) =>
     `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
       String(experimentId)
     )}/groups`,
-  REGISTERED_MODEL_GROUP_PERMISSIONS: (
-    modelName: DynamicPathParams["modelName"]
-  ) =>
+  REGISTERED_MODEL_GROUP_PERMISSIONS: (modelName: string) =>
     `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(
       String(modelName)
     )}/groups`,
-  PROMPT_GROUP_PERMISSIONS: (promptName: DynamicPathParams["promptName"]) =>
+  PROMPT_GROUP_PERMISSIONS: (promptName: string) =>
     `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(
       String(promptName)
     )}/groups`,
