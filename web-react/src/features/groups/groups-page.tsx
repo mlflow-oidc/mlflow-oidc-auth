@@ -4,6 +4,8 @@ import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { useSearch } from "../../core/hooks/use-search";
 import { useAllGroups } from "../../core/hooks/use-all-groups";
+import { RowActionButton } from "../../shared/components/row-action-button";
+import type { ColumnConfig } from "../../shared/types/table";
 
 export default function GroupsPage() {
   const {
@@ -21,6 +23,33 @@ export default function GroupsPage() {
   const filteredGroups = groupsList.filter((group) =>
     group.toLowerCase().includes(submittedTerm.toLowerCase())
   );
+
+  const tableData = filteredGroups.map((group) => ({
+    id: group,
+    groupName: group,
+  }));
+
+  const renderPermissionsButton = (groupName: string) => (
+    <div className="invisible group-hover:visible">
+      <RowActionButton
+        entityId={`${groupName}/experiments`}
+        route="/groups"
+        buttonText="Manage permissions"
+      />
+    </div>
+  );
+
+  const columnsWithAction: ColumnConfig<{ id: string; groupName: string }>[] = [
+    {
+      header: "Group Name",
+      render: ({ groupName }) => groupName,
+    },
+    {
+      header: "Permissions",
+      render: ({ groupName }) => renderPermissionsButton(groupName),
+      className: "flex-shrink-0",
+    },
+  ];
 
   return (
     <PageContainer title="Groups">
@@ -44,9 +73,10 @@ export default function GroupsPage() {
           </div>
 
           <EntityListTable
-            mode="primitive"
-            data={filteredGroups}
-            searchTerm={searchTerm}
+            mode="object"
+            data={tableData}
+            searchTerm={submittedTerm}
+            columns={columnsWithAction}
           />
         </>
       )}

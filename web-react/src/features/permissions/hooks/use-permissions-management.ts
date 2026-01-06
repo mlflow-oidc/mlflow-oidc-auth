@@ -27,7 +27,7 @@ export function usePermissionsManagement({
 
   const handleEditClick = useCallback((item: EntityPermission) => {
     setEditingItem({
-      name: item.username,
+      name: item.name,
       permission: item.permission,
       type: item.kind,
     });
@@ -41,11 +41,38 @@ export function usePermissionsManagement({
     try {
       let url = "";
       if (resourceType === "experiments") {
-        url = DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(editingItem.name, resourceId);
+        url =
+          editingItem.type === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
+                editingItem.name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
+                editingItem.name,
+                resourceId
+              );
       } else if (resourceType === "models") {
-        url = DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(editingItem.name, resourceId);
+        url =
+          editingItem.type === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+                editingItem.name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+                editingItem.name,
+                resourceId
+              );
       } else if (resourceType === "prompts") {
-        url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(editingItem.name, resourceId);
+        url =
+          editingItem.type === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
+                editingItem.name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
+                editingItem.name,
+                resourceId
+              );
       }
 
       await http(url, {
@@ -68,18 +95,45 @@ export function usePermissionsManagement({
     try {
       let url = "";
       if (resourceType === "experiments") {
-        url = DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(item.username, resourceId);
+        url =
+          item.kind === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
+                item.name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
+                item.name,
+                resourceId
+              );
       } else if (resourceType === "models") {
-        url = DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(item.username, resourceId);
+        url =
+          item.kind === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+                item.name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+                item.name,
+                resourceId
+              );
       } else if (resourceType === "prompts") {
-        url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(item.username, resourceId);
+        url =
+          item.kind === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
+                item.name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
+                item.name,
+                resourceId
+              );
       }
 
       await http(url, {
         method: "DELETE",
       });
 
-      showToast(`Permission for ${item.username} has been removed.`, "success");
+      showToast(`Permission for ${item.name} has been removed.`, "success");
       refresh();
     } catch {
       showToast("Failed to remove permission. Please try again.", "error");
@@ -91,16 +145,43 @@ export function usePermissionsManagement({
     setEditingItem(null);
   }, []);
 
-  const handleGrantPermission = useCallback(async (username: string, permission: PermissionLevel) => {
+  const handleGrantPermission = useCallback(async (name: string, permission: PermissionLevel, kind: "user" | "group" = "user") => {
     setIsSaving(true);
     try {
       let url = "";
       if (resourceType === "experiments") {
-        url = DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(username, resourceId);
+        url =
+          kind === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
+                name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
+                name,
+                resourceId
+              );
       } else if (resourceType === "models") {
-        url = DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(username, resourceId);
+        url =
+          kind === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+                name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+                name,
+                resourceId
+              );
       } else if (resourceType === "prompts") {
-        url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(username, resourceId);
+        url =
+          kind === "group"
+            ? DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
+                name,
+                resourceId
+              )
+            : DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
+                name,
+                resourceId
+              );
       }
 
       await http(url, {
@@ -108,7 +189,7 @@ export function usePermissionsManagement({
         body: JSON.stringify({ permission }),
       });
 
-      showToast(`Permission for ${username} has been granted.`, "success");
+      showToast(`Permission for ${name} has been granted.`, "success");
       refresh();
       return true;
     } catch {

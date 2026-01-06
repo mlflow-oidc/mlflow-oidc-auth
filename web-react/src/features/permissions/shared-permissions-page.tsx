@@ -14,6 +14,9 @@ import { useSearch } from "../../core/hooks/use-search";
 import { useUserExperimentPermissions } from "../../core/hooks/use-user-experiment-permissions";
 import { useUserRegisteredModelPermissions } from "../../core/hooks/use-user-model-permissions";
 import { useUserPromptPermissions } from "../../core/hooks/use-user-prompt-permissions";
+import { useGroupExperimentPermissions } from "../../core/hooks/use-group-experiment-permissions";
+import { useGroupRegisteredModelPermissions } from "../../core/hooks/use-group-model-permissions";
+import { useGroupPromptPermissions } from "../../core/hooks/use-group-prompt-permissions";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import PageStatus from "../../shared/components/page/page-status";
 import { SearchInput } from "../../shared/components/search-input";
@@ -27,23 +30,45 @@ import { useUser } from "../../core/hooks/use-user";
 interface SharedPermissionsPageProps {
   type: PermissionType;
   baseRoute: string;
+  entityKind: "user" | "group";
 }
 
 export const SharedPermissionsPage = ({
   type,
   baseRoute,
+  entityKind,
 }: SharedPermissionsPageProps) => {
-  const { username: routeUsername } = useParams<{ username: string }>();
-  const username = routeUsername || null;
+  const { username: routeUsername, groupName: routeGroupName } = useParams<{
+    username?: string;
+    groupName?: string;
+  }>();
+
+  const entityName = (entityKind === "user" ? routeUsername : routeGroupName) || null;
 
   const { currentUser } = useUser();
   const { user: userDetails, refetch: userDetailsRefetch } = useUserDetails({
-    username,
+    username: entityKind === "user" ? entityName : null,
   });
 
-  const experimentHook = useUserExperimentPermissions({ username });
-  const modelHook = useUserRegisteredModelPermissions({ username });
-  const promptHook = useUserPromptPermissions({ username });
+  const userExperimentHook = useUserExperimentPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const userModelHook = useUserRegisteredModelPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const userPromptHook = useUserPromptPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+
+  const groupExperimentHook = useGroupExperimentPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
+  const groupModelHook = useGroupRegisteredModelPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
+  const groupPromptHook = useGroupPromptPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
 
   const { showToast } = useToast();
 
@@ -69,7 +94,7 @@ export const SharedPermissionsPage = ({
   };
 
   const handleSavePermission = async (newPermission: string) => {
-    if (!username || !editingItem) return;
+    if (!entityName || !editingItem) return;
 
     setIsSaving(true);
     try {
@@ -78,20 +103,38 @@ export const SharedPermissionsPage = ({
         "id" in editingItem ? editingItem.id : editingItem.name;
 
       if (type === "experiments") {
-        url = DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
-          username,
-          identifier
-        );
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
+                entityName,
+                identifier
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
+                entityName,
+                identifier
+              );
       } else if (type === "models") {
-        url = DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
-          username,
-          identifier
-        );
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+                entityName,
+                identifier
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+                entityName,
+                identifier
+              );
       } else if (type === "prompts") {
-        url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
-          username,
-          identifier
-        );
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
+                entityName,
+                identifier
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
+                entityName,
+                identifier
+              );
       }
 
       const isCreate = editingItem.type !== "user";
@@ -116,27 +159,45 @@ export const SharedPermissionsPage = ({
   };
 
   const handleRemovePermission = async (item: PermissionItem) => {
-    if (!username) return;
+    if (!entityName) return;
 
     try {
       let url = "";
       const identifier = "id" in item ? item.id : item.name;
 
       if (type === "experiments") {
-        url = DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
-          username,
-          identifier
-        );
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
+                entityName,
+                identifier
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
+                entityName,
+                identifier
+              );
       } else if (type === "models") {
-        url = DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
-          username,
-          identifier
-        );
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+                entityName,
+                identifier
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+                entityName,
+                identifier
+              );
       } else if (type === "prompts") {
-        url = DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
-          username,
-          identifier
-        );
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
+                entityName,
+                identifier
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
+                entityName,
+                identifier
+              );
       }
 
       await http(url, {
@@ -190,15 +251,22 @@ export const SharedPermissionsPage = ({
     },
   ];
 
-  if (!username) {
-    return <div>Username is required.</div>;
+  if (!entityName) {
+    return <div>{entityKind === "user" ? "Username" : "Group name"} is required.</div>;
   }
 
-  const activeHook = {
-    experiments: experimentHook,
-    models: modelHook,
-    prompts: promptHook,
-  }[type];
+  const activeHook =
+    entityKind === "user"
+      ? {
+          experiments: userExperimentHook,
+          models: userModelHook,
+          prompts: userPromptHook,
+        }[type]
+      : {
+          experiments: groupExperimentHook,
+          models: groupModelHook,
+          prompts: groupPromptHook,
+        }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook || {
     isLoading: false,
@@ -220,10 +288,10 @@ export const SharedPermissionsPage = ({
   ];
 
   return (
-    <PageContainer title={`Permissions for ${username}`}>
-      {username && currentUser?.is_admin && (
+    <PageContainer title={`Permissions for ${entityName}`}>
+      {entityName && entityKind === "user" && currentUser?.is_admin && (
         <TokenInfoBlock
-          username={username}
+          username={entityName}
           passwordExpiration={userDetails?.password_expiration}
           onTokenGenerated={userDetailsRefetch}
         />
@@ -232,7 +300,7 @@ export const SharedPermissionsPage = ({
         {tabs.map((tab) => (
           <Link
             key={tab.id}
-            to={`${baseRoute}/${encodeURIComponent(username)}/${tab.id}`}
+            to={`${baseRoute}/${encodeURIComponent(entityName)}/${tab.id}`}
             className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 ${
               type === tab.id
                 ? "border-btn-primary text-btn-primary dark:border-btn-primary-dark dark:text-btn-primary-dark"
@@ -276,7 +344,7 @@ export const SharedPermissionsPage = ({
         onClose={handleModalClose}
         onSave={handleSavePermission}
         item={editingItem}
-        username={username}
+        username={entityName}
         type={type}
         isLoading={isSaving}
       />

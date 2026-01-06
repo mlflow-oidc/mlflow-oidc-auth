@@ -13,6 +13,7 @@ import type {
 } from "../../../shared/types/entity";
 import { useAllUsers } from "../../../core/hooks/use-all-users";
 import { useAllServiceAccounts } from "../../../core/hooks/use-all-accounts";
+import { useAllGroups } from "../../../core/hooks/use-all-groups";
 import { Button } from "../../../shared/components/button";
 import { GrantPermissionModal } from "./grant-permission-modal";
 import { useState } from "react";
@@ -53,17 +54,22 @@ export function EntityPermissionsManager({
 
   const { allUsers } = useAllUsers();
   const { allServiceAccounts } = useAllServiceAccounts();
+  const { allGroups } = useAllGroups();
 
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
+  const [isAddGroupModalOpen, setIsAddGroupModalOpen] = useState(false);
 
-  const existingUsernames = new Set(permissions.map((p) => p.username));
+  const existingNames = new Set(permissions.map((p) => p.name));
 
   const availableUsers = (allUsers || []).filter(
-    (username) => !existingUsernames.has(username)
+    (username) => !existingNames.has(username)
   );
   const availableAccounts = (allServiceAccounts || []).filter(
-    (username) => !existingUsernames.has(username)
+    (username) => !existingNames.has(username)
+  );
+  const availableGroups = (allGroups || []).filter(
+    (groupname) => !existingNames.has(groupname)
   );
 
   const {
@@ -75,13 +81,13 @@ export function EntityPermissionsManager({
   } = useSearch();
 
   const filteredPermissions = permissions.filter((p) =>
-    p.username.toLowerCase().includes(submittedTerm.toLowerCase())
+    p.name.toLowerCase().includes(submittedTerm.toLowerCase())
   );
 
   const columns: ColumnConfig<EntityPermission>[] = [
     {
       header: "Name",
-      render: (item) => item.username,
+      render: (item) => item.name,
     },
     {
       header: "Permission",
@@ -147,6 +153,18 @@ export function EntityPermissionsManager({
             >
               + Add Service Account
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setIsAddGroupModalOpen(true)}
+              disabled={availableGroups.length === 0}
+              title={
+                availableGroups.length === 0
+                  ? "All groups already have permissions"
+                  : "Add group permission"
+              }
+            >
+              + Add Group
+            </Button>
           </div>
           <div className="mb-2">
             <SearchInput
@@ -200,6 +218,19 @@ export function EntityPermissionsManager({
         title={`Grant service account permissions for ${resourceName}`}
         label="Service account"
         options={availableAccounts}
+        isLoading={isSaving}
+      />
+
+      <GrantPermissionModal
+        isOpen={isAddGroupModalOpen}
+        onClose={() => setIsAddGroupModalOpen(false)}
+        onSave={async (name, permission) => {
+          const success = await handleGrantPermission(name, permission, "group");
+          if (success) setIsAddGroupModalOpen(false);
+        }}
+        title={`Grant group permissions for ${resourceName}`}
+        label="Group"
+        options={availableGroups}
         isLoading={isSaving}
       />
     </>

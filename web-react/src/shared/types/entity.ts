@@ -22,7 +22,7 @@ export type PermissionType = "experiments" | "models" | "prompts";
 export type EntityPermission = {
   kind: PermissionKind;
   permission: PermissionLevel;
-  username: string;
+  name: string;
 };
 
 export type ExperimentPermission = {
