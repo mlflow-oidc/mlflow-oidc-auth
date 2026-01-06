@@ -187,7 +187,7 @@ async def list_scorer_groups(
 
     try:
         groups = store.scorer_group_repo.list_groups_for_scorer(str(experiment_id), str(scorer_name))
-        return [GroupPermissionEntry(group_name=group_name, permission=permission) for group_name, permission in groups]
+        return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error listing scorer group permissions: {e}")
         raise HTTPException(status_code=500, detail="Failed to list scorer group permissions")

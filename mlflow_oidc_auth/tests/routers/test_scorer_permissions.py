@@ -75,7 +75,7 @@ class TestScorerPermissionRoutes:
         assert resp.status_code == 200
         body = resp.json()
         assert body == [
-            {"group_name": "my-group", "permission": "READ"},
-            {"group_name": "admins", "permission": "MANAGE"},
+            {"name": "my-group", "permission": "READ", "kind": "group"},
+            {"name": "admins", "permission": "MANAGE", "kind": "group"},
         ]
         mock_store.scorer_group_repo.list_groups_for_scorer.assert_called_once_with("123", "my_scorer")

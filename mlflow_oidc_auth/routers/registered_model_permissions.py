@@ -99,7 +99,7 @@ async def get_registered_model_groups(
 
     try:
         groups = store.registered_model_group_repo.list_groups_for_model(str(name))
-        return [GroupPermissionEntry(group_name=group_name, permission=permission) for group_name, permission in groups]
+        return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error retrieving registered model group permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve registered model group permissions")

@@ -96,7 +96,7 @@ async def get_experiment_groups(
 
     try:
         groups = store.experiment_group_repo.list_groups_for_experiment(str(experiment_id))
-        return [GroupPermissionEntry(group_name=group_name, permission=permission) for group_name, permission in groups]
+        return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error retrieving experiment group permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve experiment group permissions")

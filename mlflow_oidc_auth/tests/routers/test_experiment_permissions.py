@@ -30,7 +30,7 @@ class TestExperimentPermissionsRouter:
     def test_router_configuration(self):
         """Test that the experiment permissions router is properly configured."""
         assert experiment_permissions_router.prefix == "/api/2.0/mlflow/permissions/experiments"
-        assert "permissions" in experiment_permissions_router.tags
+        assert "experiment permissions" in experiment_permissions_router.tags
         assert 403 in experiment_permissions_router.responses
         assert 404 in experiment_permissions_router.responses
 
@@ -53,10 +53,12 @@ class TestGetExperimentGroupsEndpoint:
 
         result = await get_experiment_groups(experiment_id="123", _=None)
         assert len(result) == 2
-        assert result[0].group_name == "my-group"
+        assert result[0].name == "my-group"
         assert result[0].permission == "READ"
-        assert result[1].group_name == "admins"
+        assert result[0].kind == "group"
+        assert result[1].name == "admins"
         assert result[1].permission == "MANAGE"
+        assert result[1].kind == "group"
 
     def test_get_experiment_groups_integration(self, authenticated_client: TestClient, mock_store: MagicMock):
         """Integration-style check that the route is wired up."""

@@ -100,7 +100,7 @@ async def get_prompt_groups(
 
     try:
         groups = store.prompt_group_repo.list_groups_for_prompt(str(prompt_name))
-        return [GroupPermissionEntry(group_name=group_name, permission=permission) for group_name, permission in groups]
+        return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error retrieving prompt group permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve prompt group permissions")

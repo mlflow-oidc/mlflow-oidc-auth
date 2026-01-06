@@ -27,7 +27,7 @@ class TestRegisteredModelPermissionsRouter:
     def test_router_configuration(self):
         """Test that the registered model permissions router is properly configured."""
         assert registered_model_permissions_router.prefix == "/api/2.0/mlflow/permissions/registered-models"
-        assert "permissions" in registered_model_permissions_router.tags
+        assert "registered model permissions" in registered_model_permissions_router.tags
         assert 403 in registered_model_permissions_router.responses
         assert 404 in registered_model_permissions_router.responses
 
@@ -49,10 +49,12 @@ class TestGetRegisteredModelGroupsEndpoint:
             result = await get_registered_model_groups(name="test-model", _="admin@example.com")
 
         assert len(result) == 2
-        assert result[0].group_name == "team-a"
+        assert result[0].name == "team-a"
         assert result[0].permission == "READ"
-        assert result[1].group_name == "team-b"
+        assert result[0].kind == "group"
+        assert result[1].name == "team-b"
         assert result[1].permission == "MANAGE"
+        assert result[1].kind == "group"
 
     def test_get_registered_model_groups_integration(self, admin_client, mock_store):
         mock_store.registered_model_group_repo.list_groups_for_model.return_value = []

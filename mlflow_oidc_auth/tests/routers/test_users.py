@@ -29,7 +29,6 @@ class TestUsersRouter:
     def test_router_configuration(self):
         """Test that the users router is properly configured."""
         assert users_router.prefix == "/api/2.0/mlflow/users"
-        assert "permissions" in users_router.tags
         assert "users" in users_router.tags
         assert 403 in users_router.responses
         assert 404 in users_router.responses

@@ -27,7 +27,7 @@ class TestPromptPermissionsRouter:
     def test_router_configuration(self):
         """Test that the prompt permissions router is properly configured."""
         assert prompt_permissions_router.prefix == "/api/2.0/mlflow/permissions/prompts"
-        assert "permissions" in prompt_permissions_router.tags
+        assert "prompt permissions" in prompt_permissions_router.tags
         assert 403 in prompt_permissions_router.responses
         assert 404 in prompt_permissions_router.responses
 
@@ -49,10 +49,12 @@ class TestGetPromptGroupsEndpoint:
             result = await get_prompt_groups(prompt_name="test-prompt", _="admin@example.com")
 
         assert len(result) == 2
-        assert result[0].group_name == "team-a"
+        assert result[0].name == "team-a"
         assert result[0].permission == "READ"
-        assert result[1].group_name == "team-b"
+        assert result[0].kind == "group"
+        assert result[1].name == "team-b"
         assert result[1].permission == "MANAGE"
+        assert result[1].kind == "group"
 
     def test_get_prompt_groups_integration(self, admin_client, mock_store):
         mock_store.prompt_group_repo.list_groups_for_prompt.return_value = []

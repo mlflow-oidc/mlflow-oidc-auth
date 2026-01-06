@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from typing import Literal
 
 
 class GroupUser(BaseModel):
@@ -68,5 +69,6 @@ class GroupPermissionEntry(BaseModel):
     - /mlflow/permissions/scorers/{experiment_id}/{scorer_name}/groups
     """
 
-    group_name: str = Field(..., description="Group name")
+    name: str = Field(..., description="Group name")
     permission: str = Field(..., description="Permission level for the group")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group permission entry")
