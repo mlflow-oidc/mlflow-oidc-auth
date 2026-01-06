@@ -5,7 +5,7 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.dependencies import check_experiment_manage_permission
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.models import ExperimentSummary, ExperimentUserPermission, GroupPermissionEntry
+from mlflow_oidc_auth.models import ExperimentSummary, GroupPermissionEntry, UserPermission
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import can_manage_experiment, get_is_admin, get_username
 
@@ -29,13 +29,13 @@ EXPERIMENT_GROUP_PERMISSIONS = "/{experiment_id}/groups"
 
 @experiment_permissions_router.get(
     EXPERIMENT_USER_PERMISSIONS,
-    response_model=List[ExperimentUserPermission],
+    response_model=List[UserPermission],
     summary="List users with permissions for an experiment",
     description="Retrieves a list of users who have permissions for the specified experiment.",
 )
 async def get_experiment_users(
     experiment_id: str = Path(..., description="The experiment ID to get permissions for"), _: str = Depends(check_experiment_manage_permission)
-) -> List[ExperimentUserPermission]:
+) -> List[UserPermission]:
     """
     List all users with permissions for a specific experiment.
 
@@ -52,7 +52,7 @@ async def get_experiment_users(
 
     Returns:
     --------
-    List[ExperimentUserPermission]
+    List[UserPermission]
         A list of users with their permission levels for the experiment.
 
     Raises:
@@ -72,8 +72,8 @@ async def get_experiment_users(
         # Check if user has permission for this experiment
         if experiment_id in user_experiment_permissions:
             users_with_permissions.append(
-                ExperimentUserPermission(
-                    username=user.username,
+                UserPermission(
+                    name=user.username,
                     permission=user_experiment_permissions[experiment_id],
                     kind="service-account" if user.is_service_account else "user",
                 )

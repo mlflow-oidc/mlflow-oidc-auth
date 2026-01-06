@@ -1,4 +1,4 @@
-from typing import Dict, Literal, Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -74,25 +74,6 @@ class ExperimentSummary(BaseModel):
     name: str = Field(..., description="The name of the experiment")
     id: str = Field(..., description="The unique identifier of the experiment")
     tags: Optional[Dict[str, str]] = Field(None, description="Tags associated with the experiment")
-
-
-class ExperimentUserPermission(BaseModel):
-    """
-    User permission information for an experiment.
-
-    Parameters:
-    -----------
-    username : str
-        The username of the user with access to the experiment.
-    permission : str
-        The permission level the user has for this experiment.
-    kind : str
-        The type of user account ('user' or 'service-account').
-    """
-
-    username: str = Field(..., description="Username of the user with access")
-    permission: str = Field(..., description="Permission level for the experiment")
-    kind: Literal["user", "service-account"] = Field(..., description="Type of user account")
 
 
 class ExperimentRegexPermission(BaseModel):

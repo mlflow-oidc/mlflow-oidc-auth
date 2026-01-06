@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.models import GroupPermissionEntry
+from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import fetch_all_prompts, get_is_admin, get_username
 from mlflow_oidc_auth.utils.permissions import can_manage_registered_model
@@ -31,12 +31,13 @@ PROMPT_GROUP_PERMISSIONS = "/{prompt_name}/groups"
 
 @prompt_permissions_router.get(
     PROMPT_USER_PERMISSIONS,
+    response_model=List[UserPermission],
     summary="List users with permissions for a prompt",
     description="Retrieves a list of users who have permissions for the specified prompt.",
 )
 async def get_prompt_users(
     prompt_name: str = Path(..., description="The prompt name to get permissions for"), admin_username: str = Depends(check_admin_permission)
-) -> JSONResponse:
+) -> List[UserPermission]:
     """
     List all users with permissions for a specific prompt.
 
@@ -53,8 +54,8 @@ async def get_prompt_users(
 
     Returns:
     --------
-    JSONResponse
-        A JSON response containing users with their permission levels for the prompt.
+    List[UserPermission]
+        A list of users with their permission levels for the prompt.
 
     Raises:
     -------
@@ -66,7 +67,7 @@ async def get_prompt_users(
 
     # Filter users who are associated with the given prompt
     # Note: In this system, prompts are treated as registered models with special handling
-    users = []
+    users: List[UserPermission] = []
     for user in list_users:
         # Check if the user is associated with the prompt
         # Prompts are stored as registered models in the system
@@ -76,14 +77,14 @@ async def get_prompt_users(
 
         if prompt_name in user_models:
             users.append(
-                {
-                    "username": user.username,
-                    "permission": user_models[prompt_name],
-                    "kind": "user" if not user.is_service_account else "service-account",
-                }
+                UserPermission(
+                    name=user.username,
+                    permission=user_models[prompt_name],
+                    kind="service-account" if user.is_service_account else "user",
+                )
             )
 
-    return JSONResponse(content=users)
+    return users
 
 
 @prompt_permissions_router.get(

@@ -107,24 +107,17 @@ class TestGetRegisteredModelUsersEndpoint:
         with patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store):
             result = await get_registered_model_users(name="test-model", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-
-        # Parse response content
-        import json
-
-        content = json.loads(bytes(result.body).decode())
-
-        assert len(content) == 2  # Only users with permissions for test-model
+        assert len(result) == 2  # Only users with permissions for test-model
 
         # Check first user
-        assert content[0]["username"] == "user1@example.com"
-        assert content[0]["permission"] == "MANAGE"
-        assert content[0]["kind"] == "user"
+        assert result[0].name == "user1@example.com"
+        assert result[0].permission == "MANAGE"
+        assert result[0].kind == "user"
 
         # Check service account
-        assert content[1]["username"] == "service@example.com"
-        assert content[1]["permission"] == "READ"
-        assert content[1]["kind"] == "service-account"
+        assert result[1].name == "service@example.com"
+        assert result[1].permission == "READ"
+        assert result[1].kind == "service-account"
 
     @pytest.mark.asyncio
     async def test_get_registered_model_users_no_permissions(self, mock_store):
@@ -135,12 +128,7 @@ class TestGetRegisteredModelUsersEndpoint:
 
         result = await get_registered_model_users(name="test-model", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-
-        import json
-
-        content = json.loads(result.body.decode())
-        assert len(content) == 0
+        assert len(result) == 0
 
     @pytest.mark.asyncio
     async def test_get_registered_model_users_multiple_models(self, mock_store):
@@ -160,15 +148,9 @@ class TestGetRegisteredModelUsersEndpoint:
 
         result = await get_registered_model_users(name="model-1", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-
-        import json
-
-        content = json.loads(result.body.decode())
-
-        assert len(content) == 1
-        assert content[0]["username"] == "user1@example.com"
-        assert content[0]["permission"] == "MANAGE"  # Should get permission for model-1
+        assert len(result) == 1
+        assert result[0].name == "user1@example.com"
+        assert result[0].permission == "MANAGE"  # Should get permission for model-1
 
     @pytest.mark.asyncio
     async def test_get_registered_model_users_no_registered_model_permissions_attr(self, mock_store):
@@ -181,12 +163,7 @@ class TestGetRegisteredModelUsersEndpoint:
 
         result = await get_registered_model_users(name="test-model", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-
-        import json
-
-        content = json.loads(result.body.decode())
-        assert len(content) == 0
+        assert len(result) == 0
 
     def test_get_registered_model_users_integration(self, admin_client):
         """Test get registered model users endpoint through FastAPI test client."""
@@ -436,7 +413,7 @@ class TestRegisteredModelPermissionsRouterIntegration:
 
         if users:  # If there are users with permissions
             user = users[0]
-            assert "username" in user
+            assert "name" in user
             assert "permission" in user
             assert "kind" in user
             assert user["kind"] in ["user", "service-account"]

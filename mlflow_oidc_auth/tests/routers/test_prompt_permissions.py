@@ -107,24 +107,17 @@ class TestGetPromptUsersEndpoint:
         with patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store):
             result = await get_prompt_users(prompt_name="test-prompt", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-
-        # Parse response content
-        import json
-
-        content = json.loads(bytes(result.body).decode())
-
-        assert len(content) == 2  # Only users with permissions for test-prompt
+        assert len(result) == 2  # Only users with permissions for test-prompt
 
         # Check first user
-        assert content[0]["username"] == "user1@example.com"
-        assert content[0]["permission"] == "MANAGE"
-        assert content[0]["kind"] == "user"
+        assert result[0].name == "user1@example.com"
+        assert result[0].permission == "MANAGE"
+        assert result[0].kind == "user"
 
         # Check service account
-        assert content[1]["username"] == "service@example.com"
-        assert content[1]["permission"] == "READ"
-        assert content[1]["kind"] == "service-account"
+        assert result[1].name == "service@example.com"
+        assert result[1].permission == "READ"
+        assert result[1].kind == "service-account"
 
     @pytest.mark.asyncio
     async def test_get_prompt_users_no_permissions(self, mock_store):
@@ -144,12 +137,7 @@ class TestGetPromptUsersEndpoint:
 
         result = await get_prompt_users(prompt_name="test-prompt", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-
-        import json
-
-        content = json.loads(bytes(result.body).decode())
-        assert len(content) == 0
+        assert len(result) == 0
 
     @pytest.mark.asyncio
     async def test_get_prompt_users_multiple_prompts(self, mock_store):
@@ -171,15 +159,9 @@ class TestGetPromptUsersEndpoint:
         with patch("mlflow_oidc_auth.routers.prompt_permissions.store.list_users", return_value=[user1]):
             result = await get_prompt_users(prompt_name="prompt-1", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-
-        import json
-
-        content = json.loads(bytes(result.body).decode())
-
-        assert len(content) == 1
-        assert content[0]["username"] == "user1@example.com"
-        assert content[0]["permission"] == "MANAGE"  # Should get permission for prompt-1
+        assert len(result) == 1
+        assert result[0].name == "user1@example.com"
+        assert result[0].permission == "MANAGE"  # Should get permission for prompt-1
 
     @pytest.mark.asyncio
     async def test_get_prompt_users_no_registered_model_permissions_attr(self, mock_store):
@@ -200,12 +182,7 @@ class TestGetPromptUsersEndpoint:
 
         result = await get_prompt_users(prompt_name="test-prompt", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-
-        import json
-
-        content = json.loads(bytes(result.body).decode())
-        assert len(content) == 0
+        assert len(result) == 0
 
     def test_get_prompt_users_integration(self, admin_client):
         """Test get prompt users endpoint through FastAPI test client."""
@@ -455,7 +432,7 @@ class TestPromptPermissionsRouterIntegration:
 
         if users:  # If there are users with permissions
             user = users[0]
-            assert "username" in user
+            assert "name" in user
             assert "permission" in user
             assert "kind" in user
             assert user["kind"] in ["user", "service-account"]

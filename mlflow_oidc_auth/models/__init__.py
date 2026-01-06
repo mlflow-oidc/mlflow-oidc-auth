@@ -10,10 +10,9 @@ from mlflow_oidc_auth.models.experiment import (
     ExperimentRegexCreate,
     ExperimentRegexPermission,
     ExperimentSummary,
-    ExperimentUserPermission,
 )
 from mlflow_oidc_auth.models.group import GroupExperimentPermission, GroupPermissionEntry, GroupRegexPermission, GroupUser
-from mlflow_oidc_auth.models.permission import PermissionResult
+from mlflow_oidc_auth.models.permission import PermissionResult, UserPermission
 from mlflow_oidc_auth.models.prompt import PromptPermission, PromptRegexCreate
 from mlflow_oidc_auth.models.registered_model import RegisteredModelPermission, RegisteredModelRegexCreate
 from mlflow_oidc_auth.models.scorer import ScorerPermission, ScorerPermissionRequest, ScorerRegexCreate
@@ -32,7 +31,6 @@ __all__ = [
     "ExperimentRegexCreate",
     "ExperimentPermissionSummary",
     "ExperimentSummary",
-    "ExperimentUserPermission",
     "ExperimentRegexPermission",
     "GroupUser",
     "GroupExperimentPermission",
@@ -54,4 +52,5 @@ __all__ = [
     "WebhookResponse",
     "WebhookListResponse",
     "WebhookTestResponse",
+    "UserPermission",
 ]

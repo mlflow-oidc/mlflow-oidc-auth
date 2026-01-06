@@ -117,12 +117,12 @@ class TestGetExperimentUsersEndpoint:
         assert len(result) == 2  # Only users with permissions for experiment 123
 
         # Check first user
-        assert result[0].username == "user1@example.com"
+        assert result[0].name == "user1@example.com"
         assert result[0].permission == "MANAGE"
         assert result[0].kind == "user"
 
         # Check service account
-        assert result[1].username == "service@example.com"
+        assert result[1].name == "service@example.com"
         assert result[1].permission == "READ"
         assert result[1].kind == "service-account"
 
@@ -172,7 +172,7 @@ class TestGetExperimentUsersEndpoint:
         result = await get_experiment_users(experiment_id="123", _="admin@example.com")
 
         assert len(result) == 1
-        assert result[0].username == "user1@example.com"
+        assert result[0].name == "user1@example.com"
         assert result[0].permission == "MANAGE"  # Should get permission for experiment 123
 
     def test_get_experiment_users_integration(self, authenticated_client: TestClient):
@@ -402,7 +402,7 @@ class TestExperimentPermissionsRouterIntegration:
 
             if users:  # If there are users with permissions
                 user = users[0]
-                assert "username" in user
+                assert "name" in user
                 assert "permission" in user
                 assert "kind" in user
                 assert user["kind"] in ["user", "service-account"]

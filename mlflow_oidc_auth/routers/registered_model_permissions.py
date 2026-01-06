@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.models import GroupPermissionEntry
+from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_registered_models
@@ -34,13 +34,14 @@ REGISTERED_MODEL_GROUP_PERMISSIONS = "/{name}/groups"
 
 @registered_model_permissions_router.get(
     REGISTERED_MODEL_USER_PERMISSIONS,
+    response_model=List[UserPermission],
     summary="List users with permissions for a registered model",
     description="Retrieves a list of users who have permissions for the specified registered model.",
 )
 async def get_registered_model_users(
     name: str = Path(..., description="The registered model name to get permissions for"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> List[UserPermission]:
     """
     List all users with permissions for a specific registered model.
 
@@ -56,8 +57,8 @@ async def get_registered_model_users(
 
     Returns:
     --------
-    JSONResponse
-        A JSON response containing users with their permission levels for the registered model.
+    List[UserPermission]
+        A list of users with their permission levels for the registered model.
 
     Raises:
     -------
@@ -67,7 +68,7 @@ async def get_registered_model_users(
     list_users = store.list_users(all=True)
 
     # Filter users who are associated with the given registered model
-    users = []
+    users: List[UserPermission] = []
     for user in list_users:
         # Check if the user is associated with the registered model
         user_models = {}
@@ -76,13 +77,13 @@ async def get_registered_model_users(
 
         if name in user_models:
             users.append(
-                {
-                    "username": user.username,
-                    "permission": user_models[name],
-                    "kind": "user" if not user.is_service_account else "service-account",
-                }
+                UserPermission(
+                    name=user.username,
+                    permission=user_models[name],
+                    kind="service-account" if user.is_service_account else "user",
+                )
             )
-    return JSONResponse(content=users)
+    return users
 
 
 @registered_model_permissions_router.get(
