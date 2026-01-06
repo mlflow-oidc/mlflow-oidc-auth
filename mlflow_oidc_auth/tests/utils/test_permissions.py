@@ -67,25 +67,25 @@ class TestPermissions(unittest.TestCase):
             # user permission found
             result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
             self.assertTrue(result.permission.can_manage)
-            self.assertEqual(result.type, "user")
+            self.assertEqual(result.kind, "user")
 
             # user not found, group found
             mock_store_permission_user_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
             result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
             self.assertTrue(result.permission.can_manage)
-            self.assertEqual(result.type, "group")
+            self.assertEqual(result.kind, "group")
 
             # both not found, fallback to default
             mock_store_permission_group_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
             result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
             self.assertTrue(result.permission.can_manage)
-            self.assertEqual(result.type, "fallback")
+            self.assertEqual(result.kind, "fallback")
 
             # invalid source in config
             mock_config.PERMISSION_SOURCE_ORDER = ["invalid"]
             # Just call and check fallback, don't assert logs
             result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
-            self.assertEqual(result.type, "fallback")
+            self.assertEqual(result.kind, "fallback")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
@@ -126,7 +126,7 @@ class TestPermissions(unittest.TestCase):
                 Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
             )
             result = effective_experiment_permission("exp_id", "user")
-            self.assertEqual(result.type, "user")
+            self.assertEqual(result.kind, "user")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
@@ -137,7 +137,7 @@ class TestPermissions(unittest.TestCase):
                 Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
             )
             result = effective_registered_model_permission("model_name", "user")
-            self.assertEqual(result.type, "user")
+            self.assertEqual(result.kind, "user")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
@@ -148,7 +148,7 @@ class TestPermissions(unittest.TestCase):
                 Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
             )
             result = effective_prompt_permission("model_name", "user")
-            self.assertEqual(result.type, "user")
+            self.assertEqual(result.kind, "user")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")

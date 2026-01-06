@@ -10,7 +10,6 @@ from fastapi import APIRouter, Body, Depends, Path
 from fastapi.exceptions import HTTPException
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
-from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission, check_registered_model_manage_permission
@@ -20,12 +19,28 @@ from mlflow_oidc_auth.models import (
     ExperimentPermissionSummary,
     ExperimentRegexCreate,
     ExperimentRegexPermission,
+    ExperimentPermissionRecord,
+    ExperimentPermissionResponse,
+    MessageResponse,
+    NamedPermissionSummary,
     PromptPermission,
     PromptRegexCreate,
+    PromptPermissionResponse,
+    PromptRegexPermissionResponse,
     RegisteredModelPermission,
     RegisteredModelRegexCreate,
+    RegisteredModelPermissionRecord,
+    RegisteredModelPermissionResponse,
+    RegisteredModelRegexPermissionRecord,
+    RegisteredModelRegexPermissionResponse,
     ScorerPermission,
     ScorerRegexCreate,
+    ScorerPermissionRecord,
+    ScorerPermissionResponse,
+    ScorerRegexPermissionRecord,
+    ScorerRegexPermissionResponse,
+    StatusMessageResponse,
+    StatusOnlyResponse,
 )
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.store import store
@@ -69,8 +84,6 @@ user_permissions_router = APIRouter(
         404: {"description": "Resource not found"},
     },
 )
-
-
 
 
 @user_permissions_router.get(
@@ -132,60 +145,81 @@ async def get_user_experiment_permissions(
             name=tracking_store.get_experiment(exp.experiment_id).name,
             id=exp.experiment_id,
             permission=(perm := effective_experiment_permission(exp.experiment_id, username)).permission.name,
-            type=perm.type,
+            kind=perm.kind,
         )
         for exp in list_experiments
     ]
 
 
 @user_permissions_router.post(USER_EXPERIMENT_PERMISSION_DETAIL)
+@user_permissions_router.post(
+    USER_EXPERIMENT_PERMISSION_DETAIL,
+    response_model=MessageResponse,
+    summary="Create experiment permission for a user",
+    description="Creates a permission for a user to access a specific experiment.",
+)
 async def create_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
     experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
     permission_data: ExperimentPermission = Body(..., description="The permission level to grant"),
     _: None = Depends(check_experiment_manage_permission),
-) -> JSONResponse:
+) -> MessageResponse:
     store.create_experiment_permission(
         experiment_id,
         username,
         permission_data.permission,
     )
-    return JSONResponse(content={"message": "Experiment permission has been created."})
+    return MessageResponse(message="Experiment permission has been created.")
 
 
-@user_permissions_router.get(USER_EXPERIMENT_PERMISSION_DETAIL)
+@user_permissions_router.get(
+    USER_EXPERIMENT_PERMISSION_DETAIL,
+    response_model=ExperimentPermissionResponse,
+    summary="Get experiment permission for a user",
+    description="Retrieves the permission for a user on a specific experiment.",
+)
 async def get_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
     experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
     _: None = Depends(check_experiment_manage_permission),
-):
+) -> ExperimentPermissionResponse:
     ep = store.get_experiment_permission(experiment_id, username)
-    return JSONResponse(content={"experiment_permission": ep.to_json()})
+    return ExperimentPermissionResponse(experiment_permission=ExperimentPermissionRecord(**ep.to_json()))
 
 
-@user_permissions_router.patch(USER_EXPERIMENT_PERMISSION_DETAIL)
+@user_permissions_router.patch(
+    USER_EXPERIMENT_PERMISSION_DETAIL,
+    response_model=MessageResponse,
+    summary="Update experiment permission for a user",
+    description="Updates the permission for a user on a specific experiment.",
+)
 async def update_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
     experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
     permission_data: ExperimentPermission = Body(..., description="The permission level to grant"),
     _: None = Depends(check_experiment_manage_permission),
-):
+) -> MessageResponse:
     store.update_experiment_permission(
         experiment_id,
         username,
         permission_data.permission,
     )
-    return JSONResponse(content={"message": "Experiment permission has been changed."})
+    return MessageResponse(message="Experiment permission has been changed.")
 
 
-@user_permissions_router.delete(USER_EXPERIMENT_PERMISSION_DETAIL)
+@user_permissions_router.delete(
+    USER_EXPERIMENT_PERMISSION_DETAIL,
+    response_model=MessageResponse,
+    summary="Delete experiment permission for a user",
+    description="Deletes the permission for a user on a specific experiment.",
+)
 async def delete_user_experiment_permission(
     username: str = Path(..., description="The username to revoke permissions from"),
     experiment_id: str = Path(..., description="The experiment ID to revoke permissions for"),
     _: None = Depends(check_experiment_manage_permission),
-):
+) -> MessageResponse:
     store.delete_experiment_permission(experiment_id, username)
-    return JSONResponse(content={"message": "Experiment permission has been deleted."})
+    return MessageResponse(message="Experiment permission has been deleted.")
 
 
 @user_permissions_router.post(
@@ -198,7 +232,7 @@ async def create_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to create pattern permission for"),
     pattern_data: ExperimentRegexCreate = Body(..., description="The regex pattern permission details"),
     _: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Create a new regex-based permission pattern for experiment access.
 
@@ -232,7 +266,7 @@ async def create_user_experiment_pattern_permission(
             permission=pattern_data.permission,
             username=username,
         )
-        return JSONResponse(content={"status": "success", "message": f"Experiment pattern permission created for {username}"}, status_code=201)
+        return StatusMessageResponse(message=f"Experiment pattern permission created for {username}")
     except Exception as e:
         logger.error(f"Error creating experiment pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create experiment pattern permission")
@@ -333,7 +367,7 @@ async def update_user_experiment_pattern_permission(
     pattern_id: str = Path(..., description="The pattern ID to update"),
     pattern_data: ExperimentRegexCreate = Body(..., description="Updated pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Update a specific regex-based experiment permission pattern for a user.
 
@@ -362,7 +396,7 @@ async def update_user_experiment_pattern_permission(
         store.update_experiment_regex_permission(
             id=int(pattern_id), regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
         )
-        return JSONResponse(content={"status": "success", "message": f"Experiment pattern permission updated for {username}"})
+        return StatusMessageResponse(message=f"Experiment pattern permission updated for {username}")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
@@ -379,7 +413,7 @@ async def delete_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to delete pattern permission for"),
     pattern_id: str = Path(..., description="The pattern ID to delete"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Delete a specific regex-based experiment permission pattern for a user.
 
@@ -404,7 +438,7 @@ async def delete_user_experiment_pattern_permission(
     """
     try:
         store.delete_experiment_regex_permission(username, int(pattern_id))
-        return JSONResponse(content={"status": "success", "message": f"Experiment pattern permission deleted for {username}"})
+        return StatusMessageResponse(message=f"Experiment pattern permission deleted for {username}")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
@@ -414,6 +448,7 @@ async def delete_user_experiment_pattern_permission(
 
 @user_permissions_router.get(
     USER_PROMPT_PERMISSIONS,
+    response_model=List[NamedPermissionSummary],
     summary="List prompt permissions for a user",
     description="Retrieves a list of prompts with permission information for the specified user.",
 )
@@ -421,7 +456,7 @@ async def get_user_prompts(
     username: str = Path(..., description="The username to get prompt permissions for"),
     current_username: str = Depends(get_username),
     is_admin: bool = Depends(get_is_admin),
-) -> JSONResponse:
+) -> List[NamedPermissionSummary]:
     """
     List prompt permissions for a user.
 
@@ -455,17 +490,20 @@ async def get_user_prompts(
     else:
         list_prompts = [prompt for prompt in prompts if effective_prompt_permission(prompt.name, current_username).permission.can_manage]
 
-    formatted_prompts = [
-        {"name": prompt.name, "permission": (perm := effective_prompt_permission(prompt.name, username)).permission.name, "type": perm.type}
+    return [
+        NamedPermissionSummary(
+            name=prompt.name,
+            permission=(perm := effective_prompt_permission(prompt.name, username)).permission.name,
+            kind=perm.kind,
+        )
         for prompt in list_prompts
     ]
-
-    return JSONResponse(content=formatted_prompts)
 
 
 @user_permissions_router.post(
     USER_PROMPT_PERMISSION_DETAIL,
     status_code=201,
+    response_model=StatusMessageResponse,
     summary="Create prompt permission for a user",
     description="Creates a new permission for a user to access a specific prompt.",
 )
@@ -474,7 +512,7 @@ async def create_user_prompt_permission(
     name: str = Path(..., description="The prompt name to set permissions for"),
     permission_data: PromptPermission = Body(..., description="The permission details"),
     _: str = Depends(check_registered_model_manage_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Create a permission for a user to access a prompt.
 
@@ -500,7 +538,7 @@ async def create_user_prompt_permission(
             username=username,
             permission=permission_data.permission,
         )
-        return JSONResponse(content={"status": "success", "message": f"Prompt permission created for {username} on {name}"}, status_code=201)
+        return StatusMessageResponse(message=f"Prompt permission created for {username} on {name}")
     except MlflowException as e:
         logger.error(f"Error creating prompt permission: {str(e)}")
         if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
@@ -514,13 +552,16 @@ async def create_user_prompt_permission(
 
 
 @user_permissions_router.get(
-    USER_PROMPT_PERMISSION_DETAIL, summary="Get prompt permission for a user", description="Retrieves the permission for a user on a specific prompt."
+    USER_PROMPT_PERMISSION_DETAIL,
+    response_model=PromptPermissionResponse,
+    summary="Get prompt permission for a user",
+    description="Retrieves the permission for a user on a specific prompt.",
 )
 async def get_user_prompt_permission(
     username: str = Path(..., description="The username to get prompt permission for"),
     name: str = Path(..., description="The prompt name to get permissions for"),
     _: str = Depends(check_registered_model_manage_permission),
-) -> JSONResponse:
+) -> PromptPermissionResponse:
     """
     Get the permission for a user on a prompt.
 
@@ -540,21 +581,24 @@ async def get_user_prompt_permission(
     """
     try:
         rmp = store.get_registered_model_permission(name, username)
-        return JSONResponse(content={"prompt_permission": rmp.to_json()})
+        return PromptPermissionResponse(prompt_permission=RegisteredModelPermissionRecord(**rmp.to_json()))
     except Exception as e:
         logger.error(f"Error getting prompt permission: {str(e)}")
         raise HTTPException(status_code=404, detail=f"Prompt permission not found")
 
 
 @user_permissions_router.patch(
-    USER_PROMPT_PERMISSION_DETAIL, summary="Update prompt permission for a user", description="Updates the permission for a user on a specific prompt."
+    USER_PROMPT_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Update prompt permission for a user",
+    description="Updates the permission for a user on a specific prompt.",
 )
 async def update_user_prompt_permission(
     username: str = Path(..., description="The username to update prompt permission for"),
     name: str = Path(..., description="The prompt name to update permissions for"),
     permission_data: PromptPermission = Body(..., description="Updated permission details"),
     _: str = Depends(check_registered_model_manage_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Update the permission for a user on a prompt.
 
@@ -579,7 +623,7 @@ async def update_user_prompt_permission(
             username=username,
             permission=permission_data.permission,
         )
-        return JSONResponse(content={"status": "success", "message": f"Prompt permission updated for {username} on {name}"})
+        return StatusMessageResponse(message=f"Prompt permission updated for {username} on {name}")
     except MlflowException as e:
         logger.error(f"Error updating prompt permission: {str(e)}")
         if getattr(e, "error_code", None) == RESOURCE_DOES_NOT_EXIST:
@@ -593,13 +637,16 @@ async def update_user_prompt_permission(
 
 
 @user_permissions_router.delete(
-    USER_PROMPT_PERMISSION_DETAIL, summary="Delete prompt permission for a user", description="Deletes the permission for a user on a specific prompt."
+    USER_PROMPT_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Delete prompt permission for a user",
+    description="Deletes the permission for a user on a specific prompt.",
 )
 async def delete_user_prompt_permission(
     username: str = Path(..., description="The username to delete prompt permission for"),
     name: str = Path(..., description="The prompt name to delete permissions for"),
     _: str = Depends(check_registered_model_manage_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Delete the permission for a user on a prompt.
 
@@ -619,7 +666,7 @@ async def delete_user_prompt_permission(
     """
     try:
         store.delete_registered_model_permission(name, username)
-        return JSONResponse(content={"status": "success", "message": f"Prompt permission deleted for {username} on {name}"})
+        return StatusMessageResponse(message=f"Prompt permission deleted for {username} on {name}")
     except Exception as e:
         logger.error(f"Error deleting prompt permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete prompt permission")
@@ -627,13 +674,14 @@ async def delete_user_prompt_permission(
 
 @user_permissions_router.get(
     USER_PROMPT_PATTERN_PERMISSIONS,
+    response_model=List[RegisteredModelRegexPermissionRecord],
     summary="List prompt pattern permissions for a user",
     description="Retrieves a list of regex-based prompt permission patterns for the specified user.",
 )
 async def get_user_prompt_pattern_permissions(
     username: str = Path(..., description="The username to list prompt pattern permissions for"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> List[RegisteredModelRegexPermissionRecord]:
     """
     List all regex-based prompt permission patterns for a user.
 
@@ -653,7 +701,7 @@ async def get_user_prompt_pattern_permissions(
     """
     try:
         rm = store.list_prompt_regex_permissions(username=username)
-        return JSONResponse(content=[r.to_json() for r in rm], status_code=200)
+        return [RegisteredModelRegexPermissionRecord(**r.to_json()) for r in rm]
     except Exception as e:
         logger.error(f"Error listing prompt pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve prompt pattern permissions")
@@ -662,6 +710,7 @@ async def get_user_prompt_pattern_permissions(
 @user_permissions_router.post(
     USER_PROMPT_PATTERN_PERMISSIONS,
     status_code=201,
+    response_model=StatusMessageResponse,
     summary="Create prompt pattern permission for a user",
     description="Creates a new regex-based permission pattern for prompt access.",
 )
@@ -669,7 +718,7 @@ async def create_user_prompt_regex_permission(
     username: str = Path(..., description="The username to create prompt pattern permission for"),
     pattern_data: PromptRegexCreate = Body(..., description="The regex pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Create a new regex-based permission pattern for prompt access.
 
@@ -696,7 +745,7 @@ async def create_user_prompt_regex_permission(
             permission=pattern_data.permission,
             username=username,
         )
-        return JSONResponse(content={"status": "success", "message": f"Prompt pattern permission created for {username}"}, status_code=201)
+        return StatusMessageResponse(message=f"Prompt pattern permission created for {username}")
     except Exception as e:
         logger.error(f"Error creating prompt pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create prompt pattern permission")
@@ -704,6 +753,7 @@ async def create_user_prompt_regex_permission(
 
 @user_permissions_router.get(
     USER_PROMPT_PATTERN_PERMISSION_DETAIL,
+    response_model=PromptRegexPermissionResponse,
     summary="Get prompt pattern permission for a user",
     description="Retrieves a specific regex-based prompt permission pattern for the specified user.",
 )
@@ -711,7 +761,7 @@ async def get_user_prompt_regex_permission(
     username: str = Path(..., description="The username to get prompt pattern permission for"),
     pattern_id: str = Path(..., description="The pattern ID to retrieve"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> PromptRegexPermissionResponse:
     """
     Get a specific regex-based prompt permission pattern for a user.
 
@@ -733,7 +783,7 @@ async def get_user_prompt_regex_permission(
     """
     try:
         rm = store.get_prompt_regex_permission(id=int(pattern_id), username=username)
-        return JSONResponse(content={"prompt_permission": rm.to_json()}, status_code=200)
+        return PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
@@ -743,6 +793,7 @@ async def get_user_prompt_regex_permission(
 
 @user_permissions_router.patch(
     USER_PROMPT_PATTERN_PERMISSION_DETAIL,
+    response_model=PromptRegexPermissionResponse,
     summary="Update prompt pattern permission for a user",
     description="Updates a specific regex-based prompt permission pattern for the specified user.",
 )
@@ -751,7 +802,7 @@ async def update_user_prompt_regex_permission(
     pattern_id: str = Path(..., description="The pattern ID to update"),
     pattern_data: PromptRegexCreate = Body(..., description="Updated pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> PromptRegexPermissionResponse:
     """
     Update a specific regex-based prompt permission pattern for a user.
 
@@ -781,7 +832,7 @@ async def update_user_prompt_regex_permission(
             permission=pattern_data.permission,
             username=username,
         )
-        return JSONResponse(content={"prompt_permission": rm.to_json()}, status_code=200)
+        return PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
@@ -791,6 +842,8 @@ async def update_user_prompt_regex_permission(
 
 @user_permissions_router.delete(
     USER_PROMPT_PATTERN_PERMISSION_DETAIL,
+    response_model=StatusOnlyResponse,
+    response_model_exclude_none=True,
     summary="Delete prompt pattern permission for a user",
     description="Deletes a specific regex-based prompt permission pattern for the specified user.",
 )
@@ -798,7 +851,7 @@ async def delete_user_prompt_regex_permission(
     username: str = Path(..., description="The username to delete prompt pattern permission for"),
     pattern_id: str = Path(..., description="The pattern ID to delete"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusOnlyResponse:
     """
     Delete a specific regex-based prompt permission pattern for a user.
 
@@ -820,7 +873,7 @@ async def delete_user_prompt_regex_permission(
     """
     try:
         store.delete_prompt_regex_permission(id=int(pattern_id), username=username)
-        return JSONResponse(content={"status": "success"}, status_code=200)
+        return StatusOnlyResponse()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
@@ -830,6 +883,7 @@ async def delete_user_prompt_regex_permission(
 
 @user_permissions_router.get(
     USER_REGISTERED_MODEL_PERMISSIONS,
+    response_model=List[NamedPermissionSummary],
     summary="List registered model permissions for a user",
     description="Retrieves a list of registered models with permission information for the specified user.",
 )
@@ -837,7 +891,7 @@ async def get_user_registered_models(
     username: str = Path(..., description="The username to get registered model permissions for"),
     current_username: str = Depends(get_username),
     is_admin: bool = Depends(get_is_admin),
-) -> JSONResponse:
+) -> List[NamedPermissionSummary]:
     """
     List registered model permissions for a user.
 
@@ -867,17 +921,20 @@ async def get_user_registered_models(
     else:
         list_models = [model for model in models if effective_registered_model_permission(model.name, current_username).permission.can_manage]
 
-    formatted_models = [
-        {"name": model.name, "permission": (perm := effective_registered_model_permission(model.name, username)).permission.name, "type": perm.type}
+    return [
+        NamedPermissionSummary(
+            name=model.name,
+            permission=(perm := effective_registered_model_permission(model.name, username)).permission.name,
+            kind=perm.kind,
+        )
         for model in list_models
     ]
-
-    return JSONResponse(content=formatted_models)
 
 
 @user_permissions_router.post(
     USER_REGISTERED_MODEL_PERMISSION_DETAIL,
     status_code=201,
+    response_model=StatusMessageResponse,
     summary="Create registered model permission for a user",
     description="Creates a new permission for a user to access a specific registered model.",
 )
@@ -886,7 +943,7 @@ async def create_user_registered_model_permission(
     name: str = Path(..., description="The registered model name to set permissions for"),
     permission_data: RegisteredModelPermission = Body(..., description="The permission details"),
     _: str = Depends(check_registered_model_manage_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Create a permission for a user to access a registered model.
 
@@ -911,7 +968,7 @@ async def create_user_registered_model_permission(
             username=username,
             permission=permission_data.permission,
         )
-        return JSONResponse(content={"status": "success", "message": f"Registered model permission created for {username} on {name}"}, status_code=201)
+        return StatusMessageResponse(message=f"Registered model permission created for {username} on {name}")
     except MlflowException as e:
         logger.error(f"Error creating registered model permission: {str(e)}")
         if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
@@ -926,6 +983,7 @@ async def create_user_registered_model_permission(
 
 @user_permissions_router.get(
     USER_REGISTERED_MODEL_PERMISSION_DETAIL,
+    response_model=RegisteredModelPermissionResponse,
     summary="Get registered model permission for a user",
     description="Retrieves the permission for a user on a specific registered model.",
 )
@@ -933,7 +991,7 @@ async def get_user_registered_model_permission(
     username: str = Path(..., description="The username to get registered model permission for"),
     name: str = Path(..., description="The registered model name to get permissions for"),
     _: str = Depends(check_registered_model_manage_permission),
-) -> JSONResponse:
+) -> RegisteredModelPermissionResponse:
     """
     Get the permission for a user on a registered model.
 
@@ -953,7 +1011,7 @@ async def get_user_registered_model_permission(
     """
     try:
         rmp = store.get_registered_model_permission(name, username)
-        return JSONResponse(content={"registered_model_permission": rmp.to_json()})
+        return RegisteredModelPermissionResponse(registered_model_permission=RegisteredModelPermissionRecord(**rmp.to_json()))
     except Exception as e:
         logger.error(f"Error getting registered model permission: {str(e)}")
         raise HTTPException(status_code=404, detail=f"Registered model permission not found")
@@ -961,6 +1019,7 @@ async def get_user_registered_model_permission(
 
 @user_permissions_router.patch(
     USER_REGISTERED_MODEL_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
     summary="Update registered model permission for a user",
     description="Updates the permission for a user on a specific registered model.",
 )
@@ -969,7 +1028,7 @@ async def update_user_registered_model_permission(
     name: str = Path(..., description="The registered model name to update permissions for"),
     permission_data: RegisteredModelPermission = Body(..., description="Updated permission details"),
     _: str = Depends(check_registered_model_manage_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Update the permission for a user on a registered model.
 
@@ -996,7 +1055,7 @@ async def update_user_registered_model_permission(
             username=username,
             permission=permission_data.permission,
         )
-        return JSONResponse(content={"status": "success", "message": f"Registered model permission updated for {username} on {name}"})
+        return StatusMessageResponse(message=f"Registered model permission updated for {username} on {name}")
     except MlflowException as e:
         logger.error(f"Error updating registered model permission: {str(e)}")
         if getattr(e, "error_code", None) == RESOURCE_DOES_NOT_EXIST:
@@ -1011,6 +1070,7 @@ async def update_user_registered_model_permission(
 
 @user_permissions_router.delete(
     USER_REGISTERED_MODEL_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
     summary="Delete registered model permission for a user",
     description="Deletes the permission for a user on a specific registered model.",
 )
@@ -1018,7 +1078,7 @@ async def delete_user_registered_model_permission(
     username: str = Path(..., description="The username to delete registered model permission for"),
     name: str = Path(..., description="The registered model name to delete permissions for"),
     _: str = Depends(check_registered_model_manage_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Delete the permission for a user on a registered model.
 
@@ -1040,7 +1100,7 @@ async def delete_user_registered_model_permission(
     """
     try:
         store.delete_registered_model_permission(name, username)
-        return JSONResponse(content={"status": "success", "message": f"Registered model permission deleted for {username} on {name}"})
+        return StatusMessageResponse(message=f"Registered model permission deleted for {username} on {name}")
     except Exception as e:
         logger.error(f"Error deleting registered model permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete registered model permission")
@@ -1048,6 +1108,7 @@ async def delete_user_registered_model_permission(
 
 @user_permissions_router.get(
     USER_SCORER_PERMISSIONS,
+    response_model=List[ScorerPermissionRecord],
     summary="List scorer permissions for a user",
     description="Retrieves a list of scorers with permission information for the specified user.",
 )
@@ -1055,7 +1116,7 @@ async def get_user_scorer_permissions(
     username: str = Path(..., description="The username to get scorer permissions for"),
     current_username: str = Depends(get_username),
     is_admin: bool = Depends(get_is_admin),
-) -> JSONResponse:
+) -> List[ScorerPermissionRecord]:
     """List scorer permissions for a user.
 
     Admins can see all scorer permissions for any user. Users can see their own.
@@ -1067,7 +1128,7 @@ async def get_user_scorer_permissions(
             filtered = perms
         else:
             filtered = [sp for sp in perms if effective_experiment_permission(sp.experiment_id, current_username).permission.can_manage]
-        return JSONResponse(content=[p.to_json() for p in filtered], status_code=200)
+        return [ScorerPermissionRecord(**p.to_json()) for p in filtered]
     except Exception as e:
         logger.error(f"Error listing scorer permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve scorer permissions")
@@ -1076,6 +1137,7 @@ async def get_user_scorer_permissions(
 @user_permissions_router.post(
     USER_SCORER_PERMISSION_DETAIL,
     status_code=201,
+    response_model=ScorerPermissionResponse,
     summary="Create scorer permission for a user",
     description="Creates a new permission for a user to access a specific scorer.",
 )
@@ -1085,7 +1147,7 @@ async def create_user_scorer_permission(
     scorer_name: str = Path(..., description="The scorer name"),
     permission_data: ScorerPermission = Body(..., description="The permission details"),
     _: None = Depends(check_experiment_manage_permission),
-) -> JSONResponse:
+) -> ScorerPermissionResponse:
     """Create a scorer permission for a user.
 
     We require MANAGE on the owning experiment to grant/revoke scorer permissions.
@@ -1097,7 +1159,7 @@ async def create_user_scorer_permission(
             username=str(username),
             permission=str(permission_data.permission),
         )
-        return JSONResponse(content={"scorer_permission": sp.to_json()}, status_code=201)
+        return ScorerPermissionResponse(scorer_permission=ScorerPermissionRecord(**sp.to_json()))
     except MlflowException as e:
         logger.error(f"Error creating scorer permission: {str(e)}")
         if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
@@ -1112,6 +1174,7 @@ async def create_user_scorer_permission(
 
 @user_permissions_router.get(
     USER_SCORER_PERMISSION_DETAIL,
+    response_model=ScorerPermissionResponse,
     summary="Get scorer permission for a user",
     description="Retrieves the permission for a user on a specific scorer.",
 )
@@ -1120,10 +1183,10 @@ async def get_user_scorer_permission(
     experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
     scorer_name: str = Path(..., description="The scorer name"),
     _: None = Depends(check_experiment_manage_permission),
-) -> JSONResponse:
+) -> ScorerPermissionResponse:
     try:
         sp = store.get_scorer_permission(str(experiment_id), str(scorer_name), str(username))
-        return JSONResponse(content={"scorer_permission": sp.to_json()})
+        return ScorerPermissionResponse(scorer_permission=ScorerPermissionRecord(**sp.to_json()))
     except Exception as e:
         logger.error(f"Error getting scorer permission: {str(e)}")
         raise HTTPException(status_code=404, detail="Scorer permission not found")
@@ -1131,6 +1194,7 @@ async def get_user_scorer_permission(
 
 @user_permissions_router.patch(
     USER_SCORER_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
     summary="Update scorer permission for a user",
     description="Updates the permission for a user on a specific scorer.",
 )
@@ -1140,7 +1204,7 @@ async def update_user_scorer_permission(
     scorer_name: str = Path(..., description="The scorer name"),
     permission_data: ScorerPermission = Body(..., description="Updated permission details"),
     _: None = Depends(check_experiment_manage_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     try:
         store.update_scorer_permission(
             experiment_id=str(experiment_id),
@@ -1148,7 +1212,7 @@ async def update_user_scorer_permission(
             username=str(username),
             permission=str(permission_data.permission),
         )
-        return JSONResponse(content={"status": "success", "message": f"Scorer permission updated for {username} on {scorer_name}"})
+        return StatusMessageResponse(message=f"Scorer permission updated for {username} on {scorer_name}")
     except MlflowException as e:
         logger.error(f"Error updating scorer permission: {str(e)}")
         if getattr(e, "error_code", None) == RESOURCE_DOES_NOT_EXIST:
@@ -1163,6 +1227,7 @@ async def update_user_scorer_permission(
 
 @user_permissions_router.delete(
     USER_SCORER_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
     summary="Delete scorer permission for a user",
     description="Deletes the permission for a user on a specific scorer.",
 )
@@ -1171,10 +1236,10 @@ async def delete_user_scorer_permission(
     experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
     scorer_name: str = Path(..., description="The scorer name"),
     _: None = Depends(check_experiment_manage_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     try:
         store.delete_scorer_permission(str(experiment_id), str(scorer_name), str(username))
-        return JSONResponse(content={"status": "success", "message": f"Scorer permission deleted for {username} on {scorer_name}"})
+        return StatusMessageResponse(message=f"Scorer permission deleted for {username} on {scorer_name}")
     except Exception as e:
         logger.error(f"Error deleting scorer permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete scorer permission")
@@ -1182,16 +1247,17 @@ async def delete_user_scorer_permission(
 
 @user_permissions_router.get(
     USER_SCORER_PATTERN_PERMISSIONS,
+    response_model=List[ScorerRegexPermissionRecord],
     summary="List scorer pattern permissions for a user",
     description="Retrieves a list of regex-based scorer permission patterns for the specified user.",
 )
 async def get_user_scorer_regex_permissions(
     username: str = Path(..., description="The username to list scorer pattern permissions for"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> List[ScorerRegexPermissionRecord]:
     try:
         perms = store.list_scorer_regex_permissions(username=username)
-        return JSONResponse(content=[p.to_json() for p in perms], status_code=200)
+        return [ScorerRegexPermissionRecord(**p.to_json()) for p in perms]
     except Exception as e:
         logger.error(f"Error listing scorer pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve scorer pattern permissions")
@@ -1200,6 +1266,7 @@ async def get_user_scorer_regex_permissions(
 @user_permissions_router.post(
     USER_SCORER_PATTERN_PERMISSIONS,
     status_code=201,
+    response_model=ScorerRegexPermissionResponse,
     summary="Create scorer pattern permission for a user",
     description="Creates a new regex-based permission pattern for scorer access.",
 )
@@ -1207,7 +1274,7 @@ async def create_user_scorer_regex_permission(
     username: str = Path(..., description="The username to create scorer pattern permission for"),
     pattern_data: ScorerRegexCreate = Body(..., description="The regex pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> ScorerRegexPermissionResponse:
     try:
         perm = store.create_scorer_regex_permission(
             regex=pattern_data.regex,
@@ -1215,7 +1282,7 @@ async def create_user_scorer_regex_permission(
             permission=pattern_data.permission,
             username=username,
         )
-        return JSONResponse(content={"pattern": perm.to_json()}, status_code=201)
+        return ScorerRegexPermissionResponse(pattern=ScorerRegexPermissionRecord(**perm.to_json()))
     except MlflowException as e:
         logger.error(f"Error creating scorer pattern permission: {str(e)}")
         if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
@@ -1230,6 +1297,7 @@ async def create_user_scorer_regex_permission(
 
 @user_permissions_router.get(
     USER_SCORER_PATTERN_PERMISSION_DETAIL,
+    response_model=ScorerRegexPermissionResponse,
     summary="Get specific scorer pattern permission for a user",
     description="Retrieves a specific scorer regex pattern permission for a user.",
 )
@@ -1237,10 +1305,10 @@ async def get_user_scorer_pattern_permission(
     username: str = Path(..., description="The username"),
     pattern_id: int = Path(..., description="The pattern ID"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> ScorerRegexPermissionResponse:
     try:
         perm = store.get_scorer_regex_permission(username=username, id=pattern_id)
-        return JSONResponse(content={"pattern": perm.to_json()})
+        return ScorerRegexPermissionResponse(pattern=ScorerRegexPermissionRecord(**perm.to_json()))
     except Exception as e:
         logger.error(f"Error getting scorer pattern permission: {str(e)}")
         raise HTTPException(status_code=404, detail="Scorer pattern permission not found")
@@ -1248,6 +1316,7 @@ async def get_user_scorer_pattern_permission(
 
 @user_permissions_router.patch(
     USER_SCORER_PATTERN_PERMISSION_DETAIL,
+    response_model=ScorerRegexPermissionResponse,
     summary="Update scorer pattern permission for a user",
     description="Updates a specific scorer regex pattern permission for a user.",
 )
@@ -1256,7 +1325,7 @@ async def update_user_scorer_pattern_permission(
     pattern_id: int = Path(..., description="The pattern ID"),
     pattern_data: ScorerRegexCreate = Body(..., description="Updated pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> ScorerRegexPermissionResponse:
     try:
         perm = store.update_scorer_regex_permission(
             id=pattern_id,
@@ -1265,7 +1334,7 @@ async def update_user_scorer_pattern_permission(
             permission=pattern_data.permission,
             username=username,
         )
-        return JSONResponse(content={"pattern": perm.to_json()})
+        return ScorerRegexPermissionResponse(pattern=ScorerRegexPermissionRecord(**perm.to_json()))
     except Exception as e:
         logger.error(f"Error updating scorer pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update scorer pattern permission")
@@ -1273,6 +1342,7 @@ async def update_user_scorer_pattern_permission(
 
 @user_permissions_router.delete(
     USER_SCORER_PATTERN_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
     summary="Delete scorer pattern permission for a user",
     description="Deletes a specific scorer regex pattern permission for a user.",
 )
@@ -1280,10 +1350,10 @@ async def delete_user_scorer_pattern_permission(
     username: str = Path(..., description="The username"),
     pattern_id: int = Path(..., description="The pattern ID"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     try:
         store.delete_scorer_regex_permission(id=pattern_id, username=username)
-        return JSONResponse(content={"status": "success", "message": f"Scorer pattern permission deleted for {username}"})
+        return StatusMessageResponse(message=f"Scorer pattern permission deleted for {username}")
     except Exception as e:
         logger.error(f"Error deleting scorer pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete scorer pattern permission")
@@ -1291,13 +1361,14 @@ async def delete_user_scorer_pattern_permission(
 
 @user_permissions_router.get(
     USER_REGISTERED_MODEL_PATTERN_PERMISSIONS,
+    response_model=List[RegisteredModelRegexPermissionRecord],
     summary="List registered model pattern permissions for a user",
     description="Retrieves a list of regex-based registered model permission patterns for the specified user.",
 )
 async def get_user_registered_model_regex_permissions(
     username: str = Path(..., description="The username to list registered model pattern permissions for"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> List[RegisteredModelRegexPermissionRecord]:
     """
     List all regex-based registered model permission patterns for a user.
 
@@ -1317,7 +1388,7 @@ async def get_user_registered_model_regex_permissions(
     """
     try:
         rm = store.list_registered_model_regex_permissions(username=username)
-        return JSONResponse(content=[r.to_json() for r in rm], status_code=200)
+        return [RegisteredModelRegexPermissionRecord(**r.to_json()) for r in rm]
     except Exception as e:
         logger.error(f"Error listing registered model pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve registered model pattern permissions")
@@ -1326,6 +1397,7 @@ async def get_user_registered_model_regex_permissions(
 @user_permissions_router.post(
     USER_REGISTERED_MODEL_PATTERN_PERMISSIONS,
     status_code=201,
+    response_model=StatusMessageResponse,
     summary="Create registered model pattern permission for a user",
     description="Creates a new regex-based permission pattern for registered model access.",
 )
@@ -1333,7 +1405,7 @@ async def create_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to create registered model pattern permission for"),
     pattern_data: RegisteredModelRegexCreate = Body(..., description="The regex pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Create a new regex-based permission pattern for registered model access.
 
@@ -1360,7 +1432,7 @@ async def create_user_registered_model_regex_permission(
             permission=pattern_data.permission,
             username=username,
         )
-        return JSONResponse(content={"status": "success", "message": f"Registered model pattern permission created for {username}"}, status_code=201)
+        return StatusMessageResponse(message=f"Registered model pattern permission created for {username}")
     except Exception as e:
         logger.error(f"Error creating registered model pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create registered model pattern permission")
@@ -1368,6 +1440,7 @@ async def create_user_registered_model_regex_permission(
 
 @user_permissions_router.get(
     USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
+    response_model=RegisteredModelRegexPermissionResponse,
     summary="Get registered model pattern permission for a user",
     description="Retrieves a specific regex-based registered model permission pattern for the specified user.",
 )
@@ -1375,7 +1448,7 @@ async def get_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to get registered model pattern permission for"),
     pattern_id: str = Path(..., description="The pattern ID to retrieve"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> RegisteredModelRegexPermissionResponse:
     """
     Get a specific regex-based registered model permission pattern for a user.
 
@@ -1397,7 +1470,7 @@ async def get_user_registered_model_regex_permission(
     """
     try:
         rm = store.get_registered_model_regex_permission(id=int(pattern_id), username=username)
-        return JSONResponse(content={"registered_model_permission": rm.to_json()}, status_code=200)
+        return RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
@@ -1407,6 +1480,7 @@ async def get_user_registered_model_regex_permission(
 
 @user_permissions_router.patch(
     USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
+    response_model=RegisteredModelRegexPermissionResponse,
     summary="Update registered model pattern permission for a user",
     description="Updates a specific regex-based registered model permission pattern for the specified user.",
 )
@@ -1415,7 +1489,7 @@ async def update_user_registered_model_regex_permission(
     pattern_id: str = Path(..., description="The pattern ID to update"),
     pattern_data: RegisteredModelRegexCreate = Body(..., description="Updated pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> RegisteredModelRegexPermissionResponse:
     """
     Update a specific regex-based registered model permission pattern for a user.
 
@@ -1445,7 +1519,7 @@ async def update_user_registered_model_regex_permission(
             permission=pattern_data.permission,
             username=username,
         )
-        return JSONResponse(content={"registered_model_permission": rm.to_json()}, status_code=200)
+        return RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
@@ -1455,6 +1529,8 @@ async def update_user_registered_model_regex_permission(
 
 @user_permissions_router.delete(
     USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
+    response_model=StatusOnlyResponse,
+    response_model_exclude_none=True,
     summary="Delete registered model pattern permission for a user",
     description="Deletes a specific regex-based registered model permission pattern for the specified user.",
 )
@@ -1462,7 +1538,7 @@ async def delete_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to delete registered model pattern permission for"),
     pattern_id: str = Path(..., description="The pattern ID to delete"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusOnlyResponse:
     """
     Delete a specific regex-based registered model permission pattern for a user.
 
@@ -1484,7 +1560,7 @@ async def delete_user_registered_model_regex_permission(
     """
     try:
         store.delete_registered_model_regex_permission(id=int(pattern_id), username=username)
-        return JSONResponse(content={"status": "success"}, status_code=200)
+        return StatusOnlyResponse()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:

@@ -87,8 +87,8 @@ class TestUserScorerPatternRoutes:
             "id": 1,
             "regex": "exp_.*",
             "priority": 1,
+            "user_id": 2,
             "permission": "READ",
-            "username": "user@example.com",
         }
 
         resp = admin_client.post(
@@ -110,8 +110,8 @@ class TestUserScorerPatternRoutes:
             "id": 1,
             "regex": "exp_.*",
             "priority": 1,
+            "user_id": 2,
             "permission": "READ",
-            "username": "user@example.com",
         }
 
         resp = admin_client.get("/api/2.0/mlflow/permissions/users/user@example.com/scorer-patterns/1")
@@ -125,8 +125,8 @@ class TestUserScorerPatternRoutes:
             "id": 1,
             "regex": "exp_.*",
             "priority": 2,
+            "user_id": 2,
             "permission": "MANAGE",
-            "username": "user@example.com",
         }
 
         resp = admin_client.patch(

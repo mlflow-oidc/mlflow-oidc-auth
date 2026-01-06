@@ -47,14 +47,14 @@ class ExperimentPermissionSummary(BaseModel):
         The unique identifier of the experiment.
     permission : str
         The permission level the user has for this experiment.
-    type : str
-        The type of permission (direct, regex, etc.).
+    kind : str
+        The kind of permission (direct, regex, etc.).
     """
 
     name: str = Field(..., description="The name of the experiment")
     id: str = Field(..., description="The experiment ID")
     permission: str = Field(..., description="The permission level")
-    type: str = Field(..., description="The type of permission (direct, regex, etc.)")
+    kind: str = Field(..., description="The kind of permission (direct, regex, etc.)")
 
 
 class ExperimentSummary(BaseModel):

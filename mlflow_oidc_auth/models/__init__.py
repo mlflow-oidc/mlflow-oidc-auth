@@ -16,6 +16,24 @@ from mlflow_oidc_auth.models.permission import PermissionResult, UserPermission
 from mlflow_oidc_auth.models.prompt import PromptPermission, PromptRegexCreate
 from mlflow_oidc_auth.models.registered_model import RegisteredModelPermission, RegisteredModelRegexCreate
 from mlflow_oidc_auth.models.scorer import ScorerPermission, ScorerPermissionRequest, ScorerRegexCreate
+from mlflow_oidc_auth.models.responses import (
+    ExperimentPermissionRecord,
+    ExperimentPermissionResponse,
+    MessageResponse,
+    NamedPermissionSummary,
+    PromptPermissionResponse,
+    PromptRegexPermissionResponse,
+    RegisteredModelPermissionRecord,
+    RegisteredModelPermissionResponse,
+    RegisteredModelRegexPermissionRecord,
+    RegisteredModelRegexPermissionResponse,
+    ScorerPermissionRecord,
+    ScorerPermissionResponse,
+    ScorerRegexPermissionRecord,
+    ScorerRegexPermissionResponse,
+    StatusMessageResponse,
+    StatusOnlyResponse,
+)
 from mlflow_oidc_auth.models.user import CreateAccessTokenRequest, CreateUserRequest
 from mlflow_oidc_auth.models.webhook import (
     WebhookCreateRequest,
@@ -44,6 +62,22 @@ __all__ = [
     "ScorerPermission",
     "ScorerRegexCreate",
     "ScorerPermissionRequest",
+    "MessageResponse",
+    "StatusOnlyResponse",
+    "StatusMessageResponse",
+    "NamedPermissionSummary",
+    "ExperimentPermissionRecord",
+    "ExperimentPermissionResponse",
+    "RegisteredModelPermissionRecord",
+    "PromptPermissionResponse",
+    "RegisteredModelPermissionResponse",
+    "RegisteredModelRegexPermissionRecord",
+    "PromptRegexPermissionResponse",
+    "RegisteredModelRegexPermissionResponse",
+    "ScorerPermissionRecord",
+    "ScorerPermissionResponse",
+    "ScorerRegexPermissionRecord",
+    "ScorerRegexPermissionResponse",
     "CreateAccessTokenRequest",
     "CreateUserRequest",
     "WebhookCreateRequest",
