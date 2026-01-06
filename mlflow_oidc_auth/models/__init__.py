@@ -12,7 +12,7 @@ from mlflow_oidc_auth.models.experiment import (
     ExperimentSummary,
     ExperimentUserPermission,
 )
-from mlflow_oidc_auth.models.group import GroupExperimentPermission, GroupRegexPermission, GroupUser
+from mlflow_oidc_auth.models.group import GroupExperimentPermission, GroupPermissionEntry, GroupRegexPermission, GroupUser
 from mlflow_oidc_auth.models.permission import PermissionResult
 from mlflow_oidc_auth.models.prompt import PromptPermission, PromptRegexCreate
 from mlflow_oidc_auth.models.registered_model import RegisteredModelPermission, RegisteredModelRegexCreate
@@ -37,6 +37,7 @@ __all__ = [
     "GroupUser",
     "GroupExperimentPermission",
     "GroupRegexPermission",
+    "GroupPermissionEntry",
     "PermissionResult",
     "PromptPermission",
     "PromptRegexCreate",

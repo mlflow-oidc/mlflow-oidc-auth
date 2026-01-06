@@ -9,7 +9,15 @@ authorization, and error handling.
 import pytest
 from unittest.mock import MagicMock, patch
 
-from mlflow_oidc_auth.routers.prompt_permissions import prompt_permissions_router, get_prompt_users, list_prompts, LIST_PROMPTS, PROMPT_USER_PERMISSIONS
+from mlflow_oidc_auth.routers.prompt_permissions import (
+    LIST_PROMPTS,
+    PROMPT_GROUP_PERMISSIONS,
+    PROMPT_USER_PERMISSIONS,
+    get_prompt_groups,
+    get_prompt_users,
+    list_prompts,
+    prompt_permissions_router,
+)
 from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
 
 
@@ -27,6 +35,29 @@ class TestPromptPermissionsRouter:
         """Test that route constants are properly defined."""
         assert LIST_PROMPTS == ""
         assert PROMPT_USER_PERMISSIONS == "/{prompt_name}/users"
+        assert PROMPT_GROUP_PERMISSIONS == "/{prompt_name}/groups"
+
+
+class TestGetPromptGroupsEndpoint:
+    """Test the get prompt groups endpoint functionality."""
+
+    @pytest.mark.asyncio
+    async def test_get_prompt_groups_success(self, mock_store):
+        mock_store.prompt_group_repo.list_groups_for_prompt.return_value = [("team-a", "READ"), ("team-b", "MANAGE")]
+
+        with patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store):
+            result = await get_prompt_groups(prompt_name="test-prompt", _="admin@example.com")
+
+        assert len(result) == 2
+        assert result[0].group_name == "team-a"
+        assert result[0].permission == "READ"
+        assert result[1].group_name == "team-b"
+        assert result[1].permission == "MANAGE"
+
+    def test_get_prompt_groups_integration(self, admin_client, mock_store):
+        mock_store.prompt_group_repo.list_groups_for_prompt.return_value = []
+        response = admin_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/groups")
+        assert response.status_code == 200
 
 
 class TestGetPromptUsersEndpoint:

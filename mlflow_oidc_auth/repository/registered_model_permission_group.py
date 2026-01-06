@@ -44,6 +44,22 @@ class RegisteredModelPermissionGroupRepository:
             perms = session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.group_id == group.id).all()
             return [p.to_mlflow_entity() for p in perms]
 
+    def list_groups_for_model(self, name: str) -> List[tuple[str, str]]:
+        """List groups that have explicit permissions for a registered model.
+
+        Returns pairs of (group_name, permission).
+        """
+
+        with self._Session() as session:
+            rows = (
+                session.query(SqlGroup.group_name, SqlRegisteredModelGroupPermission.permission)
+                .join(SqlRegisteredModelGroupPermission, SqlRegisteredModelGroupPermission.group_id == SqlGroup.id)
+                .filter(SqlRegisteredModelGroupPermission.name == name)
+                .filter(SqlRegisteredModelGroupPermission.prompt == False)
+                .all()
+            )
+            return [(str(group_name), str(permission)) for group_name, permission in rows]
+
     def get_for_user(self, name: str, username: str) -> RegisteredModelPermission:
         with self._Session() as session:
             user_groups = self._group_repo.list_groups_for_user(username)

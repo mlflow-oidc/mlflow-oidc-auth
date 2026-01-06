@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, Path
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models import GroupPermissionEntry
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import fetch_all_prompts, get_is_admin, get_username
 from mlflow_oidc_auth.utils.permissions import can_manage_registered_model
@@ -23,6 +26,7 @@ prompt_permissions_router = APIRouter(
 
 LIST_PROMPTS = ""
 PROMPT_USER_PERMISSIONS = "/{prompt_name}/users"
+PROMPT_GROUP_PERMISSIONS = "/{prompt_name}/groups"
 
 
 @prompt_permissions_router.get(
@@ -80,6 +84,26 @@ async def get_prompt_users(
             )
 
     return JSONResponse(content=users)
+
+
+@prompt_permissions_router.get(
+    PROMPT_GROUP_PERMISSIONS,
+    response_model=List[GroupPermissionEntry],
+    summary="List groups with permissions for a prompt",
+    description="Retrieves a list of groups that have permissions for the specified prompt.",
+)
+async def get_prompt_groups(
+    prompt_name: str = Path(..., description="The prompt name to get group permissions for"),
+    _: str = Depends(check_admin_permission),
+) -> List[GroupPermissionEntry]:
+    """List groups with explicit permissions for a prompt."""
+
+    try:
+        groups = store.prompt_group_repo.list_groups_for_prompt(str(prompt_name))
+        return [GroupPermissionEntry(group_name=group_name, permission=permission) for group_name, permission in groups]
+    except Exception as e:
+        logger.error(f"Error retrieving prompt group permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve prompt group permissions")
 
 
 @prompt_permissions_router.get(LIST_PROMPTS, summary="List accessible prompts", description="Retrieves a list of prompts that the user has access to.")

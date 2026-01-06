@@ -56,3 +56,17 @@ class GroupRegexPermission(BaseModel):
     regex: str = Field(..., description="Regex pattern to match resources")
     priority: int = Field(..., description="Priority of the permission rule")
     permission: str = Field(..., description="Permission level for matching resources")
+
+
+class GroupPermissionEntry(BaseModel):
+    """Permission information for a group on a specific resource.
+
+    This is used for endpoints like:
+    - /mlflow/permissions/experiments/{experiment_id}/groups
+    - /mlflow/permissions/registered-models/{name}/groups
+    - /mlflow/permissions/prompts/{prompt_name}/groups
+    - /mlflow/permissions/scorers/{experiment_id}/{scorer_name}/groups
+    """
+
+    group_name: str = Field(..., description="Group name")
+    permission: str = Field(..., description="Permission level for the group")

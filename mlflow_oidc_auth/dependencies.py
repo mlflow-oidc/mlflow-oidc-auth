@@ -122,8 +122,8 @@ async def check_scorer_manage_permission(
     - POST/PATCH/DELETE: parameters in JSON body (with query fallback)
     """
 
-    experiment_id = request.query_params.get("experiment_id")
-    scorer_name = request.query_params.get("scorer_name")
+    experiment_id = request.query_params.get("experiment_id") or request.path_params.get("experiment_id")
+    scorer_name = request.query_params.get("scorer_name") or request.path_params.get("scorer_name")
 
     if request.method in {"POST", "PATCH", "DELETE"}:
         try:

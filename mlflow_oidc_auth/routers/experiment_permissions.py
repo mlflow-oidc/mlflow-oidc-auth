@@ -1,11 +1,11 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.dependencies import check_experiment_manage_permission
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.models import ExperimentSummary, ExperimentUserPermission
+from mlflow_oidc_auth.models import ExperimentSummary, ExperimentUserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import can_manage_experiment, get_is_admin, get_username
 
@@ -24,6 +24,7 @@ experiment_permissions_router = APIRouter(
 
 LIST_EXPERIMENTS = ""
 EXPERIMENT_USER_PERMISSIONS = "/{experiment_id}/users"
+EXPERIMENT_GROUP_PERMISSIONS = "/{experiment_id}/groups"
 
 
 @experiment_permissions_router.get(
@@ -79,6 +80,26 @@ async def get_experiment_users(
             )
 
     return users_with_permissions
+
+
+@experiment_permissions_router.get(
+    EXPERIMENT_GROUP_PERMISSIONS,
+    response_model=List[GroupPermissionEntry],
+    summary="List groups with permissions for an experiment",
+    description="Retrieves a list of groups that have permissions for the specified experiment.",
+)
+async def get_experiment_groups(
+    experiment_id: str = Path(..., description="The experiment ID to get group permissions for"),
+    _: None = Depends(check_experiment_manage_permission),
+) -> List[GroupPermissionEntry]:
+    """List all groups with permissions for a specific experiment."""
+
+    try:
+        groups = store.experiment_group_repo.list_groups_for_experiment(str(experiment_id))
+        return [GroupPermissionEntry(group_name=group_name, permission=permission) for group_name, permission in groups]
+    except Exception as e:
+        logger.error(f"Error retrieving experiment group permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve experiment group permissions")
 
 
 @experiment_permissions_router.get(

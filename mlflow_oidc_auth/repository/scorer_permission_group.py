@@ -60,6 +60,22 @@ class ScorerPermissionGroupRepository:
             rows = session.query(SqlScorerGroupPermission).filter(SqlScorerGroupPermission.group_id == group_id).all()
             return [r.to_mlflow_entity() for r in rows]
 
+    def list_groups_for_scorer(self, experiment_id: str, scorer_name: str) -> List[tuple[str, str]]:
+        """List groups that have explicit permissions for a scorer.
+
+        Returns pairs of (group_name, permission).
+        """
+
+        with self._Session() as session:
+            rows = (
+                session.query(SqlGroup.group_name, SqlScorerGroupPermission.permission)
+                .join(SqlScorerGroupPermission, SqlScorerGroupPermission.group_id == SqlGroup.id)
+                .filter(SqlScorerGroupPermission.experiment_id == experiment_id)
+                .filter(SqlScorerGroupPermission.scorer_name == scorer_name)
+                .all()
+            )
+            return [(str(group_name), str(permission)) for group_name, permission in rows]
+
     def get_group_permission_for_user_scorer(self, experiment_id: str, scorer_name: str, username: str) -> ScorerGroupPermission:
         with self._Session() as session:
             user_groups = self._list_user_groups(username)

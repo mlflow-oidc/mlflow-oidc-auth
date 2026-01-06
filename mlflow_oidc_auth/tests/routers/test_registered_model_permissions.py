@@ -11,9 +11,11 @@ from unittest.mock import MagicMock, patch
 
 from mlflow_oidc_auth.routers.registered_model_permissions import (
     registered_model_permissions_router,
+    get_registered_model_groups,
     get_registered_model_users,
     list_models,
     LIST_MODELS,
+    REGISTERED_MODEL_GROUP_PERMISSIONS,
     REGISTERED_MODEL_USER_PERMISSIONS,
 )
 from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
@@ -33,6 +35,29 @@ class TestRegisteredModelPermissionsRouter:
         """Test that route constants are properly defined."""
         assert LIST_MODELS == ""
         assert REGISTERED_MODEL_USER_PERMISSIONS == "/{name}/users"
+        assert REGISTERED_MODEL_GROUP_PERMISSIONS == "/{name}/groups"
+
+
+class TestGetRegisteredModelGroupsEndpoint:
+    """Test the get registered model groups endpoint functionality."""
+
+    @pytest.mark.asyncio
+    async def test_get_registered_model_groups_success(self, mock_store):
+        mock_store.registered_model_group_repo.list_groups_for_model.return_value = [("team-a", "READ"), ("team-b", "MANAGE")]
+
+        with patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store):
+            result = await get_registered_model_groups(name="test-model", _="admin@example.com")
+
+        assert len(result) == 2
+        assert result[0].group_name == "team-a"
+        assert result[0].permission == "READ"
+        assert result[1].group_name == "team-b"
+        assert result[1].permission == "MANAGE"
+
+    def test_get_registered_model_groups_integration(self, admin_client, mock_store):
+        mock_store.registered_model_group_repo.list_groups_for_model.return_value = []
+        response = admin_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/groups")
+        assert response.status_code == 200
 
 
 class TestGetRegisteredModelUsersEndpoint:

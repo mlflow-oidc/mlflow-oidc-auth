@@ -66,3 +66,16 @@ class TestScorerPermissionRoutes:
         assert resp.status_code == 200
         assert resp.json() == {}
         mock_store.delete_scorer_permission.assert_called_once_with("123", "my_scorer", "user@example.com")
+
+    def test_list_scorer_groups(self, authenticated_client, mock_store):
+        mock_store.scorer_group_repo.list_groups_for_scorer.return_value = [("my-group", "READ"), ("admins", "MANAGE")]
+
+        resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/123/my_scorer/groups")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body == [
+            {"group_name": "my-group", "permission": "READ"},
+            {"group_name": "admins", "permission": "MANAGE"},
+        ]
+        mock_store.scorer_group_repo.list_groups_for_scorer.assert_called_once_with("123", "my_scorer")

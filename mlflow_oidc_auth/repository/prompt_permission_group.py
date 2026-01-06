@@ -5,7 +5,7 @@ from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
-from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupPermission
+from mlflow_oidc_auth.db.models import SqlGroup, SqlRegisteredModelGroupPermission
 from mlflow_oidc_auth.entities import RegisteredModelPermission
 from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository.utils import get_group
@@ -74,6 +74,25 @@ class PromptPermissionGroupRepository:
                 .all()
             )
             return [p.to_mlflow_entity() for p in perms]
+
+    def list_groups_for_prompt(self, name: str) -> List[tuple[str, str]]:
+        """List groups that have explicit permissions for a prompt.
+
+        Prompts are stored in the same table as registered model group permissions,
+        but flagged with prompt=True.
+
+        Returns pairs of (group_name, permission).
+        """
+
+        with self._Session() as session:
+            rows = (
+                session.query(SqlGroup.group_name, SqlRegisteredModelGroupPermission.permission)
+                .join(SqlRegisteredModelGroupPermission, SqlRegisteredModelGroupPermission.group_id == SqlGroup.id)
+                .filter(SqlRegisteredModelGroupPermission.name == name)
+                .filter(SqlRegisteredModelGroupPermission.prompt == True)
+                .all()
+            )
+            return [(str(group_name), str(permission)) for group_name, permission in rows]
 
     def update_prompt_permission_for_group(self, group_name: str, name: str, permission: str):
         """

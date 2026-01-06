@@ -13,9 +13,11 @@ from typing import Any
 
 from mlflow_oidc_auth.routers.experiment_permissions import (
     experiment_permissions_router,
+    get_experiment_groups,
     get_experiment_users,
     list_experiments,
     LIST_EXPERIMENTS,
+    EXPERIMENT_GROUP_PERMISSIONS,
     EXPERIMENT_USER_PERMISSIONS,
 )
 from mlflow_oidc_auth.models import ExperimentSummary
@@ -36,6 +38,32 @@ class TestExperimentPermissionsRouter:
         """Test that route constants are properly defined."""
         assert LIST_EXPERIMENTS == ""
         assert EXPERIMENT_USER_PERMISSIONS == "/{experiment_id}/users"
+        assert EXPERIMENT_GROUP_PERMISSIONS == "/{experiment_id}/groups"
+
+
+class TestGetExperimentGroupsEndpoint:
+    """Test the get experiment groups endpoint functionality."""
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.experiment_permissions.store")
+    async def test_get_experiment_groups_success(self, mock_store_module: MagicMock, mock_store: MagicMock):
+        """Test successful retrieval of experiment groups."""
+
+        mock_store_module.experiment_group_repo.list_groups_for_experiment.return_value = [("my-group", "READ"), ("admins", "MANAGE")]
+
+        result = await get_experiment_groups(experiment_id="123", _=None)
+        assert len(result) == 2
+        assert result[0].group_name == "my-group"
+        assert result[0].permission == "READ"
+        assert result[1].group_name == "admins"
+        assert result[1].permission == "MANAGE"
+
+    def test_get_experiment_groups_integration(self, authenticated_client: TestClient, mock_store: MagicMock):
+        """Integration-style check that the route is wired up."""
+
+        mock_store.experiment_group_repo.list_groups_for_experiment.return_value = []
+        response = authenticated_client.get("/api/2.0/mlflow/permissions/experiments/123/groups")
+        assert response.status_code == 200
 
 
 class TestGetExperimentUsersEndpoint:
