@@ -14,7 +14,7 @@ def generate_token() -> str:
 
 def create_user(username: str, display_name: str, is_admin: bool = False, is_service_account: bool = False) -> tuple:
     try:
-        user = store.get_user(username)
+        user = store.get_user_profile(username)
         store.update_user(username=username, is_admin=is_admin, is_service_account=is_service_account)
         return False, f"User {user.username} (ID: {user.id}) already exists"
     except MlflowException:

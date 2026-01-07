@@ -136,3 +136,26 @@ class RegisteredModelRegexPermissionListResponse(BaseModel):
     """
 
     patterns: List[RegisteredModelRegexPermissionRecord]
+
+
+class GroupRecord(BaseModel):
+    """Serialized group record for user profile responses."""
+
+    id: int = Field(..., description="Group ID")
+    group_name: str = Field(..., description="Group name")
+
+
+class CurrentUserProfile(BaseModel):
+    """Lightweight current-user profile.
+
+    This model intentionally excludes permission collections to keep the payload
+    small and avoid heavy DB loads on common UI calls.
+    """
+
+    display_name: str = Field(..., description="Display name")
+    groups: List[GroupRecord] = Field(default_factory=list, description="Groups the user belongs to")
+    id: int = Field(..., description="User ID")
+    is_admin: bool = Field(..., description="Whether the user is an administrator")
+    is_service_account: bool = Field(..., description="Whether the user is a service account")
+    password_expiration: Optional[str] = Field(None, description="Password expiration ISO timestamp")
+    username: str = Field(..., description="Username")

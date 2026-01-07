@@ -114,11 +114,11 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
             mock_credentials = HTTPBasicCredentials(username="test_user", password="test_pass")
             mock_user = MagicMock()
             mock_user.username = "test_user"
-            mock_store.get_user.return_value = mock_user
+            mock_store.get_user_profile.return_value = mock_user
 
             result = await get_username_from_basic_auth(mock_credentials)
             self.assertEqual(result, "test_user")
-            mock_store.get_user.assert_called_once_with("test_user")
+            mock_store.get_user_profile.assert_called_once_with("test_user")
 
         asyncio.run(test_async())
 
@@ -129,7 +129,7 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
         async def test_async():
             result = await get_username_from_basic_auth(None)
             self.assertIsNone(result)
-            mock_store.get_user.assert_not_called()
+            mock_store.get_user_profile.assert_not_called()
 
         asyncio.run(test_async())
 
@@ -139,7 +139,7 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
 
         async def test_async():
             mock_credentials = HTTPBasicCredentials(username="nonexistent", password="test_pass")
-            mock_store.get_user.side_effect = Exception("User not found")
+            mock_store.get_user_profile.side_effect = Exception("User not found")
 
             result = await get_username_from_basic_auth(mock_credentials)
             self.assertIsNone(result)
@@ -154,7 +154,7 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
             mock_credentials = HTTPBasicCredentials(username="test_user", password="test_pass")
             mock_user = MagicMock()
             mock_user.username = None
-            mock_store.get_user.return_value = mock_user
+            mock_store.get_user_profile.return_value = mock_user
 
             result = await get_username_from_basic_auth(mock_credentials)
             self.assertIsNone(result)
@@ -315,11 +315,11 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
             mock_get_username.return_value = "admin_user"
             mock_user = MagicMock()
             mock_user.is_admin = True
-            mock_store.get_user.return_value = mock_user
+            mock_store.get_user_profile.return_value = mock_user
 
             result = await get_is_admin(mock_request)
             self.assertTrue(result)
-            mock_store.get_user.assert_called_once_with("admin_user")
+            mock_store.get_user_profile.assert_called_once_with("admin_user")
 
         asyncio.run(test_async())
 
@@ -333,7 +333,7 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
             mock_get_username.return_value = "regular_user"
             mock_user = MagicMock()
             mock_user.is_admin = False
-            mock_store.get_user.return_value = mock_user
+            mock_store.get_user_profile.return_value = mock_user
 
             result = await get_is_admin(mock_request)
             self.assertFalse(result)

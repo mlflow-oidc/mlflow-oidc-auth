@@ -17,8 +17,10 @@ from mlflow_oidc_auth.routers.users import (
     create_new_user,
     create_access_token,
     delete_user,
+    get_current_user_profile,
     get_user_information,
     CREATE_ACCESS_TOKEN,
+    CURRENT_USER_PROFILE,
 )
 from mlflow_oidc_auth.models import CreateUserRequest, CreateAccessTokenRequest
 
@@ -36,6 +38,41 @@ class TestUsersRouter:
     def test_route_constants(self):
         """Test that route constants are properly defined."""
         assert CREATE_ACCESS_TOKEN == "/access-token"
+
+
+class TestCurrentUserProfileEndpoint:
+    """Tests for the lightweight current-user profile endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_get_current_user_profile_direct(self, mock_store):
+        """Direct call returns a lightweight model (no permissions collections)."""
+
+        # Ensure the mock supports the lightweight method.
+        mock_store.get_user_profile.side_effect = mock_store.get_user.side_effect
+
+        with patch("mlflow_oidc_auth.routers.users.store", mock_store):
+            result = await get_current_user_profile(current_username="user@example.com")
+
+        assert result.username == "user@example.com"
+        assert result.is_admin is False
+        assert isinstance(result.groups, list)
+
+    def test_get_current_user_profile_integration(self, authenticated_client):
+        """Endpoint returns only basic profile fields."""
+
+        resp = authenticated_client.get(f"/api/2.0/mlflow/users{CURRENT_USER_PROFILE}")
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert set(payload.keys()) == {
+            "display_name",
+            "groups",
+            "id",
+            "is_admin",
+            "is_service_account",
+            "password_expiration",
+            "username",
+        }
 
 
 class TestListUsersEndpoint:
@@ -303,16 +340,25 @@ class TestGetUserInformationEndpoint:
 
     @pytest.mark.asyncio
     async def test_get_user_information_unit(self, mock_store):
-        """Test get_user_information returns user data when called by admin."""
+        """Test get_user_information returns lightweight user data when called by admin."""
+
         mock_user = MagicMock()
-        mock_user.to_json.return_value = {"username": "user@example.com"}
-        mock_store.get_user.return_value = mock_user
+        mock_user.id = 2
+        mock_user.username = "user@example.com"
+        mock_user.display_name = "Regular User"
+        mock_user.is_admin = False
+        mock_user.is_service_account = False
+        mock_user.password_expiration = None
+        mock_user.groups = []
+
+        mock_store.get_user_profile.return_value = mock_user
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             result = await get_user_information(username="user@example.com", admin_username="admin@example.com")
 
-        assert result.status_code == 200
-        mock_store.get_user.assert_called_once_with("user@example.com")
+        assert result.username == "user@example.com"
+        assert result.is_admin is False
+        mock_store.get_user_profile.assert_called_once_with("user@example.com")
 
     def test_get_user_information_admin_integration(self, admin_client):
         """Test admin can retrieve arbitrary user information."""

@@ -76,7 +76,7 @@ async def get_username_from_basic_auth(credentials: Optional[HTTPBasicCredential
         return None
 
     try:
-        user = store.get_user(credentials.username)
+        user = store.get_user_profile(credentials.username)
         if user and user.username:
             logger.debug(f"Username from basic auth: {user.username}")
             return user.username
@@ -204,7 +204,15 @@ async def get_username(request: Request) -> str:
 
 
 async def get_is_admin(request: Request) -> bool:
-    return bool(store.get_user(await get_username(request=request)).is_admin)
+    """Return whether the authenticated user is an admin.
+
+    Prefer a lightweight store call to avoid loading full permission graphs.
+    """
+
+    username = await get_username(request=request)
+    getter = getattr(store, "get_user_profile", None) or getattr(store, "get_user")
+    user = getter(username)
+    return bool(getattr(user, "is_admin", False))
 
 
 async def is_authenticated(request: Request) -> bool:

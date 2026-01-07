@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.models import CreateAccessTokenRequest, CreateUserRequest
+from mlflow_oidc_auth.models import CreateAccessTokenRequest, CreateUserRequest, CurrentUserProfile, GroupRecord
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -95,7 +95,7 @@ async def create_access_token(
                 raise HTTPException(status_code=400, detail=f"Invalid expiration date format")
 
         # Check if the target user exists
-        user = store.get_user(target_username)
+        user = store.get_user_profile(target_username)
         if user is None:
             raise HTTPException(status_code=404, detail=f"User {target_username} not found")
 
@@ -235,7 +235,7 @@ async def delete_user(
     """
     try:
         # Check if user exists before attempting deletion
-        user = store.get_user(username)
+        user = store.get_user_profile(username)
         if not user:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
 
@@ -252,8 +252,13 @@ async def delete_user(
         raise HTTPException(status_code=500, detail=f"Failed to delete user")
 
 
-@users_router.get(CURRENT_USER, summary="Get current user information", description="Retrieves information about the currently authenticated user.")
-async def get_current_user_information(current_username: str = Depends(get_username)) -> JSONResponse:
+@users_router.get(
+    CURRENT_USER,
+    response_model=CurrentUserProfile,
+    summary="Get current user information",
+    description="Retrieves basic information (no permissions) about the currently authenticated user.",
+)
+async def get_current_user_information(current_username: str = Depends(get_username)) -> CurrentUserProfile:
     """
     Get information about the currently authenticated user.
 
@@ -276,14 +281,28 @@ async def get_current_user_information(current_username: str = Depends(get_usern
         If the user is not found or there's an error retrieving user information.
     """
     try:
-        return JSONResponse(content=store.get_user(current_username).to_json())
+        user = store.get_user_profile(current_username)
+        return CurrentUserProfile(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            is_admin=bool(user.is_admin),
+            is_service_account=bool(user.is_service_account),
+            password_expiration=user.password_expiration.isoformat() if user.password_expiration else None,
+            groups=[GroupRecord(**g.to_json()) for g in (user.groups or [])],
+        )
     except Exception as e:
         logger.error(f"Error getting current user information: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"User not found")
+        raise HTTPException(status_code=404, detail="User not found")
 
 
-@users_router.get(USERNAME, summary="Get user information", description="Retrieves information about a specified user.")
-async def get_user_information(username: str, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+@users_router.get(
+    USERNAME,
+    response_model=CurrentUserProfile,
+    summary="Get user information",
+    description="Retrieves basic user information (no permissions) about a specified user. Admin-only.",
+)
+async def get_user_information(username: str, admin_username: str = Depends(check_admin_permission)) -> CurrentUserProfile:
     """
     Get information about a specified user.
 
@@ -308,7 +327,16 @@ async def get_user_information(username: str, admin_username: str = Depends(chec
         If the user is not found or there's an error retrieving user information.
     """
     try:
-        return JSONResponse(content=store.get_user(username).to_json())
+        user = store.get_user_profile(username)
+        return CurrentUserProfile(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            is_admin=bool(user.is_admin),
+            is_service_account=bool(user.is_service_account),
+            password_expiration=user.password_expiration.isoformat() if user.password_expiration else None,
+            groups=[GroupRecord(**g.to_json()) for g in (user.groups or [])],
+        )
     except Exception as e:
         logger.error(f"Error getting user information for {username}: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"User not found")
+        raise HTTPException(status_code=404, detail="User not found")

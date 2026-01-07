@@ -176,6 +176,15 @@ class SqlAlchemyStore:
     def get_user(self, username: str) -> User:
         return self.user_repo.get(username)
 
+    def get_user_profile(self, username: str) -> User:
+        """Return a lightweight user entity for UI/admin checks.
+
+        Unlike `get_user`, this method avoids loading permission collections.
+        It is suitable for endpoints that only need basic user metadata.
+        """
+
+        return self.user_repo.get_profile(username)
+
     def list_users(self, is_service_account: bool = False, all: bool = False) -> List[User]:
         return self.user_repo.list(is_service_account, all)
 

@@ -51,7 +51,7 @@ class TestRequestHelpers(unittest.TestCase):
         mock_request.state.username = "user"
         mock_request.session = {}
 
-        mock_store.get_user.return_value.is_admin = True
+        mock_store.get_user_profile.return_value.is_admin = True
 
         # Test with async function
         import asyncio
@@ -63,7 +63,7 @@ class TestRequestHelpers(unittest.TestCase):
         result = asyncio.run(test_async())
         self.assertTrue(result)
 
-        mock_store.get_user.return_value.is_admin = False
+        mock_store.get_user_profile.return_value.is_admin = False
         result = asyncio.run(test_async())
         self.assertFalse(result)
 

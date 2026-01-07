@@ -163,7 +163,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             True if user is admin, False otherwise
         """
         try:
-            user = store.get_user(username)
+            user = store.get_user_profile(username)
             return user.is_admin if user else False
         except Exception as e:
             logger.error(f"Error checking admin status for {username}: {e}")

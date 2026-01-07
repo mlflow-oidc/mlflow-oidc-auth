@@ -17,8 +17,10 @@ from mlflow_oidc_auth.models.prompt import PromptPermission, PromptRegexCreate
 from mlflow_oidc_auth.models.registered_model import RegisteredModelPermission, RegisteredModelRegexCreate
 from mlflow_oidc_auth.models.scorer import ScorerPermission, ScorerPermissionRequest, ScorerRegexCreate
 from mlflow_oidc_auth.models.responses import (
+    CurrentUserProfile,
     ExperimentPermissionRecord,
     ExperimentPermissionResponse,
+    GroupRecord,
     MessageResponse,
     NamedPermissionSummary,
     PromptPermissionResponse,
@@ -65,6 +67,8 @@ __all__ = [
     "MessageResponse",
     "StatusOnlyResponse",
     "StatusMessageResponse",
+    "GroupRecord",
+    "CurrentUserProfile",
     "NamedPermissionSummary",
     "ExperimentPermissionRecord",
     "ExperimentPermissionResponse",
