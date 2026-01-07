@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Generic, List, Literal, Optional, TypeVar
+
+from pydantic import BaseModel, Field, RootModel
 
 
 class GroupUser(BaseModel):
@@ -35,6 +36,7 @@ class GroupExperimentPermission(BaseModel):
     experiment_id: str = Field(..., description="The experiment ID")
     experiment_name: str = Field(..., description="The name of the experiment")
     permission: str = Field(..., description="Permission level for the experiment")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group experiment permission")
 
 
 class GroupRegexPermission(BaseModel):
@@ -57,6 +59,7 @@ class GroupRegexPermission(BaseModel):
     regex: str = Field(..., description="Regex pattern to match resources")
     priority: int = Field(..., description="Priority of the permission rule")
     permission: str = Field(..., description="Permission level for matching resources")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group regex permission")
 
 
 class GroupPermissionEntry(BaseModel):
@@ -72,3 +75,99 @@ class GroupPermissionEntry(BaseModel):
     name: str = Field(..., description="Group name")
     permission: str = Field(..., description="Permission level for the group")
     kind: Literal["group"] = Field("group", description="Indicates this is a group permission entry")
+
+
+class GroupListResponse(RootModel[List[str]]):
+    """Wrapper response for group listings while keeping a flat payload."""
+
+    root: List[str]
+
+
+class GroupExperimentPermissionItem(BaseModel):
+    """Serialized experiment permission entry for a group."""
+
+    id: str = Field(..., description="Experiment ID")
+    name: str = Field(..., description="Experiment name")
+    permission: str = Field(..., description="Permission level granted to the group")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group experiment permission")
+
+
+class GroupNamedPermissionItem(BaseModel):
+    """Serialized named resource permission entry for a group."""
+
+    name: str = Field(..., description="Resource name")
+    permission: str = Field(..., description="Permission level granted to the group")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group named permission")
+
+
+class GroupExperimentRegexPermissionItem(BaseModel):
+    """Serialized experiment regex permission entry for a group."""
+
+    id: int = Field(..., description="Pattern identifier")
+    regex: str = Field(..., description="Regex pattern")
+    priority: int = Field(..., description="Evaluation priority")
+    group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
+    permission: str = Field(..., description="Permission granted when the regex matches")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group experiment regex permission")
+
+
+class GroupRegisteredModelRegexPermissionItem(BaseModel):
+    """Serialized registered model regex permission entry for a group."""
+
+    id: int = Field(..., description="Pattern identifier")
+    regex: str = Field(..., description="Regex pattern")
+    priority: int = Field(..., description="Evaluation priority")
+    group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
+    permission: str = Field(..., description="Permission granted when the regex matches")
+    prompt: bool = Field(..., description="Whether the pattern targets prompts instead of registered models")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group registered model regex permission")
+
+
+class GroupPromptRegexPermissionItem(GroupRegisteredModelRegexPermissionItem):
+    """Serialized prompt regex permission entry for a group."""
+
+
+class GroupScorerPermissionItem(BaseModel):
+    """Serialized scorer permission entry for a group."""
+
+    experiment_id: str = Field(..., description="Experiment identifier of the scorer")
+    scorer_name: str = Field(..., description="Scorer name")
+    group_id: Optional[int] = Field(None, description="Identifier of the group that owns the permission")
+    permission: str = Field(..., description="Permission granted to the group for the scorer")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group scorer permission")
+
+
+class GroupScorerRegexPermissionItem(BaseModel):
+    """Serialized scorer regex permission entry for a group."""
+
+    id: int = Field(..., description="Pattern identifier")
+    regex: str = Field(..., description="Regex pattern")
+    priority: int = Field(..., description="Evaluation priority")
+    group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
+    permission: str = Field(..., description="Permission granted when the regex matches")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group scorer regex permission")
+
+
+PatternItemT = TypeVar("PatternItemT", bound=BaseModel)
+
+
+class RegexPatternDetail(BaseModel, Generic[PatternItemT]):
+    """Generic detail wrapper for regex pattern responses."""
+
+    pattern: PatternItemT = Field(..., description="Regex pattern payload")
+
+
+class GroupRegexPatternDetail(RegexPatternDetail[GroupExperimentRegexPermissionItem]):
+    """Detail wrapper for experiment regex pattern responses."""
+
+
+class GroupRegisteredModelRegexPatternDetail(RegexPatternDetail[GroupRegisteredModelRegexPermissionItem]):
+    """Detail wrapper for registered model regex pattern responses."""
+
+
+class GroupPromptRegexPatternDetail(RegexPatternDetail[GroupPromptRegexPermissionItem]):
+    """Detail wrapper for prompt regex pattern responses."""
+
+
+class GroupScorerRegexPatternDetail(RegexPatternDetail[GroupScorerRegexPermissionItem]):
+    """Detail wrapper for scorer regex pattern responses."""

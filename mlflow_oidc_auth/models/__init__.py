@@ -11,7 +11,24 @@ from mlflow_oidc_auth.models.experiment import (
     ExperimentRegexPermission,
     ExperimentSummary,
 )
-from mlflow_oidc_auth.models.group import GroupExperimentPermission, GroupPermissionEntry, GroupRegexPermission, GroupUser
+from mlflow_oidc_auth.models.group import (
+    GroupExperimentPermission,
+    GroupExperimentPermissionItem,
+    GroupExperimentRegexPermissionItem,
+    GroupListResponse,
+    GroupNamedPermissionItem,
+    GroupPermissionEntry,
+    GroupPromptRegexPatternDetail,
+    GroupPromptRegexPermissionItem,
+    GroupRegexPermission,
+    GroupRegexPatternDetail,
+    GroupRegisteredModelRegexPatternDetail,
+    GroupRegisteredModelRegexPermissionItem,
+    GroupScorerPermissionItem,
+    GroupScorerRegexPatternDetail,
+    GroupScorerRegexPermissionItem,
+    GroupUser,
+)
 from mlflow_oidc_auth.models.permission import PermissionResult, UserPermission
 from mlflow_oidc_auth.models.prompt import PromptPermission, PromptRegexCreate
 from mlflow_oidc_auth.models.registered_model import RegisteredModelPermission, RegisteredModelRegexCreate
@@ -54,8 +71,20 @@ __all__ = [
     "ExperimentRegexPermission",
     "GroupUser",
     "GroupExperimentPermission",
+    "GroupListResponse",
+    "GroupExperimentPermissionItem",
+    "GroupExperimentRegexPermissionItem",
+    "GroupNamedPermissionItem",
     "GroupRegexPermission",
     "GroupPermissionEntry",
+    "GroupRegexPatternDetail",
+    "GroupRegisteredModelRegexPermissionItem",
+    "GroupRegisteredModelRegexPatternDetail",
+    "GroupPromptRegexPermissionItem",
+    "GroupPromptRegexPatternDetail",
+    "GroupScorerPermissionItem",
+    "GroupScorerRegexPermissionItem",
+    "GroupScorerRegexPatternDetail",
     "PermissionResult",
     "PromptPermission",
     "PromptRegexCreate",
