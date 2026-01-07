@@ -184,6 +184,51 @@ class TestServeSPA:
                 assert result.path == str(expected_path)
 
     @pytest.mark.asyncio
+    async def test_serve_spa_path_traversal_does_not_escape_ui_directory(self):
+        """Test that path traversal attempts cannot read files outside the UI directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ui_dir = Path(temp_dir) / "ui"
+            ui_dir.mkdir(parents=True, exist_ok=True)
+
+            index_path = ui_dir / "index.html"
+            index_path.write_text("<html><body>SPA</body></html>")
+
+            # Create a file outside the UI directory that we must never serve.
+            secret_path = Path(temp_dir) / "secret.txt"
+            secret_path.write_text("TOP-SECRET")
+
+            with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
+                mock_get.return_value = (ui_dir.resolve(), index_path.resolve())
+
+                result = await serve_spa("../secret.txt")
+
+                assert isinstance(result, FileResponse)
+                assert result.path == str(index_path.resolve())
+
+    @pytest.mark.asyncio
+    async def test_serve_spa_absolute_path_does_not_escape_ui_directory(self):
+        """Test that absolute path attempts cannot read arbitrary filesystem paths."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ui_dir = Path(temp_dir) / "ui"
+            ui_dir.mkdir(parents=True, exist_ok=True)
+
+            index_path = ui_dir / "index.html"
+            index_path.write_text("<html><body>SPA</body></html>")
+
+            outside_dir = Path(temp_dir) / "outside"
+            outside_dir.mkdir(parents=True, exist_ok=True)
+            secret_path = outside_dir / "secret.txt"
+            secret_path.write_text("TOP-SECRET")
+
+            with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
+                mock_get.return_value = (ui_dir.resolve(), index_path.resolve())
+
+                result = await serve_spa(str(secret_path.resolve()))
+
+                assert isinstance(result, FileResponse)
+                assert result.path == str(index_path.resolve())
+
+    @pytest.mark.asyncio
     async def test_serve_spa_nested_route_fallback(self):
         """Test serving nested SPA route that falls back to index.html."""
         with tempfile.TemporaryDirectory() as temp_dir:

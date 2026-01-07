@@ -66,12 +66,13 @@ async def serve_spa(filename: str):
     ui_dir_path, index_file = _get_ui_directory()
     requested_path = (ui_dir_path / filename).resolve()
 
-    try:
-        requested_path.relative_to(ui_dir_path)
-        if requested_path.is_file():
-            return FileResponse(str(requested_path))
-    except ValueError:
-        pass
+    ui_dir_path_str = str(ui_dir_path)
+    requested_path_str = str(requested_path)
+    is_within_ui_dir = (
+        requested_path_str == ui_dir_path_str or requested_path_str.startswith(ui_dir_path_str + "/") or requested_path_str.startswith(ui_dir_path_str + "\\")
+    )
+    if is_within_ui_dir and requested_path.is_file():
+        return FileResponse(requested_path_str)
 
     return FileResponse(str(index_file))
 
