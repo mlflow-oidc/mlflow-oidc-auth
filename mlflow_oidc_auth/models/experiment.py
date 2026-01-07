@@ -82,7 +82,7 @@ class ExperimentRegexPermission(BaseModel):
 
     Parameters:
     -----------
-    pattern_id : str
+    id : str
         Unique identifier for the regex pattern.
     regex : str
         Regular expression pattern to match experiment names/IDs.
@@ -92,7 +92,7 @@ class ExperimentRegexPermission(BaseModel):
         The permission level to grant.
     """
 
-    pattern_id: str = Field(..., description="Unique identifier for the regex pattern")
+    id: str = Field(..., description="Unique identifier for the regex pattern")
     regex: str = Field(..., description="Regex pattern to match experiments")
     priority: int = Field(..., description="Priority of the permission rule")
     permission: str = Field(..., description="Permission level for matching experiments")

@@ -45,7 +45,7 @@ class GroupRegexPermission(BaseModel):
 
     Parameters:
     -----------
-    pattern_id : str
+    id : str
         Unique identifier for the regex pattern.
     regex : str
         Regular expression pattern to match resources.
@@ -55,7 +55,7 @@ class GroupRegexPermission(BaseModel):
         The permission level to grant.
     """
 
-    pattern_id: str = Field(..., description="Unique identifier for the regex pattern")
+    id: str = Field(..., description="Unique identifier for the regex pattern")
     regex: str = Field(..., description="Regex pattern to match resources")
     priority: int = Field(..., description="Priority of the permission rule")
     permission: str = Field(..., description="Permission level for matching resources")
@@ -148,26 +148,7 @@ class GroupScorerRegexPermissionItem(BaseModel):
     kind: Literal["group"] = Field("group", description="Indicates this is a group scorer regex permission")
 
 
-PatternItemT = TypeVar("PatternItemT", bound=BaseModel)
+class RegexPatternDetail(BaseModel):
+    """Generic regex pattern responses."""
 
-
-class RegexPatternDetail(BaseModel, Generic[PatternItemT]):
-    """Generic detail wrapper for regex pattern responses."""
-
-    pattern: PatternItemT = Field(..., description="Regex pattern payload")
-
-
-class GroupRegexPatternDetail(RegexPatternDetail[GroupExperimentRegexPermissionItem]):
-    """Detail wrapper for experiment regex pattern responses."""
-
-
-class GroupRegisteredModelRegexPatternDetail(RegexPatternDetail[GroupRegisteredModelRegexPermissionItem]):
-    """Detail wrapper for registered model regex pattern responses."""
-
-
-class GroupPromptRegexPatternDetail(RegexPatternDetail[GroupPromptRegexPermissionItem]):
-    """Detail wrapper for prompt regex pattern responses."""
-
-
-class GroupScorerRegexPatternDetail(RegexPatternDetail[GroupScorerRegexPermissionItem]):
-    """Detail wrapper for scorer regex pattern responses."""
+    pattern: str = Field(..., description="Regex pattern payload")

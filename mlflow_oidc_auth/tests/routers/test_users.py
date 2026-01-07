@@ -17,10 +17,10 @@ from mlflow_oidc_auth.routers.users import (
     create_new_user,
     create_access_token,
     delete_user,
-    get_current_user_profile,
+    get_current_user_information,
     get_user_information,
     CREATE_ACCESS_TOKEN,
-    CURRENT_USER_PROFILE,
+    CURRENT_USER,
 )
 from mlflow_oidc_auth.models import CreateUserRequest, CreateAccessTokenRequest
 
@@ -51,7 +51,7 @@ class TestCurrentUserProfileEndpoint:
         mock_store.get_user_profile.side_effect = mock_store.get_user.side_effect
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
-            result = await get_current_user_profile(current_username="user@example.com")
+            result = await get_current_user_information(current_username="user@example.com")
 
         assert result.username == "user@example.com"
         assert result.is_admin is False
@@ -60,7 +60,7 @@ class TestCurrentUserProfileEndpoint:
     def test_get_current_user_profile_integration(self, authenticated_client):
         """Endpoint returns only basic profile fields."""
 
-        resp = authenticated_client.get(f"/api/2.0/mlflow/users{CURRENT_USER_PROFILE}")
+        resp = authenticated_client.get(f"/api/2.0/mlflow/users{CURRENT_USER}")
 
         assert resp.status_code == 200
         payload = resp.json()

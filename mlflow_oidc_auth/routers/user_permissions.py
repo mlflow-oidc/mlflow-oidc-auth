@@ -61,20 +61,20 @@ logger = get_logger()
 USER_EXPERIMENT_PERMISSION = "/{username}/experiments"
 USER_EXPERIMENT_PERMISSION_DETAIL = "/{username}/experiments/{experiment_id}"
 USER_EXPERIMENT_PATTERN_PERMISSIONS = "/{username}/experiment-patterns"
-USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{username}/experiment-patterns/{pattern_id}"
+USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{username}/experiment-patterns/{id}"
 USER_REGISTERED_MODEL_PERMISSIONS = "/{username}/registered-models"
 USER_REGISTERED_MODEL_PERMISSION_DETAIL = "/{username}/registered-models/{name}"
 USER_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{username}/registered-models-patterns"
-USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{username}/registered-models-patterns/{pattern_id}"
+USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{username}/registered-models-patterns/{id}"
 USER_PROMPT_PERMISSIONS = "/{username}/prompts"
 USER_PROMPT_PERMISSION_DETAIL = "/{username}/prompts/{name}"
 USER_PROMPT_PATTERN_PERMISSIONS = "/{username}/prompts-patterns"
-USER_PROMPT_PATTERN_PERMISSION_DETAIL = "/{username}/prompts-patterns/{pattern_id}"
+USER_PROMPT_PATTERN_PERMISSION_DETAIL = "/{username}/prompts-patterns/{id}"
 
 USER_SCORER_PERMISSIONS = "/{username}/scorers"
 USER_SCORER_PERMISSION_DETAIL = "/{username}/scorers/{experiment_id}/{scorer_name}"
 USER_SCORER_PATTERN_PERMISSIONS = "/{username}/scorer-patterns"
-USER_SCORER_PATTERN_PERMISSION_DETAIL = "/{username}/scorer-patterns/{pattern_id}"
+USER_SCORER_PATTERN_PERMISSION_DETAIL = "/{username}/scorer-patterns/{id}"
 
 user_permissions_router = APIRouter(
     prefix=USER_PERMISSIONS_ROUTER_PREFIX,
@@ -306,9 +306,7 @@ async def list_user_experiment_pattern_permissions(
     """
     try:
         permissions = store.list_experiment_regex_permissions(username=username)
-        return [
-            ExperimentRegexPermission(pattern_id=str(perm.id), regex=perm.regex, priority=perm.priority, permission=perm.permission) for perm in permissions
-        ]
+        return [ExperimentRegexPermission(id=str(perm.id), regex=perm.regex, priority=perm.priority, permission=perm.permission) for perm in permissions]
     except Exception as e:
         logger.error(f"Error listing experiment pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve experiment pattern permissions")
@@ -322,7 +320,7 @@ async def list_user_experiment_pattern_permissions(
 )
 async def get_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to get pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to retrieve"),
+    id: str = Path(..., description="The pattern ID to retrieve"),
     admin_username: str = Depends(check_admin_permission),
 ) -> ExperimentRegexPermission:
     """
@@ -332,7 +330,7 @@ async def get_user_experiment_pattern_permission(
     -----------
     username : str
         The username to get the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to retrieve.
     admin_username : str
         The username of the admin performing the action (from dependency).
@@ -348,8 +346,8 @@ async def get_user_experiment_pattern_permission(
         If the pattern is not found or there's an error retrieving it.
     """
     try:
-        permission = store.get_experiment_regex_permission(username, int(pattern_id))
-        return ExperimentRegexPermission(pattern_id=str(permission.id), regex=permission.regex, priority=permission.priority, permission=permission.permission)
+        permission = store.get_experiment_regex_permission(username, int(id))
+        return ExperimentRegexPermission(id=str(permission.id), regex=permission.regex, priority=permission.priority, permission=permission.permission)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
     except Exception as e:
@@ -364,7 +362,7 @@ async def get_user_experiment_pattern_permission(
 )
 async def update_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to update pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to update"),
+    id: str = Path(..., description="The pattern ID to update"),
     pattern_data: ExperimentRegexCreate = Body(..., description="Updated pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
 ) -> StatusMessageResponse:
@@ -375,7 +373,7 @@ async def update_user_experiment_pattern_permission(
     -----------
     username : str
         The username to update the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to update.
     pattern_data : ExperimentRegexCreate
         The updated regex pattern details.
@@ -394,7 +392,7 @@ async def update_user_experiment_pattern_permission(
     """
     try:
         store.update_experiment_regex_permission(
-            id=int(pattern_id), regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
+            id=int(id), regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
         )
         return StatusMessageResponse(message=f"Experiment pattern permission updated for {username}")
     except ValueError:
@@ -411,7 +409,7 @@ async def update_user_experiment_pattern_permission(
 )
 async def delete_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to delete pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to delete"),
+    id: str = Path(..., description="The pattern ID to delete"),
     admin_username: str = Depends(check_admin_permission),
 ) -> StatusMessageResponse:
     """
@@ -421,7 +419,7 @@ async def delete_user_experiment_pattern_permission(
     -----------
     username : str
         The username to delete the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to delete.
     admin_username : str
         The username of the admin performing the action (from dependency).
@@ -437,7 +435,7 @@ async def delete_user_experiment_pattern_permission(
         If the pattern is not found or there's an error deleting it.
     """
     try:
-        store.delete_experiment_regex_permission(username, int(pattern_id))
+        store.delete_experiment_regex_permission(username, int(id))
         return StatusMessageResponse(message=f"Experiment pattern permission deleted for {username}")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
@@ -759,7 +757,7 @@ async def create_user_prompt_regex_permission(
 )
 async def get_user_prompt_regex_permission(
     username: str = Path(..., description="The username to get prompt pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to retrieve"),
+    id: str = Path(..., description="The pattern ID to retrieve"),
     admin_username: str = Depends(check_admin_permission),
 ) -> PromptRegexPermissionResponse:
     """
@@ -771,7 +769,7 @@ async def get_user_prompt_regex_permission(
         The FastAPI request object.
     username : str
         The username to get the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to retrieve.
     admin_username : str
         The username of the admin performing the action (from dependency).
@@ -782,7 +780,7 @@ async def get_user_prompt_regex_permission(
         The prompt regex permission details.
     """
     try:
-        rm = store.get_prompt_regex_permission(id=int(pattern_id), username=username)
+        rm = store.get_prompt_regex_permission(id=int(id), username=username)
         return PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
@@ -799,7 +797,7 @@ async def get_user_prompt_regex_permission(
 )
 async def update_user_prompt_regex_permission(
     username: str = Path(..., description="The username to update prompt pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to update"),
+    id: str = Path(..., description="The pattern ID to update"),
     pattern_data: PromptRegexCreate = Body(..., description="Updated pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
 ) -> PromptRegexPermissionResponse:
@@ -812,7 +810,7 @@ async def update_user_prompt_regex_permission(
         The FastAPI request object.
     username : str
         The username to update the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to update.
     pattern_data : PromptRegexCreate
         The updated regex pattern details.
@@ -826,7 +824,7 @@ async def update_user_prompt_regex_permission(
     """
     try:
         rm = store.update_prompt_regex_permission(
-            id=int(pattern_id),
+            id=int(id),
             regex=pattern_data.regex,
             priority=pattern_data.priority,
             permission=pattern_data.permission,
@@ -849,7 +847,7 @@ async def update_user_prompt_regex_permission(
 )
 async def delete_user_prompt_regex_permission(
     username: str = Path(..., description="The username to delete prompt pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to delete"),
+    id: str = Path(..., description="The pattern ID to delete"),
     admin_username: str = Depends(check_admin_permission),
 ) -> StatusOnlyResponse:
     """
@@ -861,7 +859,7 @@ async def delete_user_prompt_regex_permission(
         The FastAPI request object.
     username : str
         The username to delete the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to delete.
     admin_username : str
         The username of the admin performing the action (from dependency).
@@ -872,7 +870,7 @@ async def delete_user_prompt_regex_permission(
         A response indicating success.
     """
     try:
-        store.delete_prompt_regex_permission(id=int(pattern_id), username=username)
+        store.delete_prompt_regex_permission(id=int(id), username=username)
         return StatusOnlyResponse()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
@@ -1303,11 +1301,11 @@ async def create_user_scorer_regex_permission(
 )
 async def get_user_scorer_pattern_permission(
     username: str = Path(..., description="The username"),
-    pattern_id: int = Path(..., description="The pattern ID"),
+    id: int = Path(..., description="The pattern ID"),
     admin_username: str = Depends(check_admin_permission),
 ) -> ScorerRegexPermissionResponse:
     try:
-        perm = store.get_scorer_regex_permission(username=username, id=pattern_id)
+        perm = store.get_scorer_regex_permission(username=username, id=id)
         return ScorerRegexPermissionResponse(pattern=ScorerRegexPermissionRecord(**perm.to_json()))
     except Exception as e:
         logger.error(f"Error getting scorer pattern permission: {str(e)}")
@@ -1322,13 +1320,13 @@ async def get_user_scorer_pattern_permission(
 )
 async def update_user_scorer_pattern_permission(
     username: str = Path(..., description="The username"),
-    pattern_id: int = Path(..., description="The pattern ID"),
+    id: int = Path(..., description="The pattern ID"),
     pattern_data: ScorerRegexCreate = Body(..., description="Updated pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
 ) -> ScorerRegexPermissionResponse:
     try:
         perm = store.update_scorer_regex_permission(
-            id=pattern_id,
+            id=id,
             regex=pattern_data.regex,
             priority=pattern_data.priority,
             permission=pattern_data.permission,
@@ -1348,11 +1346,11 @@ async def update_user_scorer_pattern_permission(
 )
 async def delete_user_scorer_pattern_permission(
     username: str = Path(..., description="The username"),
-    pattern_id: int = Path(..., description="The pattern ID"),
+    id: int = Path(..., description="The pattern ID"),
     admin_username: str = Depends(check_admin_permission),
 ) -> StatusMessageResponse:
     try:
-        store.delete_scorer_regex_permission(id=pattern_id, username=username)
+        store.delete_scorer_regex_permission(id=id, username=username)
         return StatusMessageResponse(message=f"Scorer pattern permission deleted for {username}")
     except Exception as e:
         logger.error(f"Error deleting scorer pattern permission: {str(e)}")
@@ -1446,7 +1444,7 @@ async def create_user_registered_model_regex_permission(
 )
 async def get_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to get registered model pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to retrieve"),
+    id: str = Path(..., description="The pattern ID to retrieve"),
     admin_username: str = Depends(check_admin_permission),
 ) -> RegisteredModelRegexPermissionResponse:
     """
@@ -1458,7 +1456,7 @@ async def get_user_registered_model_regex_permission(
         The FastAPI request object.
     username : str
         The username to get the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to retrieve.
     admin_username : str
         The username of the admin performing the action (from dependency).
@@ -1469,7 +1467,7 @@ async def get_user_registered_model_regex_permission(
         The registered model regex permission details.
     """
     try:
-        rm = store.get_registered_model_regex_permission(id=int(pattern_id), username=username)
+        rm = store.get_registered_model_regex_permission(id=int(id), username=username)
         return RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
@@ -1486,7 +1484,7 @@ async def get_user_registered_model_regex_permission(
 )
 async def update_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to update registered model pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to update"),
+    id: str = Path(..., description="The pattern ID to update"),
     pattern_data: RegisteredModelRegexCreate = Body(..., description="Updated pattern permission details"),
     admin_username: str = Depends(check_admin_permission),
 ) -> RegisteredModelRegexPermissionResponse:
@@ -1499,7 +1497,7 @@ async def update_user_registered_model_regex_permission(
         The FastAPI request object.
     username : str
         The username to update the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to update.
     pattern_data : RegisteredModelRegexCreate
         The updated regex pattern details.
@@ -1513,7 +1511,7 @@ async def update_user_registered_model_regex_permission(
     """
     try:
         rm = store.update_registered_model_regex_permission(
-            id=int(pattern_id),
+            id=int(id),
             regex=pattern_data.regex,
             priority=pattern_data.priority,
             permission=pattern_data.permission,
@@ -1536,7 +1534,7 @@ async def update_user_registered_model_regex_permission(
 )
 async def delete_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to delete registered model pattern permission for"),
-    pattern_id: str = Path(..., description="The pattern ID to delete"),
+    id: str = Path(..., description="The pattern ID to delete"),
     admin_username: str = Depends(check_admin_permission),
 ) -> StatusOnlyResponse:
     """
@@ -1548,7 +1546,7 @@ async def delete_user_registered_model_regex_permission(
         The FastAPI request object.
     username : str
         The username to delete the regex permission for.
-    pattern_id : str
+    id : str
         The unique identifier of the pattern to delete.
     admin_username : str
         The username of the admin performing the action (from dependency).
@@ -1559,7 +1557,7 @@ async def delete_user_registered_model_regex_permission(
         A response indicating success.
     """
     try:
-        store.delete_registered_model_regex_permission(id=int(pattern_id), username=username)
+        store.delete_registered_model_regex_permission(id=int(id), username=username)
         return StatusOnlyResponse()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
