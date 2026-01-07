@@ -47,7 +47,7 @@ export const SharedPermissionsPage = ({
 
   const { currentUser } = useUser();
   const { user: userDetails, refetch: userDetailsRefetch } = useUserDetails({
-    username: entityKind === "user" ? entityName : null,
+    username: entityKind === "user" && currentUser?.is_admin ? entityName : null,
   });
 
   const userExperimentHook = useUserExperimentPermissions({
