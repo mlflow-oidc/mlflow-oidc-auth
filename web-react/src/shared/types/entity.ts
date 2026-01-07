@@ -41,3 +41,27 @@ export type ModelPermission = {
 export type PromptPermission = ModelPermission;
 
 export type PermissionItem = ExperimentPermission | ModelPermission;
+
+// Pattern permission types for Regex Mode
+export type ExperimentPatternPermission = {
+  id: number;
+  permission: PermissionLevel;
+  priority: number;
+  regex: string;
+  user_id?: number;
+  group_id?: number;
+};
+
+export type ModelPatternPermission = {
+  id: number;
+  permission: PermissionLevel;
+  priority: number;
+  prompt: boolean;
+  regex: string;
+  user_id?: number;
+  group_id?: number;
+};
+
+export type PromptPatternPermission = ModelPatternPermission;
+
+export type PatternPermissionItem = ExperimentPatternPermission | ModelPatternPermission;

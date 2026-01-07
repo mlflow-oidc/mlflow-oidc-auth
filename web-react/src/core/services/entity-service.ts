@@ -10,6 +10,9 @@ import type {
   ExperimentListItem,
   ModelListItem,
   PromptListItem,
+  ExperimentPatternPermission,
+  ModelPatternPermission,
+  PromptPatternPermission,
 } from "../../shared/types/entity";
 
 export const fetchAllGroups = createStaticApiFetcher<string[]>({
@@ -64,6 +67,31 @@ export const fetchUserPromptPermissions = createDynamicApiFetcher<
 >({
   endpointKey: "USER_PROMPT_PERMISSIONS",
   responseType: [] as PromptPermission[],
+});
+
+// User pattern permission fetchers
+export const fetchUserExperimentPatternPermissions = createDynamicApiFetcher<
+  ExperimentPatternPermission[],
+  "USER_EXPERIMENT_PATTERN_PERMISSIONS"
+>({
+  endpointKey: "USER_EXPERIMENT_PATTERN_PERMISSIONS",
+  responseType: [] as ExperimentPatternPermission[],
+});
+
+export const fetchUserModelPatternPermissions = createDynamicApiFetcher<
+  ModelPatternPermission[],
+  "USER_MODEL_PATTERN_PERMISSIONS"
+>({
+  endpointKey: "USER_MODEL_PATTERN_PERMISSIONS",
+  responseType: [] as ModelPatternPermission[],
+});
+
+export const fetchUserPromptPatternPermissions = createDynamicApiFetcher<
+  PromptPatternPermission[],
+  "USER_PROMPT_PATTERN_PERMISSIONS"
+>({
+  endpointKey: "USER_PROMPT_PATTERN_PERMISSIONS",
+  responseType: [] as PromptPatternPermission[],
 });
 
 export const fetchModelUserPermissions = createDynamicApiFetcher<
@@ -128,4 +156,29 @@ export const fetchPromptGroupPermissions = createDynamicApiFetcher<
 >({
   endpointKey: "PROMPT_GROUP_PERMISSIONS",
   responseType: [] as EntityPermission[],
+});
+
+// Group pattern permission fetchers
+export const fetchGroupExperimentPatternPermissions = createDynamicApiFetcher<
+  ExperimentPatternPermission[],
+  "GROUP_EXPERIMENT_PATTERN_PERMISSIONS"
+>({
+  endpointKey: "GROUP_EXPERIMENT_PATTERN_PERMISSIONS",
+  responseType: [] as ExperimentPatternPermission[],
+});
+
+export const fetchGroupModelPatternPermissions = createDynamicApiFetcher<
+  ModelPatternPermission[],
+  "GROUP_MODEL_PATTERN_PERMISSIONS"
+>({
+  endpointKey: "GROUP_MODEL_PATTERN_PERMISSIONS",
+  responseType: [] as ModelPatternPermission[],
+});
+
+export const fetchGroupPromptPatternPermissions = createDynamicApiFetcher<
+  PromptPatternPermission[],
+  "GROUP_PROMPT_PATTERN_PERMISSIONS"
+>({
+  endpointKey: "GROUP_PROMPT_PATTERN_PERMISSIONS",
+  responseType: [] as PromptPatternPermission[],
 });
