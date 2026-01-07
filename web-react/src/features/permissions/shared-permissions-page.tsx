@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router";
 import { DYNAMIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
@@ -17,10 +22,17 @@ import { useUserPromptPermissions } from "../../core/hooks/use-user-prompt-permi
 import { useGroupExperimentPermissions } from "../../core/hooks/use-group-experiment-permissions";
 import { useGroupRegisteredModelPermissions } from "../../core/hooks/use-group-model-permissions";
 import { useGroupPromptPermissions } from "../../core/hooks/use-group-prompt-permissions";
+import { useUserExperimentPatternPermissions } from "../../core/hooks/use-user-experiment-pattern-permissions";
+import { useUserModelPatternPermissions } from "../../core/hooks/use-user-model-pattern-permissions";
+import { useUserPromptPatternPermissions } from "../../core/hooks/use-user-prompt-pattern-permissions";
+import { useGroupExperimentPatternPermissions } from "../../core/hooks/use-group-experiment-pattern-permissions";
+import { useGroupModelPatternPermissions } from "../../core/hooks/use-group-model-pattern-permissions";
+import { useGroupPromptPatternPermissions } from "../../core/hooks/use-group-prompt-pattern-permissions";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import PageStatus from "../../shared/components/page/page-status";
 import { SearchInput } from "../../shared/components/search-input";
 import { IconButton } from "../../shared/components/icon-button";
+import { Button } from "../../shared/components/button";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { TokenInfoBlock } from "../../shared/components/token-info-block";
 import { useUserDetails } from "../../core/hooks/use-user-details";
@@ -50,24 +62,47 @@ export const SharedPermissionsPage = ({
     username: entityKind === "user" && currentUser?.is_admin ? entityName : null,
   });
 
+  const [isRegexMode, setIsRegexMode] = useState(false);
+
   const userExperimentHook = useUserExperimentPermissions({
-    username: entityKind === "user" ? entityName : null,
+    username: entityKind === "user" && !isRegexMode ? entityName : null,
   });
   const userModelHook = useUserRegisteredModelPermissions({
-    username: entityKind === "user" ? entityName : null,
+    username: entityKind === "user" && !isRegexMode ? entityName : null,
   });
   const userPromptHook = useUserPromptPermissions({
-    username: entityKind === "user" ? entityName : null,
+    username: entityKind === "user" && !isRegexMode ? entityName : null,
   });
 
   const groupExperimentHook = useGroupExperimentPermissions({
-    groupName: entityKind === "group" ? entityName : null,
+    groupName: entityKind === "group" && !isRegexMode ? entityName : null,
   });
   const groupModelHook = useGroupRegisteredModelPermissions({
-    groupName: entityKind === "group" ? entityName : null,
+    groupName: entityKind === "group" && !isRegexMode ? entityName : null,
   });
   const groupPromptHook = useGroupPromptPermissions({
-    groupName: entityKind === "group" ? entityName : null,
+    groupName: entityKind === "group" && !isRegexMode ? entityName : null,
+  });
+
+  // Pattern permission hooks for Regex Mode
+  const userExperimentPatternHook = useUserExperimentPatternPermissions({
+    username: entityKind === "user" && isRegexMode ? entityName : null,
+  });
+  const userModelPatternHook = useUserModelPatternPermissions({
+    username: entityKind === "user" && isRegexMode ? entityName : null,
+  });
+  const userPromptPatternHook = useUserPromptPatternPermissions({
+    username: entityKind === "user" && isRegexMode ? entityName : null,
+  });
+
+  const groupExperimentPatternHook = useGroupExperimentPatternPermissions({
+    groupName: entityKind === "group" && isRegexMode ? entityName : null,
+  });
+  const groupModelPatternHook = useGroupModelPatternPermissions({
+    groupName: entityKind === "group" && isRegexMode ? entityName : null,
+  });
+  const groupPromptPatternHook = useGroupPromptPatternPermissions({
+    groupName: entityKind === "group" && isRegexMode ? entityName : null,
   });
 
   const { showToast } = useToast();
@@ -216,40 +251,68 @@ export const SharedPermissionsPage = ({
     setEditingItem(null);
   };
 
-  const permissionColumns: ColumnConfig<PermissionItem>[] = [
-    { header: "Name", render: (item) => item.name },
-    { header: "Permission", render: (item) => item.permission },
-    { header: "Kind", render: (item) => item.kind },
-    {
-      header: "Actions",
-      render: (item) => {
-        const isFallback = item.kind === "fallback";
-        const isUserType = item.kind === "user";
-        const isCreate = !isUserType || isFallback;
-        const editIcon = isCreate ? faPlus : faEdit;
-        const deleteDisabled = !isUserType;
+  const permissionColumns: ColumnConfig<any>[] = isRegexMode
+    ? [
+        { header: "Regex Pattern", render: (item) => item.regex },
+        { header: "Permission", render: (item) => item.permission },
+        { header: "Priority", render: (item) => item.priority },
+        {
+          header: "Actions",
+          render: (item) => {
+            return (
+              <div className="flex space-x-2">
+                <IconButton
+                  icon={faEdit}
+                  title="Edit pattern permission"
+                  onClick={() => handleEditClick(item)}
+                />
+                <IconButton
+                  icon={faTrash}
+                  title="Remove pattern permission"
+                  onClick={() => {
+                    void handleRemovePermission(item);
+                  }}
+                />
+              </div>
+            );
+          },
+          className: "w-24",
+        },
+      ]
+    : [
+        { header: "Name", render: (item) => item.name },
+        { header: "Permission", render: (item) => item.permission },
+        { header: "Kind", render: (item) => item.kind },
+        {
+          header: "Actions",
+          render: (item) => {
+            const isFallback = item.kind === "fallback";
+            const isUserType = item.kind === "user";
+            const isCreate = !isUserType || isFallback;
+            const editIcon = isCreate ? faPlus : faEdit;
+            const deleteDisabled = !isUserType;
 
-        return (
-          <div className="flex space-x-2">
-            <IconButton
-              icon={editIcon}
-              title={isCreate ? "Add permission" : "Edit permission"}
-              onClick={() => handleEditClick(item)}
-            />
-            <IconButton
-              icon={faTrash}
-              title="Remove permission"
-              onClick={() => {
-                void handleRemovePermission(item);
-              }}
-              disabled={deleteDisabled}
-            />
-          </div>
-        );
-      },
-      className: "w-24",
-    },
-  ];
+            return (
+              <div className="flex space-x-2">
+                <IconButton
+                  icon={editIcon}
+                  title={isCreate ? "Add permission" : "Edit permission"}
+                  onClick={() => handleEditClick(item)}
+                />
+                <IconButton
+                  icon={faTrash}
+                  title="Remove permission"
+                  onClick={() => {
+                    void handleRemovePermission(item);
+                  }}
+                  disabled={deleteDisabled}
+                />
+              </div>
+            );
+          },
+          className: "w-24",
+        },
+      ];
 
   if (!entityName) {
     return <div>{entityKind === "user" ? "Username" : "Group name"} is required.</div>;
@@ -257,16 +320,28 @@ export const SharedPermissionsPage = ({
 
   const activeHook =
     entityKind === "user"
-      ? {
-          experiments: userExperimentHook,
-          models: userModelHook,
-          prompts: userPromptHook,
-        }[type]
-      : {
-          experiments: groupExperimentHook,
-          models: groupModelHook,
-          prompts: groupPromptHook,
-        }[type];
+      ? isRegexMode
+        ? {
+            experiments: userExperimentPatternHook,
+            models: userModelPatternHook,
+            prompts: userPromptPatternHook,
+          }[type]
+        : {
+            experiments: userExperimentHook,
+            models: userModelHook,
+            prompts: userPromptHook,
+          }[type]
+      : isRegexMode
+        ? {
+            experiments: groupExperimentPatternHook,
+            models: groupModelPatternHook,
+            prompts: groupPromptPatternHook,
+          }[type]
+        : {
+            experiments: groupExperimentHook,
+            models: groupModelHook,
+            prompts: groupPromptHook,
+          }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook || {
     isLoading: false,
@@ -277,9 +352,14 @@ export const SharedPermissionsPage = ({
 
   const loadingText = `Loading permissions...`;
 
-  const filteredData = permissions.filter((p: PermissionItem) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase())
-  );
+  const filteredData = permissions.filter((p: any) => {
+    if (isRegexMode) {
+      // Pattern permissions have 'regex' field instead of 'name'
+      return p.regex?.toLowerCase().includes(submittedTerm.toLowerCase());
+    }
+    // Regular permissions have 'name' field
+    return p.name?.toLowerCase().includes(submittedTerm.toLowerCase());
+  });
 
   const tabs = [
     { id: "experiments", label: "Experiments" },
@@ -321,14 +401,23 @@ export const SharedPermissionsPage = ({
 
       {!isLoading && !error && (
         <>
-          <div className="mb-3 mt-2">
+          <div className="mt-2 mb-3 flex items-center gap-3">
             <SearchInput
               value={searchTerm}
               onInputChange={handleInputChange}
               onSubmit={handleSearchSubmit}
               onClear={handleClearSearch}
               placeholder={`Search ${type}...`}
-            />
+              />
+              {currentUser?.is_admin && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsRegexMode(!isRegexMode)}
+                  className="whitespace-nowrap h-8 mb-1 mt-2"
+                >
+                  Regex Mode: {isRegexMode ? "ON" : "OFF"}
+                </Button>
+              )}
           </div>
           <EntityListTable
             mode="object"
