@@ -54,11 +54,11 @@ export function usePermissionsManagement({
       } else if (resourceType === "models") {
         url =
           editingItem.kind === "group"
-            ? DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+            ? DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
                 editingItem.name,
                 resourceId
               )
-            : DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+            : DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
                 editingItem.name,
                 resourceId
               );
@@ -108,11 +108,11 @@ export function usePermissionsManagement({
       } else if (resourceType === "models") {
         url =
           item.kind === "group"
-            ? DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+            ? DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
                 item.name,
                 resourceId
               )
-            : DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+            : DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
                 item.name,
                 resourceId
               );
@@ -163,11 +163,11 @@ export function usePermissionsManagement({
       } else if (resourceType === "models") {
         url =
           kind === "group"
-            ? DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+            ? DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
                 name,
                 resourceId
               )
-            : DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+            : DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
                 name,
                 resourceId
               );

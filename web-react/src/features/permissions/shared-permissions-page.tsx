@@ -116,11 +116,11 @@ export const SharedPermissionsPage = ({
       } else if (type === "models") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
                 entityName,
                 identifier
               )
-            : DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
                 entityName,
                 identifier
               );
@@ -179,11 +179,11 @@ export const SharedPermissionsPage = ({
       } else if (type === "models") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_REGISTERED_MODEL_PERMISSION(
+            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
                 entityName,
                 identifier
               )
-            : DYNAMIC_API_ENDPOINTS.GROUP_REGISTERED_MODEL_PERMISSION(
+            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
                 entityName,
                 identifier
               );

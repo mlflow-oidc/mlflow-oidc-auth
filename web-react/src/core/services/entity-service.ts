@@ -52,9 +52,9 @@ export const fetchUserExperimentPermissions = createDynamicApiFetcher<
 
 export const fetchUserRegisteredModelPermissions = createDynamicApiFetcher<
   ModelPermission[],
-  "USER_REGISTERED_MODEL_PERMISSIONS"
+  "USER_MODEL_PERMISSIONS"
 >({
-  endpointKey: "USER_REGISTERED_MODEL_PERMISSIONS",
+  endpointKey: "USER_MODEL_PERMISSIONS",
   responseType: [] as ModelPermission[],
 });
 
@@ -68,9 +68,9 @@ export const fetchUserPromptPermissions = createDynamicApiFetcher<
 
 export const fetchModelUserPermissions = createDynamicApiFetcher<
   EntityPermission[],
-  "REGISTERED_MODEL_USER_PERMISSIONS"
+  "MODEL_USER_PERMISSIONS"
 >({
-  endpointKey: "REGISTERED_MODEL_USER_PERMISSIONS",
+  endpointKey: "MODEL_USER_PERMISSIONS",
   responseType: [] as EntityPermission[],
 });
 
@@ -92,9 +92,9 @@ export const fetchGroupExperimentPermissions = createDynamicApiFetcher<
 
 export const fetchGroupRegisteredModelPermissions = createDynamicApiFetcher<
   ModelPermission[],
-  "GROUP_REGISTERED_MODEL_PERMISSIONS"
+  "GROUP_MODEL_PERMISSIONS"
 >({
-  endpointKey: "GROUP_REGISTERED_MODEL_PERMISSIONS",
+  endpointKey: "GROUP_MODEL_PERMISSIONS",
   responseType: [] as ModelPermission[],
 });
 
@@ -116,9 +116,9 @@ export const fetchExperimentGroupPermissions = createDynamicApiFetcher<
 
 export const fetchModelGroupPermissions = createDynamicApiFetcher<
   EntityPermission[],
-  "REGISTERED_MODEL_GROUP_PERMISSIONS"
+  "MODEL_GROUP_PERMISSIONS"
 >({
-  endpointKey: "REGISTERED_MODEL_GROUP_PERMISSIONS",
+  endpointKey: "MODEL_GROUP_PERMISSIONS",
   responseType: [] as EntityPermission[],
 });
 

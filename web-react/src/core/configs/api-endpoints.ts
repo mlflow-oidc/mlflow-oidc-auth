@@ -19,9 +19,9 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/users/${userName}/experiments`,
   USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>
     `/api/2.0/mlflow/permissions/users/${userName}/experiments/${experimentId}`,
-  USER_REGISTERED_MODEL_PERMISSIONS: (userName: string) =>
+  USER_MODEL_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${userName}/registered-models`,
-  USER_REGISTERED_MODEL_PERMISSION: (userName: string, modelName: string) =>
+  USER_MODEL_PERMISSION: (userName: string, modelName: string) =>
     `/api/2.0/mlflow/permissions/users/${userName}/registered-models/${modelName}`,
   USER_PROMPT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${userName}/prompts`,
@@ -33,9 +33,9 @@ export const DYNAMIC_API_ENDPOINTS = {
   //     "/api/2.0/mlflow/permissions/users/${userName}/experiment-patterns",
   //   USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL:
   //     "/api/2.0/mlflow/permissions/users/${userName}/experiment-patterns/${patternId}",
-  //   USER_REGISTERED_MODEL_PATTERN_PERMISSIONS:
+  //   USER_MODEL_PATTERN_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/users/${userName}/registered-models-patterns",
-  //   USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL:
+  //   USER_MODEL_PATTERN_PERMISSION_DETAIL:
   //     "/api/2.0/mlflow/permissions/users/${userName}/registered-models-patterns/${patternId}",
   //   USER_PROMPT_PATTERN_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns",
@@ -47,7 +47,7 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
       String(experimentId)
     )}/users`,
-  REGISTERED_MODEL_USER_PERMISSIONS: (modelName: string) =>
+  MODEL_USER_PERMISSIONS: (modelName: string) =>
     `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(
       String(modelName)
     )}/users`,
@@ -61,9 +61,9 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/groups/${groupName}/experiments`,
   GROUP_EXPERIMENT_PERMISSION: (groupName: string, experimentId: string) =>
     `/api/2.0/mlflow/permissions/groups/${groupName}/experiments/${experimentId}`,
-  GROUP_REGISTERED_MODEL_PERMISSIONS: (groupName: string) =>
+  GROUP_MODEL_PERMISSIONS: (groupName: string) =>
     `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models`,
-  GROUP_REGISTERED_MODEL_PERMISSION: (groupName: string, modelName: string) =>
+  GROUP_MODEL_PERMISSION: (groupName: string, modelName: string) =>
     `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models/${modelName}`,
   GROUP_PROMPT_PERMISSIONS: (groupName: string) =>
     `/api/2.0/mlflow/permissions/groups/${groupName}/prompts`,
@@ -75,9 +75,9 @@ export const DYNAMIC_API_ENDPOINTS = {
   //     "/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns",
   //   GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL:
   //     "/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns/${patternId}",
-  //   GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS:
+  //   GROUP_MODEL_PATTERN_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns",
-  //   GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL:
+  //   GROUP_MODEL_PATTERN_PERMISSION_DETAIL:
   //     "/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns/${patternId}",
   //   GROUP_PROMPT_PATTERN_PERMISSIONS:
   //     "/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns",
@@ -89,7 +89,7 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
       String(experimentId)
     )}/groups`,
-  REGISTERED_MODEL_GROUP_PERMISSIONS: (modelName: string) =>
+  MODEL_GROUP_PERMISSIONS: (modelName: string) =>
     `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(
       String(modelName)
     )}/groups`,
