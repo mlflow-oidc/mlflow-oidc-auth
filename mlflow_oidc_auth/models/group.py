@@ -148,7 +148,10 @@ class GroupScorerRegexPermissionItem(BaseModel):
     kind: Literal["group"] = Field("group", description="Indicates this is a group scorer regex permission")
 
 
-class RegexPatternDetail(BaseModel):
+PatternItemT = TypeVar("PatternItemT")
+
+
+class RegexPatternDetail(BaseModel, Generic[PatternItemT]):
     """Generic regex pattern responses."""
 
-    pattern: str = Field(..., description="Regex pattern payload")
+    pattern: PatternItemT = Field(..., description="Regex pattern payload")

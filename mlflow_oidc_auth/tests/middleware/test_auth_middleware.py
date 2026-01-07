@@ -506,6 +506,7 @@ class TestAuthMiddleware:
             mock_user = MagicMock()
             mock_user.is_admin = False
             mock_store.get_user.return_value = mock_user
+            mock_store.get_user_profile.return_value = mock_user
 
             request = create_mock_request(path="/protected", headers={"authorization": "Bearer valid_token"})
 

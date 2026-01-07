@@ -105,8 +105,10 @@ def mock_store():
         "service@example.com": service_user,
     }.get(username)
 
-    # Lightweight alternative used by common dependencies/endpoints
-    store_mock.get_user_profile.side_effect = store_mock.get_user.side_effect
+    def _get_user_profile(username: str):
+        return store_mock.get_user(username)
+
+    store_mock.get_user_profile.side_effect = _get_user_profile
 
     store_mock.authenticate_user.return_value = True
 

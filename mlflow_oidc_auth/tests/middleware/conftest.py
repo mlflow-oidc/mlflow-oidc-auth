@@ -55,6 +55,11 @@ def mock_store():
     # Mock store methods
     store_mock.get_user.side_effect = lambda username: {"admin@example.com": admin_user, "user@example.com": regular_user}.get(username)
 
+    def _get_user_profile(username: str):
+        return store_mock.get_user(username)
+
+    store_mock.get_user_profile.side_effect = _get_user_profile
+
     store_mock.authenticate_user.side_effect = lambda username, password: {
         ("admin@example.com", "admin_pass"): True,
         ("user@example.com", "user_pass"): True,

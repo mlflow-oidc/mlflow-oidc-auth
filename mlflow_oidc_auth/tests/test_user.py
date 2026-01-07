@@ -50,66 +50,66 @@ class TestCreateUser:
     def test_create_user_already_exists_default_params(self, mock_store):
         """Test creating user that already exists with default parameters"""
         dummy = DummyUser("alice", 1)
-        mock_store.get_user.return_value = dummy
+        mock_store.get_user_profile.return_value = dummy
         mock_store.update_user.return_value = None
 
         result = user.create_user("alice", "Alice")
 
         assert result == (False, "User alice (ID: 1) already exists")
-        mock_store.get_user.assert_called_once_with("alice")
+        mock_store.get_user_profile.assert_called_once_with("alice")
         mock_store.update_user.assert_called_once_with(username="alice", is_admin=False, is_service_account=False)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_already_exists_with_admin_flag(self, mock_store):
         """Test creating user that already exists with admin flag"""
         dummy = DummyUser("alice", 1)
-        mock_store.get_user.return_value = dummy
+        mock_store.get_user_profile.return_value = dummy
         mock_store.update_user.return_value = None
 
         result = user.create_user("alice", "Alice", is_admin=True)
 
         assert result == (False, "User alice (ID: 1) already exists")
-        mock_store.get_user.assert_called_once_with("alice")
+        mock_store.get_user_profile.assert_called_once_with("alice")
         mock_store.update_user.assert_called_once_with(username="alice", is_admin=True, is_service_account=False)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_already_exists_with_service_account_flag(self, mock_store):
         """Test creating user that already exists with service account flag"""
         dummy = DummyUser("charlie", 3)
-        mock_store.get_user.return_value = dummy
+        mock_store.get_user_profile.return_value = dummy
         mock_store.update_user.return_value = None
 
         result = user.create_user("charlie", "Charlie", is_service_account=True)
 
         assert result == (False, "User charlie (ID: 3) already exists")
-        mock_store.get_user.assert_called_once_with("charlie")
+        mock_store.get_user_profile.assert_called_once_with("charlie")
         mock_store.update_user.assert_called_once_with(username="charlie", is_admin=False, is_service_account=True)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_already_exists_with_both_flags(self, mock_store):
         """Test creating user that already exists with both admin and service account flags"""
         dummy = DummyUser("dave", 4)
-        mock_store.get_user.return_value = dummy
+        mock_store.get_user_profile.return_value = dummy
         mock_store.update_user.return_value = None
 
         result = user.create_user("dave", "Dave", is_admin=True, is_service_account=True)
 
         assert result == (False, "User dave (ID: 4) already exists")
-        mock_store.get_user.assert_called_once_with("dave")
+        mock_store.get_user_profile.assert_called_once_with("dave")
         mock_store.update_user.assert_called_once_with(username="dave", is_admin=True, is_service_account=True)
 
     @patch("mlflow_oidc_auth.user.generate_token", return_value="test_password_123")
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_new_user_default_params(self, mock_store, mock_generate_token):
         """Test creating new user with default parameters"""
-        mock_store.get_user.side_effect = MlflowException("User not found")
+        mock_store.get_user_profile.side_effect = MlflowException("User not found")
         dummy = DummyUser("bob", 2)
         mock_store.create_user.return_value = dummy
 
         result = user.create_user("bob", "Bob")
 
         assert result == (True, "User bob (ID: 2) successfully created")
-        mock_store.get_user.assert_called_once_with("bob")
+        mock_store.get_user_profile.assert_called_once_with("bob")
         mock_generate_token.assert_called_once()
         mock_store.create_user.assert_called_once_with(
             username="bob", password="test_password_123", display_name="Bob", is_admin=False, is_service_account=False
@@ -119,14 +119,14 @@ class TestCreateUser:
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_new_user_with_admin_flag(self, mock_store, mock_generate_token):
         """Test creating new user with admin flag"""
-        mock_store.get_user.side_effect = MlflowException("User not found")
+        mock_store.get_user_profile.side_effect = MlflowException("User not found")
         dummy = DummyUser("admin_user", 5)
         mock_store.create_user.return_value = dummy
 
         result = user.create_user("admin_user", "Admin User", is_admin=True)
 
         assert result == (True, "User admin_user (ID: 5) successfully created")
-        mock_store.get_user.assert_called_once_with("admin_user")
+        mock_store.get_user_profile.assert_called_once_with("admin_user")
         mock_generate_token.assert_called_once()
         mock_store.create_user.assert_called_once_with(
             username="admin_user", password="admin_password_456", display_name="Admin User", is_admin=True, is_service_account=False
@@ -136,14 +136,14 @@ class TestCreateUser:
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_new_user_with_service_account_flag(self, mock_store, mock_generate_token):
         """Test creating new user with service account flag"""
-        mock_store.get_user.side_effect = MlflowException("User not found")
+        mock_store.get_user_profile.side_effect = MlflowException("User not found")
         dummy = DummyUser("service_user", 6)
         mock_store.create_user.return_value = dummy
 
         result = user.create_user("service_user", "Service User", is_service_account=True)
 
         assert result == (True, "User service_user (ID: 6) successfully created")
-        mock_store.get_user.assert_called_once_with("service_user")
+        mock_store.get_user_profile.assert_called_once_with("service_user")
         mock_generate_token.assert_called_once()
         mock_store.create_user.assert_called_once_with(
             username="service_user", password="service_password_789", display_name="Service User", is_admin=False, is_service_account=True
@@ -153,14 +153,14 @@ class TestCreateUser:
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_new_user_with_both_flags(self, mock_store, mock_generate_token):
         """Test creating new user with both admin and service account flags"""
-        mock_store.get_user.side_effect = MlflowException("User not found")
+        mock_store.get_user_profile.side_effect = MlflowException("User not found")
         dummy = DummyUser("super_user", 7)
         mock_store.create_user.return_value = dummy
 
         result = user.create_user("super_user", "Super User", is_admin=True, is_service_account=True)
 
         assert result == (True, "User super_user (ID: 7) successfully created")
-        mock_store.get_user.assert_called_once_with("super_user")
+        mock_store.get_user_profile.assert_called_once_with("super_user")
         mock_generate_token.assert_called_once()
         mock_store.create_user.assert_called_once_with(
             username="super_user", password="super_password_000", display_name="Super User", is_admin=True, is_service_account=True
@@ -169,7 +169,7 @@ class TestCreateUser:
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_edge_case_empty_username(self, mock_store):
         """Test creating user with empty username"""
-        mock_store.get_user.side_effect = MlflowException("User not found")
+        mock_store.get_user_profile.side_effect = MlflowException("User not found")
         dummy = DummyUser("", 8)
         mock_store.create_user.return_value = dummy
 
@@ -180,7 +180,7 @@ class TestCreateUser:
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_edge_case_empty_display_name(self, mock_store):
         """Test creating user with empty display name"""
-        mock_store.get_user.side_effect = MlflowException("User not found")
+        mock_store.get_user_profile.side_effect = MlflowException("User not found")
         dummy = DummyUser("test_user", 9)
         mock_store.create_user.return_value = dummy
 
@@ -191,7 +191,7 @@ class TestCreateUser:
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_special_characters_in_username(self, mock_store):
         """Test creating user with special characters in username"""
-        mock_store.get_user.side_effect = MlflowException("User not found")
+        mock_store.get_user_profile.side_effect = MlflowException("User not found")
         dummy = DummyUser("user@domain.com", 10)
         mock_store.create_user.return_value = dummy
 
@@ -287,7 +287,7 @@ class TestUserModuleIntegration:
     def test_user_creation_and_group_assignment_workflow(self, mock_store):
         """Test complete workflow of creating user and assigning groups"""
         # Setup mocks for user creation
-        mock_store.get_user.side_effect = MlflowException("User not found")
+        mock_store.get_user_profile.side_effect = MlflowException("User not found")
         dummy_user = DummyUser("workflow_user", 100)
         mock_store.create_user.return_value = dummy_user
 
@@ -304,7 +304,7 @@ class TestUserModuleIntegration:
         user.update_user("workflow_user", groups)
 
         # Verify all calls were made
-        mock_store.get_user.assert_called_with("workflow_user")
+        mock_store.get_user_profile.assert_called_with("workflow_user")
         mock_store.create_user.assert_called_once()
         mock_store.populate_groups.assert_called_once_with(group_names=groups)
         mock_store.set_user_groups.assert_called_once_with("workflow_user", groups)
@@ -322,11 +322,11 @@ def test_generate_token_length_and_charset():
 def test_create_user_already_exists(mock_store):
     """Legacy test for backward compatibility"""
     dummy = DummyUser("alice", 1)
-    mock_store.get_user.return_value = dummy
+    mock_store.get_user_profile.return_value = dummy
     mock_store.update_user.return_value = None
     result = user.create_user("alice", "Alice", is_admin=True)
     assert result == (False, f"User alice (ID: 1) already exists")
-    mock_store.get_user.assert_called_once_with("alice")
+    mock_store.get_user_profile.assert_called_once_with("alice")
     mock_store.update_user.assert_called_once_with(username="alice", is_admin=True, is_service_account=False)
 
 
@@ -335,7 +335,7 @@ def test_create_user_already_exists(mock_store):
 @patch("mlflow_oidc_auth.user.store")
 def test_create_user_new_user(mock_store, mock_generate_token):
     """Legacy test for backward compatibility"""
-    mock_store.get_user.side_effect = Exception
+    mock_store.get_user_profile.side_effect = Exception
     dummy = DummyUser("bob", 2)
     mock_store.create_user.return_value = dummy
     result = user.create_user("bob", "Bob", is_admin=False, is_service_account=True)
