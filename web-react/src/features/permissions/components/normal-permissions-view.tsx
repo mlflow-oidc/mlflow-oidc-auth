@@ -18,9 +18,15 @@ import type {
   PermissionType, 
   PermissionItem,
   PermissionLevel,
+  ExperimentPermission,
 } from "../../../shared/types/entity";
 import type { ColumnConfig } from "../../../shared/types/table";
 import { useSearch } from "../../../core/hooks/use-search";
+import { useAllExperiments } from "../../../core/hooks/use-all-experiments";
+import { useAllModels } from "../../../core/hooks/use-all-models";
+import { useAllPrompts } from "../../../core/hooks/use-all-prompts";
+import { GrantPermissionModal } from "./grant-permission-modal";
+import { Button } from "../../../shared/components/button";
 
 interface NormalPermissionsViewProps {
   type: PermissionType;
@@ -37,6 +43,7 @@ export const NormalPermissionsView = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PermissionItem | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGrantModalOpen, setIsGrantModalOpen] = useState(false);
 
   const {
     searchTerm,
@@ -80,6 +87,36 @@ export const NormalPermissionsView = ({
         }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook;
+
+  const { allExperiments } = useAllExperiments();
+  const { allModels } = useAllModels();
+  const { allPrompts } = useAllPrompts();
+
+  const getAvailableEntities = () => {
+    if (type === "experiments") {
+      const existingIds = new Set(
+        permissions.map((p) => (p as ExperimentPermission).id)
+      );
+      return (allExperiments || [])
+        .filter((e) => !existingIds.has(e.id))
+        .map((e) => ({ label: e.name, value: e.id }));
+    }
+
+    const existingNames = new Set(permissions.map((p) => p.name));
+    if (type === "models") {
+      return (allModels || [])
+        .filter((m) => !existingNames.has(m.name))
+        .map((m) => m.name);
+    }
+    if (type === "prompts") {
+      return (allPrompts || [])
+        .filter((p) => !existingNames.has(p.name))
+        .map((p) => p.name);
+    }
+    return [];
+  };
+
+  const availableEntities = getAvailableEntities();
 
   const handleEditClick = (item: PermissionItem) => {
     setEditingItem(item);
@@ -133,6 +170,39 @@ export const NormalPermissionsView = ({
       handleModalClose();
     } catch {
       showToast("Failed to update permission. Please try again.", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleGrantPermission = async (identifier: string, permission: PermissionLevel) => {
+    if (!entityName) return;
+
+    setIsSaving(true);
+    try {
+      let url = "";
+      if (type === "experiments") {
+        url = DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(entityName, identifier);
+      } else if (type === "models") {
+        url = DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(entityName, identifier);
+      } else if (type === "prompts") {
+        url = DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(entityName, identifier);
+      }
+
+      await http(url, {
+        method: "POST",
+        body: JSON.stringify({ permission }),
+      });
+
+      const entityDisplayName = type === "experiments" 
+        ? allExperiments?.find(e => e.id === identifier)?.name || identifier
+        : identifier;
+
+      showToast(`Permission for ${entityDisplayName} has been granted.`, "success");
+      refresh();
+      setIsGrantModalOpen(false);
+    } catch {
+      showToast("Failed to grant permission. Please try again.", "error");
     } finally {
       setIsSaving(false);
     }
@@ -226,7 +296,7 @@ export const NormalPermissionsView = ({
 
       {!isLoading && !error && (
         <>
-          <div className="mt-2 mb-3 flex items-center gap-3">
+          <div className="mt-2 mb-3 flex items-center gap-6">
             <SearchInput
               value={searchTerm}
               onInputChange={handleInputChange}
@@ -234,6 +304,17 @@ export const NormalPermissionsView = ({
               onClear={handleClearSearch}
               placeholder={`Search ${type}...`}
             />
+            {entityKind === "group" && (
+              <Button
+                variant="secondary"
+                onClick={() => setIsGrantModalOpen(true)}
+                disabled={availableEntities.length === 0}
+                icon={faPlus}
+                className="whitespace-nowrap h-8 mb-1 mt-2"
+              >
+                Add {type === "experiments" ? "experiment" : type === "models" ? "model" : "prompt"}
+              </Button>
+            )}
           </div>
           <EntityListTable
             mode="object"
@@ -251,6 +332,16 @@ export const NormalPermissionsView = ({
         item={editingItem}
         username={entityName}
         type={type}
+        isLoading={isSaving}
+      />
+
+      <GrantPermissionModal
+        isOpen={isGrantModalOpen}
+        onClose={() => setIsGrantModalOpen(false)}
+        onSave={(identifier, permission) => handleGrantPermission(identifier, permission)}
+        title={`Grant ${type === "experiments" ? "experiment" : type === "models" ? "model" : "prompt"} permissions for ${entityName}`}
+        label={type === "experiments" ? "Experiment" : type === "models" ? "Model" : "Prompt"}
+        options={availableEntities}
         isLoading={isSaving}
       />
     </>

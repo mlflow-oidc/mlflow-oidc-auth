@@ -251,7 +251,7 @@ export const RegexPermissionsView = ({
 
       {!isLoading && !error && (
         <>
-          <div className="mt-2 mb-3 flex items-center gap-5">
+          <div className="mt-2 mb-3 flex items-center gap-6">
             <SearchInput
               value={searchTerm}
               onInputChange={handleInputChange}

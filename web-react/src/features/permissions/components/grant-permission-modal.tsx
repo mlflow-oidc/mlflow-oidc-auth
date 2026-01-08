@@ -6,10 +6,10 @@ import type { PermissionLevel } from "../../../shared/types/entity";
 interface GrantPermissionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (username: string, permission: PermissionLevel) => Promise<void>;
+  onSave: (identifier: string, permission: PermissionLevel) => Promise<void>;
   title: string;
   label: string;
-  options: string[];
+  options: (string | { label: string; value: string })[];
   isLoading?: boolean;
 }
 
@@ -106,11 +106,15 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
                                        transition duration-150 ease-in-out cursor-pointer"
             >
               <option value="" disabled>Select {label.toLowerCase()}...</option>
-              {options.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
+              {options.map((option) => {
+                const optLabel = typeof option === "string" ? option : option.label;
+                const optValue = typeof option === "string" ? option : option.value;
+                return (
+                  <option key={optValue} value={optValue}>
+                    {optLabel}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
