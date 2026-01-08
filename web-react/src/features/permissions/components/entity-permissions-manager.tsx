@@ -191,6 +191,7 @@ export function EntityPermissionsManager({
         onSave={handleSavePermission}
         item={editingItem}
         username={editingItem?.name || ""}
+        resourceId={resourceId}
         type={resourceType}
         isLoading={isSaving}
       />

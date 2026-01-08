@@ -42,6 +42,8 @@ export type PromptPermission = ModelPermission;
 
 export type PermissionItem = ExperimentPermission | ModelPermission;
 
+export type AnyPermissionItem = PermissionItem | PatternPermissionItem;
+
 // Pattern permission types for Regex Mode
 export type ExperimentPatternPermission = {
   id: number;

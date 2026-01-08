@@ -4,15 +4,16 @@ import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import type {
   PermissionLevel,
   PermissionType,
-  PermissionItem,
+  AnyPermissionItem,
 } from "../../../shared/types/entity";
 
 interface EditPermissionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (newPermission: PermissionLevel) => Promise<void>;
-  item: PermissionItem | null;
+  onSave: (newPermission: PermissionLevel, regex?: string, priority?: number) => Promise<void>;
+  item: AnyPermissionItem | null;
   username: string;
+  resourceId?: string;
   type: PermissionType;
   isLoading?: boolean;
 }
@@ -25,16 +26,27 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
   onSave,
   item,
   username,
+  resourceId,
   type,
   isLoading = false,
 }) => {
   const [selectedPermission, setSelectedPermission] = useState<PermissionLevel>(
     item?.permission || "READ"
   );
+  const [regex, setRegex] = useState<string>(
+    item && "regex" in item ? item.regex : ""
+  );
+  const [priority, setPriority] = useState<number>(
+    item && "priority" in item ? item.priority : 0
+  );
 
   useEffect(() => {
     if (isOpen && item) {
       setSelectedPermission(item.permission);
+      if ("regex" in item) {
+        setRegex(item.regex);
+        setPriority(item.priority);
+      }
       document.body.style.overflow = "hidden";
     }
     return () => {
@@ -61,11 +73,19 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
   if (!isOpen || !item) return null;
 
   const handleSave = async () => {
-    await onSave(selectedPermission);
+    if ("regex" in item) {
+      await onSave(selectedPermission, regex, priority);
+    } else {
+      await onSave(selectedPermission);
+    }
   };
   
-  const formattedType = type.charAt(0).toUpperCase() + type.slice(1, -1);
-
+  const isRegexRule = "regex" in item;
+  const identifier = "name" in item ? item.name : item.regex;
+  const displayResourceId = resourceId || identifier;
+  const title = isRegexRule 
+    ? `Manage Regex Rule ${identifier}` 
+    : `Edit ${type.charAt(0).toUpperCase() + type.slice(1, -1)} ${displayResourceId} permissions for ${username}`;
   return (
     <div
       className="fixed inset-0 z-50 overflow-y-auto bg-ui-bg-dark/50 dark:bg-ui-bg-dark/70 transition-opacity flex justify-center items-start pt-16 sm:pt-24 md:items-center md:pt-0"
@@ -86,11 +106,60 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
 
         <div className="mb-4">
           <h4 className="text-lg text-ui-text dark:text-ui-text-dark font-semibold">
-            Edit {formattedType} {item.name} permissions for {username}
+            {title}
           </h4>
         </div>
 
         <div className="space-y-6">
+          {isRegexRule && (
+            <>
+              <div>
+                <label
+                  htmlFor="regex-pattern"
+                  className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-2"
+                >
+                  Regex Pattern
+                </label>
+                <input
+                  type="text"
+                  id="regex-pattern"
+                  value={regex}
+                  onChange={(e) => setRegex(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none 
+                                           text-ui-text dark:text-ui-text-dark
+                                           bg-ui-bg dark:bg-ui-secondary-bg-dark
+                                           border-ui-secondary-bg dark:border-ui-secondary-bg-dark
+                                           focus:border-btn-primary dark:focus:border-btn-primary-dark
+                                           transition duration-150 ease-in-out
+                                           opacity-70 cursor-not-allowed"
+                  required
+                  readOnly
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="priority"
+                  className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-2"
+                >
+                  Priority
+                </label>
+                <input
+                  type="number"
+                  id="priority"
+                  value={priority}
+                  onChange={(e) => setPriority(parseInt(e.target.value, 10))}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none 
+                                           text-ui-text dark:text-ui-text-dark
+                                           bg-ui-bg dark:bg-ui-secondary-bg-dark
+                                           border-ui-secondary-bg dark:border-ui-secondary-bg-dark
+                                           focus:border-btn-primary dark:focus:border-btn-primary-dark
+                                           transition duration-150 ease-in-out"
+                  required
+                />
+              </div>
+            </>
+          )}
+
           <div>
             <label
               htmlFor="permission-level"
