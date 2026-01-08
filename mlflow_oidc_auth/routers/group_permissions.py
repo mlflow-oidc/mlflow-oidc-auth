@@ -19,7 +19,6 @@ from mlflow_oidc_auth.models import (
     GroupListResponse,
     GroupUser,
     GroupNamedPermissionItem,
-    RegexPatternDetail,
     GroupPromptRegexPermissionItem,
     PromptPermission,
     PromptRegexCreate,
@@ -803,13 +802,13 @@ async def create_group_experiment_pattern_permission(
     GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
     summary="Get specific experiment pattern permission for a group",
     description="Retrieves a specific experiment regex pattern permission for a group.",
-    response_model=RegexPatternDetail,
+    response_model=GroupExperimentRegexPermissionItem,
 )
 async def get_group_experiment_pattern_permission(
     group_name: str = Path(..., description="The group name"),
     id: int = Path(..., description="The pattern ID"),
     admin_username: str = Depends(check_admin_permission),
-) -> RegexPatternDetail:
+) -> GroupExperimentRegexPermissionItem:
     """
     Get a specific experiment regex pattern permission for a group.
     """
@@ -833,7 +832,7 @@ async def get_group_experiment_pattern_permission(
                 permission=pattern.permission,
             )
 
-        return RegexPatternDetail(pattern=item)
+        return item
     except Exception as e:
         logger.error(f"Error getting group experiment pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permission")
@@ -962,13 +961,13 @@ async def create_group_registered_model_pattern_permission(
     GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
     summary="Get specific registered model pattern permission for a group",
     description="Retrieves a specific registered model regex pattern permission for a group.",
-    response_model=RegexPatternDetail,
+    response_model=GroupRegisteredModelRegexPermissionItem,
 )
 async def get_group_registered_model_pattern_permission(
     group_name: str = Path(..., description="The group name"),
     id: int = Path(..., description="The pattern ID"),
     admin_username: str = Depends(check_admin_permission),
-) -> RegexPatternDetail:
+) -> GroupRegisteredModelRegexPermissionItem:
     """
     Get a specific registered model regex pattern permission for a group.
     """
@@ -994,7 +993,7 @@ async def get_group_registered_model_pattern_permission(
                 prompt=bool(getattr(pattern, "prompt", False)),
             )
 
-        return RegexPatternDetail(pattern=item)
+        return item
     except Exception as e:
         logger.error(f"Error getting group registered model pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permission")
@@ -1123,13 +1122,13 @@ async def create_group_prompt_pattern_permission(
     GROUP_PROMPT_PATTERN_PERMISSION_DETAIL,
     summary="Get specific prompt pattern permission for a group",
     description="Retrieves a specific prompt regex pattern permission for a group.",
-    response_model=RegexPatternDetail,
+    response_model=GroupPromptRegexPermissionItem,
 )
 async def get_group_prompt_pattern_permission(
     group_name: str = Path(..., description="The group name"),
     id: int = Path(..., description="The pattern ID"),
     admin_username: str = Depends(check_admin_permission),
-) -> RegexPatternDetail:
+) -> GroupPromptRegexPermissionItem:
     """
     Get a specific prompt regex pattern permission for a group.
     """
@@ -1155,7 +1154,7 @@ async def get_group_prompt_pattern_permission(
                 prompt=bool(getattr(pattern, "prompt", False)),
             )
 
-        return RegexPatternDetail(pattern=item)
+        return item
     except Exception as e:
         logger.error(f"Error getting group prompt pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permission")
@@ -1389,13 +1388,13 @@ async def create_group_scorer_pattern_permission(
     GROUP_SCORER_PATTERN_PERMISSION_DETAIL,
     summary="Get specific scorer pattern permission for a group",
     description="Retrieves a specific scorer regex pattern permission for a group.",
-    response_model=RegexPatternDetail,
+    response_model=GroupScorerRegexPermissionItem,
 )
 async def get_group_scorer_pattern_permission(
     group_name: str = Path(..., description="The group name"),
     id: int = Path(..., description="The pattern ID"),
     admin_username: str = Depends(check_admin_permission),
-) -> RegexPatternDetail:
+) -> GroupScorerRegexPermissionItem:
     try:
         pattern = store.get_group_scorer_regex_permission(group_name, id)
         payload = pattern.to_json() if hasattr(pattern, "to_json") else None
@@ -1416,7 +1415,7 @@ async def get_group_scorer_pattern_permission(
                 permission=pattern.permission,
             )
 
-        return RegexPatternDetail(pattern=item)
+        return item
     except Exception as e:
         logger.error(f"Error getting group scorer pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get group scorer pattern permission")

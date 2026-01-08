@@ -242,7 +242,7 @@ class TestGroupScorerPatternRoutes:
         resp = admin_client.get("/api/2.0/mlflow/permissions/groups/my-group/scorer-patterns/1")
 
         assert resp.status_code == 200
-        assert resp.json()["pattern"]["id"] == 1
+        assert resp.json()["id"] == 1
         mock_store.get_group_scorer_regex_permission.assert_called_once_with("my-group", 1)
 
     def test_update_group_scorer_pattern_admin(self, admin_client, mock_store):

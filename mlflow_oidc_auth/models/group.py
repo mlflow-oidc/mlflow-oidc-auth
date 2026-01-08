@@ -1,4 +1,4 @@
-from typing import Generic, List, Literal, Optional, TypeVar
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, RootModel
 
@@ -146,12 +146,3 @@ class GroupScorerRegexPermissionItem(BaseModel):
     group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
     permission: str = Field(..., description="Permission granted when the regex matches")
     kind: Literal["group"] = Field("group", description="Indicates this is a group scorer regex permission")
-
-
-PatternItemT = TypeVar("PatternItemT")
-
-
-class RegexPatternDetail(BaseModel, Generic[PatternItemT]):
-    """Generic regex pattern responses."""
-
-    pattern: PatternItemT = Field(..., description="Regex pattern payload")
