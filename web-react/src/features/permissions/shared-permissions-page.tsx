@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link } from "react-router";
 import PageContainer from "../../shared/components/page/page-container";
 import type { PermissionType } from "../../shared/types/entity";
-import { Button } from "../../shared/components/button";
+import { Switch } from "../../shared/components/switch";
 import { TokenInfoBlock } from "../../shared/components/token-info-block";
 import { useUserDetails } from "../../core/hooks/use-user-details";
 import { useUser } from "../../core/hooks/use-user";
@@ -62,16 +62,6 @@ export const SharedPermissionsPage = ({
           onTokenGenerated={userDetailsRefetch}
         />
       )}
-
-      {currentUser?.is_admin && (
-          <Button
-            variant="secondary"
-            onClick={() => setIsRegexMode(!isRegexMode)}
-            className="whitespace-nowrap mb-2"
-          >
-            Regex Mode: {isRegexMode ? "ON" : "OFF"}
-          </Button>
-        )}
       </div>
 
       <div className="flex justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
@@ -90,6 +80,19 @@ export const SharedPermissionsPage = ({
             </Link>
           ))}
         </div>
+        {currentUser?.is_admin && (
+          <Switch
+            checked={isRegexMode}
+            onChange={setIsRegexMode}
+            label="Regex Mode"
+            className="mr-5"
+            labelClassName={`py-2 px-2 font-medium text-sm transition-colors duration-200 ${
+              isRegexMode
+                ? "text-btn-primary dark:text-btn-primary-dark"
+                : "text-text-primary hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark hover:border-btn-secondary-border dark:hover:border-btn-secondary-border-dark"
+            }`}
+          />
+        )}
       </div>
 
       {isRegexMode ? (
