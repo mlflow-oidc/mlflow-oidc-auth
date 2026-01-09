@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
+import { Select } from "../../../shared/components/select";
 import type { PermissionLevel } from "../../../shared/types/entity";
 
 interface GrantPermissionModalProps {
@@ -41,64 +42,28 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title}>
-      <div>
-        <label
-          htmlFor="username-select"
-          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-2"
-        >
-          {label}*
-        </label>
-        <select
-          id="username-select"
-          value={selectedUsername}
-          onChange={(e) => setSelectedUsername(e.target.value)}
-          required
-          className="w-full px-3 py-2 border rounded-md focus:outline-none 
-                                   text-ui-text dark:text-ui-text-dark
-                                   bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                   border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                                   focus:border-btn-primary dark:focus:border-btn-primary-dark
-                                   transition duration-150 ease-in-out cursor-pointer"
-        >
-          <option value="" disabled>Select {label.toLowerCase()}...</option>
-          {options.map((option) => {
-            const optLabel = typeof option === "string" ? option : option.label;
-            const optValue = typeof option === "string" ? option : option.value;
-            return (
-              <option key={optValue} value={optValue}>
-                {optLabel}
-              </option>
-            );
-          })}
-        </select>
-      </div>
+      <Select
+        id="username-select"
+        label={label}
+        value={selectedUsername}
+        onChange={(e) => setSelectedUsername(e.target.value)}
+        required
+        options={[
+          { label: `Select ${label.toLowerCase()}...`, value: "" },
+          ...options,
+        ].map(opt => typeof opt === 'string' ? { label: opt, value: opt } : opt)}
+        containerClassName="mb-4"
+      />
 
-      <div>
-        <label
-          htmlFor="permission-level"
-          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-2"
-        >
-          Permissions*
-        </label>
-        <select
-          id="permission-level"
-          value={selectedPermission}
-          onChange={(e) => setSelectedPermission(e.target.value as PermissionLevel)}
-          required
-          className="w-full px-3 py-2 border rounded-md focus:outline-none 
-                                   text-ui-text dark:text-ui-text-dark
-                                   bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                   border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                                   focus:border-btn-primary dark:focus:border-btn-primary-dark
-                                   transition duration-150 ease-in-out cursor-pointer"
-        >
-          {PERMISSION_LEVELS.map((level) => (
-            <option key={level} value={level}>
-              {level}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select
+        id="permission-level"
+        label="Permissions"
+        value={selectedPermission}
+        onChange={(e) => setSelectedPermission(e.target.value as PermissionLevel)}
+        required
+        options={PERMISSION_LEVELS.map(level => ({ label: level, value: level }))}
+        containerClassName="mb-4"
+      />
 
       <div className="flex justify-end space-x-3">
         <Button onClick={onClose} variant="ghost" disabled={isLoading}>

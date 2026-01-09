@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
+import { Input } from "../../../shared/components/input";
 
 interface CreateServiceAccountModalProps {
   isOpen: boolean;
@@ -62,50 +63,25 @@ export const CreateServiceAccountModal: React.FC<CreateServiceAccountModalProps>
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Create Service Account">
-      <div>
-        <label
-          htmlFor="sa-name"
-          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1.5"
-        >
-          Service Account Name*
-        </label>
-        <input
-          ref={nameInputRef}
-          id="sa-name"
+      <div className="space-y-4">
+        <Input
+          ref={nameInputRef} // Pass ref to the Input component
+          id="service-account-name"
+          label="Service Account Name*" // Added asterisk to label
           type="text"
           value={name}
-          onChange={handleNameChange}
+          onChange={handleNameChange} // Preserved original handler
+          placeholder="my-service-account" // Updated placeholder as per instruction
           required
-          className="w-full px-3 py-2 border rounded-md focus:outline-none 
-                                   text-ui-text dark:text-ui-text-dark
-                                   bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                   border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                                   focus:border-btn-primary dark:focus:border-btn-primary-dark
-                                   transition duration-150 ease-in-out"
-          placeholder="Enter service account name"
         />
-      </div>
-
-      <div>
-        <label
-          htmlFor="display-name"
-          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1.5"
-        >
-          Display Name*
-        </label>
-        <input
+        <Input
           id="display-name"
+          label="Display Name*" // Added asterisk to label
           type="text"
           value={displayName}
-          onChange={handleDisplayNameChange}
-          required
-          className="w-full px-3 py-2 border rounded-md focus:outline-none 
-                                   text-ui-text dark:text-ui-text-dark
-                                   bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                   border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                                   focus:border-btn-primary dark:focus:border-btn-primary-dark
-                                   transition duration-150 ease-in-out"
-          placeholder="Enter display name"
+          onChange={handleDisplayNameChange} // Preserved original handler
+          placeholder="My Service Account" // Updated placeholder as per instruction
+          required // Added required as per original input
         />
       </div>
 

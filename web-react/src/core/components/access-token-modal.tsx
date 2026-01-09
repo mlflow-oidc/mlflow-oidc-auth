@@ -5,6 +5,7 @@ import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import { faCopy } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "../../shared/components/button";
 import { Modal } from "../../shared/components/modal";
+import { Input } from "../../shared/components/input";
 import { useToast } from "../../shared/components/toast/use-toast";
 
 interface TokenModel {
@@ -109,81 +110,59 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
       </p>
 
       <div className="flex items-end space-x-4">
-        <div className="flex-grow">
-          <label
-            htmlFor="expiration-date"
-            className="block text-sm text-left font-medium text-text-primary dark:text-text-primary-dark mb-1"
-          >
-            Expiration Date *
-          </label>
-          <input
-            id="expiration-date"
-            type="date"
-            value={expirationDate}
-            onChange={(e) => setExpirationDate(e.target.value)}
-            min={today}
-            max={maxDate}
-            required
-            className="w-full px-3 py-1.5 text-sm border rounded-md focus:outline-none 
-                       text-ui-text dark:text-ui-text-dark
-                       bg-ui-bg dark:bg-ui-secondary-bg-dark
-                       border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                       focus:border-btn-primary dark:focus:border-btn-primary-dark
-                       transition duration-150 ease-in-out cursor-pointer"
-          />
-        </div>
+        <Input
+          id="expiration-date"
+          label="Expiration Date*"
+          type="date"
+          value={expirationDate}
+          onChange={(e) => setExpirationDate(e.target.value)}
+          min={today}
+          max={maxDate}
+          required
+          containerClassName="flex-grow"
+        />
 
         <Button
           onClick={handleRequestToken as () => void}
           disabled={isLoading || !expirationDate}
           variant="primary"
-          className={isLoading ? "opacity-70 cursor-not-allowed" : ""}
+          className={`h-[42px] ${isLoading ? "opacity-70 cursor-not-allowed" : ""}`}
         >
           {isLoading ? "Requesting..." : "Request Token"}
         </Button>
       </div>
 
       <div className="relative">
-        <label
-          htmlFor="access-key"
-          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1 sr-only"
-        >
-          Access Key
-        </label>
-        <input
+        <Input
           ref={tokenInputRef}
           id="access-key"
+          label="Access Key"
           type="text"
           readOnly
           value={accessToken}
           placeholder={isLoading ? "Generating token..." : "Access Token"}
-          className="w-full px-3 py-2 pr-12 border rounded-md focus:outline-none 
-                     text-ui-text dark:text-ui-text-dark font-mono text-sm
-                     bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark
-                     border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                     read-only:cursor-default"
-        />
-
-        <div className="absolute right-1 top-1">
-          <Button
-            onClick={handleCopyToken}
-            disabled={!accessToken}
-            title="Copy Access Token"
-            variant="ghost"
-            icon={faCopy}
-          />
-        </div>
-
-        {copyFeedback && (
-          <span
-            className={`absolute right-10 bottom-2 text-xs px-2 py-1 rounded 
-              bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark 
-              transition-opacity duration-300 
-              ${copyFeedback === "Copied!" ? "opacity-100" : "opacity-0"}`}
-          >
-            {copyFeedback}
-          </span>
-        )}
+          className="font-mono text-sm pr-12 cursor-default"
+        >
+          <div className="absolute right-1 bottom-1">
+            <Button
+              onClick={handleCopyToken}
+              disabled={!accessToken}
+              title="Copy Access Token"
+              variant="ghost"
+              icon={faCopy}
+            />
+          </div>
+          {copyFeedback && (
+            <span
+              className={`absolute right-10 bottom-1.5 text-xs px-2 py-1 rounded 
+                bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark 
+                transition-opacity duration-300 
+                ${copyFeedback === "Copied!" ? "opacity-100" : "opacity-0"}`}
+            >
+              {copyFeedback}
+            </span>
+          )}
+        </Input>
       </div>
     </Modal>
   );

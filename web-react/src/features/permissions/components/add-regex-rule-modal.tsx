@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
+import { Input } from "../../../shared/components/input";
+import { Select } from "../../../shared/components/select";
 import type { PermissionLevel } from "../../../shared/types/entity";
 
 interface AddRegexRuleModalProps {
@@ -62,98 +64,49 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Regex Rule">
-      <div>
-        <label
-          htmlFor="regex-input"
-          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-2"
-        >
-          Regex*
-        </label>
-        <input
-          id="regex-input"
-          type="text"
-          value={regex}
-          onChange={(e) => {
-            setRegex(e.target.value);
-            if (errors.regex) setErrors({ ...errors, regex: undefined });
-          }}
-          required
-          placeholder="Enter Python Regex e.g. (^test_.*)"
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none 
-                                   text-ui-text dark:text-ui-text-dark
-                                   bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                   ${
-                                     errors.regex
-                                       ? "border-status-danger focus:border-status-danger"
-                                       : "border-ui-secondary-bg dark:border-ui-secondary-bg-dark focus:border-btn-primary dark:focus:border-btn-primary-dark"
-                                   }
-                                   transition duration-150 ease-in-out`}
-        />
-        <p className={`mt-1 text-sm text-status-danger dark:text-status-danger-dark ${errors.regex ? "" : "invisible"}`}>
-          {errors.regex || "\u00A0"}
-        </p>
-      </div>
+      <Input
+        id="regex-input"
+        label="Regex*"
+        type="text"
+        value={regex}
+        onChange={(e) => {
+          setRegex(e.target.value);
+          if (errors.regex) setErrors({ ...errors, regex: undefined });
+        }}
+        required
+        placeholder="Enter Python Regex e.g. (^test_.*)"
+        error={errors.regex}
+        containerClassName="mb-4"
+        reserveErrorSpace
+      />
 
-      <div>
-        <label
-          htmlFor="priority-input"
-          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-2"
-        >
-          Priority*
-        </label>
-        <input
-          id="priority-input"
-          type="number"
-          value={isNaN(priority) ? "" : priority}
-          onChange={(e) => {
-            setPriority(parseInt(e.target.value, 10));
-            if (errors.priority)
-              setErrors({ ...errors, priority: undefined });
-          }}
-          required
-          step="1"
-          min="0"
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none 
-                                   text-ui-text dark:text-ui-text-dark
-                                   bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                   ${
-                                     errors.priority
-                                       ? "border-status-danger focus:border-status-danger"
-                                       : "border-ui-secondary-bg dark:border-ui-secondary-bg-dark focus:border-btn-primary dark:focus:border-btn-primary-dark"
-                                   }
-                                   transition duration-150 ease-in-out`}
-        />
-        <p className={`mt-1 text-sm text-status-danger dark:text-status-danger-dark ${errors.priority ? "" : "invisible"}`}>
-          {errors.priority || "\u00A0"}
-        </p>
-      </div>
+      <Input
+        id="priority-input"
+        label="Priority*"
+        type="number"
+        value={isNaN(priority) ? "" : priority}
+        onChange={(e) => {
+          setPriority(parseInt(e.target.value, 10));
+          if (errors.priority)
+            setErrors({ ...errors, priority: undefined });
+        }}
+        required
+        step="1"
+        min="0"
+        error={errors.priority}
+        containerClassName="mb-4"
+        reserveErrorSpace
+      />
 
-      <div>
-        <label
-          htmlFor="permission-level"
-          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-2"
-        >
-          Permissions*
-        </label>
-        <select
-          id="permission-level"
-          value={permission}
-          onChange={(e) => setPermission(e.target.value as PermissionLevel)}
-          required
-          className="w-full px-3 py-2 border rounded-md focus:outline-none 
-                                   text-ui-text dark:text-ui-text-dark
-                                   bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                   border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                                   focus:border-btn-primary dark:focus:border-btn-primary-dark
-                                   transition duration-150 ease-in-out cursor-pointer"
-        >
-          {PERMISSION_LEVELS.map((level) => (
-            <option key={level} value={level}>
-              {level}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select
+        id="permission-level"
+        label="Permissions*"
+        value={permission}
+        onChange={(e) => setPermission(e.target.value as PermissionLevel)}
+        required
+        options={PERMISSION_LEVELS.map(level => ({ label: level, value: level }))}
+        containerClassName="mb-4"
+      />
 
       <div className="flex justify-end space-x-3">
         <Button onClick={onClose} variant="ghost" disabled={isLoading}>
