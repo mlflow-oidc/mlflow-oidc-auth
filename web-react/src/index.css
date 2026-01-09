@@ -11,6 +11,13 @@
 
   --color-logo: #2374bb;
 
+  /* Modals */
+  --color-ui-modal-bg: rgb(255, 255, 255);
+
+  /* Inputs */
+  --color-ui-input-bg: rgb(255, 255, 255);
+  --color-ui-border: rgb(192, 205, 216);
+
   /* Buttons */
   --color-btn-primary: rgb(34, 114, 180);
   --color-btn-primary-hover: rgb(14, 83, 139);
@@ -44,6 +51,9 @@
   --color-ui-bg-dark: rgb(17, 23, 28);
   --color-ui-text-dark: rgb(232, 236, 240);
   --color-ui-secondary-bg-dark: rgb(31, 39, 45);
+  --color-ui-modal-bg-dark: rgb(31, 39, 45);
+  --color-ui-input-bg-dark: rgb(17, 23, 28);
+  --color-ui-border-dark: rgb(55, 68, 79);
 
   /* Dark Mode Buttons */
   --color-btn-primary-dark: rgb(66, 153, 224);

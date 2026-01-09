@@ -50,7 +50,7 @@ export const Modal: React.FC<ModalProps> = ({
       onClick={onClose}
     >
       <div
-        className={`relative bg-ui-bg dark:bg-ui-bg-dark rounded-lg shadow-xl w-full ${width} p-6`}
+        className={`relative bg-ui-bg dark:bg-ui-secondary-bg-dark rounded-lg shadow-xl w-full ${width} p-6`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="absolute top-0.5 right-1">
