@@ -21,12 +21,14 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   const [regex, setRegex] = useState("");
   const [priority, setPriority] = useState<number>(100);
   const [permission, setPermission] = useState<PermissionLevel>("READ");
+  const [errors, setErrors] = useState<{ regex?: string; priority?: string }>({});
 
   useEffect(() => {
     if (isOpen) {
       setRegex("");
       setPriority(100);
       setPermission("READ");
+      setErrors({});
       document.body.style.overflow = "hidden";
     }
     return () => {
@@ -53,7 +55,28 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   if (!isOpen) return null;
 
   const handleSave = async () => {
-    if (!regex || priority === undefined) return;
+    const newErrors: { regex?: string; priority?: string } = {};
+    let hasError = false;
+
+    try {
+      new RegExp(regex);
+    } catch {
+      newErrors.regex = "Invalid regular expression. Please enter a valid Python regex.";
+      hasError = true;
+    }
+
+    if (priority === undefined || isNaN(priority)) {
+      newErrors.priority = "Priority is required.";
+      hasError = true;
+    } else if (!Number.isInteger(priority) || priority < 0) {
+      newErrors.priority = "Priority must be a non-negative integer.";
+      hasError = true;
+    }
+
+    setErrors(newErrors);
+
+    if (hasError) return;
+
     await onSave(regex, permission, priority);
   };
 
@@ -87,22 +110,31 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
               htmlFor="regex-input"
               className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-2"
             >
-              Regex (Enter Python Regex)*
+              Regex*
             </label>
             <input
               id="regex-input"
               type="text"
               value={regex}
-              onChange={(e) => setRegex(e.target.value)}
+              onChange={(e) => {
+                setRegex(e.target.value);
+                if (errors.regex) setErrors({ ...errors, regex: undefined });
+              }}
               required
-              placeholder="e.g. ^test_.*"
-              className="w-full px-3 py-2 border rounded-md focus:outline-none 
+              placeholder="Enter Python Regex e.g. (^test_.*)"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none 
                                        text-ui-text dark:text-ui-text-dark
                                        bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                       border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                                       focus:border-btn-primary dark:focus:border-btn-primary-dark
-                                       transition duration-150 ease-in-out"
+                                       ${
+                                         errors.regex
+                                           ? "border-status-danger focus:border-status-danger"
+                                           : "border-ui-secondary-bg dark:border-ui-secondary-bg-dark focus:border-btn-primary dark:focus:border-btn-primary-dark"
+                                       }
+                                       transition duration-150 ease-in-out`}
             />
+            <p className={`mt-1 text-sm text-status-danger dark:text-status-danger-dark ${errors.regex ? "" : "invisible"}`}>
+              {errors.regex || "\u00A0"}
+            </p>
           </div>
 
           <div>
@@ -115,17 +147,28 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
             <input
               id="priority-input"
               type="number"
-              value={priority}
-              onChange={(e) => setPriority(parseInt(e.target.value, 10))}
+              value={isNaN(priority) ? "" : priority}
+              onChange={(e) => {
+                setPriority(parseInt(e.target.value, 10));
+                if (errors.priority)
+                  setErrors({ ...errors, priority: undefined });
+              }}
               required
               step="1"
-              className="w-full px-3 py-2 border rounded-md focus:outline-none 
+              min="0"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none 
                                        text-ui-text dark:text-ui-text-dark
                                        bg-ui-bg dark:bg-ui-secondary-bg-dark
-                                       border-ui-secondary-bg dark:border-ui-secondary-bg-dark
-                                       focus:border-btn-primary dark:focus:border-btn-primary-dark
-                                       transition duration-150 ease-in-out"
+                                       ${
+                                         errors.priority
+                                           ? "border-status-danger focus:border-status-danger"
+                                           : "border-ui-secondary-bg dark:border-ui-secondary-bg-dark focus:border-btn-primary dark:focus:border-btn-primary-dark"
+                                       }
+                                       transition duration-150 ease-in-out`}
             />
+            <p className={`mt-1 text-sm text-status-danger dark:text-status-danger-dark ${errors.priority ? "" : "invisible"}`}>
+              {errors.priority || "\u00A0"}
+            </p>
           </div>
 
           <div>
@@ -162,7 +205,7 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
             <Button 
                 onClick={() => { void handleSave(); }} 
                 variant="primary" 
-                disabled={isLoading || !regex || priority === undefined}
+                disabled={isLoading}
             >
               {isLoading ? "Saving..." : "Save"}
             </Button>
