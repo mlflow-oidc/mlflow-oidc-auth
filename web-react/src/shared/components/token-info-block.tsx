@@ -25,8 +25,8 @@ export const TokenInfoBlock: React.FC<TokenInfoBlockProps> = ({
   });
 
   return (
-    <div className="flex flex-col gap-2 items-start mb-2 bg-ui-bg dark:bg-ui-secondary-bg-dark">
-      <div className="text-text-primary dark:text-text-primary-dark">
+    <div className="flex flex-col gap-2 items-start mb-2">
+      <div>
         {passwordExpiration == null ? (
           <p className="font-medium">No access token created yet</p>
         ) : (
