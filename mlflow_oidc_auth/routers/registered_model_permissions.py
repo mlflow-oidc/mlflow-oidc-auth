@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
-from mlflow_oidc_auth.dependencies import check_admin_permission
+from mlflow_oidc_auth.dependencies import check_registered_model_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
@@ -40,20 +40,21 @@ REGISTERED_MODEL_GROUP_PERMISSIONS = "/{name}/groups"
 )
 async def get_registered_model_users(
     name: str = Path(..., description="The registered model name to get permissions for"),
-    admin_username: str = Depends(check_admin_permission),
+    _: None = Depends(check_registered_model_manage_permission),
 ) -> List[UserPermission]:
     """
     List all users with permissions for a specific registered model.
 
     This endpoint returns all users who have explicitly assigned permissions
-    for the specified registered model. The requesting user must be an admin.
+    for the specified registered model. The requesting user must be an admin
+    or have management permissions for the model.
 
     Parameters:
     -----------
     name : str
         The name of the registered model to get user permissions for.
-    admin_username : str
-        The authenticated admin username (injected by dependency).
+    _ : None
+        Dependency that ensures the requester is an admin or can manage the model.
 
     Returns:
     --------
@@ -94,7 +95,7 @@ async def get_registered_model_users(
 )
 async def get_registered_model_groups(
     name: str = Path(..., description="The registered model name to get group permissions for"),
-    _: str = Depends(check_admin_permission),
+    _: None = Depends(check_registered_model_manage_permission),
 ) -> List[GroupPermissionEntry]:
     """List groups with explicit permissions for a registered model."""
 

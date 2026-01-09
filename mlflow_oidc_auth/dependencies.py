@@ -110,6 +110,23 @@ async def check_registered_model_manage_permission(
     return None
 
 
+async def check_prompt_manage_permission(
+    prompt_name: str = Path(..., description="Prompt name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Check if the current user can manage the specified prompt.
+
+    This mirrors registered model checks because prompts are stored as registered models
+    in the system. Users with admin rights or explicit manage permission can proceed.
+    """
+
+    if not is_admin and not can_manage_registered_model(prompt_name, current_username):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage {prompt_name}")
+
+    return None
+
+
 async def check_scorer_manage_permission(
     request: Request,
     current_username: str = Depends(get_username),

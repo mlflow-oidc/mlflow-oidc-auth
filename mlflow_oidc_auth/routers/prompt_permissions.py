@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
-from mlflow_oidc_auth.dependencies import check_admin_permission
+from mlflow_oidc_auth.dependencies import check_prompt_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
@@ -36,7 +36,7 @@ PROMPT_GROUP_PERMISSIONS = "/{prompt_name}/groups"
     description="Retrieves a list of users who have permissions for the specified prompt.",
 )
 async def get_prompt_users(
-    prompt_name: str = Path(..., description="The prompt name to get permissions for"), admin_username: str = Depends(check_admin_permission)
+    prompt_name: str = Path(..., description="The prompt name to get permissions for"), _: None = Depends(check_prompt_manage_permission)
 ) -> List[UserPermission]:
     """
     List all users with permissions for a specific prompt.
@@ -49,8 +49,8 @@ async def get_prompt_users(
     -----------
     prompt_name : str
         The name of the prompt to get user permissions for.
-    admin_username : str
-        The authenticated username (injected by dependency).
+    _ : None
+        Dependency that ensures the requester is an admin or can manage the prompt.
 
     Returns:
     --------
@@ -95,7 +95,7 @@ async def get_prompt_users(
 )
 async def get_prompt_groups(
     prompt_name: str = Path(..., description="The prompt name to get group permissions for"),
-    _: str = Depends(check_admin_permission),
+    _: None = Depends(check_prompt_manage_permission),
 ) -> List[GroupPermissionEntry]:
     """List groups with explicit permissions for a prompt."""
 

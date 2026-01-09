@@ -105,7 +105,7 @@ class TestGetRegisteredModelUsersEndpoint:
         mock_store.list_users.return_value = [user1, user2, user3]
 
         with patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store):
-            result = await get_registered_model_users(name="test-model", admin_username="admin@example.com")
+            result = await get_registered_model_users(name="test-model", _=None)
 
         assert len(result) == 2  # Only users with permissions for test-model
 
@@ -126,7 +126,7 @@ class TestGetRegisteredModelUsersEndpoint:
 
         mock_store.list_users.return_value = [user1]
 
-        result = await get_registered_model_users(name="test-model", admin_username="admin@example.com")
+        result = await get_registered_model_users(name="test-model", _=None)
 
         assert len(result) == 0
 
@@ -146,7 +146,7 @@ class TestGetRegisteredModelUsersEndpoint:
 
         mock_store.list_users.return_value = [user1]
 
-        result = await get_registered_model_users(name="model-1", admin_username="admin@example.com")
+        result = await get_registered_model_users(name="model-1", _=None)
 
         assert len(result) == 1
         assert result[0].name == "user1@example.com"
@@ -161,7 +161,7 @@ class TestGetRegisteredModelUsersEndpoint:
 
         mock_store.list_users.return_value = [user1]
 
-        result = await get_registered_model_users(name="test-model", admin_username="admin@example.com")
+        result = await get_registered_model_users(name="test-model", _=None)
 
         assert len(result) == 0
 
@@ -176,7 +176,14 @@ class TestGetRegisteredModelUsersEndpoint:
         """Test get registered model users as non-admin user."""
         response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
 
-        # Should fail due to admin requirement
+        # Allowed because mocks grant manage permission
+        assert response.status_code == 200
+
+    def test_get_registered_model_users_non_admin_without_manage_permission(self, authenticated_client):
+        """Non-admin lacking manage rights should be forbidden."""
+        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+            response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
+
         assert response.status_code == 403
 
     def test_get_registered_model_users_unauthenticated(self, client):
@@ -361,9 +368,10 @@ class TestRegisteredModelPermissionsRouterIntegration:
 
     def test_model_user_permissions_requires_admin(self, authenticated_client):
         """Test that model user permissions endpoint requires admin privileges."""
-        response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
+        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+            response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
 
-        # Should fail due to admin requirement
+        # Without manage permission a non-admin is forbidden
         assert response.status_code == 403
 
     def test_endpoints_response_content_type(self, authenticated_client, admin_client):

@@ -105,7 +105,7 @@ class TestGetPromptUsersEndpoint:
         mock_store.list_users.return_value = [user1, user2, user3]
 
         with patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store):
-            result = await get_prompt_users(prompt_name="test-prompt", admin_username="admin@example.com")
+            result = await get_prompt_users(prompt_name="test-prompt", _=None)
 
         assert len(result) == 2  # Only users with permissions for test-prompt
 
@@ -135,7 +135,7 @@ class TestGetPromptUsersEndpoint:
 
         mock_store.list_users.return_value = [user1]
 
-        result = await get_prompt_users(prompt_name="test-prompt", admin_username="admin@example.com")
+        result = await get_prompt_users(prompt_name="test-prompt", _=None)
 
         assert len(result) == 0
 
@@ -157,7 +157,7 @@ class TestGetPromptUsersEndpoint:
         )
 
         with patch("mlflow_oidc_auth.routers.prompt_permissions.store.list_users", return_value=[user1]):
-            result = await get_prompt_users(prompt_name="prompt-1", admin_username="admin@example.com")
+            result = await get_prompt_users(prompt_name="prompt-1", _=None)
 
         assert len(result) == 1
         assert result[0].name == "user1@example.com"
@@ -180,7 +180,7 @@ class TestGetPromptUsersEndpoint:
 
         mock_store.list_users.return_value = [user1]
 
-        result = await get_prompt_users(prompt_name="test-prompt", admin_username="admin@example.com")
+        result = await get_prompt_users(prompt_name="test-prompt", _=None)
 
         assert len(result) == 0
 
@@ -195,7 +195,14 @@ class TestGetPromptUsersEndpoint:
         """Test get prompt users as non-admin user."""
         response = authenticated_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/users")
 
-        # Should fail due to admin requirement
+        # Allowed because non-admin has manage permission via mocks
+        assert response.status_code == 200
+
+    def test_get_prompt_users_non_admin_without_manage_permission(self, authenticated_client):
+        """Non-admin without manage rights should be forbidden."""
+        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+            response = authenticated_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/users")
+
         assert response.status_code == 403
 
     def test_get_prompt_users_unauthenticated(self, client):
@@ -380,9 +387,10 @@ class TestPromptPermissionsRouterIntegration:
 
     def test_prompt_user_permissions_requires_admin(self, authenticated_client):
         """Test that prompt user permissions endpoint requires admin privileges."""
-        response = authenticated_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/users")
+        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+            response = authenticated_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/users")
 
-        # Should fail due to admin requirement
+        # Without manage permission a non-admin is forbidden
         assert response.status_code == 403
 
     def test_endpoints_response_content_type(self, authenticated_client, admin_client):
