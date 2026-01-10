@@ -47,7 +47,6 @@ logger = get_logger()
 
 group_permissions_router = APIRouter(
     prefix=GROUP_PERMISSIONS_ROUTER_PREFIX,
-    tags=["group permissions"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},
@@ -86,6 +85,7 @@ GROUP_USER_PERMISSIONS = "/{group_name}/users"
     summary="List groups",
     description="Retrieves a list of all groups in the system.",
     response_model=GroupListResponse,
+    tags=["groups"],
 )
 async def list_groups(username: str = Depends(get_username)) -> GroupListResponse:
     """
@@ -124,6 +124,7 @@ async def list_groups(username: str = Depends(get_username)) -> GroupListRespons
     response_model=List[GroupUser],
     summary="List users in a group",
     description="Retrieves a list of users who are members of the specified group.",
+    tags=["group users"],
 )
 async def get_group_users(
     group_name: str = Path(..., description="The group name to get users for"), admin_username: str = Depends(check_admin_permission)
@@ -164,6 +165,7 @@ async def get_group_users(
     summary="List experiment permissions for a group",
     description="Retrieves a list of experiments with permission information for the specified group.",
     response_model=List[GroupExperimentPermissionItem],
+    tags=["group experiment permissions"],
 )
 async def get_group_experiments(
     group_name: str = Path(..., description="The group name to get experiment permissions for"),
@@ -224,6 +226,7 @@ async def get_group_experiments(
     summary="Create experiment permission for a group",
     description="Creates a new permission for a group to access a specific experiment.",
     response_model=StatusMessageResponse,
+    tags=["group experiment permissions"],
 )
 async def create_group_experiment_permission(
     group_name: str = Path(..., description="The group name to grant experiment permission to"),
@@ -267,6 +270,7 @@ async def create_group_experiment_permission(
     summary="Update experiment permission for a group",
     description="Updates the permission for a group on a specific experiment.",
     response_model=StatusMessageResponse,
+    tags=["group experiment permissions"],
 )
 async def update_group_experiment_permission(
     group_name: str = Path(..., description="The group name to update experiment permission for"),
@@ -310,6 +314,7 @@ async def update_group_experiment_permission(
     summary="Delete experiment permission for a group",
     description="Deletes the permission for a group on a specific experiment.",
     response_model=StatusMessageResponse,
+    tags=["group experiment permissions"],
 )
 async def delete_group_experiment_permission(
     group_name: str = Path(..., description="The group name to delete experiment permission for"),
@@ -346,6 +351,7 @@ async def delete_group_experiment_permission(
     summary="List registered model permissions for a group",
     description="Retrieves a list of registered models with permission information for the specified group.",
     response_model=List[GroupNamedPermissionItem],
+    tags=["group registered model permissions"],
 )
 async def get_group_registered_models(
     group_name: str = Path(..., description="The group name to get registered model permissions for"),
@@ -398,6 +404,7 @@ async def get_group_registered_models(
     summary="Create registered model permission for a group",
     description="Creates a new permission for a group to access a specific registered model.",
     response_model=StatusMessageResponse,
+    tags=["group registered model permissions"],
 )
 async def create_group_registered_model_permission(
     group_name: str = Path(..., description="The group name to grant registered model permission to"),
@@ -447,6 +454,7 @@ async def create_group_registered_model_permission(
     summary="Update registered model permission for a group",
     description="Updates the permission for a group on a specific registered model.",
     response_model=StatusMessageResponse,
+    tags=["group registered model permissions"],
 )
 async def update_group_registered_model_permission(
     group_name: str = Path(..., description="The group name to update registered model permission for"),
@@ -496,6 +504,7 @@ async def update_group_registered_model_permission(
     summary="Delete registered model permission for a group",
     description="Deletes the permission for a group on a specific registered model.",
     response_model=StatusMessageResponse,
+    tags=["group registered model permissions"],
 )
 async def delete_group_registered_model_permission(
     group_name: str = Path(..., description="The group name to delete registered model permission for"),
@@ -538,6 +547,7 @@ async def delete_group_registered_model_permission(
     summary="Get group prompt permissions",
     description="Retrieves all prompt permissions for a specific group.",
     response_model=List[GroupNamedPermissionItem],
+    tags=["group prompt permissions"],
 )
 async def get_group_prompts(
     group_name: str = Path(..., description="The group name to get prompt permissions for"),
@@ -590,6 +600,7 @@ async def get_group_prompts(
     summary="Create prompt permission for a group",
     description="Creates a new permission for a group to access a specific prompt.",
     response_model=StatusMessageResponse,
+    tags=["group prompt permissions"],
 )
 async def create_group_prompt_permission(
     group_name: str = Path(..., description="The group name to grant prompt permission to"),
@@ -640,6 +651,7 @@ async def create_group_prompt_permission(
     summary="Update prompt permission for a group",
     description="Updates the permission for a group on a specific prompt.",
     response_model=StatusMessageResponse,
+    tags=["group prompt permissions"],
 )
 async def update_group_prompt_permission(
     group_name: str = Path(..., description="The group name to update prompt permission for"),
@@ -690,6 +702,7 @@ async def update_group_prompt_permission(
     summary="Delete prompt permission for a group",
     description="Deletes the permission for a group on a specific prompt.",
     response_model=StatusMessageResponse,
+    tags=["group prompt permissions"],
 )
 async def delete_group_prompt_permission(
     group_name: str = Path(..., description="The group name to delete prompt permission for"),
@@ -733,6 +746,7 @@ async def delete_group_prompt_permission(
     summary="Get group experiment pattern permissions",
     description="Retrieves all experiment regex pattern permissions for a specific group.",
     response_model=List[GroupExperimentRegexPermissionItem],
+    tags=["group experiment pattern permissions"],
 )
 async def get_group_experiment_pattern_permissions(
     group_name: str = Path(..., description="The group name to get experiment pattern permissions for"),
@@ -779,6 +793,7 @@ async def get_group_experiment_pattern_permissions(
     summary="Create experiment pattern permission for a group",
     description="Creates a new regex pattern permission for a group to access experiments.",
     response_model=StatusMessageResponse,
+    tags=["group experiment pattern permissions"],
 )
 async def create_group_experiment_pattern_permission(
     group_name: str = Path(..., description="The group name to create experiment pattern permission for"),
@@ -803,6 +818,7 @@ async def create_group_experiment_pattern_permission(
     summary="Get specific experiment pattern permission for a group",
     description="Retrieves a specific experiment regex pattern permission for a group.",
     response_model=GroupExperimentRegexPermissionItem,
+    tags=["group experiment pattern permissions"],
 )
 async def get_group_experiment_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -843,6 +859,7 @@ async def get_group_experiment_pattern_permission(
     summary="Update experiment pattern permission for a group",
     description="Updates a specific experiment regex pattern permission for a group.",
     response_model=StatusMessageResponse,
+    tags=["group experiment pattern permissions"],
 )
 async def update_group_experiment_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -868,6 +885,7 @@ async def update_group_experiment_pattern_permission(
     summary="Delete experiment pattern permission for a group",
     description="Deletes a specific experiment regex pattern permission for a group.",
     response_model=StatusMessageResponse,
+    tags=["group experiment pattern permissions"],
 )
 async def delete_group_experiment_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -890,6 +908,7 @@ async def delete_group_experiment_pattern_permission(
     summary="Get group registered model pattern permissions",
     description="Retrieves all registered model regex pattern permissions for a specific group.",
     response_model=List[GroupRegisteredModelRegexPermissionItem],
+    tags=["group registered model pattern permissions"],
 )
 async def get_group_registered_model_pattern_permissions(
     group_name: str = Path(..., description="The group name to get registered model pattern permissions for"),
@@ -938,6 +957,7 @@ async def get_group_registered_model_pattern_permissions(
     summary="Create registered model pattern permission for a group",
     description="Creates a new regex pattern permission for a group to access registered models.",
     response_model=StatusMessageResponse,
+    tags=["group registered model pattern permissions"],
 )
 async def create_group_registered_model_pattern_permission(
     group_name: str = Path(..., description="The group name to create registered model pattern permission for"),
@@ -962,6 +982,7 @@ async def create_group_registered_model_pattern_permission(
     summary="Get specific registered model pattern permission for a group",
     description="Retrieves a specific registered model regex pattern permission for a group.",
     response_model=GroupRegisteredModelRegexPermissionItem,
+    tags=["group registered model pattern permissions"],
 )
 async def get_group_registered_model_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -1004,6 +1025,7 @@ async def get_group_registered_model_pattern_permission(
     summary="Update registered model pattern permission for a group",
     description="Updates a specific registered model regex pattern permission for a group.",
     response_model=StatusMessageResponse,
+    tags=["group registered model pattern permissions"],
 )
 async def update_group_registered_model_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -1029,6 +1051,7 @@ async def update_group_registered_model_pattern_permission(
     summary="Delete registered model pattern permission for a group",
     description="Deletes a specific registered model regex pattern permission for a group.",
     response_model=StatusMessageResponse,
+    tags=["group registered model pattern permissions"],
 )
 async def delete_group_registered_model_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -1051,6 +1074,7 @@ async def delete_group_registered_model_pattern_permission(
     summary="Get group prompt pattern permissions",
     description="Retrieves all prompt regex pattern permissions for a specific group.",
     response_model=List[GroupPromptRegexPermissionItem],
+    tags=["group prompt pattern permissions"],
 )
 async def get_group_prompt_pattern_permissions(
     group_name: str = Path(..., description="The group name to get prompt pattern permissions for"),
@@ -1099,6 +1123,7 @@ async def get_group_prompt_pattern_permissions(
     summary="Create prompt pattern permission for a group",
     description="Creates a new regex pattern permission for a group to access prompts.",
     response_model=StatusMessageResponse,
+    tags=["group prompt pattern permissions"],
 )
 async def create_group_prompt_pattern_permission(
     group_name: str = Path(..., description="The group name to create prompt pattern permission for"),
@@ -1123,6 +1148,7 @@ async def create_group_prompt_pattern_permission(
     summary="Get specific prompt pattern permission for a group",
     description="Retrieves a specific prompt regex pattern permission for a group.",
     response_model=GroupPromptRegexPermissionItem,
+    tags=["group prompt pattern permissions"],
 )
 async def get_group_prompt_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -1165,6 +1191,7 @@ async def get_group_prompt_pattern_permission(
     summary="Update prompt pattern permission for a group",
     description="Updates a specific prompt regex pattern permission for a group.",
     response_model=StatusMessageResponse,
+    tags=["group prompt pattern permissions"],
 )
 async def update_group_prompt_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -1190,6 +1217,7 @@ async def update_group_prompt_pattern_permission(
     summary="Delete prompt pattern permission for a group",
     description="Deletes a specific prompt regex pattern permission for a group.",
     response_model=StatusMessageResponse,
+    tags=["group prompt pattern permissions"],
 )
 async def delete_group_prompt_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -1212,6 +1240,7 @@ async def delete_group_prompt_pattern_permission(
     summary="List scorer permissions for a group",
     description="Retrieves a list of scorers with permission information for the specified group.",
     response_model=List[GroupScorerPermissionItem],
+    tags=["group scorer permissions"],
 )
 async def get_group_scorers(
     group_name: str = Path(..., description="The group name to get scorer permissions for"),
@@ -1250,6 +1279,7 @@ async def get_group_scorers(
     summary="Create scorer permission for a group",
     description="Creates a new permission for a group to access a specific scorer.",
     response_model=StatusMessageResponse,
+    tags=["group scorer permissions"],
 )
 async def create_group_scorer_permission(
     group_name: str = Path(..., description="The group name to grant scorer permission to"),
@@ -1276,6 +1306,7 @@ async def create_group_scorer_permission(
     summary="Update scorer permission for a group",
     description="Updates the permission for a group on a specific scorer.",
     response_model=StatusMessageResponse,
+    tags=["group scorer permissions"],
 )
 async def update_group_scorer_permission(
     group_name: str = Path(..., description="The group name to update scorer permission for"),
@@ -1302,6 +1333,7 @@ async def update_group_scorer_permission(
     summary="Delete scorer permission for a group",
     description="Deletes the permission for a group on a specific scorer.",
     response_model=StatusMessageResponse,
+    tags=["group scorer permissions"],
 )
 async def delete_group_scorer_permission(
     group_name: str = Path(..., description="The group name to delete scorer permission for"),
@@ -1322,6 +1354,7 @@ async def delete_group_scorer_permission(
     summary="Get group scorer pattern permissions",
     description="Retrieves all scorer regex pattern permissions for a specific group.",
     response_model=List[GroupScorerRegexPermissionItem],
+    tags=["group scorer pattern permissions"],
 )
 async def get_group_scorer_pattern_permissions(
     group_name: str = Path(..., description="The group name to get scorer pattern permissions for"),
@@ -1365,6 +1398,7 @@ async def get_group_scorer_pattern_permissions(
     summary="Create scorer pattern permission for a group",
     description="Creates a new regex pattern permission for a group to access scorers.",
     response_model=StatusMessageResponse,
+    tags=["group scorer pattern permissions"],
 )
 async def create_group_scorer_pattern_permission(
     group_name: str = Path(..., description="The group name to create scorer pattern permission for"),
@@ -1389,6 +1423,7 @@ async def create_group_scorer_pattern_permission(
     summary="Get specific scorer pattern permission for a group",
     description="Retrieves a specific scorer regex pattern permission for a group.",
     response_model=GroupScorerRegexPermissionItem,
+    tags=["group scorer pattern permissions"],
 )
 async def get_group_scorer_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -1426,6 +1461,7 @@ async def get_group_scorer_pattern_permission(
     summary="Update scorer pattern permission for a group",
     description="Updates a specific scorer regex pattern permission for a group.",
     response_model=StatusMessageResponse,
+    tags=["group scorer pattern permissions"],
 )
 async def update_group_scorer_pattern_permission(
     group_name: str = Path(..., description="The group name"),
@@ -1452,6 +1488,7 @@ async def update_group_scorer_pattern_permission(
     summary="Delete scorer pattern permission for a group",
     description="Deletes a specific scorer regex pattern permission for a group.",
     response_model=StatusMessageResponse,
+    tags=["group scorer pattern permissions"],
 )
 async def delete_group_scorer_pattern_permission(
     group_name: str = Path(..., description="The group name"),

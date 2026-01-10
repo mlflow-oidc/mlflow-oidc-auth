@@ -62,10 +62,12 @@ USER_EXPERIMENT_PERMISSION = "/{username}/experiments"
 USER_EXPERIMENT_PERMISSION_DETAIL = "/{username}/experiments/{experiment_id}"
 USER_EXPERIMENT_PATTERN_PERMISSIONS = "/{username}/experiment-patterns"
 USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{username}/experiment-patterns/{id}"
+
 USER_REGISTERED_MODEL_PERMISSIONS = "/{username}/registered-models"
 USER_REGISTERED_MODEL_PERMISSION_DETAIL = "/{username}/registered-models/{name}"
 USER_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{username}/registered-models-patterns"
 USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{username}/registered-models-patterns/{id}"
+
 USER_PROMPT_PERMISSIONS = "/{username}/prompts"
 USER_PROMPT_PERMISSION_DETAIL = "/{username}/prompts/{name}"
 USER_PROMPT_PATTERN_PERMISSIONS = "/{username}/prompts-patterns"
@@ -78,7 +80,6 @@ USER_SCORER_PATTERN_PERMISSION_DETAIL = "/{username}/scorer-patterns/{id}"
 
 user_permissions_router = APIRouter(
     prefix=USER_PERMISSIONS_ROUTER_PREFIX,
-    tags=["user permissions"],
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},
@@ -91,6 +92,7 @@ user_permissions_router = APIRouter(
     response_model=List[ExperimentPermissionSummary],
     summary="Get experiment permissions for a user",
     description="Retrieves a list of experiments with permission information for the specified user.",
+    tags=["user experiment permissions"],
 )
 async def get_user_experiment_permissions(
     username: str = Path(..., description="The username to get permissions for"),
@@ -150,13 +152,12 @@ async def get_user_experiment_permissions(
         for exp in list_experiments
     ]
 
-
-@user_permissions_router.post(USER_EXPERIMENT_PERMISSION_DETAIL)
 @user_permissions_router.post(
     USER_EXPERIMENT_PERMISSION_DETAIL,
     response_model=MessageResponse,
     summary="Create experiment permission for a user",
     description="Creates a permission for a user to access a specific experiment.",
+    tags=["user experiment permissions"],
 )
 async def create_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
@@ -177,6 +178,7 @@ async def create_user_experiment_permission(
     response_model=ExperimentPermissionResponse,
     summary="Get experiment permission for a user",
     description="Retrieves the permission for a user on a specific experiment.",
+    tags=["user experiment permissions"],
 )
 async def get_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
@@ -192,6 +194,7 @@ async def get_user_experiment_permission(
     response_model=MessageResponse,
     summary="Update experiment permission for a user",
     description="Updates the permission for a user on a specific experiment.",
+    tags=["user experiment permissions"],
 )
 async def update_user_experiment_permission(
     username: str = Path(..., description="The username to grant permissions to"),
@@ -212,6 +215,7 @@ async def update_user_experiment_permission(
     response_model=MessageResponse,
     summary="Delete experiment permission for a user",
     description="Deletes the permission for a user on a specific experiment.",
+    tags=["user experiment permissions"],
 )
 async def delete_user_experiment_permission(
     username: str = Path(..., description="The username to revoke permissions from"),
@@ -227,6 +231,7 @@ async def delete_user_experiment_permission(
     status_code=201,
     summary="Create experiment pattern permission",
     description="Creates a new regex-based permission pattern for experiment access.",
+    tags=["user experiment pattern permissions"],
 )
 async def create_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to create pattern permission for"),
@@ -277,6 +282,7 @@ async def create_user_experiment_pattern_permission(
     response_model=List[ExperimentRegexPermission],
     summary="List experiment pattern permissions for a user",
     description="Retrieves a list of regex-based experiment permission patterns for the specified user.",
+    tags=["user experiment pattern permissions"],
 )
 async def list_user_experiment_pattern_permissions(
     username: str = Path(..., description="The username to list pattern permissions for"), admin_username: str = Depends(check_admin_permission)
@@ -317,6 +323,7 @@ async def list_user_experiment_pattern_permissions(
     response_model=ExperimentRegexPermission,
     summary="Get experiment pattern permission for a user",
     description="Retrieves a specific regex-based experiment permission pattern for the specified user.",
+    tags=["user experiment pattern permissions"],
 )
 async def get_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to get pattern permission for"),
@@ -359,6 +366,7 @@ async def get_user_experiment_pattern_permission(
     USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
     summary="Update experiment pattern permission for a user",
     description="Updates a specific regex-based experiment permission pattern for the specified user.",
+    tags=["user experiment pattern permissions"],
 )
 async def update_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to update pattern permission for"),
@@ -406,6 +414,7 @@ async def update_user_experiment_pattern_permission(
     USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
     summary="Delete experiment pattern permission for a user",
     description="Deletes a specific regex-based experiment permission pattern for the specified user.",
+    tags=["user experiment pattern permissions"],
 )
 async def delete_user_experiment_pattern_permission(
     username: str = Path(..., description="The username to delete pattern permission for"),
@@ -449,6 +458,7 @@ async def delete_user_experiment_pattern_permission(
     response_model=List[NamedPermissionSummary],
     summary="List prompt permissions for a user",
     description="Retrieves a list of prompts with permission information for the specified user.",
+    tags=["user prompt permissions"],
 )
 async def get_user_prompts(
     username: str = Path(..., description="The username to get prompt permissions for"),
@@ -504,6 +514,7 @@ async def get_user_prompts(
     response_model=StatusMessageResponse,
     summary="Create prompt permission for a user",
     description="Creates a new permission for a user to access a specific prompt.",
+    tags=["user prompt permissions"],
 )
 async def create_user_prompt_permission(
     username: str = Path(..., description="The username to grant prompt permission to"),
@@ -554,6 +565,7 @@ async def create_user_prompt_permission(
     response_model=PromptPermissionResponse,
     summary="Get prompt permission for a user",
     description="Retrieves the permission for a user on a specific prompt.",
+    tags=["user prompt permissions"],
 )
 async def get_user_prompt_permission(
     username: str = Path(..., description="The username to get prompt permission for"),
@@ -590,6 +602,7 @@ async def get_user_prompt_permission(
     response_model=StatusMessageResponse,
     summary="Update prompt permission for a user",
     description="Updates the permission for a user on a specific prompt.",
+    tags=["user prompt permissions"],
 )
 async def update_user_prompt_permission(
     username: str = Path(..., description="The username to update prompt permission for"),
@@ -639,6 +652,7 @@ async def update_user_prompt_permission(
     response_model=StatusMessageResponse,
     summary="Delete prompt permission for a user",
     description="Deletes the permission for a user on a specific prompt.",
+    tags=["user prompt permissions"],
 )
 async def delete_user_prompt_permission(
     username: str = Path(..., description="The username to delete prompt permission for"),
@@ -675,6 +689,7 @@ async def delete_user_prompt_permission(
     response_model=List[RegisteredModelRegexPermissionRecord],
     summary="List prompt pattern permissions for a user",
     description="Retrieves a list of regex-based prompt permission patterns for the specified user.",
+    tags=["user prompt pattern permissions"],
 )
 async def get_user_prompt_pattern_permissions(
     username: str = Path(..., description="The username to list prompt pattern permissions for"),
@@ -711,6 +726,7 @@ async def get_user_prompt_pattern_permissions(
     response_model=StatusMessageResponse,
     summary="Create prompt pattern permission for a user",
     description="Creates a new regex-based permission pattern for prompt access.",
+    tags=["user prompt pattern permissions"],
 )
 async def create_user_prompt_regex_permission(
     username: str = Path(..., description="The username to create prompt pattern permission for"),
@@ -754,6 +770,7 @@ async def create_user_prompt_regex_permission(
     response_model=PromptRegexPermissionResponse,
     summary="Get prompt pattern permission for a user",
     description="Retrieves a specific regex-based prompt permission pattern for the specified user.",
+    tags=["user prompt pattern permissions"],
 )
 async def get_user_prompt_regex_permission(
     username: str = Path(..., description="The username to get prompt pattern permission for"),
@@ -794,6 +811,7 @@ async def get_user_prompt_regex_permission(
     response_model=PromptRegexPermissionResponse,
     summary="Update prompt pattern permission for a user",
     description="Updates a specific regex-based prompt permission pattern for the specified user.",
+    tags=["user prompt pattern permissions"],
 )
 async def update_user_prompt_regex_permission(
     username: str = Path(..., description="The username to update prompt pattern permission for"),
@@ -844,6 +862,7 @@ async def update_user_prompt_regex_permission(
     response_model_exclude_none=True,
     summary="Delete prompt pattern permission for a user",
     description="Deletes a specific regex-based prompt permission pattern for the specified user.",
+    tags=["user prompt pattern permissions"],
 )
 async def delete_user_prompt_regex_permission(
     username: str = Path(..., description="The username to delete prompt pattern permission for"),
@@ -884,6 +903,7 @@ async def delete_user_prompt_regex_permission(
     response_model=List[NamedPermissionSummary],
     summary="List registered model permissions for a user",
     description="Retrieves a list of registered models with permission information for the specified user.",
+    tags=["user registered model permissions"],
 )
 async def get_user_registered_models(
     username: str = Path(..., description="The username to get registered model permissions for"),
@@ -935,6 +955,7 @@ async def get_user_registered_models(
     response_model=StatusMessageResponse,
     summary="Create registered model permission for a user",
     description="Creates a new permission for a user to access a specific registered model.",
+    tags=["user registered model permissions"],
 )
 async def create_user_registered_model_permission(
     username: str = Path(..., description="The username to grant registered model permission to"),
@@ -984,6 +1005,7 @@ async def create_user_registered_model_permission(
     response_model=RegisteredModelPermissionResponse,
     summary="Get registered model permission for a user",
     description="Retrieves the permission for a user on a specific registered model.",
+    tags=["user registered model permissions"],
 )
 async def get_user_registered_model_permission(
     username: str = Path(..., description="The username to get registered model permission for"),
@@ -1020,6 +1042,7 @@ async def get_user_registered_model_permission(
     response_model=StatusMessageResponse,
     summary="Update registered model permission for a user",
     description="Updates the permission for a user on a specific registered model.",
+    tags=["user registered model permissions"],
 )
 async def update_user_registered_model_permission(
     username: str = Path(..., description="The username to update registered model permission for"),
@@ -1071,6 +1094,7 @@ async def update_user_registered_model_permission(
     response_model=StatusMessageResponse,
     summary="Delete registered model permission for a user",
     description="Deletes the permission for a user on a specific registered model.",
+    tags=["user registered model permissions"],
 )
 async def delete_user_registered_model_permission(
     username: str = Path(..., description="The username to delete registered model permission for"),
@@ -1109,6 +1133,7 @@ async def delete_user_registered_model_permission(
     response_model=List[ScorerPermissionRecord],
     summary="List scorer permissions for a user",
     description="Retrieves a list of scorers with permission information for the specified user.",
+    tags=["user scorer permissions"],
 )
 async def get_user_scorer_permissions(
     username: str = Path(..., description="The username to get scorer permissions for"),
@@ -1138,6 +1163,7 @@ async def get_user_scorer_permissions(
     response_model=ScorerPermissionResponse,
     summary="Create scorer permission for a user",
     description="Creates a new permission for a user to access a specific scorer.",
+    tags=["user scorer permissions"],
 )
 async def create_user_scorer_permission(
     username: str = Path(..., description="The username to grant scorer permission to"),
@@ -1175,6 +1201,7 @@ async def create_user_scorer_permission(
     response_model=ScorerPermissionResponse,
     summary="Get scorer permission for a user",
     description="Retrieves the permission for a user on a specific scorer.",
+    tags=["user scorer permissions"],
 )
 async def get_user_scorer_permission(
     username: str = Path(..., description="The username to get scorer permission for"),
@@ -1195,6 +1222,7 @@ async def get_user_scorer_permission(
     response_model=StatusMessageResponse,
     summary="Update scorer permission for a user",
     description="Updates the permission for a user on a specific scorer.",
+    tags=["user scorer permissions"],
 )
 async def update_user_scorer_permission(
     username: str = Path(..., description="The username to update scorer permission for"),
@@ -1228,6 +1256,7 @@ async def update_user_scorer_permission(
     response_model=StatusMessageResponse,
     summary="Delete scorer permission for a user",
     description="Deletes the permission for a user on a specific scorer.",
+    tags=["user scorer permissions"],
 )
 async def delete_user_scorer_permission(
     username: str = Path(..., description="The username to delete scorer permission for"),
@@ -1248,6 +1277,7 @@ async def delete_user_scorer_permission(
     response_model=List[ScorerRegexPermissionRecord],
     summary="List scorer pattern permissions for a user",
     description="Retrieves a list of regex-based scorer permission patterns for the specified user.",
+    tags=["user scorer pattern permissions"],
 )
 async def get_user_scorer_regex_permissions(
     username: str = Path(..., description="The username to list scorer pattern permissions for"),
@@ -1267,6 +1297,7 @@ async def get_user_scorer_regex_permissions(
     response_model=ScorerRegexPermissionResponse,
     summary="Create scorer pattern permission for a user",
     description="Creates a new regex-based permission pattern for scorer access.",
+    tags=["user scorer pattern permissions"],
 )
 async def create_user_scorer_regex_permission(
     username: str = Path(..., description="The username to create scorer pattern permission for"),
@@ -1298,6 +1329,7 @@ async def create_user_scorer_regex_permission(
     response_model=ScorerRegexPermissionResponse,
     summary="Get specific scorer pattern permission for a user",
     description="Retrieves a specific scorer regex pattern permission for a user.",
+    tags=["user scorer pattern permissions"],
 )
 async def get_user_scorer_pattern_permission(
     username: str = Path(..., description="The username"),
@@ -1317,6 +1349,7 @@ async def get_user_scorer_pattern_permission(
     response_model=ScorerRegexPermissionResponse,
     summary="Update scorer pattern permission for a user",
     description="Updates a specific scorer regex pattern permission for a user.",
+    tags=["user scorer pattern permissions"],
 )
 async def update_user_scorer_pattern_permission(
     username: str = Path(..., description="The username"),
@@ -1343,6 +1376,7 @@ async def update_user_scorer_pattern_permission(
     response_model=StatusMessageResponse,
     summary="Delete scorer pattern permission for a user",
     description="Deletes a specific scorer regex pattern permission for a user.",
+    tags=["user scorer pattern permissions"],
 )
 async def delete_user_scorer_pattern_permission(
     username: str = Path(..., description="The username"),
@@ -1362,6 +1396,7 @@ async def delete_user_scorer_pattern_permission(
     response_model=List[RegisteredModelRegexPermissionRecord],
     summary="List registered model pattern permissions for a user",
     description="Retrieves a list of regex-based registered model permission patterns for the specified user.",
+    tags=["user registered model pattern permissions"],
 )
 async def get_user_registered_model_regex_permissions(
     username: str = Path(..., description="The username to list registered model pattern permissions for"),
@@ -1398,6 +1433,7 @@ async def get_user_registered_model_regex_permissions(
     response_model=StatusMessageResponse,
     summary="Create registered model pattern permission for a user",
     description="Creates a new regex-based permission pattern for registered model access.",
+    tags=["user registered model pattern permissions"],
 )
 async def create_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to create registered model pattern permission for"),
@@ -1441,6 +1477,7 @@ async def create_user_registered_model_regex_permission(
     response_model=RegisteredModelRegexPermissionResponse,
     summary="Get registered model pattern permission for a user",
     description="Retrieves a specific regex-based registered model permission pattern for the specified user.",
+    tags=["user registered model pattern permissions"],
 )
 async def get_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to get registered model pattern permission for"),
@@ -1481,6 +1518,7 @@ async def get_user_registered_model_regex_permission(
     response_model=RegisteredModelRegexPermissionResponse,
     summary="Update registered model pattern permission for a user",
     description="Updates a specific regex-based registered model permission pattern for the specified user.",
+    tags=["user registered model pattern permissions"],
 )
 async def update_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to update registered model pattern permission for"),
@@ -1531,6 +1569,7 @@ async def update_user_registered_model_regex_permission(
     response_model_exclude_none=True,
     summary="Delete registered model pattern permission for a user",
     description="Deletes a specific regex-based registered model permission pattern for the specified user.",
+    tags=["user registered model pattern permissions"],
 )
 async def delete_user_registered_model_regex_permission(
     username: str = Path(..., description="The username to delete registered model pattern permission for"),
