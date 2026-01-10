@@ -1,18 +1,29 @@
-from pydantic import BaseModel, Field
 from typing import List, Optional
-from pydantic import Field, field_validator
+
+from pydantic import BaseModel, Field, field_validator
 
 # Valid webhook statuses
 VALID_WEBHOOK_STATUSES = ["ACTIVE", "DISABLED"]
 
 # Valid webhook event types based on MLflow documentation
 VALID_WEBHOOK_EVENTS = [
+    # Registered model events
     "registered_model.created",
+    # Model version events
     "model_version.created",
     "model_version_tag.set",
     "model_version_tag.deleted",
     "model_version_alias.created",
     "model_version_alias.deleted",
+    # Prompt events (added in MLflow 3.8.x)
+    "prompt.created",
+    "prompt_version.created",
+    "prompt_tag.set",
+    "prompt_tag.deleted",
+    "prompt_version_tag.set",
+    "prompt_version_tag.deleted",
+    "prompt_alias.created",
+    "prompt_alias.deleted",
 ]
 
 

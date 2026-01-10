@@ -6,13 +6,21 @@ All webhook operations require admin permissions for security purposes.
 
 Based on MLflow webhook documentation: https://mlflow.org/docs/latest/ml/webhooks/
 
-Supported webhook events:
-- registered_model.created: Triggered when a new registered model is created
-- model_version.created: Triggered when a new model version is created
-- model_version_tag.set: Triggered when a tag is set on a model version
-- model_version_tag.deleted: Triggered when a tag is deleted from a model version
-- model_version_alias.created: Triggered when an alias is created for a model version
-- model_version_alias.deleted: Triggered when an alias is deleted from a model version
+Supported webhook events (MLflow 3.8.x):
+- registered_model.created
+- model_version.created
+- model_version_tag.set
+- model_version_tag.deleted
+- model_version_alias.created
+- model_version_alias.deleted
+- prompt.created
+- prompt_version.created
+- prompt_tag.set
+- prompt_tag.deleted
+- prompt_version_tag.set
+- prompt_version_tag.deleted
+- prompt_alias.created
+- prompt_alias.deleted
 """
 
 from typing import Optional
