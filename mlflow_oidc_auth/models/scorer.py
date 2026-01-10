@@ -1,5 +1,7 @@
 """Pydantic models for scorer permission APIs."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -27,3 +29,13 @@ class ScorerPermissionRequest(BaseModel):
     scorer_name: str = Field(..., description="Scorer name")
     username: str = Field(..., description="Target username")
     permission: str = Field(..., description="Permission name (e.g. READ/UPDATE/DELETE/MANAGE)")
+
+
+class ScorerSummary(BaseModel):
+    """Lightweight representation of a scorer entry for listing endpoints."""
+
+    experiment_id: str = Field(..., description="Experiment identifier that owns the scorer")
+    name: str = Field(..., description="Scorer name")
+    version: int = Field(..., description="Scorer version number")
+    creation_time: int = Field(..., description="Creation timestamp in milliseconds since epoch")
+    scorer_id: Optional[str] = Field(None, description="Unique scorer identifier if present")

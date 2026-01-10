@@ -28,7 +28,7 @@ from mlflow_oidc_auth.models.group import (
 from mlflow_oidc_auth.models.permission import PermissionResult, UserPermission
 from mlflow_oidc_auth.models.prompt import PromptPermission, PromptRegexCreate
 from mlflow_oidc_auth.models.registered_model import RegisteredModelPermission, RegisteredModelRegexCreate
-from mlflow_oidc_auth.models.scorer import ScorerPermission, ScorerPermissionRequest, ScorerRegexCreate
+from mlflow_oidc_auth.models.scorer import ScorerPermission, ScorerPermissionRequest, ScorerRegexCreate, ScorerSummary
 from mlflow_oidc_auth.models.responses import (
     CurrentUserProfile,
     ExperimentPermissionRecord,
@@ -85,6 +85,7 @@ __all__ = [
     "ScorerPermission",
     "ScorerRegexCreate",
     "ScorerPermissionRequest",
+    "ScorerSummary",
     "MessageResponse",
     "StatusOnlyResponse",
     "StatusMessageResponse",
