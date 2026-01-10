@@ -27,9 +27,7 @@ class TestScorerPermissionRoutes:
         tracking_store = MagicMock()
         tracking_store.list_scorers.return_value = [scorer_one, scorer_two]
 
-        monkeypatch.setattr(
-            "mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(return_value=tracking_store)
-        )
+        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(return_value=tracking_store))
         monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_username", AsyncMock(return_value="admin@example.com"))
         monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_is_admin", AsyncMock(return_value=True))
 
@@ -61,9 +59,7 @@ class TestScorerPermissionRoutes:
         tracking_store = MagicMock()
         tracking_store.list_scorers.return_value = [scorer_one, scorer_two]
 
-        monkeypatch.setattr(
-            "mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(return_value=tracking_store)
-        )
+        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(return_value=tracking_store))
         monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_username", AsyncMock(return_value="user@example.com"))
         monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_is_admin", AsyncMock(return_value=False))
 
@@ -75,14 +71,10 @@ class TestScorerPermissionRoutes:
         resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/exp-1")
 
         assert resp.status_code == 200
-        assert resp.json() == [
-            {"experiment_id": "exp-1", "name": "alpha", "version": 1, "creation_time": 111, "scorer_id": "s-1"}
-        ]
+        assert resp.json() == [{"experiment_id": "exp-1", "name": "alpha", "version": 1, "creation_time": 111, "scorer_id": "s-1"}]
 
     def test_list_scorers_handles_backend_error(self, authenticated_client, monkeypatch):
-        monkeypatch.setattr(
-            "mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(side_effect=Exception("boom"))
-        )
+        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(side_effect=Exception("boom")))
         monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_username", AsyncMock(return_value="user@example.com"))
         monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_is_admin", AsyncMock(return_value=False))
 

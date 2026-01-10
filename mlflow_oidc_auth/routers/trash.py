@@ -32,7 +32,10 @@ trash_router = APIRouter(
 
 
 EXPERIMENTS = "/experiments"
+RUNS = "/runs"
 CLEANUP = "/cleanup"
+RESTORE_EXPERIMENT = f"{EXPERIMENTS}/{{experiment_id}}/restore"
+RESTORE_RUN = f"{RUNS}/{{run_id}}/restore"
 
 
 @trash_router.get(
@@ -65,8 +68,7 @@ async def list_deleted_experiments(
         403 - If the user does not have admin permissions.
     """
     try:
-        # Fetch all deleted experiments using view_type=2 for DELETED_ONLY
-        deleted_experiments = fetch_all_experiments(view_type=2)  # ViewType.DELETED_ONLY
+        deleted_experiments = fetch_all_experiments(view_type=ViewType.DELETED_ONLY)
 
         # Format the response data
         experiments_list = []
@@ -88,6 +90,100 @@ async def list_deleted_experiments(
     except Exception as e:
         logger.error(f"Error listing deleted experiments for admin '{admin_username}': {str(e)}")
         return JSONResponse(status_code=500, content={"error": "Failed to retrieve deleted experiments"})
+
+
+@trash_router.get(
+    RUNS,
+    summary="List deleted runs",
+    description="Retrieves a list of deleted runs in the MLflow tracking server.",
+)
+async def list_deleted_runs(
+    admin_username: str = Depends(check_admin_permission),
+    experiment_ids: Optional[str] = Query(None, description="Comma-separated list of experiment IDs to scope deleted runs"),
+    older_than: Optional[str] = Query(
+        None,
+        description="Only include runs deleted more than this duration ago (e.g., '1d2h', '7d').",
+    ),
+) -> JSONResponse:
+    """
+    List deleted runs with optional experiment and age filters.
+
+    Parameters
+    ----------
+    admin_username : str
+        The authenticated admin username (injected by dependency).
+    experiment_ids : Optional[str]
+        Comma-separated list of experiment IDs to filter runs by.
+    older_than : Optional[str]
+        Time window threshold; runs deleted more recently than this are excluded when the backend
+        supports `_get_deleted_runs`.
+    """
+    backend_store = _get_store()
+    experiment_filter = _split_csv(experiment_ids)
+
+    try:
+        time_delta = _parse_time_delta(older_than) if older_than else 0
+    except MlflowException as e:
+        logger.error(f"Invalid time format '{older_than}': {str(e)}")
+        return JSONResponse(status_code=400, content={"error": "Invalid time format"})
+
+    try:
+        run_ids: List[str] = []
+
+        if hasattr(backend_store, "_get_deleted_runs"):
+            run_ids = backend_store._get_deleted_runs(older_than=time_delta)
+        else:
+            # Fallback to search without age filtering when the backend lacks _get_deleted_runs
+            target_experiment_ids = experiment_filter if experiment_filter else [exp.experiment_id for exp in fetch_all_experiments(view_type=ViewType.ALL)]
+
+            def fetch_runs(token=None):
+                try:
+                    page = backend_store.search_runs(
+                        experiment_ids=target_experiment_ids,
+                        filter_string="",
+                        run_view_type=ViewType.DELETED_ONLY,
+                        page_token=token,
+                    )
+                    return (page + fetch_runs(page.token)) if page.token else page
+                except Exception:
+                    return []
+
+            run_ids = [run.info.run_id for run in fetch_runs()]
+
+        runs_payload = []
+        for run_id in run_ids:
+            try:
+                run = backend_store.get_run(run_id)
+            except Exception as exc:  # pragma: no cover - defensive log path
+                logger.warning(f"Could not fetch run {run_id}: {str(exc)}")
+                continue
+
+            if run.info.lifecycle_stage != LifecycleStage.DELETED:
+                continue
+            if experiment_filter and run.info.experiment_id not in experiment_filter:
+                continue
+
+            runs_payload.append(
+                {
+                    "run_id": run.info.run_id,
+                    "experiment_id": run.info.experiment_id,
+                    "run_name": run.info.run_name,
+                    "status": run.info.status,
+                    "start_time": run.info.start_time,
+                    "end_time": run.info.end_time,
+                    "lifecycle_stage": run.info.lifecycle_stage,
+                }
+            )
+
+        logger.info(
+            f"Admin user '{admin_username}' listed {len(runs_payload)} deleted runs"
+            f" (experiments filter: {experiment_filter or 'all'}, older_than: {older_than or 'not set'})."
+        )
+        return JSONResponse(content={"deleted_runs": runs_payload})
+
+    except Exception as e:  # pragma: no cover - defensive log path
+        logger.error(f"Error listing deleted runs for admin '{admin_username}': {str(e)}")
+        return JSONResponse(status_code=500, content={"error": "Failed to retrieve deleted runs"})
 
 
 @trash_router.post(
@@ -133,10 +229,8 @@ async def permanently_delete_all_trashed_entities(
         500 - If the cleanup operation fails.
     """
     try:
-        # Get the backend store
         backend_store = _get_store()
 
-        # Check if the store supports hard deletion
         if not hasattr(backend_store, "_hard_delete_run"):
             logger.error("Backend store does not support hard deletion of runs")
             return JSONResponse(status_code=400, content={"error": "Backend store does not support permanent deletion of runs"})
@@ -168,20 +262,15 @@ async def permanently_delete_all_trashed_entities(
             deleted_run_ids_older_than = []
 
         # Determine which run IDs to delete
-        target_run_ids = []
-        if run_ids:
-            target_run_ids = [rid.strip() for rid in run_ids.split(",")]
-        else:
-            target_run_ids = deleted_run_ids_older_than
+        target_run_ids = _split_csv(run_ids) if run_ids else deleted_run_ids_older_than
 
         # Handle experiment deletion
-        target_experiment_ids = []
+        target_experiment_ids: List[str] = []
         time_threshold = get_current_time_millis() - time_delta
 
         if not skip_experiments:
             if experiment_ids:
-                # Validate specified experiment IDs
-                target_experiment_ids = [eid.strip() for eid in experiment_ids.split(",")]
+                target_experiment_ids = _split_csv(experiment_ids)
                 experiments = []
 
                 for exp_id in target_experiment_ids:
@@ -311,6 +400,105 @@ async def permanently_delete_all_trashed_entities(
         return JSONResponse(status_code=500, content={"error": f"Cleanup operation failed"})
 
 
+@trash_router.post(
+    RESTORE_EXPERIMENT,
+    summary="Restore a deleted experiment",
+    description="Restores a soft-deleted experiment and all of its runs.",
+)
+async def restore_experiment(
+    experiment_id: str,
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """
+    Restore a deleted experiment.
+
+    Parameters
+    ----------
+    experiment_id : str
+        The experiment identifier to restore.
+    admin_username : str
+        The authenticated admin username (injected by dependency).
+    """
+    backend_store = _get_store()
+
+    try:
+        experiment = backend_store.get_experiment(experiment_id)
+    except Exception as exc:
+        logger.error(f"Experiment {experiment_id} not found for restore: {str(exc)}")
+        return JSONResponse(status_code=404, content={"error": f"Experiment {experiment_id} not found"})
+
+    if experiment.lifecycle_stage != LifecycleStage.DELETED:
+        return JSONResponse(status_code=400, content={"error": "Experiment is not deleted"})
+
+    try:
+        backend_store.restore_experiment(experiment_id)
+        restored = backend_store.get_experiment(experiment_id)
+        logger.info(f"Admin user '{admin_username}' restored experiment {experiment_id}")
+        return JSONResponse(
+            content={
+                "experiment": {
+                    "experiment_id": restored.experiment_id,
+                    "name": restored.name,
+                    "lifecycle_stage": restored.lifecycle_stage,
+                    "last_update_time": restored.last_update_time,
+                }
+            }
+        )
+    except Exception as exc:  # pragma: no cover - defensive log path
+        logger.error(f"Error restoring experiment {experiment_id}: {str(exc)}")
+        return JSONResponse(status_code=500, content={"error": "Failed to restore experiment"})
+
+
+@trash_router.post(
+    RESTORE_RUN,
+    summary="Restore a deleted run",
+    description="Restores a soft-deleted run.",
+)
+async def restore_run(
+    run_id: str,
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """
+    Restore a deleted run.
+
+    Parameters
+    ----------
+    run_id : str
+        Identifier of the run to restore.
+    admin_username : str
+        The authenticated admin username (injected by dependency).
+    """
+    backend_store = _get_store()
+
+    try:
+        run = backend_store.get_run(run_id)
+    except Exception as exc:
+        logger.error(f"Run {run_id} not found for restore: {str(exc)}")
+        return JSONResponse(status_code=404, content={"error": f"Run {run_id} not found"})
+
+    if run.info.lifecycle_stage != LifecycleStage.DELETED:
+        return JSONResponse(status_code=400, content={"error": "Run is not deleted"})
+
+    try:
+        backend_store.restore_run(run_id)
+        restored = backend_store.get_run(run_id)
+        logger.info(f"Admin user '{admin_username}' restored run {run_id}")
+        return JSONResponse(
+            content={
+                "run": {
+                    "run_id": restored.info.run_id,
+                    "experiment_id": restored.info.experiment_id,
+                    "run_name": restored.info.run_name,
+                    "status": restored.info.status,
+                    "lifecycle_stage": restored.info.lifecycle_stage,
+                }
+            }
+        )
+    except Exception as exc:  # pragma: no cover - defensive log path
+        logger.error(f"Error restoring run {run_id}: {str(exc)}")
+        return JSONResponse(status_code=500, content={"error": "Failed to restore run"})
+
+
 def _parse_time_delta(older_than: str) -> int:
     """
     Parse time delta string (e.g., '1d2h3m4s') and return milliseconds.
@@ -340,3 +528,10 @@ def _parse_time_delta(older_than: str) -> int:
     time_params = {name: float(param) for name, param in parts.groupdict().items() if param}
     time_delta = int(timedelta(**time_params).total_seconds() * 1000)
     return time_delta
+
+
+def _split_csv(raw: Optional[str]) -> List[str]:
+    """Split a comma-separated query parameter into trimmed, non-empty values."""
+    if not raw:
+        return []
+    return [value.strip() for value in raw.split(",") if value.strip()]

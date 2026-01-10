@@ -138,4 +138,3 @@ async def get_scorer_groups(
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Failed to list scorer groups for {experiment_id}/{scorer_name}: {exc}")
         raise HTTPException(status_code=500, detail="Failed to retrieve scorer group permissions") from exc
-    
