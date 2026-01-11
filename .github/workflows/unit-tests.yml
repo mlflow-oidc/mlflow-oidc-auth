@@ -15,25 +15,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Set up Node.js
-        uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
+        uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: 24
       - name: Install dependencies
         run: |
           yarn install
-        working-directory: web-ui
+        working-directory: web-react
       - name: Run tests
         run: |
-          yarn test --watch=false --ci --passWithNoTests --coverage
-        working-directory: web-ui
+          yarn test:coverage
+        working-directory: web-react
       - name: Set up Python
-        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
+        uses: actions/setup-python@v6
         with:
-          python-version: 3.11
+          python-version: 3.12
       - name: Run tests
         run: |
           python -m pip install --upgrade pip
@@ -43,6 +43,6 @@ jobs:
         run: sed -i "s@<source>/home/runner/work/mlflow-oidc-auth/mlflow-oidc-auth</source>@<source>/github/workspace</source>@g" /home/runner/work/mlflow-oidc-auth/mlflow-oidc-auth/coverage.xml
       - name: SonarCloud Scan
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: SonarSource/sonarcloud-github-action@e44258b109568baa0df60ed515909fc6c72cba92 # v2.3.0
+        uses: SonarSource/sonarqube-scan-action@v7.0.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

@@ -180,7 +180,7 @@ node_modules/
 mlflow_oidc_auth/ui
 pytest-coverage.txt
 
-web-ui/coverage/
+web-react/coverage/
 scripts/postgresql/postgres_data/
 scripts/mysql/mysql_data
 

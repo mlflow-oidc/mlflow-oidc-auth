@@ -41,8 +41,8 @@ check_yarn_and_node_version() {
 }
 
 ui_preconfigure() {
-  if [ ! -d "web-ui/node_modules" ]; then
-    pushd web-ui
+  if [ ! -d "web-react/node_modules" ]; then
+    pushd web-react
     yarn install
     popd
   fi
@@ -68,6 +68,6 @@ mlflow server --uvicorn-opts "--reload --log-level debug" --app-name oidc-auth -
 mlflow=$!
 wait_server_ready localhost:8080/
 ui_preconfigure
-yarn --cwd web-ui watch
+yarn --cwd web-react watch
 
 trap cleanup SIGINT
