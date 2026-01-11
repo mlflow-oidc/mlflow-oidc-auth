@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
     "preview": "vite preview",
     "release": "tsc -b && vite build",
@@ -22,28 +24,30 @@
   "devDependencies": {
     "@eslint/js": "^9.36.0",
     "@tailwindcss/vite": "^4.1.13",
+    "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
     "@types/jsdom": "^27.0.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^5.0.4",
     "@vitejs/plugin-react-swc": "^4.1.0",
+    "@vitest/coverage-v8": "4.0.16",
     "eslint": "^9.36.0",
     "eslint-plugin-react-dom": "^2.0.4",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.20",
     "eslint-plugin-react-x": "^2.0.4",
-    "globals": "^16.4.0",
+    "globals": "^17.0.0",
     "jsdom": "^27.0.0",
     "react-router": "^7.9.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.44.0",
-    "vite": "npm:rolldown-vite@7.1.12",
-    "vitest": "^3.2.4"
+    "vite": "npm:rolldown-vite@7.3.1",
+    "vitest": "^4.0.16"
   },
   "resolutions": {
-    "vite": "npm:rolldown-vite@7.1.12"
+    "vite": "npm:rolldown-vite@7.3.1"
   }
 }
