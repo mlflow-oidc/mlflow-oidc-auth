@@ -5,52 +5,33 @@ description: Python coding conventions and guidelines
 
 # Python Coding Conventions
 
-## Python Instructions
+## Functions and Types
 
-- Write clear and concise comments for each function.
-- Ensure functions have descriptive names and include type hints.
-- Provide docstrings following PEP 257 conventions.
-- Use the `typing` module for type annotations (e.g., `List[str]`, `Dict[str, int]`).
-- Break down complex functions into smaller, more manageable functions.
+- Require type hints on all function parameters and return values; use `typing` and `collections.abc` abstractions instead of concrete containers where possible.
+- Keep functions small and single-purpose; extract helpers when a block becomes hard to scan.
+- Provide PEP 257 docstrings with clear Parameters/Returns sections when intent is not obvious from the signature.
+- Favor pure functions where practical; minimize hidden mutation and global state.
 
-## General Instructions
+## Comments and Documentation
 
-- Always prioritize readability and clarity.
-- For algorithm-related code, include explanations of the approach used.
-- Write code with good maintainability practices, including comments on why certain design decisions were made.
-- Handle edge cases and write clear exception handling.
-- For libraries or external dependencies, mention their usage and purpose in comments.
-- Use consistent naming conventions and follow language-specific best practices.
-- Write concise, efficient, and idiomatic code that is also easily understandable.
+- Comment for intent and edge cases, not for restating code; briefly explain non-trivial algorithms or design choices.
+- Document assumptions and expected invariants near the logic that depends on them.
+- When using external libraries, note why the library is needed or any important configuration choices.
 
-## Code Style and Formatting
+## Style and Formatting
 
-- Follow the **PEP 8** style guide for Python.
-- Maintain proper indentation (use 4 spaces for each level of indentation).
-- Ensure lines do not exceed 160 characters.
-- Place function and class docstrings immediately after the `def` or `class` keyword.
-- Use blank lines to separate functions, classes, and code blocks where appropriate.
+- Follow PEP 8 and Black with the project limit of 160 characters; use 4 spaces for indentation.
+- Place docstrings immediately after `def`/`class`; keep imports grouped by stdlib/third-party/local modules.
+- Prefer f-strings for string formatting; avoid implicit string concatenation across lines.
 
-## Edge Cases and Testing
+## Error Handling
 
-- Always include test cases for critical paths of the application.
-- Account for common edge cases like empty inputs, invalid data types, and large datasets.
-- Include comments for edge cases and the expected behavior in those cases.
-- Write unit tests for functions and document them with docstrings explaining the test cases.
+- Validate inputs early and raise specific exceptions with actionable messages; avoid silent failures.
+- Log or attach context when catching exceptions, then re-raise or translate to a clearer error.
+- Do not swallow exceptions unless there is a deliberate fallback path that is documented.
 
-## Example of Proper Documentation
+## Testing and Edge Cases
 
-```python
-def calculate_area(radius: float) -> float:
-    """
-    Calculate the area of a circle given the radius.
-
-    Parameters:
-    radius (float): The radius of the circle.
-
-    Returns:
-    float: The area of the circle, calculated as π * radius^2.
-    """
-    import math
-    return math.pi * radius ** 2
-```
+- Add or update unit tests for new logic and critical paths; keep tests deterministic and isolated.
+- Cover edge cases such as empty inputs, invalid types, boundary values, and large datasets.
+- Use descriptive test names and docstrings to convey the scenario and expectation.
