@@ -44,7 +44,7 @@ def _build_ui_url(request: Request, path: str, query_params: Optional[dict] = No
         Complete URL string for the UI route
     """
     base_url = str(request.base_url).rstrip("/")
-    url = f"{base_url}{UI_ROUTER_PREFIX}/#{path}"
+    url = f"{base_url}{UI_ROUTER_PREFIX}{path}"
 
     if query_params:
         query_string = urlencode(query_params, doseq=True)
@@ -207,7 +207,7 @@ async def callback(request: Request):
             default_redirect = session.pop("redirect_after_login", None)
             if not default_redirect:
                 # Default to UI home page using the helper function
-                default_redirect = _build_ui_url(request, "/home")
+                default_redirect = _build_ui_url(request, "/user")
 
             return RedirectResponse(url=default_redirect, status_code=302)
         else:

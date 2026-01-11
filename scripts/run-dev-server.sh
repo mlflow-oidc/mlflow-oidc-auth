@@ -66,7 +66,7 @@ python_preconfigure
 source venv/bin/activate
 mlflow server --uvicorn-opts "--reload --log-level debug" --app-name oidc-auth --host 0.0.0.0 --port 8080 --backend-store-uri=sqlite:///mlflow.db &
 mlflow=$!
-wait_server_ready localhost:8080/health
+wait_server_ready localhost:8080/
 ui_preconfigure
 yarn --cwd web-ui watch
 

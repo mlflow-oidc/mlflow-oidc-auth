@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-ui-bg: rgb(255, 255, 255);
+  --color-ui-text: rgb(17, 23, 28);
+
+  /* Header/Sidebar BG */
+  --color-ui-secondary-bg: rgb(246, 247, 249);
+
+  --color-logo: #2374bb;
+
+  /* Modals */
+  --color-ui-modal-bg: rgb(255, 255, 255);
+
+  /* Inputs */
+  --color-ui-input-bg: rgb(255, 255, 255);
+  --color-ui-border: rgb(192, 205, 216);
+
+  /* Buttons */
+  --color-btn-primary: rgb(34, 114, 180);
+  --color-btn-primary-hover: rgb(14, 83, 139);
+  --color-btn-primary-text: rgb(255, 255, 255);
+
+  --color-btn-secondary: rgba(34, 114, 180, 0);
+  --color-btn-secondary-hover: rgba(34, 114, 180, 0.08);
+  --color-btn-secondary-active: rgba(34, 114, 180, 0.16);
+  --color-btn-secondary-border: rgb(192, 205, 216);
+  --color-btn-secondary-border-hover: rgb(34, 114, 180);
+  --color-btn-secondary-border-active: rgb(4, 53, 93);
+  --color-btn-secondary-text: rgb(17, 23, 28);
+  --color-btn-secondary-text-hover: rgb(14, 83, 139);
+  --color-btn-secondary-text-active: rgb(4, 53, 93);
+
+  --color-btn-danger: rgb(220, 38, 38);
+  --color-btn-danger-hover: rgb(185, 28, 28);
+  --color-btn-danger-text: rgb(255, 255, 255);
+
+  --color-status-danger: rgb(220, 38, 38);
+
+  /* Icon/Menu */
+  --color-text-primary: rgb(95, 114, 129);
+  --color-text-primary-hover: rgb(14, 83, 139);
+  --color-bg-primary-hover: rgba(34, 114, 180, 0.08);
+
+  /* Table */
+  --color-table-row-hover: rgba(68, 83, 95, 0.04);
+
+  /* Dark Mode */
+  --color-ui-bg-dark: rgb(17, 23, 28);
+  --color-ui-text-dark: rgb(232, 236, 240);
+  --color-ui-secondary-bg-dark: rgb(31, 39, 45);
+  --color-ui-modal-bg-dark: rgb(31, 39, 45);
+  --color-ui-input-bg-dark: rgb(17, 23, 28);
+  --color-ui-border-dark: rgb(55, 68, 79);
+
+  /* Dark Mode Buttons */
+  --color-btn-primary-dark: rgb(66, 153, 224);
+  --color-btn-primary-hover-dark: rgb(138, 202, 255);
+  --color-btn-primary-text-dark: rgb(17, 23, 28);
+
+  --color-btn-secondary-dark: rgba(138, 202, 255, 0);
+  --color-btn-secondary-hover-dark: rgba(138, 202, 255, 0.08);
+  --color-btn-secondary-active-dark: rgba(138, 202, 255, 0.16);
+  --color-btn-secondary-border-dark: rgb(55, 68, 79);
+  --color-btn-secondary-border-hover-dark: rgb(138, 202, 255);
+  --color-btn-secondary-border-active-dark: rgb(186, 225, 252);
+  --color-btn-secondary-text-dark: rgb(232, 236, 240);
+  --color-btn-secondary-text-hover-dark: rgb(138, 202, 255);
+  --color-btn-secondary-text-active-dark: rgb(186, 225, 252);
+
+  --color-btn-danger-dark: rgb(239, 68, 68);
+  --color-btn-danger-hover-dark: rgb(248, 113, 113);
+  --color-btn-danger-text-dark: rgb(255, 255, 255);
+
+  --color-status-danger-dark: rgb(248, 113, 113);
+
+  --color-text-primary-dark: rgb(146, 164, 179);
+  --color-text-primary-hover-dark: rgb(138, 202, 255);
+  --color-bg-primary-hover-dark: rgba(138, 202, 255, 0.08);
+
+  --color-table-row-hover-dark: rgba(189, 205, 219, 0.04);
+}
+
+@keyframes fastSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-fast-spin {
+  animation: fastSpin 0.7s linear infinite;
+}
