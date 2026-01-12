@@ -192,7 +192,7 @@ def create_service_account(
     display_name: str,
     cookies: httpx.Cookies,
     base_url: str,
-    users_api: str = "ajax-api/2.0/mlflow/users",
+    users_api: str = "api/2.0/mlflow/users",
 ) -> tuple[bool, str]:
     """Create a service account via the admin session cookies."""
 
@@ -213,7 +213,7 @@ def create_access_token_for_user(
     username: str,
     cookies: httpx.Cookies,
     base_url: str,
-    access_token_api: str = "ajax-api/2.0/mlflow/users/access-token",
+    access_token_api: str = "api/2.0/mlflow/users/access-token",
 ) -> tuple[bool, str]:
     """Request an access token for the target user using admin cookies."""
 
@@ -251,15 +251,21 @@ def seed_scorers_with_tracking_token(
     token: str,
     base_url: str,
     response_text: str = "Hello from integration",
+    username: str | None = None,
 ) -> tuple[str, Dict[str, float]]:
-    """Seed scorer metrics by running an MLflow job authenticated via access token."""
+    """Seed scorer metrics by running an MLflow job authenticated via access token.
 
+    Uses Basic auth: username + token as password.
+    """
     env_backup = {
-        "MLFLOW_TRACKING_TOKEN": os.environ.get("MLFLOW_TRACKING_TOKEN"),
+        "MLFLOW_TRACKING_USERNAME": os.environ.get("MLFLOW_TRACKING_USERNAME"),
+        "MLFLOW_TRACKING_PASSWORD": os.environ.get("MLFLOW_TRACKING_PASSWORD"),
         "MLFLOW_TRACKING_URI": os.environ.get("MLFLOW_TRACKING_URI"),
     }
 
-    os.environ["MLFLOW_TRACKING_TOKEN"] = token
+    if username:
+        os.environ["MLFLOW_TRACKING_USERNAME"] = username
+        os.environ["MLFLOW_TRACKING_PASSWORD"] = token
     os.environ["MLFLOW_TRACKING_URI"] = base_url.rstrip("/")
 
     try:
@@ -278,10 +284,15 @@ def seed_scorers_with_tracking_token(
         metrics = client.get_run(run_id).data.metrics
         return run_id, metrics
     finally:
-        if env_backup["MLFLOW_TRACKING_TOKEN"] is not None:
-            os.environ["MLFLOW_TRACKING_TOKEN"] = env_backup["MLFLOW_TRACKING_TOKEN"]
+        if env_backup["MLFLOW_TRACKING_USERNAME"] is not None:
+            os.environ["MLFLOW_TRACKING_USERNAME"] = env_backup["MLFLOW_TRACKING_USERNAME"]
         else:
-            os.environ.pop("MLFLOW_TRACKING_TOKEN", None)
+            os.environ.pop("MLFLOW_TRACKING_USERNAME", None)
+
+        if env_backup["MLFLOW_TRACKING_PASSWORD"] is not None:
+            os.environ["MLFLOW_TRACKING_PASSWORD"] = env_backup["MLFLOW_TRACKING_PASSWORD"]
+        else:
+            os.environ.pop("MLFLOW_TRACKING_PASSWORD", None)
 
         if env_backup["MLFLOW_TRACKING_URI"] is not None:
             os.environ["MLFLOW_TRACKING_URI"] = env_backup["MLFLOW_TRACKING_URI"]
@@ -290,22 +301,73 @@ def seed_scorers_with_tracking_token(
 
 
 def set_experiment_permission(
-    experiment_name: str,
+    experiment_id: str,
     user_email: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+) -> tuple[bool, str]:
+    """Set user-level permission for an experiment.
 
-) -> bool:
-    """Set permissions for experiments.
-    return True if permissions were set, they already exist and user able to change it.
-    return False if permissions were not set, user is not able to change it or some error occurred.
+    Returns (success, message). Uses PATCH to update or POST to create.
     """
-    
-    return False
+    api = f"api/2.0/mlflow/permissions/users/{quote(user_email)}/experiments/{quote(experiment_id)}"
+    full_url = urljoin(url, api)
 
-def set_model_permission():
-    pass
+    # Try PATCH first (update existing)
+    resp = httpx.patch(url=full_url, json={"permission": permission}, cookies=cookies, timeout=10.0)
+    if resp.status_code == 200:
+        return True, "updated"
 
-def set_prompt_permission():
-    pass
+    # Try POST (create new)
+    if resp.status_code == 404:
+        resp = httpx.post(url=full_url, json={"permission": permission}, cookies=cookies, timeout=10.0)
+        if resp.status_code in (200, 201):
+            return True, "created"
+
+    return False, f"{resp.status_code}: {resp.text}"
+
+
+def set_model_permission(
+    model_name: str,
+    user_email: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+) -> tuple[bool, str]:
+    """Set user-level permission for a registered model.
+
+    Returns (success, message). Uses PATCH to update or POST to create.
+    """
+    api = f"api/2.0/mlflow/permissions/users/{quote(user_email)}/registered-models/{quote(model_name)}"
+    full_url = urljoin(url, api)
+
+    # Try PATCH first (update existing)
+    resp = httpx.patch(url=full_url, json={"permission": permission}, cookies=cookies, timeout=10.0)
+    if resp.status_code == 200:
+        return True, "updated"
+
+    # Try POST (create new)
+    if resp.status_code == 404:
+        resp = httpx.post(url=full_url, json={"permission": permission}, cookies=cookies, timeout=10.0)
+        if resp.status_code in (200, 201):
+            return True, "created"
+
+    return False, f"{resp.status_code}: {resp.text}"
+
+
+def set_prompt_permission(
+    prompt_name: str,
+    user_email: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+) -> tuple[bool, str]:
+    """Set user-level permission for a prompt.
+
+    Returns (success, message). Prompts use the same registered-models endpoint.
+    """
+    return set_model_permission(prompt_name, user_email, permission, cookies, url)
 
 
 def get_experiment_id(experiment_name: str, cookies: httpx.Cookies, url: str = "http://localhost:8080/", api: str = "api/2.0/mlflow/experiments") -> str:
@@ -325,34 +387,41 @@ def set_group_experiment_permission(
     permission: str,
     cookies: httpx.Cookies,
     url: str = "http://localhost:8080/",
-    api: str = "api/2.0/mlflow/groups/{group_name}/experiments/",
 ) -> tuple[bool, str]:
     """Set group-level permission for an experiment.
 
     Returns (success, message). Success is False when the experiment is not found or the
     endpoint is unavailable; callers can choose to skip on 404s.
+    
+    Uses the new RESTful API:
+    - POST api/2.0/mlflow/permissions/groups/{group_name}/experiments/{experiment_id} to create
+    - DELETE api/2.0/mlflow/permissions/groups/{group_name}/experiments/{experiment_id} to delete
     """
 
     experiment_id = get_experiment_id(experiment_name, cookies, url=url)
     if not experiment_id:
         return False, f"Experiment {experiment_name} not found"
 
-    api_url = urljoin(url, api.format(group_name=group_name))
+    # New RESTful API path
+    api_url = urljoin(url, f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/experiments/{quote(experiment_id)}")
 
-    delete_response = httpx.post(
-        url=api_url + "delete",
-        json={"experiment_id": experiment_id},
+    # Delete existing permission first (ignore errors - permission may not exist)
+    # Note: Server returns 500 when permission doesn't exist, not 404
+    httpx.request(
+        method="DELETE",
+        url=api_url,
         cookies=cookies,
+        timeout=10.0,
     )
-    if delete_response.status_code not in (200, 404):
-        return False, f"Delete failed ({delete_response.status_code}): {delete_response.text}"
 
+    # Create new permission with POST
     set_response = httpx.post(
-        url=api_url + "create",
-        json={"experiment_id": experiment_id, "permission": permission},
+        url=api_url,
+        json={"permission": permission},
         cookies=cookies,
+        timeout=10.0,
     )
-    if set_response.status_code == 200:
+    if set_response.status_code in (200, 201):
         return True, "ok"
 
     return False, f"Set failed ({set_response.status_code}): {set_response.text}"
@@ -373,29 +442,188 @@ def set_group_experiment_permission(
     # ]
     # pass
 
-def set_group_model_permission():
-    pass
 
-def set_group_prompt_permission():
-    pass
+def set_group_model_permission(
+    model_name: str,
+    group_name: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+) -> tuple[bool, str]:
+    """Set group-level permission for a registered model.
 
-def set_regexp_experiment_permission():
-    pass
+    Returns (success, message).
+    
+    Uses the new RESTful API:
+    - POST api/2.0/mlflow/permissions/groups/{group_name}/registered-models/{name} to create
+    - DELETE api/2.0/mlflow/permissions/groups/{group_name}/registered-models/{name} to delete
+    """
+    # New RESTful API path
+    api_url = urljoin(url, f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/registered-models/{quote(model_name)}")
 
-def set_regexp_model_permission():
-    pass
+    # Delete existing permission first (ignore errors - permission may not exist)
+    # Note: Server returns 500 when permission doesn't exist, not 404
+    httpx.request(
+        method="DELETE",
+        url=api_url,
+        cookies=cookies,
+        timeout=10.0,
+    )
 
-def set_regexp_prompt_permission():
-    pass
+    # Create new permission with POST
+    set_response = httpx.post(
+        url=api_url,
+        json={"permission": permission},
+        cookies=cookies,
+        timeout=10.0,
+    )
+    if set_response.status_code in (200, 201):
+        return True, "ok"
 
-def set_regexp_group_experiment_permission():
-    pass
+    return False, f"Set failed ({set_response.status_code}): {set_response.text}"
 
-def set_regexp_group_model_permission():
-    pass
 
-def set_regexp_group_prompt_permission():
-    pass
+def set_group_prompt_permission(
+    prompt_name: str,
+    group_name: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+) -> tuple[bool, str]:
+    """Set group-level permission for a prompt.
+
+    Returns (success, message). Prompts use registered-models endpoint.
+    """
+    return set_group_model_permission(prompt_name, group_name, permission, cookies, url)
+
+
+def set_regexp_experiment_permission(
+    pattern: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+    api: str = "api/2.0/mlflow/permissions/experiments/regex",
+) -> tuple[bool, str]:
+    """Set regex-based permission for experiments.
+
+    Returns (success, message).
+    """
+    full_url = urljoin(url, api)
+    resp = httpx.post(
+        url=full_url,
+        json={"regex": pattern, "permission": permission},
+        cookies=cookies,
+        timeout=10.0,
+    )
+    if resp.status_code in (200, 201):
+        return True, "created"
+    if resp.status_code == 409:
+        return True, "already exists"
+    return False, f"{resp.status_code}: {resp.text}"
+
+
+def set_regexp_model_permission(
+    pattern: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+    api: str = "api/2.0/mlflow/permissions/registered-models/regex",
+) -> tuple[bool, str]:
+    """Set regex-based permission for registered models.
+
+    Returns (success, message).
+    """
+    full_url = urljoin(url, api)
+    resp = httpx.post(
+        url=full_url,
+        json={"regex": pattern, "permission": permission},
+        cookies=cookies,
+        timeout=10.0,
+    )
+    if resp.status_code in (200, 201):
+        return True, "created"
+    if resp.status_code == 409:
+        return True, "already exists"
+    return False, f"{resp.status_code}: {resp.text}"
+
+
+def set_regexp_prompt_permission(
+    pattern: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+) -> tuple[bool, str]:
+    """Set regex-based permission for prompts.
+
+    Returns (success, message). Uses registered-models regex endpoint.
+    """
+    return set_regexp_model_permission(pattern, permission, cookies, url)
+
+
+def set_regexp_group_experiment_permission(
+    pattern: str,
+    group_name: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+    api: str = "api/2.0/mlflow/permissions/groups/{group_name}/experiments/regex",
+) -> tuple[bool, str]:
+    """Set group-regex permission for experiments.
+
+    Returns (success, message).
+    """
+    full_url = urljoin(url, api.format(group_name=quote(group_name)))
+    resp = httpx.post(
+        url=full_url,
+        json={"regex": pattern, "permission": permission},
+        cookies=cookies,
+        timeout=10.0,
+    )
+    if resp.status_code in (200, 201):
+        return True, "created"
+    if resp.status_code == 409:
+        return True, "already exists"
+    return False, f"{resp.status_code}: {resp.text}"
+
+
+def set_regexp_group_model_permission(
+    pattern: str,
+    group_name: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+    api: str = "api/2.0/mlflow/permissions/groups/{group_name}/registered-models/regex",
+) -> tuple[bool, str]:
+    """Set group-regex permission for registered models.
+
+    Returns (success, message).
+    """
+    full_url = urljoin(url, api.format(group_name=quote(group_name)))
+    resp = httpx.post(
+        url=full_url,
+        json={"regex": pattern, "permission": permission},
+        cookies=cookies,
+        timeout=10.0,
+    )
+    if resp.status_code in (200, 201):
+        return True, "created"
+    if resp.status_code == 409:
+        return True, "already exists"
+    return False, f"{resp.status_code}: {resp.text}"
+
+
+def set_regexp_group_prompt_permission(
+    pattern: str,
+    group_name: str,
+    permission: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+) -> tuple[bool, str]:
+    """Set group-regex permission for prompts.
+
+    Returns (success, message). Uses registered-models regex endpoint.
+    """
+    return set_regexp_group_model_permission(pattern, group_name, permission, cookies, url)
 
 
 def user_login(page: Page, username: str, url: str = "http://localhost:8080/") -> httpx.Cookies:
