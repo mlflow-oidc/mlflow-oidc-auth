@@ -5,9 +5,11 @@ This router handles OIDC authentication flows including login, logout, and callb
 """
 
 import secrets
-from typing import Optional
+from collections.abc import Awaitable
+from typing import Any, Optional
 from urllib.parse import urlencode
 
+from authlib.jose.errors import BadSignatureError
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -29,6 +31,65 @@ CALLBACK = "/callback"
 LOGIN = "/login"
 LOGOUT = "/logout"
 AUTH_STATUS = "/auth/status"
+
+
+async def _maybe_await(result: Any) -> Any:
+    """Await the result when it's awaitable; otherwise return it directly."""
+
+    if isinstance(result, Awaitable) or hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def _refresh_oidc_jwks() -> None:
+    """Force a JWKS refresh on the OAuth client to handle key rotation."""
+
+    refresh_fn = getattr(oauth.oidc, "fetch_jwk_set", None)
+    metadata_refresh_fn = getattr(oauth.oidc, "load_server_metadata", None)
+
+    try:
+        if refresh_fn:
+            await _maybe_await(refresh_fn(force=True))  # type: ignore[call-arg]
+            return
+        if metadata_refresh_fn:
+            await _maybe_await(metadata_refresh_fn(force=True))  # type: ignore[call-arg]
+    except Exception as exc:  # pragma: no cover - defensive logging path
+        logger.warning(f"Failed to refresh OIDC JWKS after bad signature: {exc}")
+
+
+async def _call_authorize_access_token(request: Request) -> Optional[dict[str, Any]]:
+    """Invoke authorize_access_token while supporting sync or async implementations."""
+
+    token_call = oauth.oidc.authorize_access_token(request)  # type: ignore
+    return await _maybe_await(token_call)
+
+
+async def _authorize_access_token_with_retry(request: Request) -> Optional[dict[str, Any]]:
+    """Exchange code for tokens, retrying once after a JWKS refresh on any validation failure."""
+
+    last_error: Optional[Exception] = None
+
+    for attempt in range(2):
+        try:
+            return await _call_authorize_access_token(request)
+        except BadSignatureError as exc:
+            last_error = exc
+            logger.warning("OIDC token exchange attempt %d failed with bad signature: %s", attempt + 1, exc)
+            if attempt == 0:
+                await _refresh_oidc_jwks()
+                continue
+            break
+        except Exception as exc:
+            last_error = exc
+            logger.warning("OIDC token exchange attempt %d failed: %s", attempt + 1, exc)
+            if attempt == 0:
+                await _refresh_oidc_jwks()
+                continue
+            break
+
+    if last_error:
+        raise last_error
+    return None
 
 
 def _build_ui_url(request: Request, path: str, query_params: Optional[dict] = None) -> str:
@@ -303,17 +364,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             errors.append("OIDC configuration error: OAuth client not properly initialized.")
             return None, errors
 
-        # Support both async and sync authorize_access_token implementations/mocks
-        token_call = oauth.oidc.authorize_access_token(request)  # type: ignore
-        try:
-            # If the call returns a coroutine, await it
-            if hasattr(token_call, "__await__"):
-                token_response = await token_call
-            else:
-                token_response = token_call
-        except TypeError:
-            # Fallback: try awaiting anyway
-            token_response = await token_call
+        token_response = await _authorize_access_token_with_retry(request)
 
         if not token_response:
             errors.append("Failed to exchange authorization code")
@@ -376,6 +427,6 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         return email.lower(), []
 
     except Exception as e:
-        logger.error(f"OIDC token exchange error: {str(e)}")
+        logger.error("OIDC token exchange error (%s.%s): %s", type(e).__module__, type(e).__name__, str(e))
         errors.append("Failed to process authentication response")
         return None, errors

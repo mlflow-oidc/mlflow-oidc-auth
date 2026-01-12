@@ -6,9 +6,10 @@ and auth status with various scenarios including success, failure, and edge case
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
+from authlib.jose.errors import BadSignatureError
 
 from mlflow_oidc_auth.routers.auth import (
     auth_router,
@@ -111,7 +112,7 @@ class TestLoginEndpoint:
             await login(request)
 
         assert exc_info.value.status_code == 500
-        assert "Failed to initiate OIDC authentication" in str(exc_info.value.detail)
+        assert "OIDC authentication not available" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     async def test_login_exception_handling(self, mock_request_with_session, mock_oauth):
@@ -124,7 +125,7 @@ class TestLoginEndpoint:
             await login(request)
 
         assert exc_info.value.status_code == 500
-        assert "Failed to initiate OIDC authentication" in str(exc_info.value.detail)
+        assert "Failed to initiate OIDC login" in str(exc_info.value.detail)
 
 
 class TestLogoutEndpoint:
@@ -341,6 +342,33 @@ class TestProcessOIDCCallbackFastAPI:
             mock_user_management["create_user"].assert_called_once()
             mock_user_management["populate_groups"].assert_called_once()
             mock_user_management["update_user"].assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_process_callback_refreshes_jwks_on_bad_signature(self, mock_request_with_session, mock_oauth, mock_config, mock_user_management, caplog):
+        """Retry token exchange after JWKS refresh when the provider rotates signing keys."""
+
+        caplog.set_level("DEBUG", logger="uvicorn")
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+
+        mock_oauth.oidc.authorize_access_token.side_effect = [
+            BadSignatureError("bad signature"),
+            {
+                "access_token": "token",
+                "id_token": "id_token",
+                "userinfo": {"email": "test@example.com", "name": "Test User", "groups": ["test-group"]},
+            },
+        ]
+        mock_oauth.oidc.fetch_jwk_set = AsyncMock()
+
+        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == [], f"{caplog.text} call_count={mock_oauth.oidc.authorize_access_token.call_count}"
+        assert email == "test@example.com"
+        assert "OIDC token exchange error" not in caplog.text
+        mock_oauth.oidc.fetch_jwk_set.assert_awaited_once_with(force=True)
+        assert mock_oauth.oidc.authorize_access_token.call_count == 2
 
     @pytest.mark.asyncio
     async def test_process_callback_oidc_error(self, mock_request_with_session):

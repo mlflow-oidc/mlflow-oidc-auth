@@ -159,6 +159,7 @@ def mock_oauth():
             "userinfo": {"email": "test@example.com", "name": "Test User", "groups": ["test-group"]},
         }
     )
+    oidc_mock.fetch_jwk_set = AsyncMock(return_value={"keys": []})
     oidc_mock.server_metadata = {"end_session_endpoint": "https://provider.com/logout"}
 
     oauth_mock.oidc = oidc_mock
