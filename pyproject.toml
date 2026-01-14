@@ -90,9 +90,7 @@ oidc-auth = "mlflow_oidc_auth.app:app"
 mlflow_oidc_auth = [
   "db/migrations/alembic.ini",
   "hack/menu.html",
-  "static/*",
-  "templates/*",
-  "ui/*",
+  "ui/**/*",
 ]
 
 [tool.setuptools.packages.find]
