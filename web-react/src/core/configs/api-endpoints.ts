@@ -9,6 +9,11 @@ export const STATIC_API_ENDPOINTS = {
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
   USERS_RESOURCE: "/api/2.0/mlflow/users",
+
+  // Trash management
+  TRASH_EXPERIMENTS: "/oidc/trash/experiments",
+  TRASH_RUNS: "/oidc/trash/runs",
+  TRASH_CLEANUP: "/oidc/trash/cleanup",
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {
@@ -97,6 +102,11 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(
       String(promptName)
     )}/groups`,
+
+  // Trash management
+  RESTORE_EXPERIMENT: (experimentId: string) =>
+    `/oidc/trash/experiments/${experimentId}/restore`,
+  RESTORE_RUN: (runId: string) => `/oidc/trash/runs/${runId}/restore`, 
 
   // Group user permissions
   // GROUP_MEMBERS: (groupName: string) =>
