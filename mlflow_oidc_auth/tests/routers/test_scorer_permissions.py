@@ -7,7 +7,6 @@ from mlflow_oidc_auth.entities import ScorerPermission
 
 @pytest.mark.usefixtures("authenticated_session")
 class TestScorerPermissionRoutes:
-
     def test_list_scorers_admin_sees_all(self, authenticated_client, monkeypatch):
         scorer_one = MagicMock(
             experiment_id="exp-1",

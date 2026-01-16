@@ -307,7 +307,9 @@ class TestVaultProviderAvailability(unittest.TestCase):
         """HashiCorp Vault requires authentication credentials."""
         from mlflow_oidc_auth.config_providers.vault_provider import HashiCorpVaultProvider
 
-        with patch.dict(os.environ, {"CONFIG_VAULT_ENABLED": "true", "CONFIG_VAULT_TOKEN": "", "CONFIG_VAULT_ROLE_ID": "", "CONFIG_VAULT_SECRET_ID": ""}, clear=False):
+        with patch.dict(
+            os.environ, {"CONFIG_VAULT_ENABLED": "true", "CONFIG_VAULT_TOKEN": "", "CONFIG_VAULT_ROLE_ID": "", "CONFIG_VAULT_SECRET_ID": ""}, clear=False
+        ):
             provider = HashiCorpVaultProvider()
             self.assertFalse(provider.is_available())
 

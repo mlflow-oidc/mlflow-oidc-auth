@@ -26,8 +26,11 @@ class TestUserPermissionsRoutes:
         perm_result.permission.name = "READ"
         perm_result.kind = "user"
 
+        # Mock batch_resolve_prompt_permissions to return a dict mapping name to perm_result
+        mock_permissions = {"prompt-a": perm_result, "prompt-b": perm_result}
+
         with patch("mlflow_oidc_auth.routers.user_permissions.fetch_all_prompts", return_value=[prompt_a, prompt_b]), patch(
-            "mlflow_oidc_auth.routers.user_permissions.effective_prompt_permission", return_value=perm_result
+            "mlflow_oidc_auth.routers.user_permissions.batch_resolve_prompt_permissions", return_value=mock_permissions
         ):
             resp = authenticated_client.get("/api/2.0/mlflow/permissions/users/user@example.com/prompts")
 

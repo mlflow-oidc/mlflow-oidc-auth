@@ -192,12 +192,15 @@ def test_admin_creates_token_for_service_account(
     with http_client_factory(admin) as client:
         # Create service account first
         create_api = "api/2.0/mlflow/users"
-        create_resp = client.post(create_api, json={
-            "username": svc_username,
-            "display_name": f"Token Test Service {test_run_id}",
-            "is_admin": False,
-            "is_service_account": True,
-        })
+        create_resp = client.post(
+            create_api,
+            json={
+                "username": svc_username,
+                "display_name": f"Token Test Service {test_run_id}",
+                "is_admin": False,
+                "is_service_account": True,
+            },
+        )
         assert create_resp.status_code in (200, 201), "Failed to create service account"
 
         # Create token
@@ -302,10 +305,13 @@ def test_token_permissions_enforced(
         timeout=30,
     ) as token_client:
         run_api = "api/2.0/mlflow/runs/create"
-        run_resp = token_client.post(run_api, json={
-            "experiment_id": exp_id,
-            "start_time": int(time.time() * 1000),
-        })
+        run_resp = token_client.post(
+            run_api,
+            json={
+                "experiment_id": exp_id,
+                "start_time": int(time.time() * 1000),
+            },
+        )
         # Should be denied (403) since user only has READ
         assert run_resp.status_code in (401, 403), f"Token should respect permissions: {run_resp.status_code}"
 
@@ -324,12 +330,15 @@ def test_service_account_token_works(
     with http_client_factory(admin) as client:
         # Create service account
         create_api = "api/2.0/mlflow/users"
-        create_resp = client.post(create_api, json={
-            "username": svc_username,
-            "display_name": f"Auth Test Service {test_run_id}",
-            "is_admin": False,
-            "is_service_account": True,
-        })
+        create_resp = client.post(
+            create_api,
+            json={
+                "username": svc_username,
+                "display_name": f"Auth Test Service {test_run_id}",
+                "is_admin": False,
+                "is_service_account": True,
+            },
+        )
         assert create_resp.status_code in (200, 201), "Failed to create service account"
 
         # Create token
@@ -455,9 +464,7 @@ def test_token_works_for_experiment_operations(
         assert create_resp.status_code in (200, 409), "Failed to create experiment"
 
         # Get experiment
-        get_resp = token_client.get(
-            f"ajax-api/2.0/mlflow/experiments/get-by-name?experiment_name={quote(experiment_name)}"
-        )
+        get_resp = token_client.get(f"ajax-api/2.0/mlflow/experiments/get-by-name?experiment_name={quote(experiment_name)}")
         assert _is_ok(get_resp.status_code), "Failed to get experiment"
 
         exp_id = get_resp.json()["experiment"]["experiment_id"]
@@ -508,7 +515,5 @@ def test_token_works_for_model_operations(
         assert create_resp.status_code in (200, 409), "Failed to create model"
 
         # Get model
-        get_resp = token_client.get(
-            f"ajax-api/2.0/mlflow/registered-models/get?name={quote(model_name)}"
-        )
+        get_resp = token_client.get(f"ajax-api/2.0/mlflow/registered-models/get?name={quote(model_name)}")
         assert _is_ok(get_resp.status_code), "Failed to get model"

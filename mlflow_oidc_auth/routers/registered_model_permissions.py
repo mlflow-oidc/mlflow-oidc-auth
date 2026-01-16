@@ -8,8 +8,8 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_models
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_registered_models
-from mlflow_oidc_auth.utils.permissions import can_manage_registered_model
 
 from ._prefix import REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX
 
@@ -135,17 +135,15 @@ async def list_models(username: str = Depends(get_username), is_admin: bool = De
     HTTPException
         If there is an error retrieving the registered models.
     """
+    # Fetch all models and filter based on permissions (batch resolution for efficiency)
+    all_models = fetch_all_registered_models()
+
     if is_admin:
         # Admin can see all registered models
-        registered_models = fetch_all_registered_models()
+        registered_models = all_models
     else:
         # Regular user can only see models they can manage
-        all_models = fetch_all_registered_models()
-        registered_models = []
-
-        for model in all_models:
-            if can_manage_registered_model(model.name, username):
-                registered_models.append(model)
+        registered_models = filter_manageable_models(username, all_models)
 
     return JSONResponse(
         content=[

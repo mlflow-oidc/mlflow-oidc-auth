@@ -46,12 +46,15 @@ from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
-    effective_prompt_permission,
-    effective_registered_model_permission,
     fetch_all_prompts,
     fetch_all_registered_models,
     get_is_admin,
     get_username,
+)
+from mlflow_oidc_auth.utils.batch_permissions import (
+    batch_resolve_experiment_permissions,
+    batch_resolve_model_permissions,
+    batch_resolve_prompt_permissions,
 )
 
 from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
@@ -128,29 +131,32 @@ async def get_user_experiment_permissions(
     tracking_store = _get_tracking_store()
     all_experiments = tracking_store.search_experiments()
 
+    # Batch resolve permissions for all experiments (fixed number of DB queries)
+    experiment_permissions = batch_resolve_experiment_permissions(username, all_experiments)
+
     # Determine which experiments to include based on permissions
     if is_admin:
         # Admins can see all experiments
         list_experiments = all_experiments
     elif current_username == username:
-        # Users can see their own accessible experiments
-        list_experiments = [
-            exp for exp in all_experiments if effective_experiment_permission(exp.experiment_id, username).permission.name != NO_PERMISSIONS.name
-        ]
+        # Users can see their own accessible experiments (filter using pre-computed permissions)
+        list_experiments = [exp for exp in all_experiments if experiment_permissions[exp.experiment_id].permission.name != NO_PERMISSIONS.name]
     else:
         # For other users, only show experiments the current user can manage
-        list_experiments = [exp for exp in all_experiments if effective_experiment_permission(exp.experiment_id, current_username).permission.can_manage]
+        current_user_permissions = batch_resolve_experiment_permissions(current_username, all_experiments)
+        list_experiments = [exp for exp in all_experiments if current_user_permissions[exp.experiment_id].permission.can_manage]
 
-    # Format experiment information with permissions
+    # Format experiment information with permissions (reuse pre-computed permissions)
     return [
         ExperimentPermissionSummary(
-            name=tracking_store.get_experiment(exp.experiment_id).name,
+            name=exp.name,
             id=exp.experiment_id,
-            permission=(perm := effective_experiment_permission(exp.experiment_id, username)).permission.name,
-            kind=perm.kind,
+            permission=experiment_permissions[exp.experiment_id].permission.name,
+            kind=experiment_permissions[exp.experiment_id].kind,
         )
         for exp in list_experiments
     ]
+
 
 @user_permissions_router.post(
     USER_EXPERIMENT_PERMISSION_DETAIL,
@@ -491,18 +497,23 @@ async def get_user_prompts(
     # Get all prompts and filter based on permissions
     prompts = fetch_all_prompts()
 
+    # Batch resolve permissions for all prompts (fixed number of DB queries)
+    prompt_permissions = batch_resolve_prompt_permissions(username, prompts)
+
     if is_admin:
         list_prompts = prompts
     elif current_username == username:
-        list_prompts = [prompt for prompt in prompts if effective_prompt_permission(prompt.name, username).permission.name != "NO_PERMISSIONS"]
+        list_prompts = [prompt for prompt in prompts if prompt_permissions[prompt.name].permission.name != "NO_PERMISSIONS"]
     else:
-        list_prompts = [prompt for prompt in prompts if effective_prompt_permission(prompt.name, current_username).permission.can_manage]
+        current_user_permissions = batch_resolve_prompt_permissions(current_username, prompts)
+        list_prompts = [prompt for prompt in prompts if current_user_permissions[prompt.name].permission.can_manage]
 
+    # Format prompt information with permissions (reuse pre-computed permissions)
     return [
         NamedPermissionSummary(
             name=prompt.name,
-            permission=(perm := effective_prompt_permission(prompt.name, username)).permission.name,
-            kind=perm.kind,
+            permission=prompt_permissions[prompt.name].permission.name,
+            kind=prompt_permissions[prompt.name].kind,
         )
         for prompt in list_prompts
     ]
@@ -932,18 +943,23 @@ async def get_user_registered_models(
     # Get all registered models and filter based on permissions
     models = fetch_all_registered_models()
 
+    # Batch resolve permissions for all models (fixed number of DB queries)
+    model_permissions = batch_resolve_model_permissions(username, models)
+
     if is_admin:
         list_models = models
     elif current_username == username:
-        list_models = [model for model in models if effective_registered_model_permission(model.name, username).permission.name != "NO_PERMISSIONS"]
+        list_models = [model for model in models if model_permissions[model.name].permission.name != "NO_PERMISSIONS"]
     else:
-        list_models = [model for model in models if effective_registered_model_permission(model.name, current_username).permission.can_manage]
+        current_user_permissions = batch_resolve_model_permissions(current_username, models)
+        list_models = [model for model in models if current_user_permissions[model.name].permission.can_manage]
 
+    # Format model information with permissions (reuse pre-computed permissions)
     return [
         NamedPermissionSummary(
             name=model.name,
-            permission=(perm := effective_registered_model_permission(model.name, username)).permission.name,
-            kind=perm.kind,
+            permission=model_permissions[model.name].permission.name,
+            kind=model_permissions[model.name].kind,
         )
         for model in list_models
     ]

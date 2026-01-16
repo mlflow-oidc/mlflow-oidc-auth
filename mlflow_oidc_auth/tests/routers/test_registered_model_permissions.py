@@ -245,14 +245,12 @@ class TestListModelsEndpoint:
         mock_model2.description = "Test Model 2"
         mock_model2.aliases = []
 
-        # Mock can_manage_registered_model to return True for model-1 only
-        def mock_can_manage(model_name, username):
-            return model_name == "model-1"
-
+        # Mock filter_manageable_models to return only model-1
         with patch("mlflow_oidc_auth.routers.registered_model_permissions.fetch_all_registered_models") as mock_fetch, patch(
-            "mlflow_oidc_auth.routers.registered_model_permissions.can_manage_registered_model", side_effect=mock_can_manage
-        ):
+            "mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models"
+        ) as mock_filter:
             mock_fetch.return_value = [mock_model1, mock_model2]
+            mock_filter.return_value = [mock_model1]  # Only model-1 is manageable
 
             result = await list_models(username="user@example.com", is_admin=False)
 
@@ -265,6 +263,9 @@ class TestListModelsEndpoint:
             assert len(content) == 1  # Only model-1 should be returned
             assert content[0]["name"] == "model-1"
 
+            # Verify filter_manageable_models was called with correct args
+            mock_filter.assert_called_once_with("user@example.com", [mock_model1, mock_model2])
+
     @pytest.mark.asyncio
     async def test_list_models_regular_user_no_permissions(self):
         """Test listing models as regular user with no permissions."""
@@ -275,7 +276,7 @@ class TestListModelsEndpoint:
         mock_model1.aliases = []
 
         with patch("mlflow_oidc_auth.routers.registered_model_permissions.fetch_all_registered_models") as mock_fetch, patch(
-            "mlflow_oidc_auth.routers.registered_model_permissions.can_manage_registered_model", return_value=False
+            "mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models", return_value=[]
         ):
             mock_fetch.return_value = [mock_model1]
 

@@ -107,7 +107,9 @@ class HashiCorpVaultProvider(ConfigProvider):
         try:
             if self._kv_version == 2:
                 # KV v2 returns data under 'data' -> 'data'
-                response = self._client.secrets.kv.v2.read_secret_version(path=self._path.split("/")[-1], mount_point=self._path.rsplit("/", 1)[0] if "/" in self._path else "secret")
+                response = self._client.secrets.kv.v2.read_secret_version(
+                    path=self._path.split("/")[-1], mount_point=self._path.rsplit("/", 1)[0] if "/" in self._path else "secret"
+                )
                 self._cache = response.get("data", {}).get("data", {})
             else:
                 # KV v1 returns data directly under 'data'

@@ -8,7 +8,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import fetch_all_prompts, get_is_admin, get_username
-from mlflow_oidc_auth.utils.permissions import can_manage_registered_model
+from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_prompts
 
 from ._prefix import PROMPT_PERMISSIONS_ROUTER_PREFIX
 
@@ -133,18 +133,15 @@ async def list_prompts(username: str = Depends(get_username), is_admin: bool = D
     HTTPException
         If there is an error retrieving the prompts.
     """
+    # Fetch all prompts and filter based on permissions (batch resolution for efficiency)
+    all_prompts = fetch_all_prompts()
+
     if is_admin:
         # Admin can see all prompts
-        prompts = fetch_all_prompts()
+        prompts = all_prompts
     else:
         # Regular user can only see prompts they can manage
-        all_prompts = fetch_all_prompts()
-        prompts = []
-
-        for prompt in all_prompts:
-            # Prompts are handled as registered models in this system
-            if can_manage_registered_model(prompt.name, username):
-                prompts.append(prompt)
+        prompts = filter_manageable_prompts(username, all_prompts)
 
     return JSONResponse(
         content=[

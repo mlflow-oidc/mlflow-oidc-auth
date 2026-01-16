@@ -135,7 +135,7 @@ DELETE api/2.0/mlflow/permissions/groups/{group_name}/registered-models/{model_n
 
 **Action Items:**
 - [ ] Return 404 for DELETE on non-existent permission (idempotent)
-- [ ] Alternatively, return 204 No Content (successful no-op) 
+- [ ] Alternatively, return 204 No Content (successful no-op)
 - [ ] Never return 500 for expected conditions
 
 ---

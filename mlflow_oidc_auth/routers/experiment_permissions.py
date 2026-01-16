@@ -7,7 +7,8 @@ from mlflow_oidc_auth.dependencies import check_experiment_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import ExperimentSummary, GroupPermissionEntry, UserPermission
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import can_manage_experiment, get_is_admin, get_username
+from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_experiments
 
 from ._prefix import EXPERIMENT_PERMISSIONS_ROUTER_PREFIX
 
@@ -136,13 +137,13 @@ async def list_experiments(username: str = Depends(get_username), is_admin: bool
     tracking_store = _get_tracking_store()
     all_experiments = tracking_store.search_experiments()
 
-    # Filter experiments based on user permissions
+    # Filter experiments based on user permissions (batch resolution for efficiency)
     if is_admin:
         # Admins can see all experiments
         manageable_experiments = all_experiments
     else:
         # Regular users only see experiments they can manage
-        manageable_experiments = [experiment for experiment in all_experiments if can_manage_experiment(experiment.experiment_id, username)]
+        manageable_experiments = filter_manageable_experiments(username, all_experiments)
 
     # Format the response
     return [ExperimentSummary(name=experiment.name, id=experiment.experiment_id, tags=experiment.tags) for experiment in manageable_experiments]
