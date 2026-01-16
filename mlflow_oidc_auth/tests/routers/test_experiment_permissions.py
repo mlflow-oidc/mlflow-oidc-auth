@@ -221,10 +221,10 @@ class TestListExperimentsEndpoint:
         """Test listing experiments as regular user."""
         mock_get_tracking_store.return_value = mock_tracking_store
 
-        # Mock can_manage_experiment to return True for specific experiments
-        mock_permissions["can_manage_experiment"].return_value = True
+        # Mock filter_manageable_experiments to return the experiments
+        mock_experiments = mock_tracking_store.search_experiments.return_value
 
-        with patch("mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment", mock_permissions["can_manage_experiment"]):
+        with patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", return_value=mock_experiments):
             result = await list_experiments(username="user@example.com", is_admin=False)
 
             assert len(result) == 1
@@ -239,10 +239,8 @@ class TestListExperimentsEndpoint:
         """Test listing experiments as regular user with no permissions."""
         mock_get_tracking_store.return_value = mock_tracking_store
 
-        # Mock can_manage_experiment to return False
-        mock_permissions["can_manage_experiment"].return_value = False
-
-        with patch("mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment", mock_permissions["can_manage_experiment"]):
+        # Mock filter_manageable_experiments to return empty list (no permissions)
+        with patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", return_value=[]):
             result = await list_experiments(username="user@example.com", is_admin=False)
 
             assert len(result) == 0
@@ -273,11 +271,10 @@ class TestListExperimentsEndpoint:
 
         mock_tracking_store.search_experiments.return_value = [mock_experiment1, mock_experiment2, mock_experiment3]
 
-        # Mock permissions - user can manage experiments 123 and 789 but not 456
-        def mock_can_manage(exp_id, username):
-            return exp_id in ["123", "789"]
+        # Mock filter_manageable_experiments - user can manage experiments 123 and 789 but not 456
+        manageable_experiments = [mock_experiment1, mock_experiment3]
 
-        with patch("mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment", side_effect=mock_can_manage):
+        with patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", return_value=manageable_experiments):
             result = await list_experiments(username="user@example.com", is_admin=False)
 
             assert len(result) == 2

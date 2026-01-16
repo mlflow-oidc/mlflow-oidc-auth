@@ -311,6 +311,21 @@ def mock_permissions():
     return permissions_mock
 
 
+def _mock_filter_manageable_experiments(username, experiments):
+    """Mock filter_manageable_experiments that returns all experiments."""
+    return experiments
+
+
+def _mock_filter_manageable_models(username, models):
+    """Mock filter_manageable_models that returns all models."""
+    return models
+
+
+def _mock_filter_manageable_prompts(username, prompts):
+    """Mock filter_manageable_prompts that returns all prompts."""
+    return prompts
+
+
 @pytest.fixture(autouse=True)
 def _patch_router_stores(mock_store):
     """Autouse fixture to patch router module-level 'store' references to the mock_store.
@@ -322,6 +337,7 @@ def _patch_router_stores(mock_store):
     patches = [
         patch("mlflow_oidc_auth.store.store", mock_store),
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
+        patch("mlflow_oidc_auth.utils.batch_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store),
@@ -329,6 +345,10 @@ def _patch_router_stores(mock_store):
         patch("mlflow_oidc_auth.routers.experiment_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.scorers_permissions.store", mock_store),
+        # Patch filter_manageable_* functions at router level so integration tests work
+        patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", _mock_filter_manageable_experiments),
+        patch("mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models", _mock_filter_manageable_models),
+        patch("mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts", _mock_filter_manageable_prompts),
     ]
 
     for p in patches:
