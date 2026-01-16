@@ -65,6 +65,21 @@ class SqlAlchemyStore:
         self.scorer_regex_repo = ScorerPermissionRegexRepository(self.ManagedSessionMaker)
         self.scorer_group_regex_repo = ScorerPermissionGroupRegexRepository(self.ManagedSessionMaker)
 
+    def ping(self) -> bool:
+        """Lightweight database connectivity check for health probes.
+
+        Returns:
+            True if database is reachable, False otherwise.
+        """
+        from sqlalchemy import text
+
+        try:
+            with self.engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            return True
+        except Exception:
+            return False
+
     # Scorer CRUD (user-scoped)
     def create_scorer_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:
         return self.scorer_repo.grant_permission(experiment_id, scorer_name, username, permission)

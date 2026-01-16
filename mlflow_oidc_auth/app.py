@@ -5,7 +5,8 @@ This module provides a FastAPI application factory that can be used as an altern
 to the default MLflow server when OIDC authentication is required.
 """
 
-from typing import Any
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI
 from mlflow.server import app
@@ -18,14 +19,57 @@ from mlflow_oidc_auth.graphql import install_mlflow_graphql_authorization_middle
 from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware import AuthAwareWSGIMiddleware, AuthMiddleware, ProxyHeadersMiddleware
+from mlflow_oidc_auth.oauth import ensure_oidc_client_registered
 from mlflow_oidc_auth.routers import get_all_routers
 
 logger = get_logger()
 
+# Global flag to track OIDC initialization status for health checks
+_oidc_initialized: bool = False
+
+
+def is_oidc_ready() -> bool:
+    """Check if OIDC client has been initialized at startup.
+
+    Returns:
+        True if OIDC was successfully registered during app startup.
+    """
+    return _oidc_initialized
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """FastAPI lifespan context manager for startup/shutdown events.
+
+    Ensures OIDC client is registered at startup before the app accepts requests.
+    This is critical for multi-replica deployments where any replica may receive
+    /callback or /logout requests that require the OIDC client to be registered.
+    """
+    global _oidc_initialized
+
+    # Startup: Register OIDC client
+    logger.info("Starting MLflow OIDC Auth Plugin...")
+    if ensure_oidc_client_registered():
+        _oidc_initialized = True
+        logger.info("OIDC client successfully registered at startup")
+    else:
+        logger.warning(
+            "OIDC client registration failed at startup. "
+            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL). "
+            "OIDC authentication will not be available until configuration is corrected."
+        )
+
+    yield  # App runs here
+
+    # Shutdown: Cleanup if needed
+    logger.info("Shutting down MLflow OIDC Auth Plugin...")
+
 
 def create_app() -> Any:
-    """
-    Create a FastAPI application with OIDC integration.
+    """Create a FastAPI application with OIDC integration.
+
+    The app uses a lifespan context manager to ensure OIDC client registration
+    happens at startup, making the app ready for multi-replica deployments.
     """
     oidc_app = FastAPI(
         title="MLflow Tracking Server with OIDC Auth",
@@ -34,6 +78,7 @@ def create_app() -> Any:
         docs_url="/docs" if getattr(config, "ENABLE_API_DOCS", True) else None,
         redoc_url="/redoc" if getattr(config, "ENABLE_API_DOCS", True) else None,
         openapi_url="/openapi.json" if getattr(config, "ENABLE_API_DOCS", True) else None,
+        lifespan=lifespan,
     )
     register_exception_handlers(oidc_app)
 

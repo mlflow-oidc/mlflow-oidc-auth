@@ -241,6 +241,13 @@ async def callback(request: Request):
     logger.info("Processing OIDC callback")
 
     try:
+        # Ensure OIDC client is registered (critical for multi-replica deployments)
+        # This handles the case where callback hits a replica that hasn't registered the client yet
+        if not is_oidc_configured():
+            logger.error("OIDC is not properly configured when processing callback")
+            auth_error_url = _build_ui_url(request, "/auth", {"error": ["OIDC authentication not available - configuration error"]})
+            return RedirectResponse(url=auth_error_url, status_code=302)
+
         # Get session (using Starlette's built-in session)
         session = request.session
 
