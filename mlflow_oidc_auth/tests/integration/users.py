@@ -10,17 +10,20 @@ USERS = [
     ("peter@example.com", ["random-group"]),  # Not in mlflow-users group
 ]
 
+
 def list_users() -> list[str]:
     """
     Returns a list of user emails
     """
     return [user[0] for user in USERS]
 
+
 def list_groups() -> list[str]:
     """
     Returns a list of groups
     """
     return [group for user in USERS for group in user[1]]
+
 
 def get_user_groups(email: str) -> list[str]:
     """
@@ -74,17 +77,20 @@ PROMPTS = [
     "regexp-group-prompt",
 ]
 
+
 def list_experiments() -> list[str]:
     """
     Returns a list of experiment names
     """
     return EXPERIMENTS
 
+
 def list_models() -> list[str]:
     """
     Returns a list of model names
     """
     return MODELS
+
 
 def list_prompts() -> list[str]:
     """

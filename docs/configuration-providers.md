@@ -362,15 +362,15 @@ class MyCustomProvider(ConfigProvider):
     @property
     def name(self) -> str:
         return "my-custom-provider"
-    
+
     @property
     def priority(self) -> int:
         return 30  # After secrets, before env
-    
+
     def is_available(self) -> bool:
         # Check if your backend is available
         return True
-    
+
     def get(self, key: str, default=None):
         # Retrieve configuration value
         return my_backend.get(key) or default

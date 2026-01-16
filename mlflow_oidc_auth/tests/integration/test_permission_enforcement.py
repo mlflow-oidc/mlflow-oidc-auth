@@ -207,10 +207,7 @@ def test_read_user_cannot_update_experiment(
 
     with http_client_factory(user) as client:
         api = "ajax-api/2.0/mlflow/experiments/update"
-        resp = client.patch(api, json={
-            "experiment_id": resources["experiment_id"],
-            "new_name": f"should-not-rename-{uuid.uuid4().hex[:6]}"
-        })
+        resp = client.patch(api, json={"experiment_id": resources["experiment_id"], "new_name": f"should-not-rename-{uuid.uuid4().hex[:6]}"})
         assert _is_denied(resp.status_code), f"READ should NOT update experiment: {resp.status_code}"
 
 
@@ -341,10 +338,13 @@ def test_edit_user_can_update_run(
     with http_client_factory(user) as client:
         # Create a run first
         create_api = "api/2.0/mlflow/runs/create"
-        create_resp = client.post(create_api, json={
-            "experiment_id": resources["experiment_id"],
-            "start_time": int(time.time() * 1000),
-        })
+        create_resp = client.post(
+            create_api,
+            json={
+                "experiment_id": resources["experiment_id"],
+                "start_time": int(time.time() * 1000),
+            },
+        )
         assert _is_ok(create_resp.status_code), "Failed to create run for update test"
 
         run_data = create_resp.json()
@@ -352,12 +352,15 @@ def test_edit_user_can_update_run(
 
         # Log metric to the run
         log_api = "api/2.0/mlflow/runs/log-metric"
-        log_resp = client.post(log_api, json={
-            "run_id": run_id,
-            "key": "test_metric",
-            "value": 1.0,
-            "timestamp": int(time.time() * 1000),
-        })
+        log_resp = client.post(
+            log_api,
+            json={
+                "run_id": run_id,
+                "key": "test_metric",
+                "value": 1.0,
+                "timestamp": int(time.time() * 1000),
+            },
+        )
         assert _is_ok(log_resp.status_code), f"EDIT should log metric: {log_resp.status_code}"
 
 
@@ -388,10 +391,13 @@ def test_edit_user_cannot_delete_run(
     with http_client_factory(user) as client:
         # Create a run to try deleting
         create_api = "api/2.0/mlflow/runs/create"
-        create_resp = client.post(create_api, json={
-            "experiment_id": resources["experiment_id"],
-            "start_time": int(time.time() * 1000),
-        })
+        create_resp = client.post(
+            create_api,
+            json={
+                "experiment_id": resources["experiment_id"],
+                "start_time": int(time.time() * 1000),
+            },
+        )
 
         if _is_ok(create_resp.status_code):
             run_data = create_resp.json()
@@ -473,10 +479,13 @@ def test_edit_user_can_create_model_version(
 
     with http_client_factory(user) as client:
         # First create a run to get valid artifact source
-        run_resp = client.post("ajax-api/2.0/mlflow/runs/create", json={
-            "experiment_id": resources["experiment_id"],
-            "run_name": f"mv-source-run-{resources['experiment_id'][:6]}",
-        })
+        run_resp = client.post(
+            "ajax-api/2.0/mlflow/runs/create",
+            json={
+                "experiment_id": resources["experiment_id"],
+                "run_name": f"mv-source-run-{resources['experiment_id'][:6]}",
+            },
+        )
         assert run_resp.status_code == 200, f"Failed to create run for model version: {run_resp.status_code}"
         run_data = run_resp.json()
         run_id = run_data.get("run", {}).get("info", {}).get("run_id")
@@ -486,12 +495,15 @@ def test_edit_user_can_create_model_version(
         source = f"runs:/{run_id}/model"
 
         api = "ajax-api/2.0/mlflow/model-versions/create"
-        resp = client.post(api, json={
-            "name": resources["model_name"],
-            "source": source,
-            "run_id": run_id,
-            "description": "Version by edit user",
-        })
+        resp = client.post(
+            api,
+            json={
+                "name": resources["model_name"],
+                "source": source,
+                "run_id": run_id,
+                "description": "Version by edit user",
+            },
+        )
         assert _is_ok(resp.status_code), f"EDIT should create model version: {resp.status_code}"
 
 
@@ -526,10 +538,13 @@ def test_manage_user_can_create_run(
 
     with http_client_factory(user) as client:
         api = "api/2.0/mlflow/runs/create"
-        resp = client.post(api, json={
-            "experiment_id": resources["experiment_id"],
-            "start_time": int(time.time() * 1000),
-        })
+        resp = client.post(
+            api,
+            json={
+                "experiment_id": resources["experiment_id"],
+                "start_time": int(time.time() * 1000),
+            },
+        )
         assert _is_ok(resp.status_code), f"MANAGE should create run: {resp.status_code}"
 
 
@@ -544,10 +559,13 @@ def test_manage_user_can_delete_run(
 
     with http_client_factory(user) as client:
         # Create a run to delete
-        create_resp = client.post("api/2.0/mlflow/runs/create", json={
-            "experiment_id": resources["experiment_id"],
-            "start_time": int(time.time() * 1000),
-        })
+        create_resp = client.post(
+            "api/2.0/mlflow/runs/create",
+            json={
+                "experiment_id": resources["experiment_id"],
+                "start_time": int(time.time() * 1000),
+            },
+        )
         assert _is_ok(create_resp.status_code), "Failed to create run for delete test"
 
         run_data = create_resp.json()
@@ -694,10 +712,13 @@ def test_no_perm_user_cannot_create_run(
 
     with http_client_factory(user) as client:
         api = "api/2.0/mlflow/runs/create"
-        resp = client.post(api, json={
-            "experiment_id": resources["experiment_id"],
-            "start_time": int(time.time() * 1000),
-        })
+        resp = client.post(
+            api,
+            json={
+                "experiment_id": resources["experiment_id"],
+                "start_time": int(time.time() * 1000),
+            },
+        )
         assert _is_denied(resp.status_code), f"NO_PERM should NOT create run: {resp.status_code}"
 
 

@@ -104,7 +104,7 @@ def _create_registered_model(client: httpx.Client, model_name: str) -> bool:
 
 def _create_model_version(client: httpx.Client, model_name: str) -> bool:
     """Create a model version by first creating a run to get artifact URI.
-    
+
     Model versions require a valid artifact source that includes a run_id.
     We create a temporary experiment for the user since they may not have
     access to the default experiment.
@@ -113,7 +113,7 @@ def _create_model_version(client: httpx.Client, model_name: str) -> bool:
     temp_exp_name = f"model-version-temp-{model_name}"
     exp_api = "ajax-api/2.0/mlflow/experiments/create"
     exp_resp = client.post(exp_api, json={"name": temp_exp_name})
-    
+
     if exp_resp.status_code == 200:
         experiment_id = exp_resp.json().get("experiment_id", "0")
     else:
@@ -125,18 +125,18 @@ def _create_model_version(client: httpx.Client, model_name: str) -> bool:
             experiment_id = experiment.get("experiment_id") or experiment.get("id", "0")
         else:
             return False
-    
+
     # Create a run in this experiment to get an artifact path
     run_api = "ajax-api/2.0/mlflow/runs/create"
     run_resp = client.post(run_api, json={"experiment_id": experiment_id})
     if run_resp.status_code != 200:
         return False
-    
+
     run_data = run_resp.json()
     run_id = run_data.get("run", {}).get("info", {}).get("run_id")
     if not run_id:
         return False
-    
+
     # Now create version with the run's artifact location
     version_api = "ajax-api/2.0/mlflow/model-versions/create"
     payload = {

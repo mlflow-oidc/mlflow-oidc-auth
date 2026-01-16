@@ -157,6 +157,7 @@ async def get_user_experiment_permissions(
         for exp in list_experiments
     ]
 
+
 @user_permissions_router.post(
     USER_EXPERIMENT_PERMISSION_DETAIL,
     response_model=MessageResponse,

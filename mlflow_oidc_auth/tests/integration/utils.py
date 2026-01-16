@@ -70,7 +70,6 @@ def _build_seed_scorers() -> list[Any]:
     return [response_length, contains_hello]
 
 
-
 def create_model(
     model_name: str,
     cookies,
@@ -91,6 +90,7 @@ def create_model(
     print(f"Model {model_name} already exists")
     return True
 
+
 def create_prompt(
     prompt_name: str,
     prompt_text: str,
@@ -101,14 +101,12 @@ def create_prompt(
     get_api: str = "ajax-api/2.0/mlflow/registered-models/get?name=",
     commit_message: str = "commit message here",
     source: str = "dummy-source",
-    ) -> bool:
+) -> bool:
     respone = httpx.get(url=urljoin(url, get_api) + prompt_name, cookies=cookies)
     print(respone.status_code)
     if respone.status_code == 404:
         respone = httpx.post(
-            url=urljoin(url, create_api),
-            json={"name": prompt_name, "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}]},
-            cookies=cookies
+            url=urljoin(url, create_api), json={"name": prompt_name, "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}]}, cookies=cookies
         )
         if respone.status_code == 200:
             print(f"Prompt {prompt_name} created")
@@ -119,12 +117,9 @@ def create_prompt(
                     "name": prompt_name,
                     "description": commit_message,
                     "source": source,
-                    "tags": [
-                        {"key": "mlflow.prompt.is_prompt", "value": "true"},
-                        {"key": "mlflow.prompt.text", "value": prompt_text}
-                    ]
+                    "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}, {"key": "mlflow.prompt.text", "value": prompt_text}],
                 },
-                cookies=cookies
+                cookies=cookies,
             )
             if respone.status_code == 200:
                 print(f"Prompt version for {prompt_name} created")
@@ -381,6 +376,8 @@ def get_experiment_id(experiment_name: str, cookies: httpx.Cookies, url: str = "
     payload = response.json()
     experiment = payload.get("experiment", payload)
     return str(experiment.get("experiment_id") or experiment.get("experimentId") or experiment.get("id") or "")
+
+
 def set_group_experiment_permission(
     experiment_name: str,
     group_name: str,
@@ -392,7 +389,7 @@ def set_group_experiment_permission(
 
     Returns (success, message). Success is False when the experiment is not found or the
     endpoint is unavailable; callers can choose to skip on 404s.
-    
+
     Uses the new RESTful API:
     - POST api/2.0/mlflow/permissions/groups/{group_name}/experiments/{experiment_id} to create
     - DELETE api/2.0/mlflow/permissions/groups/{group_name}/experiments/{experiment_id} to delete
@@ -453,7 +450,7 @@ def set_group_model_permission(
     """Set group-level permission for a registered model.
 
     Returns (success, message).
-    
+
     Uses the new RESTful API:
     - POST api/2.0/mlflow/permissions/groups/{group_name}/registered-models/{name} to create
     - DELETE api/2.0/mlflow/permissions/groups/{group_name}/registered-models/{name} to delete
@@ -633,10 +630,10 @@ def user_login(page: Page, username: str, url: str = "http://localhost:8080/") -
         print(f"🔍 Navigating to {url}")
         page.goto(url)
         page.wait_for_load_state("networkidle")
-        
+
         # print(f"📸 Taking screenshot of initial page")
         # page.screenshot(path=f"debug-initial-{username}.png")
-        
+
         print(f"🔍 Looking for login button...")
         # Look for any button containing "login" or "Login"
         login_buttons = page.locator("button").filter(has_text="Login")
@@ -644,7 +641,7 @@ def user_login(page: Page, username: str, url: str = "http://localhost:8080/") -
             print("❌ No login button found, checking page content...")
             print(f"Page title: {page.title()}")
             print(f"Page URL: {page.url}")
-            
+
             # Check if we're already on a login page
             if "login" in page.url.lower() or "oauth" in page.url.lower():
                 print("✅ Already on login/oauth page")
@@ -658,7 +655,7 @@ def user_login(page: Page, username: str, url: str = "http://localhost:8080/") -
             page.wait_for_load_state("networkidle")
             # print(f"📸 Taking screenshot after login button click")
             # page.screenshot(path=f"debug-after-login-click-{username}.png")
-        
+
         print(f"🔍 Looking for username field...")
         # Look for username/sub field
         username_field = page.locator("input[name='sub']").or_(page.locator("input[type='text']")).first
@@ -668,15 +665,13 @@ def user_login(page: Page, username: str, url: str = "http://localhost:8080/") -
         else:
             print("❌ Username field not found")
             raise Exception("Username field not found")
-        
+
         # print(f"📸 Taking screenshot after filling username")
         # page.screenshot(path=f"debug-after-username-{username}.png")
-        
+
         print(f"🔍 Looking for authorize/submit button...")
         # Look for authorize button
-        auth_buttons = page.locator("button").filter(has_text="Authorize").or_(
-            page.locator("button[type='submit']")
-        )
+        auth_buttons = page.locator("button").filter(has_text="Authorize").or_(page.locator("button[type='submit']"))
         if auth_buttons.count() > 0:
             print(f"✅ Found authorize button, clicking...")
             auth_buttons.first.click()
@@ -687,14 +682,14 @@ def user_login(page: Page, username: str, url: str = "http://localhost:8080/") -
 
         # print(f"📸 Taking screenshot after authorize")
         # page.screenshot(path=f"debug-after-authorize-{username}.png")
-        
+
         print(f"✅ Login flow completed for {username}")
         print(f"Final URL: {page.url}")
-        
+
         cookies = page.context.cookies()
         print(f"🍪 Got {len(cookies)} cookies")
         for cookie in cookies:
-            print(f"  - {cookie['name']}: {cookie['value'][:20]}...") # type: ignore
+            print(f"  - {cookie['name']}: {cookie['value'][:20]}...")  # type: ignore
 
         return bake_cookies(cookies)
 

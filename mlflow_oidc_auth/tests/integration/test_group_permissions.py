@@ -104,7 +104,7 @@ def _set_group_experiment_permission(
     """Set group-level experiment permission using RESTful API."""
     # New RESTful API path
     api_url = f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/experiments/{quote(experiment_id)}"
-    
+
     # Delete existing permission first (ignore errors - permission may not exist)
     # Note: Server returns 500 when permission doesn't exist, not 404
     client.request("DELETE", api_url)
@@ -124,7 +124,7 @@ def _set_group_model_permission(
     """Set group-level model permission using RESTful API."""
     # New RESTful API path
     api_url = f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/registered-models/{quote(model_name)}"
-    
+
     # Delete existing permission first (ignore errors - permission may not exist)
     # Note: Server returns 500 when permission doesn't exist, not 404
     client.request("DELETE", api_url)
@@ -144,7 +144,7 @@ def _set_group_prompt_permission(
     """Set group-level prompt permission using RESTful API."""
     # New RESTful API path - prompts use their own endpoint
     api_url = f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/prompts/{quote(prompt_name)}"
-    
+
     # Delete existing permission first (ignore errors - permission may not exist)
     # Note: Server returns 500 when permission doesn't exist, not 404
     client.request("DELETE", api_url)
@@ -238,13 +238,9 @@ def group_permission_test_resources(
         assert _create_prompt(client, prompt_name, "Group permission test prompt"), f"Failed to create prompt"
 
         # Set group permissions for experiments
-        assert _set_group_experiment_permission(
-            client, experiment_id, "experiments-reader", "READ", base_url
-        ), "Failed to set experiments-reader permission"
+        assert _set_group_experiment_permission(client, experiment_id, "experiments-reader", "READ", base_url), "Failed to set experiments-reader permission"
 
-        assert _set_group_experiment_permission(
-            client, experiment_id, "experiments-editor", "EDIT", base_url
-        ), "Failed to set experiments-editor permission"
+        assert _set_group_experiment_permission(client, experiment_id, "experiments-editor", "EDIT", base_url), "Failed to set experiments-editor permission"
 
         assert _set_group_experiment_permission(
             client, experiment_id, "experiments-manager", "MANAGE", base_url
@@ -255,38 +251,22 @@ def group_permission_test_resources(
         ), "Failed to set experiments-no-access permission"
 
         # Set group permissions for models
-        assert _set_group_model_permission(
-            client, model_name, "models-reader", "READ"
-        ), "Failed to set models-reader permission"
+        assert _set_group_model_permission(client, model_name, "models-reader", "READ"), "Failed to set models-reader permission"
 
-        assert _set_group_model_permission(
-            client, model_name, "models-editor", "EDIT"
-        ), "Failed to set models-editor permission"
+        assert _set_group_model_permission(client, model_name, "models-editor", "EDIT"), "Failed to set models-editor permission"
 
-        assert _set_group_model_permission(
-            client, model_name, "models-manager", "MANAGE"
-        ), "Failed to set models-manager permission"
+        assert _set_group_model_permission(client, model_name, "models-manager", "MANAGE"), "Failed to set models-manager permission"
 
-        assert _set_group_model_permission(
-            client, model_name, "models-no-access", "NO_PERMISSIONS"
-        ), "Failed to set models-no-access permission"
+        assert _set_group_model_permission(client, model_name, "models-no-access", "NO_PERMISSIONS"), "Failed to set models-no-access permission"
 
         # Set group permissions for prompts
-        assert _set_group_prompt_permission(
-            client, prompt_name, "prompts-reader", "READ"
-        ), "Failed to set prompts-reader permission"
+        assert _set_group_prompt_permission(client, prompt_name, "prompts-reader", "READ"), "Failed to set prompts-reader permission"
 
-        assert _set_group_prompt_permission(
-            client, prompt_name, "prompts-editor", "EDIT"
-        ), "Failed to set prompts-editor permission"
+        assert _set_group_prompt_permission(client, prompt_name, "prompts-editor", "EDIT"), "Failed to set prompts-editor permission"
 
-        assert _set_group_prompt_permission(
-            client, prompt_name, "prompts-manager", "MANAGE"
-        ), "Failed to set prompts-manager permission"
+        assert _set_group_prompt_permission(client, prompt_name, "prompts-manager", "MANAGE"), "Failed to set prompts-manager permission"
 
-        assert _set_group_prompt_permission(
-            client, prompt_name, "prompts-no-access", "NO_PERMISSIONS"
-        ), "Failed to set prompts-no-access permission"
+        assert _set_group_prompt_permission(client, prompt_name, "prompts-no-access", "NO_PERMISSIONS"), "Failed to set prompts-no-access permission"
 
     return {
         "experiment_name": experiment_name,

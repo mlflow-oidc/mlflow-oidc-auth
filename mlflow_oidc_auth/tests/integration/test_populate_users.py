@@ -35,4 +35,3 @@ def test_populate_users_can_create_resources(
             commit_message="integration prompt creation",
             source="integration-test",
         ), f"Failed to create {prompt_name}"
-

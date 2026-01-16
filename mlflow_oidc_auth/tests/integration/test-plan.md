@@ -4,8 +4,8 @@
 
 This document defines the integration test plan for the MLflow OIDC Auth Plugin. Tests validate authentication, authorization, and permission enforcement across all resource types.
 
-**OIDC Provider**: https://oidc-mock.technicaldomain.xyz/  
-**Admin User**: `frank@example.com` (member of `mlflow-admin` group)  
+**OIDC Provider**: https://oidc-mock.technicaldomain.xyz/
+**Admin User**: `frank@example.com` (member of `mlflow-admin` group)
 **Cleanup Strategy**: No cleanup required - integration environment is recreated for each test run
 
 ---

@@ -315,9 +315,7 @@ class TestResolveExperimentPermissionFromContext:
             mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
-            result = resolve_experiment_permission_from_context(
-                context_with_experiment_permissions, "exp-1", "experiment-name"
-            )
+            result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-1", "experiment-name")
 
             assert result.permission.name == "MANAGE"
             assert result.kind == "user"
@@ -328,9 +326,7 @@ class TestResolveExperimentPermissionFromContext:
             mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
-            result = resolve_experiment_permission_from_context(
-                context_with_experiment_permissions, "exp-2", "experiment-name"
-            )
+            result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-2", "experiment-name")
 
             assert result.permission.name == "READ"
             assert result.kind == "group"
@@ -341,9 +337,7 @@ class TestResolveExperimentPermissionFromContext:
             mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
-            result = resolve_experiment_permission_from_context(
-                context_with_experiment_permissions, "exp-unknown", "test-experiment"
-            )
+            result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-unknown", "test-experiment")
 
             assert result.permission.name == "EDIT"
             assert result.kind == "regex"
@@ -354,9 +348,7 @@ class TestResolveExperimentPermissionFromContext:
             mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
-            result = resolve_experiment_permission_from_context(
-                context_with_experiment_permissions, "exp-unknown", "prod-experiment"
-            )
+            result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-unknown", "prod-experiment")
 
             assert result.permission.name == "READ"
             assert result.kind == "group-regex"
@@ -372,9 +364,7 @@ class TestResolveExperimentPermissionFromContext:
             mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
-            result = resolve_experiment_permission_from_context(
-                context_with_experiment_permissions, "exp-unknown", None
-            )
+            result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-unknown", None)
 
             mock_get_store.return_value.get_experiment.assert_called_once_with("exp-unknown")
             # Should match the regex "^test-.*"

@@ -326,9 +326,7 @@ def test_manage_user_has_full_control_experiment(
 
         # Can manage permissions (grant/update permissions for an existing user)
         # Using newuser@example.com which exists in the system
-        perm_resp = _grant_user_experiment_permission(
-            client, resources["experiment_id"], "newuser@example.com", "READ"
-        )
+        perm_resp = _grant_user_experiment_permission(client, resources["experiment_id"], "newuser@example.com", "READ")
         assert perm_resp, "MANAGE user should be able to grant permissions"
 
 
@@ -417,9 +415,7 @@ def test_manage_user_has_full_control_model(
         assert resp.status_code == 200, f"MANAGE user should view model: {resp.status_code}"
 
         # Can manage permissions
-        perm_success = _grant_user_model_permission(
-            client, resources["model_name"], "newuser@example.com", "READ"
-        )
+        perm_success = _grant_user_model_permission(client, resources["model_name"], "newuser@example.com", "READ")
         assert perm_success, "MANAGE user should manage permissions"
 
         # Can delete (separate model)
@@ -504,9 +500,7 @@ def test_manage_user_has_full_control_prompt(
         assert version_resp.status_code == 200, f"MANAGE user should create version: {version_resp.status_code}"
 
         # Can manage permissions
-        perm_success = _grant_user_prompt_permission(
-            client, resources["prompt_name"], "newuser@example.com", "READ"
-        )
+        perm_success = _grant_user_prompt_permission(client, resources["prompt_name"], "newuser@example.com", "READ")
         assert perm_success, "MANAGE user should manage permissions"
 
 
