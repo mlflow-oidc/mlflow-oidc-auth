@@ -2,7 +2,7 @@ import React from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
 
-export type ButtonVariant = "action" | "danger" | "ghost" | "primary" | "secondary";
+export type ButtonVariant = "action" | "danger" | "danger-outline" | "ghost" | "primary" | "secondary";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -43,7 +43,7 @@ export function Button({
       transition-all duration-200
   `,
     danger: `
-      px-3 py-1.5 text-sm shadow-md
+      px-3 py-1.5 text-sm
       bg-btn-danger dark:bg-btn-danger-dark
       text-btn-danger-text dark:text-btn-danger-text-dark
       hover:bg-btn-danger-hover dark:hover:bg-btn-danger-hover-dark
@@ -62,6 +62,26 @@ export function Button({
       text-text-primary dark:text-text-primary-dark
       hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark
       hover:bg-bg-primary-hover dark:hover:bg-bg-primary-hover-dark
+  `,
+    "danger-outline": `
+      px-3 py-1.5 text-sm border bg-transparent
+      text-btn-danger-outline border-btn-danger-outline-border
+      hover:bg-btn-danger-outline-hover-bg
+      hover:text-btn-danger-outline-hover-text
+      hover:border-btn-danger-outline-hover-border
+      
+      dark:text-btn-danger-outline-dark
+      dark:border-btn-danger-outline-border-dark
+      dark:hover:bg-btn-danger-outline-hover-bg-dark
+      dark:hover:text-btn-danger-outline-hover-text-dark
+      dark:hover:border-btn-danger-outline-hover-border-dark
+
+      disabled:bg-btn-disabled-bg disabled:text-btn-disabled-text
+      disabled:border-transparent disabled:opacity-100
+      
+      dark:disabled:bg-btn-disabled-bg-dark
+      dark:disabled:text-btn-disabled-text-dark
+      dark:disabled:border-transparent
   `,
   };
 
