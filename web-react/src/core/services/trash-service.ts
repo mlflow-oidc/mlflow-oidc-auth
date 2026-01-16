@@ -15,9 +15,13 @@ export const fetchDeletedExperiments = createStaticApiFetcher<{
   },
 });
 
-export const fetchDeletedRuns = createStaticApiFetcher<DeletedRun[]>({
+export const fetchDeletedRuns = createStaticApiFetcher<{
+  deleted_runs: DeletedRun[];
+}>({
   endpointKey: "TRASH_RUNS",
-  responseType: [] as DeletedRun[],
+  responseType: { deleted_runs: [] } as {
+    deleted_runs: DeletedRun[];
+  },
 });
 
 export const cleanupTrash = async (params: {

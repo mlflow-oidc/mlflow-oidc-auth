@@ -81,9 +81,9 @@ export type DeletedExperiment = {
 export type DeletedRun = {
   run_id: string;
   experiment_id: string;
+  run_name: string;
   status: string;
   start_time: number;
   end_time: number | null;
   lifecycle_stage: string;
-  artifact_uri: string;
 };
