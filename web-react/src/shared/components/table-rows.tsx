@@ -40,9 +40,9 @@ export function ObjectTableRow<
               border-btn-secondary-border dark:border-btn-secondary-border-dark
               hover:bg-table-row-hover dark:hover:bg-table-row-hover "
     >
-      {columns.map((column) => (
+      {columns.map((column, index) => (
         <div
-          key={column.header}
+          key={column.id || (typeof column.header === "string" ? column.header : index)}
           role="cell"
           className={`p-1 flex-1 min-w-0 truncate ${column.className || ""}`}
         >
