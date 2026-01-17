@@ -186,6 +186,10 @@ export default function TrashPage() {
       className: "w-8 m-[2px] flex-none",
     },
     {
+      header: "Experiment ID",
+      render: (item: TrashItem) => item.original.experiment_id,
+    },
+    {
       header: "Name",
       render: (item) => item.name,
     },
