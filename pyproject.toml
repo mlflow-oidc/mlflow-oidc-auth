@@ -115,4 +115,5 @@ norecursedirs = [
   "mlruns.old",
   "htmlcov",
   "__pycache__",
+  "integration",
 ]
