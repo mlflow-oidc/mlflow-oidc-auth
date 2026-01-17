@@ -45,7 +45,7 @@ jobs:
       - name: Override Coverage Source Path for Sonar
         run: sed -i "s@<source>/home/runner/work/mlflow-oidc-auth/mlflow-oidc-auth</source>@<source>/github/workspace</source>@g" /home/runner/work/mlflow-oidc-auth/mlflow-oidc-auth/coverage.xml
       - name: SonarCloud Scan
-        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        if: ${{ !github.event.repository.fork && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: SonarSource/sonarqube-scan-action@v7.0.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
