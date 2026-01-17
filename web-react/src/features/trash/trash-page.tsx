@@ -14,6 +14,7 @@ import type { ColumnConfig } from "../../shared/types/table";
 import type { DeletedExperiment, DeletedRun } from "../../shared/types/entity";
 import { useToast } from "../../shared/components/toast/use-toast";
 import { restoreExperiment, restoreRun, cleanupTrash } from "../../core/services/trash-service";
+import { RemoveFromTrashModal } from "./remove-from-trash-modal";
 
 type TrashTab = "experiments" | "runs";
 
@@ -34,6 +35,7 @@ export default function TrashPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
   const { showToast } = useToast();
+  const [itemsToDelete, setItemsToDelete] = useState<TrashItem[] | null>(null);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -130,9 +132,17 @@ export default function TrashPage() {
     }
   };
 
-  const handleDelete = async (ids: string[]) => {
+  const handleDeleteClick = (ids: string[]) => {
     if (ids.length === 0) return;
+    const items = data.filter((item) => ids.includes(item.id));
+    setItemsToDelete(items);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemsToDelete || itemsToDelete.length === 0) return;
     setIsProcessing(true);
+    const ids = itemsToDelete.map((item) => item.id);
+    
     try {
       if (activeTab === "experiments") {
         await cleanupTrash({ experiment_ids: ids.join(",") });
@@ -141,6 +151,7 @@ export default function TrashPage() {
       }
       showToast(`Successfully deleted ${ids.length} item(s)`, "success");
       setSelectedIds(new Set());
+      setItemsToDelete(null);
       refresh();
     } catch {
       showToast("Failed to delete items", "error");
@@ -200,7 +211,7 @@ export default function TrashPage() {
           <IconButton
             icon={faTrash}
             title="Delete Permanently"
-            onClick={() => handleDelete([item.id])}
+            onClick={() => handleDeleteClick([item.id])}
             disabled={isProcessing}
           />
         </div>
@@ -259,7 +270,7 @@ export default function TrashPage() {
               </Button>
               <Button
                 variant="danger-outline"
-                onClick={() => handleDelete(Array.from(selectedIds))}
+                onClick={() => handleDeleteClick(Array.from(selectedIds))}
                 disabled={selectedIds.size === 0 || isProcessing}
               >
                 Delete
@@ -274,6 +285,16 @@ export default function TrashPage() {
             searchTerm={submittedTerm}
           />
         </>
+      )}
+      {itemsToDelete && (
+        <RemoveFromTrashModal
+          isOpen={!!itemsToDelete}
+          onClose={() => setItemsToDelete(null)}
+          onConfirm={confirmDelete}
+          items={itemsToDelete}
+          itemType={activeTab}
+          isProcessing={isProcessing}
+        />
       )}
     </PageContainer>
   );
