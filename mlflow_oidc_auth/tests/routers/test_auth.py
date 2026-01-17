@@ -86,9 +86,7 @@ class TestLoginEndpoint:
 
         with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.config", mock_config), patch(
             "mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri"
-        ) as mock_redirect, patch("secrets.token_urlsafe") as mock_token, patch(
-            "mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True
-        ):
+        ) as mock_redirect, patch("secrets.token_urlsafe") as mock_token, patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True):
             mock_redirect.return_value = "http://localhost:8000/callback"
             mock_token.return_value = "test_state_token"
 

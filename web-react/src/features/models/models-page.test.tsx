@@ -71,7 +71,7 @@ describe("ModelsPage", () => {
     });
 
     render(<ModelsPage />);
-    
+
     expect(screen.getByText("Model A")).toBeInTheDocument();
     expect(screen.getByText("Model B")).toBeInTheDocument();
   });

@@ -40,7 +40,7 @@ describe("TrashPage", () => {
         vi.clearAllMocks();
         vi.spyOn(useToastModule, "useToast").mockReturnValue({ showToast: mockShowToast } as any);
         vi.spyOn(useSearchModule, "useSearch").mockReturnValue(defaultSearch as any);
-        
+
         vi.spyOn(useDeletedExperimentsModule, "useDeletedExperiments").mockReturnValue({
             deletedExperiments: mockExperiments,
             isLoading: false,
@@ -93,10 +93,10 @@ describe("TrashPage", () => {
         const checkboxes = screen.getAllByRole("checkbox");
         // checkboxes[0] is select-all, [1] is item1, [2] is item2
         fireEvent.click(checkboxes[1]);
-        
+
         const restoreButtons = screen.getAllByRole("button", { name: /^Restore$/i });
         const deleteButtons = screen.getAllByRole("button", { name: /^Delete$/i });
-        
+
         expect(restoreButtons[0]).not.toBeDisabled();
         expect(deleteButtons[0]).not.toBeDisabled();
     });
@@ -105,7 +105,7 @@ describe("TrashPage", () => {
         renderWithRouter();
         const selectAll = screen.getAllByRole("checkbox")[0];
         fireEvent.click(selectAll);
-        
+
         const restoreButton = screen.getAllByRole("button", { name: /^Restore$/i })[0];
         expect(restoreButton).not.toBeDisabled();
     });
@@ -113,10 +113,10 @@ describe("TrashPage", () => {
     it("handles restoring an item", async () => {
         vi.spyOn(trashService, "restoreExperiment").mockResolvedValue({} as any);
         renderWithRouter();
-        
+
         const restoreIcons = screen.getAllByTitle("Restore");
         fireEvent.click(restoreIcons[0]);
-        
+
         await waitFor(() => {
             expect(trashService.restoreExperiment).toHaveBeenCalledWith("exp1");
         });
@@ -127,17 +127,17 @@ describe("TrashPage", () => {
     it("handles permanent deletion (single item)", async () => {
         vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({} as any);
         renderWithRouter();
-        
+
         const deleteIcons = screen.getAllByTitle("Delete Permanently");
         fireEvent.click(deleteIcons[1]); // exp2
-        
+
         expect(screen.getByText(/Remove from trash/i)).toBeDefined();
         expect(screen.getByText(/will be permanently deleted/i)).toBeDefined();
-        
+
         // Use a more specific selector for the modal confirm button
         const confirmButton = screen.getByText("Delete Permanently", { selector: "button span" }).closest("button")!;
         fireEvent.click(confirmButton);
-        
+
         await waitFor(() => {
             expect(trashService.cleanupTrash).toHaveBeenCalledWith({ experiment_ids: "exp2" });
         });
@@ -147,14 +147,14 @@ describe("TrashPage", () => {
     it("handles bulk operations", async () => {
         vi.spyOn(trashService, "restoreExperiment").mockResolvedValue({} as any);
         renderWithRouter();
-        
+
         const checkboxes = screen.getAllByRole("checkbox");
         fireEvent.click(checkboxes[1]);
         fireEvent.click(checkboxes[2]);
-        
+
         const restoreButton = screen.getAllByRole("button", { name: /^Restore$/i })[0];
         fireEvent.click(restoreButton);
-        
+
         await waitFor(() => {
             expect(trashService.restoreExperiment).toHaveBeenCalledTimes(2);
         });
@@ -163,10 +163,10 @@ describe("TrashPage", () => {
     it("handles errors during restore", async () => {
         vi.spyOn(trashService, "restoreExperiment").mockRejectedValue(new Error("Fail"));
         renderWithRouter();
-        
+
         const restoreIcons = screen.getAllByTitle("Restore");
         fireEvent.click(restoreIcons[0]);
-        
+
         await waitFor(() => {
             expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining("Failed"), "error");
         });
@@ -175,10 +175,10 @@ describe("TrashPage", () => {
     it("handles runs tab interactions", async () => {
         vi.spyOn(trashService, "restoreRun").mockResolvedValue({} as any);
         renderWithRouter("/trash/runs");
-        
+
         const restoreIcons = screen.getAllByTitle("Restore");
         fireEvent.click(restoreIcons[0]);
-        
+
         await waitFor(() => {
             expect(trashService.restoreRun).toHaveBeenCalledWith("run1");
         });
@@ -192,7 +192,7 @@ describe("TrashPage", () => {
             error: null,
             refresh: mockRefreshExp,
         } as any);
-        
+
         const { unmount } = renderWithRouter();
         expect(screen.getByText(/Loading/i)).toBeDefined();
         unmount();
@@ -203,7 +203,7 @@ describe("TrashPage", () => {
             error: "Error",
             refresh: mockRefreshExp,
         } as any);
-        renderWithRouter(); 
+        renderWithRouter();
         expect(screen.getByText(/Error/i)).toBeDefined();
     });
 });

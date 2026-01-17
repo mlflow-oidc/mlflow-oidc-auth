@@ -154,9 +154,9 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
           </div>
           {copyFeedback && (
             <span
-              className={`absolute right-10 bottom-1.5 text-xs px-2 py-1 rounded 
-                bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark 
-                transition-opacity duration-300 
+              className={`absolute right-10 bottom-1.5 text-xs px-2 py-1 rounded
+                bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark
+                transition-opacity duration-300
                 ${copyFeedback === "Copied!" ? "opacity-100" : "opacity-0"}`}
             >
               {copyFeedback}

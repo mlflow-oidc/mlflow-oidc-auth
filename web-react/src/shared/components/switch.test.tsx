@@ -14,7 +14,7 @@ describe("Switch", () => {
   it("toggles state on click", () => {
     const handleChange = vi.fn();
     render(<Switch checked={false} onChange={handleChange} />);
-    
+
     fireEvent.click(screen.getByRole("switch").parentElement!);
     expect(handleChange).toHaveBeenCalledWith(true);
   });
@@ -22,11 +22,11 @@ describe("Switch", () => {
   it("does not toggle when disabled", () => {
     const handleChange = vi.fn();
     render(<Switch checked={false} onChange={handleChange} disabled />);
-    
+
     fireEvent.click(screen.getByRole("switch").parentElement!);
     expect(handleChange).not.toHaveBeenCalled();
   });
-  
+
   it("shows ON label when checked", () => {
     render(<Switch checked={true} onChange={() => {}} />);
     // "ON" should have opacity-100

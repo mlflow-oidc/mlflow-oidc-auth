@@ -11,7 +11,7 @@ describe("useApi", () => {
         vi.spyOn(useAuthModule, "useAuth").mockReturnValue({ isAuthenticated: false });
         const fetcher = vi.fn();
         const { result } = renderHook(() => useApi(fetcher));
-        
+
         expect(fetcher).not.toHaveBeenCalled();
         expect(result.current.data).toBeNull();
         expect(result.current.isLoading).toBe(false);
@@ -21,9 +21,9 @@ describe("useApi", () => {
         vi.spyOn(useAuthModule, "useAuth").mockReturnValue({ isAuthenticated: true });
         const mockData = { id: 1, name: "Test" };
         const fetcher = vi.fn().mockResolvedValue(mockData);
-        
+
         const { result } = renderHook(() => useApi(fetcher));
-        
+
         await waitFor(() => {
             expect(result.current.data).toEqual(mockData);
         });
@@ -33,9 +33,9 @@ describe("useApi", () => {
     it("handles errors", async () => {
         vi.spyOn(useAuthModule, "useAuth").mockReturnValue({ isAuthenticated: true });
         const fetcher = vi.fn().mockRejectedValue(new Error("API Error"));
-        
+
         const { result } = renderHook(() => useApi(fetcher));
-        
+
         await waitFor(() => {
             expect(result.current.error).toBeTruthy();
             expect(result.current.error?.message).toBe("API Error");

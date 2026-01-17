@@ -57,7 +57,7 @@ describe("Select", () => {
         disabled
       />
     );
-    
+
     const select = screen.getByRole("combobox");
     expect(select).toBeDisabled();
   });

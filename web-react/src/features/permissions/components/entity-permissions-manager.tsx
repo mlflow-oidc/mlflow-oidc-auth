@@ -175,7 +175,7 @@ export function EntityPermissionsManager({
               placeholder="Search permissions..."
             />
           </div>
-          
+
           <EntityListTable
             mode="object"
             data={filteredPermissions}

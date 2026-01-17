@@ -69,7 +69,7 @@ export function Button({
       hover:bg-btn-danger-outline-hover-bg
       hover:text-btn-danger-outline-hover-text
       hover:border-btn-danger-outline-hover-border
-      
+
       dark:text-btn-danger-outline-dark
       dark:border-btn-danger-outline-border-dark
       dark:hover:bg-btn-danger-outline-hover-bg-dark
@@ -78,7 +78,7 @@ export function Button({
 
       disabled:bg-btn-disabled-bg disabled:text-btn-disabled-text
       disabled:border-transparent disabled:opacity-100
-      
+
       dark:disabled:bg-btn-disabled-bg-dark
       dark:disabled:text-btn-disabled-text-dark
       dark:disabled:border-transparent

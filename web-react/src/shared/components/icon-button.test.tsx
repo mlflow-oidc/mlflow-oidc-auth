@@ -15,7 +15,7 @@ describe("IconButton", () => {
   it("calls onClick handler", () => {
     const handleClick = vi.fn();
     render(<IconButton icon={faHome} onClick={handleClick} />);
-    
+
     fireEvent.click(screen.getByRole("button"));
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
@@ -23,7 +23,7 @@ describe("IconButton", () => {
   it("prevents multiple clicks when disabled", () => {
     const handleClick = vi.fn();
     render(<IconButton icon={faHome} onClick={handleClick} disabled />);
-    
+
     // First, check it is disabled
     expect(screen.getByRole("button")).toBeDisabled();
 

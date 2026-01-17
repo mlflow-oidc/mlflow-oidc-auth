@@ -2,11 +2,11 @@ import { useState, useCallback } from "react";
 import { http } from "../../../core/services/http";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { DYNAMIC_API_ENDPOINTS } from "../../../core/configs/api-endpoints";
-import type { 
-  EntityPermission, 
-  PermissionLevel, 
-  PermissionItem, 
-  PermissionType 
+import type {
+  EntityPermission,
+  PermissionLevel,
+  PermissionItem,
+  PermissionType
 } from "../../../shared/types/entity";
 
 interface UsePermissionsManagementProps {

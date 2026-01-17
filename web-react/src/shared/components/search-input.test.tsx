@@ -25,7 +25,7 @@ describe("SearchInput", () => {
         onClear={() => {}}
       />
     );
-    
+
     const input = screen.getByPlaceholderText("Search...");
     fireEvent.change(input, { target: { value: "test" } });
     expect(handleChange).toHaveBeenCalled();
@@ -41,10 +41,10 @@ describe("SearchInput", () => {
         onClear={() => {}}
       />
     );
-    
+
     const submitBtn = screen.getByTitle("Search");
     fireEvent.click(submitBtn);
-    
+
     expect(handleSubmit).toHaveBeenCalled();
   });
 
@@ -58,10 +58,10 @@ describe("SearchInput", () => {
         onClear={handleClear}
       />
     );
-    
+
     const clearBtn = screen.getByTitle("Clear search");
     expect(clearBtn).toBeInTheDocument();
-    
+
     fireEvent.click(clearBtn);
     expect(handleClear).toHaveBeenCalled();
   });
@@ -75,7 +75,7 @@ describe("SearchInput", () => {
         onClear={() => {}}
       />
     );
-    
+
     expect(screen.queryByTitle("Clear search")).toBeNull();
   });
 });

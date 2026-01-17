@@ -16,8 +16,8 @@ import { SearchInput } from "../../../shared/components/search-input";
 import { IconButton } from "../../../shared/components/icon-button";
 import { Button } from "../../../shared/components/button";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
-import type { 
-  PermissionType, 
+import type {
+  PermissionType,
   PatternPermissionItem,
   PermissionLevel,
 } from "../../../shared/types/entity";
@@ -121,10 +121,10 @@ export const RegexPermissionsView = ({
 
       await http(url, {
         method: "PATCH",
-        body: JSON.stringify({ 
-          regex: regex ?? editingItem.regex, 
-          priority: priority ?? editingItem.priority, 
-          permission: newPermission 
+        body: JSON.stringify({
+          regex: regex ?? editingItem.regex,
+          priority: priority ?? editingItem.priority,
+          permission: newPermission
         }),
       });
 
@@ -145,7 +145,7 @@ export const RegexPermissionsView = ({
     try {
       let url = "";
       if (type === "experiments") {
-        url = entityKind === "user" 
+        url = entityKind === "user"
           ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSIONS(entityName)
           : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSIONS(entityName);
       } else if (type === "models") {

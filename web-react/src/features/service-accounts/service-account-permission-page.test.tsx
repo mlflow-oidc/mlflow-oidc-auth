@@ -13,7 +13,7 @@ vi.mock("../permissions/shared-permissions-page", () => ({
 describe("ServiceAccountPermissionPage", () => {
   it("renders SharedPermissionsPage with correct props", () => {
     render(<ServiceAccountPermissionPage type="experiments" />);
-    
+
     const page = screen.getByTestId("shared-permissions-page");
     expect(page).toHaveTextContent("experiments");
     expect(page).toHaveTextContent("/service-accounts");

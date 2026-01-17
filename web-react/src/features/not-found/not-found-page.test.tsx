@@ -22,9 +22,9 @@ describe("NotFoundPage", () => {
 
   it("navigates to profile on button click", () => {
     render(<NotFoundPage />);
-    
+
     fireEvent.click(screen.getByText("Go to My Profile"));
-    
+
     expect(mockNavigate).toHaveBeenCalledWith("/user");
   });
 });

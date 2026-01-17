@@ -24,17 +24,17 @@ vi.mock("./features/not-found/not-found-page", () => ({ default: () => <div>NotF
 vi.mock("./features/forbidden/forbidden-page", () => ({ default: () => <div>ForbiddenPage</div> }));
 
 // Mock wrappers
-vi.mock("./features/auth/components/protected-route", () => ({ 
-    default: ({ children }: any) => <div>{children}</div> 
+vi.mock("./features/auth/components/protected-route", () => ({
+    default: ({ children }: any) => <div>{children}</div>
 }));
-vi.mock("./features/auth/components/redirect-if-auth", () => ({ 
-    default: ({ children }: any) => <div>{children}</div> 
+vi.mock("./features/auth/components/redirect-if-auth", () => ({
+    default: ({ children }: any) => <div>{children}</div>
 }));
-vi.mock("./core/components/main-layout", () => ({ 
-    default: ({ children }: any) => <div>{children}</div> 
+vi.mock("./core/components/main-layout", () => ({
+    default: ({ children }: any) => <div>{children}</div>
 }));
-vi.mock("./shared/components/loading-spinner", () => ({ 
-    LoadingSpinner: () => <div>Loading...</div> 
+vi.mock("./shared/components/loading-spinner", () => ({
+    LoadingSpinner: () => <div>Loading...</div>
 }));
 
 describe("App Routing", () => {
@@ -55,7 +55,7 @@ describe("App Routing", () => {
     );
     expect(await screen.findByText("ExperimentsPage")).toBeInTheDocument();
   });
-  
+
   it("renders ExperimentPermissionsPage on /experiments/:id", async () => {
       render(
       <MemoryRouter initialEntries={["/experiments/123"]}>

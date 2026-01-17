@@ -34,9 +34,9 @@ describe("Core Data Hooks", () => {
         it("returns current user data", async () => {
             const mockUser = { username: "testuser", is_admin: true };
             vi.spyOn(userService, "fetchCurrentUser").mockResolvedValue(mockUser as any);
-            
+
             const { result } = renderHook(() => useCurrentUser());
-            
+
             await waitFor(() => {
                 expect(result.current.currentUser).toEqual(mockUser);
             });
@@ -47,9 +47,9 @@ describe("Core Data Hooks", () => {
         it("returns all service accounts", async () => {
             const mockAccounts = ["sa1", "sa2"];
             vi.spyOn(userService, "fetchAllServiceAccounts").mockResolvedValue(mockAccounts);
-            
+
             const { result } = renderHook(() => useAllServiceAccounts());
-            
+
             await waitFor(() => {
                 expect(result.current.allServiceAccounts).toEqual(mockAccounts);
             });
@@ -60,9 +60,9 @@ describe("Core Data Hooks", () => {
         it("returns all experiments", async () => {
             const mockExperiments = [{ id: "1", name: "exp1" }];
             vi.spyOn(entityService, "fetchAllExperiments").mockResolvedValue(mockExperiments as any);
-            
+
             const { result } = renderHook(() => useAllExperiments());
-            
+
             await waitFor(() => {
                 expect(result.current.allExperiments).toEqual(mockExperiments);
             });
@@ -73,9 +73,9 @@ describe("Core Data Hooks", () => {
         it("returns all groups", async () => {
             const mockGroups = ["group1", "group2"];
             vi.spyOn(entityService, "fetchAllGroups").mockResolvedValue(mockGroups);
-            
+
             const { result } = renderHook(() => useAllGroups());
-            
+
             await waitFor(() => {
                 expect(result.current.allGroups).toEqual(mockGroups);
             });
@@ -86,9 +86,9 @@ describe("Core Data Hooks", () => {
         it("returns all models", async () => {
             const mockModels = [{ id: "1", name: "model1" }];
             vi.spyOn(entityService, "fetchAllModels").mockResolvedValue(mockModels as any);
-            
+
             const { result } = renderHook(() => useAllModels());
-            
+
             await waitFor(() => {
                 expect(result.current.allModels).toEqual(mockModels);
             });
@@ -99,9 +99,9 @@ describe("Core Data Hooks", () => {
         it("returns all prompts", async () => {
             const mockPrompts = [{ id: "1", name: "prompt1" }];
             vi.spyOn(entityService, "fetchAllPrompts").mockResolvedValue(mockPrompts as any);
-            
+
             const { result } = renderHook(() => useAllPrompts());
-            
+
             await waitFor(() => {
                 expect(result.current.allPrompts).toEqual(mockPrompts);
             });
@@ -112,9 +112,9 @@ describe("Core Data Hooks", () => {
         it("returns all users", async () => {
             const mockUsers = ["user1", "user2"];
             vi.spyOn(userService, "fetchAllUsers").mockResolvedValue(mockUsers);
-            
+
             const { result } = renderHook(() => useAllUsers());
-            
+
             await waitFor(() => {
                 expect(result.current.allUsers).toEqual(mockUsers);
             });
@@ -125,9 +125,9 @@ describe("Core Data Hooks", () => {
         it("returns deleted experiments", async () => {
             const mockDeleted = { deleted_experiments: [{ id: "1", name: "deleted_exp1" }] };
             vi.spyOn(trashService, "fetchDeletedExperiments").mockResolvedValue(mockDeleted as any);
-            
+
             const { result } = renderHook(() => useDeletedExperiments());
-            
+
             await waitFor(() => {
                 expect(result.current.deletedExperiments).toEqual(mockDeleted.deleted_experiments);
             });
@@ -138,9 +138,9 @@ describe("Core Data Hooks", () => {
         it("returns deleted runs", async () => {
             const mockDeleted = { deleted_runs: [{ id: "1", run_uuid: "run1" }] };
             vi.spyOn(trashService, "fetchDeletedRuns").mockResolvedValue(mockDeleted as any);
-            
+
             const { result } = renderHook(() => useDeletedRuns());
-            
+
             await waitFor(() => {
                 expect(result.current.deletedRuns).toEqual(mockDeleted.deleted_runs);
             });
@@ -151,9 +151,9 @@ describe("Core Data Hooks", () => {
         it("returns user details when username is provided", async () => {
             const mockUser = { username: "user1", is_admin: false };
             vi.spyOn(userService, "fetchUserDetails").mockResolvedValue(mockUser as any);
-            
+
             const { result } = renderHook(() => useUserDetails({ username: "user1" }));
-            
+
             await waitFor(() => {
                 expect(result.current.user).toEqual(mockUser);
             });

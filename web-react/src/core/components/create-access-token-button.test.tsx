@@ -14,11 +14,11 @@ describe("CreateAccessTokenButton", () => {
 
   it("opens modal on click", () => {
     render(<CreateAccessTokenButton username="testuser" />);
-    
+
     expect(screen.queryByTestId("access-token-modal")).not.toBeInTheDocument();
-    
+
     fireEvent.click(screen.getByRole("button", { name: "Create Access Token" }));
-    
+
     expect(screen.queryByTestId("access-token-modal")).toBeInTheDocument();
   });
 });

@@ -22,7 +22,7 @@ describe("Input", () => {
     // but looking at implementation:
     // const errorContent = error || (reserveErrorSpace ? "\u00A0" : null);
     // <p className={`mt-1 text-sm ${error ? "text-red-500" : "invisible"}`}>
-    
+
     const errorMsg = document.querySelector("p");
     expect(errorMsg).toBeInTheDocument();
     expect(errorMsg).toHaveClass("invisible");
@@ -40,7 +40,7 @@ describe("Input", () => {
     const input = screen.getByPlaceholderText("Enter text");
     expect(input).toHaveAttribute("type", "password");
   });
-  
+
   it("renders required asterisk", () => {
     render(<Input label="Required Field" required id="req" />);
     // Label text should contain the asterisk

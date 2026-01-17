@@ -67,7 +67,7 @@ export default function PromptsPage() {
               placeholder="Search prompts..."
             />
           </div>
-          
+
           <EntityListTable
             mode="object"
             data={filteredPrompts}

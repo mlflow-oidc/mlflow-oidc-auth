@@ -47,7 +47,7 @@ describe("PromptPermissionsPage", () => {
 
   it("renders correctly", () => {
     render(<PromptPermissionsPage />);
-    
+
     expect(screen.getByTestId("page-container")).toHaveAttribute("title", "Permissions for Prompt TestPrompt");
     expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
   });

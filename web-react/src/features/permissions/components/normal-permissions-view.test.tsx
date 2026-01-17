@@ -31,7 +31,7 @@ vi.mock("../../../core/hooks/use-all-prompts");
 describe("NormalPermissionsView", () => {
     const mockShowToast = vi.fn();
     const mockRefresh = vi.fn();
-    
+
     const defaultSearch = {
         searchTerm: "",
         submittedTerm: "",
@@ -57,7 +57,7 @@ describe("NormalPermissionsView", () => {
         vi.clearAllMocks();
         vi.spyOn(useToastModule, "useToast").mockReturnValue({ showToast: mockShowToast } as any);
         vi.spyOn(useSearchModule, "useSearch").mockReturnValue(defaultSearch as any);
-        
+
         // Default mock implementation for all hooks
         vi.spyOn(useExpHooks, "useUserExperimentPermissions").mockReturnValue(defaultHookResult as any);
         vi.spyOn(useModelHooks, "useUserRegisteredModelPermissions").mockReturnValue(defaultHookResult as any);
@@ -65,7 +65,7 @@ describe("NormalPermissionsView", () => {
         vi.spyOn(useGroupExpHooks, "useGroupExperimentPermissions").mockReturnValue(defaultHookResult as any);
         vi.spyOn(useGroupModelHooks, "useGroupRegisteredModelPermissions").mockReturnValue(defaultHookResult as any);
         vi.spyOn(useGroupPromptHooks, "useGroupPromptPermissions").mockReturnValue(defaultHookResult as any);
-        
+
         vi.spyOn(useAllExpHooks, "useAllExperiments").mockReturnValue({ allExperiments: [{ id: "new1", name: "New Exp" }] } as any);
         vi.spyOn(useAllModelHooks, "useAllModels").mockReturnValue({ allModels: [{ name: "New Model" }] } as any);
         vi.spyOn(useAllPromptHooks, "useAllPrompts").mockReturnValue({ allPrompts: [{ name: "New Prompt" }] } as any);
@@ -89,10 +89,10 @@ describe("NormalPermissionsView", () => {
             it(`opens grant modal and saves for ${type} (group)`, async () => {
                 vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
                 render(<NormalPermissionsView type={type} entityKind="group" entityName="group1" />);
-                
+
                 const addText = type === "experiments" ? /Add experiment/i : type === "models" ? /Add model/i : /Add prompt/i;
                 fireEvent.click(screen.getByText(addText));
-                
+
                 const labelText = type === "experiments" ? /Experiment/i : type === "models" ? /Model/i : /Prompt/i;
                 const select = screen.getByLabelText(labelText);
                 fireEvent.change(select, { target: { value: getExpectedValue(type) } });
@@ -111,10 +111,10 @@ describe("NormalPermissionsView", () => {
             it(`handles removing for ${type} (user)`, async () => {
                 vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
                 render(<NormalPermissionsView type={type} entityKind="user" entityName="user1" />);
-                
+
                 const removeButtons = screen.getAllByTitle(/Remove permission/i);
                 fireEvent.click(removeButtons[0]);
-                
+
                 await waitFor(() => {
                     expect(httpModule.http).toHaveBeenCalledWith(
                         expect.stringContaining(`/api/2.0/mlflow/permissions/users/user1/${type === "models" ? "registered-models" : type}`),
@@ -131,7 +131,7 @@ describe("NormalPermissionsView", () => {
         const editButtons = screen.getAllByTitle(/Edit permission/i);
         const addPermissionButtons = screen.getAllByTitle(/Add permission/i);
         const removeButtons = screen.getAllByTitle(/Remove permission/i);
-        
+
         expect(editButtons[0]).toBeDefined(); // item1 (kind: user)
         expect(addPermissionButtons[0]).toBeDefined(); // fallback (kind: fallback)
         expect(removeButtons[0]).toBeEnabled(); // item1 (kind: user)
@@ -141,15 +141,15 @@ describe("NormalPermissionsView", () => {
     it("handles failure during operations", async () => {
         vi.spyOn(httpModule, "http").mockRejectedValue(new Error("Fail"));
         render(<NormalPermissionsView type="experiments" entityKind="user" entityName="user1" />);
-        
+
         const removeButtons = screen.getAllByTitle(/Remove permission/i);
         fireEvent.click(removeButtons[0]);
-        
+
         await waitFor(() => {
             expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining("Failed"), "error");
         });
     });
-    
+
     it("renders loading and error appropriately", () => {
          vi.spyOn(useExpHooks, "useUserExperimentPermissions").mockReturnValue({ ...defaultHookResult, isLoading: true } as any);
          const { rerender } = render(<NormalPermissionsView type="experiments" entityKind="user" entityName="user1" />);

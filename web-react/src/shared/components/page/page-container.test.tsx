@@ -9,7 +9,7 @@ describe("PageContainer", () => {
                 <div>Child Content</div>
             </PageContainer>
         );
-        
+
         expect(screen.getByText("Test Page")).toBeDefined();
         expect(screen.getByText("Child Content")).toBeDefined();
     });

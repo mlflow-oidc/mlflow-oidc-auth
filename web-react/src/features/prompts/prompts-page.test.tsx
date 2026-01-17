@@ -71,7 +71,7 @@ describe("PromptsPage", () => {
     });
 
     render(<PromptsPage />);
-    
+
     expect(screen.getByText("Prompt A")).toBeInTheDocument();
     expect(screen.getByText("Prompt B")).toBeInTheDocument();
   });

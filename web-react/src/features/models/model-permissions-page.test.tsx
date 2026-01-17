@@ -47,7 +47,7 @@ describe("ModelPermissionsPage", () => {
 
   it("renders correctly", () => {
     render(<ModelPermissionsPage />);
-    
+
     expect(screen.getByTestId("page-container")).toHaveAttribute("title", "Permissions for Model TestModel");
     expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
   });

@@ -90,7 +90,7 @@ describe("ExperimentsPage", () => {
     expect(screen.getByText("Exp 1")).toBeInTheDocument();
     expect(screen.getByText("Exp 2")).toBeInTheDocument();
   });
-  
+
   it("filters experiments based on search", () => {
     mockUseSearch.mockReturnValue({
       searchTerm: "Exp 1",
@@ -99,7 +99,7 @@ describe("ExperimentsPage", () => {
       handleSearchSubmit: vi.fn(),
       handleClearSearch: vi.fn(),
     });
-    
+
     mockUseAllExperiments.mockReturnValue({
         isLoading: false,
         error: null,

@@ -14,8 +14,8 @@ import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
 import { IconButton } from "../../../shared/components/icon-button";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
-import type { 
-  PermissionType, 
+import type {
+  PermissionType,
   PermissionItem,
   PermissionLevel,
   ExperimentPermission,
@@ -194,7 +194,7 @@ export const NormalPermissionsView = ({
         body: JSON.stringify({ permission }),
       });
 
-      const entityDisplayName = type === "experiments" 
+      const entityDisplayName = type === "experiments"
         ? allExperiments?.find(e => e.id === identifier)?.name || identifier
         : identifier;
 

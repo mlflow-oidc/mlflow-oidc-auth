@@ -36,7 +36,7 @@ describe("CreateServiceAccountModal", () => {
         fireEvent.change(nameInput, { target: { value: "test-sa" } });
         // Display name should auto-fill if not manual
         expect(displayNameInput.value).toBe("test-sa");
-        
+
         fireEvent.click(isAdminCheckbox);
         expect(saveButton).not.toBeDisabled();
 

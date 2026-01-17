@@ -15,7 +15,7 @@ export function PrimitiveTableRow({
       role="row"
       key={index}
       onClick={handleClick}
-      className="flex border-b 
+      className="flex border-b
               border-btn-secondary-border dark:border-btn-secondary-border-dark
               hover:bg-table-row-hover dark:hover:bg-table-row-hover"
     >

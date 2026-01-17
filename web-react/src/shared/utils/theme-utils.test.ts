@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { 
-    applyTheme, 
-    getInitialIsDarkState, 
-    initializeTheme, 
-    useTheme, 
+import {
+    applyTheme,
+    getInitialIsDarkState,
+    initializeTheme,
+    useTheme,
     DARK_MODE_TOGGLE_ENABLED_KEY,
-    THEME_PREF_KEY 
+    THEME_PREF_KEY
 } from "./theme-utils";
 
 // Mock localStorage
@@ -75,11 +75,11 @@ describe("theme-utils", () => {
         it("provides toggleTheme function", () => {
             const { result } = renderHook(() => useTheme());
             expect(result.current.isDark).toBe(false);
-            
+
             act(() => {
                 result.current.toggleTheme();
             });
-            
+
             expect(result.current.isDark).toBe(true);
         });
     });

@@ -29,7 +29,7 @@ describe("Modal", () => {
         <div>Content</div>
       </Modal>
     );
-    
+
     fireEvent.keyDown(document, { key: "Escape" });
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
@@ -41,7 +41,7 @@ describe("Modal", () => {
         <div>Content</div>
       </Modal>
     );
-    
+
     const closeBtn = screen.getByRole("button", { name: "Close modal" });
     fireEvent.click(closeBtn);
     expect(handleClose).toHaveBeenCalledTimes(1);
@@ -54,7 +54,7 @@ describe("Modal", () => {
       </Modal>
     );
     expect(document.body.style.overflow).toBe("hidden");
-    
+
     unmount();
     expect(document.body.style.overflow).toBe("unset");
   });

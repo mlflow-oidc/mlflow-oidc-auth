@@ -14,6 +14,6 @@ describe("trash-service", () => {
         await restoreExperiment("123");
         // endpoint is dynamic, usually /trash/experiments/123/restore or similar
         // We expect http to be called
-        expect(http).toHaveBeenCalled(); 
+        expect(http).toHaveBeenCalled();
     });
 });
