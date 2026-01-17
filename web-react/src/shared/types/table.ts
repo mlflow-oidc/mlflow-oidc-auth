@@ -1,5 +1,6 @@
 export type ColumnConfig<T extends Record<string, unknown>> = {
-  header: string;
+  header: React.ReactNode;
+  id?: string;
   render: (item: T) => React.ReactNode;
   className?: string;
 };

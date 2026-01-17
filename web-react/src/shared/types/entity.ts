@@ -67,3 +67,23 @@ export type ModelPatternPermission = {
 export type PromptPatternPermission = ModelPatternPermission;
 
 export type PatternPermissionItem = ExperimentPatternPermission | ModelPatternPermission;
+
+export type DeletedExperiment = {
+  experiment_id: string;
+  name: string;
+  lifecycle_stage: string;
+  artifact_location: string;
+  tags: Record<string, string>;
+  creation_time: number;
+  last_update_time: number;
+};
+
+export type DeletedRun = {
+  run_id: string;
+  experiment_id: string;
+  run_name: string;
+  status: string;
+  start_time: number;
+  end_time: number | null;
+  lifecycle_stage: string;
+};

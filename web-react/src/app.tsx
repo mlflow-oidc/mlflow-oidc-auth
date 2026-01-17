@@ -182,7 +182,7 @@ export default function App() {
       />
 
       <Route
-        path="/trash"
+        path="/trash/:tab?"
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <TrashPage />
