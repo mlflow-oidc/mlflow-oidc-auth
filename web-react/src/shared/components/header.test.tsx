@@ -63,7 +63,7 @@ describe("Header", () => {
         <Header />
       </MemoryRouter>
     );
-    
+
     // Initial state
     expect(screen.getByTestId("mobile-nav")).toHaveTextContent("Open: false");
 

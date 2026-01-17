@@ -6,13 +6,13 @@ describe("RemoveFromTrashModal", () => {
   it("renders correctly with items", () => {
     const items = [{ id: "1", name: "Exp 1" }];
     render(
-        <RemoveFromTrashModal 
-            isOpen={true} 
-            onClose={vi.fn()} 
-            onConfirm={vi.fn()} 
-            items={items} 
-            itemType="experiments" 
-            isProcessing={false} 
+        <RemoveFromTrashModal
+            isOpen={true}
+            onClose={vi.fn()}
+            onConfirm={vi.fn()}
+            items={items}
+            itemType="experiments"
+            isProcessing={false}
         />
     );
     expect(screen.getByText("The following experiment(s) will be permanently deleted:")).toBeInTheDocument();
@@ -22,16 +22,16 @@ describe("RemoveFromTrashModal", () => {
   it("calls onConfirm when delete is clicked", () => {
     const onConfirm = vi.fn();
     render(
-        <RemoveFromTrashModal 
-            isOpen={true} 
-            onClose={vi.fn()} 
-            onConfirm={onConfirm} 
-            items={[]} 
-            itemType="experiments" 
-            isProcessing={false} 
+        <RemoveFromTrashModal
+            isOpen={true}
+            onClose={vi.fn()}
+            onConfirm={onConfirm}
+            items={[]}
+            itemType="experiments"
+            isProcessing={false}
         />
     );
-    
+
     fireEvent.click(screen.getByText("Delete Permanently"));
     expect(onConfirm).toHaveBeenCalled();
   });

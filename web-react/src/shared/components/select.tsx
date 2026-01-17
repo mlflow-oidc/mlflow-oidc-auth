@@ -31,7 +31,7 @@ export const Select = ({ label, error, options, className = "", containerClassNa
         <select
           ref={ref}
           id={id}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none 
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none
             text-ui-text dark:text-ui-text-dark
             bg-ui-bg dark:bg-ui-bg-dark
             border-ui-border dark:border-ui-border-dark

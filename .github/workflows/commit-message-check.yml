@@ -11,6 +11,9 @@ jobs:
   check-commit-message:
     name: Validate Commit Message
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Check Commit Type
         uses: gsactions/commit-message-checker@v2

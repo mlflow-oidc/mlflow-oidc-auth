@@ -43,7 +43,7 @@ export const Toast: React.FC<ToastProps> = ({
   return (
     <div
       className={`
-        pointer-events-auto flex items-start p-4 rounded shadow-lg border w-80 
+        pointer-events-auto flex items-start p-4 rounded shadow-lg border w-80
         transition-all duration-300 ease-in-out transform translate-x-0 opacity-100
         ${styles[type]}
       `}

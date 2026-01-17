@@ -47,7 +47,7 @@ describe("Entity and Pattern Permission Hooks", () => {
             it(`fetches data for ${fetcherName} when props provided`, async () => {
                 const spy = vi.spyOn(entityService, fetcherName as any).mockResolvedValue(mockPermissions as any);
                 const { result } = renderHook(() => hook(props));
-                
+
                 await waitFor(() => {
                     // Find either 'permissions' or something ending with 'Permissions'
                     const key = Object.keys(result.current).find(k => k === "permissions" || k.endsWith("Permissions"));
@@ -60,7 +60,7 @@ describe("Entity and Pattern Permission Hooks", () => {
                 const spy = vi.spyOn(entityService, fetcherName as any);
                 const nullProps = Object.keys(props).reduce((acc: any, key) => ({ ...acc, [key]: null }), {});
                 renderHook(() => hook(nullProps));
-                
+
                 await new Promise(resolve => setTimeout(resolve, 10));
                 expect(spy).not.toHaveBeenCalled();
             });
@@ -74,12 +74,12 @@ describe("Entity and Pattern Permission Hooks", () => {
     testHook(useModelGroupPermissions, { modelName: "model1" }, "fetchModelGroupPermissions");
     testHook(usePromptUserPermissions, { promptName: "prompt1" }, "fetchPromptUserPermissions");
     testHook(usePromptGroupPermissions, { promptName: "prompt1" }, "fetchPromptGroupPermissions");
-    
+
     // User Permissions
     testHook(useUserExperimentPermissions, { username: "user1" }, "fetchUserExperimentPermissions");
     testHook(useUserRegisteredModelPermissions, { username: "user1" }, "fetchUserRegisteredModelPermissions");
     testHook(useUserPromptPermissions, { username: "user1" }, "fetchUserPromptPermissions");
-    
+
     // Group Permissions
     testHook(useGroupExperimentPermissions, { groupName: "group1" }, "fetchGroupExperimentPermissions");
     testHook(useGroupRegisteredModelPermissions, { groupName: "group1" }, "fetchGroupRegisteredModelPermissions");

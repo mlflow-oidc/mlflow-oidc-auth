@@ -100,7 +100,7 @@ describe("EntityPermissionsManager", () => {
             isModalOpen: true,
             editingItem: mockPermissions[0],
         } as any);
-        
+
         renderManager();
         // The title matches "Edit Experiment res-1 permissions for user1"
         expect(screen.getByText(/Edit Experiment/i)).toBeDefined();
@@ -111,15 +111,15 @@ describe("EntityPermissionsManager", () => {
         renderManager();
         const addButton = screen.getByRole("button", { name: /^\+ Add$/ }); // First "+ Add" button is for users
         fireEvent.click(addButton);
-        
+
         expect(screen.getByText(/Grant user permissions/i)).toBeDefined();
-        
+
         const select = screen.getByLabelText(/User/i);
         fireEvent.change(select, { target: { value: "user2" } });
-        
+
         const saveButton = screen.getByRole("button", { name: "Save" });
         fireEvent.click(saveButton);
-        
+
         await waitFor(() => {
             expect(mockHandleGrantPermission).toHaveBeenCalledWith("user2", "READ");
         });
@@ -129,15 +129,15 @@ describe("EntityPermissionsManager", () => {
         renderManager();
         const addButton = screen.getByRole("button", { name: /\+ Add Service Account/i });
         fireEvent.click(addButton);
-        
+
         expect(screen.getByText(/Grant service account permissions/i)).toBeDefined();
-        
+
         const select = screen.getByLabelText(/Service account/i);
         fireEvent.change(select, { target: { value: "sa1" } });
-        
+
         const saveButton = screen.getByRole("button", { name: "Save" });
         fireEvent.click(saveButton);
-        
+
         await waitFor(() => {
             expect(mockHandleGrantPermission).toHaveBeenCalledWith("sa1", "READ");
         });
@@ -147,15 +147,15 @@ describe("EntityPermissionsManager", () => {
         renderManager();
         const addButton = screen.getByRole("button", { name: /\+ Add Group/i });
         fireEvent.click(addButton);
-        
+
         expect(screen.getByText(/Grant group permissions/i)).toBeDefined();
-        
+
         const select = screen.getByLabelText(/Group/i);
         fireEvent.change(select, { target: { value: "group2" } });
-        
+
         const saveButton = screen.getByRole("button", { name: "Save" });
         fireEvent.click(saveButton);
-        
+
         await waitFor(() => {
             expect(mockHandleGrantPermission).toHaveBeenCalledWith("group2", "READ", "group");
         });
@@ -165,24 +165,24 @@ describe("EntityPermissionsManager", () => {
         renderManager();
         const removeButtons = screen.getAllByTitle("Remove permission");
         fireEvent.click(removeButtons[0]);
-        
+
         expect(mockHandleRemovePermission).toHaveBeenCalledWith(mockPermissions[0]);
     });
 
     it("filters available users/groups correctly", () => {
         // user1 and group1 are already in mockPermissions
         renderManager();
-        
+
         // Open user grant modal
         fireEvent.click(screen.getByRole("button", { name: /^\+ Add$/ }));
         const userOptions = screen.getAllByRole("option");
         // Options should be: "Select user...", "user2"
         expect(userOptions.map(o => (o as HTMLOptionElement).value)).toContain("user2");
         expect(userOptions.map(o => (o as HTMLOptionElement).value)).not.toContain("user1");
-        
+
         // Close modal (mocking doesn't really close it here, but we can just check groups)
         fireEvent.click(screen.getByText("Cancel"));
-        
+
         // Open group grant modal
         fireEvent.click(screen.getByRole("button", { name: /\+ Add Group/i }));
         const groupOptions = screen.getAllByRole("option");

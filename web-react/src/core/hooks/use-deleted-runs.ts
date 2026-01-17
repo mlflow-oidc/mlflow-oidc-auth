@@ -10,10 +10,10 @@ export function useDeletedRuns() {
     refetch: refresh,
   } = useApi<{ deleted_runs: DeletedRun[] }>(fetchDeletedRuns);
 
-  return { 
-    deletedRuns: response?.deleted_runs || [], 
-    isLoading, 
-    error, 
-    refresh 
+  return {
+    deletedRuns: response?.deleted_runs || [],
+    isLoading,
+    error,
+    refresh
   };
 }

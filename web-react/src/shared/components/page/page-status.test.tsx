@@ -16,7 +16,7 @@ describe("PageStatus", () => {
     it("renders error state with retry button", () => {
         const mockRetry = vi.fn();
         render(<PageStatus isLoading={false} error={new Error("Failed")} onRetry={mockRetry} />);
-        
+
         expect(screen.getByText("Error: Failed")).toBeDefined();
         const retryButton = screen.getByText("Try Again");
         fireEvent.click(retryButton);

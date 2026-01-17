@@ -24,21 +24,21 @@ describe("AuthPage", () => {
 
   it("renders sign in button with correct link", () => {
     render(<AuthPage />);
-    
+
     expect(screen.getByText("Sign in")).toBeInTheDocument();
-    
+
     const button = screen.getByText("Sign in with OIDC");
     expect(button).toBeInTheDocument();
-    
+
     const anchor = button.closest("a");
     expect(anchor).toHaveAttribute("href", "/api/login");
   });
 
   it("renders errors when present", () => {
     mockUseAuthErrors.mockReturnValue(["Error 1", "Error 2"]);
-    
+
     render(<AuthPage />);
-    
+
     expect(screen.getByText("Error 1")).toBeInTheDocument();
     expect(screen.getByText("Error 2")).toBeInTheDocument();
 

@@ -39,22 +39,22 @@ describe("AccessTokenModal", () => {
     mockHttp.mockResolvedValue({ token: "generated-token" });
 
     render(
-      <AccessTokenModal 
-        onClose={() => {}} 
-        username="testuser" 
+      <AccessTokenModal
+        onClose={() => {}}
+        username="testuser"
         onTokenGenerated={() => {}}
       />
     );
-    
+
     // Fill date if needed, but it should have default
     // Click request button
     const requestBtn = screen.getByText("Request Token");
     fireEvent.click(requestBtn);
-    
+
     await waitFor(() => {
       expect(mockHttp).toHaveBeenCalled();
     });
-    
+
     expect(screen.getByDisplayValue("generated-token")).toBeInTheDocument();
     expect(mockShowToast).toHaveBeenCalledWith("Access token generated successfully!", "success");
     expect(mockRefresh).toHaveBeenCalled();
@@ -64,10 +64,10 @@ describe("AccessTokenModal", () => {
     mockHttp.mockRejectedValue(new Error("API Error"));
 
     render(<AccessTokenModal onClose={() => {}} username="testuser" />);
-    
+
     const requestBtn = screen.getByText("Request Token");
     fireEvent.click(requestBtn);
-    
+
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith("Failed to generate access token", "error");
     });
@@ -77,15 +77,15 @@ describe("AccessTokenModal", () => {
     mockHttp.mockResolvedValue({ token: "generated-token" });
 
     render(<AccessTokenModal onClose={() => {}} username="testuser" />);
-    
+
     // Generate token first
     fireEvent.click(screen.getByText("Request Token"));
     await waitFor(() => expect(screen.getByDisplayValue("generated-token")).toBeInTheDocument());
-    
+
     // Click copy button
     const copyBtn = screen.getByTitle("Copy Access Token");
     fireEvent.click(copyBtn);
-    
+
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith("generated-token");
     // Feedback
     await waitFor(() => expect(screen.getByText("Copied!")).toBeInTheDocument());

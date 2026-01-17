@@ -31,7 +31,7 @@ interface TrashItem {
 export default function TrashPage() {
   const { tab } = useParams<{ tab?: string }>();
   const activeTab: TrashTab = (tab === "runs" ? "runs" : "experiments");
-  
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
   const { showToast } = useToast();
@@ -142,7 +142,7 @@ export default function TrashPage() {
     if (!itemsToDelete || itemsToDelete.length === 0) return;
     setIsProcessing(true);
     const ids = itemsToDelete.map((item) => item.id);
-    
+
     try {
       if (activeTab === "experiments") {
         await cleanupTrash({ experiment_ids: ids.join(",") });

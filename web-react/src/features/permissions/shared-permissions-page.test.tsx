@@ -58,7 +58,7 @@ describe("SharedPermissionsPage", () => {
 
   it("renders correctly for read permissions", () => {
     render(<SharedPermissionsPage type="experiments" baseRoute="/users" entityKind="user" />);
-    
+
     expect(screen.getByTestId("page-container")).toHaveAttribute("title", "Permissions for testuser");
     expect(screen.getByTestId("normal-view")).toBeInTheDocument();
   });
@@ -69,12 +69,12 @@ describe("SharedPermissionsPage", () => {
     });
 
     render(<SharedPermissionsPage type="experiments" baseRoute="/users" entityKind="user" />);
-    
+
     expect(screen.getByTestId("normal-view")).toBeInTheDocument();
-    
+
     const switchEl = screen.getByTestId("regex-switch");
     fireEvent.click(switchEl);
-    
+
     expect(screen.getByTestId("regex-view")).toBeInTheDocument();
     expect(screen.queryByTestId("normal-view")).not.toBeInTheDocument();
   });

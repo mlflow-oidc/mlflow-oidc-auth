@@ -61,12 +61,12 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
       await onSave(selectedPermission);
     }
   };
-  
+
   const isRegexRule = "regex" in item;
   const identifier = "name" in item ? item.name : item.regex;
   const displayResourceId = resourceId || identifier;
-  const title = isRegexRule 
-    ? `Manage Regex Rule ${identifier}` 
+  const title = isRegexRule
+    ? `Manage Regex Rule ${identifier}`
     : `Edit ${type.charAt(0).toUpperCase() + type.slice(1, -1)} ${displayResourceId} permissions for ${username}`;
 
   return (

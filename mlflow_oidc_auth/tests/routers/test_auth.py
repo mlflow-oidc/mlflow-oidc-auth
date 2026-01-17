@@ -86,7 +86,7 @@ class TestLoginEndpoint:
 
         with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.config", mock_config), patch(
             "mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri"
-        ) as mock_redirect, patch("secrets.token_urlsafe") as mock_token:
+        ) as mock_redirect, patch("secrets.token_urlsafe") as mock_token, patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True):
             mock_redirect.return_value = "http://localhost:8000/callback"
             mock_token.return_value = "test_state_token"
 
@@ -208,7 +208,9 @@ class TestCallbackEndpoint:
         """Test successful OIDC callback processing."""
         request = mock_request_with_session({"oauth_state": "test_state"})
 
-        with patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process:
+        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
+            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
+        ) as mock_process:
             mock_process.return_value = ("test@example.com", [])
 
             result = await callback(request)
@@ -227,7 +229,9 @@ class TestCallbackEndpoint:
         """Test callback with authentication errors."""
         request = mock_request_with_session({"oauth_state": "test_state"})
 
-        with patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process:
+        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
+            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
+        ) as mock_process:
             mock_process.return_value = (None, ["Authentication failed", "Invalid token"])
 
             result = await callback(request)
@@ -243,7 +247,9 @@ class TestCallbackEndpoint:
         """Test callback when no email is returned but no errors."""
         request = mock_request_with_session({"oauth_state": "test_state"})
 
-        with patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process:
+        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
+            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
+        ) as mock_process:
             mock_process.return_value = (None, [])
 
             with pytest.raises(HTTPException) as exc_info:
@@ -257,7 +263,9 @@ class TestCallbackEndpoint:
         """Test callback with custom redirect after login."""
         request = mock_request_with_session({"oauth_state": "test_state", "redirect_after_login": "http://localhost:8000/custom"})
 
-        with patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process:
+        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
+            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
+        ) as mock_process:
             mock_process.return_value = ("test@example.com", [])
 
             result = await callback(request)
@@ -274,8 +282,16 @@ class TestCallbackEndpoint:
         """Test callback exception handling."""
         request = mock_request_with_session({"oauth_state": "test_state"})
 
-        with patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process:
+        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
+            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
+        ) as mock_process:
             mock_process.side_effect = Exception("Unexpected error")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await callback(request)
+
+            assert exc_info.value.status_code == 500
+            assert "Internal server error during authentication" in str(exc_info.value.detail)
 
             with pytest.raises(HTTPException) as exc_info:
                 await callback(request)

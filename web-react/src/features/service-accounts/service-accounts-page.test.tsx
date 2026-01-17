@@ -91,7 +91,7 @@ describe("ServiceAccountsPage", () => {
 
   it("opens create modal", () => {
     render(<ServiceAccountsPage />);
-    
+
     fireEvent.click(screen.getByText("Create Service Account"));
     expect(screen.getByTestId("create-modal")).toBeInTheDocument();
   });
@@ -99,15 +99,15 @@ describe("ServiceAccountsPage", () => {
   it("creates service account", async () => {
     mockCreateUser.mockResolvedValue({});
     render(<ServiceAccountsPage />);
-    
+
     fireEvent.click(screen.getByText("Create Service Account"));
     fireEvent.click(screen.getByText("Confirm Create"));
-    
+
     await waitFor(() => {
         expect(mockCreateUser).toHaveBeenCalledWith({
-            username: "newsa", 
-            display_name: "New SA", 
-            is_admin: false, 
+            username: "newsa",
+            display_name: "New SA",
+            is_admin: false,
             is_service_account: true
         });
     });

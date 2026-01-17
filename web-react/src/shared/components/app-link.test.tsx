@@ -38,7 +38,7 @@ describe("AppLink", () => {
     // Let's test a simple relative link that is NOT marked as internal.
     // The component defaults to <a> tag if !isInternalLink.
     // isExternalLink checks using http/https.
-    
+
     render(
       <AppLink href="/relative">
         Relative Link

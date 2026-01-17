@@ -144,7 +144,7 @@ export default function ServiceAccountsPage() {
               placeholder="Search service accounts..."
             />
           </div>
-          
+
           <EntityListTable
             mode="object"
             data={tableData}

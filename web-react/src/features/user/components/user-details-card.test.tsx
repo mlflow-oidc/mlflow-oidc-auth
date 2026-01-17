@@ -15,7 +15,7 @@ describe("UserDetailsCard", () => {
 
     it("renders user details and groups", () => {
         render(<UserDetailsCard currentUser={mockUser as any} />);
-        
+
         expect(screen.getByText("Test User")).toBeDefined();
         expect(screen.getByText("testuser")).toBeDefined();
         expect(screen.getByText("group1")).toBeDefined();
@@ -31,7 +31,7 @@ describe("UserDetailsCard", () => {
             groups: []
         };
         render(<UserDetailsCard currentUser={minimalUser as any} />);
-        
+
         expect(screen.getByText("N/A")).toBeDefined();
         expect(screen.getByText(/not a member of any groups/i)).toBeDefined();
         expect(screen.queryByText(/administrator privileges/i)).toBeNull();

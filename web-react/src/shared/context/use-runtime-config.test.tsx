@@ -10,7 +10,7 @@ describe("useRuntimeConfig", () => {
                 {children}
             </RuntimeConfigContext>
         );
-        
+
         const { result } = renderHook(() => useRuntimeConfig(), { wrapper });
         expect(result.current).toEqual(mockConfig);
     });
@@ -18,11 +18,11 @@ describe("useRuntimeConfig", () => {
     it("throws error when used outside provider", () => {
         // Suppress console.error for expected throw
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        
+
         expect(() => renderHook(() => useRuntimeConfig())).toThrow(
             "useRuntimeConfig must be used within a RuntimeConfigProvider"
         );
-        
+
         consoleSpy.mockRestore();
     });
 });

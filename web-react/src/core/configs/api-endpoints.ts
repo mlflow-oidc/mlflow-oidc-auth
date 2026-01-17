@@ -4,7 +4,7 @@ export const STATIC_API_ENDPOINTS = {
   ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
   ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
   ALL_PROMPTS: "/api/2.0/mlflow/permissions/prompts",
-  
+
   // User management
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
@@ -106,7 +106,7 @@ export const DYNAMIC_API_ENDPOINTS = {
   // Trash management
   RESTORE_EXPERIMENT: (experimentId: string) =>
     `/oidc/trash/experiments/${experimentId}/restore`,
-  RESTORE_RUN: (runId: string) => `/oidc/trash/runs/${runId}/restore`, 
+  RESTORE_RUN: (runId: string) => `/oidc/trash/runs/${runId}/restore`,
 
   // Group user permissions
   // GROUP_MEMBERS: (groupName: string) =>

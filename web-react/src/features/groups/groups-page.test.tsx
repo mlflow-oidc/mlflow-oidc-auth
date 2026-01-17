@@ -72,7 +72,7 @@ describe("GroupsPage", () => {
     });
 
     render(<GroupsPage />);
-    
+
     expect(screen.getByText("group1")).toBeInTheDocument();
     expect(screen.getByText("group2")).toBeInTheDocument();
   });

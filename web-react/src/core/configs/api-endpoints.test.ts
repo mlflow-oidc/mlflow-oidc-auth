@@ -68,7 +68,7 @@ describe("API Endpoints", () => {
             expect(DYNAMIC_API_ENDPOINTS.RESTORE_EXPERIMENT("exp1")).toBe("/oidc/trash/experiments/exp1/restore");
             expect(DYNAMIC_API_ENDPOINTS.RESTORE_RUN("run1")).toBe("/oidc/trash/runs/run1/restore");
         });
-        
+
         it("covers all remaining dynamic endpoints", () => {
             // Exercise all functions to reach 100% function coverage
             Object.values(DYNAMIC_API_ENDPOINTS).forEach(fn => {

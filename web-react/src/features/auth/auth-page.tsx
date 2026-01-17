@@ -16,7 +16,7 @@ export const AuthPage = () => {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center 
+      className="min-h-screen flex items-center justify-center
     bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark"
     >
       <div
@@ -48,7 +48,7 @@ export const AuthPage = () => {
           <button
             type="button"
             className="w-full rounded-md px-[12px] py-[4px] cursor-pointer
-            text-btn-primary-text bg-btn-primary hover:bg-btn-primary-hover 
+            text-btn-primary-text bg-btn-primary hover:bg-btn-primary-hover
             dark:text-btn-primary-text-dark dark:bg-btn-primary-dark dark:hover:bg-btn-primary-hover-dark"
           >
             {buttonText}

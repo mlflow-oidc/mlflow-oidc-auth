@@ -42,9 +42,9 @@ describe("Table Components", () => {
       // Mock console.log
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       render(<PrimitiveTableRow value="Test Value" index={0} />);
-      
+
       expect(screen.getByText("Test Value")).toBeInTheDocument();
-      
+
       fireEvent.click(screen.getByText("Test Value"));
       expect(logSpy).toHaveBeenCalledWith("row-click:", "Test Value");
       logSpy.mockRestore();

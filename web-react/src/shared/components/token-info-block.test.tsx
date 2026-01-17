@@ -16,7 +16,7 @@ describe("TokenInfoBlock", () => {
   it("renders with token info", () => {
     const date = new Date("2023-01-01T12:00:00Z");
     render(<TokenInfoBlock username="user" passwordExpiration={date.toISOString()} />);
-    
+
     expect(screen.getByText(/Token expires on:/)).toBeInTheDocument();
     expect(screen.getByText(/Jan 1, 2023/)).toBeInTheDocument(); // Depends on locale, but en-US is standard in jsdom usually
   });

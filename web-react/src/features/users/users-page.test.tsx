@@ -71,7 +71,7 @@ describe("UsersPage", () => {
     });
 
     render(<UsersPage />);
-    
+
     expect(screen.getByText("user1")).toBeInTheDocument();
     expect(screen.getByText("user2")).toBeInTheDocument();
   });

@@ -67,7 +67,7 @@ export default function ModelsPage() {
               placeholder="Search models..."
              />
           </div>
-          
+
           <EntityListTable
             mode="object"
             data={filteredModels}

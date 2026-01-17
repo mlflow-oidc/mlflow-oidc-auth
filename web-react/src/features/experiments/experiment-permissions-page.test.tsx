@@ -60,11 +60,11 @@ describe("ExperimentPermissionsPage", () => {
 
   it("renders correctly", () => {
     render(<ExperimentPermissionsPage />);
-    
+
     expect(screen.getByTestId("page-container")).toHaveAttribute("title", "Permissions for Experiment Test Experiment");
     expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
   });
-  
+
   it("combines permissions and passes to manager", () => {
       mockUseExperimentUserPermissions.mockReturnValue({
             isLoading: false,
@@ -80,7 +80,7 @@ describe("ExperimentPermissionsPage", () => {
       });
 
       render(<ExperimentPermissionsPage />);
-      
+
       const lastCall = mockEntityPermissionsManager.mock.calls[mockEntityPermissionsManager.mock.calls.length - 1][0];
       expect(lastCall.permissions).toHaveLength(2);
       expect(lastCall.permissions).toEqual(expect.arrayContaining([{ user: "u1" }, { group: "g1" }]));

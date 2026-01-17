@@ -32,7 +32,7 @@ describe("RowActionButton", () => {
         buttonText="View"
       />
     );
-    
+
     // It stops propagation
     const handleUpstreamClick = vi.fn();
     render(
@@ -44,11 +44,11 @@ describe("RowActionButton", () => {
         />
       </div>
     );
-    
+
     // Find button
     const buttons = screen.getAllByRole("button");
     const button = buttons[buttons.length - 1]; // get the last rendered one, or specifically key them
-    
+
     fireEvent.click(button);
     expect(mockNavigate).toHaveBeenCalledWith("/app/details/123");
     expect(handleUpstreamClick).not.toHaveBeenCalled();

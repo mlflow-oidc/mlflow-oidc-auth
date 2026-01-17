@@ -25,7 +25,7 @@ vi.mock("../../../core/hooks/use-group-prompt-pattern-permissions");
 describe("RegexPermissionsView", () => {
     const mockShowToast = vi.fn();
     const mockRefresh = vi.fn();
-    
+
     const defaultSearch = {
         searchTerm: "",
         submittedTerm: "",
@@ -50,7 +50,7 @@ describe("RegexPermissionsView", () => {
         vi.clearAllMocks();
         vi.spyOn(useToastModule, "useToast").mockReturnValue({ showToast: mockShowToast } as any);
         vi.spyOn(useSearchModule, "useSearch").mockReturnValue(defaultSearch as any);
-        
+
         vi.spyOn(useExpHooks, "useUserExperimentPatternPermissions").mockReturnValue(defaultHookResult as any);
         vi.spyOn(useModelHooks, "useUserModelPatternPermissions").mockReturnValue(defaultHookResult as any);
         vi.spyOn(usePromptHooks, "useUserPromptPatternPermissions").mockReturnValue(defaultHookResult as any);
@@ -82,9 +82,9 @@ describe("RegexPermissionsView", () => {
             it(`opens add modal and saves for ${type} (user)`, async () => {
                 vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
                 render(<RegexPermissionsView type={type} entityKind="user" entityName="user1" />);
-                
+
                 fireEvent.click(screen.getByText(/Add Regex/i));
-                
+
                 const regexInput = screen.getByLabelText(/Regex\*/i);
                 fireEvent.change(regexInput, { target: { value: "^new_.*" } });
 
@@ -102,9 +102,9 @@ describe("RegexPermissionsView", () => {
             it(`opens add modal and saves for ${type} (group)`, async () => {
                 vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
                 render(<RegexPermissionsView type={type} entityKind="group" entityName="group1" />);
-                
+
                 fireEvent.click(screen.getByText(/Add Regex/i));
-                
+
                 const regexInput = screen.getByLabelText(/Regex\*/i);
                 fireEvent.change(regexInput, { target: { value: "^new_grp_.*" } });
 
@@ -122,10 +122,10 @@ describe("RegexPermissionsView", () => {
             it(`opens edit modal and saves for ${type}`, async () => {
                 vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
                 render(<RegexPermissionsView type={type} entityKind="user" entityName="user1" />);
-                
+
                 const editButtons = screen.getAllByTitle(/Edit pattern permission/i);
                 fireEvent.click(editButtons[0]);
-                
+
                 const saveButton = screen.getByRole("button", { name: /Ok/i });
                 fireEvent.click(saveButton);
 
@@ -140,10 +140,10 @@ describe("RegexPermissionsView", () => {
             it(`handles removing for ${type}`, async () => {
                 vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
                 render(<RegexPermissionsView type={type} entityKind="user" entityName="user1" />);
-                
+
                 const removeButtons = screen.getAllByTitle(/Remove pattern permission/i);
                 fireEvent.click(removeButtons[0]);
-                
+
                 await waitFor(() => {
                     expect(httpModule.http).toHaveBeenCalledWith(
                         expect.stringContaining(`${getUrlPart(type)}/1`),

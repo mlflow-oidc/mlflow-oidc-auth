@@ -10,10 +10,10 @@ export function useDeletedExperiments() {
     refetch: refresh,
   } = useApi<{ deleted_experiments: DeletedExperiment[] }>(fetchDeletedExperiments);
 
-  return { 
-    deletedExperiments: response?.deleted_experiments || [], 
-    isLoading, 
-    error, 
-    refresh 
+  return {
+    deletedExperiments: response?.deleted_experiments || [],
+    isLoading,
+    error,
+    refresh
   };
 }

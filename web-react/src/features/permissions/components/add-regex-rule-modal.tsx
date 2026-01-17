@@ -112,9 +112,9 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
         <Button onClick={onClose} variant="ghost" disabled={isLoading}>
           Cancel
         </Button>
-        <Button 
-            onClick={() => { void handleSave(); }} 
-            variant="primary" 
+        <Button
+            onClick={() => { void handleSave(); }}
+            variant="primary"
             disabled={isLoading}
         >
           {isLoading ? "Saving..." : "Save"}
