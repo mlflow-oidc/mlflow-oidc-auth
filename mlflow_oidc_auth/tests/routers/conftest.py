@@ -404,6 +404,8 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
         patch("mlflow_oidc_auth.oauth.oauth", mock_oauth),
         patch("mlflow_oidc_auth.config.config", mock_config),
         patch("mlflow.server.handlers._get_tracking_store", return_value=mock_tracking_store),
+        # Patch _get_tracking_store at router level since it's imported at module-import time
+        patch("mlflow_oidc_auth.routers.experiment_permissions._get_tracking_store", return_value=mock_tracking_store),
         patch("mlflow_oidc_auth.utils.can_manage_experiment", mock_permissions["can_manage_experiment"]),
         patch("mlflow_oidc_auth.utils.can_manage_scorer", mock_permissions["can_manage_scorer"]),
         patch("mlflow_oidc_auth.utils.can_manage_registered_model", mock_permissions["can_manage_registered_model"]),
@@ -498,6 +500,8 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
         patch("mlflow_oidc_auth.oauth.oauth", mock_oauth),
         patch("mlflow_oidc_auth.config.config", mock_config),
         patch("mlflow.server.handlers._get_tracking_store", return_value=mock_tracking_store),
+        # Patch _get_tracking_store at router level since it's imported at module-import time
+        patch("mlflow_oidc_auth.routers.experiment_permissions._get_tracking_store", return_value=mock_tracking_store),
         patch("mlflow_oidc_auth.utils.can_manage_experiment", admin_permissions["can_manage_experiment"]),
         patch("mlflow_oidc_auth.utils.can_manage_registered_model", admin_permissions["can_manage_registered_model"]),
         patch("mlflow_oidc_auth.utils.can_manage_scorer", MagicMock(return_value=True)),
