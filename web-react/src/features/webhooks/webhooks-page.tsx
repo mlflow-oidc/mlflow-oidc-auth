@@ -1,16 +1,20 @@
 import { useMemo } from "react";
-import { faVial, faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faVial, faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
+import { Button } from "../../shared/components/button";
 import { useSearch } from "../../core/hooks/use-search";
 import { useWebhooks } from "../../core/hooks/use-webhooks";
 import { useToast } from "../../shared/components/toast/use-toast";
 import { IconButton } from "../../shared/components/icon-button";
 import { testWebhook, deleteWebhook } from "../../core/services/webhook-service";
+import { CreateWebhookModal } from "./components/create-webhook-modal";
+import { DeleteWebhookModal } from "./components/delete-webhook-modal";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { Webhook } from "../../shared/types/entity";
+import { useState } from "react";
 
 export default function WebhooksPage() {
   const {
@@ -23,6 +27,9 @@ export default function WebhooksPage() {
 
   const { webhooks, isLoading, error, refresh } = useWebhooks();
   const { showToast } = useToast();
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [deletingWebhook, setDeletingWebhook] = useState<Webhook | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filteredWebhooks = useMemo(() => {
     return (webhooks as Webhook[]).filter((webhook: Webhook) =>
@@ -30,26 +37,34 @@ export default function WebhooksPage() {
     );
   }, [webhooks, submittedTerm]);
 
-  const handleTest = async (id: string, name: string) => {
+  const handleTest = async (webhook_id: string, name: string) => {
     try {
-      const response = await testWebhook(id);
-      showToast(`Test successful for ${name}: ${response.message}`, "success");
+      const response = await testWebhook(webhook_id);
+      if (response.success) {
+        showToast(`Test successful for ${name}`, "success");
+      } else {
+        showToast(`Test failed for ${name}: ${response.error_message || " Unknown error"}`, "error");
+      }
     } catch (err) {
       console.error("Failed to test webhook:", err);
       showToast(`Failed to test webhook ${name}`, "error");
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete webhook "${name}"?`)) {
-      try {
-        await deleteWebhook(id);
-        showToast(`Webhook "${name}" deleted successfully`, "success");
-        refresh();
-      } catch (err) {
-        console.error("Failed to delete webhook:", err);
-        showToast(`Failed to delete webhook "${name}"`, "error");
-      }
+  const handleConfirmDelete = async () => {
+    if (!deletingWebhook) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteWebhook(deletingWebhook.webhook_id);
+      showToast(`Webhook "${deletingWebhook.name}" deleted successfully`, "success");
+      refresh();
+      setDeletingWebhook(null);
+    } catch (err) {
+      console.error("Failed to delete webhook:", err);
+      showToast(`Failed to delete webhook "${deletingWebhook.name}"`, "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -73,17 +88,17 @@ export default function WebhooksPage() {
           <IconButton
             icon={faVial}
             title="Test"
-            onClick={() => handleTest(webhook.id, webhook.name)}
+            onClick={() => handleTest(webhook.webhook_id, webhook.name)}
           />
           <IconButton
             icon={faEdit}
             title="Edit"
-            onClick={() => console.log("Edit webhook:", webhook.id)}
+            onClick={() => console.log("Edit webhook:", webhook.webhook_id)}
           />
           <IconButton
             icon={faTrash}
             title="Delete"
-            onClick={() => handleDelete(webhook.id, webhook.name)}
+            onClick={() => setDeletingWebhook(webhook)}
           />
         </div>
       ),
@@ -102,7 +117,7 @@ export default function WebhooksPage() {
 
       {!isLoading && !error && (
         <>
-          <div className="mb-4">
+          <div className="mb-4 flex items-center gap-6">
             <SearchInput
               value={searchTerm}
               onInputChange={handleInputChange}
@@ -110,6 +125,14 @@ export default function WebhooksPage() {
               onClear={handleClearSearch}
               placeholder="Search webhooks..."
             />
+            <Button
+              variant="secondary"
+              onClick={() => setIsCreateModalOpen(true)}
+              icon={faPlus}
+              className="whitespace-nowrap h-8 mb-1 mt-2"
+            >
+              Add webhook
+            </Button>
           </div>
 
           <EntityListTable
@@ -117,6 +140,20 @@ export default function WebhooksPage() {
             data={filteredWebhooks}
             columns={columns}
             searchTerm={submittedTerm}
+          />
+
+          <CreateWebhookModal
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            onSuccess={refresh}
+          />
+
+          <DeleteWebhookModal
+            isOpen={!!deletingWebhook}
+            onClose={() => setDeletingWebhook(null)}
+            onConfirm={handleConfirmDelete}
+            webhook={deletingWebhook}
+            isProcessing={isDeleting}
           />
         </>
       )}

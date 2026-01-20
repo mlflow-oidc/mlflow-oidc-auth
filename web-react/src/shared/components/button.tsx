@@ -17,6 +17,7 @@ export function Button({
   children,
   className = "",
   disabled,
+  type = "button",
   ...props
 }: ButtonProps) {
   const baseClasses = "flex items-center justify-center transition-all duration-50 ease-in-out rounded font-medium";
@@ -88,7 +89,7 @@ export function Button({
   const combinedClasses = `${baseClasses} ${cursorClass} ${variantClasses[variant]} ${className}`.replace(/\s+/g, " ").trim();
 
   return (
-    <button type="button" className={combinedClasses} disabled={disabled} {...props}>
+    <button type={type} className={combinedClasses} disabled={disabled} {...props}>
       {icon && <FontAwesomeIcon icon={icon} className={iconClassName} />}
       {children && <span className={icon ? "ml-1" : ""}>{children}</span>}
     </button>

@@ -89,14 +89,15 @@ export type DeletedRun = {
 };
 
 export type Webhook = {
-  id: string;
+  webhook_id: string;
   name: string;
   url: string;
   events: string[];
-  active: boolean;
+  status: string;
+  description?: string;
   secret?: string;
-  created_at: string;
-  updated_at: string;
+  creation_timestamp: number;
+  last_updated_timestamp: number;
 };
 
 export type WebhookCreateRequest = {
@@ -115,6 +116,8 @@ export type WebhookTestRequest = {
 };
 
 export type WebhookTestResponse = {
-  status: string;
-  message: string;
+  success: boolean;
+  response_status?: number;
+  response_body?: string;
+  error_message?: string;
 };
