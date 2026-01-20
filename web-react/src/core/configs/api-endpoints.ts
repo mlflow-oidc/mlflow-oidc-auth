@@ -14,6 +14,9 @@ export const STATIC_API_ENDPOINTS = {
   TRASH_EXPERIMENTS: "/oidc/trash/experiments",
   TRASH_RUNS: "/oidc/trash/runs",
   TRASH_CLEANUP: "/oidc/trash/cleanup",
+
+  // Webhook management
+  WEBHOOKS_RESOURCE: "/oidc/webhook/",
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {
@@ -108,9 +111,9 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/oidc/trash/experiments/${experimentId}/restore`,
   RESTORE_RUN: (runId: string) => `/oidc/trash/runs/${runId}/restore`,
 
-  // Group user permissions
-  // GROUP_MEMBERS: (groupName: string) =>
-  //   `/api/2.0/mlflow/permissions/groups/${groupName}/users`,
+  // Webhook management
+  WEBHOOK_DETAILS: (webhookId: string) => `/oidc/webhook/${webhookId}`,
+  TEST_WEBHOOK: (webhookId: string) => `/oidc/webhook/${webhookId}/test`,
 } as const;
 
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;
