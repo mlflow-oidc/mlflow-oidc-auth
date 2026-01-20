@@ -128,7 +128,7 @@ def _webhook_to_response(webhook: Webhook) -> WebhookResponse:
 
 
 @webhook_router.post(
-    "/",
+    "",
     response_model=WebhookResponse,
     summary="Create a webhook",
     description="Create a new webhook. Only admin users can create webhooks.",
@@ -184,7 +184,7 @@ def create_webhook(
 
 
 @webhook_router.get(
-    "/",
+    "",
     response_model=WebhookListResponse,
     summary="List webhooks",
     description="List all webhooks with pagination support. Only admin users can view webhooks.",
