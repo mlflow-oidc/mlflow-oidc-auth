@@ -3,6 +3,7 @@ import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
 } from "../configs/api-endpoints";
+import { createStaticApiFetcher } from "./create-api-fetcher";
 import type {
   Webhook,
   WebhookCreateRequest,
@@ -16,22 +17,9 @@ export type WebhookListResponse = {
   next_page_token?: string;
 };
 
-export const listWebhooks = async (params: {
-  max_results?: number;
-  page_token?: string;
-} = {}) => {
-  const searchParams = new URLSearchParams();
-  if (params.max_results)
-    searchParams.append("max_results", params.max_results.toString());
-  if (params.page_token) searchParams.append("page_token", params.page_token);
-
-  const queryString = searchParams.toString();
-  const url = `${STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE}${
-    queryString ? `?${queryString}` : ""
-  }`;
-
-  return http<WebhookListResponse>(url);
-};
+export const listWebhooks = createStaticApiFetcher<WebhookListResponse>({
+  endpointKey: "WEBHOOKS_RESOURCE",
+});
 
 export const createWebhook = async (data: WebhookCreateRequest) => {
   return http<Webhook>(STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE, {

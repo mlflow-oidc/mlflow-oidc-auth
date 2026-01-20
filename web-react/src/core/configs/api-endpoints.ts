@@ -16,7 +16,7 @@ export const STATIC_API_ENDPOINTS = {
   TRASH_CLEANUP: "/oidc/trash/cleanup",
 
   // Webhook management
-  WEBHOOKS_RESOURCE: "/oidc/webhook/",
+  WEBHOOKS_RESOURCE: "/oidc/webhook",
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {

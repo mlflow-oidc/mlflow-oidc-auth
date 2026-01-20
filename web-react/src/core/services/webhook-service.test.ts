@@ -11,29 +11,28 @@ import { http } from "./http";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 
 vi.mock("./http");
+vi.mock("../../shared/services/runtime-config", () => ({
+  getRuntimeConfig: vi.fn().mockResolvedValue({ basePath: "" }),
+}));
 
 describe("webhook-service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("listWebhooks calls http with correct url and params", async () => {
-    await listWebhooks({ max_results: 10, page_token: "token123" });
+  it("listWebhooks calls http with correct url", async () => {
+    await listWebhooks();
     expect(http).toHaveBeenCalledWith(
-      expect.stringContaining(STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE)
-    );
-    expect(http).toHaveBeenCalledWith(
-      expect.stringContaining("max_results=10")
-    );
-    expect(http).toHaveBeenCalledWith(
-      expect.stringContaining("page_token=token123")
+      expect.stringContaining(STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE),
+      expect.any(Object)
     );
   });
 
   it("listWebhooks works without params", async () => {
     await listWebhooks();
     expect(http).toHaveBeenCalledWith(
-      STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE
+      STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE,
+      expect.any(Object)
     );
   });
 
