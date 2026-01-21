@@ -17,6 +17,7 @@ from mlflow_oidc_auth.entities import (
     ScorerPermission,
     ScorerRegexPermission,
     User,
+    UserToken,
 )
 from mlflow_oidc_auth.repository import (
     ExperimentPermissionGroupRegexRepository,
@@ -34,6 +35,7 @@ from mlflow_oidc_auth.repository import (
     ScorerPermissionRegexRepository,
     ScorerPermissionRepository,
     UserRepository,
+    UserTokenRepository,
 )
 
 
@@ -64,6 +66,9 @@ class SqlAlchemyStore:
         self.scorer_group_repo = ScorerPermissionGroupRepository(self.ManagedSessionMaker)
         self.scorer_regex_repo = ScorerPermissionRegexRepository(self.ManagedSessionMaker)
         self.scorer_group_regex_repo = ScorerPermissionGroupRegexRepository(self.ManagedSessionMaker)
+
+        # User tokens
+        self.user_token_repo = UserTokenRepository(self.ManagedSessionMaker)
 
     def ping(self) -> bool:
         """Lightweight database connectivity check for health probes.
@@ -467,3 +472,22 @@ class SqlAlchemyStore:
 
     def delete_group_prompt_regex_permission(self, id: int, group_name: str) -> None:
         return self.prompt_group_regex_repo.revoke(id=id, group_name=group_name, prompt=True)
+
+    # User token CRUD
+    def create_user_token(self, username: str, name: str, token: str, expires_at: Optional[datetime] = None) -> UserToken:
+        return self.user_token_repo.create(username=username, name=name, token=token, expires_at=expires_at)
+
+    def list_user_tokens(self, username: str) -> List[UserToken]:
+        return self.user_token_repo.list_for_user(username)
+
+    def get_user_token(self, token_id: int, username: str) -> UserToken:
+        return self.user_token_repo.get(token_id=token_id, username=username)
+
+    def delete_user_token(self, token_id: int, username: str) -> None:
+        return self.user_token_repo.delete(token_id=token_id, username=username)
+
+    def delete_all_user_tokens(self, username: str) -> int:
+        return self.user_token_repo.delete_all_for_user(username)
+
+    def authenticate_user_token(self, username: str, token: str) -> bool:
+        return self.user_token_repo.authenticate(username=username, password=token)
