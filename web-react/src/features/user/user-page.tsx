@@ -4,6 +4,7 @@ import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { useUser } from "../../core/hooks/use-user";
 import { UserDetailsCard } from "./components/user-details-card";
+import { TokensList } from "./components/tokens-list";
 import { useSearch } from "../../core/hooks/use-search";
 import { useUserExperimentPermissions } from "../../core/hooks/use-user-experiment-permissions";
 import { useUserRegisteredModelPermissions } from "../../core/hooks/use-user-model-permissions";
@@ -44,6 +45,7 @@ export const UserPage = () => {
 
   const tabs = [
     { id: "info", label: "Info" },
+    { id: "tokens", label: "Tokens" },
     { id: "experiments", label: "Experiments" },
     { id: "prompts", label: "Prompts" },
     { id: "models", label: "Models" },
@@ -98,7 +100,10 @@ export const UserPage = () => {
           {tab === "info" && (
             <UserDetailsCard currentUser={currentUser} />
           )}
-          {tab !== "info" && activeHook && (
+          {tab === "tokens" && (
+            <TokensList />
+          )}
+          {tab !== "info" && tab !== "tokens" && activeHook && (
             <>
             <div className="mb-2">
               <SearchInput
