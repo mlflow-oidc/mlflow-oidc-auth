@@ -11,6 +11,7 @@ import { useToast } from "../../shared/components/toast/use-toast";
 import { IconButton } from "../../shared/components/icon-button";
 import { testWebhook, deleteWebhook } from "../../core/services/webhook-service";
 import { CreateWebhookModal } from "./components/create-webhook-modal";
+import { EditWebhookModal } from "./components/edit-webhook-modal";
 import { DeleteWebhookModal } from "./components/delete-webhook-modal";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { Webhook } from "../../shared/types/entity";
@@ -28,6 +29,7 @@ export default function WebhooksPage() {
   const { webhooks, isLoading, error, refresh } = useWebhooks();
   const { showToast } = useToast();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
   const [deletingWebhook, setDeletingWebhook] = useState<Webhook | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -93,7 +95,7 @@ export default function WebhooksPage() {
           <IconButton
             icon={faEdit}
             title="Edit"
-            onClick={() => console.log("Edit webhook:", webhook.webhook_id)}
+            onClick={() => setEditingWebhook(webhook)}
           />
           <IconButton
             icon={faTrash}
@@ -146,6 +148,13 @@ export default function WebhooksPage() {
             isOpen={isCreateModalOpen}
             onClose={() => setIsCreateModalOpen(false)}
             onSuccess={refresh}
+          />
+
+          <EditWebhookModal
+            isOpen={!!editingWebhook}
+            onClose={() => setEditingWebhook(null)}
+            onSuccess={refresh}
+            webhook={editingWebhook}
           />
 
           <DeleteWebhookModal

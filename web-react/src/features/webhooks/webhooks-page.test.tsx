@@ -13,8 +13,8 @@ vi.mock("../../core/services/webhook-service");
 
 describe("WebhooksPage", () => {
   const mockWebhooks = [
-    { webhook_id: "1", name: "Webhook 1", url: "http://example.com/1" },
-    { webhook_id: "2", name: "Webhook 2", url: "http://example.com/2" },
+    { webhook_id: "1", name: "Webhook 1", url: "http://example.com/1", events: ["prompt.created"] },
+    { webhook_id: "2", name: "Webhook 2", url: "http://example.com/2", events: ["model_version.created"] },
   ];
 
   const mockShowToast = vi.fn();
@@ -56,6 +56,14 @@ describe("WebhooksPage", () => {
     render(<WebhooksPage />);
     fireEvent.click(screen.getByText("Add webhook"));
     expect(screen.getByText("Create webhook")).toBeInTheDocument();
+  });
+
+  it("opens EditWebhookModal when Edit button is clicked", async () => {
+    render(<WebhooksPage />);
+    const editButtons = screen.getAllByTitle("Edit");
+    fireEvent.click(editButtons[0]);
+    expect(await screen.findByText("Edit webhook")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Webhook 1")).toBeInTheDocument();
   });
 
   it("calls testWebhook when Test button is clicked", async () => {

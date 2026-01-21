@@ -33,6 +33,7 @@ describe("CreateWebhookModal", () => {
     expect(screen.getByLabelText("Name*")).toBeInTheDocument();
     expect(screen.getByLabelText("URL*")).toBeInTheDocument();
     expect(screen.getByText("Events*")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create/i })).toBeEnabled();
   });
 
   it("validation fails if required fields are empty", async () => {
@@ -53,7 +54,7 @@ describe("CreateWebhookModal", () => {
     });
   });
 
-  it("validation fails for invalid URL", async () => {
+  it("validation fails for invalid URL format", async () => {
     render(
       <CreateWebhookModal
         isOpen={true}
@@ -65,7 +66,30 @@ describe("CreateWebhookModal", () => {
     fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "invalid-url" } });
     
-    fireEvent.click(screen.getByText("Create"));
+    // Select an event to enable the button
+    fireEvent.click(screen.getByText("registered_model.created"));
+    
+    expect(screen.getByRole("button", { name: /create/i })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
+
+    expect(screen.getByText("Invalid URL format")).toBeInTheDocument();
+  });
+
+  it("validation fails for URL without http or https protocol", async () => {
+    render(
+      <CreateWebhookModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSuccess={mockOnSuccess}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
+    fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "zfzfshttps://echo.technicaldomain.xyz/webhook" } });
+    
+    fireEvent.click(screen.getByText("registered_model.created"));
+    
+    fireEvent.click(screen.getByRole("button", { name: /create/i }));
 
     expect(screen.getByText("Invalid URL format")).toBeInTheDocument();
   });

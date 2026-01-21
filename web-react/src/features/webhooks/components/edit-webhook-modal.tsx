@@ -3,13 +3,14 @@ import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
 import { Button } from "../../../shared/components/button";
 import { useToast } from "../../../shared/components/toast/use-toast";
-import { createWebhook } from "../../../core/services/webhook-service";
-import type { WebhookCreateRequest } from "../../../shared/types/entity";
+import { updateWebhook } from "../../../core/services/webhook-service";
+import type { Webhook, WebhookUpdateRequest } from "../../../shared/types/entity";
 
-interface CreateWebhookModalProps {
+interface EditWebhookModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  webhook: Webhook | null;
 }
 
 const SUPPORTED_EVENTS = [
@@ -33,13 +34,14 @@ const SUPPORTED_EVENTS = [
   ]}
 ];
 
-export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
+export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  webhook,
 }) => {
   const { showToast } = useToast();
-  const [formData, setFormData] = useState<WebhookCreateRequest>({
+  const [formData, setFormData] = useState<WebhookUpdateRequest>({
     name: "",
     url: "",
     events: [],
@@ -49,16 +51,16 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && webhook) {
       setFormData({
-        name: "",
-        url: "",
-        events: [],
+        name: webhook.name,
+        url: webhook.url,
+        events: [...webhook.events],
         secret: "",
       });
       setErrors({});
     }
-  }, [isOpen]);
+  }, [isOpen, webhook]);
 
   const validateURL = (url: string) => {
     try {
@@ -72,13 +74,15 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    if (!formData.name.trim()) newErrors.name = "Name is required";
-    if (!formData.url.trim()) {
+    if (!formData.name?.trim()) newErrors.name = "Name is required";
+    if (!formData.url?.trim()) {
       newErrors.url = "URL is required";
     } else if (!validateURL(formData.url)) {
       newErrors.url = "Invalid URL format";
     }
-    if (formData.events.length === 0) newErrors.events = "At least one event must be selected";
+    if (!formData.events || formData.events.length === 0) {
+      newErrors.events = "At least one event must be selected";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -87,44 +91,47 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
   const handleEventToggle = (event: string) => {
     setFormData((prev) => ({
       ...prev,
-      events: prev.events.includes(event)
+      events: prev.events?.includes(event)
         ? prev.events.filter((e) => e !== event)
-        : [...prev.events, event],
+        : [...(prev.events || []), event],
     }));
   };
 
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!webhook || !validateForm()) return;
 
     setIsSubmitting(true);
     try {
-      const trimmedData = {
-        ...formData,
-        name: formData.name.trim(),
-        url: formData.url.trim(),
-        secret: (formData.secret || "").trim(),
+      const updateData: WebhookUpdateRequest = {
+        name: formData.name?.trim(),
+        url: formData.url?.trim(),
+        events: formData.events,
       };
-      await createWebhook(trimmedData);
-      showToast("Webhook created successfully", "success");
+
+      if (formData.secret?.trim()) {
+        updateData.secret = formData.secret.trim();
+      }
+
+      await updateWebhook(webhook.webhook_id, updateData);
+      showToast(`${webhook.name} webhook updated successfully`, "success");
       onSuccess();
       onClose();
-    } catch (err) {
-      console.error("Failed to create webhook:", err);
-      showToast("Failed to create webhook", "error");
+    } catch (error) {
+      console.error("Error updating webhook:", error);
+      showToast(`Failed to update ${webhook.name} webhook`, "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create webhook">
-      <form onSubmit={handleSubmit}>
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit webhook">
+      <form onSubmit={handleSubmit} aria-label="Edit webhook form">
         <Input
           label="Name"
           id="webhook-name"
-          value={formData.name}
+          value={formData.name || ""}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           error={errors.name}
           required
@@ -135,7 +142,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
         <Input
           label="URL"
           id="webhook-url"
-          value={formData.url}
+          value={formData.url || ""}
           onChange={(e) => setFormData({ ...formData, url: e.target.value })}
           error={errors.url}
           placeholder="https://example.com/webhook"
@@ -160,7 +167,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
                       id={`event-${event}`}
                       type="checkbox"
                       className="custom-checkbox w-4 h-4 rounded border-ui-border dark:border-ui-border-dark text-btn-primary focus:ring-btn-primary"
-                      checked={formData.events.includes(event)}
+                      checked={formData.events?.includes(event) || false}
                       onChange={() => handleEventToggle(event)}
                     />
                     <span className="text-sm text-ui-text dark:text-ui-text-dark group-hover:text-btn-primary transition-colors">
@@ -179,9 +186,9 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
         <Input
           label="Secret (Optional)"
           id="webhook-secret"
-          value={formData.secret}
+          value={formData.secret || ""}
           onChange={(e) => setFormData({ ...formData, secret: e.target.value })}
-          placeholder="Webhook secret for HMAC verification"
+          placeholder="Leave empty to keep current secret"
           reserveErrorSpace
           containerClassName="mb-4"
         />
@@ -191,7 +198,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={isSubmitting}>
-            {isSubmitting ? "Creating..." : "Create"}
+            {isSubmitting ? "Updating..." : "Update"}
           </Button>
         </div>
       </form>
