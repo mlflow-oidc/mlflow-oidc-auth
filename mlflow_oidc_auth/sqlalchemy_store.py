@@ -185,7 +185,19 @@ class SqlAlchemyStore:
         return self.scorer_group_regex_repo.revoke(id=id, group_name=group_name)
 
     def authenticate_user(self, username: str, password: str) -> bool:
-        return self.user_repo.authenticate(username, password)
+        """Authenticate a user via password_hash or tokens table.
+
+        Tries authentication in order:
+        1. Legacy password_hash field (for backwards compatibility)
+        2. User tokens table (for multi-token support)
+
+        Returns True if either method succeeds.
+        """
+        # Try legacy password_hash first (backwards compatibility)
+        if self.user_repo.authenticate(username, password):
+            return True
+        # Try tokens table
+        return self.user_token_repo.authenticate(username, password)
 
     def create_user(self, username: str, password: str, display_name: str, is_admin: bool = False, is_service_account=False):
         return self.user_repo.create(username, password, display_name, is_admin, is_service_account)
