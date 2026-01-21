@@ -6,6 +6,8 @@ Create Date: 2026-01-21 12:00:00.000000
 
 """
 
+from datetime import datetime, timezone
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -15,8 +17,12 @@ down_revision = "3c3272527ade"
 branch_labels = None
 depends_on = None
 
+# Name for migrated legacy tokens
+LEGACY_TOKEN_NAME = "default"
+
 
 def upgrade() -> None:
+    # Create the new user_tokens table
     op.create_table(
         "user_tokens",
         sa.Column("id", sa.Integer(), nullable=False, primary_key=True),
@@ -30,6 +36,43 @@ def upgrade() -> None:
         sa.UniqueConstraint("user_id", "name", name="unique_user_token_name"),
     )
 
+    # Migrate existing password_hash tokens to the new table
+    # This preserves backwards compatibility for existing users
+    connection = op.get_bind()
+    users_table = sa.table(
+        "users",
+        sa.column("id", sa.Integer),
+        sa.column("password_hash", sa.String),
+        sa.column("password_expiration", sa.DateTime),
+    )
+    user_tokens_table = sa.table(
+        "user_tokens",
+        sa.column("user_id", sa.Integer),
+        sa.column("name", sa.String),
+        sa.column("token_hash", sa.String),
+        sa.column("created_at", sa.DateTime),
+        sa.column("expires_at", sa.DateTime),
+    )
+
+    # Select all users with a password_hash
+    users = connection.execute(sa.select(users_table.c.id, users_table.c.password_hash, users_table.c.password_expiration)).fetchall()
+
+    now = datetime.now(timezone.utc)
+    for user in users:
+        user_id, password_hash, password_expiration = user
+        if password_hash:
+            connection.execute(
+                user_tokens_table.insert().values(
+                    user_id=user_id,
+                    name=LEGACY_TOKEN_NAME,
+                    token_hash=password_hash,
+                    created_at=now,
+                    expires_at=password_expiration,
+                )
+            )
+
 
 def downgrade() -> None:
+    # Note: We don't restore password_hash values on downgrade
+    # as the tokens table becomes the source of truth
     op.drop_table("user_tokens")

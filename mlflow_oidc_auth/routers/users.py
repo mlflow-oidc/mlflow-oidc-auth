@@ -31,6 +31,10 @@ CURRENT_USER = "/current"
 USERNAME = "/{username}"
 
 
+# Default token name for backwards compatibility with legacy single-token API
+DEFAULT_TOKEN_NAME = "default"
+
+
 @users_router.patch(CREATE_ACCESS_TOKEN, summary="Create user access token", description="Creates a new access token for the authenticated user.")
 async def create_access_token(
     token_request: Optional[CreateAccessTokenRequest] = Body(None),
@@ -42,6 +46,9 @@ async def create_access_token(
 
     This endpoint creates a new access token for the authenticated user.
     Optionally accepts expiration date and username (if different from current user).
+
+    Note: This endpoint maintains backwards compatibility by rotating the "default"
+    token. For managing multiple named tokens, use the /tokens endpoints.
 
     Parameters:
     -----------
@@ -92,16 +99,23 @@ async def create_access_token(
                 if expiration > now + timedelta(days=366):
                     raise HTTPException(status_code=400, detail="Expiration date must be less than 1 year in the future")
             except ValueError:
-                raise HTTPException(status_code=400, detail=f"Invalid expiration date format")
+                raise HTTPException(status_code=400, detail="Invalid expiration date format")
 
         # Check if the target user exists
         user = store.get_user_profile(target_username)
         if user is None:
             raise HTTPException(status_code=404, detail=f"User {target_username} not found")
 
-        # Generate new token and update user
+        # Delete existing default token if it exists (rotate behavior)
+        existing_tokens = store.list_user_tokens(target_username)
+        for token in existing_tokens:
+            if token.name == DEFAULT_TOKEN_NAME:
+                store.delete_user_token(token.id, target_username)
+                break
+
+        # Generate and store new token
         new_token = generate_token()
-        store.update_user(username=target_username, password=new_token, password_expiration=expiration)
+        store.create_user_token(username=target_username, name=DEFAULT_TOKEN_NAME, token=new_token, expires_at=expiration)
 
         return JSONResponse(content={"token": new_token, "message": f"Token for {target_username} has been created"})
 
@@ -110,9 +124,8 @@ async def create_access_token(
         raise
     except Exception as e:
         # Log unexpected errors and return a generic error response
-
         logger.error(f"Error creating access token: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create access token")
+        raise HTTPException(status_code=500, detail="Failed to create access token")
 
 
 @users_router.get(USERS_ROOT, summary="List users", description="Retrieves a list of users in the system.")
