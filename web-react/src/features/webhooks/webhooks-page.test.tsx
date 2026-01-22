@@ -51,12 +51,12 @@ describe("WebhooksPage", () => {
     expect(screen.getByText("Webhook 1")).toBeInTheDocument();
     expect(screen.getByText("Webhook 2")).toBeInTheDocument();
     expect(screen.getByText("http://example.com/1")).toBeInTheDocument();
-    expect(screen.getByText("Add webhook")).toBeInTheDocument();
+    expect(screen.getByText("Add Webhook")).toBeInTheDocument();
   });
 
   it("opens CreateWebhookModal when Add webhook is clicked", () => {
     render(<WebhooksPage />);
-    fireEvent.click(screen.getByText("Add webhook"));
+    fireEvent.click(screen.getByText("Add Webhook"));
     expect(screen.getByText("Create webhook")).toBeInTheDocument();
   });
 
@@ -64,7 +64,7 @@ describe("WebhooksPage", () => {
     render(<WebhooksPage />);
     const editButtons = screen.getAllByTitle("Edit");
     fireEvent.click(editButtons[0]);
-    expect(await screen.findByText("Edit webhook")).toBeInTheDocument();
+    expect(await screen.findByText("Edit Webhook")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Webhook 1")).toBeInTheDocument();
   });
 

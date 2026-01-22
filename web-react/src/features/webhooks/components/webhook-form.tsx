@@ -97,6 +97,8 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
     }
   };
 
+  const editingLabel = isEdit ? "Updating..." : "Creating...";
+
   return (
     <form onSubmit={handleSubmit} aria-label={isEdit ? "Edit webhook form" : "Create webhook form"}>
       <Input
@@ -123,9 +125,9 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
       />
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">
+        <div className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">
           Events*
-        </label>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-ui-border dark:border-ui-border-dark rounded-md p-4 max-h-60 overflow-y-auto">
           {SUPPORTED_EVENTS.map((group) => (
             <div key={group.group} className="space-y-2">
@@ -169,7 +171,7 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={isSubmitting}>
-          {isSubmitting ? (isEdit ? "Updating..." : "Creating...") : submitLabel}
+          {isSubmitting ? editingLabel : submitLabel}
         </Button>
       </div>
     </form>

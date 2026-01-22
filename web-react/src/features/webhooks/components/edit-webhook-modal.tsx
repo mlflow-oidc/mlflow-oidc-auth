@@ -26,7 +26,7 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
         name: webhook.name,
         url: webhook.url,
         events: [...webhook.events],
-        secret: "", // Secret is optional and not returned by API usually
+        secret: "", // Secret is optional and not returned by API
       });
     }
   }, [isOpen, webhook]);
@@ -48,8 +48,8 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
       webhook.webhook_id,
       updateData,
       {
-        onSuccessMessage: `${webhook.name} webhook updated successfully`,
-        onErrorMessage: `Failed to update ${webhook.name} webhook`,
+        onSuccessMessage: `Webhook ${webhook.name} updated successfully`,
+        onErrorMessage: `Failed to update Webhook ${webhook.name}`,
       }
     );
 
@@ -60,7 +60,7 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Edit webhook">
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Webhook">
       {initialFormData && (
         <WebhookForm
           initialData={initialFormData}

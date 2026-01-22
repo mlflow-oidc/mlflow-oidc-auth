@@ -40,7 +40,7 @@ describe("EditWebhookModal", () => {
       />
     );
 
-    expect(await screen.findByText("Edit webhook")).toBeInTheDocument();
+    expect(await screen.findByText("Edit Webhook")).toBeInTheDocument();
     expect(screen.getByLabelText(/Name/)).toHaveValue("Old Name");
     expect(screen.getByLabelText(/URL/)).toHaveValue("https://old-url.com");
     expect(screen.getByLabelText("registered_model.created")).not.toBeChecked();
@@ -123,7 +123,7 @@ describe("EditWebhookModal", () => {
         events: ["prompt.created"],
         secret: "new-secret",
       });
-      expect(mockShowToast).toHaveBeenCalledWith("Old Name webhook updated successfully", "success");
+      expect(mockShowToast).toHaveBeenCalledWith("Webhook Old Name updated successfully", "success");
       expect(mockOnSuccess).toHaveBeenCalled();
       expect(mockOnClose).toHaveBeenCalled();
     });

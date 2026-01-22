@@ -34,7 +34,7 @@ export default function WebhooksPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const filteredWebhooks = useMemo(() => {
-    return (webhooks as Webhook[]).filter((webhook: Webhook) =>
+    return webhooks.filter((webhook: Webhook) =>
       webhook.name.toLowerCase().includes(submittedTerm.toLowerCase())
     );
   }, [webhooks, submittedTerm]);
@@ -141,7 +141,7 @@ export default function WebhooksPage() {
               icon={faPlus}
               className="whitespace-nowrap h-8 mb-1 mt-2"
             >
-              Add webhook
+              Add Webhook
             </Button>
           </div>
 

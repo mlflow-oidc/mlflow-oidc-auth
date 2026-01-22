@@ -20,8 +20,9 @@ export const WebhookStatusSwitch: React.FC<WebhookStatusSwitchProps> = ({
   }, [webhook.status]);
 
   const handleToggle = async () => {
-    const newStatus = isActive ? "DISABLED" : "ACTIVE";
-    setIsActive(!isActive);
+    const originalIsActive = isActive;
+    const newStatus = originalIsActive ? "DISABLED" : "ACTIVE";
+    setIsActive(!originalIsActive);
 
     const success = await update(
       webhook.webhook_id,
@@ -37,7 +38,7 @@ export const WebhookStatusSwitch: React.FC<WebhookStatusSwitchProps> = ({
     if (success) {
       onSuccess?.(newStatus);
     } else {
-      setIsActive(isActive);
+      setIsActive(originalIsActive);
     }
   };
 
