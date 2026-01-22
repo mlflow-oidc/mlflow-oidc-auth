@@ -25,7 +25,7 @@ describe("AuthPage", () => {
   it("renders sign in button with correct link", () => {
     render(<AuthPage />);
 
-    expect(screen.getByText("Sign in")).toBeInTheDocument();
+    expect(screen.getByText("MLflow")).toBeInTheDocument();
 
     const button = screen.getByText("Sign in with OIDC");
     expect(button).toBeInTheDocument();
@@ -42,12 +42,21 @@ describe("AuthPage", () => {
     expect(screen.getByText("Error 1")).toBeInTheDocument();
     expect(screen.getByText("Error 2")).toBeInTheDocument();
 
-    const statusDiv = screen.getByRole("status");
-    expect(statusDiv).toHaveClass("bg-red-50");
+    const alertDiv = screen.getByRole("alert");
+    expect(alertDiv).toHaveClass("bg-red-100");
   });
 
-  it("renders default message when no errors", () => {
+  it("renders footer with copyright and sponsor link", () => {
     render(<AuthPage />);
-    expect(screen.getByText("Use the button below to sign in.")).toBeInTheDocument();
+    
+    const currentYear = new Date().getFullYear();
+    expect(screen.getByText(new RegExp(`© ${currentYear} mlflow-oidc-auth`))).toBeInTheDocument();
+    
+    const sponsorLink = screen.getByText("Support the project");
+    expect(sponsorLink).toBeInTheDocument();
+    expect(sponsorLink.closest("a")).toHaveAttribute(
+      "href",
+      "https://github.com/sponsors/mlflow-oidc?o=esb"
+    );
   });
 });

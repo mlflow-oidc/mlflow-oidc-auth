@@ -3,7 +3,7 @@ import { AppLink } from "./app-link";
 import { getSidebarData } from "./sidebar-data";
 import type { CurrentUser } from "../types/user";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faAnglesLeft } from "@fortawesome/free-solid-svg-icons";
+import { faAnglesLeft, faHeart } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "./button";
 
 interface SidebarProps {
@@ -31,7 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className={`${baseSidebarClasses} ${widthClass} overflow-y-auto`}>
       <div className="flex flex-col h-full">
-        <nav className="flex flex-col space-y-1 flex-grow p-2">
+        <nav className="flex flex-col space-y-1 grow p-2">
           {sidebarData.map((link, index) => (
             <React.Fragment key={link.href}>
               {index === ADMIN_LINKS_START_INDEX && isAdmin && (
@@ -66,6 +66,34 @@ const Sidebar: React.FC<SidebarProps> = ({
               </AppLink>
             </React.Fragment>
           ))}
+          <AppLink
+            href="https://github.com/sponsors/mlflow-oidc?o=esb"
+            isInternalLink={false}
+            className={`
+              mt-auto
+              text-text-primary hover:text-text-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark cursor-pointer
+              font-medium rounded-md transition-colors w-full p-0
+              ${isOpen ? "justify-start" : "justify-center"}
+            `}
+          >
+            <div className="flex items-center p-1">
+              <span className={isOpen ? "w-5" : "w-full flex"}>
+                <FontAwesomeIcon
+                  icon={faHeart}
+                  size="1x"
+                  className="color-text-btn-secondary"
+                />
+              </span>
+              <span
+                className={`
+                  whitespace-nowrap
+                  ${isOpen ? "opacity-100 max-w-xs ml-2" : "opacity-0 max-w-0"}
+                `}
+              >
+                Support the project
+              </span>
+            </div>
+          </AppLink>
         </nav>
 
         <div className="p-2 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark ">
