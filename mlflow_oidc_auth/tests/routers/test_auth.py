@@ -5,24 +5,25 @@ This module tests all authentication endpoints including login, logout, callback
 and auth status with various scenarios including success, failure, and edge cases.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import HTTPException
-from fastapi.responses import RedirectResponse, JSONResponse
+
+import pytest
 from authlib.jose.errors import BadSignatureError
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.routers.auth import (
-    auth_router,
-    login,
-    logout,
-    callback,
-    auth_status,
-    _build_ui_url,
-    _process_oidc_callback_fastapi,
+    AUTH_STATUS,
+    CALLBACK,
     LOGIN,
     LOGOUT,
-    CALLBACK,
-    AUTH_STATUS,
+    _build_ui_url,
+    _process_oidc_callback_fastapi,
+    auth_router,
+    auth_status,
+    callback,
+    login,
+    logout,
 )
 
 
@@ -84,9 +85,13 @@ class TestLoginEndpoint:
         """Test successful login initiation."""
         request = mock_request_with_session({"oauth_state": None})
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.config", mock_config), patch(
-            "mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri"
-        ) as mock_redirect, patch("secrets.token_urlsafe") as mock_token, patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True):
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri") as mock_redirect,
+            patch("secrets.token_urlsafe") as mock_token,
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+        ):
             mock_redirect.return_value = "http://localhost:8000/callback"
             mock_token.return_value = "test_state_token"
 
@@ -108,9 +113,11 @@ class TestLoginEndpoint:
         # Remove authorize_redirect method to simulate misconfiguration
         del mock_oauth.oidc.authorize_redirect
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch(
-            "mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True
-        ), pytest.raises(HTTPException) as exc_info:
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await login(request)
 
         assert exc_info.value.status_code == 500
@@ -123,9 +130,11 @@ class TestLoginEndpoint:
 
         mock_oauth.oidc.authorize_redirect.side_effect = Exception("OAuth error")
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch(
-            "mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True
-        ), pytest.raises(HTTPException) as exc_info:
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+            pytest.raises(HTTPException) as exc_info,
+        ):
             await login(request)
 
         assert exc_info.value.status_code == 500
@@ -208,9 +217,10 @@ class TestCallbackEndpoint:
         """Test successful OIDC callback processing."""
         request = mock_request_with_session({"oauth_state": "test_state"})
 
-        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
-            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
-        ) as mock_process:
+        with (
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+            patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process,
+        ):
             mock_process.return_value = ("test@example.com", [])
 
             result = await callback(request)
@@ -229,9 +239,10 @@ class TestCallbackEndpoint:
         """Test callback with authentication errors."""
         request = mock_request_with_session({"oauth_state": "test_state"})
 
-        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
-            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
-        ) as mock_process:
+        with (
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+            patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process,
+        ):
             mock_process.return_value = (None, ["Authentication failed", "Invalid token"])
 
             result = await callback(request)
@@ -247,9 +258,10 @@ class TestCallbackEndpoint:
         """Test callback when no email is returned but no errors."""
         request = mock_request_with_session({"oauth_state": "test_state"})
 
-        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
-            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
-        ) as mock_process:
+        with (
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+            patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process,
+        ):
             mock_process.return_value = (None, [])
 
             with pytest.raises(HTTPException) as exc_info:
@@ -263,9 +275,10 @@ class TestCallbackEndpoint:
         """Test callback with custom redirect after login."""
         request = mock_request_with_session({"oauth_state": "test_state", "redirect_after_login": "http://localhost:8000/custom"})
 
-        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
-            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
-        ) as mock_process:
+        with (
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+            patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process,
+        ):
             mock_process.return_value = ("test@example.com", [])
 
             result = await callback(request)
@@ -282,9 +295,10 @@ class TestCallbackEndpoint:
         """Test callback exception handling."""
         request = mock_request_with_session({"oauth_state": "test_state"})
 
-        with patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True), patch(
-            "mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi"
-        ) as mock_process:
+        with (
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+            patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process,
+        ):
             mock_process.side_effect = Exception("Unexpected error")
 
             with pytest.raises(HTTPException) as exc_info:
@@ -337,10 +351,10 @@ class TestAuthStatusEndpoint:
         request = mock_request_with_session({})
         request.session = None  # This will cause an exception
 
-        result = await auth_status(request)
+        with pytest.raises(HTTPException) as exc_info:
+            await auth_status(request)
 
-        assert isinstance(result, JSONResponse)
-        assert result.status_code == 500
+        assert exc_info.value.status_code == 500
 
 
 class TestProcessOIDCCallbackFastAPI:
@@ -531,9 +545,11 @@ class TestProcessOIDCCallbackFastAPI:
         request = mock_request_with_session({"oauth_state": "test_state"})
         request.query_params = {"state": "test_state", "code": "auth_code_123"}
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.config", mock_config), patch(
-            "mlflow_oidc_auth.user.create_user"
-        ) as mock_create:
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.user.create_user") as mock_create,
+        ):
             # Mock user creation failure
             mock_create.side_effect = Exception("Database error")
 

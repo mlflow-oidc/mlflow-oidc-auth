@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.oauth import oauth, is_oidc_configured
+from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri
 
 from ._prefix import UI_ROUTER_PREFIX
@@ -274,8 +274,10 @@ async def callback(request: Request):
             # Redirect to UI home page or original destination
             default_redirect = session.pop("redirect_after_login", None)
             if not default_redirect:
-                # Default to UI home page using the helper function
-                default_redirect = _build_ui_url(request, "/user")
+                if config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS:
+                    default_redirect = _build_ui_url(request, "/user")
+                else:
+                    default_redirect = str(request.base_url).rstrip("/")
 
             return RedirectResponse(url=default_redirect, status_code=302)
         else:
@@ -318,7 +320,7 @@ async def auth_status(request: Request):
 
     except Exception as e:
         logger.error(f"Error getting auth status: {e}")
-        return JSONResponse(status_code=500, content={"error": "Failed to get authentication status"})
+        raise HTTPException(status_code=500, detail="Failed to get authentication status")
 
 
 async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Optional[str], list[str]]:
@@ -402,6 +404,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             # Use module-level config (possibly patched in tests) and call user management
             # functions via the mlflow_oidc_auth.user module so test monkeypatches apply.
             import importlib
+
             import mlflow_oidc_auth.user as user_module
 
             # Get user groups
