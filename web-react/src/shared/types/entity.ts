@@ -87,3 +87,39 @@ export type DeletedRun = {
   end_time: number | null;
   lifecycle_stage: string;
 };
+
+export type WebhookStatus = "ACTIVE" | "DISABLED";
+
+export type Webhook = {
+  webhook_id: string;
+  name: string;
+  url: string;
+  events: string[];
+  status: WebhookStatus;
+  description?: string;
+  secret?: string;
+  creation_timestamp: number;
+  last_updated_timestamp: number;
+};
+
+export type WebhookCreateRequest = {
+  name: string;
+  url: string;
+  events: string[];
+  status?: WebhookStatus;
+  secret?: string;
+};
+
+export type WebhookUpdateRequest = Partial<WebhookCreateRequest>;
+
+export type WebhookTestRequest = {
+  event?: string;
+  payload?: any;
+};
+
+export type WebhookTestResponse = {
+  success: boolean;
+  response_status?: number;
+  response_body?: string;
+  error_message?: string;
+};
