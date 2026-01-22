@@ -13,12 +13,13 @@ vi.mock("../../core/services/webhook-service");
 
 describe("WebhooksPage", () => {
   const mockWebhooks = [
-    { webhook_id: "1", name: "Webhook 1", url: "http://example.com/1", events: ["prompt.created"] },
-    { webhook_id: "2", name: "Webhook 2", url: "http://example.com/2", events: ["model_version.created"] },
+    { webhook_id: "1", name: "Webhook 1", url: "http://example.com/1", events: ["prompt.created"], status: "ACTIVE" },
+    { webhook_id: "2", name: "Webhook 2", url: "http://example.com/2", events: ["model_version.created"], status: "ACTIVE" },
   ];
 
   const mockShowToast = vi.fn();
   const mockRefresh = vi.fn();
+  const mockUpdateLocalWebhook = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,6 +28,7 @@ describe("WebhooksPage", () => {
       isLoading: false,
       error: null,
       refresh: mockRefresh,
+      updateLocalWebhook: mockUpdateLocalWebhook,
     });
 
     vi.spyOn(useSearchModule, "useSearch").mockReturnValue({

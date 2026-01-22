@@ -17,7 +17,7 @@ describe("EditWebhookModal", () => {
     name: "Old Name",
     url: "https://old-url.com",
     events: ["prompt.created"],
-    status: "active",
+    status: "ACTIVE",
     creation_timestamp: 123456789,
     last_updated_timestamp: 123456789,
   };

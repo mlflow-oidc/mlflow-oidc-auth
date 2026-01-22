@@ -62,7 +62,7 @@ describe("webhook-service", () => {
 
   it("updateWebhook calls http with PUT and body", async () => {
     const webhookId = "hook-123";
-    const data = { active: false };
+    const data = { status: "DISABLED" as const };
     await updateWebhook(webhookId, data);
     expect(http).toHaveBeenCalledWith(
       expect.stringContaining(`/oidc/webhook/${webhookId}`),

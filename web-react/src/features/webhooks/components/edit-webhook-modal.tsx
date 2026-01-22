@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Modal } from "../../../shared/components/modal";
-import { useToast } from "../../../shared/components/toast/use-toast";
-import { updateWebhook } from "../../../core/services/webhook-service";
+import { useUpdateWebhook } from "../../../core/hooks/use-update-webhook";
 import { WebhookForm } from "./webhook-form";
 import type { Webhook, WebhookUpdateRequest, WebhookCreateRequest } from "../../../shared/types/entity";
 
@@ -18,8 +17,7 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
   onSuccess,
   webhook,
 }) => {
-  const { showToast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { update, isUpdating } = useUpdateWebhook();
   const [initialFormData, setInitialFormData] = useState<WebhookCreateRequest | undefined>();
 
   useEffect(() => {
@@ -28,7 +26,7 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
         name: webhook.name,
         url: webhook.url,
         events: [...webhook.events],
-        secret: "",
+        secret: "", // Secret is optional and not returned by API usually
       });
     }
   }, [isOpen, webhook]);
@@ -36,27 +34,28 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
   const handleSubmit = async (formData: WebhookCreateRequest) => {
     if (!webhook) return;
 
-    setIsSubmitting(true);
-    try {
-      const updateData: WebhookUpdateRequest = {
-        name: formData.name?.trim(),
-        url: formData.url?.trim(),
-        events: formData.events,
-      };
+    const updateData: WebhookUpdateRequest = {
+      name: formData.name?.trim(),
+      url: formData.url?.trim(),
+      events: formData.events,
+    };
 
-      if (formData.secret?.trim()) {
-        updateData.secret = formData.secret.trim();
+    if (formData.secret?.trim()) {
+      updateData.secret = formData.secret.trim();
+    }
+
+    const success = await update(
+      webhook.webhook_id,
+      updateData,
+      {
+        onSuccessMessage: `${webhook.name} webhook updated successfully`,
+        onErrorMessage: `Failed to update ${webhook.name} webhook`,
       }
+    );
 
-      await updateWebhook(webhook.webhook_id, updateData);
-      showToast(`${webhook.name} webhook updated successfully`, "success");
+    if (success) {
       onSuccess();
       onClose();
-    } catch (error) {
-      console.error("Error updating webhook:", error);
-      showToast(`Failed to update ${webhook.name} webhook`, "error");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -68,7 +67,7 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
           onSubmit={handleSubmit}
           onCancel={onClose}
           submitLabel="Update"
-          isSubmitting={isSubmitting}
+          isSubmitting={isUpdating}
           isEdit
         />
       )}

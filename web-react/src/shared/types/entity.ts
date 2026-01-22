@@ -88,12 +88,14 @@ export type DeletedRun = {
   lifecycle_stage: string;
 };
 
+export type WebhookStatus = "ACTIVE" | "DISABLED";
+
 export type Webhook = {
   webhook_id: string;
   name: string;
   url: string;
   events: string[];
-  status: string;
+  status: WebhookStatus;
   description?: string;
   secret?: string;
   creation_timestamp: number;
@@ -104,7 +106,7 @@ export type WebhookCreateRequest = {
   name: string;
   url: string;
   events: string[];
-  active?: boolean;
+  status?: WebhookStatus;
   secret?: string;
 };
 

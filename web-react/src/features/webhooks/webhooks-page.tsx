@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { faVial, faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
@@ -15,7 +15,7 @@ import { EditWebhookModal } from "./components/edit-webhook-modal";
 import { DeleteWebhookModal } from "./components/delete-webhook-modal";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { Webhook } from "../../shared/types/entity";
-import { useState } from "react";
+import { WebhookStatusSwitch } from "./components/webhook-status-switch";
 
 export default function WebhooksPage() {
   const {
@@ -26,7 +26,7 @@ export default function WebhooksPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { webhooks, isLoading, error, refresh } = useWebhooks();
+  const { webhooks, isLoading, error, refresh, updateLocalWebhook } = useWebhooks();
   const { showToast } = useToast();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
@@ -70,7 +70,7 @@ export default function WebhooksPage() {
     }
   };
 
-  const columns: ColumnConfig<Webhook>[] = [
+  const columns: ColumnConfig<Webhook>[] = useMemo(() => [
     {
       header: "Name",
       render: (webhook) => webhook.name,
@@ -104,9 +104,17 @@ export default function WebhooksPage() {
           />
         </div>
       ),
-      className: "w-32",
     },
-  ];
+    {
+      header: "Active",
+      render: (webhook) => (
+        <WebhookStatusSwitch 
+          webhook={webhook} 
+          onSuccess={(newStatus) => updateLocalWebhook(webhook.webhook_id, newStatus)} 
+        />
+      ),
+    },
+  ], [updateLocalWebhook]);
 
   return (
     <PageContainer title="Webhooks">

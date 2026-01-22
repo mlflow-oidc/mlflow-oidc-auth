@@ -27,6 +27,7 @@ export const Switch: React.FC<SwitchProps> = ({
       <div
         role="switch"
         aria-checked={checked}
+        aria-disabled={disabled}
         tabIndex={disabled ? -1 : 0}
         onKeyDown={(e) => {
           if (!disabled && (e.key === "Enter" || e.key === " ")) {
