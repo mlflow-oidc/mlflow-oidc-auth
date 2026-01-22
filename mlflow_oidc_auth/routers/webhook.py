@@ -25,6 +25,7 @@ Supported webhook events (MLflow 3.8.x):
 
 from typing import Optional
 
+from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from mlflow.entities.webhook import Webhook, WebhookEvent, WebhookStatus
 from mlflow.store.db.db_types import DATABASE_ENGINES
@@ -216,19 +217,44 @@ def list_webhooks(
     store = _get_model_registry_store()
     logger.debug(f"Store obtained: {store}")
 
-    # Get webhooks from MLflow store
-    webhooks_page = store.list_webhooks(
-        max_results=max_results,
-        page_token=page_token,
-    )
+    # Get webhooks from MLflow store (defensive)
+    try:
+        webhooks_page = store.list_webhooks(
+            max_results=max_results,
+            page_token=page_token,
+        )
+    except Exception as e:
+        # Detect decryption failure (invalid/mismatched encryption key)
+        cause = getattr(e, "__cause__", None) or getattr(e, "__context__", None)
+        if isinstance(cause, InvalidToken) or "InvalidToken" in repr(e) or "Signature did not match" in repr(e):
+            logger.error(
+                "Failed to list webhooks: webhook secret decryption failed (InvalidToken). "
+                "This usually means MLFLOW_WEBHOOK_SECRET_ENCRYPTION_KEY is missing or changed since the webhooks were created.",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Webhook secrets cannot be decrypted. Ensure MLFLOW_WEBHOOK_SECRET_ENCRYPTION_KEY is set to the same value "
+                    "that was used when the webhooks were created, or remove/rotate the affected webhook secrets."
+                ),
+            )
+        # Generic fallback
+        logger.error(f"Failed to list webhooks: {e}", exc_info=True)
+        # Return service unavailable to avoid internal 500s leaking implementation details
+        raise HTTPException(status_code=503, detail="Webhook service temporarily unavailable.")
 
-    # Convert to response format
-    webhook_responses = [_webhook_to_response(webhook) for webhook in webhooks_page]
+    # Preserve token before materializing/consuming the paged result
+    next_page_token = getattr(webhooks_page, "token", None)
+
+    # Materialize page (in case it's an iterator) and convert to response format
+    webhook_list = list(webhooks_page)
+    webhook_responses = [_webhook_to_response(webhook) for webhook in webhook_list]
 
     logger.info(f"Retrieved {len(webhook_responses)} webhooks for {admin_username}")
     return WebhookListResponse(
         webhooks=webhook_responses,
-        next_page_token=webhooks_page.token,
+        next_page_token=next_page_token,
     )
 
 

@@ -30,6 +30,18 @@ python3 -m pip install mlflow-oidc-auth[full]
 mlflow server --app-name oidc-auth --host 0.0.0.0 --port 8080
 ```
 
+## Webhook secret encryption key 🔐
+
+Webhook secrets are stored encrypted in the database using a Fernet key. If you plan to use MLflow webhooks with secrets, set the encryption key in the environment variable `MLFLOW_WEBHOOK_SECRET_ENCRYPTION_KEY` before creating any webhooks. Generate a key with:
+
+```bash
+MLFLOW_WEBHOOK_SECRET_ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+export MLFLOW_WEBHOOK_SECRET_ENCRYPTION_KEY
+```
+
+Important: keep this key stable across application restarts and replicas. If the key is lost or changed after webhooks are created, previously stored secrets cannot be decrypted and will cause webhook listing to fail until you restore the original key or remove/rotate the affected webhook secrets.
+
+
 ## Development
 
 For development quick start, please refer to the [Development and Contribution](docs/development.md) section.
