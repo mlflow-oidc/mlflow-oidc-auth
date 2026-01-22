@@ -37,7 +37,7 @@ describe("WebhookStatusSwitch", () => {
     mockUpdate.mockResolvedValue(true);
 
     render(<WebhookStatusSwitch webhook={mockWebhook} onSuccess={mockOnSuccess} />);
-    
+
     const switchEl = screen.getByRole("switch");
     fireEvent.click(switchEl);
 
@@ -59,14 +59,14 @@ describe("WebhookStatusSwitch", () => {
     mockUpdate.mockResolvedValue(false);
 
     render(<WebhookStatusSwitch webhook={mockWebhook} onSuccess={mockOnSuccess} />);
-    
+
     const switchEl = screen.getByRole("switch");
-    
+
     // Initial state: Checked (ACTIVE)
     expect(switchEl).toBeChecked();
 
     fireEvent.click(switchEl);
-    
+
     // Expect API call
     expect(mockUpdate).toHaveBeenCalled();
 

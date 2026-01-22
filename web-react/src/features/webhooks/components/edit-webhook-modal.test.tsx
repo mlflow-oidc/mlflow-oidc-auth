@@ -62,7 +62,7 @@ describe("EditWebhookModal", () => {
 
     fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "" } });
     fireEvent.change(screen.getByLabelText(/URL/), { target: { value: "" } });
-    
+
     // Uncheck the only selected event
     fireEvent.click(screen.getByLabelText("prompt.created"));
 
@@ -88,7 +88,7 @@ describe("EditWebhookModal", () => {
     await screen.findByDisplayValue("Old Name");
 
     fireEvent.change(screen.getByLabelText(/URL/), { target: { value: "zfzfshttps://echo.technicaldomain.xyz/webhook" } });
-    
+
     fireEvent.submit(screen.getByRole("form"));
 
     await waitFor(() => {

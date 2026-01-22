@@ -108,9 +108,9 @@ export default function WebhooksPage() {
     {
       header: "Active",
       render: (webhook) => (
-        <WebhookStatusSwitch 
-          webhook={webhook} 
-          onSuccess={(newStatus) => updateLocalWebhook(webhook.webhook_id, newStatus)} 
+        <WebhookStatusSwitch
+          webhook={webhook}
+          onSuccess={(newStatus) => updateLocalWebhook(webhook.webhook_id, newStatus)}
         />
       ),
     },

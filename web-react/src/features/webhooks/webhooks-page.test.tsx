@@ -97,7 +97,7 @@ describe("WebhooksPage", () => {
 
     // Check if modal is open
     expect(screen.getByText("Delete Webhook")).toBeInTheDocument();
-    
+
     // Webhook 1 is in the table and in the modal
     expect(screen.getAllByText("Webhook 1").length).toBeGreaterThan(0);
 

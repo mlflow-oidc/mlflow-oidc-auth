@@ -65,10 +65,10 @@ describe("CreateWebhookModal", () => {
 
     fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "invalid-url" } });
-    
+
     // Select an event to enable the button
     fireEvent.click(screen.getByText("registered_model.created"));
-    
+
     expect(screen.getByRole("button", { name: /create/i })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
 
@@ -86,9 +86,9 @@ describe("CreateWebhookModal", () => {
 
     fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "zfzfshttps://echo.technicaldomain.xyz/webhook" } });
-    
+
     fireEvent.click(screen.getByText("registered_model.created"));
-    
+
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
 
     expect(screen.getByText("Invalid URL format")).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe("CreateWebhookModal", () => {
 
     fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "https://example.com" } });
-    
+
     // Select an event
     fireEvent.click(screen.getByText("registered_model.created"));
 
@@ -140,7 +140,7 @@ describe("CreateWebhookModal", () => {
     fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "  Test Webhook  " } });
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "  https://example.com  " } });
     fireEvent.change(screen.getByLabelText("Secret (Optional)"), { target: { value: "  mysecret  " } });
-    
+
     // Select an event
     fireEvent.click(screen.getByText("registered_model.created"));
 
