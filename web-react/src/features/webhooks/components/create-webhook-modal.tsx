@@ -25,6 +25,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
       const trimmedData = {
         ...formData,
         name: formData.name.trim(),
+        description: (formData.description || "").trim(),
         url: formData.url.trim(),
         secret: (formData.secret || "").trim(),
       };

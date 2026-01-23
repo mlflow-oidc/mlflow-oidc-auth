@@ -76,6 +76,14 @@ export default function WebhooksPage() {
       render: (webhook) => webhook.name,
     },
     {
+      header: "Description",
+      render: (webhook) => (
+        <span className="truncate block max-w-xs" title={webhook.description || ""}>
+          {webhook.description || "-"}
+        </span>
+      ),
+    },
+    {
       header: "URL",
       render: (webhook) => (
         <span className="truncate block max-w-xs" title={webhook.url}>

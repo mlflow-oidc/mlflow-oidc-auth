@@ -106,6 +106,7 @@ describe("CreateWebhookModal", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Test Description" } });
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "https://example.com" } });
 
     // Select an event
@@ -116,6 +117,7 @@ describe("CreateWebhookModal", () => {
     await waitFor(() => {
       expect(webhookServiceModule.createWebhook).toHaveBeenCalledWith({
         name: "Test Webhook",
+        description: "Test Description",
         url: "https://example.com",
         events: ["registered_model.created"],
         secret: "",
@@ -138,6 +140,7 @@ describe("CreateWebhookModal", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "  Test Webhook  " } });
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "  Test Description  " } });
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "  https://example.com  " } });
     fireEvent.change(screen.getByLabelText("Secret (Optional)"), { target: { value: "  mysecret  " } });
 
@@ -149,6 +152,7 @@ describe("CreateWebhookModal", () => {
     await waitFor(() => {
       expect(webhookServiceModule.createWebhook).toHaveBeenCalledWith({
         name: "Test Webhook",
+        description: "Test Description",
         url: "https://example.com",
         events: ["registered_model.created"],
         secret: "mysecret",

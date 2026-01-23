@@ -13,7 +13,7 @@ vi.mock("../../core/services/webhook-service");
 
 describe("WebhooksPage", () => {
   const mockWebhooks = [
-    { webhook_id: "1", name: "Webhook 1", url: "http://example.com/1", events: ["prompt.created"], status: "ACTIVE" },
+    { webhook_id: "1", name: "Webhook 1", url: "http://example.com/1", events: ["prompt.created"], status: "ACTIVE", description: "Desc 1" },
     { webhook_id: "2", name: "Webhook 2", url: "http://example.com/2", events: ["model_version.created"], status: "ACTIVE" },
   ];
 
@@ -50,6 +50,8 @@ describe("WebhooksPage", () => {
     expect(screen.getByText("Webhooks")).toBeInTheDocument();
     expect(screen.getByText("Webhook 1")).toBeInTheDocument();
     expect(screen.getByText("Webhook 2")).toBeInTheDocument();
+    expect(screen.getByText("Desc 1")).toBeInTheDocument();
+    expect(screen.getByText("-")).toBeInTheDocument(); // For Webhook 2 description
     expect(screen.getByText("http://example.com/1")).toBeInTheDocument();
     expect(screen.getByText("Add Webhook")).toBeInTheDocument();
   });

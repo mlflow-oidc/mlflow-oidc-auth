@@ -111,6 +111,7 @@ describe("EditWebhookModal", () => {
     await screen.findByDisplayValue("Old Name");
 
     fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "New Name" } });
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Updated Description" } });
     fireEvent.change(screen.getByLabelText(/URL/), { target: { value: "https://new-url.com" } });
     fireEvent.change(screen.getByLabelText(/Secret/), { target: { value: "new-secret" } });
 
@@ -119,6 +120,7 @@ describe("EditWebhookModal", () => {
     await waitFor(() => {
       expect(webhookServiceModule.updateWebhook).toHaveBeenCalledWith("wh-1", {
         name: "New Name",
+        description: "Updated Description",
         url: "https://new-url.com",
         events: ["prompt.created"],
         secret: "new-secret",
@@ -150,6 +152,7 @@ describe("EditWebhookModal", () => {
     await waitFor(() => {
       expect(webhookServiceModule.updateWebhook).toHaveBeenCalledWith("wh-1", {
         name: "New Name",
+        description: "",
         url: "https://old-url.com",
         events: ["prompt.created"],
         // secret should NOT be present

@@ -17,6 +17,7 @@ describe("WebhookForm", () => {
     );
 
     expect(screen.getByLabelText("Name*")).toHaveValue("");
+    expect(screen.getByLabelText("Description")).toHaveValue("");
     expect(screen.getByLabelText("URL*")).toHaveValue("");
     expect(screen.getByLabelText("Secret (Optional)")).toHaveValue("");
     expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
@@ -26,6 +27,7 @@ describe("WebhookForm", () => {
   it("renders correctly with initial data", () => {
     const initialData = {
       name: "Initial Name",
+      description: "Initial Description",
       url: "https://initial-url.com",
       events: ["prompt.created"],
       secret: "initial-secret",
@@ -43,6 +45,7 @@ describe("WebhookForm", () => {
     );
 
     expect(screen.getByLabelText("Name*")).toHaveValue("Initial Name");
+    expect(screen.getByLabelText("Description")).toHaveValue("Initial Description");
     expect(screen.getByLabelText("URL*")).toHaveValue("https://initial-url.com");
     expect(screen.getByLabelText("Secret (Optional)")).toHaveValue("initial-secret");
     expect(screen.getByLabelText("prompt.created")).toBeChecked();
@@ -78,6 +81,25 @@ describe("WebhookForm", () => {
       />
     );
 
+    const longDescription = "a".repeat(501);
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: longDescription } });
+    fireEvent.submit(screen.getByRole("form"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Description must be 500 characters or less")).toBeInTheDocument();
+    });
+  });
+
+  it("validates URL format", async () => {
+    render(
+      <WebhookForm
+        onSubmit={mockOnSubmit}
+        onCancel={mockOnCancel}
+        submitLabel="Submit"
+        isSubmitting={false}
+      />
+    );
+
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "not-a-url" } });
     fireEvent.submit(screen.getByRole("form"));
 
@@ -97,6 +119,7 @@ describe("WebhookForm", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Test Description" } });
     fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "https://example.com" } });
     fireEvent.click(screen.getByLabelText("registered_model.created"));
 
@@ -105,6 +128,7 @@ describe("WebhookForm", () => {
     await waitFor(() => {
       expect(mockOnSubmit).toHaveBeenCalledWith({
         name: "Test Webhook",
+        description: "Test Description",
         url: "https://example.com",
         events: ["registered_model.created"],
         secret: "",

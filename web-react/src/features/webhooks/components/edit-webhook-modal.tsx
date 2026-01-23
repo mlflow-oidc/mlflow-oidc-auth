@@ -24,6 +24,7 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
     if (isOpen && webhook) {
       setInitialFormData({
         name: webhook.name,
+        description: webhook.description || "",
         url: webhook.url,
         events: [...webhook.events],
         secret: "", // Secret is optional and not returned by API
@@ -36,6 +37,7 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
 
     const updateData: WebhookUpdateRequest = {
       name: formData.name?.trim(),
+      description: formData.description?.trim(),
       url: formData.url?.trim(),
       events: formData.events,
     };

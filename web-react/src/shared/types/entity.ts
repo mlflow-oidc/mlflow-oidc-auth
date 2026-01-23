@@ -108,6 +108,7 @@ export type WebhookCreateRequest = {
   events: string[];
   status?: WebhookStatus;
   secret?: string;
+  description?: string;
 };
 
 export type WebhookUpdateRequest = Partial<WebhookCreateRequest>;

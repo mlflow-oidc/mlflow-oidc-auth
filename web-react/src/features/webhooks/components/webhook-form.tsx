@@ -68,6 +68,9 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.name?.trim()) newErrors.name = "Name is required";
+    if (formData.description && formData.description.length > 500) {
+        newErrors.description = "Description must be 500 characters or less";
+    }
     if (!formData.url?.trim()) {
       newErrors.url = "URL is required";
     } else if (!validateURL(formData.url)) {
@@ -109,8 +112,29 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
         error={errors.name}
         required
         reserveErrorSpace
-        containerClassName="mb-4"
+        containerClassName="mb-2"
       />
+
+      <div className="mb-2">
+         <label htmlFor="webhook-description" className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">
+            Description
+         </label>
+        <textarea
+          id="webhook-description"
+          value={formData.description || ""}
+          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+          className={`w-full rounded-md border text-sm p-2 bg-ui-bg dark:bg-ui-bg-dark text-text-primary dark:text-text-primary-dark focus:ring-2 focus:ring-btn-primary focus:border-transparent ${
+            errors.description
+              ? "border-red-500 focus:ring-red-500"
+              : "border-ui-border dark:border-ui-border-dark"
+          }`}
+          rows={3}
+          placeholder="Optional description (max 500 characters)"
+        />
+        <p className={`mt-1 text-sm ${errors.description ? "text-red-500" : "invisible"}`}>
+          {errors.description || "\u00A0"}
+        </p>
+      </div>
 
       <Input
         label="URL"
@@ -121,14 +145,14 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
         placeholder="https://example.com/webhook"
         required
         reserveErrorSpace
-        containerClassName="mb-4"
+        containerClassName="mb-2"
       />
 
-      <div className="mb-4">
+      <div className="mb-2">
         <div className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">
           Events*
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-ui-border dark:border-ui-border-dark rounded-md p-4 max-h-60 overflow-y-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-ui-border dark:border-ui-border-dark rounded-md p-4 max-h-40 overflow-y-auto">
           {SUPPORTED_EVENTS.map((group) => (
             <div key={group.group} className="space-y-2">
               <h5 className="text-xs font-bold uppercase text-ui-text-muted dark:text-ui-text-muted-dark tracking-wider">
@@ -163,7 +187,7 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
         onChange={(e) => setFormData(prev => ({ ...prev, secret: e.target.value }))}
         placeholder={isEdit ? "Leave empty to keep current secret" : "Webhook secret for HMAC verification"}
         reserveErrorSpace
-        containerClassName="mb-4"
+        containerClassName="mb-2"
       />
 
       <div className="flex justify-end space-x-3 pt-2">
