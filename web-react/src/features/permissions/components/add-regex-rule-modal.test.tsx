@@ -20,6 +20,15 @@ describe("AddRegexRuleModal", () => {
     expect(await screen.findByText("Invalid regular expression. Please enter a valid Python regex.")).toBeInTheDocument();
   });
 
+  it("validates empty regex input", async () => {
+    render(<AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />);
+
+    const saveBtn = screen.getByText("Save");
+    fireEvent.click(saveBtn);
+
+    expect(await screen.findByText("Regex is required.")).toBeInTheDocument();
+  });
+
   it("validates priority input", async () => {
     render(<AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />);
 

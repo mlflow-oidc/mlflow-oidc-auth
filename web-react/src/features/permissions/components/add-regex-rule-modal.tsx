@@ -31,11 +31,16 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
     const newErrors: { regex?: string; priority?: string } = {};
     let hasError = false;
 
-    try {
-      new RegExp(regex);
-    } catch {
-      newErrors.regex = "Invalid regular expression. Please enter a valid Python regex.";
+    if (!regex.trim()) {
+      newErrors.regex = "Regex is required.";
       hasError = true;
+    } else {
+      try {
+        new RegExp(regex);
+      } catch {
+        newErrors.regex = "Invalid regular expression. Please enter a valid Python regex.";
+        hasError = true;
+      }
     }
 
     if (priority === undefined || isNaN(priority)) {
