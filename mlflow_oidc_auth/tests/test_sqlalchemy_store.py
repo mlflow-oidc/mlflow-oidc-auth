@@ -23,6 +23,7 @@ def mock_store():
     """Store with all repositories mocked for isolated testing"""
     store = SqlAlchemyStore()
     store.user_repo = MagicMock()
+    store.user_token_repo = MagicMock()
     store.experiment_repo = MagicMock()
     store.experiment_group_repo = MagicMock()
     store.group_repo = MagicMock()
@@ -219,9 +220,10 @@ class TestSqlAlchemyStore:
 
     # Test missing user management methods
     def test_authenticate_user(self, mock_store: SqlAlchemyStore):
-        mock_store.user_repo.authenticate.return_value = True
+        """Test authenticate_user delegates to user_token_repo."""
+        mock_store.user_token_repo.authenticate.return_value = True
         result = mock_store.authenticate_user("testuser", "password")
-        mock_store.user_repo.authenticate.assert_called_once_with("testuser", "password")
+        mock_store.user_token_repo.authenticate.assert_called_once_with("testuser", "password")
         assert result is True
 
     def test_create_user(self, mock_store: SqlAlchemyStore):
@@ -264,6 +266,51 @@ class TestSqlAlchemyStore:
     def test_delete_user(self, mock_store: SqlAlchemyStore):
         mock_store.delete_user("testuser")
         mock_store.user_repo.delete.assert_called_once_with("testuser")
+
+    # Test user token methods
+    def test_create_user_token(self, mock_store: SqlAlchemyStore):
+        """Test create_user_token delegates to user_token_repo."""
+        mock_token = MagicMock()
+        mock_store.user_token_repo.create.return_value = mock_token
+        expires_at = datetime.now()
+        result = mock_store.create_user_token("testuser", "my-token", "secret", expires_at)
+        mock_store.user_token_repo.create.assert_called_once_with(username="testuser", name="my-token", token="secret", expires_at=expires_at)
+        assert result == mock_token
+
+    def test_list_user_tokens(self, mock_store: SqlAlchemyStore):
+        """Test list_user_tokens delegates to user_token_repo."""
+        mock_tokens = [MagicMock(), MagicMock()]
+        mock_store.user_token_repo.list_for_user.return_value = mock_tokens
+        result = mock_store.list_user_tokens("testuser")
+        mock_store.user_token_repo.list_for_user.assert_called_once_with("testuser")
+        assert result == mock_tokens
+
+    def test_get_user_token(self, mock_store: SqlAlchemyStore):
+        """Test get_user_token delegates to user_token_repo."""
+        mock_token = MagicMock()
+        mock_store.user_token_repo.get.return_value = mock_token
+        result = mock_store.get_user_token(123, "testuser")
+        mock_store.user_token_repo.get.assert_called_once_with(token_id=123, username="testuser")
+        assert result == mock_token
+
+    def test_delete_user_token(self, mock_store: SqlAlchemyStore):
+        """Test delete_user_token delegates to user_token_repo."""
+        mock_store.delete_user_token(123, "testuser")
+        mock_store.user_token_repo.delete.assert_called_once_with(token_id=123, username="testuser")
+
+    def test_delete_all_user_tokens(self, mock_store: SqlAlchemyStore):
+        """Test delete_all_user_tokens delegates to user_token_repo."""
+        mock_store.user_token_repo.delete_all_for_user.return_value = 3
+        result = mock_store.delete_all_user_tokens("testuser")
+        mock_store.user_token_repo.delete_all_for_user.assert_called_once_with("testuser")
+        assert result == 3
+
+    def test_authenticate_user_token(self, mock_store: SqlAlchemyStore):
+        """Test authenticate_user_token delegates to user_token_repo."""
+        mock_store.user_token_repo.authenticate.return_value = True
+        result = mock_store.authenticate_user_token("testuser", "secret")
+        mock_store.user_token_repo.authenticate.assert_called_once_with(username="testuser", password="secret")
+        assert result is True
 
     # Test experiment permission methods
     def test_create_experiment_permission(self, mock_store: SqlAlchemyStore):
