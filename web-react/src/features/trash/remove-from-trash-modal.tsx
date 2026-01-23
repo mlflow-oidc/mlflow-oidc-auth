@@ -45,7 +45,7 @@ export const RemoveFromTrashModal = ({
                 <Button variant="secondary" onClick={onClose}>
                     Cancel
                 </Button>
-                <Button variant="danger-outline" onClick={onConfirm} disabled={isProcessing}>
+                <Button variant="danger" onClick={onConfirm} disabled={isProcessing}>
                     Delete Permanently
                 </Button>
             </div>

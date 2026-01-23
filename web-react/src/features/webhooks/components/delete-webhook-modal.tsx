@@ -39,7 +39,7 @@ export const DeleteWebhookModal = ({
           <Button variant="ghost" onClick={onClose} disabled={isProcessing}>
             Cancel
           </Button>
-          <Button variant="danger-outline" onClick={onConfirm} disabled={isProcessing}>
+          <Button variant="danger" onClick={onConfirm} disabled={isProcessing}>
             {isProcessing ? "Deleting..." : "Delete Permanently"}
           </Button>
         </div>

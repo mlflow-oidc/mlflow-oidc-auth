@@ -273,7 +273,7 @@ export default function TrashPage() {
                 Restore
               </Button>
               <Button
-                variant="danger-outline"
+                variant="danger"
                 onClick={() => handleDeleteClick(Array.from(selectedIds))}
                 disabled={selectedIds.size === 0 || isProcessing}
               >
