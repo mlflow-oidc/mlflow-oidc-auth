@@ -322,55 +322,11 @@ async def get_current_user_information(current_username: str = Depends(get_usern
         raise HTTPException(status_code=404, detail="User not found")
 
 
-@users_router.get(
-    USERNAME,
-    response_model=CurrentUserProfile,
-    summary="Get user information",
-    description="Retrieves basic user information (no permissions) about a specified user. Admin-only.",
-)
-async def get_user_information(username: str, admin_username: str = Depends(check_admin_permission)) -> CurrentUserProfile:
-    """
-    Get information about a specified user.
-
-    This endpoint returns the user profile information for the specified user,
-    including username, display name, admin status, and other user attributes.
-
-    Parameters:
-    -----------
-    username : str
-        The username of the user to retrieve information for.
-    admin_username : str
-        The authenticated admin username (injected by dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A JSON response containing the user's information.
-
-    Raises:
-    -------
-    HTTPException
-        If the user is not found or there's an error retrieving user information.
-    """
-    try:
-        user = store.get_user_profile(username)
-        return CurrentUserProfile(
-            id=user.id,
-            username=user.username,
-            display_name=user.display_name,
-            is_admin=bool(user.is_admin),
-            is_service_account=bool(user.is_service_account),
-            password_expiration=user.password_expiration.isoformat() if user.password_expiration else None,
-            groups=[GroupRecord(**g.to_json()) for g in (user.groups or [])],
-        )
-    except Exception as e:
-        logger.error(f"Error getting user information for {username}: {str(e)}")
-        raise HTTPException(status_code=404, detail="User not found")
-
-
 # =============================================================================
 # Token Management Endpoints (Multi-Token API)
 # =============================================================================
+# NOTE: These routes MUST be defined BEFORE the /{username} route below,
+# otherwise FastAPI will match /tokens as a username parameter.
 
 
 def _token_to_response(token) -> UserTokenResponse:
@@ -483,6 +439,59 @@ async def delete_token(
             raise HTTPException(status_code=404, detail=f"Token with id={token_id} not found")
         logger.error(f"Error deleting token: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete token")
+
+
+# =============================================================================
+# User Information Endpoint (with path parameter)
+# =============================================================================
+# NOTE: This route MUST be defined AFTER all specific routes like /tokens,
+# /tokens/{token_id}, etc. to avoid catching them as username values.
+
+
+@users_router.get(
+    USERNAME,
+    response_model=CurrentUserProfile,
+    summary="Get user information",
+    description="Retrieves basic user information (no permissions) about a specified user. Admin-only.",
+)
+async def get_user_information(username: str, admin_username: str = Depends(check_admin_permission)) -> CurrentUserProfile:
+    """
+    Get information about a specified user.
+
+    This endpoint returns the user profile information for the specified user,
+    including username, display name, admin status, and other user attributes.
+
+    Parameters:
+    -----------
+    username : str
+        The username of the user to retrieve information for.
+    admin_username : str
+        The authenticated admin username (injected by dependency).
+
+    Returns:
+    --------
+    JSONResponse
+        A JSON response containing the user's information.
+
+    Raises:
+    -------
+    HTTPException
+        If the user is not found or there's an error retrieving user information.
+    """
+    try:
+        user = store.get_user_profile(username)
+        return CurrentUserProfile(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            is_admin=bool(user.is_admin),
+            is_service_account=bool(user.is_service_account),
+            password_expiration=user.password_expiration.isoformat() if user.password_expiration else None,
+            groups=[GroupRecord(**g.to_json()) for g in (user.groups or [])],
+        )
+    except Exception as e:
+        logger.error(f"Error getting user information for {username}: {str(e)}")
+        raise HTTPException(status_code=404, detail="User not found")
 
 
 # =============================================================================

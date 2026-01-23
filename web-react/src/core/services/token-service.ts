@@ -1,5 +1,6 @@
 import { createStaticApiFetcher } from "./create-api-fetcher";
 import { http } from "./http";
+import { resolveUrl } from "./api-utils";
 import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
@@ -11,6 +12,7 @@ export interface UserToken {
   created_at: string;
   expires_at: string | null;
   last_used_at: string | null;
+  [key: string]: unknown;
 }
 
 export interface UserTokenListResponse {
@@ -39,14 +41,16 @@ export const fetchUserTokens = createStaticApiFetcher<UserTokenListResponse>({
 export const createUserToken = async (
   data: CreateTokenRequest
 ): Promise<UserTokenCreatedResponse> => {
-  return http<UserTokenCreatedResponse>(STATIC_API_ENDPOINTS.USER_TOKENS, {
+  const url = await resolveUrl(STATIC_API_ENDPOINTS.USER_TOKENS, {});
+  return http<UserTokenCreatedResponse>(url, {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
 export const deleteUserToken = async (tokenId: number): Promise<void> => {
-  await http(DYNAMIC_API_ENDPOINTS.DELETE_USER_TOKEN(String(tokenId)), {
+  const url = await resolveUrl(DYNAMIC_API_ENDPOINTS.DELETE_USER_TOKEN(String(tokenId)), {});
+  await http(url, {
     method: "DELETE",
   });
 };
