@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, type FormEvent } from "react";
 import { faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "../../../shared/components/button";
 import { IconButton } from "../../../shared/components/icon-button";
@@ -40,7 +40,8 @@ export const TokensList: React.FC = () => {
     []
   );
 
-  const handleSearchSubmit = useCallback(() => {
+  const handleSearchSubmit = useCallback((e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     setSubmittedTerm(searchTerm);
   }, [searchTerm]);
 
@@ -109,7 +110,6 @@ export const TokensList: React.FC = () => {
           onClick={() => handleDeleteToken(token)}
           disabled={deletingTokenId === token.id}
           title={`Delete token "${token.name}"`}
-          variant="danger"
         />
       ),
       className: "w-20 text-center",
