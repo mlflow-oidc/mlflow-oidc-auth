@@ -3,6 +3,7 @@ import { useAuthErrors } from "./hooks/use-auth-errors";
 import { Button } from "../../shared/components/button";
 import { faHeart, faExclamationCircle } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import DarkModeToggle from "../../shared/components/dark-mode-toggle";
 
 export const AuthPage = () => {
   const config = useRuntimeConfig();
@@ -20,6 +21,9 @@ export const AuthPage = () => {
       className="min-h-screen flex flex-col items-center justify-between
     bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark"
     >
+      <div className="absolute top-4 right-4">
+        <DarkModeToggle />
+      </div>
       <div className="flex-1 flex  items-center justify-center w-full">
         <div
           className="w-full max-w-2xs p-8 rounded-md shadow flex flex-col items-center

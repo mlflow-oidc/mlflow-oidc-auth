@@ -13,6 +13,10 @@ vi.mock("./hooks/use-auth-errors", () => ({
   useAuthErrors: () => mockUseAuthErrors(),
 }));
 
+vi.mock("../../shared/components/dark-mode-toggle", () => ({
+  default: () => <div data-testid="dark-mode-toggle" />,
+}));
+
 describe("AuthPage", () => {
   beforeEach(() => {
     mockUseRuntimeConfig.mockReturnValue({
@@ -58,5 +62,10 @@ describe("AuthPage", () => {
       "href",
       "https://github.com/sponsors/mlflow-oidc?o=esb"
     );
+  });
+
+  it("renders dark mode toggle", () => {
+    render(<AuthPage />);
+    expect(screen.getByTestId("dark-mode-toggle")).toBeInTheDocument();
   });
 });
