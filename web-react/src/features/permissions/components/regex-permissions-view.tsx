@@ -277,21 +277,26 @@ export const RegexPermissionsView = ({
         </>
       )}
 
-      <EditPermissionModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        onSave={handleSavePermission}
-        item={editingItem}
-        username={entityName}
-        type={type}
-        isLoading={isSaving}
-      />
-      <AddRegexRuleModal
-        isOpen={isRegexModalOpen}
-        onClose={() => setIsRegexModalOpen(false)}
-        onSave={handleSaveRegexRule}
-        isLoading={isSaving}
-      />
+      {isModalOpen && editingItem && (
+        <EditPermissionModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSave={handleSavePermission}
+          item={editingItem}
+          username={entityName}
+          type={type}
+          isLoading={isSaving}
+          key={editingItem.id}
+        />
+      )}
+      {isRegexModalOpen && (
+        <AddRegexRuleModal
+          isOpen={isRegexModalOpen}
+          onClose={() => setIsRegexModalOpen(false)}
+          onSave={handleSaveRegexRule}
+          isLoading={isSaving}
+        />
+      )}
     </>
   );
 };

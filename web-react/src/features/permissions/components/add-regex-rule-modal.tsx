@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
@@ -24,15 +24,6 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   const [priority, setPriority] = useState<number>(100);
   const [permission, setPermission] = useState<PermissionLevel>("READ");
   const [errors, setErrors] = useState<{ regex?: string; priority?: string }>({});
-
-  useEffect(() => {
-    if (isOpen) {
-      setRegex("");
-      setPriority(100);
-      setPermission("READ");
-      setErrors({});
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 

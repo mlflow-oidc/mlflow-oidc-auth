@@ -185,16 +185,19 @@ export function EntityPermissionsManager({
         </>
       )}
 
-      <EditPermissionModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        onSave={handleSavePermission}
-        item={editingItem}
-        username={editingItem?.name || ""}
-        resourceId={resourceId}
-        type={resourceType}
-        isLoading={isSaving}
-      />
+      {isModalOpen && editingItem && (
+        <EditPermissionModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSave={handleSavePermission}
+          item={editingItem}
+          username={editingItem?.name || ""}
+          resourceId={resourceId}
+          type={resourceType}
+          isLoading={isSaving}
+          key={editingItem.name}
+        />
+      )}
 
       <GrantPermissionModal
         isOpen={isAddUserModalOpen}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
@@ -41,16 +41,6 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
   const [priority, setPriority] = useState<number>(
     item && "priority" in item ? item.priority : 0
   );
-
-  useEffect(() => {
-    if (isOpen && item) {
-      setSelectedPermission(item.permission);
-      if ("regex" in item) {
-        setRegex(item.regex);
-        setPriority(item.priority);
-      }
-    }
-  }, [isOpen, item]);
 
   if (!isOpen || !item) return null;
 

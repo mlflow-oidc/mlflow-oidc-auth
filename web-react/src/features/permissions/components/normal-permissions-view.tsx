@@ -325,15 +325,18 @@ export const NormalPermissionsView = ({
         </>
       )}
 
-      <EditPermissionModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        onSave={handleSavePermission}
-        item={editingItem}
-        username={entityName}
-        type={type}
-        isLoading={isSaving}
-      />
+      {isModalOpen && editingItem && (
+        <EditPermissionModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSave={handleSavePermission}
+          item={editingItem}
+          username={entityName}
+          type={type}
+          isLoading={isSaving}
+          key={"id" in editingItem ? String(editingItem.id) : editingItem.name}
+        />
+      )}
 
       <GrantPermissionModal
         isOpen={isGrantModalOpen}
