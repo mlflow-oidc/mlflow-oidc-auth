@@ -94,8 +94,8 @@ async def create_access_token(
         else:
             target_username = current_username
 
-        # Parse expiration date if provided
-        expiration = None
+        # Parse expiration date if provided, otherwise default to 1 year
+        now = datetime.now(timezone.utc)
         if token_request and token_request.expiration:
             expiration_str = token_request.expiration
             # Handle ISO 8601 with 'Z' (UTC) at the end
@@ -104,7 +104,6 @@ async def create_access_token(
 
             try:
                 expiration = datetime.fromisoformat(expiration_str)
-                now = datetime.now(timezone.utc)
 
                 if expiration < now:
                     raise HTTPException(status_code=400, detail="Expiration date must be in the future")
@@ -113,6 +112,9 @@ async def create_access_token(
                     raise HTTPException(status_code=400, detail="Expiration date must be less than 1 year in the future")
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid expiration date format")
+        else:
+            # Default to 1 year expiration for legacy API compatibility
+            expiration = now + timedelta(days=365)
 
         # Check if the target user exists
         user = store.get_user_profile(target_username)
@@ -340,10 +342,13 @@ def _token_to_response(token) -> UserTokenResponse:
     )
 
 
-def _parse_expiration(expiration_str: Optional[str]) -> Optional[datetime]:
-    """Parse and validate an expiration date string."""
+def _parse_expiration(expiration_str: str) -> datetime:
+    """Parse and validate an expiration date string.
+
+    Expiration is required and must be no more than 1 year in the future.
+    """
     if not expiration_str:
-        return None
+        raise HTTPException(status_code=400, detail="Expiration date is required")
 
     # Handle ISO 8601 with 'Z' (UTC) at the end
     if expiration_str.endswith("Z"):

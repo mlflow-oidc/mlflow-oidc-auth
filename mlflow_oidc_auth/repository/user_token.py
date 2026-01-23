@@ -21,7 +21,7 @@ class UserTokenRepository:
         username: str,
         name: str,
         token: str,
-        expires_at: Optional[datetime] = None,
+        expires_at: datetime,
     ) -> UserToken:
         """Create a new token for a user.
 
@@ -29,7 +29,7 @@ class UserTokenRepository:
             username: The username of the token owner.
             name: A descriptive name for the token.
             token: The plaintext token (will be hashed before storage).
-            expires_at: Optional expiration datetime.
+            expires_at: Required expiration datetime (max 1 year from now).
 
         Returns:
             The created UserToken entity.
@@ -153,6 +153,8 @@ class UserTokenRepository:
 
             for token in tokens:
                 # Skip expired tokens
+                # NOTE: We check for None to support legacy tokens migrated from password_hash
+                # that may not have had an expiration set. New tokens always require expiration.
                 if token.expires_at is not None:
                     expires_at = token.expires_at
                     if expires_at.tzinfo is None:
@@ -203,6 +205,8 @@ class UserTokenRepository:
 
             for token in tokens:
                 # Skip expired tokens
+                # NOTE: We check for None to support legacy tokens migrated from password_hash
+                # that may not have had an expiration set. New tokens always require expiration.
                 if token.expires_at is not None:
                     expires_at = token.expires_at
                     if expires_at.tzinfo is None:

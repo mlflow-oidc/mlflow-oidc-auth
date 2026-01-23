@@ -1,5 +1,6 @@
 import secrets
 import string
+from datetime import datetime, timedelta, timezone
 
 from mlflow.exceptions import MlflowException
 
@@ -34,7 +35,9 @@ def create_user(username: str, display_name: str, is_admin: bool = False, is_ser
         )
 
         # Create the actual token in the tokens table (this is what's used for authentication)
-        store.create_user_token(username=username, name=DEFAULT_TOKEN_NAME, token=token)
+        # Default expiration is 1 year from now
+        default_expiration = datetime.now(timezone.utc) + timedelta(days=365)
+        store.create_user_token(username=username, name=DEFAULT_TOKEN_NAME, token=token, expires_at=default_expiration)
 
         return True, f"User {user.username} (ID: {user.id}) successfully created"
 

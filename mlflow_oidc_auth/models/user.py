@@ -23,7 +23,7 @@ class CreateUserTokenRequest(BaseModel):
     """Request model for creating a named user token."""
 
     name: str = Field(..., min_length=1, max_length=255, description="Descriptive name for the token")
-    expiration: Optional[str] = Field(None, description="Optional expiration date in ISO 8601 format")
+    expiration: str = Field(..., description="Expiration date in ISO 8601 format (required, max 1 year)")
 
 
 class UserTokenResponse(BaseModel):

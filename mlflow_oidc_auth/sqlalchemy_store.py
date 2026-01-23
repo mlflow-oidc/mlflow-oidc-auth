@@ -482,7 +482,7 @@ class SqlAlchemyStore:
         return self.prompt_group_regex_repo.revoke(id=id, group_name=group_name, prompt=True)
 
     # User token CRUD
-    def create_user_token(self, username: str, name: str, token: str, expires_at: Optional[datetime] = None) -> UserToken:
+    def create_user_token(self, username: str, name: str, token: str, expires_at: datetime) -> UserToken:
         return self.user_token_repo.create(username=username, name=name, token=token, expires_at=expires_at)
 
     def list_user_tokens(self, username: str) -> List[UserToken]:
