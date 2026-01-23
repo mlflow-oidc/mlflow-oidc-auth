@@ -71,6 +71,11 @@ def upgrade() -> None:
                 )
             )
 
+    # NOTE: We intentionally do NOT drop the password_hash and password_expiration
+    # columns from the users table in this migration. This allows for safe rollback
+    # if needed. A future migration will remove these deprecated columns once the
+    # multi-token system has been stable for a release cycle.
+
 
 def downgrade() -> None:
     # Note: We don't restore password_hash values on downgrade
