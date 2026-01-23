@@ -6,8 +6,6 @@ const mockUseUser =
   vi.fn<
     () => { currentUser: { is_admin: boolean; username: string } | null }
   >();
-const mockUseUserDetails =
-  vi.fn<() => { user: unknown; refetch: () => void }>();
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -47,10 +45,6 @@ vi.mock("react-router", () => ({
 
 vi.mock("../../core/hooks/use-user", () => ({
   useUser: () => mockUseUser(),
-}));
-
-vi.mock("../../core/hooks/use-user-details", () => ({
-  useUserDetails: () => mockUseUserDetails(),
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
@@ -97,19 +91,11 @@ vi.mock("../../shared/components/switch", () => ({
   ),
 }));
 
-vi.mock("../../shared/components/token-info-block", () => ({
-  TokenInfoBlock: () => <div>Token Block</div>,
-}));
-
 describe("SharedPermissionsPage", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseUser.mockReturnValue({
       currentUser: { is_admin: false, username: "testuser" },
-    });
-    mockUseUserDetails.mockReturnValue({
-      user: null,
-      refetch: vi.fn(),
     });
   });
 

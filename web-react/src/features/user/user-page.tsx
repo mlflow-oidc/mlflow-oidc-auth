@@ -13,8 +13,6 @@ import { EntityListTable } from "../../shared/components/entity-list-table";
 import { SearchInput } from "../../shared/components/search-input";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { PermissionItem } from "../../shared/types/entity";
-import { TokenInfoBlock } from "../../shared/components/token-info-block";
-
 export const UserPage = () => {
   const { tab = "info" } = useParams<{ tab?: string }>();
   const { currentUser, isLoading: isUserLoading, error: userError } = useUser();
@@ -75,13 +73,6 @@ export const UserPage = () => {
 
   return (
     <PageContainer title="User Page">
-      {currentUser && (
-        <TokenInfoBlock
-          username={currentUser.username}
-          passwordExpiration={currentUser.password_expiration}
-        />
-      )}
-
       <div className="flex space-x-4 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
         {tabs.map((tabItem) => (
           <Link
