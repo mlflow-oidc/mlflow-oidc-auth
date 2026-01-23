@@ -1,9 +1,9 @@
+import re
 from typing import Any, Callable, Dict, Optional
 
-from flask import redirect, render_template, request, session, url_for
+from flask import Request, request
 from mlflow.protos.model_registry_pb2 import (
     CreateModelVersion,
-    CreateRegisteredModel,
     DeleteModelVersion,
     DeleteModelVersionTag,
     DeleteRegisteredModel,
@@ -15,7 +15,6 @@ from mlflow.protos.model_registry_pb2 import (
     GetModelVersionDownloadUri,
     GetRegisteredModel,
     RenameRegisteredModel,
-    SearchRegisteredModels,
     SetModelVersionTag,
     SetRegisteredModelAlias,
     SetRegisteredModelTag,
@@ -24,82 +23,119 @@ from mlflow.protos.model_registry_pb2 import (
     UpdateRegisteredModel,
 )
 from mlflow.protos.service_pb2 import (
-    CreateExperiment,
+    CreateLoggedModel,
     CreateRun,
     DeleteExperiment,
+    DeleteExperimentTag,
+    DeleteLoggedModel,
+    DeleteLoggedModelTag,
     DeleteRun,
     DeleteTag,
+    FinalizeLoggedModel,
     GetExperiment,
     GetExperimentByName,
+    GetLoggedModel,
     GetMetricHistory,
     GetRun,
     ListArtifacts,
     LogBatch,
+    LogLoggedModelParamsRequest,
     LogMetric,
     LogModel,
     LogParam,
     RestoreExperiment,
     RestoreRun,
-    SearchExperiments,
     SetExperimentTag,
+    SetLoggedModelTags,
     SetTag,
     UpdateExperiment,
     UpdateRun,
+    RegisterScorer,
+    ListScorers,
+    GetScorer,
+    DeleteScorer,
+    ListScorerVersions,
 )
-from mlflow.server.handlers import get_endpoints
+
+from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
 from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
+from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 import mlflow_oidc_auth.responses as responses
-from mlflow_oidc_auth import routes
-from mlflow_oidc_auth.auth import authenticate_request_basic_auth, authenticate_request_bearer_token
-from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.utils import get_is_admin
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
-    validate_can_create_user,
     validate_can_delete_experiment,
     validate_can_delete_experiment_artifact_proxy,
+    validate_can_delete_logged_model,
     validate_can_delete_registered_model,
     validate_can_delete_run,
-    validate_can_delete_user,
-    validate_can_get_user_token,
     validate_can_manage_experiment,
     validate_can_manage_registered_model,
     validate_can_read_experiment,
     validate_can_read_experiment_artifact_proxy,
     validate_can_read_experiment_by_name,
+    validate_can_read_logged_model,
     validate_can_read_registered_model,
     validate_can_read_run,
     validate_can_update_experiment,
     validate_can_update_experiment_artifact_proxy,
+    validate_can_update_logged_model,
     validate_can_update_registered_model,
     validate_can_update_run,
-    validate_can_update_user_admin,
-    validate_can_update_user_password,
+    validate_can_read_experiments_from_experiment_ids,
+    validate_can_update_experiment_from_experiment_id,
+    validate_can_read_metric_history_bulk_interval,
+    validate_can_read_traces_from_experiment_ids,
+    validate_can_read_trace,
+    validate_can_update_trace_from_experiment_id,
+    validate_can_update_trace_from_run_id,
+    validate_can_update_trace,
+    validate_can_delete_traces_from_experiment_id,
+    validate_can_delete_scorer,
+    validate_can_manage_scorer,
+    validate_can_manage_scorer_permission,
+    validate_can_read_scorer,
+    validate_can_update_scorer,
+    validate_can_read_run_artifact,
+    validate_can_update_run_artifact,
+    validate_can_read_model_version_artifact,
+    validate_can_read_trace_artifact,
+    validate_can_read_metric_history_bulk,
+    validate_can_search_datasets,
+    validate_can_create_promptlab_run,
+    validate_gateway_proxy,
 )
 
 
 def _is_unprotected_route(path: str) -> bool:
-    return path.startswith(
-        (
-            "/health",
-            "/login",
-            "/callback",
-            "/oidc/static",
-            "/metrics",
-        )
-    )
+    return path.startswith(("/static", "/favicon.ico", "/health", "/metrics", "/docs", "/redoc", "/openapi.json"))
+
+
+def _get_auth_context() -> tuple[Optional[str], bool]:
+    """Best-effort retrieval of auth context injected by FastAPI."""
+    try:
+        username = get_fastapi_username()
+    except Exception:
+        username = None
+
+    try:
+        is_admin = get_fastapi_admin_status()
+    except Exception:
+        is_admin = False
+
+    return username, is_admin
 
 
 BEFORE_REQUEST_HANDLERS = {
     # Routes for experiments
-    ## CreateExperiment: _validate_can_manage_experiment,
     GetExperiment: validate_can_read_experiment,
     GetExperimentByName: validate_can_read_experiment_by_name,
     DeleteExperiment: validate_can_delete_experiment,
     RestoreExperiment: validate_can_delete_experiment,
     UpdateExperiment: validate_can_update_experiment,
     SetExperimentTag: validate_can_update_experiment,
-    # # Routes for runs
+    DeleteExperimentTag: validate_can_update_experiment,
+    # Routes for runs
     CreateRun: validate_can_update_experiment,
     GetRun: validate_can_read_run,
     DeleteRun: validate_can_delete_run,
@@ -113,7 +149,7 @@ BEFORE_REQUEST_HANDLERS = {
     LogParam: validate_can_update_run,
     GetMetricHistory: validate_can_read_run,
     ListArtifacts: validate_can_read_run,
-    # # Routes for model registry
+    # Routes for model registry
     GetRegisteredModel: validate_can_read_registered_model,
     DeleteRegisteredModel: validate_can_delete_registered_model,
     UpdateRegisteredModel: validate_can_update_registered_model,
@@ -132,137 +168,95 @@ BEFORE_REQUEST_HANDLERS = {
     SetRegisteredModelAlias: validate_can_update_registered_model,
     DeleteRegisteredModelAlias: validate_can_delete_registered_model,
     GetModelVersionByAlias: validate_can_read_registered_model,
+    # Routes for scorers
+    RegisterScorer: validate_can_update_experiment,
+    ListScorers: validate_can_read_experiment,
+    GetScorer: validate_can_read_scorer,
+    DeleteScorer: validate_can_delete_scorer,
+    ListScorerVersions: validate_can_read_scorer,
 }
+
+# `mlflow.server.handlers.get_endpoints()` also includes non-protobuf endpoints like `/graphql`
+# and Gateway discovery routes, whose handlers are *not* our auth validators. We must not treat
+# those as validators (they don't accept `username`), otherwise the hook will crash at runtime.
+_PROTO_VALIDATORS = set(BEFORE_REQUEST_HANDLERS.values())
+
+
+logger = get_logger()
 
 
 def _get_before_request_handler(request_class):
     return BEFORE_REQUEST_HANDLERS.get(request_class)
 
 
-BEFORE_REQUEST_VALIDATORS = {(http_path, method): handler for http_path, handler, methods in get_endpoints(_get_before_request_handler) for method in methods}
+BEFORE_REQUEST_VALIDATORS = {
+    (http_path, method): handler
+    for http_path, handler, methods in get_endpoints(_get_before_request_handler)
+    for method in methods
+    if handler in _PROTO_VALIDATORS
+}
 
+from mlflow.server.handlers import _add_static_prefix, _get_ajax_path
+
+# Flask routes (not part of Protobuf API)
+GET_ARTIFACT = _add_static_prefix("/get-artifact")
+UPLOAD_ARTIFACT = _get_ajax_path("/mlflow/upload-artifact")
+GET_MODEL_VERSION_ARTIFACT = _add_static_prefix("/model-versions/get-artifact")
+GET_TRACE_ARTIFACT = _get_ajax_path("/mlflow/get-trace-artifact")
+GET_METRIC_HISTORY_BULK = _get_ajax_path("/mlflow/metrics/get-history-bulk")
+GET_METRIC_HISTORY_BULK_INTERVAL = _get_ajax_path("/mlflow/metrics/get-history-bulk-interval")
+SEARCH_DATASETS = _get_ajax_path("/mlflow/experiments/search-datasets")
+CREATE_PROMPTLAB_RUN = _get_ajax_path("/mlflow/runs/create-promptlab-run")
+GATEWAY_PROXY = _get_ajax_path("/mlflow/gateway-proxy")
+
+# Flask routes (no proto mapping)
 BEFORE_REQUEST_VALIDATORS.update(
     {
-        (routes.CREATE_ACCESS_TOKEN, "PATCH"): validate_can_get_user_token,
-        # (SIGNUP, "GET"): validate_can_create_user,
-        # (routes.GET_USER, "GET"): validate_can_read_user,
-        (routes.CREATE_USER, "POST"): validate_can_create_user,
-        (routes.UPDATE_USER_PASSWORD, "PATCH"): validate_can_update_user_password,
-        (routes.UPDATE_USER_ADMIN, "PATCH"): validate_can_update_user_admin,
-        (routes.DELETE_USER, "DELETE"): validate_can_delete_user,
-        (routes.USER_EXPERIMENT_PERMISSIONS, "GET"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PERMISSIONS, "POST"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "POST"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "PATCH"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PERMISSION_DETAIL, "DELETE"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_USER_PERMISSIONS, "GET"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_USER_PERMISSIONS, "POST"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_USER_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_USER_PERMISSION_DETAIL, "POST"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_USER_PERMISSION_DETAIL, "PATCH"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_USER_PERMISSION_DETAIL, "DELETE"): validate_can_manage_experiment,
-        (routes.USER_REGISTERED_MODEL_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_USER_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_USER_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_USER_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_USER_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_USER_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_USER_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.PROMPT_USER_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.PROMPT_USER_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.PROMPT_USER_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.PROMPT_USER_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.PROMPT_USER_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.PROMPT_USER_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.USER_EXPERIMENT_PATTERN_PERMISSIONS, "GET"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PATTERN_PERMISSIONS, "POST"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "POST"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "PATCH"): validate_can_manage_experiment,
-        (routes.USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "DELETE"): validate_can_manage_experiment,
-        (routes.USER_REGISTERED_MODEL_PATTERN_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PATTERN_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PATTERN_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PATTERN_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PATTERN_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PATTERN_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PATTERN_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.USER_PROMPT_PATTERN_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.GROUP_EXPERIMENT_PERMISSIONS, "GET"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PERMISSIONS, "POST"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PERMISSION_DETAIL, "POST"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PERMISSION_DETAIL, "PATCH"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PERMISSION_DETAIL, "DELETE"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_GROUP_PERMISSIONS, "GET"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_GROUP_PERMISSIONS, "POST"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_GROUP_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_GROUP_PERMISSION_DETAIL, "POST"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_GROUP_PERMISSION_DETAIL, "PATCH"): validate_can_manage_experiment,
-        (routes.EXPERIMENT_GROUP_PERMISSION_DETAIL, "DELETE"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PATTERN_PERMISSIONS, "GET"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PATTERN_PERMISSIONS, "POST"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "GET"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "POST"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "PATCH"): validate_can_manage_experiment,
-        (routes.GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL, "DELETE"): validate_can_manage_experiment,
-        (routes.GROUP_REGISTERED_MODEL_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_GROUP_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_GROUP_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_GROUP_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_GROUP_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_GROUP_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.REGISTERED_MODEL_GROUP_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.PROMPT_GROUP_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.PROMPT_GROUP_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.PROMPT_GROUP_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.PROMPT_GROUP_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.PROMPT_GROUP_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.PROMPT_GROUP_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PATTERN_PERMISSIONS, "GET"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PATTERN_PERMISSIONS, "POST"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PATTERN_PERMISSION_DETAIL, "GET"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PATTERN_PERMISSION_DETAIL, "POST"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PATTERN_PERMISSION_DETAIL, "PATCH"): validate_can_manage_registered_model,
-        (routes.GROUP_PROMPT_PATTERN_PERMISSION_DETAIL, "DELETE"): validate_can_manage_registered_model,
+        (GET_ARTIFACT, "GET"): validate_can_read_run_artifact,
+        (UPLOAD_ARTIFACT, "POST"): validate_can_update_run_artifact,
+        (GET_MODEL_VERSION_ARTIFACT, "GET"): validate_can_read_model_version_artifact,
+        (GET_TRACE_ARTIFACT, "GET"): validate_can_read_trace_artifact,
+        (GET_METRIC_HISTORY_BULK, "GET"): validate_can_read_metric_history_bulk,
+        (GET_METRIC_HISTORY_BULK_INTERVAL, "GET"): validate_can_read_metric_history_bulk_interval,
+        (SEARCH_DATASETS, "POST"): validate_can_search_datasets,
+        (CREATE_PROMPTLAB_RUN, "POST"): validate_can_create_promptlab_run,
+        (GATEWAY_PROXY, "GET"): validate_gateway_proxy,
+        (GATEWAY_PROXY, "POST"): validate_gateway_proxy,
     }
 )
 
+LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
+    CreateLoggedModel: validate_can_update_experiment,
+    GetLoggedModel: validate_can_read_logged_model,
+    DeleteLoggedModel: validate_can_delete_logged_model,
+    FinalizeLoggedModel: validate_can_update_logged_model,
+    DeleteLoggedModelTag: validate_can_delete_logged_model,
+    SetLoggedModelTags: validate_can_update_logged_model,
+    LogLoggedModelParamsRequest: validate_can_update_logged_model,
+}
 
-def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[], bool]]:
+
+def get_logged_model_before_request_handler(request_class):
+    return LOGGED_MODEL_BEFORE_REQUEST_HANDLERS.get(request_class)
+
+
+def _re_compile_path(path: str) -> re.Pattern:
+    """
+    Convert a path with angle brackets to a regex pattern. For example,
+    "/api/2.0/experiments/<experiment_id>" becomes "/api/2.0/experiments/([^/]+)".
+    """
+    return re.compile(re.sub(r"<([^>]+)>", r"([^/]+)", path))
+
+
+LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
+    # Paths for logged models contains path parameters (e.g. /mlflow/logged-models/<model_id>)
+    (_re_compile_path(http_path), method): handler
+    for http_path, handler, methods in get_endpoints(get_logged_model_before_request_handler)
+    for method in methods
+}
+
+
+def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[str], bool]]:
     if view_args is None:
         return validate_can_read_experiment_artifact_proxy  # List
 
@@ -277,37 +271,43 @@ def _is_proxy_artifact_path(path: str) -> bool:
     return path.startswith(f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts/")
 
 
+def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
+    """
+    Finds the validator matching the request path and method.
+    """
+    if "/mlflow/logged-models" in req.path:
+        # logged model routes are not registered in the app
+        # so we need to check them manually
+        return next(
+            (v for (pat, method), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            None,
+        )
+    else:
+        return BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
+
+
 def before_request_hook():
     """Called before each request. If it did not return a response,
     the view function for the matched route is called and returns a response"""
+
     if _is_unprotected_route(request.path):
         return
-    if request.authorization is not None:
-        if request.authorization.type == "basic":
-            if not authenticate_request_basic_auth():
-                return responses.make_basic_auth_response()
-        if request.authorization.type == "bearer":
-            if not authenticate_request_bearer_token():
-                return responses.make_auth_required_response()
-    else:
-        if session.get("username") is None:
-            session.clear()
 
-            if config.AUTOMATIC_LOGIN_REDIRECT:
-                return redirect(url_for("login", _external=True))
-            return render_template(
-                "auth.html",
-                username=None,
-                provide_display_name=config.OIDC_PROVIDER_DISPLAY_NAME,
-            )
-    # admins don't need to be authorized
-    if get_is_admin():
+    username, is_admin = _get_auth_context()
+    if username is None:
+        return responses.make_auth_required_response()
+
+    logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
+    if is_admin:
         return
     # authorization
-    if validator := BEFORE_REQUEST_VALIDATORS.get((request.path, request.method)):
-        if not validator():
+    if validator := _find_validator(request):
+        if not validator(username):
             return responses.make_forbidden_response()
     elif _is_proxy_artifact_path(request.path):
         if validator := _get_proxy_artifact_validator(request.method, request.view_args):
-            if not validator():
+            if not validator(username):
                 return responses.make_forbidden_response()
+
+
+before_request_hook = catch_mlflow_exception(before_request_hook)

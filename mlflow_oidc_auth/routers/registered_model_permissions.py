@@ -1,0 +1,158 @@
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi.responses import JSONResponse
+
+from mlflow_oidc_auth.dependencies import check_registered_model_manage_permission
+from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
+from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_models
+from mlflow_oidc_auth.utils.data_fetching import fetch_all_registered_models
+
+from ._prefix import REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX
+
+logger = get_logger()
+
+registered_model_permissions_router = APIRouter(
+    prefix=REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX,
+    tags=["registered model permissions"],
+    responses={
+        403: {"description": "Forbidden - Insufficient permissions"},
+        404: {"description": "Resource not found"},
+    },
+)
+
+
+LIST_MODELS = ""
+
+
+REGISTERED_MODEL_USER_PERMISSIONS = "/{name}/users"
+REGISTERED_MODEL_GROUP_PERMISSIONS = "/{name}/groups"
+
+
+@registered_model_permissions_router.get(
+    REGISTERED_MODEL_USER_PERMISSIONS,
+    response_model=List[UserPermission],
+    summary="List users with permissions for a registered model",
+    description="Retrieves a list of users who have permissions for the specified registered model.",
+)
+async def get_registered_model_users(
+    name: str = Path(..., description="The registered model name to get permissions for"),
+    _: None = Depends(check_registered_model_manage_permission),
+) -> List[UserPermission]:
+    """
+    List all users with permissions for a specific registered model.
+
+    This endpoint returns all users who have explicitly assigned permissions
+    for the specified registered model. The requesting user must be an admin
+    or have management permissions for the model.
+
+    Parameters:
+    -----------
+    name : str
+        The name of the registered model to get user permissions for.
+    _ : None
+        Dependency that ensures the requester is an admin or can manage the model.
+
+    Returns:
+    --------
+    List[UserPermission]
+        A list of users with their permission levels for the registered model.
+
+    Raises:
+    -------
+    HTTPException
+        If there is an error retrieving the user permissions.
+    """
+    list_users = store.list_users(all=True)
+
+    # Filter users who are associated with the given registered model
+    users: List[UserPermission] = []
+    for user in list_users:
+        # Check if the user is associated with the registered model
+        user_models = {}
+        if hasattr(user, "registered_model_permissions") and user.registered_model_permissions:
+            user_models = {model.name: model.permission for model in user.registered_model_permissions}
+
+        if name in user_models:
+            users.append(
+                UserPermission(
+                    name=user.username,
+                    permission=user_models[name],
+                    kind="service-account" if user.is_service_account else "user",
+                )
+            )
+    return users
+
+
+@registered_model_permissions_router.get(
+    REGISTERED_MODEL_GROUP_PERMISSIONS,
+    response_model=List[GroupPermissionEntry],
+    summary="List groups with permissions for a registered model",
+    description="Retrieves a list of groups that have permissions for the specified registered model.",
+)
+async def get_registered_model_groups(
+    name: str = Path(..., description="The registered model name to get group permissions for"),
+    _: None = Depends(check_registered_model_manage_permission),
+) -> List[GroupPermissionEntry]:
+    """List groups with explicit permissions for a registered model."""
+
+    try:
+        groups = store.registered_model_group_repo.list_groups_for_model(str(name))
+        return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
+    except Exception as e:
+        logger.error(f"Error retrieving registered model group permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve registered model group permissions")
+
+
+@registered_model_permissions_router.get(
+    LIST_MODELS, summary="List accessible registered models", description="Retrieves a list of registered models that the user has access to."
+)
+async def list_models(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
+    """
+    List registered models accessible to the authenticated user.
+
+    This endpoint returns registered models based on user permissions:
+    - Administrators can see all models
+    - Regular users only see models they can manage
+
+    Parameters:
+    -----------
+    username : str
+        The authenticated username (injected by dependency).
+    is_admin : bool
+        Whether the user has admin privileges (injected by dependency).
+
+    Returns:
+    --------
+    JSONResponse
+        A JSON response containing the list of accessible registered models.
+
+    Raises:
+    -------
+    HTTPException
+        If there is an error retrieving the registered models.
+    """
+    # Fetch all models and filter based on permissions (batch resolution for efficiency)
+    all_models = fetch_all_registered_models()
+
+    if is_admin:
+        # Admin can see all registered models
+        registered_models = all_models
+    else:
+        # Regular user can only see models they can manage
+        registered_models = filter_manageable_models(username, all_models)
+
+    return JSONResponse(
+        content=[
+            {
+                "name": model.name,
+                "tags": model.tags,
+                "description": model.description,
+                "aliases": model.aliases,
+            }
+            for model in registered_models
+        ]
+    )

@@ -5,10 +5,11 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
 from mlflow.utils.validation import _validate_username
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import load_only, noload, selectinload
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from mlflow_oidc_auth.db.models import SqlUser
+from mlflow_oidc_auth.db.models import SqlGroup, SqlUser
 from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.repository.utils import get_user
 
@@ -41,6 +42,57 @@ class UserRepository:
             if u is None:
                 raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
             return u.to_mlflow_entity()
+
+    def get_profile(self, username: str) -> User:
+        """Fetch a lightweight user entity without loading permission relationships.
+
+        This is intended for common operations (e.g. "who am I" and admin checks)
+        where loading experiment/model/scorer permission collections would be
+        unnecessarily expensive.
+
+        Returns:
+            User: A User entity with groups populated and permission lists empty.
+
+        Raises:
+            MlflowException: If the user does not exist.
+        """
+
+        with self._Session() as session:
+            u = (
+                session.query(SqlUser)
+                .options(
+                    load_only(
+                        SqlUser.id,
+                        SqlUser.username,
+                        SqlUser.display_name,
+                        SqlUser.password_expiration,
+                        SqlUser.is_admin,
+                        SqlUser.is_service_account,
+                    ),
+                    selectinload(SqlUser.groups).load_only(SqlGroup.id, SqlGroup.group_name),
+                    noload(SqlUser.experiment_permissions),
+                    noload(SqlUser.registered_model_permissions),
+                    noload(SqlUser.scorer_permissions),
+                )
+                .filter(SqlUser.username == username)
+                .one_or_none()
+            )
+            if u is None:
+                raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
+
+            return User(
+                id_=u.id,
+                username=u.username,
+                display_name=u.display_name,
+                password_hash="REDACTED",
+                password_expiration=u.password_expiration,
+                is_admin=u.is_admin,
+                is_service_account=u.is_service_account,
+                experiment_permissions=[],
+                registered_model_permissions=[],
+                scorer_permissions=[],
+                groups=[g.to_mlflow_entity() for g in u.groups],
+            )
 
     def exist(self, username: str) -> bool:
         with self._Session() as session:
@@ -81,6 +133,29 @@ class UserRepository:
             user = get_user(session, username)
             if user is None:
                 raise MlflowException(f"User '{username}' not found.")
+
+            # Delete dependent rows first.
+            # Without this, SQLAlchemy may try to NULL-out non-nullable FKs
+            # (e.g. experiment_permissions.user_id), causing IntegrityError.
+            from mlflow_oidc_auth.db.models import (
+                SqlExperimentPermission,
+                SqlExperimentRegexPermission,
+                SqlRegisteredModelPermission,
+                SqlRegisteredModelRegexPermission,
+                SqlScorerPermission,
+                SqlScorerRegexPermission,
+                SqlUserGroup,
+            )
+
+            user_id = user.id
+            session.query(SqlExperimentPermission).filter(SqlExperimentPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlExperimentRegexPermission).filter(SqlExperimentRegexPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlRegisteredModelPermission).filter(SqlRegisteredModelPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlRegisteredModelRegexPermission).filter(SqlRegisteredModelRegexPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlScorerPermission).filter(SqlScorerPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlScorerRegexPermission).filter(SqlScorerRegexPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user_id).delete(synchronize_session=False)
+
             session.delete(user)
             session.flush()
 

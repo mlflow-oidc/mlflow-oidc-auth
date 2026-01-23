@@ -20,39 +20,59 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.10",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
-  "cachelib<1",
-  "mlflow-skinny<4,>=2.21.0",
+  "mlflow<4,>=3.8.1",
   "python-dotenv<2",
   "requests<3,>=2.31.0",
   "sqlalchemy<3,>=1.4.0",
   "flask<4",
-  "flask-session>=0.7.0",
   "gunicorn<24; platform_system != 'Windows'",
   "alembic<2,!=1.10.0",
   "authlib<2",
-  "flask-caching<3"
+  "uvicorn>=0.20.0",
+  "fastapi>=0.100.0",
+  "asgiref>=3.0.0",
+  "httpx>=0.28.1"
 ]
 
 [project.optional-dependencies]
-full = ["mlflow<4,>=2.21.0"]
-caching-redis = ["redis[hiredis]<6"]
 dev = [
   "black<26,>=24.8.0",
   "pytest<9,>=8.3.2",
   "pre-commit<5",
+  "autoflake<2"
 ]
 test = [
   "pytest<9,>=8.3.2",
   "pytest-cov<6,>=5.0.0",
+  "pytest-asyncio<2",
+  "httpx<1,>=0.28.1",
+]
+# Cloud provider optional dependencies for pluggable config
+aws = [
+  "boto3>=1.42.26",
+]
+azure = [
+  "azure-identity>=1.25.1",
+  "azure-keyvault-secrets>=4.10.0",
+]
+vault = [
+  "hvac>=2.4.0",
+]
+# All cloud providers combined
+cloud = [
+  "boto3>=1.42.26",
+  "azure-identity>=1.25.1",
+  "azure-keyvault-secrets>=4.10.0",
+  "hvac>=2.4.0",
 ]
 
 [[project.maintainers]]
 name = "Alexander Kharkevich"
-email = "alexander_kharkevich@outlook.com"
+email = "alex@kharkevich.org"
 
 [project.urls]
 homepage = "https://github.com/mlflow-oidc/mlflow-oidc-auth"
@@ -60,19 +80,17 @@ issues = "https://github.com/mlflow-oidc/mlflow-oidc-auth/issues"
 documentation = "https://github.com/mlflow-oidc/mlflow-oidc-auth/tree/main/docs/"
 repository = "https://github.com/mlflow-oidc/mlflow-oidc-auth"
 
+[project.scripts]
+mlflow-oidc-server = "mlflow_oidc_auth.cli:run"
+
 [project.entry-points."mlflow.app"]
 oidc-auth = "mlflow_oidc_auth.app:app"
-
-[project.entry-points."mlflow_oidc_auth.client"]
-basic-auth = "mlflow_oidc_auth.client:AuthServiceClient"
 
 [tool.setuptools.package-data]
 mlflow_oidc_auth = [
   "db/migrations/alembic.ini",
   "hack/menu.html",
-  "static/*",
-  "templates/*",
-  "ui/*",
+  "ui/**/*",
 ]
 
 [tool.setuptools.packages.find]
@@ -85,3 +103,17 @@ version = {attr = "mlflow_oidc_auth.version"}
 
 [tool.black]
 line-length = 160
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["mlflow_oidc_auth/tests"]
+markers = [
+  "integration: end-to-end tests that require a running server",
+]
+norecursedirs = [
+  "mlruns",
+  "mlruns.old",
+  "htmlcov",
+  "__pycache__",
+  "integration",
+]

@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow_oidc_auth.repository.group import GroupRepository
 from mlflow.exceptions import MlflowException
 
@@ -66,6 +67,28 @@ def test_delete_group_success(repo, session):
     session.flush.assert_called_once()
 
 
+def test_delete_group_not_found(repo, session):
+    """Test delete_group when group is not found - covers line 64"""
+    session.query().filter().one.side_effect = NoResultFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo.delete_group("nonexistent")
+
+    assert "Group 'nonexistent' not found" in str(exc.value)
+    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+def test_delete_group_multiple_found(repo, session):
+    """Test delete_group when multiple groups found - covers line 66"""
+    session.query().filter().one.side_effect = MultipleResultsFound()
+
+    with pytest.raises(MlflowException) as exc:
+        repo.delete_group("duplicate")
+
+    assert "Multiple groups named 'duplicate'" in str(exc.value)
+    assert exc.value.error_code == "INVALID_STATE"
+
+
 def test_add_user_to_group(repo, session):
     user = MagicMock(id=1)
     grp = MagicMock(id=2)
@@ -114,6 +137,30 @@ def test_list_group_ids_for_user(repo, session):
     ):
         result = repo.list_group_ids_for_user("user")
         assert result == [10, 20]
+
+
+def test_list_group_members(repo, session):
+    """Test list_group_members to cover lines 100-104"""
+    grp = MagicMock(id=1)
+    ug1 = MagicMock(user_id=10)
+    ug2 = MagicMock(user_id=20)
+    user1 = MagicMock()
+    user1.to_mlflow_entity.return_value = "user1_entity"
+    user2 = MagicMock()
+    user2.to_mlflow_entity.return_value = "user2_entity"
+
+    # Mock the query chain for SqlUserGroup and SqlUser
+    user_group_query = MagicMock()
+    user_group_query.filter.return_value = [ug1, ug2]
+
+    user_query = MagicMock()
+    user_query.filter.return_value.all.return_value = [user1, user2]
+
+    session.query.side_effect = [user_group_query, user_query]
+
+    with patch("mlflow_oidc_auth.repository.group.get_group", return_value=grp):
+        result = repo.list_group_members("test_group")
+        assert result == ["user1_entity", "user2_entity"]
 
 
 def test_set_groups_for_user(repo, session):

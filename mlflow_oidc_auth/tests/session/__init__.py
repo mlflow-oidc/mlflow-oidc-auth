@@ -1,0 +1,3 @@
+"""
+Session management tests package.
+"""

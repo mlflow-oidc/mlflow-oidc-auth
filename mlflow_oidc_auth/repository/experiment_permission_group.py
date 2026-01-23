@@ -82,6 +82,21 @@ class ExperimentPermissionGroupRepository:
             perms = session.query(SqlExperimentGroupPermission).filter(SqlExperimentGroupPermission.group_id == group_id).all()
             return [p.to_mlflow_entity() for p in perms]
 
+    def list_groups_for_experiment(self, experiment_id: str) -> List[tuple[str, str]]:
+        """List groups that have explicit permissions for an experiment.
+
+        Returns pairs of (group_name, permission).
+        """
+
+        with self._Session() as session:
+            rows = (
+                session.query(SqlGroup.group_name, SqlExperimentGroupPermission.permission)
+                .join(SqlExperimentGroupPermission, SqlExperimentGroupPermission.group_id == SqlGroup.id)
+                .filter(SqlExperimentGroupPermission.experiment_id == experiment_id)
+                .all()
+            )
+            return [(str(group_name), str(permission)) for group_name, permission in rows]
+
     def list_permissions_for_user_groups(self, username: str) -> List[ExperimentPermission]:
         """
         List all experiment permissions for a given user.

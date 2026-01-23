@@ -1,0 +1,37 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: MLflow Tracking Server OIDC Auth plugin
+message: >-
+  MLflow auth plugin to use OpenID Connect (OIDC) as
+  authentication and authorization provider
+type: software
+authors:
+  - given-names: Alexander
+    family-names: Kharkevich
+    email: alex@kharkevich.org
+    orcid: 'https://orcid.org/0009-0002-4241-743X'
+repository-code: 'https://github.com/mlflow-oidc/mlflow-oidc-auth'
+url: 'https://mlflow-oidc.github.io/mlflow-oidc-auth/'
+abstract: >-
+  mlflow-oidc-auth is an authentication and authorization
+  plugin for the MLflow Tracking Server, enabling secure
+  integration with OpenID Connect (OIDC) identity providers
+  such as Microsoft Entra ID, Okta, and Google. The plugin
+  supports Single Sign-On (SSO), group-based access control,
+  and centralized permission management, making it suitable
+  for enterprise machine learning workflows. It features
+  easy configuration, a built-in admin interface, and
+  compatibility with widely used OIDC providers, enhancing
+  MLflow’s security and scalability for multi-user and
+  multi-team environments
+keywords:
+  - machine-learning
+  - oauth2
+  - sso
+  - oidc
+  - permission-management
+  - mlflow-tracking-server
+  - mlflow
+license: Apache-2.0

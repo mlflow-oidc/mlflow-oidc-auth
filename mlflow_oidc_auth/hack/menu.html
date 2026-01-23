@@ -50,14 +50,14 @@
             parentDiv.appendChild(createLinkElement('Logout', logoutLink));
         }
         // Get username and add links after Docs
-        makeRequest("api/2.0/mlflow/permissions/users/current", function (error, response) {
+        makeRequest("api/2.0/mlflow/users/current", function (error, response) {
             if (error) {
                 console.error("Error fetching username:", error);
                 return;
             }
             var username = response.display_name;
-            var oidcLink = "/oidc/ui/";
-            var logoutLink = "/logout";
+            var oidcLink = "oidc/ui/user";
+            var logoutLink = "logout";
             waitForDocsLink(function(docsLink) {
                 addLinks(username, oidcLink, logoutLink, docsLink);
             });

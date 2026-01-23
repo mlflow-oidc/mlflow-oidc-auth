@@ -13,6 +13,9 @@ from mlflow_oidc_auth.entities import (
     RegisteredModelGroupRegexPermission,
     RegisteredModelPermission,
     RegisteredModelRegexPermission,
+    ScorerGroupRegexPermission,
+    ScorerPermission,
+    ScorerRegexPermission,
     User,
 )
 from mlflow_oidc_auth.repository import (
@@ -26,6 +29,10 @@ from mlflow_oidc_auth.repository import (
     RegisteredModelPermissionGroupRepository,
     RegisteredModelPermissionRegexRepository,
     RegisteredModelPermissionRepository,
+    ScorerPermissionGroupRegexRepository,
+    ScorerPermissionGroupRepository,
+    ScorerPermissionRegexRepository,
+    ScorerPermissionRepository,
     UserRepository,
 )
 
@@ -52,6 +59,126 @@ class SqlAlchemyStore:
         self.prompt_group_regex_repo = RegisteredModelGroupRegexPermissionRepository(self.ManagedSessionMaker)
         self.prompt_regex_repo = RegisteredModelPermissionRegexRepository(self.ManagedSessionMaker)
 
+        # Scorer permissions
+        self.scorer_repo = ScorerPermissionRepository(self.ManagedSessionMaker)
+        self.scorer_group_repo = ScorerPermissionGroupRepository(self.ManagedSessionMaker)
+        self.scorer_regex_repo = ScorerPermissionRegexRepository(self.ManagedSessionMaker)
+        self.scorer_group_regex_repo = ScorerPermissionGroupRegexRepository(self.ManagedSessionMaker)
+
+    def ping(self) -> bool:
+        """Lightweight database connectivity check for health probes.
+
+        Returns:
+            True if database is reachable, False otherwise.
+        """
+        from sqlalchemy import text
+
+        try:
+            with self.engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            return True
+        except Exception:
+            return False
+
+    # Scorer CRUD (user-scoped)
+    def create_scorer_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:
+        return self.scorer_repo.grant_permission(experiment_id, scorer_name, username, permission)
+
+    def get_scorer_permission(self, experiment_id: str, scorer_name: str, username: str) -> ScorerPermission:
+        return self.scorer_repo.get_permission(experiment_id, scorer_name, username)
+
+    def list_scorer_permissions(self, username: str) -> List[ScorerPermission]:
+        return self.scorer_repo.list_permissions_for_user(username)
+
+    def update_scorer_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:
+        return self.scorer_repo.update_permission(experiment_id, scorer_name, username, permission)
+
+    def delete_scorer_permission(self, experiment_id: str, scorer_name: str, username: str) -> None:
+        return self.scorer_repo.revoke_permission(experiment_id, scorer_name, username)
+
+    def delete_scorer_permissions_for_scorer(self, experiment_id: str, scorer_name: str) -> None:
+        """Delete all stored permissions for a scorer.
+
+        This is used when a scorer is deleted. Unlike experiment permissions (keyed by UUID),
+        scorer permissions are keyed by (experiment_id, scorer_name, subject). If the scorer
+        is later recreated with the same name, stale permission rows could either conflict
+        with inserts or unintentionally grant access.
+
+        Args:
+            experiment_id: The experiment ID owning the scorer.
+            scorer_name: The scorer name.
+        """
+
+        from mlflow_oidc_auth.db.models import SqlScorerGroupPermission, SqlScorerPermission
+
+        with self.ManagedSessionMaker() as session:
+            session.query(SqlScorerPermission).filter(
+                SqlScorerPermission.experiment_id == experiment_id,
+                SqlScorerPermission.scorer_name == scorer_name,
+            ).delete(synchronize_session=False)
+            session.query(SqlScorerGroupPermission).filter(
+                SqlScorerGroupPermission.experiment_id == experiment_id,
+                SqlScorerGroupPermission.scorer_name == scorer_name,
+            ).delete(synchronize_session=False)
+            session.flush()
+
+    # Scorer permissions (group-scoped)
+    def create_group_scorer_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str):
+        return self.scorer_group_repo.grant_group_permission(group_name, experiment_id, scorer_name, permission)
+
+    def update_group_scorer_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerGroupRegexPermission:
+        return self.scorer_group_repo.update_group_permission(group_name, experiment_id, scorer_name, permission)
+
+    def delete_group_scorer_permission(self, group_name: str, experiment_id: str, scorer_name: str) -> None:
+        return self.scorer_group_repo.revoke_group_permission(group_name, experiment_id, scorer_name)
+
+    def list_group_scorer_permissions(self, group_name: str):
+        return self.scorer_group_repo.list_permissions_for_group(group_name)
+
+    def get_user_groups_scorer_permission(self, experiment_id: str, scorer_name: str, username: str):
+        return self.scorer_group_repo.get_group_permission_for_user_scorer(experiment_id, scorer_name, username)
+
+    # Scorer regex (user-scoped)
+    def create_scorer_regex_permission(self, regex: str, priority: int, permission: str, username: str) -> ScorerRegexPermission:
+        return self.scorer_regex_repo.grant(regex=regex, priority=priority, permission=permission, username=username)
+
+    def list_scorer_regex_permissions(self, username: str) -> List[ScorerRegexPermission]:
+        return self.scorer_regex_repo.list_regex_for_user(username)
+
+    def get_scorer_regex_permission(self, username: str, id: int) -> ScorerRegexPermission:
+        return self.scorer_regex_repo.get(username=username, id=id)
+
+    def update_scorer_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str) -> ScorerRegexPermission:
+        return self.scorer_regex_repo.update(id=id, regex=regex, priority=priority, permission=permission, username=username)
+
+    def delete_scorer_regex_permission(self, id: int, username: str) -> None:
+        return self.scorer_regex_repo.revoke(id=id, username=username)
+
+    # Scorer regex (group-scoped)
+    def create_group_scorer_regex_permission(self, group_name: str, regex: str, priority: int, permission: str) -> ScorerGroupRegexPermission:
+        return self.scorer_group_regex_repo.grant(group_name=group_name, regex=regex, priority=priority, permission=permission)
+
+    def list_group_scorer_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[ScorerGroupRegexPermission]:
+        return self.scorer_group_regex_repo.list_permissions_for_groups_ids(group_ids)
+
+    def list_group_scorer_regex_permissions(self, group_name: str) -> List[ScorerGroupRegexPermission]:
+        from mlflow_oidc_auth.db.models import SqlGroup
+
+        with self.ManagedSessionMaker() as session:
+            group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one_or_none()
+            if group is None:
+                return []
+            return self.scorer_group_regex_repo.list_permissions_for_groups_ids([group.id])
+
+    def get_group_scorer_regex_permission(self, group_name: str, id: int) -> ScorerGroupRegexPermission:
+        return self.scorer_group_regex_repo.get(group_name=group_name, id=id)
+
+    def update_group_scorer_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str) -> ScorerGroupRegexPermission:
+        return self.scorer_group_regex_repo.update(id=id, group_name=group_name, regex=regex, priority=priority, permission=permission)
+
+    def delete_group_scorer_regex_permission(self, id: int, group_name: str) -> None:
+        return self.scorer_group_regex_repo.revoke(id=id, group_name=group_name)
+
     def authenticate_user(self, username: str, password: str) -> bool:
         return self.user_repo.authenticate(username, password)
 
@@ -63,6 +190,15 @@ class SqlAlchemyStore:
 
     def get_user(self, username: str) -> User:
         return self.user_repo.get(username)
+
+    def get_user_profile(self, username: str) -> User:
+        """Return a lightweight user entity for UI/admin checks.
+
+        Unlike `get_user`, this method avoids loading permission collections.
+        It is suitable for endpoints that only need basic user metadata.
+        """
+
+        return self.user_repo.get_profile(username)
 
     def list_users(self, is_service_account: bool = False, all: bool = False) -> List[User]:
         return self.user_repo.list(is_service_account, all)
@@ -131,6 +267,9 @@ class SqlAlchemyStore:
     def update_registered_model_permission(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
         return self.registered_model_repo.update(name, username, permission)
 
+    def rename_registered_model_permissions(self, old_name: str, new_name: str):
+        return self.registered_model_repo.rename(old_name, new_name)
+
     def delete_registered_model_permission(self, name: str, username: str):
         return self.registered_model_repo.delete(name, username)
 
@@ -181,6 +320,9 @@ class SqlAlchemyStore:
 
     def create_group_model_permission(self, group_name: str, name: str, permission: str):
         return self.registered_model_group_repo.create(group_name, name, permission)
+
+    def rename_group_model_permissions(self, old_name: str, new_name: str):
+        return self.registered_model_group_repo.rename(old_name, new_name)
 
     def delete_group_model_permission(self, group_name: str, name: str):
         return self.registered_model_group_repo.delete(group_name, name)

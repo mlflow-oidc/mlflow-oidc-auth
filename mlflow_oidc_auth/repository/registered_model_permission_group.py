@@ -44,6 +44,22 @@ class RegisteredModelPermissionGroupRepository:
             perms = session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.group_id == group.id).all()
             return [p.to_mlflow_entity() for p in perms]
 
+    def list_groups_for_model(self, name: str) -> List[tuple[str, str]]:
+        """List groups that have explicit permissions for a registered model.
+
+        Returns pairs of (group_name, permission).
+        """
+
+        with self._Session() as session:
+            rows = (
+                session.query(SqlGroup.group_name, SqlRegisteredModelGroupPermission.permission)
+                .join(SqlRegisteredModelGroupPermission, SqlRegisteredModelGroupPermission.group_id == SqlGroup.id)
+                .filter(SqlRegisteredModelGroupPermission.name == name)
+                .filter(SqlRegisteredModelGroupPermission.prompt == False)
+                .all()
+            )
+            return [(str(group_name), str(permission)) for group_name, permission in rows]
+
     def get_for_user(self, name: str, username: str) -> RegisteredModelPermission:
         with self._Session() as session:
             user_groups = self._group_repo.list_groups_for_user(username)
@@ -97,6 +113,15 @@ class RegisteredModelPermissionGroupRepository:
             perm.permission = permission
             session.flush()
             return perm.to_mlflow_entity()
+
+    def rename(self, old_name: str, new_name: str):
+        with self._Session() as session:
+            perms = session.query(SqlRegisteredModelGroupPermission).filter(SqlRegisteredModelGroupPermission.name == old_name).all()
+            if not perms:
+                raise MlflowException(f"No registered model group permissions found for name: {old_name}", RESOURCE_DOES_NOT_EXIST)
+            for perm in perms:
+                perm.name = new_name
+            session.flush()
 
     def delete(self, group_name: str, name: str):
         with self._Session() as session:
