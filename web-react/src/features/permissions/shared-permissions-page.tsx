@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router";
 import PageContainer from "../../shared/components/page/page-container";
 import type { PermissionType } from "../../shared/types/entity";
@@ -14,6 +14,8 @@ interface SharedPermissionsPageProps {
   baseRoute: string;
   entityKind: "user" | "group";
 }
+
+const IS_REGEX_MODE_KEY = "_mlflow_is_regex_mode";
 
 export const SharedPermissionsPage = ({
   type,
@@ -32,7 +34,14 @@ export const SharedPermissionsPage = ({
     username: entityKind === "user" && currentUser?.is_admin ? entityName : null,
   });
 
-  const [isRegexMode, setIsRegexMode] = useState(false);
+  const [isRegexMode, setIsRegexMode] = useState(() => {
+    const savedValue = localStorage.getItem(IS_REGEX_MODE_KEY);
+    return savedValue === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(IS_REGEX_MODE_KEY, isRegexMode.toString());
+  }, [isRegexMode]);
 
   if (!entityName) {
     return (

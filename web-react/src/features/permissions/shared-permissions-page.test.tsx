@@ -5,6 +5,25 @@ import { SharedPermissionsPage } from "./shared-permissions-page";
 const mockUseUser = vi.fn();
 const mockUseUserDetails = vi.fn();
 
+// Mock localStorage
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] || null,
+    setItem: (key: string, value: string) => {
+      store[key] = value.toString();
+    },
+    clear: () => {
+      store = {};
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+  };
+})();
+
+Object.defineProperty(window, "localStorage", { value: localStorageMock });
+
 vi.mock("react-router", () => ({
   useParams: () => ({ username: "testuser" }),
   Link: ({ children, to, className }: any) => <a href={to} className={className}>{children}</a>,
@@ -47,6 +66,7 @@ vi.mock("../../shared/components/token-info-block", () => ({
 
 describe("SharedPermissionsPage", () => {
     beforeEach(() => {
+        localStorage.clear();
         mockUseUser.mockReturnValue({
             currentUser: { is_admin: false }
         });
@@ -77,5 +97,24 @@ describe("SharedPermissionsPage", () => {
 
     expect(screen.getByTestId("regex-view")).toBeInTheDocument();
     expect(screen.queryByTestId("normal-view")).not.toBeInTheDocument();
+  });
+
+  it("loads regex mode from localStorage", () => {
+    localStorage.setItem("_mlflow_is_regex_mode", "true");
+    render(<SharedPermissionsPage type="experiments" baseRoute="/users" entityKind="user" />);
+    expect(screen.getByTestId("regex-view")).toBeInTheDocument();
+  });
+
+  it("saves regex mode to localStorage", () => {
+    mockUseUser.mockReturnValue({
+        currentUser: { is_admin: true }
+    });
+    localStorage.setItem("_mlflow_is_regex_mode", "false");
+    render(<SharedPermissionsPage type="experiments" baseRoute="/users" entityKind="user" />);
+    
+    const switchEl = screen.getByTestId("regex-switch");
+    fireEvent.click(switchEl);
+    
+    expect(localStorage.getItem("_mlflow_is_regex_mode")).toBe("true");
   });
 });
