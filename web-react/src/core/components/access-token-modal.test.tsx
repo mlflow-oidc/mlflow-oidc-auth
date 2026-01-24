@@ -1,10 +1,11 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AccessTokenModal } from "./access-token-modal";
+import { http } from "../services/http";
 
 const mockRefresh = vi.fn();
 const mockShowToast = vi.fn();
-const mockHttp = vi.fn();
+const mockHttp = vi.fn<typeof http>();
 
 vi.mock("../hooks/use-user", () => ({
   useUser: () => ({ refresh: mockRefresh }),
@@ -15,13 +16,14 @@ vi.mock("../../shared/components/toast/use-toast", () => ({
 }));
 
 vi.mock("../services/http", () => ({
-  http: (...args: any[]) => mockHttp(...args),
+  http: (...args: Parameters<typeof http>) => mockHttp(...args),
 }));
 
 // Mock clipboard
+const mockWriteText = vi.fn().mockResolvedValue(undefined);
 Object.assign(navigator, {
   clipboard: {
-    writeText: vi.fn().mockResolvedValue(undefined),
+    writeText: mockWriteText,
   },
 });
 
@@ -38,13 +40,7 @@ describe("AccessTokenModal", () => {
   it("handles token generation success", async () => {
     mockHttp.mockResolvedValue({ token: "generated-token" });
 
-    render(
-      <AccessTokenModal
-        onClose={() => {}}
-        username="testuser"
-        onTokenGenerated={() => {}}
-      />
-    );
+    render(<AccessTokenModal onClose={() => {}} username="testuser" onTokenGenerated={() => {}} />);
 
     // Fill date if needed, but it should have default
     // Click request button
@@ -73,7 +69,7 @@ describe("AccessTokenModal", () => {
     });
   });
 
-   it("copies token to clipboard", async () => {
+  it("copies token to clipboard", async () => {
     mockHttp.mockResolvedValue({ token: "generated-token" });
 
     render(<AccessTokenModal onClose={() => {}} username="testuser" />);
@@ -86,7 +82,7 @@ describe("AccessTokenModal", () => {
     const copyBtn = screen.getByTitle("Copy Access Token");
     fireEvent.click(copyBtn);
 
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("generated-token");
+    expect(mockWriteText).toHaveBeenCalledWith("generated-token");
     // Feedback
     await waitFor(() => expect(screen.getByText("Copied!")).toBeInTheDocument());
   });
