@@ -65,6 +65,11 @@
   /* Table */
   --color-table-row-hover: rgba(68, 83, 95, 0.04);
 
+  /* Font Style Overrides */
+  --text-sm: 13px;
+  --font-size-sm: 13px;
+  --font-weight-medium: 400;
+
   /* Dark Mode */
   --color-ui-bg-dark: rgb(17, 23, 28);
   --color-ui-text-dark: rgb(232, 236, 240);

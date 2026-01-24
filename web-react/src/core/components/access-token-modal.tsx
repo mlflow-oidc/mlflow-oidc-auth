@@ -103,7 +103,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
 
   return (
     <Modal isOpen={true} onClose={onClose} title={`Generate Access Token for ${username}`}>
-      <p className="text-left text-base text-text-primary dark:text-text-primary-dark ">
+      <p className="text-left text-text-primary dark:text-text-primary-dark ">
         Use the form below to generate a new access token. Select an
         expiration date (maximum validity: 1 year) and click "Request
         Token".
