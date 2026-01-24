@@ -14,8 +14,16 @@ vi.mock("../../core/hooks/use-search", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
-  default: ({ children, title }: { children: React.ReactNode; title: string }) => (
-    <div data-testid="page-container" title={title}>{children}</div>
+  default: ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => (
+    <div data-testid="page-container" title={title}>
+      {children}
+    </div>
   ),
 }));
 

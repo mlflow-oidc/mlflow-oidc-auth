@@ -9,7 +9,12 @@ interface IconButtonProps {
   disabled?: boolean;
 }
 
-export function IconButton({ icon, onClick, title, disabled }: IconButtonProps) {
+export function IconButton({
+  icon,
+  onClick,
+  title,
+  disabled,
+}: IconButtonProps) {
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!disabled) {

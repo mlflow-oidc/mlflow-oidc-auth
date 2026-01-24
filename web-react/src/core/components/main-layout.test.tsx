@@ -30,7 +30,11 @@ vi.mock("../../shared/components/sidebar", () => ({
     <div data-testid="sidebar">
       <span data-testid="sidebar-open">{String(isOpen)}</span>
       <span data-testid="sidebar-width">{widthClass}</span>
-      <button type="button" data-testid="sidebar-toggle" onClick={toggleSidebar}>
+      <button
+        type="button"
+        data-testid="sidebar-toggle"
+        onClick={toggleSidebar}
+      >
         toggle
       </button>
     </div>
@@ -67,7 +71,9 @@ describe("MainLayout", () => {
     expect(screen.getByTestId("header").textContent).toContain("Jane Doe");
     expect(screen.getByTestId("content")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-open").textContent).toBe("true");
-    expect(screen.getByTestId("sidebar-width").textContent).toContain("w-[200px]");
+    expect(screen.getByTestId("sidebar-width").textContent).toContain(
+      "w-[200px]",
+    );
 
     fireEvent.click(screen.getByTestId("sidebar-toggle"));
 

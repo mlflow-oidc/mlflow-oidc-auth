@@ -26,7 +26,7 @@ describe("CreateWebhookModal", () => {
         isOpen={true}
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
-      />
+      />,
     );
 
     expect(screen.getByText("Create webhook")).toBeInTheDocument();
@@ -42,7 +42,7 @@ describe("CreateWebhookModal", () => {
         isOpen={true}
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
-      />
+      />,
     );
 
     fireEvent.submit(container.querySelector("form")!);
@@ -50,7 +50,9 @@ describe("CreateWebhookModal", () => {
     await waitFor(() => {
       expect(screen.getByText("Name is required")).toBeInTheDocument();
       expect(screen.getByText("URL is required")).toBeInTheDocument();
-      expect(screen.getByText("At least one event must be selected")).toBeInTheDocument();
+      expect(
+        screen.getByText("At least one event must be selected"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -60,11 +62,15 @@ describe("CreateWebhookModal", () => {
         isOpen={true}
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
-      />
+      />,
     );
 
-    fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
-    fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "invalid-url" } });
+    fireEvent.change(screen.getByLabelText("Name*"), {
+      target: { value: "Test Webhook" },
+    });
+    fireEvent.change(screen.getByLabelText("URL*"), {
+      target: { value: "invalid-url" },
+    });
 
     // Select an event to enable the button
     fireEvent.click(screen.getByText("registered_model.created"));
@@ -81,11 +87,15 @@ describe("CreateWebhookModal", () => {
         isOpen={true}
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
-      />
+      />,
     );
 
-    fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
-    fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "zfzfshttps://echo.technicaldomain.xyz/webhook" } });
+    fireEvent.change(screen.getByLabelText("Name*"), {
+      target: { value: "Test Webhook" },
+    });
+    fireEvent.change(screen.getByLabelText("URL*"), {
+      target: { value: "zfzfshttps://echo.technicaldomain.xyz/webhook" },
+    });
 
     fireEvent.click(screen.getByText("registered_model.created"));
 
@@ -95,19 +105,27 @@ describe("CreateWebhookModal", () => {
   });
 
   it("calls createWebhook and onSuccess on successful submission", async () => {
-    vi.spyOn(webhookServiceModule, "createWebhook").mockResolvedValue({} as any);
+    vi.spyOn(webhookServiceModule, "createWebhook").mockResolvedValue(
+      {} as any,
+    );
 
     render(
       <CreateWebhookModal
         isOpen={true}
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
-      />
+      />,
     );
 
-    fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
-    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Test Description" } });
-    fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "https://example.com" } });
+    fireEvent.change(screen.getByLabelText("Name*"), {
+      target: { value: "Test Webhook" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Test Description" },
+    });
+    fireEvent.change(screen.getByLabelText("URL*"), {
+      target: { value: "https://example.com" },
+    });
 
     // Select an event
     fireEvent.click(screen.getByText("registered_model.created"));
@@ -122,27 +140,40 @@ describe("CreateWebhookModal", () => {
         events: ["registered_model.created"],
         secret: "",
       });
-      expect(mockShowToast).toHaveBeenCalledWith("Webhook created successfully", "success");
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Webhook created successfully",
+        "success",
+      );
       expect(mockOnSuccess).toHaveBeenCalled();
       expect(mockOnClose).toHaveBeenCalled();
     });
   });
 
   it("trims trailing spaces from fields before submission", async () => {
-    vi.spyOn(webhookServiceModule, "createWebhook").mockResolvedValue({} as any);
+    vi.spyOn(webhookServiceModule, "createWebhook").mockResolvedValue(
+      {} as any,
+    );
 
     render(
       <CreateWebhookModal
         isOpen={true}
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
-      />
+      />,
     );
 
-    fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "  Test Webhook  " } });
-    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "  Test Description  " } });
-    fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "  https://example.com  " } });
-    fireEvent.change(screen.getByLabelText("Secret (Optional)"), { target: { value: "  mysecret  " } });
+    fireEvent.change(screen.getByLabelText("Name*"), {
+      target: { value: "  Test Webhook  " },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "  Test Description  " },
+    });
+    fireEvent.change(screen.getByLabelText("URL*"), {
+      target: { value: "  https://example.com  " },
+    });
+    fireEvent.change(screen.getByLabelText("Secret (Optional)"), {
+      target: { value: "  mysecret  " },
+    });
 
     // Select an event
     fireEvent.click(screen.getByText("registered_model.created"));
@@ -157,7 +188,10 @@ describe("CreateWebhookModal", () => {
         events: ["registered_model.created"],
         secret: "mysecret",
       });
-      expect(mockShowToast).toHaveBeenCalledWith("Webhook created successfully", "success");
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Webhook created successfully",
+        "success",
+      );
     });
   });
 });

@@ -7,9 +7,7 @@ export default function PageContainer({
 }) {
   return (
     <>
-      <h2 className="shrink-0 text-xl font-semibold mb-3">
-        {title}
-      </h2>
+      <h2 className="shrink-0 text-xl font-semibold mb-3">{title}</h2>
 
       <>{children}</>
     </>

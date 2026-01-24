@@ -13,17 +13,25 @@ interface TokenModel {
   message: string;
 }
 
-const requestAccessTokenApi = async (username: string, expiration: Date): Promise<string> => {
-  const tokenModel = await http<TokenModel>(STATIC_API_ENDPOINTS.CREATE_ACCESS_TOKEN, {
-    method: "PATCH",
-    body: JSON.stringify({
-      username: username,
-      expiration: expiration.toISOString(),
-    }),
-  });
+const requestAccessTokenApi = async (
+  username: string,
+  expiration: Date,
+): Promise<string> => {
+  const tokenModel = await http<TokenModel>(
+    STATIC_API_ENDPOINTS.CREATE_ACCESS_TOKEN,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        username: username,
+        expiration: expiration.toISOString(),
+      }),
+    },
+  );
 
   if (!tokenModel.token) {
-    throw new Error("API response did not contain an access token (token field).");
+    throw new Error(
+      "API response did not contain an access token (token field).",
+    );
   }
 
   return tokenModel.token;
@@ -91,10 +99,14 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   }, [accessToken]);
 
   return (
-    <Modal isOpen={true} onClose={onClose} title={`Generate Access Token for ${username}`}>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`Generate Access Token for ${username}`}
+    >
       <p className="text-left text-text-primary dark:text-text-primary-dark ">
-        Use the form below to generate a new access token. Select an expiration date (maximum
-        validity: 1 year) and click "Request Token".
+        Use the form below to generate a new access token. Select an expiration
+        date (maximum validity: 1 year) and click "Request Token".
       </p>
 
       <div className="flex items-end space-x-4">

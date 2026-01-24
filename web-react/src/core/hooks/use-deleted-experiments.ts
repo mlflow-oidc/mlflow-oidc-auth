@@ -8,12 +8,14 @@ export function useDeletedExperiments() {
     isLoading,
     error,
     refetch: refresh,
-  } = useApi<{ deleted_experiments: DeletedExperiment[] }>(fetchDeletedExperiments);
+  } = useApi<{ deleted_experiments: DeletedExperiment[] }>(
+    fetchDeletedExperiments,
+  );
 
   return {
     deletedExperiments: response?.deleted_experiments || [],
     isLoading,
     error,
-    refresh
+    refresh,
   };
 }

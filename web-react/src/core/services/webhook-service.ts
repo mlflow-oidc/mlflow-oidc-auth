@@ -34,7 +34,7 @@ export const getWebhook = async (webhookId: string) => {
 
 export const updateWebhook = async (
   webhookId: string,
-  data: WebhookUpdateRequest
+  data: WebhookUpdateRequest,
 ) => {
   return http<Webhook>(DYNAMIC_API_ENDPOINTS.WEBHOOK_DETAILS(webhookId), {
     method: "PUT",
@@ -47,16 +47,19 @@ export const deleteWebhook = async (webhookId: string) => {
     DYNAMIC_API_ENDPOINTS.WEBHOOK_DETAILS(webhookId),
     {
       method: "DELETE",
-    }
+    },
   );
 };
 
 export const testWebhook = async (
   webhookId: string,
-  data?: WebhookTestRequest
+  data?: WebhookTestRequest,
 ) => {
-  return http<WebhookTestResponse>(DYNAMIC_API_ENDPOINTS.TEST_WEBHOOK(webhookId), {
-    method: "POST",
-    body: data ? JSON.stringify(data) : undefined,
-  });
+  return http<WebhookTestResponse>(
+    DYNAMIC_API_ENDPOINTS.TEST_WEBHOOK(webhookId),
+    {
+      method: "POST",
+      body: data ? JSON.stringify(data) : undefined,
+    },
+  );
 };

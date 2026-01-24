@@ -38,7 +38,9 @@ export const RegexPermissionsView = ({
   const { showToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRegexModalOpen, setIsRegexModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<PatternPermissionItem | null>(null);
+  const [editingItem, setEditingItem] = useState<PatternPermissionItem | null>(
+    null,
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   const {
@@ -94,7 +96,11 @@ export const RegexPermissionsView = ({
     setEditingItem(null);
   };
 
-  const handleSavePermission = async (newPermission: PermissionLevel, regex?: string, priority?: number) => {
+  const handleSavePermission = async (
+    newPermission: PermissionLevel,
+    regex?: string,
+    priority?: number,
+  ) => {
     if (!entityName || !editingItem) return;
 
     setIsSaving(true);
@@ -105,18 +111,36 @@ export const RegexPermissionsView = ({
       if (type === "experiments") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              );
       } else if (type === "models") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              );
       } else if (type === "prompts") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              );
       }
 
       await http(url, {
@@ -124,11 +148,14 @@ export const RegexPermissionsView = ({
         body: JSON.stringify({
           regex: regex ?? editingItem.regex,
           priority: priority ?? editingItem.priority,
-          permission: newPermission
+          permission: newPermission,
         }),
       });
 
-      showToast(`Permission for ${regex ?? editingItem.regex} has been updated.`, "success");
+      showToast(
+        `Permission for ${regex ?? editingItem.regex} has been updated.`,
+        "success",
+      );
       refresh();
       handleModalClose();
     } catch {
@@ -138,24 +165,37 @@ export const RegexPermissionsView = ({
     }
   };
 
-  const handleSaveRegexRule = async (regex: string, permission: PermissionLevel, priority: number) => {
+  const handleSaveRegexRule = async (
+    regex: string,
+    permission: PermissionLevel,
+    priority: number,
+  ) => {
     if (!entityName) return;
 
     setIsSaving(true);
     try {
       let url = "";
       if (type === "experiments") {
-        url = entityKind === "user"
-          ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSIONS(entityName)
-          : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSIONS(entityName);
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSIONS(
+                entityName,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSIONS(
+                entityName,
+              );
       } else if (type === "models") {
-        url = entityKind === "user"
-          ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSIONS(entityName)
-          : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSIONS(entityName);
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSIONS(entityName)
+            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSIONS(entityName);
       } else if (type === "prompts") {
-        url = entityKind === "user"
-          ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSIONS(entityName)
-          : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSIONS(entityName);
+        url =
+          entityKind === "user"
+            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSIONS(entityName)
+            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSIONS(
+                entityName,
+              );
       }
 
       await http(url, {
@@ -183,18 +223,36 @@ export const RegexPermissionsView = ({
       if (type === "experiments") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              );
       } else if (type === "models") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              );
       } else if (type === "prompts") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION(
+                entityName,
+                identifier,
+              );
       }
 
       await http(url, {
@@ -237,7 +295,7 @@ export const RegexPermissionsView = ({
   ];
 
   const filteredData = permissions.filter((p) =>
-    p.regex?.toLowerCase().includes(submittedTerm.toLowerCase())
+    p.regex?.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   return (
@@ -270,8 +328,15 @@ export const RegexPermissionsView = ({
           </div>
           <EntityListTable
             mode="object"
-            data={filteredData as (PatternPermissionItem & Record<string, unknown>)[]}
-            columns={permissionColumns as ColumnConfig<PatternPermissionItem & Record<string, unknown>>[]}
+            data={
+              filteredData as (PatternPermissionItem &
+                Record<string, unknown>)[]
+            }
+            columns={
+              permissionColumns as ColumnConfig<
+                PatternPermissionItem & Record<string, unknown>
+              >[]
+            }
             searchTerm={submittedTerm}
           />
         </>

@@ -30,7 +30,7 @@ async function init() {
           </RuntimeConfigProvider>
         </Suspense>
       </BrowserRouter>
-    </StrictMode>
+    </StrictMode>,
   );
 }
 

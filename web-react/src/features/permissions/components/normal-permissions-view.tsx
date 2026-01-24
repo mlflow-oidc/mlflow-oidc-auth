@@ -95,7 +95,7 @@ export const NormalPermissionsView = ({
   const getAvailableEntities = () => {
     if (type === "experiments") {
       const existingIds = new Set(
-        permissions.map((p) => (p as ExperimentPermission).id)
+        permissions.map((p) => (p as ExperimentPermission).id),
       );
       return (allExperiments || [])
         .filter((e) => !existingIds.has(e.id))
@@ -134,28 +134,48 @@ export const NormalPermissionsView = ({
     setIsSaving(true);
     try {
       let url = "";
-      const identifier = "id" in editingItem ? String(editingItem.id) : editingItem.name;
+      const identifier =
+        "id" in editingItem ? String(editingItem.id) : editingItem.name;
 
       if (type === "experiments") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
+                entityName,
+                identifier,
+              );
       } else if (type === "models") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
+                entityName,
+                identifier,
+              );
       } else if (type === "prompts") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
+                entityName,
+                identifier,
+              );
       }
 
       const isTargetType =
         entityKind === "user"
-          ? editingItem.kind === "user" || editingItem.kind === "service-account"
+          ? editingItem.kind === "user" ||
+            editingItem.kind === "service-account"
           : editingItem.kind === "group";
       const isCreate = !isTargetType;
       const method = isCreate ? "POST" : "PATCH";
@@ -165,7 +185,10 @@ export const NormalPermissionsView = ({
         body: JSON.stringify({ permission: newPermission }),
       });
 
-      showToast(`Permission for ${editingItem.name} has been updated.`, "success");
+      showToast(
+        `Permission for ${editingItem.name} has been updated.`,
+        "success",
+      );
       refresh();
       handleModalClose();
     } catch {
@@ -175,18 +198,30 @@ export const NormalPermissionsView = ({
     }
   };
 
-  const handleGrantPermission = async (identifier: string, permission: PermissionLevel) => {
+  const handleGrantPermission = async (
+    identifier: string,
+    permission: PermissionLevel,
+  ) => {
     if (!entityName) return;
 
     setIsSaving(true);
     try {
       let url = "";
       if (type === "experiments") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(entityName, identifier);
+        url = DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
+          entityName,
+          identifier,
+        );
       } else if (type === "models") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(entityName, identifier);
+        url = DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
+          entityName,
+          identifier,
+        );
       } else if (type === "prompts") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(entityName, identifier);
+        url = DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
+          entityName,
+          identifier,
+        );
       }
 
       await http(url, {
@@ -194,11 +229,15 @@ export const NormalPermissionsView = ({
         body: JSON.stringify({ permission }),
       });
 
-      const entityDisplayName = type === "experiments"
-        ? allExperiments?.find(e => e.id === identifier)?.name || identifier
-        : identifier;
+      const entityDisplayName =
+        type === "experiments"
+          ? allExperiments?.find((e) => e.id === identifier)?.name || identifier
+          : identifier;
 
-      showToast(`Permission for ${entityDisplayName} has been granted.`, "success");
+      showToast(
+        `Permission for ${entityDisplayName} has been granted.`,
+        "success",
+      );
       refresh();
       setIsGrantModalOpen(false);
     } catch {
@@ -218,18 +257,36 @@ export const NormalPermissionsView = ({
       if (type === "experiments") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
+                entityName,
+                identifier,
+              );
       } else if (type === "models") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
+                entityName,
+                identifier,
+              );
       } else if (type === "prompts") {
         url =
           entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(entityName, identifier);
+            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
+                entityName,
+                identifier,
+              )
+            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
+                entityName,
+                identifier,
+              );
       }
 
       await http(url, {
@@ -282,7 +339,7 @@ export const NormalPermissionsView = ({
   ];
 
   const filteredData = permissions.filter((p) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase())
+    p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   return (
@@ -312,7 +369,12 @@ export const NormalPermissionsView = ({
                 icon={faPlus}
                 className="whitespace-nowrap h-8 mb-1 mt-2"
               >
-                Add {type === "experiments" ? "experiment" : type === "models" ? "model" : "prompt"}
+                Add{" "}
+                {type === "experiments"
+                  ? "experiment"
+                  : type === "models"
+                    ? "model"
+                    : "prompt"}
               </Button>
             )}
           </div>
@@ -341,9 +403,17 @@ export const NormalPermissionsView = ({
       <GrantPermissionModal
         isOpen={isGrantModalOpen}
         onClose={() => setIsGrantModalOpen(false)}
-        onSave={(identifier, permission) => handleGrantPermission(identifier, permission)}
+        onSave={(identifier, permission) =>
+          handleGrantPermission(identifier, permission)
+        }
         title={`Grant ${type === "experiments" ? "experiment" : type === "models" ? "model" : "prompt"} permissions for ${entityName}`}
-        label={type === "experiments" ? "Experiment" : type === "models" ? "Model" : "Prompt"}
+        label={
+          type === "experiments"
+            ? "Experiment"
+            : type === "models"
+              ? "Model"
+              : "Prompt"
+        }
         options={availableEntities}
         isLoading={isSaving}
       />

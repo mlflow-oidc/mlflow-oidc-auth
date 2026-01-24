@@ -25,7 +25,10 @@ vi.mock("../../../shared/components/loading-spinner", () => ({
 }));
 
 vi.mock("../../../shared/components/button", () => ({
-  Button: ({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+  Button: ({
+    children,
+    ...rest
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button type="button" {...rest}>
       {children}
     </button>
@@ -50,7 +53,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("navigate").dataset.to).toBe("/auth");
@@ -68,7 +71,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByText("Error Loading User")).toBeInTheDocument();
@@ -88,7 +91,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("spinner")).toBeInTheDocument();
@@ -106,7 +109,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("spinner")).toBeInTheDocument();
@@ -127,7 +130,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute isAdminRequired>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("navigate").dataset.to).toBe("/403");
@@ -148,7 +151,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div data-testid="secret">Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("secret")).toBeInTheDocument();

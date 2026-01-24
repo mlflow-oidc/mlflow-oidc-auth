@@ -24,7 +24,7 @@ describe("webhook-service", () => {
     await listWebhooks();
     expect(http).toHaveBeenCalledWith(
       expect.stringContaining(STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -32,7 +32,7 @@ describe("webhook-service", () => {
     await listWebhooks();
     expect(http).toHaveBeenCalledWith(
       STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE,
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -48,7 +48,7 @@ describe("webhook-service", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify(data),
-      })
+      }),
     );
   });
 
@@ -56,7 +56,7 @@ describe("webhook-service", () => {
     const webhookId = "hook-123";
     await getWebhook(webhookId);
     expect(http).toHaveBeenCalledWith(
-      expect.stringContaining(`/oidc/webhook/${webhookId}`)
+      expect.stringContaining(`/oidc/webhook/${webhookId}`),
     );
   });
 
@@ -69,7 +69,7 @@ describe("webhook-service", () => {
       expect.objectContaining({
         method: "PUT",
         body: JSON.stringify(data),
-      })
+      }),
     );
   });
 
@@ -80,7 +80,7 @@ describe("webhook-service", () => {
       expect.stringContaining(`/oidc/webhook/${webhookId}`),
       expect.objectContaining({
         method: "DELETE",
-      })
+      }),
     );
   });
 
@@ -93,7 +93,7 @@ describe("webhook-service", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify(testData),
-      })
+      }),
     );
   });
 
@@ -105,7 +105,7 @@ describe("webhook-service", () => {
       expect.objectContaining({
         method: "POST",
         body: undefined,
-      })
+      }),
     );
   });
 });

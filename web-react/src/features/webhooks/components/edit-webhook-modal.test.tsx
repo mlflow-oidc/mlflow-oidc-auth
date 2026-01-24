@@ -37,7 +37,7 @@ describe("EditWebhookModal", () => {
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
         webhook={mockWebhook}
-      />
+      />,
     );
 
     expect(await screen.findByText("Edit Webhook")).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("EditWebhookModal", () => {
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
         webhook={mockWebhook}
-      />
+      />,
     );
 
     // Wait for initial population
@@ -71,7 +71,9 @@ describe("EditWebhookModal", () => {
     await waitFor(() => {
       expect(screen.getByText("Name is required")).toBeInTheDocument();
       expect(screen.getByText("URL is required")).toBeInTheDocument();
-      expect(screen.getByText("At least one event must be selected")).toBeInTheDocument();
+      expect(
+        screen.getByText("At least one event must be selected"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -82,12 +84,14 @@ describe("EditWebhookModal", () => {
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
         webhook={mockWebhook}
-      />
+      />,
     );
 
     await screen.findByDisplayValue("Old Name");
 
-    fireEvent.change(screen.getByLabelText(/URL/), { target: { value: "zfzfshttps://echo.technicaldomain.xyz/webhook" } });
+    fireEvent.change(screen.getByLabelText(/URL/), {
+      target: { value: "zfzfshttps://echo.technicaldomain.xyz/webhook" },
+    });
 
     fireEvent.submit(screen.getByRole("form"));
 
@@ -97,7 +101,9 @@ describe("EditWebhookModal", () => {
   });
 
   it("calls updateWebhook and onSuccess on successful submission", async () => {
-    vi.spyOn(webhookServiceModule, "updateWebhook").mockResolvedValue({} as any);
+    vi.spyOn(webhookServiceModule, "updateWebhook").mockResolvedValue(
+      {} as any,
+    );
 
     render(
       <EditWebhookModal
@@ -105,15 +111,23 @@ describe("EditWebhookModal", () => {
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
         webhook={mockWebhook}
-      />
+      />,
     );
 
     await screen.findByDisplayValue("Old Name");
 
-    fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "New Name" } });
-    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Updated Description" } });
-    fireEvent.change(screen.getByLabelText(/URL/), { target: { value: "https://new-url.com" } });
-    fireEvent.change(screen.getByLabelText(/Secret/), { target: { value: "new-secret" } });
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "New Name" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Updated Description" },
+    });
+    fireEvent.change(screen.getByLabelText(/URL/), {
+      target: { value: "https://new-url.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/Secret/), {
+      target: { value: "new-secret" },
+    });
 
     fireEvent.click(screen.getByText("Update"));
 
@@ -125,14 +139,19 @@ describe("EditWebhookModal", () => {
         events: ["prompt.created"],
         secret: "new-secret",
       });
-      expect(mockShowToast).toHaveBeenCalledWith("Webhook Old Name updated successfully", "success");
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Webhook Old Name updated successfully",
+        "success",
+      );
       expect(mockOnSuccess).toHaveBeenCalled();
       expect(mockOnClose).toHaveBeenCalled();
     });
   });
 
   it("does not send secret if it is empty", async () => {
-    vi.spyOn(webhookServiceModule, "updateWebhook").mockResolvedValue({} as any);
+    vi.spyOn(webhookServiceModule, "updateWebhook").mockResolvedValue(
+      {} as any,
+    );
 
     render(
       <EditWebhookModal
@@ -140,12 +159,14 @@ describe("EditWebhookModal", () => {
         onClose={mockOnClose}
         onSuccess={mockOnSuccess}
         webhook={mockWebhook}
-      />
+      />,
     );
 
     await screen.findByDisplayValue("Old Name");
 
-    fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "New Name" } });
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "New Name" },
+    });
 
     fireEvent.click(screen.getByText("Update"));
 
@@ -157,7 +178,10 @@ describe("EditWebhookModal", () => {
         events: ["prompt.created"],
         // secret should NOT be present
       });
-      expect(webhookServiceModule.updateWebhook).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ secret: expect.anything() }));
+      expect(webhookServiceModule.updateWebhook).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ secret: expect.anything() }),
+      );
     });
   });
 });

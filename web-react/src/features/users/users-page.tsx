@@ -21,7 +21,7 @@ export default function UsersPage() {
   const usersList = allUsers || [];
 
   const filteredUsers = usersList.filter((username) =>
-    username.toLowerCase().includes(submittedTerm.toLowerCase())
+    username.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const tableData = filteredUsers.map((username) => ({

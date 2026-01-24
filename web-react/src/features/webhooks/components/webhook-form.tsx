@@ -4,24 +4,30 @@ import { Button } from "../../../shared/components/button";
 import type { WebhookCreateRequest } from "../../../shared/types/entity";
 
 export const SUPPORTED_EVENTS = [
-  { group: "Model Registry", events: [
-    "registered_model.created",
-    "model_version.created",
-    "model_version_tag.set",
-    "model_version_tag.deleted",
-    "model_version_alias.created",
-    "model_version_alias.deleted",
-  ]},
-  { group: "Prompt Registry", events: [
-    "prompt.created",
-    "prompt_version.created",
-    "prompt_tag.set",
-    "prompt_tag.deleted",
-    "prompt_version_tag.set",
-    "prompt_version_tag.deleted",
-    "prompt_alias.created",
-    "prompt_alias.deleted",
-  ]}
+  {
+    group: "Model Registry",
+    events: [
+      "registered_model.created",
+      "model_version.created",
+      "model_version_tag.set",
+      "model_version_tag.deleted",
+      "model_version_alias.created",
+      "model_version_alias.deleted",
+    ],
+  },
+  {
+    group: "Prompt Registry",
+    events: [
+      "prompt.created",
+      "prompt_version.created",
+      "prompt_tag.set",
+      "prompt_tag.deleted",
+      "prompt_version_tag.set",
+      "prompt_version_tag.deleted",
+      "prompt_alias.created",
+      "prompt_alias.deleted",
+    ],
+  },
 ];
 
 interface WebhookFormProps {
@@ -41,12 +47,14 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
   isSubmitting,
   isEdit = false,
 }) => {
-  const [formData, setFormData] = useState<WebhookCreateRequest>(initialData || {
-    name: "",
-    url: "",
-    events: [],
-    secret: "",
-  });
+  const [formData, setFormData] = useState<WebhookCreateRequest>(
+    initialData || {
+      name: "",
+      url: "",
+      events: [],
+      secret: "",
+    },
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -69,7 +77,7 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
     const newErrors: Record<string, string> = {};
     if (!formData.name?.trim()) newErrors.name = "Name is required";
     if (formData.description && formData.description.length > 500) {
-        newErrors.description = "Description must be 500 characters or less";
+      newErrors.description = "Description must be 500 characters or less";
     }
     if (!formData.url?.trim()) {
       newErrors.url = "URL is required";
@@ -103,12 +111,17 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
   const editingLabel = isEdit ? "Updating..." : "Creating...";
 
   return (
-    <form onSubmit={handleSubmit} aria-label={isEdit ? "Edit webhook form" : "Create webhook form"}>
+    <form
+      onSubmit={handleSubmit}
+      aria-label={isEdit ? "Edit webhook form" : "Create webhook form"}
+    >
       <Input
         label="Name"
         id="webhook-name"
         value={formData.name || ""}
-        onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+        onChange={(e) =>
+          setFormData((prev) => ({ ...prev, name: e.target.value }))
+        }
         error={errors.name}
         required
         reserveErrorSpace
@@ -116,13 +129,18 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
       />
 
       <div className="mb-2">
-         <label htmlFor="webhook-description" className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">
-            Description
-         </label>
+        <label
+          htmlFor="webhook-description"
+          className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1"
+        >
+          Description
+        </label>
         <textarea
           id="webhook-description"
           value={formData.description || ""}
-          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+          onChange={(e) =>
+            setFormData((prev) => ({ ...prev, description: e.target.value }))
+          }
           className={`w-full rounded-md border text-sm p-2 bg-ui-bg dark:bg-ui-bg-dark text-text-primary dark:text-text-primary-dark focus:ring-2 focus:ring-btn-primary focus:border-transparent ${
             errors.description
               ? "border-red-500 focus:ring-red-500"
@@ -131,7 +149,9 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
           rows={3}
           placeholder="Optional description (max 500 characters)"
         />
-        <p className={`mt-1 text-sm ${errors.description ? "text-red-500" : "invisible"}`}>
+        <p
+          className={`mt-1 text-sm ${errors.description ? "text-red-500" : "invisible"}`}
+        >
           {errors.description || "\u00A0"}
         </p>
       </div>
@@ -140,7 +160,9 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
         label="URL"
         id="webhook-url"
         value={formData.url || ""}
-        onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
+        onChange={(e) =>
+          setFormData((prev) => ({ ...prev, url: e.target.value }))
+        }
         error={errors.url}
         placeholder="https://example.com/webhook"
         required
@@ -159,7 +181,10 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
                 {group.group}
               </h5>
               {group.events.map((event) => (
-                <label key={event} className="flex items-center space-x-2 cursor-pointer group">
+                <label
+                  key={event}
+                  className="flex items-center space-x-2 cursor-pointer group"
+                >
                   <input
                     id={`event-${event}`}
                     type="checkbox"
@@ -175,7 +200,9 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
             </div>
           ))}
         </div>
-        <p className={`mt-1 text-sm ${errors.events ? "text-red-500" : "invisible"}`}>
+        <p
+          className={`mt-1 text-sm ${errors.events ? "text-red-500" : "invisible"}`}
+        >
           {errors.events || "\u00A0"}
         </p>
       </div>
@@ -184,14 +211,25 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
         label="Secret (Optional)"
         id="webhook-secret"
         value={formData.secret || ""}
-        onChange={(e) => setFormData(prev => ({ ...prev, secret: e.target.value }))}
-        placeholder={isEdit ? "Leave empty to keep current secret" : "Webhook secret for HMAC verification"}
+        onChange={(e) =>
+          setFormData((prev) => ({ ...prev, secret: e.target.value }))
+        }
+        placeholder={
+          isEdit
+            ? "Leave empty to keep current secret"
+            : "Webhook secret for HMAC verification"
+        }
         reserveErrorSpace
         containerClassName="mb-2"
       />
 
       <div className="flex justify-end space-x-3 pt-2">
-        <Button type="button" onClick={onCancel} variant="ghost" disabled={isSubmitting}>
+        <Button
+          type="button"
+          onClick={onCancel}
+          variant="ghost"
+          disabled={isSubmitting}
+        >
           Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={isSubmitting}>

@@ -15,7 +15,7 @@ export function useUpdateWebhook() {
   const update = async (
     id: string,
     data: WebhookUpdateRequest,
-    options: UpdateOptions
+    options: UpdateOptions,
   ) => {
     setIsUpdating(true);
     try {

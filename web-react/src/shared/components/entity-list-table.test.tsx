@@ -20,7 +20,7 @@ describe("EntityListTable", () => {
         data={mockData}
         columns={mockColumns}
         searchTerm=""
-      />
+      />,
     );
 
     expect(screen.getByText("Item 1")).toBeInTheDocument();
@@ -32,11 +32,7 @@ describe("EntityListTable", () => {
   it("renders primitive table with data", () => {
     const primitiveData = ["Value 1", "Value 2"];
     render(
-      <EntityListTable
-        mode="primitive"
-        data={primitiveData}
-        searchTerm=""
-      />
+      <EntityListTable mode="primitive" data={primitiveData} searchTerm="" />,
     );
 
     expect(screen.getByText("Value 1")).toBeInTheDocument();
@@ -51,7 +47,7 @@ describe("EntityListTable", () => {
         data={[]}
         columns={mockColumns}
         searchTerm=""
-      />
+      />,
     );
 
     expect(screen.getByText("No items found")).toBeInTheDocument();
@@ -64,9 +60,11 @@ describe("EntityListTable", () => {
         data={[]}
         columns={mockColumns}
         searchTerm="found nothing"
-      />
+      />,
     );
 
-    expect(screen.getByText('No items found for "found nothing"')).toBeInTheDocument();
+    expect(
+      screen.getByText('No items found for "found nothing"'),
+    ).toBeInTheDocument();
   });
 });

@@ -8,5 +8,11 @@ interface ServiceAccountPermissionPageProps {
 export default function ServiceAccountPermissionPage({
   type,
 }: ServiceAccountPermissionPageProps) {
-  return <SharedPermissionsPage type={type} baseRoute="/service-accounts" entityKind="user" />;
+  return (
+    <SharedPermissionsPage
+      type={type}
+      baseRoute="/service-accounts"
+      entityKind="user"
+    />
+  );
 }

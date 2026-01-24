@@ -8,7 +8,9 @@ import { faHome } from "@fortawesome/free-solid-svg-icons";
 vi.mock("./sidebar-data", () => ({
   getSidebarData: (isAdmin: boolean) => [
     { label: "Home", href: "/home", icon: faHome, isInternalLink: true },
-    ...(isAdmin ? [{ label: "Admin", href: "/admin", icon: faHome, isInternalLink: true }] : []),
+    ...(isAdmin
+      ? [{ label: "Admin", href: "/admin", icon: faHome, isInternalLink: true }]
+      : []),
   ],
 }));
 
@@ -30,7 +32,7 @@ describe("Sidebar", () => {
           toggleSidebar={() => {}}
           widthClass="w-64"
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.getByText("Home")).toBeInTheDocument();
@@ -54,7 +56,7 @@ describe("Sidebar", () => {
           toggleSidebar={() => {}}
           widthClass="w-64"
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.getByText("Home")).toBeInTheDocument();
@@ -71,7 +73,7 @@ describe("Sidebar", () => {
           toggleSidebar={handleToggle}
           widthClass="w-64"
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     const toggleBtn = screen.getByLabelText("Collapse Sidebar");
@@ -88,14 +90,14 @@ describe("Sidebar", () => {
           toggleSidebar={() => {}}
           widthClass="w-64"
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     const sponsorLink = screen.getByText("Support the project");
     expect(sponsorLink).toBeInTheDocument();
     expect(sponsorLink.closest("a")).toHaveAttribute(
       "href",
-      "https://github.com/sponsors/mlflow-oidc?o=esb"
+      "https://github.com/sponsors/mlflow-oidc?o=esb",
     );
   });
 });

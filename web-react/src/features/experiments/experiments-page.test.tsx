@@ -15,8 +15,16 @@ vi.mock("../../core/hooks/use-search", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
-  default: ({ children, title }: { children: React.ReactNode; title: string }) => (
-    <div data-testid="page-container" title={title}>{children}</div>
+  default: ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => (
+    <div data-testid="page-container" title={title}>
+      {children}
+    </div>
   ),
 }));
 
@@ -65,10 +73,10 @@ describe("ExperimentsPage", () => {
 
   it("renders loading state", () => {
     mockUseAllExperiments.mockReturnValue({
-        isLoading: true,
-        error: null,
-        refresh: vi.fn(),
-        allExperiments: [],
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [],
     });
 
     render(<ExperimentsPage />);
@@ -76,14 +84,14 @@ describe("ExperimentsPage", () => {
   });
 
   it("renders experiment list", () => {
-     mockUseAllExperiments.mockReturnValue({
-        isLoading: false,
-        error: null,
-        refresh: vi.fn(),
-        allExperiments: [
-            { id: "1", name: "Exp 1" },
-            { id: "2", name: "Exp 2" },
-        ],
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [
+        { id: "1", name: "Exp 1" },
+        { id: "2", name: "Exp 2" },
+      ],
     });
 
     render(<ExperimentsPage />);
@@ -101,13 +109,13 @@ describe("ExperimentsPage", () => {
     });
 
     mockUseAllExperiments.mockReturnValue({
-        isLoading: false,
-        error: null,
-        refresh: vi.fn(),
-        allExperiments: [
-            { id: "1", name: "Exp 1" },
-            { id: "2", name: "Exp 2" },
-        ],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [
+        { id: "1", name: "Exp 1" },
+        { id: "2", name: "Exp 2" },
+      ],
     });
 
     render(<ExperimentsPage />);

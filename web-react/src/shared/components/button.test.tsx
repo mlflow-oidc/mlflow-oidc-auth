@@ -6,7 +6,9 @@ import { faHome } from "@fortawesome/free-solid-svg-icons";
 describe("Button", () => {
   it("renders children correctly", () => {
     render(<Button>Click Me</Button>);
-    expect(screen.getByRole("button", { name: "Click Me" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Click Me" }),
+    ).toBeInTheDocument();
   });
 
   it("handles onClick event", () => {

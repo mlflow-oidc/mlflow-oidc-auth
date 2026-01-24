@@ -22,7 +22,7 @@ describe("DeleteWebhookModal", () => {
         onConfirm={vi.fn()}
         webhook={mockWebhook}
         isProcessing={false}
-      />
+      />,
     );
 
     expect(screen.getByText("Delete Webhook")).toBeInTheDocument();
@@ -40,7 +40,7 @@ describe("DeleteWebhookModal", () => {
         onConfirm={mockOnConfirm}
         webhook={mockWebhook}
         isProcessing={false}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByText("Delete Permanently"));
@@ -55,7 +55,7 @@ describe("DeleteWebhookModal", () => {
         onConfirm={vi.fn()}
         webhook={mockWebhook}
         isProcessing={true}
-      />
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
@@ -70,7 +70,7 @@ describe("DeleteWebhookModal", () => {
         onConfirm={vi.fn()}
         webhook={null}
         isProcessing={false}
-      />
+      />,
     );
 
     expect(container.firstChild).toBeNull();

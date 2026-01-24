@@ -33,7 +33,7 @@ export default function ServiceAccountsPage() {
   const serviceAccountsList = allServiceAccounts || [];
 
   const filteredServiceAccounts = serviceAccountsList.filter((username) =>
-    username.toLowerCase().includes(submittedTerm.toLowerCase())
+    username.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const handleCreateServiceAccount = async (data: {
@@ -48,7 +48,10 @@ export default function ServiceAccountsPage() {
         is_admin: data.is_admin,
         is_service_account: true,
       });
-      showToast(`Service account ${data.name} created successfully.`, "success");
+      showToast(
+        `Service account ${data.name} created successfully.`,
+        "success",
+      );
       refresh();
       setIsModalOpen(false);
     } catch (err) {
@@ -67,7 +70,6 @@ export default function ServiceAccountsPage() {
       showToast("Failed to remove service account. Please try again.", "error");
     }
   };
-
 
   const isAdmin = currentUser?.is_admin === true;
 

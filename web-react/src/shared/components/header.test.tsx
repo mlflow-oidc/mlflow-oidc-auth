@@ -10,12 +10,8 @@ vi.mock("../context/use-runtime-config", () => ({
 
 vi.mock("./navigation-data", () => ({
   getNavigationData: (userName: string, _basePath: string) => ({
-    mainLinks: [
-      { to: "/link1", label: "Link 1" },
-    ],
-    userControls: [
-      { to: "/user", label: userName },
-    ],
+    mainLinks: [{ to: "/link1", label: "Link 1" }],
+    userControls: [{ to: "/user", label: userName }],
   }),
 }));
 
@@ -26,14 +22,20 @@ vi.mock("./dark-mode-toggle", () => ({
 vi.mock("./header-desktop-nav", () => ({
   default: ({ mainLinks, userControls }: any) => (
     <div data-testid="desktop-nav">
-      {mainLinks.map((l: any) => <span key={l.to}>{l.label}</span>)}
-      {userControls.map((l: any) => <span key={l.to}>{l.label}</span>)}
+      {mainLinks.map((l: any) => (
+        <span key={l.to}>{l.label}</span>
+      ))}
+      {userControls.map((l: any) => (
+        <span key={l.to}>{l.label}</span>
+      ))}
     </div>
   ),
 }));
 
 vi.mock("./header-mobile-nav", () => ({
-  default: ({ isMenuOpen }: any) => <div data-testid="mobile-nav">Open: {String(isMenuOpen)}</div>,
+  default: ({ isMenuOpen }: any) => (
+    <div data-testid="mobile-nav">Open: {String(isMenuOpen)}</div>
+  ),
 }));
 
 describe("Header", () => {
@@ -41,7 +43,7 @@ describe("Header", () => {
     render(
       <MemoryRouter>
         <Header />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     expect(screen.getByText("Permissions")).toBeInTheDocument();
     expect(screen.getByAltText("Logo")).toBeInTheDocument();
@@ -51,7 +53,7 @@ describe("Header", () => {
     render(
       <MemoryRouter>
         <Header userName="TestUser" />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     expect(screen.getByTestId("desktop-nav")).toHaveTextContent("Link 1");
     expect(screen.getByTestId("desktop-nav")).toHaveTextContent("TestUser");
@@ -61,7 +63,7 @@ describe("Header", () => {
     render(
       <MemoryRouter>
         <Header />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     // Initial state

@@ -1,57 +1,57 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function () {
+        // Synchronously find config.json to set the correct base path
+        // We scan up the directory tree to support arbitrary nesting depths.
+        var paths = ["./config.json"];
+        var depth = window.location.pathname.split("/").length;
+        var prefix = "";
+        for (var i = 0; i < depth; i++) {
+          prefix += "../";
+          paths.push(prefix + "config.json");
+        }
 
-<head>
-  <meta charset="UTF-8" />
-  <script>
-    (function () {
-      // Synchronously find config.json to set the correct base path
-      // We scan up the directory tree to support arbitrary nesting depths.
-      var paths = ["./config.json"];
-      var depth = window.location.pathname.split("/").length;
-      var prefix = "";
-      for (var i = 0; i < depth; i++) {
-        prefix += "../";
-        paths.push(prefix + "config.json");
-      }
+        var config = null;
 
-      var config = null;
+        for (var i = 0; i < paths.length; i++) {
+          try {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", paths[i], false); // Synchronous fetch
+            xhr.send(null);
 
-      for (var i = 0; i < paths.length; i++) {
-        try {
-          var xhr = new XMLHttpRequest();
-          xhr.open("GET", paths[i], false); // Synchronous fetch
-          xhr.send(null);
-
-          if (xhr.status === 200) {
-            config = JSON.parse(xhr.responseText);
-            break;
+            if (xhr.status === 200) {
+              config = JSON.parse(xhr.responseText);
+              break;
+            }
+          } catch (e) {
+            /* ignore */
           }
-        } catch (e) { /* ignore */ }
-      }
+        }
 
-      if (config) {
-        window.__RUNTIME_CONFIG__ = config;
-        var basePath = config.uiPath || "/";
-        if (!basePath.endsWith("/")) basePath += "/";
-        document.write('<base href="' + basePath + '">');
-      } else {
-        console.error("Critical: Could not load runtime config.json");
-      }
-    })();
-  </script>
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="icon" type="image/png" href="favicon-96x96.png" sizes="96x96" />
-  <link rel="shortcut icon" href="favicon.ico" />
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
-  <link rel="manifest" href="site.webmanifest" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Permissions</title>
-</head>
+        if (config) {
+          window.__RUNTIME_CONFIG__ = config;
+          var basePath = config.uiPath || "/";
+          if (!basePath.endsWith("/")) basePath += "/";
+          document.write('<base href="' + basePath + '">');
+        } else {
+          console.error("Critical: Could not load runtime config.json");
+        }
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="icon" type="image/png" href="favicon-96x96.png" sizes="96x96" />
+    <link rel="shortcut icon" href="favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+    <link rel="manifest" href="site.webmanifest" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Permissions</title>
+  </head>
 
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
-
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

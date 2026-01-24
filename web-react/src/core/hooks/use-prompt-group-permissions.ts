@@ -17,7 +17,7 @@ export function usePromptGroupPermissions({
       }
       return fetchPromptGroupPermissions(promptName, signal);
     },
-    [promptName]
+    [promptName],
   );
 
   const {

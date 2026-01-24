@@ -29,14 +29,18 @@ describe("WebhookStatusSwitch", () => {
   });
 
   it("renders correctly with initial status", () => {
-    render(<WebhookStatusSwitch webhook={mockWebhook} onSuccess={mockOnSuccess} />);
+    render(
+      <WebhookStatusSwitch webhook={mockWebhook} onSuccess={mockOnSuccess} />,
+    );
     expect(screen.getByRole("switch")).toBeChecked();
   });
 
   it("toggles status and calls update on click", async () => {
     mockUpdate.mockResolvedValue(true);
 
-    render(<WebhookStatusSwitch webhook={mockWebhook} onSuccess={mockOnSuccess} />);
+    render(
+      <WebhookStatusSwitch webhook={mockWebhook} onSuccess={mockOnSuccess} />,
+    );
 
     const switchEl = screen.getByRole("switch");
     fireEvent.click(switchEl);
@@ -47,7 +51,7 @@ describe("WebhookStatusSwitch", () => {
       { status: "DISABLED" },
       expect.objectContaining({
         onSuccessMessage: expect.stringContaining("disabled"),
-      })
+      }),
     );
 
     await waitFor(() => {
@@ -58,7 +62,9 @@ describe("WebhookStatusSwitch", () => {
   it("reverts status if update fails", async () => {
     mockUpdate.mockResolvedValue(false);
 
-    render(<WebhookStatusSwitch webhook={mockWebhook} onSuccess={mockOnSuccess} />);
+    render(
+      <WebhookStatusSwitch webhook={mockWebhook} onSuccess={mockOnSuccess} />,
+    );
 
     const switchEl = screen.getByRole("switch");
 

@@ -32,7 +32,7 @@ export const WebhookStatusSwitch: React.FC<WebhookStatusSwitchProps> = ({
           newStatus === "ACTIVE" ? "activated" : "disabled"
         }`,
         onErrorMessage: "Failed to update webhook status",
-      }
+      },
     );
 
     if (success) {

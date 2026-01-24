@@ -15,7 +15,7 @@ function buildQueryString(params: QueryParams): string {
 export async function resolveUrl(
   endpoint: string,
   queryParams: QueryParams,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<string> {
   const cfg = await getRuntimeConfig(signal);
   return `${cfg.basePath}${endpoint}${buildQueryString(queryParams)}`;

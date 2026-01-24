@@ -22,7 +22,7 @@ export default function ModelsPage() {
   const modelsList = allModels || [];
 
   const filteredModels = modelsList.filter((m) =>
-    m.name.toLowerCase().includes(submittedTerm.toLowerCase())
+    m.name.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const renderPermissionsButton = (model: ModelListItem) => (
@@ -65,7 +65,7 @@ export default function ModelsPage() {
               onSubmit={handleSearchSubmit}
               onClear={handleClearSearch}
               placeholder="Search models..."
-             />
+            />
           </div>
 
           <EntityListTable

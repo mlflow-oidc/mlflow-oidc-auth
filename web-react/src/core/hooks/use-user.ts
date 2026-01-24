@@ -2,7 +2,7 @@ import { use } from "react";
 import { createContext } from "react";
 import type { CurrentUser } from "../../shared/types/user";
 
-type UserContextValue = {
+export type UserContextValue = {
   currentUser: CurrentUser | null;
   isLoading: boolean;
   error: Error | null;

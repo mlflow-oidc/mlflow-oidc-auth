@@ -4,7 +4,9 @@ import type { ToastMessage, ToastType } from "./toast-types";
 import { ToastContext } from "./toast-context-val";
 import { Toast } from "./toast";
 
-export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const ToastProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = useCallback(
@@ -12,14 +14,17 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const id = Date.now().toString();
       setToasts((prev) => [...prev, { id, message, type, duration }]);
     },
-    []
+    [],
   );
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const contextValue = useMemo(() => ({ showToast, removeToast }), [showToast, removeToast]);
+  const contextValue = useMemo(
+    () => ({ showToast, removeToast }),
+    [showToast, removeToast],
+  );
 
   return (
     <ToastContext value={contextValue}>

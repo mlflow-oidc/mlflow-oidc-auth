@@ -13,7 +13,7 @@ describe("WebhookForm", () => {
         onCancel={mockOnCancel}
         submitLabel="Submit"
         isSubmitting={false}
-      />
+      />,
     );
 
     expect(screen.getByLabelText("Name*")).toHaveValue("");
@@ -41,13 +41,19 @@ describe("WebhookForm", () => {
         submitLabel="Update"
         isSubmitting={false}
         isEdit
-      />
+      />,
     );
 
     expect(screen.getByLabelText("Name*")).toHaveValue("Initial Name");
-    expect(screen.getByLabelText("Description")).toHaveValue("Initial Description");
-    expect(screen.getByLabelText("URL*")).toHaveValue("https://initial-url.com");
-    expect(screen.getByLabelText("Secret (Optional)")).toHaveValue("initial-secret");
+    expect(screen.getByLabelText("Description")).toHaveValue(
+      "Initial Description",
+    );
+    expect(screen.getByLabelText("URL*")).toHaveValue(
+      "https://initial-url.com",
+    );
+    expect(screen.getByLabelText("Secret (Optional)")).toHaveValue(
+      "initial-secret",
+    );
     expect(screen.getByLabelText("prompt.created")).toBeChecked();
   });
 
@@ -58,7 +64,7 @@ describe("WebhookForm", () => {
         onCancel={mockOnCancel}
         submitLabel="Submit"
         isSubmitting={false}
-      />
+      />,
     );
 
     fireEvent.submit(screen.getByRole("form"));
@@ -66,7 +72,9 @@ describe("WebhookForm", () => {
     await waitFor(() => {
       expect(screen.getByText("Name is required")).toBeInTheDocument();
       expect(screen.getByText("URL is required")).toBeInTheDocument();
-      expect(screen.getByText("At least one event must be selected")).toBeInTheDocument();
+      expect(
+        screen.getByText("At least one event must be selected"),
+      ).toBeInTheDocument();
     });
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });
@@ -78,15 +86,19 @@ describe("WebhookForm", () => {
         onCancel={mockOnCancel}
         submitLabel="Submit"
         isSubmitting={false}
-      />
+      />,
     );
 
     const longDescription = "a".repeat(501);
-    fireEvent.change(screen.getByLabelText("Description"), { target: { value: longDescription } });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: longDescription },
+    });
     fireEvent.submit(screen.getByRole("form"));
 
     await waitFor(() => {
-      expect(screen.getByText("Description must be 500 characters or less")).toBeInTheDocument();
+      expect(
+        screen.getByText("Description must be 500 characters or less"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -97,10 +109,12 @@ describe("WebhookForm", () => {
         onCancel={mockOnCancel}
         submitLabel="Submit"
         isSubmitting={false}
-      />
+      />,
     );
 
-    fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "not-a-url" } });
+    fireEvent.change(screen.getByLabelText("URL*"), {
+      target: { value: "not-a-url" },
+    });
     fireEvent.submit(screen.getByRole("form"));
 
     await waitFor(() => {
@@ -115,12 +129,18 @@ describe("WebhookForm", () => {
         onCancel={mockOnCancel}
         submitLabel="Submit"
         isSubmitting={false}
-      />
+      />,
     );
 
-    fireEvent.change(screen.getByLabelText("Name*"), { target: { value: "Test Webhook" } });
-    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Test Description" } });
-    fireEvent.change(screen.getByLabelText("URL*"), { target: { value: "https://example.com" } });
+    fireEvent.change(screen.getByLabelText("Name*"), {
+      target: { value: "Test Webhook" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Test Description" },
+    });
+    fireEvent.change(screen.getByLabelText("URL*"), {
+      target: { value: "https://example.com" },
+    });
     fireEvent.click(screen.getByLabelText("registered_model.created"));
 
     fireEvent.submit(screen.getByRole("form"));
@@ -143,7 +163,7 @@ describe("WebhookForm", () => {
         onCancel={mockOnCancel}
         submitLabel="Submit"
         isSubmitting={false}
-      />
+      />,
     );
 
     const checkbox = screen.getByLabelText("registered_model.created");
@@ -161,7 +181,7 @@ describe("WebhookForm", () => {
         onCancel={mockOnCancel}
         submitLabel="Submit"
         isSubmitting={false}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -175,7 +195,7 @@ describe("WebhookForm", () => {
         onCancel={mockOnCancel}
         submitLabel="Submit"
         isSubmitting={true}
-      />
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
@@ -190,9 +210,11 @@ describe("WebhookForm", () => {
         submitLabel="Update"
         isSubmitting={true}
         isEdit
-      />
+      />,
     );
 
-    expect(screen.getByRole("button", { name: "Updating..." })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Updating..." }),
+    ).toBeInTheDocument();
   });
 });

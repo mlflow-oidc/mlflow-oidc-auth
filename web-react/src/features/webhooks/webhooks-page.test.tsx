@@ -13,8 +13,21 @@ vi.mock("../../core/services/webhook-service");
 
 describe("WebhooksPage", () => {
   const mockWebhooks = [
-    { webhook_id: "1", name: "Webhook 1", url: "http://example.com/1", events: ["prompt.created"], status: "ACTIVE", description: "Desc 1" },
-    { webhook_id: "2", name: "Webhook 2", url: "http://example.com/2", events: ["model_version.created"], status: "ACTIVE" },
+    {
+      webhook_id: "1",
+      name: "Webhook 1",
+      url: "http://example.com/1",
+      events: ["prompt.created"],
+      status: "ACTIVE",
+      description: "Desc 1",
+    },
+    {
+      webhook_id: "2",
+      name: "Webhook 2",
+      url: "http://example.com/2",
+      events: ["model_version.created"],
+      status: "ACTIVE",
+    },
   ];
 
   const mockShowToast = vi.fn();
@@ -83,7 +96,7 @@ describe("WebhooksPage", () => {
     await vi.waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith(
         "Test successful for Webhook 1",
-        "success"
+        "success",
       );
     });
   });
@@ -109,8 +122,8 @@ describe("WebhooksPage", () => {
     expect(webhookService.deleteWebhook).toHaveBeenCalledWith("1");
     await vi.waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith(
-        "Webhook \"Webhook 1\" deleted successfully",
-        "success"
+        'Webhook "Webhook 1" deleted successfully',
+        "success",
       );
       expect(mockRefresh).toHaveBeenCalled();
     });

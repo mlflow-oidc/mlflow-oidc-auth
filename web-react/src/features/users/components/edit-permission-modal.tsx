@@ -12,7 +12,11 @@ import type {
 interface EditPermissionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (newPermission: PermissionLevel, regex?: string, priority?: number) => Promise<void>;
+  onSave: (
+    newPermission: PermissionLevel,
+    regex?: string,
+    priority?: number,
+  ) => Promise<void>;
   item: AnyPermissionItem | null;
   username: string;
   resourceId?: string;
@@ -20,7 +24,12 @@ interface EditPermissionModalProps {
   isLoading?: boolean;
 }
 
-const PERMISSION_LEVELS: PermissionLevel[] = ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"];
+const PERMISSION_LEVELS: PermissionLevel[] = [
+  "READ",
+  "EDIT",
+  "MANAGE",
+  "NO_PERMISSIONS",
+];
 
 export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
   isOpen,
@@ -33,13 +42,13 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
   isLoading = false,
 }) => {
   const [selectedPermission, setSelectedPermission] = useState<PermissionLevel>(
-    item?.permission || "READ"
+    item?.permission || "READ",
   );
   const [regex, setRegex] = useState<string>(
-    item && "regex" in item ? item.regex : ""
+    item && "regex" in item ? item.regex : "",
   );
   const [priority, setPriority] = useState<number>(
-    item && "priority" in item ? item.priority : 0
+    item && "priority" in item ? item.priority : 0,
   );
 
   if (!isOpen || !item) return null;
@@ -90,8 +99,13 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
         id="permission-level"
         label="Permission Level"
         value={selectedPermission}
-        onChange={(e) => setSelectedPermission(e.target.value as PermissionLevel)}
-        options={PERMISSION_LEVELS.map(level => ({ label: level, value: level }))}
+        onChange={(e) =>
+          setSelectedPermission(e.target.value as PermissionLevel)
+        }
+        options={PERMISSION_LEVELS.map((level) => ({
+          label: level,
+          value: level,
+        }))}
         containerClassName="mb-4"
       />
 
@@ -99,7 +113,13 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
         <Button onClick={onClose} variant="ghost" disabled={isLoading}>
           Cancel
         </Button>
-        <Button onClick={() => { void handleSave(); }} variant="primary" disabled={isLoading}>
+        <Button
+          onClick={() => {
+            void handleSave();
+          }}
+          variant="primary"
+          disabled={isLoading}
+        >
           {isLoading ? "Saving..." : "Ok"}
         </Button>
       </div>

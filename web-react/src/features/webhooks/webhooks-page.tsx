@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
-import { faVial, faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
+import {
+  faVial,
+  faEdit,
+  faTrash,
+  faPlus,
+} from "@fortawesome/free-solid-svg-icons";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { SearchInput } from "../../shared/components/search-input";
@@ -9,7 +14,10 @@ import { useSearch } from "../../core/hooks/use-search";
 import { useWebhooks } from "../../core/hooks/use-webhooks";
 import { useToast } from "../../shared/components/toast/use-toast";
 import { IconButton } from "../../shared/components/icon-button";
-import { testWebhook, deleteWebhook } from "../../core/services/webhook-service";
+import {
+  testWebhook,
+  deleteWebhook,
+} from "../../core/services/webhook-service";
 import { CreateWebhookModal } from "./components/create-webhook-modal";
 import { EditWebhookModal } from "./components/edit-webhook-modal";
 import { DeleteWebhookModal } from "./components/delete-webhook-modal";
@@ -26,7 +34,8 @@ export default function WebhooksPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { webhooks, isLoading, error, refresh, updateLocalWebhook } = useWebhooks();
+  const { webhooks, isLoading, error, refresh, updateLocalWebhook } =
+    useWebhooks();
   const { showToast } = useToast();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
@@ -35,7 +44,7 @@ export default function WebhooksPage() {
 
   const filteredWebhooks = useMemo(() => {
     return webhooks.filter((webhook: Webhook) =>
-      webhook.name.toLowerCase().includes(submittedTerm.toLowerCase())
+      webhook.name.toLowerCase().includes(submittedTerm.toLowerCase()),
     );
   }, [webhooks, submittedTerm]);
 
@@ -45,7 +54,10 @@ export default function WebhooksPage() {
       if (response.success) {
         showToast(`Test successful for ${name}`, "success");
       } else {
-        showToast(`Test failed for ${name}: ${response.error_message || " Unknown error"}`, "error");
+        showToast(
+          `Test failed for ${name}: ${response.error_message || " Unknown error"}`,
+          "error",
+        );
       }
     } catch (err) {
       console.error("Failed to test webhook:", err);
@@ -59,7 +71,10 @@ export default function WebhooksPage() {
     setIsDeleting(true);
     try {
       await deleteWebhook(deletingWebhook.webhook_id);
-      showToast(`Webhook "${deletingWebhook.name}" deleted successfully`, "success");
+      showToast(
+        `Webhook "${deletingWebhook.name}" deleted successfully`,
+        "success",
+      );
       refresh();
       setDeletingWebhook(null);
     } catch (err) {
@@ -70,59 +85,67 @@ export default function WebhooksPage() {
     }
   };
 
-  const columns: ColumnConfig<Webhook>[] = useMemo(() => [
-    {
-      header: "Name",
-      render: (webhook) => webhook.name,
-    },
-    {
-      header: "Description",
-      render: (webhook) => (
-        <span className="truncate block max-w-xs" title={webhook.description || ""}>
-          {webhook.description || "-"}
-        </span>
-      ),
-    },
-    {
-      header: "URL",
-      render: (webhook) => (
-        <span className="truncate block max-w-xs" title={webhook.url}>
-          {webhook.url}
-        </span>
-      ),
-    },
-    {
-      header: "Actions",
-      render: (webhook) => (
-        <div className="flex space-x-2">
-          <IconButton
-            icon={faVial}
-            title="Test"
-            onClick={() => handleTest(webhook.webhook_id, webhook.name)}
+  const columns: ColumnConfig<Webhook>[] = useMemo(
+    () => [
+      {
+        header: "Name",
+        render: (webhook) => webhook.name,
+      },
+      {
+        header: "Description",
+        render: (webhook) => (
+          <span
+            className="truncate block max-w-xs"
+            title={webhook.description || ""}
+          >
+            {webhook.description || "-"}
+          </span>
+        ),
+      },
+      {
+        header: "URL",
+        render: (webhook) => (
+          <span className="truncate block max-w-xs" title={webhook.url}>
+            {webhook.url}
+          </span>
+        ),
+      },
+      {
+        header: "Actions",
+        render: (webhook) => (
+          <div className="flex space-x-2">
+            <IconButton
+              icon={faVial}
+              title="Test"
+              onClick={() => handleTest(webhook.webhook_id, webhook.name)}
+            />
+            <IconButton
+              icon={faEdit}
+              title="Edit"
+              onClick={() => setEditingWebhook(webhook)}
+            />
+            <IconButton
+              icon={faTrash}
+              title="Delete"
+              onClick={() => setDeletingWebhook(webhook)}
+            />
+          </div>
+        ),
+      },
+      {
+        header: "Active",
+        render: (webhook) => (
+          <WebhookStatusSwitch
+            webhook={webhook}
+            onSuccess={(newStatus) =>
+              updateLocalWebhook(webhook.webhook_id, newStatus)
+            }
           />
-          <IconButton
-            icon={faEdit}
-            title="Edit"
-            onClick={() => setEditingWebhook(webhook)}
-          />
-          <IconButton
-            icon={faTrash}
-            title="Delete"
-            onClick={() => setDeletingWebhook(webhook)}
-          />
-        </div>
-      ),
-    },
-    {
-      header: "Active",
-      render: (webhook) => (
-        <WebhookStatusSwitch
-          webhook={webhook}
-          onSuccess={(newStatus) => updateLocalWebhook(webhook.webhook_id, newStatus)}
-        />
-      ),
-    },
-  ], [updateLocalWebhook]);
+        ),
+      },
+    ],
+    [updateLocalWebhook],
+  );
 
   return (
     <PageContainer title="Webhooks">

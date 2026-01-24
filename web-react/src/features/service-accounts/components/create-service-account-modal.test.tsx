@@ -3,70 +3,78 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CreateServiceAccountModal } from "./create-service-account-modal";
 
 describe("CreateServiceAccountModal", () => {
-    const mockOnClose = vi.fn();
-    const mockOnSave = vi.fn();
+  const mockOnClose = vi.fn();
+  const mockOnSave = vi.fn();
 
-    it("renders when open", () => {
-        render(
-            <CreateServiceAccountModal
-                isOpen={true}
-                onClose={mockOnClose}
-                onSave={mockOnSave}
-            />
-        );
-        expect(screen.getByText("Create Service Account")).toBeDefined();
+  it("renders when open", () => {
+    render(
+      <CreateServiceAccountModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSave={mockOnSave}
+      />,
+    );
+    expect(screen.getByText("Create Service Account")).toBeDefined();
+  });
+
+  it("handles form inputs and submission", async () => {
+    render(
+      <CreateServiceAccountModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSave={mockOnSave}
+      />,
+    );
+
+    const nameInput = screen.getByLabelText(
+      /Service Account Name/i,
+    ) as HTMLInputElement;
+    const displayNameInput = screen.getByLabelText(
+      /Display Name/i,
+    ) as HTMLInputElement;
+    const isAdminCheckbox = screen.getByLabelText(/Grant Admin Privileges/i);
+    const saveButton = screen.getByRole("button", { name: /Save/i });
+
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(nameInput, { target: { value: "test-sa" } });
+    // Display name should auto-fill if not manual
+    expect(displayNameInput.value).toBe("test-sa");
+
+    fireEvent.click(isAdminCheckbox);
+    expect(saveButton).not.toBeDisabled();
+
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalledWith({
+        name: "test-sa",
+        display_name: "test-sa",
+        is_admin: true,
+      });
+      expect(mockOnClose).toHaveBeenCalled();
     });
+  });
 
-    it("handles form inputs and submission", async () => {
-        render(
-            <CreateServiceAccountModal
-                isOpen={true}
-                onClose={mockOnClose}
-                onSave={mockOnSave}
-            />
-        );
+  it("allows manual display name change", () => {
+    render(
+      <CreateServiceAccountModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSave={mockOnSave}
+      />,
+    );
 
-        const nameInput = screen.getByLabelText(/Service Account Name/i) as HTMLInputElement;
-        const displayNameInput = screen.getByLabelText(/Display Name/i) as HTMLInputElement;
-        const isAdminCheckbox = screen.getByLabelText(/Grant Admin Privileges/i);
-        const saveButton = screen.getByRole("button", { name: /Save/i });
+    const nameInput = screen.getByLabelText(
+      /Service Account Name/i,
+    ) as HTMLInputElement;
+    const displayNameInput = screen.getByLabelText(
+      /Display Name/i,
+    ) as HTMLInputElement;
 
-        expect(saveButton).toBeDisabled();
+    fireEvent.change(displayNameInput, { target: { value: "Manual Name" } });
+    fireEvent.change(nameInput, { target: { value: "test-sa" } });
 
-        fireEvent.change(nameInput, { target: { value: "test-sa" } });
-        // Display name should auto-fill if not manual
-        expect(displayNameInput.value).toBe("test-sa");
-
-        fireEvent.click(isAdminCheckbox);
-        expect(saveButton).not.toBeDisabled();
-
-        fireEvent.click(saveButton);
-
-        await waitFor(() => {
-            expect(mockOnSave).toHaveBeenCalledWith({
-                name: "test-sa",
-                display_name: "test-sa",
-                is_admin: true
-            });
-            expect(mockOnClose).toHaveBeenCalled();
-        });
-    });
-
-    it("allows manual display name change", () => {
-        render(
-            <CreateServiceAccountModal
-                isOpen={true}
-                onClose={mockOnClose}
-                onSave={mockOnSave}
-            />
-        );
-
-        const nameInput = screen.getByLabelText(/Service Account Name/i) as HTMLInputElement;
-        const displayNameInput = screen.getByLabelText(/Display Name/i) as HTMLInputElement;
-
-        fireEvent.change(displayNameInput, { target: { value: "Manual Name" } });
-        fireEvent.change(nameInput, { target: { value: "test-sa" } });
-
-        expect(displayNameInput.value).toBe("Manual Name");
-    });
+    expect(displayNameInput.value).toBe("Manual Name");
+  });
 });

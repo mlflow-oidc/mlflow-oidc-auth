@@ -19,30 +19,22 @@ describe("RowActionButton", () => {
         entityId="123"
         route="details"
         buttonText="View Details"
-      />
+      />,
     );
     expect(screen.getByText("View Details")).toBeInTheDocument();
   });
 
   it("navigates on click", () => {
     render(
-      <RowActionButton
-        entityId="123"
-        route="details"
-        buttonText="View"
-      />
+      <RowActionButton entityId="123" route="details" buttonText="View" />,
     );
 
     // It stops propagation
     const handleUpstreamClick = vi.fn();
     render(
       <div onClick={handleUpstreamClick}>
-         <RowActionButton
-          entityId="123"
-          route="details"
-          buttonText="View"
-        />
-      </div>
+        <RowActionButton entityId="123" route="details" buttonText="View" />
+      </div>,
     );
 
     // Find button

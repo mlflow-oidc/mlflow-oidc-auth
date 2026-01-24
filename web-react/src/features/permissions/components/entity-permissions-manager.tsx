@@ -63,13 +63,13 @@ export function EntityPermissionsManager({
   const existingNames = new Set(permissions.map((p) => p.name));
 
   const availableUsers = (allUsers || []).filter(
-    (username) => !existingNames.has(username)
+    (username) => !existingNames.has(username),
   );
   const availableAccounts = (allServiceAccounts || []).filter(
-    (username) => !existingNames.has(username)
+    (username) => !existingNames.has(username),
   );
   const availableGroups = (allGroups || []).filter(
-    (groupname) => !existingNames.has(groupname)
+    (groupname) => !existingNames.has(groupname),
   );
 
   const {
@@ -81,7 +81,7 @@ export function EntityPermissionsManager({
   } = useSearch();
 
   const filteredPermissions = permissions.filter((p) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase())
+    p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const columns: ColumnConfig<EntityPermission>[] = [
@@ -229,7 +229,11 @@ export function EntityPermissionsManager({
         isOpen={isAddGroupModalOpen}
         onClose={() => setIsAddGroupModalOpen(false)}
         onSave={async (name, permission) => {
-          const success = await handleGrantPermission(name, permission, "group");
+          const success = await handleGrantPermission(
+            name,
+            permission,
+            "group",
+          );
           if (success) setIsAddGroupModalOpen(false);
         }}
         title={`Grant group permissions for ${resourceName}`}

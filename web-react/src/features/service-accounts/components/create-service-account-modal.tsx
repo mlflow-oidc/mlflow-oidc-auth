@@ -13,11 +13,9 @@ interface CreateServiceAccountModalProps {
   }) => void | Promise<void>;
 }
 
-export const CreateServiceAccountModal: React.FC<CreateServiceAccountModalProps> = ({
-  isOpen,
-  onClose,
-  onSave,
-}) => {
+export const CreateServiceAccountModal: React.FC<
+  CreateServiceAccountModalProps
+> = ({ isOpen, onClose, onSave }) => {
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);

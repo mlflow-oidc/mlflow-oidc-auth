@@ -17,7 +17,7 @@ export function useUserExperimentPatternPermissions({
       }
       return fetchUserExperimentPatternPermissions(username, signal);
     },
-    [username]
+    [username],
   );
 
   const {

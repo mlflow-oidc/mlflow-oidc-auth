@@ -2,7 +2,12 @@ import React from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
 
-export type ButtonVariant = "action" | "danger" | "ghost" | "primary" | "secondary";
+export type ButtonVariant =
+  | "action"
+  | "danger"
+  | "ghost"
+  | "primary"
+  | "secondary";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -20,8 +25,11 @@ export function Button({
   type = "button",
   ...props
 }: ButtonProps) {
-  const baseClasses = "flex items-center justify-center transition-all duration-50 ease-in-out rounded font-medium";
-  const cursorClass = disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer";
+  const baseClasses =
+    "flex items-center justify-center transition-all duration-50 ease-in-out rounded font-medium";
+  const cursorClass = disabled
+    ? "cursor-not-allowed opacity-50"
+    : "cursor-pointer";
 
   const variantClasses = {
     primary: `
@@ -80,10 +88,18 @@ export function Button({
   `,
   };
 
-  const combinedClasses = `${baseClasses} ${cursorClass} ${variantClasses[variant]} ${className}`.replace(/\s+/g, " ").trim();
+  const combinedClasses =
+    `${baseClasses} ${cursorClass} ${variantClasses[variant]} ${className}`
+      .replace(/\s+/g, " ")
+      .trim();
 
   return (
-    <button type={type} className={combinedClasses} disabled={disabled} {...props}>
+    <button
+      type={type}
+      className={combinedClasses}
+      disabled={disabled}
+      {...props}
+    >
       {icon && <FontAwesomeIcon icon={icon} className={iconClassName} />}
       {children && <span className={icon ? "ml-1" : ""}>{children}</span>}
     </button>

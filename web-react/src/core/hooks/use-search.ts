@@ -8,7 +8,7 @@ export function useSearch() {
     (event: React.ChangeEvent<HTMLInputElement>) => {
       setSearchTerm(event.target.value);
     },
-    []
+    [],
   );
 
   const handleSearchSubmit = useCallback(
@@ -16,7 +16,7 @@ export function useSearch() {
       event.preventDefault();
       setSubmittedTerm(searchTerm);
     },
-    [searchTerm]
+    [searchTerm],
   );
 
   const handleClearSearch = useCallback(() => {

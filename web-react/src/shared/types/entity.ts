@@ -66,7 +66,9 @@ export type ModelPatternPermission = {
 
 export type PromptPatternPermission = ModelPatternPermission;
 
-export type PatternPermissionItem = ExperimentPatternPermission | ModelPatternPermission;
+export type PatternPermissionItem =
+  | ExperimentPatternPermission
+  | ModelPatternPermission;
 
 export type DeletedExperiment = {
   experiment_id: string;

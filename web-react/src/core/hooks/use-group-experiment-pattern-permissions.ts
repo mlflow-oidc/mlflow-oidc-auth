@@ -17,7 +17,7 @@ export function useGroupExperimentPatternPermissions({
       }
       return fetchGroupExperimentPatternPermissions(groupName, signal);
     },
-    [groupName]
+    [groupName],
   );
 
   const {

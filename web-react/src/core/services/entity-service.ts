@@ -24,7 +24,7 @@ export const fetchAllExperiments = createStaticApiFetcher<ExperimentListItem[]>(
   {
     endpointKey: "ALL_EXPERIMENTS",
     responseType: [] as ExperimentListItem[],
-  }
+  },
 );
 
 export const fetchAllModels = createStaticApiFetcher<ModelListItem[]>({

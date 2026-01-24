@@ -5,7 +5,7 @@ import type { Identifiable, EntityListTableProps } from "../types/table";
 import { ObjectTableRow, PrimitiveTableRow } from "./table-rows";
 
 export function EntityListTable<
-  T extends Identifiable & Record<string, unknown>
+  T extends Identifiable & Record<string, unknown>,
 >(props: EntityListTableProps<T>) {
   if (props.mode === "primitive") {
     const { data, searchTerm } = props;

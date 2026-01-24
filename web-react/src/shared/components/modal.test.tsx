@@ -7,7 +7,7 @@ describe("Modal", () => {
     render(
       <Modal isOpen={true} onClose={() => {}} title="Test Modal">
         <div>Modal Content</div>
-      </Modal>
+      </Modal>,
     );
     expect(screen.getByText("Test Modal")).toBeInTheDocument();
     expect(screen.getByText("Modal Content")).toBeInTheDocument();
@@ -17,7 +17,7 @@ describe("Modal", () => {
     render(
       <Modal isOpen={false} onClose={() => {}} title="Test Modal">
         <div>Modal Content</div>
-      </Modal>
+      </Modal>,
     );
     expect(screen.queryByText("Test Modal")).not.toBeInTheDocument();
   });
@@ -27,7 +27,7 @@ describe("Modal", () => {
     render(
       <Modal isOpen={true} onClose={handleClose} title="Test Modal">
         <div>Content</div>
-      </Modal>
+      </Modal>,
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -39,7 +39,7 @@ describe("Modal", () => {
     render(
       <Modal isOpen={true} onClose={handleClose} title="Test Modal">
         <div>Content</div>
-      </Modal>
+      </Modal>,
     );
 
     const closeBtn = screen.getByRole("button", { name: "Close modal" });
@@ -51,7 +51,7 @@ describe("Modal", () => {
     const { unmount } = render(
       <Modal isOpen={true} onClose={() => {}} title="Test Modal">
         <div>Content</div>
-      </Modal>
+      </Modal>,
     );
     expect(document.body.style.overflow).toBe("hidden");
 

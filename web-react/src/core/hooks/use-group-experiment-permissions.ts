@@ -17,7 +17,7 @@ export function useGroupExperimentPermissions({
       }
       return fetchGroupExperimentPermissions(groupName, signal);
     },
-    [groupName]
+    [groupName],
   );
 
   const {

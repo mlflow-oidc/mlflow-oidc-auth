@@ -17,7 +17,7 @@ export function useGroupPromptPatternPermissions({
       }
       return fetchGroupPromptPatternPermissions(groupName, signal);
     },
-    [groupName]
+    [groupName],
   );
 
   const {

@@ -33,7 +33,10 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
 
   return (
     <header className="h-[52px] flex-shrink-0 flex items-center justify-between px-4 py-2">
-      <Link to="/user" className="flex items-center gap-2 text-xl font-extrabold text-logo">
+      <Link
+        to="/user"
+        className="flex items-center gap-2 text-xl font-extrabold text-logo"
+      >
         <img src="favicon.svg" alt="Logo" className="w-6 h-6" />
         Permissions
       </Link>

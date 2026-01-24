@@ -25,7 +25,7 @@ describe("RedirectIfAuth", () => {
     render(
       <RedirectIfAuth>
         <div data-testid="guest">Guest Content</div>
-      </RedirectIfAuth>
+      </RedirectIfAuth>,
     );
 
     expect(screen.getByTestId("navigate").dataset.to).toBe("/user");
@@ -38,7 +38,7 @@ describe("RedirectIfAuth", () => {
     render(
       <RedirectIfAuth to="/custom">
         <div data-testid="guest">Guest Content</div>
-      </RedirectIfAuth>
+      </RedirectIfAuth>,
     );
 
     expect(screen.getByTestId("guest")).toBeInTheDocument();

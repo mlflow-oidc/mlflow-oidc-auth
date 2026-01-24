@@ -93,7 +93,8 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(String(promptName))}/groups`,
 
   // Trash management
-  RESTORE_EXPERIMENT: (experimentId: string) => `/oidc/trash/experiments/${experimentId}/restore`,
+  RESTORE_EXPERIMENT: (experimentId: string) =>
+    `/oidc/trash/experiments/${experimentId}/restore`,
   RESTORE_RUN: (runId: string) => `/oidc/trash/runs/${runId}/restore`,
 
   // Webhook management
@@ -104,6 +105,9 @@ export const DYNAMIC_API_ENDPOINTS = {
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;
 export type DynamicEndpointKey = keyof typeof DYNAMIC_API_ENDPOINTS;
 
-type DynamicEndpointFunction<K extends DynamicEndpointKey> = (typeof DYNAMIC_API_ENDPOINTS)[K];
+type DynamicEndpointFunction<K extends DynamicEndpointKey> =
+  (typeof DYNAMIC_API_ENDPOINTS)[K];
 
-export type PathParams<K extends DynamicEndpointKey> = Parameters<DynamicEndpointFunction<K>>;
+export type PathParams<K extends DynamicEndpointKey> = Parameters<
+  DynamicEndpointFunction<K>
+>;

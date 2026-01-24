@@ -68,9 +68,7 @@ export const Modal: React.FC<ModalProps> = ({
           </h4>
         </div>
 
-        <div className="space-y-5">
-          {children}
-        </div>
+        <div className="space-y-5">{children}</div>
       </div>
     </div>
   );

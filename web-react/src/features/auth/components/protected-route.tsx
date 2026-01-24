@@ -21,12 +21,13 @@ export default function ProtectedRoute({
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
-        <h2 className="text-xl font-bold text-status-danger dark:text-status-danger-dark mb-2">Error Loading User</h2>
-        <p className="text-status-danger dark:text-status-danger-dark mb-4 opacity-90">{error.message}</p>
-        <Button
-          variant="danger"
-          onClick={() => window.location.reload()}
-        >
+        <h2 className="text-xl font-bold text-status-danger dark:text-status-danger-dark mb-2">
+          Error Loading User
+        </h2>
+        <p className="text-status-danger dark:text-status-danger-dark mb-4 opacity-90">
+          {error.message}
+        </p>
+        <Button variant="danger" onClick={() => window.location.reload()}>
           Try Again
         </Button>
       </div>

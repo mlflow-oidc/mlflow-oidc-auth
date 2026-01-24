@@ -31,10 +31,10 @@ describe("Table Components", () => {
   });
 
   describe("TableFooter", () => {
-     it("renders footer", () => {
-        render(<TableFooter />);
-        expect(screen.getByText(/placeholder/)).toBeInTheDocument();
-     });
+    it("renders footer", () => {
+      render(<TableFooter />);
+      expect(screen.getByText(/placeholder/)).toBeInTheDocument();
+    });
   });
 
   describe("PrimitiveTableRow", () => {
@@ -52,13 +52,20 @@ describe("Table Components", () => {
   });
 
   describe("ObjectTableRow", () => {
-      it("renders row cells", () => {
-          const item = { id: "1", name: "Test" };
-          const columns = [
-              { header: "Name", accessorKey: "name", render: (i: any) => i.name },
-          ];
-          render(<ObjectTableRow item={item} columns={columns} index={0} fallbackKey={0} />);
-          expect(screen.getByText("Test")).toBeInTheDocument();
-      });
+    it("renders row cells", () => {
+      const item = { id: "1", name: "Test" };
+      const columns = [
+        { header: "Name", accessorKey: "name", render: (i: any) => i.name },
+      ];
+      render(
+        <ObjectTableRow
+          item={item}
+          columns={columns}
+          index={0}
+          fallbackKey={0}
+        />,
+      );
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
   });
 });

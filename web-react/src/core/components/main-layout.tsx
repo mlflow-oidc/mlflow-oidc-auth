@@ -19,9 +19,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const { currentUser } = useUser();
 
-  const userName = currentUser?.display_name || currentUser?.username || "Guest";
+  const userName =
+    currentUser?.display_name || currentUser?.username || "Guest";
 
-  const sidebarWidthClass = isSidebarOpen ? SIDEBAR_WIDTH_OPEN_CLASS : SIDEBAR_WIDTH_CLOSED_CLASS;
+  const sidebarWidthClass = isSidebarOpen
+    ? SIDEBAR_WIDTH_OPEN_CLASS
+    : SIDEBAR_WIDTH_CLOSED_CLASS;
 
   return (
     <div

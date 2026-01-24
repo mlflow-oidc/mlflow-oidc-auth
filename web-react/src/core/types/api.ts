@@ -20,7 +20,7 @@ export type StaticFetcherConfig<T> = BaseFetcherConfig<T> & {
 
 export type DynamicFetcherConfig<
   T,
-  K extends DynamicEndpointKey
+  K extends DynamicEndpointKey,
 > = BaseFetcherConfig<T> & {
   endpointKey: K;
 };

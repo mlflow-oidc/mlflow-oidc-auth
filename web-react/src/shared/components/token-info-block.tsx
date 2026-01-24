@@ -12,7 +12,9 @@ export const TokenInfoBlock: React.FC<TokenInfoBlockProps> = ({
   passwordExpiration,
   onTokenGenerated,
 }) => {
-  const expirationDate = passwordExpiration ? new Date(passwordExpiration) : null;
+  const expirationDate = passwordExpiration
+    ? new Date(passwordExpiration)
+    : null;
   const formattedDate = expirationDate?.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",

@@ -14,7 +14,12 @@ interface GrantPermissionModalProps {
   isLoading?: boolean;
 }
 
-const PERMISSION_LEVELS: PermissionLevel[] = ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"];
+const PERMISSION_LEVELS: PermissionLevel[] = [
+  "READ",
+  "EDIT",
+  "MANAGE",
+  "NO_PERMISSIONS",
+];
 
 export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
   isOpen,
@@ -26,7 +31,8 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
   isLoading = false,
 }) => {
   const [selectedUsername, setSelectedUsername] = useState<string>("");
-  const [selectedPermission, setSelectedPermission] = useState<PermissionLevel>("READ");
+  const [selectedPermission, setSelectedPermission] =
+    useState<PermissionLevel>("READ");
 
   useEffect(() => {
     if (isOpen) {
@@ -51,7 +57,9 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
         options={[
           { label: `Select ${label.toLowerCase()}...`, value: "" },
           ...options,
-        ].map(opt => typeof opt === 'string' ? { label: opt, value: opt } : opt)}
+        ].map((opt) =>
+          typeof opt === "string" ? { label: opt, value: opt } : opt,
+        )}
         containerClassName="mb-4"
       />
 
@@ -59,9 +67,14 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
         id="permission-level"
         label="Permissions"
         value={selectedPermission}
-        onChange={(e) => setSelectedPermission(e.target.value as PermissionLevel)}
+        onChange={(e) =>
+          setSelectedPermission(e.target.value as PermissionLevel)
+        }
         required
-        options={PERMISSION_LEVELS.map(level => ({ label: level, value: level }))}
+        options={PERMISSION_LEVELS.map((level) => ({
+          label: level,
+          value: level,
+        }))}
         containerClassName="mb-4"
       />
 
@@ -69,7 +82,13 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
         <Button onClick={onClose} variant="ghost" disabled={isLoading}>
           Cancel
         </Button>
-        <Button onClick={() => { void handleSave(); }} variant="primary" disabled={isLoading || !selectedUsername}>
+        <Button
+          onClick={() => {
+            void handleSave();
+          }}
+          variant="primary"
+          disabled={isLoading || !selectedUsername}
+        >
           {isLoading ? "Saving..." : "Save"}
         </Button>
       </div>

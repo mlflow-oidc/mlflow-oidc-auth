@@ -23,12 +23,13 @@ export const UserPage = () => {
   const modelHook = useUserRegisteredModelPermissions({ username });
   const promptHook = useUserPromptPermissions({ username });
 
-  const activeHook = {
-    info: null,
-    experiments: experimentHook,
-    models: modelHook,
-    prompts: promptHook,
-  }[tab as "info" | "experiments" | "models" | "prompts"] || null;
+  const activeHook =
+    {
+      info: null,
+      experiments: experimentHook,
+      models: modelHook,
+      prompts: promptHook,
+    }[tab as "info" | "experiments" | "models" | "prompts"] || null;
 
   const {
     searchTerm,
@@ -58,9 +59,10 @@ export const UserPage = () => {
   const isLoading = isUserLoading || (activeHook?.isLoading ?? false);
   const error = userError || (activeHook?.error ?? null);
 
-  const filteredPermissions = activeHook?.permissions.filter((p: PermissionItem) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase())
-  ) ?? [];
+  const filteredPermissions =
+    activeHook?.permissions.filter((p: PermissionItem) =>
+      p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
+    ) ?? [];
 
   return (
     <PageContainer title="User Page">
@@ -76,10 +78,11 @@ export const UserPage = () => {
           <Link
             key={tabItem.id}
             to={`/user/${tabItem.id}`}
-            className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 ${tab === tabItem.id
-              ? "border-btn-primary text-btn-primary dark:border-btn-primary-dark dark:text-btn-primary-dark"
-              : "border-transparent text-text-primary dark:text-text-primary-dark hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark hover:border-btn-secondary-border dark:hover:border-btn-secondary-border-dark"
-              }`}
+            className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 ${
+              tab === tabItem.id
+                ? "border-btn-primary text-btn-primary dark:border-btn-primary-dark dark:text-btn-primary-dark"
+                : "border-transparent text-text-primary dark:text-text-primary-dark hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark hover:border-btn-secondary-border dark:hover:border-btn-secondary-border-dark"
+            }`}
           >
             {tabItem.label}
           </Link>
@@ -87,7 +90,10 @@ export const UserPage = () => {
       </div>
 
       <PageStatus
-        isLoading={isLoading && (!currentUser || (tab !== "info" && !activeHook?.permissions))}
+        isLoading={
+          isLoading &&
+          (!currentUser || (tab !== "info" && !activeHook?.permissions))
+        }
         loadingText="Loading information..."
         error={error}
         onRetry={tab === "info" ? undefined : activeHook?.refresh}
@@ -95,20 +101,18 @@ export const UserPage = () => {
 
       {!isLoading && !error && currentUser && (
         <>
-          {tab === "info" && (
-            <UserDetailsCard currentUser={currentUser} />
-          )}
+          {tab === "info" && <UserDetailsCard currentUser={currentUser} />}
           {tab !== "info" && activeHook && (
             <>
-            <div className="mb-2">
-              <SearchInput
-                value={searchTerm}
-                onInputChange={handleInputChange}
-                onSubmit={handleSearchSubmit}
-                onClear={handleClearSearch}
-                placeholder={`Search ${tab}...`}
-              />
-            </div>
+              <div className="mb-2">
+                <SearchInput
+                  value={searchTerm}
+                  onInputChange={handleInputChange}
+                  onSubmit={handleSearchSubmit}
+                  onClear={handleClearSearch}
+                  placeholder={`Search ${tab}...`}
+                />
+              </div>
               <EntityListTable
                 mode="object"
                 data={filteredPermissions}

@@ -27,11 +27,13 @@ export const SharedPermissionsPage = ({
     groupName?: string;
   }>();
 
-  const entityName = (entityKind === "user" ? routeUsername : routeGroupName) || null;
+  const entityName =
+    (entityKind === "user" ? routeUsername : routeGroupName) || null;
 
   const { currentUser } = useUser();
   const { user: userDetails, refetch: userDetailsRefetch } = useUserDetails({
-    username: entityKind === "user" && currentUser?.is_admin ? entityName : null,
+    username:
+      entityKind === "user" && currentUser?.is_admin ? entityName : null,
   });
 
   const [isRegexMode, setIsRegexMode] = useState(() => {
@@ -61,16 +63,20 @@ export const SharedPermissionsPage = ({
 
   return (
     <PageContainer
-      title={isRegexMode ? `Regex Permissions for ${entityName}` : `Permissions for ${entityName}`}
+      title={
+        isRegexMode
+          ? `Regex Permissions for ${entityName}`
+          : `Permissions for ${entityName}`
+      }
     >
       <div className="flex items-end gap-6">
-      {entityKind === "user" && currentUser?.is_admin && (
-        <TokenInfoBlock
-          username={entityName}
-          passwordExpiration={userDetails?.password_expiration}
-          onTokenGenerated={userDetailsRefetch}
-        />
-      )}
+        {entityKind === "user" && currentUser?.is_admin && (
+          <TokenInfoBlock
+            username={entityName}
+            passwordExpiration={userDetails?.password_expiration}
+            onTokenGenerated={userDetailsRefetch}
+          />
+        )}
       </div>
 
       <div className="flex justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
