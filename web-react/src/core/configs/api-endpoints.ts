@@ -1,4 +1,3 @@
-
 export const STATIC_API_ENDPOINTS = {
   ALL_GROUPS: "/api/2.0/mlflow/permissions/groups",
   ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
@@ -21,8 +20,7 @@ export const STATIC_API_ENDPOINTS = {
 
 export const DYNAMIC_API_ENDPOINTS = {
   // User permissions for resources
-  GET_USER_DETAILS: (userName: string) =>
-    `/api/2.0/mlflow/users/${userName}`,
+  GET_USER_DETAILS: (userName: string) => `/api/2.0/mlflow/users/${userName}`,
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${userName}/experiments`,
   USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>
@@ -52,17 +50,11 @@ export const DYNAMIC_API_ENDPOINTS = {
 
   // Resource user permissions
   EXPERIMENT_USER_PERMISSIONS: (experimentId: string) =>
-    `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
-      String(experimentId)
-    )}/users`,
+    `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(String(experimentId))}/users`,
   MODEL_USER_PERMISSIONS: (modelName: string) =>
-    `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(
-      String(modelName)
-    )}/users`,
+    `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(String(modelName))}/users`,
   PROMPT_USER_PERMISSIONS: (promptName: string) =>
-    `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(
-      String(promptName)
-    )}/users`,
+    `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(String(promptName))}/users`,
 
   // Group permissions for resources
   GROUP_EXPERIMENT_PERMISSIONS: (groupName: string) =>
@@ -94,21 +86,14 @@ export const DYNAMIC_API_ENDPOINTS = {
 
   // Resource group permissions
   EXPERIMENT_GROUP_PERMISSIONS: (experimentId: string) =>
-    `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(
-      String(experimentId)
-    )}/groups`,
+    `/api/2.0/mlflow/permissions/experiments/${encodeURIComponent(String(experimentId))}/groups`,
   MODEL_GROUP_PERMISSIONS: (modelName: string) =>
-    `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(
-      String(modelName)
-    )}/groups`,
+    `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(String(modelName))}/groups`,
   PROMPT_GROUP_PERMISSIONS: (promptName: string) =>
-    `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(
-      String(promptName)
-    )}/groups`,
+    `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(String(promptName))}/groups`,
 
   // Trash management
-  RESTORE_EXPERIMENT: (experimentId: string) =>
-    `/oidc/trash/experiments/${experimentId}/restore`,
+  RESTORE_EXPERIMENT: (experimentId: string) => `/oidc/trash/experiments/${experimentId}/restore`,
   RESTORE_RUN: (runId: string) => `/oidc/trash/runs/${runId}/restore`,
 
   // Webhook management
@@ -119,9 +104,6 @@ export const DYNAMIC_API_ENDPOINTS = {
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;
 export type DynamicEndpointKey = keyof typeof DYNAMIC_API_ENDPOINTS;
 
-type DynamicEndpointFunction<K extends DynamicEndpointKey> =
-  (typeof DYNAMIC_API_ENDPOINTS)[K];
+type DynamicEndpointFunction<K extends DynamicEndpointKey> = (typeof DYNAMIC_API_ENDPOINTS)[K];
 
-export type PathParams<K extends DynamicEndpointKey> = Parameters<
-  DynamicEndpointFunction<K>
->;
+export type PathParams<K extends DynamicEndpointKey> = Parameters<DynamicEndpointFunction<K>>;
