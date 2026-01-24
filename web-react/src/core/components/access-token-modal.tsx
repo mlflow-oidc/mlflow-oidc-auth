@@ -120,6 +120,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
           max={maxDate}
           required
           containerClassName="flex-grow"
+          className="text-text-primary dark:text-text-primary-dark dark:scheme-dark cursor-pointer"
         />
 
         <Button
