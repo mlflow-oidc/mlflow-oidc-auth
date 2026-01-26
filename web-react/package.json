@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint .",
+    "lint": "tsc -b && eslint .",
     "format": "prettier --write .",
     "preview": "vite preview",
     "release": "tsc -b && vite build",
