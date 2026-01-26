@@ -48,10 +48,7 @@ export default function ServiceAccountsPage() {
         is_admin: data.is_admin,
         is_service_account: true,
       });
-      showToast(
-        `Service account ${data.name} created successfully`,
-        "success",
-      );
+      showToast(`Service account ${data.name} created successfully`, "success");
       refresh();
       setIsModalOpen(false);
     } catch (err) {

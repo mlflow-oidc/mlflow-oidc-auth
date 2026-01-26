@@ -55,7 +55,9 @@ export const Toast: React.FC<ToastProps> = ({
       <div className="shrink-0 mr-3 mt-0.5">
         <FontAwesomeIcon icon={icons[type]} className="h-4 w-4" />
       </div>
-      <div className="flex-1 text-sm font-medium wrap-break-word">{message}</div>
+      <div className="flex-1 text-sm font-medium wrap-break-word">
+        {message}
+      </div>
       <button
         type="button"
         onClick={onClose}
