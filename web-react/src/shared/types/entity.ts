@@ -117,7 +117,7 @@ export type WebhookUpdateRequest = Partial<WebhookCreateRequest>;
 
 export type WebhookTestRequest = {
   event?: string;
-  payload?: any;
+  payload?: Record<string, unknown>;
 };
 
 export type WebhookTestResponse = {

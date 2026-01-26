@@ -4,6 +4,7 @@ import { TableEmptyState } from "./table-empty-state";
 import { TableHeader } from "./table-header";
 import { TableFooter } from "./table-footer";
 import { PrimitiveTableRow, ObjectTableRow } from "./table-rows";
+import type { ColumnConfig } from "../types/table";
 
 describe("Table Components", () => {
   describe("TableEmptyState", () => {
@@ -53,9 +54,13 @@ describe("Table Components", () => {
 
   describe("ObjectTableRow", () => {
     it("renders row cells", () => {
-      const item = { id: "1", name: "Test" };
-      const columns = [
-        { header: "Name", accessorKey: "name", render: (i: any) => i.name },
+      interface MockItem extends Record<string, unknown> {
+        id: string;
+        name: string;
+      }
+      const item: MockItem = { id: "1", name: "Test" };
+      const columns: ColumnConfig<MockItem>[] = [
+        { header: "Name", id: "name", render: (i) => i.name },
       ];
       render(
         <ObjectTableRow

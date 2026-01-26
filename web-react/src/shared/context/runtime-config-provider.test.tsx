@@ -8,11 +8,18 @@ const TestComponent = () => {
   return <div>Base Path: {config.basePath}</div>;
 };
 
+import type { RuntimeConfig } from "../services/runtime-config";
+
 describe("RuntimeConfigProvider", () => {
   it("provides config to children", () => {
-    const mockConfig = { authenticated: true, basePath: "/test-base" };
+    const mockConfig: RuntimeConfig = {
+      authenticated: true,
+      basePath: "/test-base",
+      uiPath: "/ui",
+      provider: "oidc",
+    };
     render(
-      <RuntimeConfigProvider config={mockConfig as any}>
+      <RuntimeConfigProvider config={mockConfig}>
         <TestComponent />
       </RuntimeConfigProvider>,
     );

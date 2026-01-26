@@ -1,14 +1,20 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { EntityListTable } from "./entity-list-table";
+import type { ColumnConfig } from "../types/table";
 
 describe("EntityListTable", () => {
-  const mockColumns = [
-    { header: "Name", render: (item: any) => item.name },
-    { header: "ID", render: (item: any) => item.id },
+  interface MockItem extends Record<string, unknown> {
+    id: string;
+    name: string;
+  }
+
+  const mockColumns: ColumnConfig<MockItem>[] = [
+    { header: "Name", render: (item) => item.name },
+    { header: "ID", render: (item) => item.id },
   ];
 
-  const mockData = [
+  const mockData: MockItem[] = [
     { id: "1", name: "Item 1" },
     { id: "2", name: "Item 2" },
   ];

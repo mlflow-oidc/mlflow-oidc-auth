@@ -32,7 +32,7 @@ describe("SearchInput", () => {
   });
 
   it("calls onSubmit", () => {
-    const handleSubmit = vi.fn((e) => e.preventDefault());
+    const handleSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
     render(
       <SearchInput
         value="test"
