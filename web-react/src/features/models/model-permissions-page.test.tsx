@@ -2,8 +2,25 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import ModelPermissionsPage from "./model-permissions-page";
 
-const mockUseModelUserPermissions = vi.fn();
-const mockUseModelGroupPermissions = vi.fn();
+import type { EntityPermission } from "../../shared/types/entity";
+import type { Mock } from "vitest";
+
+const mockUseModelUserPermissions: Mock<
+  () => {
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+    modelUserPermissions: EntityPermission[];
+  }
+> = vi.fn();
+const mockUseModelGroupPermissions: Mock<
+  () => {
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+    modelGroupPermissions: EntityPermission[];
+  }
+> = vi.fn();
 
 vi.mock("react-router", () => ({
   useParams: () => ({ modelName: "TestModel" }),
