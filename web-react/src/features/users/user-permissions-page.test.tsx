@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import UserPermissionsPage from "./user-permissions-page";
-import React from "react";
 
 vi.mock("../permissions/shared-permissions-page", () => ({
   SharedPermissionsPage: ({

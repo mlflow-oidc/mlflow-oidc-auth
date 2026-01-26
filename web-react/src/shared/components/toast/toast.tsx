@@ -52,14 +52,14 @@ export const Toast: React.FC<ToastProps> = ({
       `}
       role="alert"
     >
-      <div className="flex-shrink-0 mr-3 mt-0.5">
+      <div className="shrink-0 mr-3 mt-0.5">
         <FontAwesomeIcon icon={icons[type]} className="h-4 w-4" />
       </div>
-      <div className="flex-1 text-sm font-medium break-words">{message}</div>
+      <div className="flex-1 text-sm font-medium wrap-break-word">{message}</div>
       <button
         type="button"
         onClick={onClose}
-        className="ml-3 flex-shrink-0 text-current opacity-70 hover:opacity-100 transition-opacity"
+        className="ml-3 shrink-0 text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
         aria-label="Close"
       >
         <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />

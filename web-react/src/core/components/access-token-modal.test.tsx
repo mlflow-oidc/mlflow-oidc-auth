@@ -61,7 +61,7 @@ describe("AccessTokenModal", () => {
 
     expect(screen.getByDisplayValue("generated-token")).toBeInTheDocument();
     expect(mockShowToast).toHaveBeenCalledWith(
-      "Access token generated successfully!",
+      "Access token generated successfully",
       "success",
     );
     expect(mockRefresh).toHaveBeenCalled();

@@ -49,25 +49,25 @@ export default function ServiceAccountsPage() {
         is_service_account: true,
       });
       showToast(
-        `Service account ${data.name} created successfully.`,
+        `Service account ${data.name} created successfully`,
         "success",
       );
       refresh();
       setIsModalOpen(false);
     } catch (err) {
       console.error("Failed to create service account:", err);
-      showToast("Failed to create service account. Please try again.", "error");
+      showToast("Failed to create service account", "error");
     }
   };
 
   const handleRemoveServiceAccount = async (username: string) => {
     try {
       await deleteUser(username);
-      showToast(`Service account ${username} removed successfully.`, "success");
+      showToast(`Service account ${username} removed successfully`, "success");
       refresh();
     } catch (err) {
       console.error("Failed to remove service account:", err);
-      showToast("Failed to remove service account. Please try again.", "error");
+      showToast("Failed to remove service account", "error");
     }
   };
 

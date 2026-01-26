@@ -159,7 +159,7 @@ export const RegexPermissionsView = ({
       refresh();
       handleModalClose();
     } catch {
-      showToast("Failed to update permission. Please try again.", "error");
+      showToast("Failed to update permission", "error");
     } finally {
       setIsSaving(false);
     }
@@ -203,11 +203,11 @@ export const RegexPermissionsView = ({
         body: JSON.stringify({ regex, permission, priority }),
       });
 
-      showToast(`Regex rule "${regex}" has been added.`, "success");
+      showToast(`Regex rule "${regex}" has been added`, "success");
       refresh();
       setIsRegexModalOpen(false);
     } catch {
-      showToast("Failed to add regex rule. Please try again.", "error");
+      showToast("Failed to add regex rule", "error");
     } finally {
       setIsSaving(false);
     }
@@ -259,10 +259,10 @@ export const RegexPermissionsView = ({
         method: "DELETE",
       });
 
-      showToast(`Regex rule has been removed.`, "success");
+      showToast(`Regex rule has been removed`, "success");
       refresh();
     } catch {
-      showToast("Failed to remove permission. Please try again.", "error");
+      showToast("Failed to remove permission", "error");
     }
   };
 

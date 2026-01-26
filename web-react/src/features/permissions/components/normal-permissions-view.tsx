@@ -192,7 +192,7 @@ export const NormalPermissionsView = ({
       refresh();
       handleModalClose();
     } catch {
-      showToast("Failed to update permission. Please try again.", "error");
+      showToast("Failed to update permission", "error");
     } finally {
       setIsSaving(false);
     }
@@ -241,7 +241,7 @@ export const NormalPermissionsView = ({
       refresh();
       setIsGrantModalOpen(false);
     } catch {
-      showToast("Failed to grant permission. Please try again.", "error");
+      showToast("Failed to grant permission", "error");
     } finally {
       setIsSaving(false);
     }
@@ -293,10 +293,10 @@ export const NormalPermissionsView = ({
         method: "DELETE",
       });
 
-      showToast(`Permission for ${item.name} has been removed.`, "success");
+      showToast(`Permission for ${item.name} has been removed`, "success");
       refresh();
     } catch {
-      showToast("Failed to remove permission. Please try again.", "error");
+      showToast("Failed to remove permission", "error");
     }
   };
 

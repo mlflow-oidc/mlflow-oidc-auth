@@ -82,14 +82,14 @@ export function usePermissionsManagement({
         });
 
         showToast(
-          `Permission for ${editingItem.name} has been updated.`,
+          `Permission for ${editingItem.name} has been updated`,
           "success",
         );
         refresh();
         setIsModalOpen(false);
         setEditingItem(null);
       } catch {
-        showToast("Failed to update permission. Please try again.", "error");
+        showToast("Failed to update permission", "error");
       } finally {
         setIsSaving(false);
       }
@@ -140,10 +140,10 @@ export function usePermissionsManagement({
           method: "DELETE",
         });
 
-        showToast(`Permission for ${item.name} has been removed.`, "success");
+        showToast(`Permission for ${item.name} has been removed`, "success");
         refresh();
       } catch {
-        showToast("Failed to remove permission. Please try again.", "error");
+        showToast("Failed to remove permission", "error");
       }
     },
     [resourceId, resourceType, refresh, showToast],
@@ -191,11 +191,11 @@ export function usePermissionsManagement({
           body: JSON.stringify({ permission }),
         });
 
-        showToast(`Permission for ${name} has been granted.`, "success");
+        showToast(`Permission for ${name} has been granted`, "success");
         refresh();
         return true;
       } catch {
-        showToast("Failed to grant permission. Please try again.", "error");
+        showToast("Failed to grant permission", "error");
         return false;
       } finally {
         setIsSaving(false);

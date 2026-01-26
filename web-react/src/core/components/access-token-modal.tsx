@@ -71,7 +71,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
       const token = await requestAccessTokenApi(username, expirationDateObject);
       setAccessToken(token);
 
-      showToast("Access token generated successfully!", "success");
+      showToast("Access token generated successfully", "success");
       refresh();
       onTokenGenerated?.();
     } catch (error) {
