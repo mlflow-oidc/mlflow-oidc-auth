@@ -51,7 +51,14 @@ export const UserPage = () => {
   ];
 
   const permissionColumns: ColumnConfig<PermissionItem>[] = [
-    { header: "Name", render: (item) => item.name },
+    {
+      header: "Name",
+      render: (item) => (
+        <span className="truncate block" title={item.name}>
+          {item.name}
+        </span>
+      ),
+    },
     { header: "Permission", render: (item) => item.permission },
     { header: "Kind", render: (item) => item.kind },
   ];

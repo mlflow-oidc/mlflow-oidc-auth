@@ -8,7 +8,7 @@ export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
   currentUser,
 }) => {
   const rowClasses =
-    "flex flex-row p-1 hover:bg-table-row-hover dark:hover:bg-table-row-hover transition-colors duration-150 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark";
+    "flex flex-row items-center min-h-(--table-row-height) px-1 hover:bg-table-row-hover dark:hover:bg-table-row-hover transition-colors duration-150 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark";
   const labelClasses =
     "w-1/3 font-semibold text-text-primary dark:text-text-primary-dark";
   const valueClasses =
@@ -50,8 +50,8 @@ export const UserDetailsCard: React.FC<UserDetailsCardProps> = ({
         </div>
 
         {currentUser.is_admin && (
-          <div className="p-1 bg-logo/5">
-            <p className="text-logo font-medium">
+          <div className="p-1 mt-2 min-h-(--table-row-height) flex items-center">
+            <p className="text-logo text-base font-semibold">
               You have administrator privileges. Additional management options
               are available to you.
             </p>
