@@ -15,11 +15,11 @@ export function PrimitiveTableRow({
       role="row"
       key={index}
       onClick={handleClick}
-      className="flex border-b
+      className="flex items-center h-(--table-row-height) border-b
               border-btn-secondary-border dark:border-btn-secondary-border-dark
               hover:bg-table-row-hover dark:hover:bg-table-row-hover"
     >
-      <div role="cell" className="p-1 flex-1 min-w-0 truncate">
+      <div role="cell" className="px-1 flex-1 min-w-0 truncate">
         {value}
       </div>
     </div>
@@ -36,7 +36,7 @@ export function ObjectTableRow<
     <div
       key={key}
       role="row"
-      className="flex items-center border-b group
+      className="flex items-center h-(--table-row-height) border-b group
               border-btn-secondary-border dark:border-btn-secondary-border-dark
               hover:bg-table-row-hover dark:hover:bg-table-row-hover "
     >
@@ -47,7 +47,7 @@ export function ObjectTableRow<
             (typeof column.header === "string" ? column.header : index)
           }
           role="cell"
-          className={`p-1 flex-1 min-w-0 truncate ${column.className || ""}`}
+          className={`px-1 flex-1 min-w-0 truncate ${column.className || ""}`}
         >
           {column.render(item)}
         </div>

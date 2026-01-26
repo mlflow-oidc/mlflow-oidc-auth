@@ -27,7 +27,7 @@ export function IconButton({
       onClick={handleClick}
       title={title}
       icon={icon}
-      className="w-8 h-8"
+      className="w-7 h-7"
       disabled={disabled}
     />
   );
