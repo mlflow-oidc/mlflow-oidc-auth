@@ -3,8 +3,27 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import ExperimentsPage from "./experiments-page";
 
-const mockUseAllExperiments = vi.fn();
-const mockUseSearch = vi.fn();
+import type { ExperimentListItem } from "../../shared/types/entity";
+import type { Mock } from "vitest";
+
+const mockUseAllExperiments: Mock<
+  () => {
+    allExperiments: ExperimentListItem[] | null;
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+  }
+> = vi.fn();
+
+const mockUseSearch: Mock<
+  () => {
+    searchTerm: string;
+    submittedTerm: string;
+    handleInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    handleSearchSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+    handleClearSearch: () => void;
+  }
+> = vi.fn();
 
 vi.mock("../../core/hooks/use-all-experiments", () => ({
   useAllExperiments: () => mockUseAllExperiments(),
@@ -29,7 +48,13 @@ vi.mock("../../shared/components/page/page-container", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading, error }: any) => {
+  default: ({
+    isLoading,
+    error,
+  }: {
+    isLoading: boolean;
+    error: Error | null;
+  }) => {
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div>Error</div>;
     return null;
@@ -41,9 +66,9 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({ data }: any) => (
+  EntityListTable: ({ data }: { data: ExperimentListItem[] }) => (
     <div data-testid="entity-list">
-      {data.map((item: any) => (
+      {data.map((item) => (
         <div key={item.id}>{item.name}</div>
       ))}
     </div>
@@ -89,8 +114,8 @@ describe("ExperimentsPage", () => {
       error: null,
       refresh: vi.fn(),
       allExperiments: [
-        { id: "1", name: "Exp 1" },
-        { id: "2", name: "Exp 2" },
+        { id: "1", name: "Exp 1", tags: {} },
+        { id: "2", name: "Exp 2", tags: {} },
       ],
     });
 
@@ -113,8 +138,8 @@ describe("ExperimentsPage", () => {
       error: null,
       refresh: vi.fn(),
       allExperiments: [
-        { id: "1", name: "Exp 1" },
-        { id: "2", name: "Exp 2" },
+        { id: "1", name: "Exp 1", tags: {} },
+        { id: "2", name: "Exp 2", tags: {} },
       ],
     });
 

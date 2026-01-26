@@ -3,10 +3,53 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import ExperimentPermissionsPage from "./experiment-permissions-page";
 
-const mockUseExperimentUserPermissions = vi.fn();
-const mockUseExperimentGroupPermissions = vi.fn();
-const mockUseAllExperiments = vi.fn();
-const mockEntityPermissionsManager = vi.fn();
+import type {
+  EntityPermission,
+  ExperimentListItem,
+  PermissionType,
+} from "../../shared/types/entity";
+import type { Mock } from "vitest";
+
+interface EntityPermissionsManagerProps {
+  resourceId: string;
+  resourceName: string;
+  resourceType: PermissionType;
+  permissions: EntityPermission[];
+  isLoading: boolean;
+  error: Error | null;
+  refresh: () => void;
+}
+
+const mockUseExperimentUserPermissions: Mock<
+  () => {
+    experimentUserPermissions: EntityPermission[];
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+  }
+> = vi.fn();
+
+const mockUseExperimentGroupPermissions: Mock<
+  () => {
+    experimentGroupPermissions: EntityPermission[];
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+  }
+> = vi.fn();
+
+const mockUseAllExperiments: Mock<
+  () => {
+    allExperiments: ExperimentListItem[] | null;
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+  }
+> = vi.fn();
+
+const mockEntityPermissionsManager: Mock<
+  (props: EntityPermissionsManagerProps) => void
+> = vi.fn();
 
 vi.mock("react-router", () => ({
   useParams: () => ({ experimentId: "123" }),
@@ -39,7 +82,7 @@ vi.mock("../../shared/components/page/page-container", () => ({
 }));
 
 vi.mock("../permissions/components/entity-permissions-manager", () => ({
-  EntityPermissionsManager: (props: any) => {
+  EntityPermissionsManager: (props: EntityPermissionsManagerProps) => {
     mockEntityPermissionsManager(props);
     return <div data-testid="permissions-manager" />;
   },
@@ -60,7 +103,10 @@ describe("ExperimentPermissionsPage", () => {
       experimentGroupPermissions: [],
     });
     mockUseAllExperiments.mockReturnValue({
-      allExperiments: [{ id: "123", name: "Test Experiment" }],
+      allExperiments: [{ id: "123", name: "Test Experiment", tags: {} }],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
     });
   });
 
@@ -79,13 +125,17 @@ describe("ExperimentPermissionsPage", () => {
       isLoading: false,
       error: null,
       refresh: vi.fn(),
-      experimentUserPermissions: [{ user: "u1" }],
+      experimentUserPermissions: [
+        { name: "u1", kind: "user", permission: "EDIT" },
+      ],
     });
     mockUseExperimentGroupPermissions.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
-      experimentGroupPermissions: [{ group: "g1" }],
+      experimentGroupPermissions: [
+        { name: "g1", kind: "group", permission: "MANAGE" },
+      ],
     });
 
     render(<ExperimentPermissionsPage />);
@@ -96,7 +146,10 @@ describe("ExperimentPermissionsPage", () => {
       ][0];
     expect(lastCall.permissions).toHaveLength(2);
     expect(lastCall.permissions).toEqual(
-      expect.arrayContaining([{ user: "u1" }, { group: "g1" }]),
+      expect.arrayContaining([
+        { name: "u1", kind: "user", permission: "EDIT" },
+        { name: "g1", kind: "group", permission: "MANAGE" },
+      ]),
     );
   });
 });
