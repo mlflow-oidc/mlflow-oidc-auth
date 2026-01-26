@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Select } from "../../../shared/components/select";
@@ -34,12 +34,7 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
   const [selectedPermission, setSelectedPermission] =
     useState<PermissionLevel>("READ");
 
-  useEffect(() => {
-    if (isOpen) {
-      setSelectedUsername("");
-      setSelectedPermission("READ");
-    }
-  }, [isOpen]);
+  // State reset is handled by 'key' prop in parent
 
   const handleSave = async () => {
     if (!selectedUsername) return;

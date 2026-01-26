@@ -51,19 +51,26 @@ describe("EntityPermissionsManager", () => {
     vi.spyOn(
       usePermissionsManagementModule,
       "usePermissionsManagement",
-    ).mockReturnValue(defaultManagement as any);
+    ).mockReturnValue(defaultManagement);
     vi.spyOn(useAllUsersModule, "useAllUsers").mockReturnValue({
       allUsers: ["user1", "user2"],
-    } as any);
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
       allServiceAccounts: ["sa1"],
-    } as any);
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     vi.spyOn(useAllGroupsModule, "useAllGroups").mockReturnValue({
       allGroups: ["group1", "group2"],
-    } as any);
-    vi.spyOn(useSearchModule, "useSearch").mockReturnValue(
-      defaultSearch as any,
-    );
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    vi.spyOn(useSearchModule, "useSearch").mockReturnValue(defaultSearch);
   });
 
   const renderManager = (props = {}) => {
@@ -113,7 +120,7 @@ describe("EntityPermissionsManager", () => {
       ...defaultManagement,
       isModalOpen: true,
       editingItem: mockPermissions[0],
-    } as any);
+    });
 
     renderManager();
     // The title matches "Edit Experiment res-1 permissions for user1"
@@ -188,7 +195,9 @@ describe("EntityPermissionsManager", () => {
     const removeButtons = screen.getAllByTitle("Remove permission");
     fireEvent.click(removeButtons[0]);
 
-    expect(mockHandleRemovePermission).toHaveBeenCalledWith(mockPermissions[0]);
+    await waitFor(() => {
+      expect(mockHandleRemovePermission).toHaveBeenCalledWith(mockPermissions[0]);
+    });
   });
 
   it("filters available users/groups correctly", () => {

@@ -2,15 +2,15 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { SharedPermissionsPage } from "./shared-permissions-page";
 
-const mockUseUser = vi.fn();
-const mockUseUserDetails = vi.fn();
+const mockUseUser = vi.fn<() => { currentUser: { is_admin: boolean; username: string } | null }>();
+const mockUseUserDetails = vi.fn<() => { user: unknown; refetch: () => void }>();
 
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
-    getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => {
+    getItem: (key: string): string | null => store[key] || null,
+    setItem: (key: string, value: string): void => {
       store[key] = value.toString();
     },
     clear: () => {
@@ -26,7 +26,15 @@ Object.defineProperty(window, "localStorage", { value: localStorageMock });
 
 vi.mock("react-router", () => ({
   useParams: () => ({ username: "testuser" }),
-  Link: ({ children, to, className }: any) => (
+  Link: ({
+    children,
+    to,
+    className,
+  }: {
+    children: React.ReactNode;
+    to: string;
+    className?: string;
+  }) => (
     <a href={to} className={className}>
       {children}
     </a>
@@ -64,7 +72,17 @@ vi.mock("./components/regex-permissions-view", () => ({
 }));
 
 vi.mock("../../shared/components/switch", () => ({
-  Switch: ({ checked, onChange, label, labelClassName }: any) => (
+  Switch: ({
+    checked,
+    onChange,
+    label,
+    labelClassName,
+  }: {
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    label: string;
+    labelClassName?: string;
+  }) => (
     <div
       onClick={() => onChange(!checked)}
       data-testid="regex-switch"
@@ -83,7 +101,7 @@ describe("SharedPermissionsPage", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseUser.mockReturnValue({
-      currentUser: { is_admin: false },
+      currentUser: { is_admin: false, username: "testuser" },
     });
     mockUseUserDetails.mockReturnValue({
       user: null,
@@ -109,7 +127,10 @@ describe("SharedPermissionsPage", () => {
 
   it("toggles regex mode for admin", () => {
     mockUseUser.mockReturnValue({
-      currentUser: { is_admin: true },
+      currentUser: {
+        is_admin: true,
+        username: ""
+      },
     });
 
     render(
@@ -143,7 +164,10 @@ describe("SharedPermissionsPage", () => {
 
   it("saves regex mode to localStorage", () => {
     mockUseUser.mockReturnValue({
-      currentUser: { is_admin: true },
+      currentUser: {
+        is_admin: true,
+        username: ""
+      },
     });
     localStorage.setItem("_mlflow_is_regex_mode", "false");
     render(

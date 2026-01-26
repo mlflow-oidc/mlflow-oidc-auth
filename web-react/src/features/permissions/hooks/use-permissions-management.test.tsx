@@ -4,6 +4,7 @@ import { usePermissionsManagement } from "./use-permissions-management";
 import * as httpModule from "../../../core/services/http";
 import * as useToastModule from "../../../shared/components/toast/use-toast";
 import type { PermissionType } from "../../../shared/types/entity";
+import type { ToastContextType } from "../../../shared/components/toast/toast-context-val";
 
 vi.mock("../../../core/services/http");
 vi.mock("../../../shared/components/toast/use-toast");
@@ -16,7 +17,8 @@ describe("usePermissionsManagement", () => {
     vi.clearAllMocks();
     vi.spyOn(useToastModule, "useToast").mockReturnValue({
       showToast: mockShowToast,
-    } as any);
+      removeToast: vi.fn(),
+    } as ToastContextType);
   });
 
   it("initializes with default state", () => {
@@ -47,7 +49,7 @@ describe("usePermissionsManagement", () => {
         name: "user1",
         permission: "READ",
         kind: "user",
-      } as any);
+      });
     });
 
     expect(result.current.isModalOpen).toBe(true);
@@ -72,7 +74,7 @@ describe("usePermissionsManagement", () => {
         name: "user1",
         permission: "READ",
         kind: "user",
-      } as any);
+      });
     });
     expect(result.current.isModalOpen).toBe(true);
 
@@ -127,7 +129,7 @@ describe("usePermissionsManagement", () => {
     combinations.forEach(({ type, kind, expectedUrl }) => {
       describe(`${type} - ${kind}`, () => {
         it(`successfully updates permission for ${type} ${kind}`, async () => {
-          vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+          vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
           const { result } = renderHook(() =>
             usePermissionsManagement({
               resourceId: "id1",
@@ -141,7 +143,7 @@ describe("usePermissionsManagement", () => {
               name: "name1",
               permission: "READ",
               kind: kind,
-            } as any);
+            });
           });
 
           await act(async () => {
@@ -155,7 +157,7 @@ describe("usePermissionsManagement", () => {
         });
 
         it(`successfully removes permission for ${type} ${kind}`, async () => {
-          vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+          vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
           const { result } = renderHook(() =>
             usePermissionsManagement({
               resourceId: "id1",
@@ -168,7 +170,8 @@ describe("usePermissionsManagement", () => {
             await result.current.handleRemovePermission({
               name: "name1",
               kind: kind,
-            } as any);
+              permission: "READ",
+            });
           });
 
           expect(httpModule.http).toHaveBeenCalledWith(
@@ -178,7 +181,7 @@ describe("usePermissionsManagement", () => {
         });
 
         it(`successfully grants permission for ${type} ${kind}`, async () => {
-          vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+          vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
           const { result } = renderHook(() =>
             usePermissionsManagement({
               resourceId: "id1",

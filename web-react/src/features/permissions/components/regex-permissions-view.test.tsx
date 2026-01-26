@@ -10,7 +10,12 @@ import * as usePromptHooks from "../../../core/hooks/use-user-prompt-pattern-per
 import * as useGroupExpHooks from "../../../core/hooks/use-group-experiment-pattern-permissions";
 import * as useGroupModelHooks from "../../../core/hooks/use-group-model-pattern-permissions";
 import * as useGroupPromptHooks from "../../../core/hooks/use-group-prompt-pattern-permissions";
-import type { PermissionType } from "../../../shared/types/entity";
+import type {
+  PermissionType,
+  ExperimentPatternPermission,
+  ModelPatternPermission,
+} from "../../../shared/types/entity";
+import type { ToastContextType } from "../../../shared/components/toast/toast-context-val";
 
 vi.mock("../../../core/services/http");
 vi.mock("../../../shared/components/toast/use-toast");
@@ -34,49 +39,74 @@ describe("RegexPermissionsView", () => {
     handleClearSearch: vi.fn(),
   };
 
-  const mockPermissions = [
+  const mockExpPatternPermissions: ExperimentPatternPermission[] = [
     { regex: "^test_.*", permission: "READ", priority: 100, id: 1 },
     { regex: "^prod_.*", permission: "MANAGE", priority: 0, id: 2 },
   ];
 
-  const defaultHookResult = {
-    isLoading: false,
-    error: null,
-    refresh: mockRefresh,
-    permissions: mockPermissions,
-  };
+  const mockModelPatternPermissions: ModelPatternPermission[] = [
+    { regex: "^test_.*", permission: "READ", priority: 100, id: 1, prompt: false },
+    { regex: "^prod_.*", permission: "MANAGE", priority: 0, id: 2, prompt: false },
+  ];
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(useToastModule, "useToast").mockReturnValue({
       showToast: mockShowToast,
-    } as any);
-    vi.spyOn(useSearchModule, "useSearch").mockReturnValue(
-      defaultSearch as any,
-    );
+      removeToast: vi.fn(),
+    } as ToastContextType);
+    vi.spyOn(useSearchModule, "useSearch").mockReturnValue(defaultSearch);
 
     vi.spyOn(
       useExpHooks,
       "useUserExperimentPatternPermissions",
-    ).mockReturnValue(defaultHookResult as any);
-    vi.spyOn(useModelHooks, "useUserModelPatternPermissions").mockReturnValue(
-      defaultHookResult as any,
-    );
+    ).mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockExpPatternPermissions,
+    });
+    vi.spyOn(useModelHooks, "useUserModelPatternPermissions").mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockModelPatternPermissions,
+    });
     vi.spyOn(usePromptHooks, "useUserPromptPatternPermissions").mockReturnValue(
-      defaultHookResult as any,
+      {
+        isLoading: false,
+        error: null,
+        refresh: mockRefresh,
+        permissions: mockModelPatternPermissions,
+      },
     );
     vi.spyOn(
       useGroupExpHooks,
       "useGroupExperimentPatternPermissions",
-    ).mockReturnValue(defaultHookResult as any);
+    ).mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockExpPatternPermissions,
+    });
     vi.spyOn(
       useGroupModelHooks,
       "useGroupModelPatternPermissions",
-    ).mockReturnValue(defaultHookResult as any);
+    ).mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockModelPatternPermissions,
+    });
     vi.spyOn(
       useGroupPromptHooks,
       "useGroupPromptPatternPermissions",
-    ).mockReturnValue(defaultHookResult as any);
+    ).mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockModelPatternPermissions,
+    });
   });
 
   const types: PermissionType[] = ["experiments", "models", "prompts"];
@@ -112,7 +142,7 @@ describe("RegexPermissionsView", () => {
       });
 
       it(`opens add modal and saves for ${type} (user)`, async () => {
-        vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+        vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
         render(
           <RegexPermissionsView
             type={type}
@@ -138,7 +168,7 @@ describe("RegexPermissionsView", () => {
       });
 
       it(`opens add modal and saves for ${type} (group)`, async () => {
-        vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+        vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
         render(
           <RegexPermissionsView
             type={type}
@@ -164,7 +194,7 @@ describe("RegexPermissionsView", () => {
       });
 
       it(`opens edit modal and saves for ${type}`, async () => {
-        vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+        vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
         render(
           <RegexPermissionsView
             type={type}
@@ -188,7 +218,7 @@ describe("RegexPermissionsView", () => {
       });
 
       it(`handles removing for ${type}`, async () => {
-        vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+        vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
         render(
           <RegexPermissionsView
             type={type}
@@ -216,7 +246,12 @@ describe("RegexPermissionsView", () => {
     vi.spyOn(
       useExpHooks,
       "useUserExperimentPatternPermissions",
-    ).mockReturnValue({ ...defaultHookResult, isLoading: true } as any);
+    ).mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockExpPatternPermissions,
+    });
     const { rerender } = render(
       <RegexPermissionsView
         type="experiments"
@@ -229,7 +264,12 @@ describe("RegexPermissionsView", () => {
     vi.spyOn(
       useExpHooks,
       "useUserExperimentPatternPermissions",
-    ).mockReturnValue({ ...defaultHookResult, error: "Fail" } as any);
+    ).mockReturnValue({
+      isLoading: false,
+      error: new Error("Fail"),
+      refresh: mockRefresh,
+      permissions: mockExpPatternPermissions,
+    });
     rerender(
       <RegexPermissionsView
         type="experiments"

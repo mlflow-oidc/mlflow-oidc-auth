@@ -210,6 +210,7 @@ export function EntityPermissionsManager({
         label="User"
         options={availableUsers}
         isLoading={isSaving}
+        key={isAddUserModalOpen ? "user-open" : "user-closed"}
       />
 
       <GrantPermissionModal
@@ -223,6 +224,7 @@ export function EntityPermissionsManager({
         label="Service account"
         options={availableAccounts}
         isLoading={isSaving}
+        key={isAddAccountModalOpen ? "account-open" : "account-closed"}
       />
 
       <GrantPermissionModal
@@ -240,6 +242,7 @@ export function EntityPermissionsManager({
         label="Group"
         options={availableGroups}
         isLoading={isSaving}
+        key={isAddGroupModalOpen ? "group-open" : "group-closed"}
       />
     </>
   );

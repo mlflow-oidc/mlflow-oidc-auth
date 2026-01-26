@@ -416,6 +416,7 @@ export const NormalPermissionsView = ({
         }
         options={availableEntities}
         isLoading={isSaving}
+        key={isGrantModalOpen ? "open" : "closed"}
       />
     </>
   );

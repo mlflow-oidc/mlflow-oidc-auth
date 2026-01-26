@@ -13,7 +13,13 @@ import * as useGroupPromptHooks from "../../../core/hooks/use-group-prompt-permi
 import * as useAllExpHooks from "../../../core/hooks/use-all-experiments";
 import * as useAllModelHooks from "../../../core/hooks/use-all-models";
 import * as useAllPromptHooks from "../../../core/hooks/use-all-prompts";
-import type { PermissionType } from "../../../shared/types/entity";
+import type {
+  PermissionType,
+  ExperimentPermission,
+  ModelPermission,
+  ExperimentListItem,
+} from "../../../shared/types/entity";
+import type { ToastContextType } from "../../../shared/components/toast/toast-context-val";
 
 vi.mock("../../../core/services/http");
 vi.mock("../../../shared/components/toast/use-toast");
@@ -40,59 +46,92 @@ describe("NormalPermissionsView", () => {
     handleClearSearch: vi.fn(),
   };
 
-  const mockPermissions = [
+  const mockExpPermissions: ExperimentPermission[] = [
     { name: "item1", permission: "READ", kind: "user", id: "id1" },
     { name: "item2", permission: "MANAGE", kind: "service-account", id: "id2" },
-    { name: "fallback", permission: "READ", kind: "fallback" },
+    { name: "fallback", permission: "READ", kind: "fallback", id: "f1" },
   ];
 
-  const defaultHookResult = {
-    isLoading: false,
-    error: null,
-    refresh: mockRefresh,
-    permissions: mockPermissions,
-  };
+  const mockModelPermissions: ModelPermission[] = [
+    { name: "item1", permission: "READ", kind: "user" },
+    { name: "item2", permission: "MANAGE", kind: "service-account" },
+    { name: "fallback", permission: "READ", kind: "fallback" },
+  ];
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(useToastModule, "useToast").mockReturnValue({
       showToast: mockShowToast,
-    } as any);
-    vi.spyOn(useSearchModule, "useSearch").mockReturnValue(
-      defaultSearch as any,
-    );
+      removeToast: vi.fn(),
+    } as ToastContextType);
+    vi.spyOn(useSearchModule, "useSearch").mockReturnValue(defaultSearch);
 
     // Default mock implementation for all hooks
-    vi.spyOn(useExpHooks, "useUserExperimentPermissions").mockReturnValue(
-      defaultHookResult as any,
-    );
+    vi.spyOn(useExpHooks, "useUserExperimentPermissions").mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockExpPermissions,
+    });
     vi.spyOn(
       useModelHooks,
       "useUserRegisteredModelPermissions",
-    ).mockReturnValue(defaultHookResult as any);
-    vi.spyOn(usePromptHooks, "useUserPromptPermissions").mockReturnValue(
-      defaultHookResult as any,
-    );
-    vi.spyOn(useGroupExpHooks, "useGroupExperimentPermissions").mockReturnValue(
-      defaultHookResult as any,
-    );
+    ).mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockModelPermissions,
+    });
+    vi.spyOn(usePromptHooks, "useUserPromptPermissions").mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockModelPermissions,
+    });
+    vi.spyOn(useGroupExpHooks, "useGroupExperimentPermissions").mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockExpPermissions,
+    });
     vi.spyOn(
       useGroupModelHooks,
       "useGroupRegisteredModelPermissions",
-    ).mockReturnValue(defaultHookResult as any);
-    vi.spyOn(useGroupPromptHooks, "useGroupPromptPermissions").mockReturnValue(
-      defaultHookResult as any,
-    );
+    ).mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockModelPermissions,
+    });
+    vi.spyOn(useGroupPromptHooks, "useGroupPromptPermissions").mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockModelPermissions,
+    });
 
     vi.spyOn(useAllExpHooks, "useAllExperiments").mockReturnValue({
-      allExperiments: [{ id: "new1", name: "New Exp" }],
-    } as any);
+      allExperiments: [{ id: "new1", name: "New Exp" } as ExperimentListItem],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     vi.spyOn(useAllModelHooks, "useAllModels").mockReturnValue({
-      allModels: [{ name: "New Model" }],
-    } as any);
+      allModels: [
+        { name: "New Model", aliases: "", description: "", tags: {} },
+      ],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     vi.spyOn(useAllPromptHooks, "useAllPrompts").mockReturnValue({
-      allPrompts: [{ name: "New Prompt" }],
-    } as any);
+      allPrompts: [
+        { name: "New Prompt", aliases: "", description: "", tags: {} },
+      ],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
   });
 
   const types: PermissionType[] = ["experiments", "models", "prompts"];
@@ -117,7 +156,7 @@ describe("NormalPermissionsView", () => {
       });
 
       it(`opens grant modal and saves for ${type} (group)`, async () => {
-        vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+        vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
         render(
           <NormalPermissionsView
             type={type}
@@ -157,7 +196,7 @@ describe("NormalPermissionsView", () => {
       });
 
       it(`handles removing for ${type} (user)`, async () => {
-        vi.spyOn(httpModule, "http").mockResolvedValue({} as any);
+        vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
         render(
           <NormalPermissionsView
             type={type}
@@ -223,9 +262,11 @@ describe("NormalPermissionsView", () => {
 
   it("renders loading and error appropriately", () => {
     vi.spyOn(useExpHooks, "useUserExperimentPermissions").mockReturnValue({
-      ...defaultHookResult,
       isLoading: true,
-    } as any);
+      error: null,
+      refresh: mockRefresh,
+      permissions: mockExpPermissions,
+    });
     const { rerender } = render(
       <NormalPermissionsView
         type="experiments"
@@ -236,9 +277,11 @@ describe("NormalPermissionsView", () => {
     expect(screen.getByText(/Loading/i)).toBeDefined();
 
     vi.spyOn(useExpHooks, "useUserExperimentPermissions").mockReturnValue({
-      ...defaultHookResult,
-      error: "Error",
-    } as any);
+      isLoading: false,
+      error: new Error("Error"),
+      refresh: mockRefresh,
+      permissions: mockExpPermissions,
+    });
     rerender(
       <NormalPermissionsView
         type="experiments"
