@@ -3,8 +3,8 @@ import React, {
   type FormEvent,
   useCallback,
 } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSearch, faTimes } from "@fortawesome/free-solid-svg-icons";
+import { Button } from "./button";
 
 type InputPassThroughProps = Omit<
   InputHTMLAttributes<HTMLInputElement>,
@@ -36,9 +36,9 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   return (
     <form
       onSubmit={onSubmit}
-      className="flex-shrink-0 flex h-8 rounded border text-sm mb-1 mt-2
+      className="shrink-0 flex h-8 rounded border text-sm mb-1 mt-2
       border-text-primary-hover dark:border-text-primary-hover-dark
-      bg-ui-bg dark:bg-ui-bg-dark overflow-hidden"
+      bg-ui-bg dark:bg-ui-bg-dark overflow-hidden relative"
       style={{ minWidth: "100px", maxWidth: "250px" }}
     >
       <input
@@ -47,34 +47,28 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         onChange={onInputChange}
         placeholder={placeholder}
         name="searchTerm"
-        className={`flex-grow min-w-0 px-3 py-1 text-ui-text dark:text-ui-text-dark bg-ui-bg
-          dark:bg-ui-bg-dark placeholder-text-primary dark:placeholder-text-primary-dark focus:outline-none ${
-            showClearButton ? "pr-1" : "pr-3"
-          }`}
+        className={`grow min-w-0 px-3 py-1 text-ui-text dark:text-ui-text-dark bg-ui-bg
+          dark:bg-ui-bg-dark placeholder-text-primary dark:placeholder-text-primary-dark focus:outline-none pr-8`}
         {...rest}
       />
 
       {showClearButton && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           onClick={handleClear}
           title="Clear search"
-          className="h-full w-8 flex-shrink-0 flex items-center justify-center text-text-primary hover:text-btn-secondary-text-hover dark:text-text-primary-dark dark:hover:text-btn-secondary-text-hover-dark focus:outline-none cursor-pointer"
-        >
-          <FontAwesomeIcon icon={faTimes} size="sm" />
-        </button>
+          className="h-full w-8 rounded-none shrink-0 hover:bg-transparent dark:hover:bg-transparent hover:text-btn-secondary-text-hover dark:hover:text-btn-secondary-text-hover-dark absolute right-8 top-0"
+          icon={faTimes}
+        />
       )}
 
-      <button
+      <Button
         type="submit"
         title="Search"
-        className="h-full w-8 flex-shrink-0 flex items-center justify-center border-l
-        border-text-primary-hover dark:border-text-primary-hover-dark
-        text-text-primary dark:text-text-primary-dark hover:bg-bg-primary-hover
-        dark:hover:bg-bg-primary-hover-dark focus:outline-none cursor-pointer"
-      >
-        <FontAwesomeIcon icon={faSearch} size="sm" />
-      </button>
+        variant="ghost"
+        className="h-full w-8 rounded-none border-l border-text-primary-hover dark:border-text-primary-hover-dark"
+        icon={faSearch}
+      />
     </form>
   );
 };

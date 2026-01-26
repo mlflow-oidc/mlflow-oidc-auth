@@ -3,9 +3,9 @@ import { Link } from "react-router";
 import DarkModeToggle from "./dark-mode-toggle";
 import { getNavigationData } from "./navigation-data";
 import HeaderDesktopNav from "./header-desktop-nav";
+import { Button } from "./button";
 import HeaderMobileNav from "./header-mobile-nav";
 import { useRuntimeConfig } from "../context/use-runtime-config";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTimes, faBars } from "@fortawesome/free-solid-svg-icons";
 
 interface HeaderProps {
@@ -44,17 +44,14 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
       <div className="flex z-4">
         <div className="flex items-center">
           <DarkModeToggle />
-          <button
-            type="button"
-            className="sm:hidden fill-current text-text-primary hover:text-text-primary-hover hover:bg-bg-primary-hover
-             dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark dark:hover:bg-bg-primary-hover-dark
-             cursor-pointer p-1 rounded transition-colors"
+          <Button
+            variant="ghost"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             aria-expanded={isMenuOpen}
             aria-controls="mobile-menu"
-          >
-            <FontAwesomeIcon icon={isMenuOpen ? faTimes : faBars} size="sm" />
-          </button>
+            className="sm:hidden"
+            icon={isMenuOpen ? faTimes : faBars}
+          />
         </div>
 
         <HeaderDesktopNav
