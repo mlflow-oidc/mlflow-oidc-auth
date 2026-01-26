@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo } from "react";
 import { Modal } from "../../../shared/components/modal";
 import { useUpdateWebhook } from "../../../core/hooks/use-update-webhook";
 import { WebhookForm } from "./webhook-form";
@@ -22,21 +22,17 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
   webhook,
 }) => {
   const { update, isUpdating } = useUpdateWebhook();
-  const [initialFormData, setInitialFormData] = useState<
-    WebhookCreateRequest | undefined
-  >();
 
-  useEffect(() => {
-    if (isOpen && webhook) {
-      setInitialFormData({
-        name: webhook.name,
-        description: webhook.description || "",
-        url: webhook.url,
-        events: [...webhook.events],
-        secret: "", // Secret is optional and not returned by API
-      });
-    }
-  }, [isOpen, webhook]);
+  const initialFormData = useMemo(() => {
+    if (!webhook) return undefined;
+    return {
+      name: webhook.name,
+      description: webhook.description || "",
+      url: webhook.url,
+      events: [...webhook.events],
+      secret: "", // Secret is optional and not returned by API
+    };
+  }, [webhook]);
 
   const handleSubmit = async (formData: WebhookCreateRequest) => {
     if (!webhook) return;
@@ -67,6 +63,7 @@ export const EditWebhookModal: React.FC<EditWebhookModalProps> = ({
     <Modal isOpen={isOpen} onClose={onClose} title="Edit Webhook">
       {initialFormData && (
         <WebhookForm
+          key={webhook?.webhook_id}
           initialData={initialFormData}
           onSubmit={handleSubmit}
           onCancel={onClose}

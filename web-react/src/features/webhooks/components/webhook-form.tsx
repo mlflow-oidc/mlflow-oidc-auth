@@ -1,34 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Input } from "../../../shared/components/input";
 import { Button } from "../../../shared/components/button";
 import type { WebhookCreateRequest } from "../../../shared/types/entity";
-
-export const SUPPORTED_EVENTS = [
-  {
-    group: "Model Registry",
-    events: [
-      "registered_model.created",
-      "model_version.created",
-      "model_version_tag.set",
-      "model_version_tag.deleted",
-      "model_version_alias.created",
-      "model_version_alias.deleted",
-    ],
-  },
-  {
-    group: "Prompt Registry",
-    events: [
-      "prompt.created",
-      "prompt_version.created",
-      "prompt_tag.set",
-      "prompt_tag.deleted",
-      "prompt_version_tag.set",
-      "prompt_version_tag.deleted",
-      "prompt_alias.created",
-      "prompt_alias.deleted",
-    ],
-  },
-];
+import { SUPPORTED_EVENTS } from "../constants";
 
 interface WebhookFormProps {
   initialData?: WebhookCreateRequest;
@@ -57,11 +31,6 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (initialData) {
-      setFormData(initialData);
-    }
-  }, [initialData]);
 
   const validateURL = (url: string) => {
     try {
@@ -104,7 +73,7 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      onSubmit(formData);
+      void onSubmit(formData);
     }
   };
 

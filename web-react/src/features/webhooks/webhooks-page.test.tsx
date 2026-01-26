@@ -5,6 +5,7 @@ import * as useWebhooksModule from "../../core/hooks/use-webhooks";
 import * as useSearchModule from "../../core/hooks/use-search";
 import * as useToastModule from "../../shared/components/toast/use-toast";
 import * as webhookService from "../../core/services/webhook-service";
+import type { Webhook } from "../../shared/types/entity";
 
 vi.mock("../../core/hooks/use-webhooks");
 vi.mock("../../core/hooks/use-search");
@@ -12,7 +13,7 @@ vi.mock("../../shared/components/toast/use-toast");
 vi.mock("../../core/services/webhook-service");
 
 describe("WebhooksPage", () => {
-  const mockWebhooks = [
+  const mockWebhooks: Webhook[] = [
     {
       webhook_id: "1",
       name: "Webhook 1",
@@ -20,6 +21,8 @@ describe("WebhooksPage", () => {
       events: ["prompt.created"],
       status: "ACTIVE",
       description: "Desc 1",
+      creation_timestamp: 0,
+      last_updated_timestamp: 0,
     },
     {
       webhook_id: "2",
@@ -27,6 +30,8 @@ describe("WebhooksPage", () => {
       url: "http://example.com/2",
       events: ["model_version.created"],
       status: "ACTIVE",
+      creation_timestamp: 0,
+      last_updated_timestamp: 0,
     },
   ];
 
@@ -37,12 +42,12 @@ describe("WebhooksPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(useWebhooksModule, "useWebhooks").mockReturnValue({
-      webhooks: mockWebhooks as any,
+      webhooks: mockWebhooks,
       isLoading: false,
       error: null,
       refresh: mockRefresh,
       updateLocalWebhook: mockUpdateLocalWebhook,
-    });
+    } as unknown as ReturnType<typeof useWebhooksModule.useWebhooks>);
 
     vi.spyOn(useSearchModule, "useSearch").mockReturnValue({
       searchTerm: "",
@@ -55,7 +60,7 @@ describe("WebhooksPage", () => {
     vi.spyOn(useToastModule, "useToast").mockReturnValue({
       showToast: mockShowToast,
       removeToast: vi.fn(),
-    } as any);
+    } as unknown as ReturnType<typeof useToastModule.useToast>);
   });
 
   it("renders the page title, webhooks table, and add button", () => {

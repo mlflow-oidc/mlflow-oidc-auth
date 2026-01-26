@@ -28,10 +28,10 @@ describe("CreateServiceAccountModal", () => {
 
     const nameInput = screen.getByLabelText(
       /Service Account Name/i,
-    ) as HTMLInputElement;
+    );
     const displayNameInput = screen.getByLabelText(
       /Display Name/i,
-    ) as HTMLInputElement;
+    );
     const isAdminCheckbox = screen.getByLabelText(/Grant Admin Privileges/i);
     const saveButton = screen.getByRole("button", { name: /Save/i });
 
@@ -67,10 +67,10 @@ describe("CreateServiceAccountModal", () => {
 
     const nameInput = screen.getByLabelText(
       /Service Account Name/i,
-    ) as HTMLInputElement;
+    );
     const displayNameInput = screen.getByLabelText(
       /Display Name/i,
-    ) as HTMLInputElement;
+    );
 
     fireEvent.change(displayNameInput, { target: { value: "Manual Name" } });
     fireEvent.change(nameInput, { target: { value: "test-sa" } });

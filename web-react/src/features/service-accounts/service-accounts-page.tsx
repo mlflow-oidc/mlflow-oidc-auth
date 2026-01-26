@@ -155,6 +155,7 @@ export default function ServiceAccountsPage() {
           />
 
           <CreateServiceAccountModal
+            key={isModalOpen ? "open" : "closed"}
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}
             onSave={(data) => {

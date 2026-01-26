@@ -25,12 +25,9 @@ export const CreateServiceAccountModal: React.FC<
 
   useEffect(() => {
     if (isOpen) {
-      setName("");
-      setDisplayName("");
-      setIsAdmin(false);
-      setIsDisplayNameManual(false);
-      // Focus the first input when modal opens
-      setTimeout(() => nameInputRef.current?.focus(), 0);
+      // Set focus when modal opens
+      const timer = setTimeout(() => nameInputRef.current?.focus(), 0);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
@@ -63,23 +60,23 @@ export const CreateServiceAccountModal: React.FC<
     <Modal isOpen={isOpen} onClose={onClose} title="Create Service Account">
       <div className="space-y-4">
         <Input
-          ref={nameInputRef} // Pass ref to the Input component
+          ref={nameInputRef}
           id="service-account-name"
-          label="Service Account Name*" // Added asterisk to label
+          label="Service Account Name*"
           type="text"
           value={name}
-          onChange={handleNameChange} // Preserved original handler
-          placeholder="my-service-account" // Updated placeholder as per instruction
+          onChange={handleNameChange}
+          placeholder="my-service-account"
           required
         />
         <Input
           id="display-name"
-          label="Display Name*" // Added asterisk to label
+          label="Display Name*"
           type="text"
           value={displayName}
-          onChange={handleDisplayNameChange} // Preserved original handler
-          placeholder="My Service Account" // Updated placeholder as per instruction
-          required // Added required as per original input
+          onChange={handleDisplayNameChange}
+          placeholder="My Service Account"
+          required
         />
       </div>
 

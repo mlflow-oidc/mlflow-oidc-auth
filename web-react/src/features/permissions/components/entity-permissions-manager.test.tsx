@@ -196,7 +196,9 @@ describe("EntityPermissionsManager", () => {
     fireEvent.click(removeButtons[0]);
 
     await waitFor(() => {
-      expect(mockHandleRemovePermission).toHaveBeenCalledWith(mockPermissions[0]);
+      expect(mockHandleRemovePermission).toHaveBeenCalledWith(
+        mockPermissions[0],
+      );
     });
   });
 

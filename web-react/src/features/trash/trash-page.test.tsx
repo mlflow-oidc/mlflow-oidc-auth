@@ -56,9 +56,10 @@ describe("TrashPage", () => {
     vi.clearAllMocks();
     vi.spyOn(useToastModule, "useToast").mockReturnValue({
       showToast: mockShowToast,
-    } as any);
+      removeToast: vi.fn(),
+    } as unknown as ReturnType<typeof useToastModule.useToast>);
     vi.spyOn(useSearchModule, "useSearch").mockReturnValue(
-      defaultSearch as any,
+      defaultSearch as unknown as ReturnType<typeof useSearchModule.useSearch>,
     );
 
     vi.spyOn(
@@ -69,14 +70,16 @@ describe("TrashPage", () => {
       isLoading: false,
       error: null,
       refresh: mockRefreshExp,
-    } as any);
+    } as unknown as ReturnType<
+      typeof useDeletedExperimentsModule.useDeletedExperiments
+    >);
 
     vi.spyOn(useDeletedRunsModule, "useDeletedRuns").mockReturnValue({
       deletedRuns: mockRuns,
       isLoading: false,
       error: null,
       refresh: mockRefreshRuns,
-    } as any);
+    } as unknown as ReturnType<typeof useDeletedRunsModule.useDeletedRuns>);
   });
 
   const renderWithRouter = (initialEntry = "/trash/experiments") => {
@@ -138,7 +141,7 @@ describe("TrashPage", () => {
   });
 
   it("handles restoring an item", async () => {
-    vi.spyOn(trashService, "restoreExperiment").mockResolvedValue({} as any);
+    vi.spyOn(trashService, "restoreExperiment").mockResolvedValue({} as unknown as { message: string });
     renderWithRouter();
 
     const restoreIcons = screen.getAllByTitle("Restore");
@@ -155,7 +158,7 @@ describe("TrashPage", () => {
   });
 
   it("handles permanent deletion (single item)", async () => {
-    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({} as any);
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({} as unknown as { message: string });
     renderWithRouter();
 
     const deleteIcons = screen.getAllByTitle("Delete Permanently");
@@ -182,7 +185,7 @@ describe("TrashPage", () => {
   });
 
   it("handles bulk operations", async () => {
-    vi.spyOn(trashService, "restoreExperiment").mockResolvedValue({} as any);
+    vi.spyOn(trashService, "restoreExperiment").mockResolvedValue({} as unknown as { message: string });
     renderWithRouter();
 
     const checkboxes = screen.getAllByRole("checkbox");
@@ -217,7 +220,7 @@ describe("TrashPage", () => {
   });
 
   it("handles runs tab interactions", async () => {
-    vi.spyOn(trashService, "restoreRun").mockResolvedValue({} as any);
+    vi.spyOn(trashService, "restoreRun").mockResolvedValue({} as unknown as { message: string });
     renderWithRouter("/trash/runs");
 
     const restoreIcons = screen.getAllByTitle("Restore");
@@ -238,7 +241,9 @@ describe("TrashPage", () => {
       isLoading: true,
       error: null,
       refresh: mockRefreshExp,
-    } as any);
+    } as unknown as ReturnType<
+      typeof useDeletedExperimentsModule.useDeletedExperiments
+    >);
 
     const { unmount } = renderWithRouter();
     expect(screen.getByText(/Loading/i)).toBeDefined();
@@ -252,7 +257,9 @@ describe("TrashPage", () => {
       isLoading: false,
       error: "Error",
       refresh: mockRefreshExp,
-    } as any);
+    } as unknown as ReturnType<
+      typeof useDeletedExperimentsModule.useDeletedExperiments
+    >);
     renderWithRouter();
     expect(screen.getByText(/Error/i)).toBeDefined();
   });

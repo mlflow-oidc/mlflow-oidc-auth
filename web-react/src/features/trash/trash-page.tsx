@@ -36,7 +36,7 @@ export default function TrashPage() {
   const { tab } = useParams<{ tab?: string }>();
   const activeTab: TrashTab = tab === "runs" ? "runs" : "experiments";
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [isProcessing, setIsProcessing] = useState(false);
   const { showToast } = useToast();
   const [itemsToDelete, setItemsToDelete] = useState<TrashItem[] | null>(null);
@@ -216,13 +216,17 @@ export default function TrashPage() {
           <IconButton
             icon={faUndo}
             title="Restore"
-            onClick={() => handleRestore([item.id])}
+            onClick={() => {
+              void handleRestore([item.id]);
+            }}
             disabled={isProcessing}
           />
           <IconButton
             icon={faTrash}
             title="Delete Permanently"
-            onClick={() => handleDeleteClick([item.id])}
+            onClick={() => {
+              void handleDeleteClick([item.id]);
+            }}
             disabled={isProcessing}
           />
         </div>
@@ -274,14 +278,18 @@ export default function TrashPage() {
             <div className="flex space-x-2">
               <Button
                 variant="secondary"
-                onClick={() => handleRestore(Array.from(selectedIds))}
+                onClick={() => {
+                  void handleRestore(Array.from(selectedIds));
+                }}
                 disabled={selectedIds.size === 0 || isProcessing}
               >
                 Restore
               </Button>
               <Button
                 variant="danger"
-                onClick={() => handleDeleteClick(Array.from(selectedIds))}
+                onClick={() => {
+                  void handleDeleteClick(Array.from(selectedIds));
+                }}
                 disabled={selectedIds.size === 0 || isProcessing}
               >
                 Delete
@@ -301,7 +309,9 @@ export default function TrashPage() {
         <RemoveFromTrashModal
           isOpen={!!itemsToDelete}
           onClose={() => setItemsToDelete(null)}
-          onConfirm={confirmDelete}
+          onConfirm={() => {
+            void confirmDelete();
+          }}
           items={itemsToDelete}
           itemType={activeTab}
           isProcessing={isProcessing}

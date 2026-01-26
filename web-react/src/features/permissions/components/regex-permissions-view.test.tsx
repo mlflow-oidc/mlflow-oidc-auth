@@ -45,8 +45,20 @@ describe("RegexPermissionsView", () => {
   ];
 
   const mockModelPatternPermissions: ModelPatternPermission[] = [
-    { regex: "^test_.*", permission: "READ", priority: 100, id: 1, prompt: false },
-    { regex: "^prod_.*", permission: "MANAGE", priority: 0, id: 2, prompt: false },
+    {
+      regex: "^test_.*",
+      permission: "READ",
+      priority: 100,
+      id: 1,
+      prompt: false,
+    },
+    {
+      regex: "^prod_.*",
+      permission: "MANAGE",
+      priority: 0,
+      id: 2,
+      prompt: false,
+    },
   ];
 
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   faVial,
   faEdit,
@@ -48,7 +48,7 @@ export default function WebhooksPage() {
     );
   }, [webhooks, submittedTerm]);
 
-  const handleTest = async (webhook_id: string, name: string) => {
+  const handleTest = useCallback(async (webhook_id: string, name: string) => {
     try {
       const response = await testWebhook(webhook_id);
       if (response.success) {
@@ -63,9 +63,9 @@ export default function WebhooksPage() {
       console.error("Failed to test webhook:", err);
       showToast(`Failed to test webhook ${name}`, "error");
     }
-  };
+  }, [showToast]);
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = useCallback(async () => {
     if (!deletingWebhook) return;
 
     setIsDeleting(true);
@@ -83,7 +83,7 @@ export default function WebhooksPage() {
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [deletingWebhook, refresh, showToast]);
 
   const columns: ColumnConfig<Webhook>[] = useMemo(
     () => [
@@ -117,7 +117,9 @@ export default function WebhooksPage() {
             <IconButton
               icon={faVial}
               title="Test"
-              onClick={() => handleTest(webhook.webhook_id, webhook.name)}
+              onClick={() => {
+                void handleTest(webhook.webhook_id, webhook.name);
+              }}
             />
             <IconButton
               icon={faEdit}
@@ -144,7 +146,7 @@ export default function WebhooksPage() {
         ),
       },
     ],
-    [updateLocalWebhook],
+    [handleTest, updateLocalWebhook],
   );
 
   return (
@@ -168,7 +170,9 @@ export default function WebhooksPage() {
             />
             <Button
               variant="secondary"
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => {
+                void setIsCreateModalOpen(true);
+              }}
               icon={faPlus}
               className="whitespace-nowrap h-8 mb-1 mt-2"
             >
@@ -199,7 +203,9 @@ export default function WebhooksPage() {
           <DeleteWebhookModal
             isOpen={!!deletingWebhook}
             onClose={() => setDeletingWebhook(null)}
-            onConfirm={handleConfirmDelete}
+            onConfirm={() => {
+              void handleConfirmDelete();
+            }}
             webhook={deletingWebhook}
             isProcessing={isDeleting}
           />

@@ -2,8 +2,12 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { SharedPermissionsPage } from "./shared-permissions-page";
 
-const mockUseUser = vi.fn<() => { currentUser: { is_admin: boolean; username: string } | null }>();
-const mockUseUserDetails = vi.fn<() => { user: unknown; refetch: () => void }>();
+const mockUseUser =
+  vi.fn<
+    () => { currentUser: { is_admin: boolean; username: string } | null }
+  >();
+const mockUseUserDetails =
+  vi.fn<() => { user: unknown; refetch: () => void }>();
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -129,7 +133,7 @@ describe("SharedPermissionsPage", () => {
     mockUseUser.mockReturnValue({
       currentUser: {
         is_admin: true,
-        username: ""
+        username: "",
       },
     });
 
@@ -166,7 +170,7 @@ describe("SharedPermissionsPage", () => {
     mockUseUser.mockReturnValue({
       currentUser: {
         is_admin: true,
-        username: ""
+        username: "",
       },
     });
     localStorage.setItem("_mlflow_is_regex_mode", "false");

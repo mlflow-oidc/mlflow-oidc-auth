@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Switch } from "../../../shared/components/switch";
 import { useUpdateWebhook } from "../../../core/hooks/use-update-webhook";
 import type { Webhook, WebhookStatus } from "../../../shared/types/entity";
@@ -14,39 +14,38 @@ export const WebhookStatusSwitch: React.FC<WebhookStatusSwitchProps> = ({
 }) => {
   const { update, isUpdating } = useUpdateWebhook();
   const [isActive, setIsActive] = useState(webhook.status === "ACTIVE");
+  const [prevStatus, setPrevStatus] = useState(webhook.status);
 
-  useEffect(() => {
+  // Derive state adjustment pattern
+  if (webhook.status !== prevStatus) {
+    setPrevStatus(webhook.status);
     setIsActive(webhook.status === "ACTIVE");
-  }, [webhook.status]);
+  }
 
   const handleToggle = async () => {
-    const originalIsActive = isActive;
-    const newStatus = originalIsActive ? "DISABLED" : "ACTIVE";
-    setIsActive(!originalIsActive);
-
+    const newStatus = isActive ? "DISABLED" : "ACTIVE";
     const success = await update(
       webhook.webhook_id,
       { status: newStatus },
       {
-        onSuccessMessage: `Webhook "${webhook.name}" ${
-          newStatus === "ACTIVE" ? "activated" : "disabled"
-        }`,
-        onErrorMessage: "Failed to update webhook status",
+        onSuccessMessage: `Webhook ${newStatus === "ACTIVE" ? "enabled" : "disabled"} successfully`,
+        onErrorMessage: `Failed to update webhook status`,
       },
     );
 
     if (success) {
+      setIsActive(!isActive);
       onSuccess?.(newStatus);
-    } else {
-      setIsActive(originalIsActive);
     }
   };
 
   return (
     <Switch
       checked={isActive}
-      onChange={handleToggle}
-      className={`transition-colors duration-200 ${isUpdating ? "opacity-70" : ""}`}
+      onChange={() => {
+        void handleToggle();
+      }}
+      aria-label={`${isActive ? "Disable" : "Enable"} webhook`}
       disabled={isUpdating}
     />
   );

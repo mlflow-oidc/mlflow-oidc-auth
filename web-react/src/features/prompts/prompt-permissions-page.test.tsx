@@ -10,11 +10,11 @@ vi.mock("react-router", () => ({
 }));
 
 vi.mock("../../core/hooks/use-prompt-user-permissions", () => ({
-  usePromptUserPermissions: () => mockUsePromptUserPermissions(),
+  usePromptUserPermissions: () => mockUsePromptUserPermissions() as unknown,
 }));
 
 vi.mock("../../core/hooks/use-prompt-group-permissions", () => ({
-  usePromptGroupPermissions: () => mockUsePromptGroupPermissions(),
+  usePromptGroupPermissions: () => mockUsePromptGroupPermissions() as unknown,
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({

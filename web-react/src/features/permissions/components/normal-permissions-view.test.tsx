@@ -88,12 +88,14 @@ describe("NormalPermissionsView", () => {
       refresh: mockRefresh,
       permissions: mockModelPermissions,
     });
-    vi.spyOn(useGroupExpHooks, "useGroupExperimentPermissions").mockReturnValue({
-      isLoading: false,
-      error: null,
-      refresh: mockRefresh,
-      permissions: mockExpPermissions,
-    });
+    vi.spyOn(useGroupExpHooks, "useGroupExperimentPermissions").mockReturnValue(
+      {
+        isLoading: false,
+        error: null,
+        refresh: mockRefresh,
+        permissions: mockExpPermissions,
+      },
+    );
     vi.spyOn(
       useGroupModelHooks,
       "useGroupRegisteredModelPermissions",

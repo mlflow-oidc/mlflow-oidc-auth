@@ -4,13 +4,13 @@ import { EditPermissionModal } from "./edit-permission-modal";
 
 describe("EditPermissionModal", () => {
   it("renders correctly for regular permission", () => {
-    const item = { name: "test", permission: "READ", kind: "user" };
+    const item = { name: "test", permission: "READ" as const, kind: "user" as const };
     render(
       <EditPermissionModal
         isOpen={true}
         onClose={() => {}}
         onSave={vi.fn()}
-        item={item as any}
+        item={item}
         username="testuser"
         type="experiments"
       />,
@@ -23,13 +23,13 @@ describe("EditPermissionModal", () => {
 
   it("calls onSave with new permission", async () => {
     const onSave = vi.fn();
-    const item = { name: "test", permission: "READ", kind: "user" };
+    const item = { name: "test", permission: "READ" as const, kind: "user" as const };
     render(
       <EditPermissionModal
         isOpen={true}
         onClose={() => {}}
         onSave={onSave}
-        item={item as any}
+        item={item}
         username="testuser"
         type="experiments"
       />,
@@ -49,8 +49,8 @@ describe("EditPermissionModal", () => {
     const item = {
       regex: ".*",
       priority: 1,
-      permission: "READ",
-      kind: "regex",
+      permission: "READ" as const,
+      kind: "regex" as const,
       id: 1,
     };
     render(
@@ -58,7 +58,7 @@ describe("EditPermissionModal", () => {
         isOpen={true}
         onClose={() => {}}
         onSave={vi.fn()}
-        item={item as any}
+        item={item}
         username="testuser"
         type="experiments"
       />,

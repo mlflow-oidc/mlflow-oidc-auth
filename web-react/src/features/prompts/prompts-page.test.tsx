@@ -6,11 +6,11 @@ const mockUseAllPrompts = vi.fn();
 const mockUseSearch = vi.fn();
 
 vi.mock("../../core/hooks/use-all-prompts", () => ({
-  useAllPrompts: () => mockUseAllPrompts(),
+  useAllPrompts: () => mockUseAllPrompts() as unknown,
 }));
 
 vi.mock("../../core/hooks/use-search", () => ({
-  useSearch: () => mockUseSearch(),
+  useSearch: () => mockUseSearch() as unknown,
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
@@ -28,7 +28,7 @@ vi.mock("../../shared/components/page/page-container", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading, error }: any) => {
+  default: ({ isLoading, error }: { isLoading: boolean; error: Error | null }) => {
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div>Error</div>;
     return null;
@@ -40,9 +40,13 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({ data }: any) => (
+  EntityListTable: ({
+    data,
+  }: {
+    data: { name: string }[];
+  }) => (
     <div data-testid="entity-list">
-      {data.map((item: any) => (
+      {data.map((item) => (
         <div key={item.name}>{item.name}</div>
       ))}
     </div>
