@@ -72,7 +72,7 @@ describe("MainLayout", () => {
     expect(screen.getByTestId("content")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-open").textContent).toBe("true");
     expect(screen.getByTestId("sidebar-width").textContent).toContain(
-      "w-[200px]",
+      "w-[185px]",
     );
 
     fireEvent.click(screen.getByTestId("sidebar-toggle"));

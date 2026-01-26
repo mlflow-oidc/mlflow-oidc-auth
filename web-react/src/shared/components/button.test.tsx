@@ -36,7 +36,7 @@ describe("Button", () => {
     expect(screen.getByRole("button")).toHaveClass("bg-btn-primary");
 
     rerender(<Button variant="danger">Danger</Button>);
-    expect(screen.getByRole("button")).toHaveClass("bg-btn-danger");
+    expect(screen.getByRole("button")).toHaveClass("text-btn-danger-outline");
   });
 
   it("applies custom className", () => {
