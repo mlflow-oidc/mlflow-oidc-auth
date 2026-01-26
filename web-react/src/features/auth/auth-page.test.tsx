@@ -2,8 +2,11 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { AuthPage } from "./auth-page";
 
-const mockUseAuthErrors = vi.fn();
-const mockUseRuntimeConfig = vi.fn();
+import type { RuntimeConfig } from "../../shared/services/runtime-config";
+import type { Mock } from "vitest";
+
+const mockUseAuthErrors: Mock<() => string[]> = vi.fn();
+const mockUseRuntimeConfig: Mock<() => RuntimeConfig> = vi.fn();
 
 vi.mock("../../shared/context/use-runtime-config", () => ({
   useRuntimeConfig: () => mockUseRuntimeConfig(),
@@ -22,6 +25,8 @@ describe("AuthPage", () => {
     mockUseRuntimeConfig.mockReturnValue({
       provider: "Sign in with OIDC",
       basePath: "/api",
+      uiPath: "/ui",
+      authenticated: false,
     });
     mockUseAuthErrors.mockReturnValue([]);
   });

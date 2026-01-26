@@ -1,10 +1,15 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { vi } from "vitest";
+import { vi, describe, it, expect, beforeEach } from "vitest";
 import ProtectedRoute from "./protected-route";
 
-const mockUseAuth = vi.fn();
-const mockUseUser = vi.fn();
+import type { CurrentUser } from "../../../shared/types/user";
+import type { UseAuthResult } from "../../../core/hooks/use-auth";
+import type { UserContextValue } from "../../../core/hooks/use-user";
+import type { Mock } from "vitest";
+
+const mockUseAuth: Mock<() => UseAuthResult> = vi.fn();
+const mockUseUser: Mock<() => UserContextValue> = vi.fn();
 
 vi.mock("../../../core/hooks/use-auth", () => ({
   useAuth: () => mockUseAuth(),
@@ -121,7 +126,7 @@ describe("ProtectedRoute", () => {
       currentUser: {
         username: "user",
         is_admin: false,
-      },
+      } as unknown as CurrentUser,
       isLoading: false,
       error: null,
       refresh: vi.fn(),
@@ -142,7 +147,7 @@ describe("ProtectedRoute", () => {
       currentUser: {
         username: "admin",
         is_admin: true,
-      },
+      } as unknown as CurrentUser,
       isLoading: false,
       error: null,
       refresh: vi.fn(),

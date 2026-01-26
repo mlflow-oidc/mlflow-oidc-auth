@@ -13,7 +13,7 @@ describe("auth-service", () => {
     it("calls getRuntimeConfig", async () => {
       const mockConfig = { authenticated: true, base_path: "/" };
       vi.spyOn(runtimeConfigModule, "getRuntimeConfig").mockResolvedValue(
-        mockConfig as any,
+        mockConfig as unknown as runtimeConfigModule.RuntimeConfig,
       );
 
       const result = await fetchRuntimeConfig();
@@ -26,7 +26,7 @@ describe("auth-service", () => {
     it("returns authenticated true when config.authenticated is true", async () => {
       vi.spyOn(runtimeConfigModule, "getRuntimeConfig").mockResolvedValue({
         authenticated: true,
-      } as any);
+      } as unknown as runtimeConfigModule.RuntimeConfig);
 
       const result = await fetchAuthStatus();
       expect(result).toEqual({ authenticated: true });
@@ -35,7 +35,7 @@ describe("auth-service", () => {
     it("returns authenticated false when config.authenticated is false", async () => {
       vi.spyOn(runtimeConfigModule, "getRuntimeConfig").mockResolvedValue({
         authenticated: false,
-      } as any);
+      } as unknown as runtimeConfigModule.RuntimeConfig);
 
       const result = await fetchAuthStatus();
       expect(result).toEqual({ authenticated: false });
@@ -43,7 +43,7 @@ describe("auth-service", () => {
 
     it("returns authenticated false when config.authenticated is missing", async () => {
       vi.spyOn(runtimeConfigModule, "getRuntimeConfig").mockResolvedValue(
-        {} as any,
+        {} as unknown as runtimeConfigModule.RuntimeConfig,
       );
 
       const result = await fetchAuthStatus();

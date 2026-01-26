@@ -2,7 +2,10 @@ import { render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 import RedirectIfAuth from "./redirect-if-auth";
 
-const mockUseAuth = vi.fn();
+import type { UseAuthResult } from "../../../core/hooks/use-auth";
+import type { Mock } from "vitest";
+
+const mockUseAuth: Mock<() => UseAuthResult> = vi.fn();
 
 vi.mock("../../../core/hooks/use-auth", () => ({
   useAuth: () => mockUseAuth(),
