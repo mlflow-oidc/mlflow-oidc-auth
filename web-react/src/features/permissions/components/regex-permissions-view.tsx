@@ -267,7 +267,14 @@ export const RegexPermissionsView = ({
   };
 
   const permissionColumns: ColumnConfig<PatternPermissionItem>[] = [
-    { header: "Regex Pattern", render: (item) => item.regex },
+    {
+      header: "Regex Pattern",
+      render: (item) => (
+        <span className="truncate block" title={item.regex}>
+          {item.regex}
+        </span>
+      ),
+    },
     { header: "Permission", render: (item) => item.permission },
     { header: "Priority", render: (item) => item.priority },
     {

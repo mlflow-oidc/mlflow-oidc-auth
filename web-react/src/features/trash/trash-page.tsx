@@ -198,16 +198,35 @@ export default function TrashPage() {
     },
     {
       header: "Name",
-      render: (item) => item.name,
+      render: (item) => (
+        <span className="truncate block" title={item.name}>
+          {item.name}
+        </span>
+      ),
     },
     {
       header: "Creation",
-      render: (item) => new Date(item.creation).toLocaleString(),
+      render: (item) => {
+        const dateStr = new Date(item.creation).toLocaleString();
+        return (
+          <span className="truncate block" title={dateStr}>
+            {dateStr}
+          </span>
+        );
+      },
     },
     {
       header: "Last Update",
-      render: (item) =>
-        item.lastUpdate ? new Date(item.lastUpdate).toLocaleString() : "-",
+      render: (item) => {
+        const dateStr = item.lastUpdate
+          ? new Date(item.lastUpdate).toLocaleString()
+          : "-";
+        return (
+          <span className="truncate block" title={dateStr}>
+            {dateStr}
+          </span>
+        );
+      },
     },
     {
       header: "Actions",

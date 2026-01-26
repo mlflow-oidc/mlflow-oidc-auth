@@ -42,7 +42,11 @@ export default function GroupsPage() {
   const columnsWithAction: ColumnConfig<{ id: string; groupName: string }>[] = [
     {
       header: "Group Name",
-      render: ({ groupName }) => groupName,
+      render: ({ groupName }) => (
+        <span className="truncate block" title={groupName}>
+          {groupName}
+        </span>
+      ),
     },
     {
       header: "Permissions",

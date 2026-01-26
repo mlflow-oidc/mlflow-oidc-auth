@@ -92,7 +92,11 @@ export default function WebhooksPage() {
     () => [
       {
         header: "Name",
-        render: (webhook) => webhook.name,
+        render: (webhook) => (
+          <span className="truncate block" title={webhook.name}>
+            {webhook.name}
+          </span>
+        ),
       },
       {
         header: "Description",

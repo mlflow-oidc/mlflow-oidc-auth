@@ -81,7 +81,11 @@ export default function ServiceAccountsPage() {
   const columns: ColumnConfig<{ id: string; username: string }>[] = [
     {
       header: "Service Account Name",
-      render: ({ username }) => username,
+      render: ({ username }) => (
+        <span className="truncate block" title={username}>
+          {username}
+        </span>
+      ),
     },
     {
       header: "Permissions",

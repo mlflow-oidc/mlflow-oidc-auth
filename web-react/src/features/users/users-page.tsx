@@ -42,7 +42,11 @@ export default function UsersPage() {
   const columnsWithAction: ColumnConfig<{ id: string; username: string }>[] = [
     {
       header: "Username",
-      render: ({ username }) => username,
+      render: ({ username }) => (
+        <span className="truncate block" title={username}>
+          {username}
+        </span>
+      ),
     },
     {
       header: "Permissions",
