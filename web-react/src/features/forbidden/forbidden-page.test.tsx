@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import ForbiddenPage from "./forbidden-page";
 
 vi.mock("../../core/components/main-layout", () => ({
-  default: ({ children }: any) => (
+  default: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="main-layout">{children}</div>
   ),
 }));
