@@ -32,7 +32,7 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
   }, [isMenuOpen]);
 
   return (
-    <header className="h-[52px] flex-shrink-0 flex items-center justify-between px-4 py-2">
+    <header className="h-[52px] shrink-0 flex items-center justify-between px-4 py-2">
       <Link
         to="/user"
         className="flex items-center gap-2 text-xl font-extrabold text-logo"
@@ -46,7 +46,9 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
           <DarkModeToggle />
           <button
             type="button"
-            className="sm:hidden fill-current text-text-primary hover:text-text-primary-hover hover:bg-bg-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark dark:hover:bg-bg-primary-hover-dark cursor-pointer p-1 rounded transition-colors"
+            className="sm:hidden fill-current text-text-primary hover:text-text-primary-hover hover:bg-bg-primary-hover
+             dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark dark:hover:bg-bg-primary-hover-dark
+             cursor-pointer p-1 rounded transition-colors"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             aria-expanded={isMenuOpen}
             aria-controls="mobile-menu"

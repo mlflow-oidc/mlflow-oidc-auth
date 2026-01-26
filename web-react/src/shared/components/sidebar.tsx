@@ -35,7 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {sidebarData.map((link, index) => (
             <React.Fragment key={link.href}>
               {index === ADMIN_LINKS_START_INDEX && isAdmin && (
-                <div className="my-2 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark  pt-2" />
+                <div className="my-3 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark pt-1" />
               )}
 
               <AppLink

@@ -12,7 +12,7 @@ const DarkModeToggle: React.FC = () => {
       title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
       aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
       icon={isDark ? faMoon : faSun}
-      iconClassName="text-base"
+      iconClassName="text-sm"
     />
   );
 };

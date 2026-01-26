@@ -10,7 +10,7 @@ const HeaderDesktopNav: React.FC<NavigationData> = ({
     "p-2 w-full sm:w-auto text-text-primary hover:text-text-primary-hover dark:text-text-primary-dark dark:hover:text-text-primary-hover-dark text-sm font-medium transition-colors text-left sm:text-center rounded-md";
   return (
     <div className="hidden sm:flex justify-between items-center">
-      <nav className="flex flex-col sm:flex-row space-y-2 sm:space-y-0">
+      <nav className="flex flex-col sm:flex-row space-x-1 space-y-2 sm:space-y-0">
         {mainLinks.map((link) => (
           <AppLink
             key={link.label}
@@ -22,7 +22,7 @@ const HeaderDesktopNav: React.FC<NavigationData> = ({
           </AppLink>
         ))}
       </nav>
-      <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0">
+      <div className="flex flex-col sm:flex-row space-x-1 space-y-2 sm:space-y-0">
         {userControls.map((link) => (
           <AppLink
             key={link.label}
