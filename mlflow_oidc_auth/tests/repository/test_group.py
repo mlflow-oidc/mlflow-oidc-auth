@@ -94,8 +94,10 @@ def test_add_user_to_group(repo, session):
     grp = MagicMock(id=2)
     session.add = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch("mlflow_oidc_auth.repository.group.get_group", return_value=grp), patch(
-        "mlflow_oidc_auth.db.models.SqlUserGroup", return_value=MagicMock()
+    with (
+        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
+        patch("mlflow_oidc_auth.repository.group.get_group", return_value=grp),
+        patch("mlflow_oidc_auth.db.models.SqlUserGroup", return_value=MagicMock()),
     ):
         repo.add_user_to_group("user", "g6")
         session.add.assert_called_once()
@@ -122,8 +124,9 @@ def test_list_groups_for_user(repo, session):
     g1 = MagicMock(group_name="g1")
     g2 = MagicMock(group_name="g2")
     session.query().filter().all.return_value = [g1, g2]
-    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.group.list_user_groups", return_value=[group1, group2]
+    with (
+        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
+        patch("mlflow_oidc_auth.repository.group.list_user_groups", return_value=[group1, group2]),
     ):
         assert repo.list_groups_for_user("user") == ["g1", "g2"]
 
@@ -132,8 +135,9 @@ def test_list_group_ids_for_user(repo, session):
     user = MagicMock(id=1)
     ug1 = MagicMock(group_id=10)
     ug2 = MagicMock(group_id=20)
-    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.group.list_user_groups", return_value=[ug1, ug2]
+    with (
+        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
+        patch("mlflow_oidc_auth.repository.group.list_user_groups", return_value=[ug1, ug2]),
     ):
         result = repo.list_group_ids_for_user("user")
         assert result == [10, 20]
@@ -170,10 +174,11 @@ def test_set_groups_for_user(repo, session):
     session.delete = MagicMock()
     session.add = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.repository.group.list_user_groups", return_value=[group1]
-    ), patch("mlflow_oidc_auth.repository.group.get_group", side_effect=[group1, group2]), patch(
-        "mlflow_oidc_auth.db.models.SqlUserGroup", return_value=MagicMock()
+    with (
+        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
+        patch("mlflow_oidc_auth.repository.group.list_user_groups", return_value=[group1]),
+        patch("mlflow_oidc_auth.repository.group.get_group", side_effect=[group1, group2]),
+        patch("mlflow_oidc_auth.db.models.SqlUserGroup", return_value=MagicMock()),
     ):
         repo.set_groups_for_user("user", ["g1", "g2"])
         session.delete.assert_called_once_with(group1)

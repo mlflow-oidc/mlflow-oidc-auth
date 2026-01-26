@@ -246,9 +246,10 @@ class TestListModelsEndpoint:
         mock_model2.aliases = []
 
         # Mock filter_manageable_models to return only model-1
-        with patch("mlflow_oidc_auth.routers.registered_model_permissions.fetch_all_registered_models") as mock_fetch, patch(
-            "mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models"
-        ) as mock_filter:
+        with (
+            patch("mlflow_oidc_auth.routers.registered_model_permissions.fetch_all_registered_models") as mock_fetch,
+            patch("mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models") as mock_filter,
+        ):
             mock_fetch.return_value = [mock_model1, mock_model2]
             mock_filter.return_value = [mock_model1]  # Only model-1 is manageable
 
@@ -275,8 +276,9 @@ class TestListModelsEndpoint:
         mock_model1.description = "Test Model 1"
         mock_model1.aliases = []
 
-        with patch("mlflow_oidc_auth.routers.registered_model_permissions.fetch_all_registered_models") as mock_fetch, patch(
-            "mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models", return_value=[]
+        with (
+            patch("mlflow_oidc_auth.routers.registered_model_permissions.fetch_all_registered_models") as mock_fetch,
+            patch("mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models", return_value=[]),
         ):
             mock_fetch.return_value = [mock_model1]
 

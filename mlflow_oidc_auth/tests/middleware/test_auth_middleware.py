@@ -499,9 +499,10 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_dispatch_bearer_token_header(self, auth_middleware, create_mock_request, mock_validate_token):
         """Test dispatch with bearer token authentication header."""
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token), patch(
-            "mlflow_oidc_auth.middleware.auth_middleware.store"
-        ) as mock_store:
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token),
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as mock_store,
+        ):
             # Mock store for admin status check
             mock_user = MagicMock()
             mock_user.is_admin = False
@@ -523,9 +524,10 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_dispatch_authentication_failure_logging(self, auth_middleware, create_mock_request, mock_logger):
         """Test that authentication failures are properly logged."""
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.logger", mock_logger), patch(
-            "mlflow_oidc_auth.middleware.auth_middleware.config"
-        ) as mock_config:
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.logger", mock_logger),
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as mock_config,
+        ):
             mock_config.AUTOMATIC_LOGIN_REDIRECT = True
 
             request = create_mock_request(path="/protected", session={})
