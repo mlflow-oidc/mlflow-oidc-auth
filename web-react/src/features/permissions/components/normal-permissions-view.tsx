@@ -186,7 +186,7 @@ export const NormalPermissionsView = ({
       });
 
       showToast(
-        `Permission for ${editingItem.name} has been updated.`,
+        `Permission for ${editingItem.name} has been updated`,
         "success",
       );
       refresh();
@@ -235,7 +235,7 @@ export const NormalPermissionsView = ({
           : identifier;
 
       showToast(
-        `Permission for ${entityDisplayName} has been granted.`,
+        `Permission for ${entityDisplayName} has been granted`,
         "success",
       );
       refresh();

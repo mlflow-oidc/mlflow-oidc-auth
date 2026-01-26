@@ -153,7 +153,7 @@ export const RegexPermissionsView = ({
       });
 
       showToast(
-        `Permission for ${regex ?? editingItem.regex} has been updated.`,
+        `Permission for ${regex ?? editingItem.regex} has been updated`,
         "success",
       );
       refresh();
