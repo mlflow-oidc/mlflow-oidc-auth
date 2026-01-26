@@ -8,7 +8,15 @@ const mockUseUser = vi.fn();
 
 vi.mock("react-router", () => ({
   useParams: () => ({ tab: "info" }),
-  Link: ({ children, to, className }: { children: React.ReactNode; to: string; className?: string }) => (
+  Link: ({
+    children,
+    to,
+    className,
+  }: {
+    children: React.ReactNode;
+    to: string;
+    className?: string;
+  }) => (
     <a href={to} className={className}>
       {children}
     </a>
@@ -40,11 +48,14 @@ vi.mock("../../core/hooks/use-search", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
-  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  default: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading }: { isLoading: boolean }) => (isLoading ? <div>Loading...</div> : null),
+  default: ({ isLoading }: { isLoading: boolean }) =>
+    isLoading ? <div>Loading...</div> : null,
 }));
 
 vi.mock("./components/user-details-card", () => ({

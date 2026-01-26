@@ -67,9 +67,12 @@ describe("EditWebhookModal", () => {
     fireEvent.click(screen.getByText("Update"));
 
     await waitFor(() => {
-      expect(mockUpdateWebhook).toHaveBeenCalledWith("wh-1", expect.objectContaining({
-        name: "New Name",
-      }));
+      expect(mockUpdateWebhook).toHaveBeenCalledWith(
+        "wh-1",
+        expect.objectContaining({
+          name: "New Name",
+        }),
+      );
       expect(mockShowToast).toHaveBeenCalled();
       expect(mockOnSuccess).toHaveBeenCalled();
       expect(mockOnClose).toHaveBeenCalled();

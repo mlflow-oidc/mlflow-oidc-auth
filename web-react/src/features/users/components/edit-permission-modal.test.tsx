@@ -4,7 +4,11 @@ import { EditPermissionModal } from "./edit-permission-modal";
 
 describe("EditPermissionModal", () => {
   it("renders correctly for regular permission", () => {
-    const item = { name: "test", permission: "READ" as const, kind: "user" as const };
+    const item = {
+      name: "test",
+      permission: "READ" as const,
+      kind: "user" as const,
+    };
     render(
       <EditPermissionModal
         isOpen={true}
@@ -23,7 +27,11 @@ describe("EditPermissionModal", () => {
 
   it("calls onSave with new permission", async () => {
     const onSave = vi.fn();
-    const item = { name: "test", permission: "READ" as const, kind: "user" as const };
+    const item = {
+      name: "test",
+      permission: "READ" as const,
+      kind: "user" as const,
+    };
     render(
       <EditPermissionModal
         isOpen={true}

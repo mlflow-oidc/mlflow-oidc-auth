@@ -28,7 +28,13 @@ vi.mock("../../shared/components/page/page-container", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading, error }: { isLoading: boolean; error: Error | null }) => {
+  default: ({
+    isLoading,
+    error,
+  }: {
+    isLoading: boolean;
+    error: Error | null;
+  }) => {
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div>Error</div>;
     return null;
@@ -40,11 +46,7 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({
-    data,
-  }: {
-    data: { name: string }[];
-  }) => (
+  EntityListTable: ({ data }: { data: { name: string }[] }) => (
     <div data-testid="entity-list">
       {data.map((item) => (
         <div key={item.name}>{item.name}</div>

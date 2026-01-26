@@ -48,22 +48,25 @@ export default function WebhooksPage() {
     );
   }, [webhooks, submittedTerm]);
 
-  const handleTest = useCallback(async (webhook_id: string, name: string) => {
-    try {
-      const response = await testWebhook(webhook_id);
-      if (response.success) {
-        showToast(`Test successful for ${name}`, "success");
-      } else {
-        showToast(
-          `Test failed for ${name}: ${response.error_message || " Unknown error"}`,
-          "error",
-        );
+  const handleTest = useCallback(
+    async (webhook_id: string, name: string) => {
+      try {
+        const response = await testWebhook(webhook_id);
+        if (response.success) {
+          showToast(`Test successful for ${name}`, "success");
+        } else {
+          showToast(
+            `Test failed for ${name}: ${response.error_message || " Unknown error"}`,
+            "error",
+          );
+        }
+      } catch (err) {
+        console.error("Failed to test webhook:", err);
+        showToast(`Failed to test webhook ${name}`, "error");
       }
-    } catch (err) {
-      console.error("Failed to test webhook:", err);
-      showToast(`Failed to test webhook ${name}`, "error");
-    }
-  }, [showToast]);
+    },
+    [showToast],
+  );
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deletingWebhook) return;

@@ -36,7 +36,9 @@ describe("UserDetailsCard", () => {
       groups: [],
       password_expiration: null,
     };
-    const { getByText, queryByText } = render(<UserDetailsCard currentUser={minimalUser} />);
+    const { getByText, queryByText } = render(
+      <UserDetailsCard currentUser={minimalUser} />,
+    );
 
     expect(getByText("N/A")).toBeDefined();
     expect(getByText(/not a member of any groups/i)).toBeDefined();

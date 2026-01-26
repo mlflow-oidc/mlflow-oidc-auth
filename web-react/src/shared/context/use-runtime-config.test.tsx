@@ -13,9 +13,7 @@ describe("useRuntimeConfig", () => {
       authenticated: true,
     };
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <RuntimeConfigContext value={mockConfig}>
-        {children}
-      </RuntimeConfigContext>
+      <RuntimeConfigContext value={mockConfig}>{children}</RuntimeConfigContext>
     );
 
     const { result } = renderHook(() => useRuntimeConfig(), { wrapper });

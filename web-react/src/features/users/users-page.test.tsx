@@ -28,7 +28,13 @@ vi.mock("../../shared/components/page/page-container", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading, error }: { isLoading: boolean; error: Error | null }) => {
+  default: ({
+    isLoading,
+    error,
+  }: {
+    isLoading: boolean;
+    error: Error | null;
+  }) => {
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div>Error</div>;
     return null;

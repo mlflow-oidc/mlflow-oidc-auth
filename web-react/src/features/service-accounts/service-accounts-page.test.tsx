@@ -29,7 +29,8 @@ vi.mock("../../shared/components/page/page-container", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading }: { isLoading: boolean }) => (isLoading ? <div>Loading...</div> : null),
+  default: ({ isLoading }: { isLoading: boolean }) =>
+    isLoading ? <div>Loading...</div> : null,
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
@@ -38,7 +39,10 @@ vi.mock("../../shared/components/entity-list-table", () => ({
     columns,
   }: {
     data: { username: string }[];
-    columns: { header: string; render: (user: { username: string }) => React.ReactNode }[];
+    columns: {
+      header: string;
+      render: (user: { username: string }) => React.ReactNode;
+    }[];
   }) => (
     <div data-testid="sa-list">
       {data.map((item) => (
@@ -60,7 +64,17 @@ vi.mock("../../shared/components/icon-button", () => ({
 }));
 
 vi.mock("./components/create-service-account-modal", () => ({
-  CreateServiceAccountModal: ({ isOpen, onSave }: { isOpen: boolean; onSave: (data: { name: string; display_name: string; is_admin: boolean }) => void }) =>
+  CreateServiceAccountModal: ({
+    isOpen,
+    onSave,
+  }: {
+    isOpen: boolean;
+    onSave: (data: {
+      name: string;
+      display_name: string;
+      is_admin: boolean;
+    }) => void;
+  }) =>
     isOpen ? (
       <div data-testid="create-modal">
         <button
@@ -80,13 +94,15 @@ describe("ServiceAccountsPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
       allServiceAccounts: ["sa1"],
       isLoading: false,
       error: null,
       refresh: mockRefresh,
-    } as unknown as ReturnType<typeof useAllAccountsModule.useAllServiceAccounts>);
+    } as unknown as ReturnType<
+      typeof useAllAccountsModule.useAllServiceAccounts
+    >);
 
     vi.spyOn(useCurrentUserModule, "useCurrentUser").mockReturnValue({
       currentUser: { is_admin: true, username: "admin" },

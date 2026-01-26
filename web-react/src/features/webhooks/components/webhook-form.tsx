@@ -31,7 +31,6 @@ export const WebhookForm: React.FC<WebhookFormProps> = ({
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-
   const validateURL = (url: string) => {
     try {
       const trimmedUrl = url.trim();
