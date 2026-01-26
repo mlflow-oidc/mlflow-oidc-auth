@@ -3,8 +3,26 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import GroupsPage from "./groups-page";
 
-const mockUseAllGroups = vi.fn();
-const mockUseSearch = vi.fn();
+import type { Mock } from "vitest";
+
+const mockUseAllGroups: Mock<
+  () => {
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+    allGroups: string[] | null;
+  }
+> = vi.fn();
+
+const mockUseSearch: Mock<
+  () => {
+    searchTerm: string;
+    submittedTerm: string;
+    handleInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    handleSearchSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+    handleClearSearch: () => void;
+  }
+> = vi.fn();
 
 vi.mock("../../core/hooks/use-all-groups", () => ({
   useAllGroups: () => mockUseAllGroups(),
@@ -29,7 +47,13 @@ vi.mock("../../shared/components/page/page-container", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading, error }: any) => {
+  default: ({
+    isLoading,
+    error,
+  }: {
+    isLoading: boolean;
+    error: Error | null;
+  }) => {
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div>Error</div>;
     return null;
@@ -41,9 +65,13 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({ data }: any) => (
+  EntityListTable: ({
+    data,
+  }: {
+    data: { id: string; groupName: string }[];
+  }) => (
     <div data-testid="entity-list">
-      {data.map((item: any) => (
+      {data.map((item) => (
         <div key={item.id}>{item.groupName}</div>
       ))}
     </div>
