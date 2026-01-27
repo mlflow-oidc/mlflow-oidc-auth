@@ -15,7 +15,7 @@ describe("Switch", () => {
     const handleChange = vi.fn();
     render(<Switch checked={false} onChange={handleChange} />);
 
-    fireEvent.click(screen.getByRole("switch").parentElement!);
+    fireEvent.click(screen.getByRole("switch"));
     expect(handleChange).toHaveBeenCalledWith(true);
   });
 
@@ -23,7 +23,7 @@ describe("Switch", () => {
     const handleChange = vi.fn();
     render(<Switch checked={false} onChange={handleChange} disabled />);
 
-    fireEvent.click(screen.getByRole("switch").parentElement!);
+    fireEvent.click(screen.getByRole("switch"));
     expect(handleChange).not.toHaveBeenCalled();
   });
 
