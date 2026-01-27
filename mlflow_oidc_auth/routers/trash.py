@@ -3,7 +3,7 @@ import warnings
 from datetime import timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from mlflow.entities import ViewType
 from mlflow.entities.lifecycle_stage import LifecycleStage
@@ -87,9 +87,9 @@ async def list_deleted_experiments(
         logger.info(f"Admin user '{admin_username}' listed {len(experiments_list)} deleted experiments.")
         return JSONResponse(content={"deleted_experiments": experiments_list})
 
-    except Exception as e:
-        logger.error(f"Error listing deleted experiments for admin '{admin_username}': {str(e)}")
-        return JSONResponse(status_code=500, content={"error": "Failed to retrieve deleted experiments"})
+    except Exception:
+        logger.exception("Error listing deleted experiments for admin %s", admin_username)
+        raise HTTPException(status_code=500, detail="Failed to retrieve deleted experiments")
 
 
 @trash_router.get(
@@ -181,9 +181,9 @@ async def list_deleted_runs(
         )
         return JSONResponse(content={"deleted_runs": runs_payload})
 
-    except Exception as e:  # pragma: no cover - defensive log path
-        logger.error(f"Error listing deleted runs for admin '{admin_username}': {str(e)}")
-        return JSONResponse(status_code=500, content={"error": "Failed to retrieve deleted runs"})
+    except Exception:
+        logger.exception("Error listing deleted runs for admin %s", admin_username)
+        raise HTTPException(status_code=500, detail="Failed to retrieve deleted runs")
 
 
 @trash_router.post(
@@ -395,9 +395,9 @@ async def permanently_delete_all_trashed_entities(
 
         return JSONResponse(content=response_data)
 
-    except Exception as e:
-        logger.error(f"Error in cleanup operation for admin '{admin_username}': {str(e)}")
-        return JSONResponse(status_code=500, content={"error": f"Cleanup operation failed"})
+    except Exception:
+        logger.exception("Error in cleanup operation for admin %s", admin_username)
+        raise HTTPException(status_code=500, detail="Cleanup operation failed")
 
 
 @trash_router.post(
@@ -444,9 +444,9 @@ async def restore_experiment(
                 }
             }
         )
-    except Exception as exc:  # pragma: no cover - defensive log path
-        logger.error(f"Error restoring experiment {experiment_id}: {str(exc)}")
-        return JSONResponse(status_code=500, content={"error": "Failed to restore experiment"})
+    except Exception:  # pragma: no cover - defensive log path
+        logger.exception("Error restoring experiment %s", experiment_id)
+        raise HTTPException(status_code=500, detail="Failed to restore experiment")
 
 
 @trash_router.post(
@@ -494,9 +494,9 @@ async def restore_run(
                 }
             }
         )
-    except Exception as exc:  # pragma: no cover - defensive log path
-        logger.error(f"Error restoring run {run_id}: {str(exc)}")
-        return JSONResponse(status_code=500, content={"error": "Failed to restore run"})
+    except Exception:
+        logger.exception("Error restoring run %s", run_id)
+        raise HTTPException(status_code=500, detail="Failed to restore run")
 
 
 def _parse_time_delta(older_than: str) -> int:
