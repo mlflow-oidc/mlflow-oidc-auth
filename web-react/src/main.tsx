@@ -6,6 +6,7 @@ import App from "./app.tsx";
 import { LoadingSpinner } from "./shared/components/loading-spinner.tsx";
 import { initializeTheme } from "./shared/utils/theme-utils.ts";
 import { getRuntimeConfig } from "./shared/services/runtime-config";
+import { removeTrailingSlashes } from "./shared/utils/string-utils";
 import { RuntimeConfigProvider } from "./shared/context/runtime-config-provider.tsx";
 import { UserProvider } from "./core/context/user-provider.tsx";
 import { ToastProvider } from "./shared/components/toast/toast-context.tsx";
@@ -15,7 +16,7 @@ async function init() {
 
   const config = await getRuntimeConfig();
 
-  const basename = `${config.uiPath}`.replace(/\/+$/, "");
+  const basename = removeTrailingSlashes(config.uiPath);
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
