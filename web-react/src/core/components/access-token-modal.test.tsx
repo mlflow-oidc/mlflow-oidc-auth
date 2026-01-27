@@ -59,7 +59,10 @@ describe("AccessTokenModal", () => {
       expect(mockHttp).toHaveBeenCalled();
     });
 
-    expect(screen.getByDisplayValue("generated-token")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("generated-token")).toBeInTheDocument();
+    });
+
     expect(mockShowToast).toHaveBeenCalledWith(
       "Access token generated successfully",
       "success",
