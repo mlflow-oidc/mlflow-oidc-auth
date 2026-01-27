@@ -149,7 +149,6 @@ export default function ServiceAccountsPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={tableData}
             columns={columns}
             searchTerm={submittedTerm}

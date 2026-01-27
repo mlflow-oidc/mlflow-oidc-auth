@@ -1,6 +1,5 @@
 import type { Identifiable, ObjectTableRowProps } from "../types/table";
 
-
 export function ObjectTableRow<
   T extends Identifiable & Record<string, unknown>,
 >(props: ObjectTableRowProps<T>) {

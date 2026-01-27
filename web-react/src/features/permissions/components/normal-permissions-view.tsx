@@ -316,7 +316,6 @@ export const NormalPermissionsView = ({
             )}
           </div>
           <EntityListTable
-            mode="object"
             data={filteredData}
             columns={permissionColumns}
             searchTerm={submittedTerm}

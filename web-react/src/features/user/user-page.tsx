@@ -121,7 +121,6 @@ export const UserPage = () => {
                 />
               </div>
               <EntityListTable
-                mode="object"
                 data={filteredPermissions}
                 columns={permissionColumns}
                 searchTerm={submittedTerm}

@@ -177,7 +177,6 @@ export function EntityPermissionsManager({
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredPermissions}
             columns={columns}
             searchTerm={submittedTerm}

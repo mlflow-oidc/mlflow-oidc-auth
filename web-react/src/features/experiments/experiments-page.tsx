@@ -69,7 +69,6 @@ export default function ExperimentsPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredExperiments}
             columns={columnsWithAction}
             searchTerm={submittedTerm}

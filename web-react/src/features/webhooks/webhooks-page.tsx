@@ -188,7 +188,6 @@ export default function WebhooksPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredWebhooks}
             columns={columns}
             searchTerm={submittedTerm}

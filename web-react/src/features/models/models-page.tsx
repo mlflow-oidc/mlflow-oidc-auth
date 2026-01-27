@@ -69,7 +69,6 @@ export default function ModelsPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredModels}
             columns={columnsWithAction}
             searchTerm={submittedTerm}

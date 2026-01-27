@@ -21,12 +21,7 @@ describe("EntityListTable", () => {
 
   it("renders object table with data", () => {
     render(
-      <EntityListTable
-        mode="object"
-        data={mockData}
-        columns={mockColumns}
-        searchTerm=""
-      />,
+      <EntityListTable data={mockData} columns={mockColumns} searchTerm="" />,
     );
 
     expect(screen.getByText("Item 1")).toBeInTheDocument();
@@ -35,16 +30,8 @@ describe("EntityListTable", () => {
     expect(screen.getByText("ID")).toBeInTheDocument();
   });
 
-
   it("renders empty state when no data", () => {
-    render(
-      <EntityListTable
-        mode="object"
-        data={[]}
-        columns={mockColumns}
-        searchTerm=""
-      />,
-    );
+    render(<EntityListTable data={[]} columns={mockColumns} searchTerm="" />);
 
     expect(screen.getByText("No items found")).toBeInTheDocument();
   });
@@ -52,7 +39,6 @@ describe("EntityListTable", () => {
   it("renders empty state with search term", () => {
     render(
       <EntityListTable
-        mode="object"
         data={[]}
         columns={mockColumns}
         searchTerm="found nothing"

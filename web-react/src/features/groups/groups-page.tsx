@@ -77,7 +77,6 @@ export default function GroupsPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={tableData}
             searchTerm={submittedTerm}
             columns={columnsWithAction}
