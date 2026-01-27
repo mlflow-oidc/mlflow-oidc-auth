@@ -35,7 +35,9 @@
           window.__RUNTIME_CONFIG__ = config;
           var basePath = config.uiPath || "/";
           if (!basePath.endsWith("/")) basePath += "/";
-          document.write('<base href="' + basePath + '">');
+          var baseEl = document.createElement("base");
+          baseEl.href = basePath;
+          document.head.insertBefore(baseEl, document.head.firstChild);
         } else {
           console.error("Critical: Could not load runtime config.json");
         }
