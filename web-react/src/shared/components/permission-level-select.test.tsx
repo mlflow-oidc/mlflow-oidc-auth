@@ -5,7 +5,7 @@ import { PermissionLevelSelect } from "./permission-level-select";
 describe("PermissionLevelSelect", () => {
   it("renders correctly with default props", () => {
     render(<PermissionLevelSelect value="READ" onChange={vi.fn()} />);
-    
+
     expect(screen.getByLabelText(/Permissions/i)).toBeInTheDocument();
     expect(screen.getByRole("combobox")).toHaveValue("READ");
   });
@@ -13,27 +13,27 @@ describe("PermissionLevelSelect", () => {
   it("calls onChange when selection changes", () => {
     const handleChange = vi.fn();
     render(<PermissionLevelSelect value="READ" onChange={handleChange} />);
-    
+
     const select = screen.getByRole("combobox");
     fireEvent.change(select, { target: { value: "EDIT" } });
-    
+
     expect(handleChange).toHaveBeenCalledWith("EDIT");
   });
 
   it("renders with custom label", () => {
     render(
-      <PermissionLevelSelect 
-        value="READ" 
-        onChange={vi.fn()} 
-        label="Custom Label" 
-      />
+      <PermissionLevelSelect
+        value="READ"
+        onChange={vi.fn()}
+        label="Custom Label"
+      />,
     );
     expect(screen.getByLabelText("Custom Label*")).toBeInTheDocument();
   });
 
   it("renders all permission levels options", () => {
     render(<PermissionLevelSelect value="READ" onChange={vi.fn()} />);
-    
+
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(4);
     expect(options[0]).toHaveTextContent("READ");

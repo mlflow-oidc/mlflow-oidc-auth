@@ -92,9 +92,7 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
         id="permission-level"
         label="Permission Level"
         value={selectedPermission}
-        onChange={(val) =>
-          setSelectedPermission(val)
-        }
+        onChange={(val) => setSelectedPermission(val)}
         containerClassName="mb-4"
       />
 

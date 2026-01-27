@@ -56,9 +56,7 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
         id="permission-level"
         label="Permissions"
         value={selectedPermission}
-        onChange={(val) =>
-          setSelectedPermission(val)
-        }
+        onChange={(val) => setSelectedPermission(val)}
         required
         containerClassName="mb-4"
       />

@@ -90,10 +90,7 @@ export const getPermissionUrl = ({
       }
       if (type === "models") {
         return entityKind === "user"
-          ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
-              entityName,
-              identifier,
-            )
+          ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(entityName, identifier)
           : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
               entityName,
               identifier,
