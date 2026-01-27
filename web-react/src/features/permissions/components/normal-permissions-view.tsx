@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { DYNAMIC_API_ENDPOINTS } from "../../../core/configs/api-endpoints";
 import { http } from "../../../core/services/http";
 import { useToast } from "../../../shared/components/toast/use-toast";
+import { getPermissionUrl } from "../utils/permission-utils";
 import { EditPermissionModal } from "../../users/components/edit-permission-modal";
 import { useUserExperimentPermissions } from "../../../core/hooks/use-user-experiment-permissions";
 import { useUserRegisteredModelPermissions } from "../../../core/hooks/use-user-model-permissions";
@@ -133,44 +133,15 @@ export const NormalPermissionsView = ({
 
     setIsSaving(true);
     try {
-      let url = "";
       const identifier =
         "id" in editingItem ? String(editingItem.id) : editingItem.name;
 
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
-                entityName,
-                identifier,
-              );
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
-                entityName,
-                identifier,
-              );
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
-                entityName,
-                identifier,
-              );
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        identifier,
+      });
 
       const isTargetType =
         entityKind === "user"
@@ -206,23 +177,12 @@ export const NormalPermissionsView = ({
 
     setIsSaving(true);
     try {
-      let url = "";
-      if (type === "experiments") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
-          entityName,
-          identifier,
-        );
-      } else if (type === "models") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
-          entityName,
-          identifier,
-        );
-      } else if (type === "prompts") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
-          entityName,
-          identifier,
-        );
-      }
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type,
+        identifier,
+      });
 
       await http(url, {
         method: "POST",
@@ -251,43 +211,13 @@ export const NormalPermissionsView = ({
     if (!entityName) return;
 
     try {
-      let url = "";
       const identifier = "id" in item ? item.id : item.name;
-
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(
-                entityName,
-                identifier,
-              );
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(
-                entityName,
-                identifier,
-              );
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(
-                entityName,
-                identifier,
-              );
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        identifier: String(identifier),
+      });
 
       await http(url, {
         method: "DELETE",

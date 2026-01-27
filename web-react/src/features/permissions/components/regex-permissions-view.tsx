@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { DYNAMIC_API_ENDPOINTS } from "../../../core/configs/api-endpoints";
 import { http } from "../../../core/services/http";
+import { getPermissionUrl } from "../utils/permission-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { EditPermissionModal } from "../../users/components/edit-permission-modal";
 import { AddRegexRuleModal } from "./add-regex-rule-modal";
@@ -105,43 +105,15 @@ export const RegexPermissionsView = ({
 
     setIsSaving(true);
     try {
-      let url = "";
       const identifier = String(editingItem.id);
 
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              );
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              );
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              );
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        isPattern: true,
+        identifier: String(identifier),
+      });
 
       await http(url, {
         method: "PATCH",
@@ -174,29 +146,12 @@ export const RegexPermissionsView = ({
 
     setIsSaving(true);
     try {
-      let url = "";
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSIONS(
-                entityName,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSIONS(
-                entityName,
-              );
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSIONS(entityName)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSIONS(entityName);
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSIONS(entityName)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSIONS(
-                entityName,
-              );
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        isPattern: true,
+      });
 
       await http(url, {
         method: "POST",
@@ -217,43 +172,14 @@ export const RegexPermissionsView = ({
     if (!entityName) return;
 
     try {
-      let url = "";
       const identifier = String(item.id);
-
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              );
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              );
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              )
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION(
-                entityName,
-                identifier,
-              );
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        isPattern: true,
+        identifier: String(identifier),
+      });
 
       await http(url, {
         method: "DELETE",
