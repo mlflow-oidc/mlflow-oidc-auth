@@ -1,4 +1,5 @@
 from typing import List, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -27,6 +28,54 @@ VALID_WEBHOOK_EVENTS = [
 ]
 
 
+def _validate_https_url(v: Optional[str], *, allow_none: bool = False) -> Optional[str]:
+    """Validate that `v` is an HTTPS URL with a host and no credentials.
+
+    If `allow_none` is True, `None` is accepted and returned unchanged.
+    """
+    if allow_none and v is None:
+        return v
+    if not isinstance(v, str):
+        raise ValueError("URL must be a string and use https:// scheme")
+    if any(c.isspace() for c in v):
+        raise ValueError("URL must not contain whitespace")
+    parsed = urlparse(v)
+    if parsed.scheme.lower() != "https":
+        raise ValueError("URL must use https:// scheme")
+    if not parsed.netloc:
+        raise ValueError("URL must include a host")
+    if parsed.username or parsed.password:
+        raise ValueError("Credentials (username/password) are not allowed in webhook URLs")
+    return v
+
+
+def _validate_events(v: Optional[List[str]], *, allow_none: bool = False) -> Optional[List[str]]:
+    """Validate events list is non-empty and contains only valid event types.
+
+    If `allow_none` is True, `None` is accepted and returned unchanged.
+    """
+    if allow_none and v is None:
+        return v
+    if not v:
+        raise ValueError("At least one event must be specified")
+    invalid_events = [event for event in v if event not in VALID_WEBHOOK_EVENTS]
+    if invalid_events:
+        raise ValueError(f"Invalid event types: {invalid_events}. Valid events: {VALID_WEBHOOK_EVENTS}")
+    return v
+
+
+def _validate_status(v: Optional[str], *, allow_none: bool = False) -> Optional[str]:
+    """Validate status is one of the allowed statuses.
+
+    If `allow_none` is True, `None` is accepted and returned unchanged.
+    """
+    if allow_none and v is None:
+        return v
+    if v is not None and v not in VALID_WEBHOOK_STATUSES:
+        raise ValueError(f"Invalid status: {v}. Valid statuses: {VALID_WEBHOOK_STATUSES}")
+    return v
+
+
 # Pydantic models for request/response bodies
 class WebhookCreateRequest(BaseModel):
     """Request model for creating a webhook."""
@@ -41,26 +90,18 @@ class WebhookCreateRequest(BaseModel):
     @field_validator("url")
     @classmethod
     def validate_url(cls, v):
-        if not v.startswith(("http://", "https://")):
-            raise ValueError("URL must start with http:// or https://")
-        return v
+        """Ensure URL is an HTTPS URL with host and no credentials."""
+        return _validate_https_url(v, allow_none=False)
 
     @field_validator("events")
     @classmethod
     def validate_events(cls, v):
-        if not v:
-            raise ValueError("At least one event must be specified")
-        invalid_events = [event for event in v if event not in VALID_WEBHOOK_EVENTS]
-        if invalid_events:
-            raise ValueError(f"Invalid event types: {invalid_events}. Valid events: {VALID_WEBHOOK_EVENTS}")
-        return v
+        return _validate_events(v, allow_none=False)
 
     @field_validator("status")
     @classmethod
     def validate_status(cls, v):
-        if v is not None and v not in VALID_WEBHOOK_STATUSES:
-            raise ValueError(f"Invalid status: {v}. Valid statuses: {VALID_WEBHOOK_STATUSES}")
-        return v
+        return _validate_status(v, allow_none=False)
 
 
 class WebhookUpdateRequest(BaseModel):
@@ -76,27 +117,17 @@ class WebhookUpdateRequest(BaseModel):
     @field_validator("url")
     @classmethod
     def validate_url(cls, v):
-        if v is not None and not v.startswith(("http://", "https://")):
-            raise ValueError("URL must start with http:// or https://")
-        return v
+        return _validate_https_url(v, allow_none=True)
 
     @field_validator("events")
     @classmethod
     def validate_events(cls, v):
-        if v is not None:
-            if not v:
-                raise ValueError("At least one event must be specified")
-            invalid_events = [event for event in v if event not in VALID_WEBHOOK_EVENTS]
-            if invalid_events:
-                raise ValueError(f"Invalid event types: {invalid_events}. Valid events: {VALID_WEBHOOK_EVENTS}")
-        return v
+        return _validate_events(v, allow_none=True)
 
     @field_validator("status")
     @classmethod
     def validate_status(cls, v):
-        if v is not None and v not in VALID_WEBHOOK_STATUSES:
-            raise ValueError(f"Invalid status: {v}. Valid statuses: {VALID_WEBHOOK_STATUSES}")
-        return v
+        return _validate_status(v, allow_none=True)
 
 
 class WebhookTestRequest(BaseModel):
