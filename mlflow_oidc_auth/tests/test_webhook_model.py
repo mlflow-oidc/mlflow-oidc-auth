@@ -88,3 +88,20 @@ def test_update_request_validates_events_and_status_when_present():
         WebhookUpdateRequest(events=[])
     with pytest.raises(ValidationError):
         WebhookUpdateRequest(status="BAD")
+
+
+def test_create_request_rejects_non_string_url_with_specific_error_message():
+    """Non-string URL should raise ValidationError with our specific message."""
+    with pytest.raises(ValidationError) as exc:
+        # Passing an int instead of a string should trigger our "URL must be a string" branch
+        WebhookCreateRequest(name="n", url=123, events=VALID_EVENT)
+    assert "URL must be a string and use https:// scheme" in str(exc.value)
+
+
+def test_validate_event_type_raises_when_missing():
+    """Call the internal validator to ensure it raises when event type is None and not allowed."""
+    from mlflow_oidc_auth.models import _validate_event_type
+
+    with pytest.raises(ValueError) as exc:
+        _validate_event_type(None, allow_none=False)
+    assert "Event type must be provided" in str(exc.value)
