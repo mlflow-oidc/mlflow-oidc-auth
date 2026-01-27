@@ -7,12 +7,6 @@ export type ColumnConfig<T extends Record<string, unknown>> = {
 
 export type Identifiable = { id?: string | number };
 
-export type PrimitiveMode = {
-  mode: "primitive";
-  data: string[];
-  searchTerm: string;
-};
-
 export type ObjectMode<T extends Identifiable & Record<string, unknown>> = {
   mode: "object";
   data: T[];
@@ -31,4 +25,4 @@ export interface ObjectTableRowProps<
 
 export type EntityListTableProps<
   T extends Identifiable & Record<string, unknown>,
-> = PrimitiveMode | ObjectMode<T>;
+> = ObjectMode<T>;

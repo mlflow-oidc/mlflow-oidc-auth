@@ -35,16 +35,6 @@ describe("EntityListTable", () => {
     expect(screen.getByText("ID")).toBeInTheDocument();
   });
 
-  it("renders primitive table with data", () => {
-    const primitiveData = ["Value 1", "Value 2"];
-    render(
-      <EntityListTable mode="primitive" data={primitiveData} searchTerm="" />,
-    );
-
-    expect(screen.getByText("Value 1")).toBeInTheDocument();
-    expect(screen.getByText("Value 2")).toBeInTheDocument();
-    expect(screen.getByText("Items")).toBeInTheDocument();
-  });
 
   it("renders empty state when no data", () => {
     render(
