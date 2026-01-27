@@ -30,9 +30,16 @@ describe("Input", () => {
   });
 
   it("forward refs", () => {
-    const ref = React.createRef<HTMLInputElement>();
-    render(<Input ref={ref} />);
-    expect(ref.current).toBeInstanceOf(HTMLInputElement);
+    let capturedRef: HTMLInputElement | null = null;
+    const TestWrapper = () => {
+      const ref = React.useRef<HTMLInputElement>(null);
+      React.useEffect(() => {
+        capturedRef = ref.current;
+      }, []);
+      return <Input ref={ref} />;
+    };
+    render(<TestWrapper />);
+    expect(capturedRef).toBeInstanceOf(HTMLInputElement);
   });
 
   it("renders correct input attributes", () => {

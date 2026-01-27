@@ -33,7 +33,7 @@ export default function ServiceAccountsPage() {
   const serviceAccountsList = allServiceAccounts || [];
 
   const filteredServiceAccounts = serviceAccountsList.filter((username) =>
-    username.toLowerCase().includes(submittedTerm.toLowerCase())
+    username.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const handleCreateServiceAccount = async (data: {
@@ -48,26 +48,25 @@ export default function ServiceAccountsPage() {
         is_admin: data.is_admin,
         is_service_account: true,
       });
-      showToast(`Service account ${data.name} created successfully.`, "success");
+      showToast(`Service account ${data.name} created successfully`, "success");
       refresh();
       setIsModalOpen(false);
     } catch (err) {
       console.error("Failed to create service account:", err);
-      showToast("Failed to create service account. Please try again.", "error");
+      showToast("Failed to create service account", "error");
     }
   };
 
   const handleRemoveServiceAccount = async (username: string) => {
     try {
       await deleteUser(username);
-      showToast(`Service account ${username} removed successfully.`, "success");
+      showToast(`Service account ${username} removed successfully`, "success");
       refresh();
     } catch (err) {
       console.error("Failed to remove service account:", err);
-      showToast("Failed to remove service account. Please try again.", "error");
+      showToast("Failed to remove service account", "error");
     }
   };
-
 
   const isAdmin = currentUser?.is_admin === true;
 
@@ -79,7 +78,11 @@ export default function ServiceAccountsPage() {
   const columns: ColumnConfig<{ id: string; username: string }>[] = [
     {
       header: "Service Account Name",
-      render: ({ username }) => username,
+      render: ({ username }) => (
+        <span className="truncate block" title={username}>
+          {username}
+        </span>
+      ),
     },
     {
       header: "Permissions",
@@ -153,6 +156,7 @@ export default function ServiceAccountsPage() {
           />
 
           <CreateServiceAccountModal
+            key={isModalOpen ? "open" : "closed"}
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}
             onSave={(data) => {

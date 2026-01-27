@@ -2,12 +2,47 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { SharedPermissionsPage } from "./shared-permissions-page";
 
-const mockUseUser = vi.fn();
-const mockUseUserDetails = vi.fn();
+const mockUseUser =
+  vi.fn<
+    () => { currentUser: { is_admin: boolean; username: string } | null }
+  >();
+const mockUseUserDetails =
+  vi.fn<() => { user: unknown; refetch: () => void }>();
+
+// Mock localStorage
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string): string | null => store[key] || null,
+    setItem: (key: string, value: string): void => {
+      store[key] = value.toString();
+    },
+    clear: () => {
+      store = {};
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+  };
+})();
+
+Object.defineProperty(window, "localStorage", { value: localStorageMock });
 
 vi.mock("react-router", () => ({
   useParams: () => ({ username: "testuser" }),
-  Link: ({ children, to, className }: any) => <a href={to} className={className}>{children}</a>,
+  Link: ({
+    children,
+    to,
+    className,
+  }: {
+    children: React.ReactNode;
+    to: string;
+    className?: string;
+  }) => (
+    <a href={to} className={className}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("../../core/hooks/use-user", () => ({
@@ -19,8 +54,16 @@ vi.mock("../../core/hooks/use-user-details", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
-  default: ({ children, title }: { children: React.ReactNode; title: string }) => (
-    <div data-testid="page-container" title={title}>{children}</div>
+  default: ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => (
+    <div data-testid="page-container" title={title}>
+      {children}
+    </div>
   ),
 }));
 
@@ -33,42 +76,74 @@ vi.mock("./components/regex-permissions-view", () => ({
 }));
 
 vi.mock("../../shared/components/switch", () => ({
-    Switch: ({ checked, onChange, label, labelClassName }: any) => (
-        <div onClick={() => onChange(!checked)} data-testid="regex-switch" className={labelClassName}>
-            {label}
-        </div>
-    )
-}))
+  Switch: ({
+    checked,
+    onChange,
+    label,
+    labelClassName,
+  }: {
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    label: string;
+    labelClassName?: string;
+  }) => (
+    <div
+      onClick={() => onChange(!checked)}
+      data-testid="regex-switch"
+      className={labelClassName}
+    >
+      {label}
+    </div>
+  ),
+}));
 
 vi.mock("../../shared/components/token-info-block", () => ({
-    TokenInfoBlock: () => <div>Token Block</div>
-}))
-
+  TokenInfoBlock: () => <div>Token Block</div>,
+}));
 
 describe("SharedPermissionsPage", () => {
-    beforeEach(() => {
-        mockUseUser.mockReturnValue({
-            currentUser: { is_admin: false }
-        });
-        mockUseUserDetails.mockReturnValue({
-            user: null,
-            refetch: vi.fn()
-        })
-    })
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseUser.mockReturnValue({
+      currentUser: { is_admin: false, username: "testuser" },
+    });
+    mockUseUserDetails.mockReturnValue({
+      user: null,
+      refetch: vi.fn(),
+    });
+  });
 
   it("renders correctly for read permissions", () => {
-    render(<SharedPermissionsPage type="experiments" baseRoute="/users" entityKind="user" />);
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
 
-    expect(screen.getByTestId("page-container")).toHaveAttribute("title", "Permissions for testuser");
+    expect(screen.getByTestId("page-container")).toHaveAttribute(
+      "title",
+      "Permissions for testuser",
+    );
     expect(screen.getByTestId("normal-view")).toBeInTheDocument();
   });
 
   it("toggles regex mode for admin", () => {
     mockUseUser.mockReturnValue({
-        currentUser: { is_admin: true }
+      currentUser: {
+        is_admin: true,
+        username: "",
+      },
     });
 
-    render(<SharedPermissionsPage type="experiments" baseRoute="/users" entityKind="user" />);
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
 
     expect(screen.getByTestId("normal-view")).toBeInTheDocument();
 
@@ -77,5 +152,39 @@ describe("SharedPermissionsPage", () => {
 
     expect(screen.getByTestId("regex-view")).toBeInTheDocument();
     expect(screen.queryByTestId("normal-view")).not.toBeInTheDocument();
+  });
+
+  it("loads regex mode from localStorage", () => {
+    localStorage.setItem("_mlflow_is_regex_mode", "true");
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+    expect(screen.getByTestId("regex-view")).toBeInTheDocument();
+  });
+
+  it("saves regex mode to localStorage", () => {
+    mockUseUser.mockReturnValue({
+      currentUser: {
+        is_admin: true,
+        username: "",
+      },
+    });
+    localStorage.setItem("_mlflow_is_regex_mode", "false");
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    const switchEl = screen.getByTestId("regex-switch");
+    fireEvent.click(switchEl);
+
+    expect(localStorage.getItem("_mlflow_is_regex_mode")).toBe("true");
   });
 });

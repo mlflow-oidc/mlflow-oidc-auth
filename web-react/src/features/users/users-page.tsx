@@ -21,7 +21,7 @@ export default function UsersPage() {
   const usersList = allUsers || [];
 
   const filteredUsers = usersList.filter((username) =>
-    username.toLowerCase().includes(submittedTerm.toLowerCase())
+    username.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const tableData = filteredUsers.map((username) => ({
@@ -42,7 +42,11 @@ export default function UsersPage() {
   const columnsWithAction: ColumnConfig<{ id: string; username: string }>[] = [
     {
       header: "Username",
-      render: ({ username }) => username,
+      render: ({ username }) => (
+        <span className="truncate block" title={username}>
+          {username}
+        </span>
+      ),
     },
     {
       header: "Permissions",

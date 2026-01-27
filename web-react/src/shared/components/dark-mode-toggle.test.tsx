@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 import DarkModeToggle from "./dark-mode-toggle";
 
 const mockToggleTheme = vi.fn();
-const mockUseTheme = vi.fn();
+const mockUseTheme =
+  vi.fn<() => { isDark: boolean; toggleTheme: () => void }>();
 
 vi.mock("../utils/theme-utils", () => ({
   useTheme: () => mockUseTheme(),

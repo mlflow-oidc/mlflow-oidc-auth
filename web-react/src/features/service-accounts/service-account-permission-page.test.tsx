@@ -3,7 +3,15 @@ import { describe, it, expect, vi } from "vitest";
 import ServiceAccountPermissionPage from "./service-account-permission-page";
 
 vi.mock("../permissions/shared-permissions-page", () => ({
-  SharedPermissionsPage: ({ type, baseRoute, entityKind }: any) => (
+  SharedPermissionsPage: ({
+    type,
+    baseRoute,
+    entityKind,
+  }: {
+    type: string;
+    baseRoute: string;
+    entityKind: string;
+  }) => (
     <div data-testid="shared-permissions-page">
       {type} - {baseRoute} - {entityKind}
     </div>

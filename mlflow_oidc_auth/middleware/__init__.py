@@ -9,7 +9,6 @@ from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
 from mlflow_oidc_auth.middleware.proxy_headers_middleware import ProxyHeadersMiddleware
 
-
 __all__ = [
     "AuthMiddleware",
     "AuthAwareWSGIMiddleware",

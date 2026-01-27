@@ -8,41 +8,41 @@ import ForbiddenPage from "./features/forbidden/forbidden-page";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const ExperimentsPage = React.lazy(
-  () => import("./features/experiments/experiments-page")
+  () => import("./features/experiments/experiments-page"),
 );
 const ExperimentPermissionsPage = React.lazy(
-  () => import("./features/experiments/experiment-permissions-page")
+  () => import("./features/experiments/experiment-permissions-page"),
 );
 const GroupsPage = React.lazy(() => import("./features/groups/groups-page"));
 const GroupPermissionsPage = React.lazy(
-  () => import("./features/groups/group-permissions-page")
+  () => import("./features/groups/group-permissions-page"),
 );
 const ModelsPage = React.lazy(() => import("./features/models/models-page"));
 const ModelPermissionsPage = React.lazy(
-  () => import("./features/models/model-permissions-page")
+  () => import("./features/models/model-permissions-page"),
 );
 const PromptsPage = React.lazy(() => import("./features/prompts/prompts-page"));
 const PromptPermissionsPage = React.lazy(
-  () => import("./features/prompts/prompt-permissions-page")
+  () => import("./features/prompts/prompt-permissions-page"),
 );
 const ServiceAccountsPage = React.lazy(
-  () => import("./features/service-accounts/service-accounts-page")
+  () => import("./features/service-accounts/service-accounts-page"),
 );
 const ServiceAccountPermissionPage = React.lazy(
-  () => import("./features/service-accounts/service-account-permission-page")
+  () => import("./features/service-accounts/service-account-permission-page"),
 );
 
 const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
 const UsersPage = React.lazy(() => import("./features/users/users-page"));
 const UserPermissionsPage = React.lazy(
-  () => import("./features/users/user-permissions-page")
+  () => import("./features/users/user-permissions-page"),
 );
 const WebhooksPage = React.lazy(
-  () => import("./features/webhooks/webhooks-page")
+  () => import("./features/webhooks/webhooks-page"),
 );
 const NotFoundPage = React.lazy(
-  () => import("./features/not-found/not-found-page")
+  () => import("./features/not-found/not-found-page"),
 );
 
 const ProtectedLayoutRoute = ({

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
-import { Select } from "../../../shared/components/select";
+import { PermissionLevelSelect } from "../../../shared/components/permission-level-select";
 import type {
   PermissionLevel,
   PermissionType,
@@ -12,15 +12,17 @@ import type {
 interface EditPermissionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (newPermission: PermissionLevel, regex?: string, priority?: number) => Promise<void>;
+  onSave: (
+    newPermission: PermissionLevel,
+    regex?: string,
+    priority?: number,
+  ) => Promise<void>;
   item: AnyPermissionItem | null;
   username: string;
   resourceId?: string;
   type: PermissionType;
   isLoading?: boolean;
 }
-
-const PERMISSION_LEVELS: PermissionLevel[] = ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"];
 
 export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
   isOpen,
@@ -33,24 +35,14 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
   isLoading = false,
 }) => {
   const [selectedPermission, setSelectedPermission] = useState<PermissionLevel>(
-    item?.permission || "READ"
+    item?.permission || "READ",
   );
   const [regex, setRegex] = useState<string>(
-    item && "regex" in item ? item.regex : ""
+    item && "regex" in item ? item.regex : "",
   );
   const [priority, setPriority] = useState<number>(
-    item && "priority" in item ? item.priority : 0
+    item && "priority" in item ? item.priority : 0,
   );
-
-  useEffect(() => {
-    if (isOpen && item) {
-      setSelectedPermission(item.permission);
-      if ("regex" in item) {
-        setRegex(item.regex);
-        setPriority(item.priority);
-      }
-    }
-  }, [isOpen, item]);
 
   if (!isOpen || !item) return null;
 
@@ -96,12 +88,11 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
         </>
       )}
 
-      <Select
+      <PermissionLevelSelect
         id="permission-level"
         label="Permission Level"
         value={selectedPermission}
-        onChange={(e) => setSelectedPermission(e.target.value as PermissionLevel)}
-        options={PERMISSION_LEVELS.map(level => ({ label: level, value: level }))}
+        onChange={(val) => setSelectedPermission(val)}
         containerClassName="mb-4"
       />
 
@@ -109,7 +100,13 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
         <Button onClick={onClose} variant="ghost" disabled={isLoading}>
           Cancel
         </Button>
-        <Button onClick={() => { void handleSave(); }} variant="primary" disabled={isLoading}>
+        <Button
+          onClick={() => {
+            void handleSave();
+          }}
+          variant="primary"
+          disabled={isLoading}
+        >
           {isLoading ? "Saving..." : "Ok"}
         </Button>
       </div>

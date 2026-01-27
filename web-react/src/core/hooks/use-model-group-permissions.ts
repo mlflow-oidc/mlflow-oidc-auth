@@ -17,7 +17,7 @@ export function useModelGroupPermissions({
       }
       return fetchModelGroupPermissions(modelName, signal);
     },
-    [modelName]
+    [modelName],
   );
 
   const {

@@ -32,7 +32,7 @@ export function getRuntimeConfig(signal?: AbortSignal): Promise<RuntimeConfig> {
     .then(async (res) => {
       if (!res.ok) {
         throw new Error(
-          `Failed to load config.json: ${res.status} ${res.statusText}`
+          `Failed to load config.json: ${res.status} ${res.statusText}`,
         );
       }
 

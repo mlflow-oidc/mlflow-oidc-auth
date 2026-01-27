@@ -2,8 +2,11 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { AuthPage } from "./auth-page";
 
-const mockUseAuthErrors = vi.fn();
-const mockUseRuntimeConfig = vi.fn();
+import type { RuntimeConfig } from "../../shared/services/runtime-config";
+import type { Mock } from "vitest";
+
+const mockUseAuthErrors: Mock<() => string[]> = vi.fn();
+const mockUseRuntimeConfig: Mock<() => RuntimeConfig> = vi.fn();
 
 vi.mock("../../shared/context/use-runtime-config", () => ({
   useRuntimeConfig: () => mockUseRuntimeConfig(),
@@ -13,11 +16,17 @@ vi.mock("./hooks/use-auth-errors", () => ({
   useAuthErrors: () => mockUseAuthErrors(),
 }));
 
+vi.mock("../../shared/components/dark-mode-toggle", () => ({
+  default: () => <div data-testid="dark-mode-toggle" />,
+}));
+
 describe("AuthPage", () => {
   beforeEach(() => {
     mockUseRuntimeConfig.mockReturnValue({
       provider: "Sign in with OIDC",
       basePath: "/api",
+      uiPath: "/ui",
+      authenticated: false,
     });
     mockUseAuthErrors.mockReturnValue([]);
   });
@@ -48,15 +57,22 @@ describe("AuthPage", () => {
 
   it("renders footer with copyright and sponsor link", () => {
     render(<AuthPage />);
-    
+
     const currentYear = new Date().getFullYear();
-    expect(screen.getByText(new RegExp(`© ${currentYear} mlflow-oidc-auth`))).toBeInTheDocument();
-    
+    expect(
+      screen.getByText(new RegExp(`© ${currentYear} mlflow-oidc-auth`)),
+    ).toBeInTheDocument();
+
     const sponsorLink = screen.getByText("Support the project");
     expect(sponsorLink).toBeInTheDocument();
     expect(sponsorLink.closest("a")).toHaveAttribute(
       "href",
-      "https://github.com/sponsors/mlflow-oidc?o=esb"
+      "https://github.com/sponsors/mlflow-oidc?o=esb",
     );
+  });
+
+  it("renders dark mode toggle", () => {
+    render(<AuthPage />);
+    expect(screen.getByTestId("dark-mode-toggle")).toBeInTheDocument();
   });
 });

@@ -21,7 +21,7 @@ export type ObjectMode<T extends Identifiable & Record<string, unknown>> = {
 };
 
 export interface ObjectTableRowProps<
-  T extends Identifiable & Record<string, unknown>
+  T extends Identifiable & Record<string, unknown>,
 > {
   item: T;
   columns: ColumnConfig<T>[];
@@ -30,5 +30,5 @@ export interface ObjectTableRowProps<
 }
 
 export type EntityListTableProps<
-  T extends Identifiable & Record<string, unknown>
+  T extends Identifiable & Record<string, unknown>,
 > = PrimitiveMode | ObjectMode<T>;

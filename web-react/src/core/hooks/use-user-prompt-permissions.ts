@@ -17,7 +17,7 @@ export function useUserPromptPermissions({
       }
       return fetchUserPromptPermissions(username, signal);
     },
-    [username]
+    [username],
   );
 
   const {

@@ -9,7 +9,7 @@ export interface ApiState<T> {
 }
 
 export function useApi<T>(
-  fetcher: (signal?: AbortSignal) => Promise<T>
+  fetcher: (signal?: AbortSignal) => Promise<T>,
 ): ApiState<T> {
   const [data, setData] = useState<T | null>(null);
   const [isLoading, setIsLoading] = useState(false);

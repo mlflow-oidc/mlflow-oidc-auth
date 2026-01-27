@@ -25,18 +25,21 @@ export function useWebhooks() {
   }, []);
 
   useEffect(() => {
-    fetchWebhooks();
+    void fetchWebhooks();
   }, [fetchWebhooks]);
 
   const refresh = useCallback(() => {
-    fetchWebhooks(true);
+    void fetchWebhooks(true);
   }, [fetchWebhooks]);
 
-  const updateLocalWebhook = useCallback((id: string, status: WebhookStatus) => {
-    setWebhooks((prev) =>
-      prev.map((w) => (w.webhook_id === id ? { ...w, status } : w))
-    );
-  }, []);
+  const updateLocalWebhook = useCallback(
+    (id: string, status: WebhookStatus) => {
+      setWebhooks((prev) =>
+        prev.map((w) => (w.webhook_id === id ? { ...w, status } : w)),
+      );
+    },
+    [],
+  );
 
   return {
     webhooks,

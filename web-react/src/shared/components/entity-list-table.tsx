@@ -5,7 +5,7 @@ import type { Identifiable, EntityListTableProps } from "../types/table";
 import { ObjectTableRow, PrimitiveTableRow } from "./table-rows";
 
 export function EntityListTable<
-  T extends Identifiable & Record<string, unknown>
+  T extends Identifiable & Record<string, unknown>,
 >(props: EntityListTableProps<T>) {
   if (props.mode === "primitive") {
     const { data, searchTerm } = props;
@@ -15,13 +15,13 @@ export function EntityListTable<
         role="table"
         className="flex flex-col flex-1 overflow-hidden text-sm"
       >
-        <div role="rowgroup" className="flex-shrink-0">
+        <div role="rowgroup" className="shrink-0">
           <div
             role="row"
-            className="flex border-b font-semibold text-left
+            className="flex items-center h-(--table-row-height) border-b font-semibold text-left
                     border-btn-secondary-border dark:border-btn-secondary-border-dark"
           >
-            <div role="columnheader" className="p-1 flex-1 min-w-0 truncate">
+            <div role="columnheader" className="px-1 flex-1 min-w-0 truncate">
               Items
             </div>
           </div>

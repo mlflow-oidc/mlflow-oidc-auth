@@ -15,11 +15,11 @@ export function PrimitiveTableRow({
       role="row"
       key={index}
       onClick={handleClick}
-      className="flex border-b
+      className="flex items-center h-(--table-row-height) border-b
               border-btn-secondary-border dark:border-btn-secondary-border-dark
               hover:bg-table-row-hover dark:hover:bg-table-row-hover"
     >
-      <div role="cell" className="p-1 flex-1 min-w-0 truncate">
+      <div role="cell" className="px-1 flex-1 min-w-0 truncate">
         {value}
       </div>
     </div>
@@ -27,7 +27,7 @@ export function PrimitiveTableRow({
 }
 
 export function ObjectTableRow<
-  T extends Identifiable & Record<string, unknown>
+  T extends Identifiable & Record<string, unknown>,
 >(props: ObjectTableRowProps<T>) {
   const { item, columns, fallbackKey } = props;
 
@@ -36,15 +36,18 @@ export function ObjectTableRow<
     <div
       key={key}
       role="row"
-      className="flex items-center border-b group
+      className="flex items-center h-(--table-row-height) border-b group
               border-btn-secondary-border dark:border-btn-secondary-border-dark
               hover:bg-table-row-hover dark:hover:bg-table-row-hover "
     >
       {columns.map((column, index) => (
         <div
-          key={column.id || (typeof column.header === "string" ? column.header : index)}
+          key={
+            column.id ||
+            (typeof column.header === "string" ? column.header : index)
+          }
           role="cell"
-          className={`p-1 flex-1 min-w-0 truncate ${column.className || ""}`}
+          className={`px-1 flex-1 min-w-0 truncate ${column.className || ""}`}
         >
           {column.render(item)}
         </div>

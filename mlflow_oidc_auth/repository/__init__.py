@@ -14,7 +14,6 @@ from mlflow_oidc_auth.repository.scorer_permission_group import ScorerPermission
 from mlflow_oidc_auth.repository.scorer_permission_regex import ScorerPermissionRegexRepository
 from mlflow_oidc_auth.repository.scorer_permission_regex_group import ScorerPermissionGroupRegexRepository
 
-
 __all__ = [
     "ExperimentPermissionRepository",
     "ExperimentPermissionGroupRepository",

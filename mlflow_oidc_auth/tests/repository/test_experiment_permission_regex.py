@@ -32,10 +32,11 @@ def test_grant_success(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock()
 
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.db.models.SqlExperimentRegexPermission", return_value=perm
-    ), patch("mlflow_oidc_auth.repository.experiment_permission_regex._validate_permission"), patch(
-        "mlflow_oidc_auth.repository.experiment_permission_regex.validate_regex"
+    with (
+        patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user),
+        patch("mlflow_oidc_auth.db.models.SqlExperimentRegexPermission", return_value=perm),
+        patch("mlflow_oidc_auth.repository.experiment_permission_regex._validate_permission"),
+        patch("mlflow_oidc_auth.repository.experiment_permission_regex.validate_regex"),
     ):
         result = repo.grant("test_regex", 1, "READ", "user")
         assert result is not None
@@ -47,9 +48,11 @@ def test_grant_integrity_error(repo, session):
     user = MagicMock(id=2)
     session.add = MagicMock()
     session.flush = MagicMock(side_effect=Exception("IntegrityError"))
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.db.models.SqlExperimentRegexPermission", return_value=MagicMock()
-    ), patch("mlflow_oidc_auth.repository.experiment_permission_regex.IntegrityError", Exception):
+    with (
+        patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user),
+        patch("mlflow_oidc_auth.db.models.SqlExperimentRegexPermission", return_value=MagicMock()),
+        patch("mlflow_oidc_auth.repository.experiment_permission_regex.IntegrityError", Exception),
+    ):
         with pytest.raises(MlflowException):
             repo.grant("r", 1, "READ", "user")
 

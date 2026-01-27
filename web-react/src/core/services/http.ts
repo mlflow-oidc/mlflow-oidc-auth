@@ -12,7 +12,7 @@ const buildUrl = (url: string, params?: Record<string, string>) => {
 
 export async function http<T = unknown>(
   url: string,
-  options: RequestOptions = {}
+  options: RequestOptions = {},
 ): Promise<T> {
   const { params, ...rest } = options;
   const res = await fetch(buildUrl(url, params), {

@@ -17,7 +17,7 @@ export function useGroupRegisteredModelPermissions({
       }
       return fetchGroupRegisteredModelPermissions(groupName, signal);
     },
-    [groupName]
+    [groupName],
   );
 
   const {

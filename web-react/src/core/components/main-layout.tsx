@@ -7,7 +7,7 @@ interface MainLayoutProps {
   children: ReactNode;
 }
 
-const SIDEBAR_WIDTH_OPEN_CLASS = "w-[200px]";
+const SIDEBAR_WIDTH_OPEN_CLASS = "w-[185px]";
 const SIDEBAR_WIDTH_CLOSED_CLASS = "w-10";
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {

@@ -17,7 +17,7 @@ export function useUserPromptPatternPermissions({
       }
       return fetchUserPromptPatternPermissions(username, signal);
     },
-    [username]
+    [username],
   );
 
   const {

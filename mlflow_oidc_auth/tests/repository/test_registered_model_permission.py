@@ -32,9 +32,11 @@ def test_create_success(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock()
 
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.db.models.SqlRegisteredModelPermission", return_value=perm
-    ), patch("mlflow_oidc_auth.repository.registered_model_permission._validate_permission"):
+    with (
+        patch("mlflow_oidc_auth.repository.registered_model_permission.get_user", return_value=user),
+        patch("mlflow_oidc_auth.db.models.SqlRegisteredModelPermission", return_value=perm),
+        patch("mlflow_oidc_auth.repository.registered_model_permission._validate_permission"),
+    ):
         result = repo.create("user", "test_model", "READ")
         assert result is not None
         session.add.assert_called_once()
@@ -45,9 +47,11 @@ def test_create_integrity_error(repo, session):
     user = MagicMock(id=2)
     session.add = MagicMock()
     session.flush = MagicMock(side_effect=Exception("IntegrityError"))
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.db.models.SqlRegisteredModelPermission", return_value=MagicMock()
-    ), patch("mlflow_oidc_auth.repository.registered_model_permission.IntegrityError", Exception):
+    with (
+        patch("mlflow_oidc_auth.repository.registered_model_permission.get_user", return_value=user),
+        patch("mlflow_oidc_auth.db.models.SqlRegisteredModelPermission", return_value=MagicMock()),
+        patch("mlflow_oidc_auth.repository.registered_model_permission.IntegrityError", Exception),
+    ):
         with pytest.raises(MlflowException):
             repo.create("name", "user", "READ")
 

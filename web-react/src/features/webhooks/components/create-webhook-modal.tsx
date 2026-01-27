@@ -25,6 +25,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
       const trimmedData = {
         ...formData,
         name: formData.name.trim(),
+        description: (formData.description || "").trim(),
         url: formData.url.trim(),
         secret: (formData.secret || "").trim(),
       };
@@ -43,6 +44,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Create webhook">
       <WebhookForm
+        key={isOpen ? "open" : "closed"}
         onSubmit={handleSubmit}
         onCancel={onClose}
         submitLabel="Create"

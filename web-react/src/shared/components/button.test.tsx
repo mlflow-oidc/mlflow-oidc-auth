@@ -6,7 +6,9 @@ import { faHome } from "@fortawesome/free-solid-svg-icons";
 describe("Button", () => {
   it("renders children correctly", () => {
     render(<Button>Click Me</Button>);
-    expect(screen.getByRole("button", { name: "Click Me" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Click Me" }),
+    ).toBeInTheDocument();
   });
 
   it("handles onClick event", () => {
@@ -34,7 +36,7 @@ describe("Button", () => {
     expect(screen.getByRole("button")).toHaveClass("bg-btn-primary");
 
     rerender(<Button variant="danger">Danger</Button>);
-    expect(screen.getByRole("button")).toHaveClass("bg-btn-danger");
+    expect(screen.getByRole("button")).toHaveClass("text-btn-danger-outline");
   });
 
   it("applies custom className", () => {

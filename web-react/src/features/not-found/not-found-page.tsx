@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router";
+import { Button } from "../../shared/components/button";
 import PageContainer from "../../shared/components/page/page-container";
 
 export const NotFoundPage = () => {
@@ -15,21 +16,14 @@ export const NotFoundPage = () => {
             Oops! The page you are looking for does not exist.
           </p>
         </div>
-        <button
-          type="button"
+        <Button
           onClick={() => {
             void navigate("/user");
           }}
-          className="
-      px-4 py-2 rounded-md font-medium transition-colors duration-200
-      bg-btn-primary dark:bg-btn-primary-dark
-      text-btn-primary-text dark:text-btn-primary-text-dark
-      hover:bg-btn-primary-hover dark:hover:bg-btn-primary-hover-dark
-      shadow-md cursor-pointer
-          "
+          variant="primary"
         >
           Go to My Profile
-        </button>
+        </Button>
       </div>
     </PageContainer>
   );

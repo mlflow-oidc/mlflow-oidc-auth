@@ -32,9 +32,11 @@ def test_grant_permission_success(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock()
 
-    with patch("mlflow_oidc_auth.repository.experiment_permission.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.db.models.SqlExperimentPermission", return_value=perm
-    ), patch("mlflow_oidc_auth.repository.experiment_permission._validate_permission"):
+    with (
+        patch("mlflow_oidc_auth.repository.experiment_permission.get_user", return_value=user),
+        patch("mlflow_oidc_auth.db.models.SqlExperimentPermission", return_value=perm),
+        patch("mlflow_oidc_auth.repository.experiment_permission._validate_permission"),
+    ):
         result = repo.grant_permission("exp2", "user", "READ")
         assert result is not None
         session.add.assert_called_once()
@@ -45,9 +47,11 @@ def test_grant_permission_integrity_error(repo, session):
     user = MagicMock(id=2)
     session.add = MagicMock()
     session.flush = MagicMock(side_effect=IntegrityError("statement", "params", "orig"))
-    with patch("mlflow_oidc_auth.repository.experiment_permission.get_user", return_value=user), patch(
-        "mlflow_oidc_auth.db.models.SqlExperimentPermission", return_value=MagicMock()
-    ), patch("mlflow_oidc_auth.repository.experiment_permission._validate_permission"):
+    with (
+        patch("mlflow_oidc_auth.repository.experiment_permission.get_user", return_value=user),
+        patch("mlflow_oidc_auth.db.models.SqlExperimentPermission", return_value=MagicMock()),
+        patch("mlflow_oidc_auth.repository.experiment_permission._validate_permission"),
+    ):
         with pytest.raises(MlflowException) as exc:
             repo.grant_permission("exp2", "user", "READ")
         assert "Experiment permission already exists" in str(exc.value)

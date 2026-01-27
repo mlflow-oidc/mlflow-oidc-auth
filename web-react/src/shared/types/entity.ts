@@ -66,7 +66,9 @@ export type ModelPatternPermission = {
 
 export type PromptPatternPermission = ModelPatternPermission;
 
-export type PatternPermissionItem = ExperimentPatternPermission | ModelPatternPermission;
+export type PatternPermissionItem =
+  | ExperimentPatternPermission
+  | ModelPatternPermission;
 
 export type DeletedExperiment = {
   experiment_id: string;
@@ -108,13 +110,14 @@ export type WebhookCreateRequest = {
   events: string[];
   status?: WebhookStatus;
   secret?: string;
+  description?: string;
 };
 
 export type WebhookUpdateRequest = Partial<WebhookCreateRequest>;
 
 export type WebhookTestRequest = {
   event?: string;
-  payload?: any;
+  payload?: Record<string, unknown>;
 };
 
 export type WebhookTestResponse = {

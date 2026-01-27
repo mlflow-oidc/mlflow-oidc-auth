@@ -14,7 +14,7 @@ export type NavigationData = {
 
 export const getNavigationData = (
   userName: string,
-  basePath: string
+  basePath: string,
 ): NavigationData => ({
   mainLinks: [
     { label: "MLFlow", href: `${basePath}/` },

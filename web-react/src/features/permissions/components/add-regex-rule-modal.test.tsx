@@ -4,12 +4,16 @@ import { AddRegexRuleModal } from "./add-regex-rule-modal";
 
 describe("AddRegexRuleModal", () => {
   it("renders when open", () => {
-    render(<AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />);
+    render(
+      <AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />,
+    );
     expect(screen.getByText("Add New Regex Rule")).toBeInTheDocument();
   });
 
   it("validates regex input", async () => {
-    render(<AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />);
+    render(
+      <AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />,
+    );
 
     const regexInput = screen.getByLabelText(/Regex/i);
     fireEvent.change(regexInput, { target: { value: "[" } }); // Invalid regex
@@ -17,13 +21,30 @@ describe("AddRegexRuleModal", () => {
     const saveBtn = screen.getByText("Save");
     fireEvent.click(saveBtn);
 
-    expect(await screen.findByText("Invalid regular expression. Please enter a valid Python regex.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Invalid regular expression. Please enter a valid Python regex.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("validates empty regex input", async () => {
+    render(
+      <AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />,
+    );
+
+    const saveBtn = screen.getByText("Save");
+    fireEvent.click(saveBtn);
+
+    expect(await screen.findByText("Regex is required.")).toBeInTheDocument();
   });
 
   it("validates priority input", async () => {
-    render(<AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />);
+    render(
+      <AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />,
+    );
 
-     // Regex valid
+    // Regex valid
     const regexInput = screen.getByLabelText(/Regex/i);
     fireEvent.change(regexInput, { target: { value: ".*" } });
 
@@ -33,12 +54,20 @@ describe("AddRegexRuleModal", () => {
     const saveBtn = screen.getByText("Save");
     fireEvent.click(saveBtn);
 
-    expect(await screen.findByText("Priority must be a non-negative integer.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Priority must be a non-negative integer."),
+    ).toBeInTheDocument();
   });
 
   it("calls onSave when valid", async () => {
     const handleSave = vi.fn();
-    render(<AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={handleSave} />);
+    render(
+      <AddRegexRuleModal
+        isOpen={true}
+        onClose={() => {}}
+        onSave={handleSave}
+      />,
+    );
 
     const regexInput = screen.getByLabelText(/Regex/i);
     fireEvent.change(regexInput, { target: { value: "^test_.*" } });
@@ -50,7 +79,7 @@ describe("AddRegexRuleModal", () => {
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
-        expect(handleSave).toHaveBeenCalledWith("^test_.*", "READ", 10);
+      expect(handleSave).toHaveBeenCalledWith("^test_.*", "READ", 10);
     });
   });
 });

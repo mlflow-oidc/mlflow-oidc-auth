@@ -15,7 +15,7 @@ interface TokenModel {
 
 const requestAccessTokenApi = async (
   username: string,
-  expiration: Date
+  expiration: Date,
 ): Promise<string> => {
   const tokenModel = await http<TokenModel>(
     STATIC_API_ENDPOINTS.CREATE_ACCESS_TOKEN,
@@ -25,12 +25,12 @@ const requestAccessTokenApi = async (
         username: username,
         expiration: expiration.toISOString(),
       }),
-    }
+    },
   );
 
   if (!tokenModel.token) {
     throw new Error(
-      "API response did not contain an access token (token field)."
+      "API response did not contain an access token (token field).",
     );
   }
 
@@ -68,13 +68,10 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
     try {
       const expirationDateObject = new Date(expirationDate);
 
-      const token = await requestAccessTokenApi(
-        username,
-        expirationDateObject
-      );
+      const token = await requestAccessTokenApi(username, expirationDateObject);
       setAccessToken(token);
 
-      showToast("Access token generated successfully!", "success");
+      showToast("Access token generated successfully", "success");
       refresh();
       onTokenGenerated?.();
     } catch (error) {
@@ -102,11 +99,14 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   }, [accessToken]);
 
   return (
-    <Modal isOpen={true} onClose={onClose} title={`Generate Access Token for ${username}`}>
-      <p className="text-left text-base text-text-primary dark:text-text-primary-dark ">
-        Use the form below to generate a new access token. Select an
-        expiration date (maximum validity: 1 year) and click "Request
-        Token".
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`Generate Access Token for ${username}`}
+    >
+      <p className="text-left text-text-primary dark:text-text-primary-dark ">
+        Use the form below to generate a new access token. Select an expiration
+        date (maximum validity: 1 year) and click "Request Token".
       </p>
 
       <div className="flex items-end space-x-4">
@@ -120,6 +120,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
           max={maxDate}
           required
           containerClassName="flex-grow"
+          className="text-text-primary dark:text-text-primary-dark dark:scheme-dark cursor-pointer"
         />
 
         <Button

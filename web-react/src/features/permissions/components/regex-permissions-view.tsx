@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { DYNAMIC_API_ENDPOINTS } from "../../../core/configs/api-endpoints";
 import { http } from "../../../core/services/http";
+import { getPermissionUrl } from "../utils/permission-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { EditPermissionModal } from "../../users/components/edit-permission-modal";
 import { AddRegexRuleModal } from "./add-regex-rule-modal";
@@ -38,7 +38,9 @@ export const RegexPermissionsView = ({
   const { showToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRegexModalOpen, setIsRegexModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<PatternPermissionItem | null>(null);
+  const [editingItem, setEditingItem] = useState<PatternPermissionItem | null>(
+    null,
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   const {
@@ -94,80 +96,73 @@ export const RegexPermissionsView = ({
     setEditingItem(null);
   };
 
-  const handleSavePermission = async (newPermission: PermissionLevel, regex?: string, priority?: number) => {
+  const handleSavePermission = async (
+    newPermission: PermissionLevel,
+    regex?: string,
+    priority?: number,
+  ) => {
     if (!entityName || !editingItem) return;
 
     setIsSaving(true);
     try {
-      let url = "";
       const identifier = String(editingItem.id);
 
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(entityName, identifier);
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSION(entityName, identifier);
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION(entityName, identifier);
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        isPattern: true,
+        identifier: String(identifier),
+      });
 
       await http(url, {
         method: "PATCH",
         body: JSON.stringify({
           regex: regex ?? editingItem.regex,
           priority: priority ?? editingItem.priority,
-          permission: newPermission
+          permission: newPermission,
         }),
       });
 
-      showToast(`Permission for ${regex ?? editingItem.regex} has been updated.`, "success");
+      showToast(
+        `Permission for ${regex ?? editingItem.regex} has been updated`,
+        "success",
+      );
       refresh();
       handleModalClose();
     } catch {
-      showToast("Failed to update permission. Please try again.", "error");
+      showToast("Failed to update permission", "error");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveRegexRule = async (regex: string, permission: PermissionLevel, priority: number) => {
+  const handleSaveRegexRule = async (
+    regex: string,
+    permission: PermissionLevel,
+    priority: number,
+  ) => {
     if (!entityName) return;
 
     setIsSaving(true);
     try {
-      let url = "";
-      if (type === "experiments") {
-        url = entityKind === "user"
-          ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSIONS(entityName)
-          : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSIONS(entityName);
-      } else if (type === "models") {
-        url = entityKind === "user"
-          ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSIONS(entityName)
-          : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSIONS(entityName);
-      } else if (type === "prompts") {
-        url = entityKind === "user"
-          ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSIONS(entityName)
-          : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSIONS(entityName);
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        isPattern: true,
+      });
 
       await http(url, {
         method: "POST",
         body: JSON.stringify({ regex, permission, priority }),
       });
 
-      showToast(`Regex rule "${regex}" has been added.`, "success");
+      showToast(`Regex rule "${regex}" has been added`, "success");
       refresh();
       setIsRegexModalOpen(false);
     } catch {
-      showToast("Failed to add regex rule. Please try again.", "error");
+      showToast("Failed to add regex rule", "error");
     } finally {
       setIsSaving(false);
     }
@@ -177,39 +172,35 @@ export const RegexPermissionsView = ({
     if (!entityName) return;
 
     try {
-      let url = "";
       const identifier = String(item.id);
-
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(entityName, identifier);
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSION(entityName, identifier);
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION(entityName, identifier);
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        isPattern: true,
+        identifier: String(identifier),
+      });
 
       await http(url, {
         method: "DELETE",
       });
 
-      showToast(`Regex rule has been removed.`, "success");
+      showToast(`Regex rule has been removed`, "success");
       refresh();
     } catch {
-      showToast("Failed to remove permission. Please try again.", "error");
+      showToast("Failed to remove permission", "error");
     }
   };
 
   const permissionColumns: ColumnConfig<PatternPermissionItem>[] = [
-    { header: "Regex Pattern", render: (item) => item.regex },
+    {
+      header: "Regex Pattern",
+      render: (item) => (
+        <span className="truncate block" title={item.regex}>
+          {item.regex}
+        </span>
+      ),
+    },
     { header: "Permission", render: (item) => item.permission },
     { header: "Priority", render: (item) => item.priority },
     {
@@ -237,7 +228,7 @@ export const RegexPermissionsView = ({
   ];
 
   const filteredData = permissions.filter((p) =>
-    p.regex?.toLowerCase().includes(submittedTerm.toLowerCase())
+    p.regex?.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   return (
@@ -270,28 +261,40 @@ export const RegexPermissionsView = ({
           </div>
           <EntityListTable
             mode="object"
-            data={filteredData as (PatternPermissionItem & Record<string, unknown>)[]}
-            columns={permissionColumns as ColumnConfig<PatternPermissionItem & Record<string, unknown>>[]}
+            data={
+              filteredData as (PatternPermissionItem &
+                Record<string, unknown>)[]
+            }
+            columns={
+              permissionColumns as ColumnConfig<
+                PatternPermissionItem & Record<string, unknown>
+              >[]
+            }
             searchTerm={submittedTerm}
           />
         </>
       )}
 
-      <EditPermissionModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        onSave={handleSavePermission}
-        item={editingItem}
-        username={entityName}
-        type={type}
-        isLoading={isSaving}
-      />
-      <AddRegexRuleModal
-        isOpen={isRegexModalOpen}
-        onClose={() => setIsRegexModalOpen(false)}
-        onSave={handleSaveRegexRule}
-        isLoading={isSaving}
-      />
+      {isModalOpen && editingItem && (
+        <EditPermissionModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSave={handleSavePermission}
+          item={editingItem}
+          username={entityName}
+          type={type}
+          isLoading={isSaving}
+          key={editingItem.id}
+        />
+      )}
+      {isRegexModalOpen && (
+        <AddRegexRuleModal
+          isOpen={isRegexModalOpen}
+          onClose={() => setIsRegexModalOpen(false)}
+          onSave={handleSaveRegexRule}
+          isLoading={isSaving}
+        />
+      )}
     </>
   );
 };

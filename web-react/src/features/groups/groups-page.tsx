@@ -21,7 +21,7 @@ export default function GroupsPage() {
   const groupsList = allGroups || [];
 
   const filteredGroups = groupsList.filter((group) =>
-    group.toLowerCase().includes(submittedTerm.toLowerCase())
+    group.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const tableData = filteredGroups.map((group) => ({
@@ -42,7 +42,11 @@ export default function GroupsPage() {
   const columnsWithAction: ColumnConfig<{ id: string; groupName: string }>[] = [
     {
       header: "Group Name",
-      render: ({ groupName }) => groupName,
+      render: ({ groupName }) => (
+        <span className="truncate block" title={groupName}>
+          {groupName}
+        </span>
+      ),
     },
     {
       header: "Permissions",
@@ -69,7 +73,7 @@ export default function GroupsPage() {
               onSubmit={handleSearchSubmit}
               onClear={handleClearSearch}
               placeholder="Search groups..."
-             />
+            />
           </div>
 
           <EntityListTable

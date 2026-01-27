@@ -62,15 +62,13 @@ export const Modal: React.FC<ModalProps> = ({
           />
         </div>
 
-        <div className="mb-6">
-          <h4 className="text-xl text-ui-text dark:text-ui-text-dark font-semibold">
+        <div className="mb-4">
+          <h4 className="text-lg text-ui-text dark:text-ui-text-dark font-semibold">
             {title}
           </h4>
         </div>
 
-        <div className="space-y-5">
-          {children}
-        </div>
+        <div className="space-y-5">{children}</div>
       </div>
     </div>
   );

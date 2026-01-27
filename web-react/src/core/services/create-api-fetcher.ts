@@ -39,7 +39,7 @@ export function createDynamicApiFetcher<T, K extends DynamicEndpointKey>({
   ): Promise<T> {
     const pathParamsTuple = args.slice(
       0,
-      endpointFunction.length
+      endpointFunction.length,
     ) as PathParams<K>;
     const signal = args[endpointFunction.length] as AbortSignal | undefined;
 

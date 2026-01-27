@@ -25,11 +25,7 @@ export function RowActionButton({
   };
 
   return (
-    <Button
-      onClick={handleClick}
-      icon={faLock}
-      className="gap-1"
-    >
+    <Button onClick={handleClick} icon={faLock} className="gap-1">
       {buttonText}
     </Button>
   );
