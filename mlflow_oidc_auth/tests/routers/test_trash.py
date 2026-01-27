@@ -72,15 +72,14 @@ class TestListDeletedExperimentsEndpoint:
         """Test error handling when fetching deleted experiments fails."""
         mock_fetch_all_experiments.side_effect = Exception("MLflow error")
 
-        # Call the function
-        result = await list_deleted_experiments(admin_username="admin@example.com")
+        # Call the function and verify it raises HTTPException
+        from fastapi import HTTPException
 
-        # Verify response
-        assert result.status_code == 500
-        import json
+        with pytest.raises(HTTPException) as excinfo:
+            await list_deleted_experiments(admin_username="admin@example.com")
 
-        response_data = json.loads(result.body)
-        assert "error" in response_data
+        assert excinfo.value.status_code == 500
+        assert excinfo.value.detail == "Failed to retrieve deleted experiments"
 
     def test_list_deleted_experiments_integration_admin(self, admin_client: TestClient):
         """Test the endpoint through FastAPI test client as admin."""
