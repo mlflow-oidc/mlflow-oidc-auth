@@ -46,6 +46,25 @@ def test_update_request_allows_none_but_validates_if_present():
         WebhookUpdateRequest(url="http://example.com")
 
 
+def test_webhook_test_request_event_type_validation():
+    # None allowed
+    req = WebhookUpdateRequest(events=None)
+
+    # Valid single event via the test request
+    from mlflow_oidc_auth.models import WebhookTestRequest
+
+    valid = WebhookTestRequest(event_type="registered_model.created")
+    assert valid.event_type == "registered_model.created"
+
+    # Invalid event
+    with pytest.raises(ValidationError):
+        WebhookTestRequest(event_type="invalid.event")
+
+    # None is allowed
+    req = WebhookTestRequest(event_type=None)
+    assert req.event_type is None
+
+
 def test_create_request_validates_events_and_status():
     # valid
     req = WebhookCreateRequest(name="n", url="https://example.com", events=["registered_model.created"], status="ACTIVE")

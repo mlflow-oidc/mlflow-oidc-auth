@@ -76,6 +76,20 @@ def _validate_status(v: Optional[str], *, allow_none: bool = False) -> Optional[
     return v
 
 
+def _validate_event_type(v: Optional[str], *, allow_none: bool = False) -> Optional[str]:
+    """Validate that a single event type is valid.
+
+    If `allow_none` is True, `None` is accepted and returned unchanged.
+    """
+    if allow_none and v is None:
+        return v
+    if v is None:
+        raise ValueError("Event type must be provided")
+    if v not in VALID_WEBHOOK_EVENTS:
+        raise ValueError(f"Invalid event type: {v}. Valid events: {VALID_WEBHOOK_EVENTS}")
+    return v
+
+
 # Pydantic models for request/response bodies
 class WebhookCreateRequest(BaseModel):
     """Request model for creating a webhook."""
@@ -138,9 +152,8 @@ class WebhookTestRequest(BaseModel):
     @field_validator("event_type")
     @classmethod
     def validate_event_type(cls, v):
-        if v is not None and v not in VALID_WEBHOOK_EVENTS:
-            raise ValueError(f"Invalid event type: {v}. Valid events: {VALID_WEBHOOK_EVENTS}")
-        return v
+        """Validate single event type when provided."""
+        return _validate_event_type(v, allow_none=True)
 
 
 class WebhookResponse(BaseModel):
