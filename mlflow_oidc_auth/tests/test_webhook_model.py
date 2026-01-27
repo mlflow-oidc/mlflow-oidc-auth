@@ -48,7 +48,7 @@ def test_update_request_allows_none_but_validates_if_present():
 
 def test_webhook_test_request_event_type_validation():
     # None allowed
-    req = WebhookUpdateRequest(events=None)
+    WebhookUpdateRequest(events=None)
 
     # Valid single event via the test request
     from mlflow_oidc_auth.models import WebhookTestRequest
