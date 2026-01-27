@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Select } from "../../../shared/components/select";
+import { PermissionLevelSelect } from "../../../shared/components/permission-level-select";
 import type { PermissionLevel } from "../../../shared/types/entity";
 
 interface GrantPermissionModalProps {
@@ -13,13 +14,6 @@ interface GrantPermissionModalProps {
   options: (string | { label: string; value: string })[];
   isLoading?: boolean;
 }
-
-const PERMISSION_LEVELS: PermissionLevel[] = [
-  "READ",
-  "EDIT",
-  "MANAGE",
-  "NO_PERMISSIONS",
-];
 
 export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
   isOpen,
@@ -58,18 +52,14 @@ export const GrantPermissionModal: React.FC<GrantPermissionModalProps> = ({
         containerClassName="mb-4"
       />
 
-      <Select
+      <PermissionLevelSelect
         id="permission-level"
         label="Permissions"
         value={selectedPermission}
-        onChange={(e) =>
-          setSelectedPermission(e.target.value as PermissionLevel)
+        onChange={(val) =>
+          setSelectedPermission(val)
         }
         required
-        options={PERMISSION_LEVELS.map((level) => ({
-          label: level,
-          value: level,
-        }))}
         containerClassName="mb-4"
       />
 

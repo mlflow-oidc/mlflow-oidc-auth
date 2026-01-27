@@ -43,7 +43,7 @@ describe("EditPermissionModal", () => {
       />,
     );
 
-    const select = screen.getByLabelText("Permission Level");
+    const select = screen.getByLabelText("Permission Level*");
     fireEvent.change(select, { target: { value: "EDIT" } });
 
     fireEvent.click(screen.getByText("Ok"));

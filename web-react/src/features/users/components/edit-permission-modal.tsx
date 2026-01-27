@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
-import { Select } from "../../../shared/components/select";
+import { PermissionLevelSelect } from "../../../shared/components/permission-level-select";
 import type {
   PermissionLevel,
   PermissionType,
@@ -23,13 +23,6 @@ interface EditPermissionModalProps {
   type: PermissionType;
   isLoading?: boolean;
 }
-
-const PERMISSION_LEVELS: PermissionLevel[] = [
-  "READ",
-  "EDIT",
-  "MANAGE",
-  "NO_PERMISSIONS",
-];
 
 export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
   isOpen,
@@ -95,17 +88,13 @@ export const EditPermissionModal: React.FC<EditPermissionModalProps> = ({
         </>
       )}
 
-      <Select
+      <PermissionLevelSelect
         id="permission-level"
         label="Permission Level"
         value={selectedPermission}
-        onChange={(e) =>
-          setSelectedPermission(e.target.value as PermissionLevel)
+        onChange={(val) =>
+          setSelectedPermission(val)
         }
-        options={PERMISSION_LEVELS.map((level) => ({
-          label: level,
-          value: level,
-        }))}
         containerClassName="mb-4"
       />
 

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
-import { Select } from "../../../shared/components/select";
+import { PermissionLevelSelect } from "../../../shared/components/permission-level-select";
 import type { PermissionLevel } from "../../../shared/types/entity";
 
 interface AddRegexRuleModalProps {
@@ -15,13 +15,6 @@ interface AddRegexRuleModalProps {
   ) => Promise<void>;
   isLoading?: boolean;
 }
-
-const PERMISSION_LEVELS: PermissionLevel[] = [
-  "READ",
-  "EDIT",
-  "MANAGE",
-  "NO_PERMISSIONS",
-];
 
 export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   isOpen,
@@ -105,16 +98,12 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
         reserveErrorSpace
       />
 
-      <Select
+      <PermissionLevelSelect
         id="permission-level"
         label="Permissions*"
         value={permission}
-        onChange={(e) => setPermission(e.target.value as PermissionLevel)}
+        onChange={(val) => setPermission(val)}
         required
-        options={PERMISSION_LEVELS.map((level) => ({
-          label: level,
-          value: level,
-        }))}
         containerClassName="mb-4"
       />
 
