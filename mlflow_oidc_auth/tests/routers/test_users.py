@@ -139,17 +139,15 @@ class TestCreateAccessTokenEndpoint:
     @patch("mlflow_oidc_auth.routers.users.generate_token")
     async def test_create_access_token_for_self(self, mock_generate_token, mock_store):
         """Test creating access token for authenticated user."""
-        mock_user = MagicMock()
-        mock_store.get_user.side_effect = None
-        mock_store.get_user.return_value = mock_user
+        mock_store.list_user_tokens.return_value = []
         mock_generate_token.return_value = "generated_token_123"
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
-            result = await create_access_token(token_request=None, current_username="test@example.com", is_admin=False)
+            result = await create_access_token(token_request=None, current_username="user@example.com", is_admin=False)
 
         assert result.status_code == 200
         mock_generate_token.assert_called_once()
-        mock_store.update_user.assert_called_once()
+        mock_store.create_user_token.assert_called_once()
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.users.generate_token")
@@ -173,39 +171,37 @@ class TestCreateAccessTokenEndpoint:
     @patch("mlflow_oidc_auth.routers.users.generate_token")
     async def test_create_access_token_for_other_user_as_admin(self, mock_generate_token, mock_store):
         """Test admin creating access token for another user."""
-        mock_user = MagicMock()
-        mock_store.get_user.side_effect = None
-        mock_store.get_user.return_value = mock_user
+        mock_store.list_user_tokens.return_value = []
         mock_generate_token.return_value = "generated_token_123"
 
-        token_request = CreateAccessTokenRequest(username="other@example.com")
+        token_request = CreateAccessTokenRequest(username="user@example.com")
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             result = await create_access_token(token_request=token_request, current_username="admin@example.com", is_admin=True)
 
         assert result.status_code == 200
         mock_generate_token.assert_called_once()
-        mock_store.update_user.assert_called_once()
-        call_args = mock_store.update_user.call_args
-        assert call_args[1]["username"] == "other@example.com"
+        mock_store.create_user_token.assert_called_once()
+        call_args = mock_store.create_user_token.call_args
+        assert call_args[1]["username"] == "user@example.com"
 
     @pytest.mark.asyncio
-    async def test_create_access_token_with_expiration(self, mock_user_management, mock_store):
+    @patch("mlflow_oidc_auth.routers.users.generate_token")
+    async def test_create_access_token_with_expiration(self, mock_generate_token, mock_store):
         """Test creating access token with expiration date."""
-        mock_user = MagicMock()
-        mock_store.get_user.side_effect = None
-        mock_store.get_user.return_value = mock_user
+        mock_store.list_user_tokens.return_value = []
+        mock_generate_token.return_value = "generated_token_123"
 
         future_date = datetime.now(timezone.utc) + timedelta(days=30)
         token_request = CreateAccessTokenRequest(expiration=future_date.isoformat())
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
-            result = await create_access_token(token_request=token_request, current_username="test@example.com", is_admin=False)
+            result = await create_access_token(token_request=token_request, current_username="user@example.com", is_admin=False)
 
         assert result.status_code == 200
-        mock_store.update_user.assert_called_once()
-        call_args = mock_store.update_user.call_args
-        assert call_args[1]["password_expiration"] is not None
+        mock_store.create_user_token.assert_called_once()
+        call_args = mock_store.create_user_token.call_args
+        assert call_args[1]["expires_at"] is not None
 
     @pytest.mark.asyncio
     async def test_create_access_token_past_expiration(self, mock_store):

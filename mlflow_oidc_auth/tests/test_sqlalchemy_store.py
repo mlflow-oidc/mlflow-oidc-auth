@@ -598,7 +598,7 @@ class TestSqlAlchemyStoreErrorHandling:
 
     def test_user_operations_with_database_error(self, mock_store):
         """Test user operations when database operations fail"""
-        mock_store.user_repo.authenticate.side_effect = OperationalError("Database error", None, None)
+        mock_store.user_token_repo.authenticate.side_effect = OperationalError("Database error", None, None)
 
         with pytest.raises(OperationalError):
             mock_store.authenticate_user("testuser", "password")
