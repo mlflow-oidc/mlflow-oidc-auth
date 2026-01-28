@@ -69,7 +69,6 @@ export default function PromptsPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredPrompts}
             columns={columnsWithAction}
             searchTerm={submittedTerm}

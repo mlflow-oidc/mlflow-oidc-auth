@@ -19,10 +19,12 @@ describe("Modal", () => {
         <div>Modal Content</div>
       </Modal>,
     );
-    expect(screen.queryByText("Test Modal")).not.toBeInTheDocument();
+    const dialog = screen.queryByRole("dialog", { hidden: true });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).not.toHaveAttribute("open");
   });
 
-  it("calls onClose when clicking overlay", () => {
+  it("calls onClose when pressing Escape", () => {
     const handleClose = vi.fn();
     render(
       <Modal isOpen={true} onClose={handleClose} title="Test Modal">
@@ -30,7 +32,20 @@ describe("Modal", () => {
       </Modal>,
     );
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    const dialog = screen.getByRole("dialog");
+    fireEvent(dialog, new Event("cancel"));
+    expect(handleClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onClose when clicking backdrop", () => {
+    const handleClose = vi.fn();
+    render(
+      <Modal isOpen={true} onClose={handleClose} title="Test Modal">
+        <div>Content</div>
+      </Modal>,
+    );
+
+    fireEvent.click(screen.getByRole("dialog"));
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 

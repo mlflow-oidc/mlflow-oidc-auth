@@ -147,4 +147,65 @@ describe("ExperimentsPage", () => {
     expect(screen.getByText("Exp 1")).toBeInTheDocument();
     expect(screen.queryByText("Exp 2")).not.toBeInTheDocument();
   });
+
+  it("renders error state", () => {
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: new Error("Failed to load"),
+      refresh: vi.fn(),
+      allExperiments: [],
+    });
+
+    render(<ExperimentsPage />);
+    expect(screen.getByText("Error")).toBeInTheDocument();
+  });
+
+  it("renders empty state when no experiments", () => {
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [],
+    });
+
+    render(<ExperimentsPage />);
+    expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+    expect(screen.getByTestId("entity-list")).toBeEmptyDOMElement();
+  });
+
+  it("renders empty results when search has no matches", () => {
+    mockUseSearch.mockReturnValue({
+      searchTerm: "NonExistent",
+      submittedTerm: "NonExistent",
+      handleInputChange: vi.fn(),
+      handleSearchSubmit: vi.fn(),
+      handleClearSearch: vi.fn(),
+    });
+
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [
+        { id: "1", name: "Exp 1", tags: {} },
+        { id: "2", name: "Exp 2", tags: {} },
+      ],
+    });
+
+    render(<ExperimentsPage />);
+    expect(screen.queryByText("Exp 1")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exp 2")).not.toBeInTheDocument();
+  });
+
+  it("handles null allExperiments", () => {
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: null,
+    });
+
+    render(<ExperimentsPage />);
+    expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+  });
 });

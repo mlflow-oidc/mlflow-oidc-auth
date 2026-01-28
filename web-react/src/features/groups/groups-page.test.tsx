@@ -112,4 +112,95 @@ describe("GroupsPage", () => {
     expect(screen.getByText("group1")).toBeInTheDocument();
     expect(screen.getByText("group2")).toBeInTheDocument();
   });
+
+  it("renders loading state", () => {
+    mockUseAllGroups.mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      allGroups: [],
+    });
+
+    render(<GroupsPage />);
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+  });
+
+  it("renders error state", () => {
+    mockUseAllGroups.mockReturnValue({
+      isLoading: false,
+      error: new Error("Failed to load"),
+      refresh: vi.fn(),
+      allGroups: [],
+    });
+
+    render(<GroupsPage />);
+    expect(screen.getByText("Error")).toBeInTheDocument();
+  });
+
+  it("renders empty state when no groups", () => {
+    mockUseAllGroups.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allGroups: [],
+    });
+
+    render(<GroupsPage />);
+    expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+    expect(screen.getByTestId("entity-list")).toBeEmptyDOMElement();
+  });
+
+  it("filters groups based on search", () => {
+    mockUseSearch.mockReturnValue({
+      searchTerm: "group1",
+      submittedTerm: "group1",
+      handleInputChange: vi.fn(),
+      handleSearchSubmit: vi.fn(),
+      handleClearSearch: vi.fn(),
+    });
+
+    mockUseAllGroups.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allGroups: ["group1", "group2"],
+    });
+
+    render(<GroupsPage />);
+    expect(screen.getByText("group1")).toBeInTheDocument();
+    expect(screen.queryByText("group2")).not.toBeInTheDocument();
+  });
+
+  it("renders empty results when search has no matches", () => {
+    mockUseSearch.mockReturnValue({
+      searchTerm: "NonExistent",
+      submittedTerm: "NonExistent",
+      handleInputChange: vi.fn(),
+      handleSearchSubmit: vi.fn(),
+      handleClearSearch: vi.fn(),
+    });
+
+    mockUseAllGroups.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allGroups: ["group1", "group2"],
+    });
+
+    render(<GroupsPage />);
+    expect(screen.queryByText("group1")).not.toBeInTheDocument();
+    expect(screen.queryByText("group2")).not.toBeInTheDocument();
+  });
+
+  it("handles null allGroups", () => {
+    mockUseAllGroups.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allGroups: null,
+    });
+
+    render(<GroupsPage />);
+    expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+  });
 });

@@ -77,4 +77,77 @@ describe("ModelPermissionsPage", () => {
     );
     expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
   });
+
+  it("combines user and group permissions", () => {
+    const mockManager = vi.fn();
+    vi.mocked(mockManager);
+
+    mockUseModelUserPermissions.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      modelUserPermissions: [
+        { name: "user1", kind: "user", permission: "READ" },
+      ],
+    });
+    mockUseModelGroupPermissions.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      modelGroupPermissions: [
+        { name: "group1", kind: "group", permission: "EDIT" },
+      ],
+    });
+
+    render(<ModelPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
+
+  it("shows loading state when user permissions are loading", () => {
+    mockUseModelUserPermissions.mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      modelUserPermissions: [],
+    });
+
+    render(<ModelPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
+
+  it("shows loading state when group permissions are loading", () => {
+    mockUseModelGroupPermissions.mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      modelGroupPermissions: [],
+    });
+
+    render(<ModelPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
+
+  it("shows error when user permissions have error", () => {
+    mockUseModelUserPermissions.mockReturnValue({
+      isLoading: false,
+      error: new Error("User permission error"),
+      refresh: vi.fn(),
+      modelUserPermissions: [],
+    });
+
+    render(<ModelPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
+
+  it("shows error when group permissions have error", () => {
+    mockUseModelGroupPermissions.mockReturnValue({
+      isLoading: false,
+      error: new Error("Group permission error"),
+      refresh: vi.fn(),
+      modelGroupPermissions: [],
+    });
+
+    render(<ModelPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
 });

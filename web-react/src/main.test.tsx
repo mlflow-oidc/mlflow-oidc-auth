@@ -20,9 +20,19 @@ describe("main entrypoint", () => {
     // recreate mocks for each test
     initializeThemeMock = vi.fn();
     getRuntimeConfigMock = vi.fn(() =>
-      Promise.resolve(((window as any).__RUNTIME_CONFIG__ as any) ?? { basePath: "/", uiPath: "/app/", provider: "p", authenticated: false }),
+      Promise.resolve(
+        (window as Window & { __RUNTIME_CONFIG__?: unknown })
+          .__RUNTIME_CONFIG__ ?? {
+          basePath: "/",
+          uiPath: "/app/",
+          provider: "p",
+          authenticated: false,
+        },
+      ),
     );
-    removeTrailingSlashesMock = vi.fn((s: string) => s.replace(/\/+$|^$/, "") || "");
+    removeTrailingSlashesMock = vi.fn(
+      (s: string) => s.replace(/\/+$|^$/, "") || "",
+    );
     renderMock = vi.fn();
     createRootMock = vi.fn(() => ({ render: renderMock }));
 
@@ -85,6 +95,4 @@ describe("main entrypoint", () => {
     expect(callsOrder[0]).toBeLessThan(callsOrder[1]);
     expect(callsOrder[1]).toBeLessThan(callsOrder[2]);
   });
-
-
 });

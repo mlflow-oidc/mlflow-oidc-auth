@@ -1,31 +1,5 @@
 import type { Identifiable, ObjectTableRowProps } from "../types/table";
 
-export function PrimitiveTableRow({
-  value,
-  index,
-}: {
-  value: string;
-  index: number;
-}) {
-  const handleClick = () => {
-    console.log("row-click:", value);
-  };
-  return (
-    <div
-      role="row"
-      key={index}
-      onClick={handleClick}
-      className="flex items-center h-(--table-row-height) border-b
-              border-btn-secondary-border dark:border-btn-secondary-border-dark
-              hover:bg-table-row-hover dark:hover:bg-table-row-hover"
-    >
-      <div role="cell" className="px-1 flex-1 min-w-0 truncate">
-        {value}
-      </div>
-    </div>
-  );
-}
-
 export function ObjectTableRow<
   T extends Identifiable & Record<string, unknown>,
 >(props: ObjectTableRowProps<T>) {

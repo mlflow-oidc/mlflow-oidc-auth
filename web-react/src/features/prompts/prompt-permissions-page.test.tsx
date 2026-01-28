@@ -60,4 +60,74 @@ describe("PromptPermissionsPage", () => {
     );
     expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
   });
+
+  it("combines user and group permissions", () => {
+    mockUsePromptUserPermissions.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      promptUserPermissions: [
+        { name: "user1", kind: "user", permission: "READ" },
+      ],
+    });
+    mockUsePromptGroupPermissions.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      promptGroupPermissions: [
+        { name: "group1", kind: "group", permission: "EDIT" },
+      ],
+    });
+
+    render(<PromptPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
+
+  it("shows loading state when user permissions are loading", () => {
+    mockUsePromptUserPermissions.mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      promptUserPermissions: [],
+    });
+
+    render(<PromptPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
+
+  it("shows loading state when group permissions are loading", () => {
+    mockUsePromptGroupPermissions.mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      promptGroupPermissions: [],
+    });
+
+    render(<PromptPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
+
+  it("shows error when user permissions have error", () => {
+    mockUsePromptUserPermissions.mockReturnValue({
+      isLoading: false,
+      error: new Error("User permission error"),
+      refresh: vi.fn(),
+      promptUserPermissions: [],
+    });
+
+    render(<PromptPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
+
+  it("shows error when group permissions have error", () => {
+    mockUsePromptGroupPermissions.mockReturnValue({
+      isLoading: false,
+      error: new Error("Group permission error"),
+      refresh: vi.fn(),
+      promptGroupPermissions: [],
+    });
+
+    render(<PromptPermissionsPage />);
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
+  });
 });

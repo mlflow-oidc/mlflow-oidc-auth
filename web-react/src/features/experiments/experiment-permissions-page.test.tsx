@@ -152,4 +152,119 @@ describe("ExperimentPermissionsPage", () => {
       ]),
     );
   });
+
+  it("shows loading state when user permissions are loading", () => {
+    mockUseExperimentUserPermissions.mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      experimentUserPermissions: [],
+    });
+
+    render(<ExperimentPermissionsPage />);
+
+    const lastCall =
+      mockEntityPermissionsManager.mock.calls[
+        mockEntityPermissionsManager.mock.calls.length - 1
+      ][0];
+    expect(lastCall.isLoading).toBe(true);
+  });
+
+  it("shows loading state when group permissions are loading", () => {
+    mockUseExperimentGroupPermissions.mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      experimentGroupPermissions: [],
+    });
+
+    render(<ExperimentPermissionsPage />);
+
+    const lastCall =
+      mockEntityPermissionsManager.mock.calls[
+        mockEntityPermissionsManager.mock.calls.length - 1
+      ][0];
+    expect(lastCall.isLoading).toBe(true);
+  });
+
+  it("shows error when user permissions have error", () => {
+    const error = new Error("User permission error");
+    mockUseExperimentUserPermissions.mockReturnValue({
+      isLoading: false,
+      error,
+      refresh: vi.fn(),
+      experimentUserPermissions: [],
+    });
+
+    render(<ExperimentPermissionsPage />);
+
+    const lastCall =
+      mockEntityPermissionsManager.mock.calls[
+        mockEntityPermissionsManager.mock.calls.length - 1
+      ][0];
+    expect(lastCall.error).toBe(error);
+  });
+
+  it("shows error when group permissions have error", () => {
+    const error = new Error("Group permission error");
+    mockUseExperimentGroupPermissions.mockReturnValue({
+      isLoading: false,
+      error,
+      refresh: vi.fn(),
+      experimentGroupPermissions: [],
+    });
+
+    render(<ExperimentPermissionsPage />);
+
+    const lastCall =
+      mockEntityPermissionsManager.mock.calls[
+        mockEntityPermissionsManager.mock.calls.length - 1
+      ][0];
+    expect(lastCall.error).toBe(error);
+  });
+
+  it("calls both refresh functions when refresh is called", () => {
+    const refreshUser = vi.fn();
+    const refreshGroup = vi.fn();
+
+    mockUseExperimentUserPermissions.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: refreshUser,
+      experimentUserPermissions: [],
+    });
+    mockUseExperimentGroupPermissions.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: refreshGroup,
+      experimentGroupPermissions: [],
+    });
+
+    render(<ExperimentPermissionsPage />);
+
+    const lastCall =
+      mockEntityPermissionsManager.mock.calls[
+        mockEntityPermissionsManager.mock.calls.length - 1
+      ][0];
+    lastCall.refresh();
+
+    expect(refreshUser).toHaveBeenCalled();
+    expect(refreshGroup).toHaveBeenCalled();
+  });
+
+  it("uses experiment ID when experiment name is not found", () => {
+    mockUseAllExperiments.mockReturnValue({
+      allExperiments: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<ExperimentPermissionsPage />);
+
+    expect(screen.getByTestId("page-container")).toHaveAttribute(
+      "title",
+      "Permissions for Experiment 123",
+    );
+  });
 });

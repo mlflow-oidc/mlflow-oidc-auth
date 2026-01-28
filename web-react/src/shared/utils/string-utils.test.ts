@@ -19,7 +19,7 @@ describe("removeTrailingSlashes", () => {
 
   for (const [input, expected] of cases) {
     it(`should convert ${String(input)} -> ${expected}`, () => {
-      expect(removeTrailingSlashes(input as any)).toBe(expected);
+      expect(removeTrailingSlashes(input)).toBe(expected);
     });
   }
 });

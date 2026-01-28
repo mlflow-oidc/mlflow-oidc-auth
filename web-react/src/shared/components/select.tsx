@@ -48,6 +48,7 @@ export const Select = ({
             focus:border-btn-primary dark:focus:border-btn-primary-dark
             transition duration-150 ease-in-out cursor-pointer
             disabled:opacity-70 disabled:cursor-not-allowed
+            custom-select
             ${error ? "border-red-500 focus:border-red-500 dark:border-red-500 dark:focus:border-red-500" : ""}
             ${className}`}
         {...props}

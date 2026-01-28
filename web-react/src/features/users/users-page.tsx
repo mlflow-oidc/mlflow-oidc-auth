@@ -76,7 +76,6 @@ export default function UsersPage() {
             />
           </div>
           <EntityListTable
-            mode="object"
             data={tableData}
             searchTerm={submittedTerm}
             columns={columnsWithAction}

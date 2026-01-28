@@ -260,7 +260,6 @@ export const RegexPermissionsView = ({
             </Button>
           </div>
           <EntityListTable
-            mode="object"
             data={
               filteredData as (PatternPermissionItem &
                 Record<string, unknown>)[]

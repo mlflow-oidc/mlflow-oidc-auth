@@ -151,6 +151,44 @@ describe("ServiceAccountsPage", () => {
         is_admin: false,
         is_service_account: true,
       });
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Service account newsa created successfully",
+        "success",
+      );
+    });
+  });
+
+  it("handles creation error", async () => {
+    const mockCreateUser = vi.spyOn(userService, "createUser");
+    mockCreateUser.mockRejectedValue(new Error("Creation failed"));
+    render(<ServiceAccountsPage />);
+
+    fireEvent.click(screen.getByText("Create Service Account"));
+    fireEvent.click(screen.getByText("Confirm Create"));
+
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Failed to create service account",
+        "error",
+      );
+    });
+  });
+
+  it("deletes service account", async () => {
+    const mockDeleteUser = vi.spyOn(userService, "deleteUser");
+    mockDeleteUser.mockResolvedValue(undefined);
+    render(<ServiceAccountsPage />);
+
+    const deleteButton = screen.getByTitle("Remove service account");
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(mockDeleteUser).toHaveBeenCalledWith("sa1");
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Service account sa1 removed successfully",
+        "success",
+      );
+      expect(mockRefresh).toHaveBeenCalled();
     });
   });
 });

@@ -317,7 +317,6 @@ export default function TrashPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredData}
             columns={columns}
             searchTerm={submittedTerm}
