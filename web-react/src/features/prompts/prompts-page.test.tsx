@@ -89,4 +89,95 @@ describe("PromptsPage", () => {
     expect(screen.getByText("Prompt A")).toBeInTheDocument();
     expect(screen.getByText("Prompt B")).toBeInTheDocument();
   });
+
+  it("renders loading state", () => {
+    mockUseAllPrompts.mockReturnValue({
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      allPrompts: [],
+    });
+
+    render(<PromptsPage />);
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+  });
+
+  it("renders error state", () => {
+    mockUseAllPrompts.mockReturnValue({
+      isLoading: false,
+      error: new Error("Failed to load"),
+      refresh: vi.fn(),
+      allPrompts: [],
+    });
+
+    render(<PromptsPage />);
+    expect(screen.getByText("Error")).toBeInTheDocument();
+  });
+
+  it("renders empty state when no prompts", () => {
+    mockUseAllPrompts.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allPrompts: [],
+    });
+
+    render(<PromptsPage />);
+    expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+    expect(screen.getByTestId("entity-list")).toBeEmptyDOMElement();
+  });
+
+  it("filters prompts based on search", () => {
+    mockUseSearch.mockReturnValue({
+      searchTerm: "Prompt A",
+      submittedTerm: "Prompt A",
+      handleInputChange: vi.fn(),
+      handleSearchSubmit: vi.fn(),
+      handleClearSearch: vi.fn(),
+    });
+
+    mockUseAllPrompts.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allPrompts: [{ name: "Prompt A" }, { name: "Prompt B" }],
+    });
+
+    render(<PromptsPage />);
+    expect(screen.getByText("Prompt A")).toBeInTheDocument();
+    expect(screen.queryByText("Prompt B")).not.toBeInTheDocument();
+  });
+
+  it("renders empty results when search has no matches", () => {
+    mockUseSearch.mockReturnValue({
+      searchTerm: "NonExistent",
+      submittedTerm: "NonExistent",
+      handleInputChange: vi.fn(),
+      handleSearchSubmit: vi.fn(),
+      handleClearSearch: vi.fn(),
+    });
+
+    mockUseAllPrompts.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allPrompts: [{ name: "Prompt A" }, { name: "Prompt B" }],
+    });
+
+    render(<PromptsPage />);
+    expect(screen.queryByText("Prompt A")).not.toBeInTheDocument();
+    expect(screen.queryByText("Prompt B")).not.toBeInTheDocument();
+  });
+
+  it("handles null allPrompts", () => {
+    mockUseAllPrompts.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allPrompts: null,
+    });
+
+    render(<PromptsPage />);
+    expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+  });
 });
