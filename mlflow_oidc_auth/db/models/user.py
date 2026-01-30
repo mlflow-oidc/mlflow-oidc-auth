@@ -6,6 +6,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from mlflow_oidc_auth.db.models._base import Base
 from mlflow_oidc_auth.entities import User
 
+from .experiment import SqlExperimentPermission
+from .gateway_endpoint import SqlGatewayEndpointPermission
+from .gateway_model_definition import SqlGatewayModelDefinitionPermission
+from .gateway_secret import SqlGatewaySecretPermission
+from .group import SqlGroup
+from .registered_model import SqlRegisteredModelPermission
+from .scorer import SqlScorerPermission
+
 
 class SqlUser(Base):
     __tablename__ = "users"
@@ -19,6 +27,11 @@ class SqlUser(Base):
     experiment_permissions: Mapped[list["SqlExperimentPermission"]] = relationship("SqlExperimentPermission", backref="users")
     registered_model_permissions: Mapped[list["SqlRegisteredModelPermission"]] = relationship("SqlRegisteredModelPermission", backref="users")
     scorer_permissions: Mapped[list["SqlScorerPermission"]] = relationship("SqlScorerPermission", backref="users")
+    gateway_endpoint_permissions: Mapped[list["SqlGatewayEndpointPermission"]] = relationship("SqlGatewayEndpointPermission", backref="users")
+    gateway_model_definition_permissions: Mapped[list["SqlGatewayModelDefinitionPermission"]] = relationship(
+        "SqlGatewayModelDefinitionPermission", backref="users"
+    )
+    gateway_secret_permissions: Mapped[list["SqlGatewaySecretPermission"]] = relationship("SqlGatewaySecretPermission", backref="users")
     groups: Mapped[list["SqlGroup"]] = relationship(
         "SqlGroup",
         secondary="user_groups",
@@ -37,5 +50,8 @@ class SqlUser(Base):
             experiment_permissions=[p.to_mlflow_entity() for p in self.experiment_permissions],
             registered_model_permissions=[p.to_mlflow_entity() for p in self.registered_model_permissions],
             scorer_permissions=[p.to_mlflow_entity() for p in self.scorer_permissions],
+            gateway_endpoint_permissions=[p.to_mlflow_entity() for p in self.gateway_endpoint_permissions],
+            gateway_model_definition_permissions=[p.to_mlflow_entity() for p in self.gateway_model_definition_permissions],
+            gateway_secret_permissions=[p.to_mlflow_entity() for p in self.gateway_secret_permissions],
             groups=[g.to_mlflow_entity() for g in self.groups],
         )
