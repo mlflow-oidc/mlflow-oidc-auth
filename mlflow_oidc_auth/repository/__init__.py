@@ -13,6 +13,18 @@ from mlflow_oidc_auth.repository.scorer_permission import ScorerPermissionReposi
 from mlflow_oidc_auth.repository.scorer_permission_group import ScorerPermissionGroupRepository
 from mlflow_oidc_auth.repository.scorer_permission_regex import ScorerPermissionRegexRepository
 from mlflow_oidc_auth.repository.scorer_permission_regex_group import ScorerPermissionGroupRegexRepository
+from mlflow_oidc_auth.repository.gateway_secret_permissions import GatewaySecretPermissionRepository
+from mlflow_oidc_auth.repository.gateway_secret_regex_permissions import GatewaySecretPermissionRegexRepository
+from mlflow_oidc_auth.repository.gateway_secret_group_permissions import GatewaySecretGroupPermissionRepository
+from mlflow_oidc_auth.repository.gateway_secret_group_regex_permissions import GatewaySecretPermissionGroupRegexRepository
+from mlflow_oidc_auth.repository.gateway_endpoint_permissions import GatewayEndpointPermissionRepository
+from mlflow_oidc_auth.repository.gateway_endpoint_regex_permissions import GatewayEndpointPermissionRegexRepository
+from mlflow_oidc_auth.repository.gateway_endpoint_group_permissions import GatewayEndpointGroupPermissionRepository
+from mlflow_oidc_auth.repository.gateway_endpoint_group_regex_permissions import GatewayEndpointPermissionGroupRegexRepository
+from mlflow_oidc_auth.repository.gateway_model_definition_permissions import GatewayModelDefinitionPermissionRepository
+from mlflow_oidc_auth.repository.gateway_model_definition_regex_permissions import GatewayModelDefinitionPermissionRegexRepository
+from mlflow_oidc_auth.repository.gateway_model_definition_group_permissions import GatewayModelDefinitionGroupPermissionRepository
+from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permissions import GatewayGroupRegexPermission
 
 __all__ = [
     "ExperimentPermissionRepository",
@@ -30,4 +42,16 @@ __all__ = [
     "ScorerPermissionGroupRepository",
     "ScorerPermissionRegexRepository",
     "ScorerPermissionGroupRegexRepository",
+    "GatewaySecretPermissionRepository",
+    "GatewaySecretPermissionRegexRepository",
+    "GatewaySecretGroupPermissionRepository",
+    "GatewaySecretPermissionGroupRegexRepository",
+    "GatewayEndpointPermissionRepository",
+    "GatewayEndpointPermissionRegexRepository",
+    "GatewayEndpointGroupPermissionRepository",
+    "GatewayEndpointPermissionGroupRegexRepository",
+    "GatewayModelDefinitionPermissionRepository",
+    "GatewayModelDefinitionPermissionRegexRepository",
+    "GatewayModelDefinitionGroupPermissionRepository",
+    "GatewayGroupRegexPermission",
 ]
