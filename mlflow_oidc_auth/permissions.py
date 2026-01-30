@@ -9,6 +9,7 @@ class Permission:
     name: str
     priority: int
     can_read: bool
+    can_use: bool
     can_update: bool
     can_delete: bool
     can_manage: bool
@@ -18,6 +19,17 @@ READ = Permission(
     name="READ",
     priority=1,
     can_read=True,
+    can_use=False,
+    can_update=False,
+    can_delete=False,
+    can_manage=False,
+)
+
+USE = Permission(
+    name="USE",
+    priority=2,
+    can_read=True,
+    can_use=True,
     can_update=False,
     can_delete=False,
     can_manage=False,
@@ -25,8 +37,9 @@ READ = Permission(
 
 EDIT = Permission(
     name="EDIT",
-    priority=2,
+    priority=3,
     can_read=True,
+    can_use=True,
     can_update=True,
     can_delete=False,
     can_manage=False,
@@ -34,8 +47,9 @@ EDIT = Permission(
 
 MANAGE = Permission(
     name="MANAGE",
-    priority=3,
+    priority=4,
     can_read=True,
+    can_use=True,
     can_update=True,
     can_delete=True,
     can_manage=True,
@@ -45,6 +59,7 @@ NO_PERMISSIONS = Permission(
     name="NO_PERMISSIONS",
     priority=100,
     can_read=False,
+    can_use=False,
     can_update=False,
     can_delete=False,
     can_manage=False,
@@ -52,6 +67,7 @@ NO_PERMISSIONS = Permission(
 
 ALL_PERMISSIONS = {
     READ.name: READ,
+    USE.name: USE,
     EDIT.name: EDIT,
     MANAGE.name: MANAGE,
     NO_PERMISSIONS.name: NO_PERMISSIONS,
