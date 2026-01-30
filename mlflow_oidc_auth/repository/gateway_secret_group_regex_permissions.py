@@ -88,6 +88,17 @@ class GatewaySecretPermissionGroupRegexRepository:
             )
             return [p.to_mlflow_entity() for p in perms]
 
+    def update(self, id: int, group_name: str, regex: str, priority: int, permission: str) -> GatewaySecretGroupRegexPermission:
+        _validate_permission(permission)
+        with self._Session() as session:
+            group = get_group(session, group_name)
+            perm = self._get_group_regex_permission(session, id, group.id)
+            perm.regex = regex
+            perm.priority = priority
+            perm.permission = permission
+            session.commit()
+            return perm.to_mlflow_entity()
+
     def revoke(self, id: int, group_name: str) -> None:
         with self._Session() as session:
             group = get_group(session, group_name)

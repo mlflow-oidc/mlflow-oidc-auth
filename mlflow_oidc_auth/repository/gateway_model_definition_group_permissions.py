@@ -73,6 +73,14 @@ class GatewayModelDefinitionGroupPermissionRepository:
             session.delete(perm)
             session.flush()
 
+    def update_group_permission(self, group_name: str, model_definition_id: str, permission: str) -> GatewayModelDefinitionPermission:
+        _validate_permission(permission)
+        with self._Session() as session:
+            perm = self._get_group_permission(session, model_definition_id, group_name)
+            perm.permission = permission
+            session.flush()
+            return perm.to_mlflow_entity()
+
     def list_groups_for_model_definition(self, model_definition_id: str):
         with self._Session() as session:
             rows = (

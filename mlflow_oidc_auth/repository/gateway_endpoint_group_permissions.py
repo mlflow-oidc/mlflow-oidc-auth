@@ -73,6 +73,14 @@ class GatewayEndpointGroupPermissionRepository:
             session.delete(perm)
             session.flush()
 
+    def update_group_permission(self, group_name: str, endpoint_id: str, permission: str) -> GatewayEndpointPermission:
+        _validate_permission(permission)
+        with self._Session() as session:
+            perm = self._get_group_permission(session, endpoint_id, group_name)
+            perm.permission = permission
+            session.flush()
+            return perm.to_mlflow_entity()
+
     def list_groups_for_endpoint(self, endpoint_id: str):
         with self._Session() as session:
             rows = (
