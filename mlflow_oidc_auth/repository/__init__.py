@@ -24,7 +24,7 @@ from mlflow_oidc_auth.repository.gateway_endpoint_group_regex_permissions import
 from mlflow_oidc_auth.repository.gateway_model_definition_permissions import GatewayModelDefinitionPermissionRepository
 from mlflow_oidc_auth.repository.gateway_model_definition_regex_permissions import GatewayModelDefinitionPermissionRegexRepository
 from mlflow_oidc_auth.repository.gateway_model_definition_group_permissions import GatewayModelDefinitionGroupPermissionRepository
-from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permissions import GatewayGroupRegexPermission
+from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permissions import GatewayModelDefinitionGroupRegexPermission
 
 __all__ = [
     "ExperimentPermissionRepository",
@@ -53,5 +53,5 @@ __all__ = [
     "GatewayModelDefinitionPermissionRepository",
     "GatewayModelDefinitionPermissionRegexRepository",
     "GatewayModelDefinitionGroupPermissionRepository",
-    "GatewayGroupRegexPermission",
+    "GatewayModelDefinitionGroupRegexPermission",
 ]

@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGatewaySecretPermission, SqlUser
-from mlflow_oidc_auth.entities import GatewayPermission
+from mlflow_oidc_auth.entities import GatewaySecretPermission
 from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository.utils import get_user
 
@@ -37,7 +37,7 @@ class GatewaySecretPermissionRepository:
                 INVALID_STATE,
             ) from e
 
-    def grant_permission(self, secret_id: str, username: str, permission: str) -> GatewayPermission:
+    def grant_permission(self, secret_id: str, username: str, permission: str) -> GatewaySecretPermission:
         _validate_permission(permission)
         with self._Session() as session:
             try:
@@ -56,18 +56,18 @@ class GatewaySecretPermissionRepository:
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
-    def get_permission(self, secret_id: str, username: str) -> GatewayPermission:
+    def get_permission(self, secret_id: str, username: str) -> GatewaySecretPermission:
         with self._Session() as session:
             perm = self._get_permission(session, secret_id, username)
             return perm.to_mlflow_entity()
 
-    def list_permissions_for_user(self, username: str) -> List[GatewayPermission]:
+    def list_permissions_for_user(self, username: str) -> List[GatewaySecretPermission]:
         with self._Session() as session:
             user = get_user(session, username)
             rows = session.query(SqlGatewaySecretPermission).filter(SqlGatewaySecretPermission.user_id == user.id).all()
             return [r.to_mlflow_entity() for r in rows]
 
-    def update_permission(self, secret_id: str, username: str, permission: str) -> GatewayPermission:
+    def update_permission(self, secret_id: str, username: str, permission: str) -> GatewaySecretPermission:
         _validate_permission(permission)
         with self._Session() as session:
             perm = self._get_permission(session, secret_id, username)

@@ -5,8 +5,8 @@ from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS,
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
-from mlflow_oidc_auth.db.models import SqlGatewayEndpointGroupRegexPermission, SqlGroup
-from mlflow_oidc_auth.entities import GatewayGroupRegexPermission
+from mlflow_oidc_auth.db.models import SqlGatewayEndpointGroupRegexPermission
+from mlflow_oidc_auth.entities import GatewayEndpointGroupRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository.utils import get_group
 
@@ -30,7 +30,7 @@ class GatewayEndpointPermissionGroupRegexRepository:
         except MultipleResultsFound:
             raise MlflowException(f"Multiple Permissions found for group_id: {group_id} and id: {id}", INVALID_STATE)
 
-    def grant(self, group_name: str, regex: str, priority: int, permission: str) -> GatewayGroupRegexPermission:
+    def grant(self, group_name: str, regex: str, priority: int, permission: str) -> GatewayEndpointGroupRegexPermission:
         _validate_permission(permission)
         with self._Session() as session:
             try:
@@ -50,13 +50,13 @@ class GatewayEndpointPermissionGroupRegexRepository:
                     RESOURCE_ALREADY_EXISTS,
                 )
 
-    def get(self, id: int, group_name: str) -> GatewayGroupRegexPermission:
+    def get(self, id: int, group_name: str) -> GatewayEndpointGroupRegexPermission:
         with self._Session() as session:
             group = get_group(session, group_name)
             perm = self._get_group_regex_permission(session, id, group.id)
             return perm.to_mlflow_entity()
 
-    def list_permissions_for_group(self, group_name: str) -> List[GatewayGroupRegexPermission]:
+    def list_permissions_for_group(self, group_name: str) -> List[GatewayEndpointGroupRegexPermission]:
         with self._Session() as session:
             group = get_group(session, group_name)
             perms = (
@@ -67,7 +67,7 @@ class GatewayEndpointPermissionGroupRegexRepository:
             )
             return [p.to_mlflow_entity() for p in perms]
 
-    def list_permissions_for_groups(self, group_names: List[str]) -> List[GatewayGroupRegexPermission]:
+    def list_permissions_for_groups(self, group_names: List[str]) -> List[GatewayEndpointGroupRegexPermission]:
         with self._Session() as session:
             groups = [get_group(session, name) for name in group_names]
             perms = (
@@ -78,7 +78,7 @@ class GatewayEndpointPermissionGroupRegexRepository:
             )
             return [p.to_mlflow_entity() for p in perms]
 
-    def list_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewayGroupRegexPermission]:
+    def list_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewayEndpointGroupRegexPermission]:
         with self._Session() as session:
             perms = (
                 session.query(SqlGatewayEndpointGroupRegexPermission)

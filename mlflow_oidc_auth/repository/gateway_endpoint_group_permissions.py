@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGatewayEndpointGroupPermission, SqlGroup
-from mlflow_oidc_auth.entities import GatewayPermission
+from mlflow_oidc_auth.entities import GatewayEndpointPermission
 from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository.utils import get_group
 
@@ -37,7 +37,7 @@ class GatewayEndpointGroupPermissionRepository:
                 INVALID_STATE,
             ) from e
 
-    def grant_group_permission(self, group_name: str, endpoint_id: str, permission: str) -> GatewayPermission:
+    def grant_group_permission(self, group_name: str, endpoint_id: str, permission: str) -> GatewayEndpointPermission:
         _validate_permission(permission)
         with self._Session() as session:
             try:
@@ -56,12 +56,12 @@ class GatewayEndpointGroupPermissionRepository:
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
-    def get_group_permission_for_user(self, endpoint_id: str, group_name: str) -> GatewayPermission:
+    def get_group_permission_for_user(self, endpoint_id: str, group_name: str) -> GatewayEndpointPermission:
         with self._Session() as session:
             perm = self._get_group_permission(session, endpoint_id, group_name)
             return perm.to_mlflow_entity()
 
-    def list_permissions_for_group(self, group_name: str) -> List[GatewayPermission]:
+    def list_permissions_for_group(self, group_name: str) -> List[GatewayEndpointPermission]:
         with self._Session() as session:
             group = get_group(session, group_name)
             rows = session.query(SqlGatewayEndpointGroupPermission).filter(SqlGatewayEndpointGroupPermission.group_id == group.id).all()

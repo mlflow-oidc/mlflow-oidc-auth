@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGatewayModelDefinitionPermission, SqlUser
-from mlflow_oidc_auth.entities import GatewayPermission
+from mlflow_oidc_auth.entities import GatewayModelDefinitionPermission
 from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository.utils import get_user
 
@@ -37,7 +37,7 @@ class GatewayModelDefinitionPermissionRepository:
                 INVALID_STATE,
             ) from e
 
-    def grant_permission(self, model_definition_id: str, username: str, permission: str) -> GatewayPermission:
+    def grant_permission(self, model_definition_id: str, username: str, permission: str) -> GatewayModelDefinitionPermission:
         _validate_permission(permission)
         with self._Session() as session:
             try:
@@ -56,18 +56,18 @@ class GatewayModelDefinitionPermissionRepository:
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
-    def get_permission(self, model_definition_id: str, username: str) -> GatewayPermission:
+    def get_permission(self, model_definition_id: str, username: str) -> GatewayModelDefinitionPermission:
         with self._Session() as session:
             perm = self._get_permission(session, model_definition_id, username)
             return perm.to_mlflow_entity()
 
-    def list_permissions_for_user(self, username: str) -> List[GatewayPermission]:
+    def list_permissions_for_user(self, username: str) -> List[GatewayModelDefinitionPermission]:
         with self._Session() as session:
             user = get_user(session, username)
             rows = session.query(SqlGatewayModelDefinitionPermission).filter(SqlGatewayModelDefinitionPermission.user_id == user.id).all()
             return [r.to_mlflow_entity() for r in rows]
 
-    def update_permission(self, model_definition_id: str, username: str, permission: str) -> GatewayPermission:
+    def update_permission(self, model_definition_id: str, username: str, permission: str) -> GatewayModelDefinitionPermission:
         _validate_permission(permission)
         with self._Session() as session:
             perm = self._get_permission(session, model_definition_id, username)
