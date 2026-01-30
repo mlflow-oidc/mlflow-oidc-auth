@@ -172,6 +172,7 @@ class User:
             groups=[Group.from_json(g) for g in dictionary.get("groups", [])],
         )
 
+
 class UserGroup:
     def __init__(self, user_id, group_id):
         self._user_id = user_id

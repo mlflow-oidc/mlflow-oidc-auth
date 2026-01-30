@@ -3,6 +3,7 @@ from typing import Optional, Any, Dict
 
 from ._base import RegexPermissionBase
 
+
 @dataclass
 class RegisteredModelPermission:
     """Represents a registered-model level permission with optional prompt flag."""

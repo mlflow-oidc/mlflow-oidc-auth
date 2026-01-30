@@ -67,4 +67,3 @@ class PermissionBase:
             "user_id": self.user_id,
             "group_id": self.group_id,
         }
-    

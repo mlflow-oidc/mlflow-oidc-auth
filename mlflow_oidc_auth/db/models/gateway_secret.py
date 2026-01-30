@@ -4,6 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from mlflow_oidc_auth.db.models._base import Base
 from mlflow_oidc_auth.entities import GatewaySecretPermission, GatewaySecretGroupRegexPermission, GatewaySecretRegexPermission
 
+
 # Secret permissions
 class SqlGatewaySecretPermission(Base):
     __tablename__ = "gateway_secret_permissions"

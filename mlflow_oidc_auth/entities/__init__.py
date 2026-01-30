@@ -19,7 +19,6 @@ from mlflow_oidc_auth.entities.gateway_secret import (
     GatewaySecretGroupRegexPermission,
 )
 
-
 __all__ = [
     "ExperimentPermission",
     "ExperimentGroupRegexPermission",
