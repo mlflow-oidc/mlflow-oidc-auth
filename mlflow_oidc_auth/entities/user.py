@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from mlflow_oidc_auth.entities import ExperimentPermission, RegisteredModelPermission, ScorerPermission, Group
 
 
 def _parse_optional_datetime(value: Any) -> datetime | None:
@@ -192,7 +193,17 @@ class UserGroup:
 
     @classmethod
     def from_json(cls, dictionary):
+        user_id = dictionary["user_id"]
+        group_id = dictionary["group_id"]
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError):
+            raise ValueError("user_id must be an integer")
+        try:
+            group_id = int(group_id)
+        except (TypeError, ValueError):
+            raise ValueError("group_id must be an integer")
         return cls(
-            user_id=dictionary["user_id"],
-            group_id=dictionary["group_id"],
+            user_id=user_id,
+            group_id=group_id,
         )

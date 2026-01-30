@@ -1,64 +1,56 @@
+from dataclasses import dataclass
+from typing import Optional, Any, Dict
+
+from ._base import RegexPermissionBase
+
+@dataclass
 class RegisteredModelPermission:
-    def __init__(self, name, permission, user_id=None, group_id=None, prompt=False):
-        self._name = name
-        self._user_id = user_id
-        self._permission = permission
-        self._group_id = group_id
-        self._prompt = prompt
+    """Represents a registered-model level permission with optional prompt flag."""
 
-    @property
-    def name(self):
-        return self._name
+    name: str
+    permission: str
+    user_id: Optional[int] = None
+    group_id: Optional[int] = None
+    prompt: bool = False
 
-    @property
-    def user_id(self):
-        return self._user_id
-
-    @property
-    def permission(self):
-        return self._permission
-
-    @permission.setter
-    def permission(self, permission):
-        self._permission = permission
-
-    @property
-    def group_id(self):
-        return self._group_id
-
-    @group_id.setter
-    def group_id(self, group_id):
-        self._group_id = group_id
-
-    @property
-    def prompt(self):
-        return self._prompt
-
-    @prompt.setter
-    def prompt(self, prompt):
-        self._prompt = prompt
-
-    def to_json(self):
+    def to_json(self) -> Dict[str, Any]:
+        # Keep explicit None for user_id/group_id for backward compatibility
         return {
             "name": self.name,
             "user_id": self.user_id,
             "permission": self.permission,
             "group_id": self.group_id,
-            "prompt": self.prompt,
+            "prompt": bool(self.prompt),
         }
 
     @classmethod
-    def from_json(cls, dictionary):
+    def from_json(cls, dictionary: Dict[str, Any]) -> "RegisteredModelPermission":
+        user_id = dictionary.get("user_id")
+        group_id = dictionary.get("group_id")
+        if user_id is not None:
+            try:
+                user_id = int(user_id)
+            except (TypeError, ValueError):
+                raise ValueError("user_id must be an integer")
+        if group_id is not None:
+            try:
+                group_id = int(group_id)
+            except (TypeError, ValueError):
+                raise ValueError("group_id must be an integer")
         return cls(
             name=dictionary["name"],
-            user_id=dictionary.get("user_id"),
             permission=dictionary["permission"],
-            group_id=dictionary.get("group_id"),
+            user_id=user_id,
+            group_id=group_id,
             prompt=bool(dictionary.get("prompt", False)),
         )
 
 
-class RegisteredModelGroupRegexPermission:
+from dataclasses import dataclass
+
+
+@dataclass(init=False)
+class RegisteredModelGroupRegexPermission(RegexPermissionBase):
     def __init__(
         self,
         id_,
@@ -68,68 +60,44 @@ class RegisteredModelGroupRegexPermission:
         permission,
         prompt=False,
     ):
-        self._id = id_
-        self._regex = regex
-        self._priority = priority
-        self._group_id = group_id
-        self._permission = permission
-        self._prompt = prompt
-
-    @property
-    def id(self):
-        return self._id
-
-    @property
-    def regex(self):
-        return self._regex
-
-    @property
-    def priority(self):
-        return self._priority
-
-    @priority.setter
-    def priority(self, priority):
-        self._priority = priority
-
-    @property
-    def group_id(self):
-        return self._group_id
-
-    @property
-    def permission(self):
-        return self._permission
-
-    @permission.setter
-    def permission(self, permission):
-        self._permission = permission
+        super().__init__(
+            id=id_,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            group_id=group_id,
+        )
+        self._prompt = bool(prompt)
 
     @property
     def prompt(self):
         return self._prompt
 
     def to_json(self):
-        return {
-            "id": self.id,
-            "regex": self.regex,
-            "priority": self.priority,
-            "group_id": self.group_id,
-            "permission": self.permission,
-            "prompt": self.prompt,
-        }
+        data = super().to_json()
+        data["prompt"] = self.prompt
+        return data
 
     @classmethod
     def from_json(cls, dictionary):
+        group_id = dictionary.get("group_id")
+        if group_id is not None:
+            try:
+                group_id = int(group_id)
+            except (TypeError, ValueError):
+                raise ValueError("group_id must be an integer")
         return cls(
             id_=dictionary["id"],
             regex=dictionary["regex"],
             priority=dictionary["priority"],
-            group_id=dictionary["group_id"],
+            group_id=group_id,
             permission=dictionary["permission"],
             prompt=bool(dictionary.get("prompt", False)),
         )
 
 
-class RegisteredModelRegexPermission:
+@dataclass(init=False)
+class RegisteredModelRegexPermission(RegexPermissionBase):
     def __init__(
         self,
         id_,
@@ -139,40 +107,14 @@ class RegisteredModelRegexPermission:
         permission,
         prompt=False,
     ):
-        self._id = id_
-        self._regex = regex
-        self._priority = priority
-        self._user_id = user_id
-        self._permission = permission
-        self._prompt = prompt
-
-    @property
-    def id(self):
-        return self._id
-
-    @property
-    def regex(self):
-        return self._regex
-
-    @property
-    def priority(self):
-        return self._priority
-
-    @priority.setter
-    def priority(self, priority):
-        self._priority = priority
-
-    @property
-    def user_id(self):
-        return self._user_id
-
-    @property
-    def permission(self):
-        return self._permission
-
-    @permission.setter
-    def permission(self, permission):
-        self._permission = permission
+        super().__init__(
+            id=id_,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            user_id=user_id,
+        )
+        self._prompt = bool(prompt)
 
     @property
     def prompt(self):
@@ -183,23 +125,23 @@ class RegisteredModelRegexPermission:
         self._prompt = prompt
 
     def to_json(self):
-        return {
-            "id": self.id,
-            "regex": self.regex,
-            "priority": self.priority,
-            "user_id": self.user_id,
-            "permission": self.permission,
-            "prompt": self.prompt,
-        }
+        data = super().to_json()
+        data["prompt"] = self.prompt
+        return data
 
     @classmethod
     def from_json(cls, dictionary):
+        user_id = dictionary.get("user_id")
+        if user_id is not None:
+            try:
+                user_id = int(user_id)
+            except (TypeError, ValueError):
+                raise ValueError("user_id must be an integer")
         return cls(
             id_=dictionary["id"],
             regex=dictionary["regex"],
             priority=dictionary["priority"],
-            user_id=dictionary["user_id"],
+            user_id=user_id,
             permission=dictionary["permission"],
             prompt=bool(dictionary.get("prompt", False)),
         )
-
