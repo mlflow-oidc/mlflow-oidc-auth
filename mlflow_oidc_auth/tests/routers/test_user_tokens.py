@@ -26,7 +26,6 @@ from mlflow_oidc_auth.routers.users import (
 )
 from mlflow_oidc_auth.models.user import CreateUserTokenRequest
 
-
 # =============================================================================
 # Helper Fixtures
 # =============================================================================

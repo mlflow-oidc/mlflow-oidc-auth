@@ -49,9 +49,11 @@ class TestCreateToken:
 
         expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
-        with patch("mlflow_oidc_auth.repository.user_token.get_user", return_value=mock_user), patch(
-            "mlflow_oidc_auth.repository.user_token.generate_password_hash", return_value="hashed_token"
-        ), patch("mlflow_oidc_auth.repository.user_token.SqlUserToken", return_value=mock_token):
+        with (
+            patch("mlflow_oidc_auth.repository.user_token.get_user", return_value=mock_user),
+            patch("mlflow_oidc_auth.repository.user_token.generate_password_hash", return_value="hashed_token"),
+            patch("mlflow_oidc_auth.repository.user_token.SqlUserToken", return_value=mock_token),
+        ):
             result = repo.create("testuser", "my-token", "raw_token_value", expires_at)
 
             assert result == "token_entity"
@@ -66,9 +68,11 @@ class TestCreateToken:
         session.flush.side_effect = IntegrityError("statement", "params", "orig")
         expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
-        with patch("mlflow_oidc_auth.repository.user_token.get_user", return_value=mock_user), patch(
-            "mlflow_oidc_auth.repository.user_token.generate_password_hash", return_value="hashed"
-        ), patch("mlflow_oidc_auth.repository.user_token.SqlUserToken", return_value=MagicMock()):
+        with (
+            patch("mlflow_oidc_auth.repository.user_token.get_user", return_value=mock_user),
+            patch("mlflow_oidc_auth.repository.user_token.generate_password_hash", return_value="hashed"),
+            patch("mlflow_oidc_auth.repository.user_token.SqlUserToken", return_value=MagicMock()),
+        ):
             with pytest.raises(MlflowException) as exc:
                 repo.create("testuser", "duplicate-name", "token", expires_at)
 
