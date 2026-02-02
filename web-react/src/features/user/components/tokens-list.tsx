@@ -93,26 +93,31 @@ export const TokensList: React.FC = () => {
     {
       header: "Created",
       render: (token) => formatDate(token.created_at),
+      className: "w-44 flex-none",
     },
     {
       header: "Expires",
       render: (token) => formatDate(token.expires_at),
+      className: "w-44 flex-none",
     },
     {
       header: "Last Used",
       render: (token) => formatDate(token.last_used_at),
+      className: "w-44 flex-none",
     },
     {
-      header: "Actions",
+      header: "",
       render: (token) => (
-        <IconButton
-          icon={faTrash}
-          onClick={() => void handleDeleteToken(token)}
-          disabled={deletingTokenId === token.id}
-          title={`Delete token "${token.name}"`}
-        />
+        <div className="invisible group-hover:visible">
+          <IconButton
+            icon={faTrash}
+            onClick={() => void handleDeleteToken(token)}
+            disabled={deletingTokenId === token.id}
+            title={`Delete token "${token.name}"`}
+          />
+        </div>
       ),
-      className: "w-20 text-center",
+      className: "w-12 flex-none",
     },
   ];
 
