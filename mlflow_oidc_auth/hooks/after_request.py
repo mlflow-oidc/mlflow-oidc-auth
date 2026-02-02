@@ -241,11 +241,12 @@ AFTER_REQUEST_PATH_HANDLERS = {
     DeleteScorer: _delete_scorer_permissions_cascade,
 }
 
+_our_handlers = set(AFTER_REQUEST_PATH_HANDLERS.values())
 AFTER_REQUEST_HANDLERS = {
     (http_path, method): handler
     for http_path, handler, methods in get_endpoints(_get_after_request_handler)
     for method in methods
-    if handler is not None and "/graphql" not in http_path
+    if handler in _our_handlers and "/graphql" not in http_path
 }
 
 

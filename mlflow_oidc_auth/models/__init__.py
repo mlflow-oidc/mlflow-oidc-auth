@@ -11,6 +11,7 @@ from mlflow_oidc_auth.models.experiment import (
     ExperimentRegexPermission,
     ExperimentSummary,
 )
+from mlflow_oidc_auth.models.gateway import GatewayPermission, GatewayRegexCreate
 from mlflow_oidc_auth.models.group import (
     GroupExperimentPermission,
     GroupExperimentPermissionItem,
@@ -94,6 +95,8 @@ __all__ = [
     "GatewayPermissionResponse",
     "GatewayRegexPermissionRecord",
     "GatewayRegexPermissionResponse",
+    "GatewayPermission",
+    "GatewayRegexCreate",
     "MessageResponse",
     "StatusOnlyResponse",
     "StatusMessageResponse",

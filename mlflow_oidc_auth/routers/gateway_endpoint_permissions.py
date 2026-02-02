@@ -26,14 +26,12 @@ GATEWAY_ENDPOINT_USER_PERMISSIONS = "/{name}/users"
 GATEWAY_ENDPOINT_GROUP_PERMISSIONS = "/{name}/groups"
 
 
-gateway_endpoint_permissions_router.get(
+@gateway_endpoint_permissions_router.get(
     GATEWAY_ENDPOINT_USER_PERMISSIONS,
     response_model=List[UserPermission],
     summary="List users with permissions for a gateway endpoint",
     description="Retrieves a list of users who have permissions for the specified gateway endpoint.",
 )
-
-
 async def get_gateway_endpoint_users(
     name: str = Path(..., description="The gateway endpoint name to get permissions for"),
     _: None = Depends(check_gateway_endpoint_manage_permission),
@@ -58,14 +56,12 @@ async def get_gateway_endpoint_users(
     return users
 
 
-gateway_endpoint_permissions_router.get(
+@gateway_endpoint_permissions_router.get(
     GATEWAY_ENDPOINT_GROUP_PERMISSIONS,
     response_model=List[GroupPermissionEntry],
     summary="List groups with permissions for a gateway endpoint",
     description="Retrieves a list of groups who have permissions for the specified gateway endpoint.",
 )
-
-
 async def get_gateway_endpoint_groups(
     name: str = Path(..., description="The gateway endpoint name to get permissions for"),
     _: None = Depends(check_gateway_endpoint_manage_permission),
@@ -88,14 +84,12 @@ async def get_gateway_endpoint_groups(
     return groups
 
 
-gateway_endpoint_permissions_router.get(
+@gateway_endpoint_permissions_router.get(
     LIST_ENDPOINTS,
     response_model=List[str],
     summary="List all gateway endpoints with permissions",
     description="Retrieves a list of all gateway endpoints that have permissions assigned.",
 )
-
-
 async def list_gateway_endpoints_with_permissions(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
     """
     List gateway endpoints accessible to the authenticated user.
@@ -131,12 +125,12 @@ async def list_gateway_endpoints_with_permissions(username: str = Depends(get_us
         if hasattr(group, "gateway_endpoint_permissions") and group.gateway_endpoint_permissions:
             all_endpoints.update({p.endpoint_id for p in group.gateway_endpoint_permissions})
 
-    from mlflow_oidc_auth.utils.permissions import can_manage_gateway
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_endpoint
 
     manageable = []
     for endpoint in sorted(all_endpoints):
         try:
-            if can_manage_gateway(endpoint, username):
+            if can_manage_gateway_endpoint(endpoint, username):
                 manageable.append(endpoint)
         except Exception:
             # Treat errors (missing resource etc.) as not manageable

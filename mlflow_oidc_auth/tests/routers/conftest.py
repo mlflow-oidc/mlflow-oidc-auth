@@ -347,6 +347,7 @@ def _patch_router_stores(mock_store):
         patch("mlflow_oidc_auth.routers.experiment_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.scorers_permissions.store", mock_store),
+        patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store),
         # Patch filter_manageable_* functions at router level so integration tests work
         patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", _mock_filter_manageable_experiments),
         patch("mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models", _mock_filter_manageable_models),

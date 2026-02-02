@@ -116,12 +116,12 @@ async def list_gateway_model_definitions_with_permissions(username: str = Depend
         if hasattr(group, "gateway_model_definition_permissions") and group.gateway_model_definition_permissions:
             all_defs.update({p.model_definition_id for p in group.gateway_model_definition_permissions})
 
-    from mlflow_oidc_auth.utils.permissions import can_manage_gateway
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_model_definition
 
     manageable = []
     for md in sorted(all_defs):
         try:
-            if can_manage_gateway(md, username):
+            if can_manage_gateway_model_definition(md, username):
                 manageable.append(md)
         except Exception:
             continue

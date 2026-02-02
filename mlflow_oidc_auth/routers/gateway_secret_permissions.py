@@ -116,12 +116,12 @@ async def list_gateway_secrets_with_permissions(username: str = Depends(get_user
         if hasattr(group, "gateway_secret_permissions") and group.gateway_secret_permissions:
             all_secrets.update({p.secret_id for p in group.gateway_secret_permissions})
 
-    from mlflow_oidc_auth.utils.permissions import can_manage_gateway
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_secret
 
     manageable = []
     for secret in sorted(all_secrets):
         try:
-            if can_manage_gateway(secret, username):
+            if can_manage_gateway_secret(secret, username):
                 manageable.append(secret)
         except Exception:
             continue
