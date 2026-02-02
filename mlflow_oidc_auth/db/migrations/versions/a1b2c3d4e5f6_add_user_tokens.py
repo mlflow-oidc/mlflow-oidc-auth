@@ -78,6 +78,35 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Note: We don't restore password_hash values on downgrade
-    # as the tokens table becomes the source of truth
+    # Restore the "default" tokens back to users.password_hash for rollback
+    connection = op.get_bind()
+
+    users_table = sa.table(
+        "users",
+        sa.column("id", sa.Integer),
+        sa.column("password_hash", sa.String),
+        sa.column("password_expiration", sa.DateTime),
+    )
+    user_tokens_table = sa.table(
+        "user_tokens",
+        sa.column("user_id", sa.Integer),
+        sa.column("name", sa.String),
+        sa.column("token_hash", sa.String),
+        sa.column("expires_at", sa.DateTime),
+    )
+
+    # Get the "default" token for each user (these were the migrated legacy tokens)
+    default_tokens = connection.execute(
+        sa.select(
+            user_tokens_table.c.user_id,
+            user_tokens_table.c.token_hash,
+            user_tokens_table.c.expires_at,
+        ).where(user_tokens_table.c.name == LEGACY_TOKEN_NAME)
+    ).fetchall()
+
+    # Restore each default token back to the users table
+    for token in default_tokens:
+        user_id, token_hash, expires_at = token
+        connection.execute(users_table.update().where(users_table.c.id == user_id).values(password_hash=token_hash, password_expiration=expires_at))
+
     op.drop_table("user_tokens")
