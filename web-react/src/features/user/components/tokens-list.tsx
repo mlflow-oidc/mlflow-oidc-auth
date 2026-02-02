@@ -162,7 +162,6 @@ export const TokensList: React.FC = () => {
         </div>
       ) : (
         <EntityListTable
-          mode="object"
           data={filteredTokens}
           columns={columns}
           searchTerm={submittedTerm}
