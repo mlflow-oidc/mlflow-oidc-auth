@@ -95,23 +95,23 @@ export const CreateTokenModal: React.FC<CreateTokenModalProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Create New Token">
-      <p className="text-left text-base text-text-primary dark:text-text-primary-dark mb-4">
+      <p className="text-left text-text-primary dark:text-text-primary-dark">
         Create a new named access token. Each token can have a unique name for
         easy identification (e.g., "CI/CD Pipeline", "Local Development").
       </p>
 
-      <div className="space-y-4">
-        <Input
-          id="token-name"
-          label="Token Name*"
-          type="text"
-          value={tokenName}
-          onChange={(e) => setTokenName(e.target.value)}
-          placeholder="my-token"
-          required
-          disabled={!!accessToken}
-        />
+      <Input
+        id="token-name"
+        label="Token Name*"
+        type="text"
+        value={tokenName}
+        onChange={(e) => setTokenName(e.target.value)}
+        placeholder="my-token"
+        required
+        disabled={!!accessToken}
+      />
 
+      <div className="flex items-end space-x-4">
         <Input
           id="expiration-date"
           label="Expiration Date*"
@@ -122,64 +122,51 @@ export const CreateTokenModal: React.FC<CreateTokenModalProps> = ({
           max={maxDate}
           required
           disabled={!!accessToken}
+          containerClassName="flex-grow"
+          className="text-text-primary dark:text-text-primary-dark dark:scheme-dark cursor-pointer"
         />
 
-        {!accessToken && (
-          <div className="flex justify-end space-x-3 pt-4 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark">
-            <Button onClick={handleClose} variant="ghost">
-              Cancel
-            </Button>
+        <Button
+          onClick={() => void handleCreateToken()}
+          disabled={isLoading || !isFormValid || !!accessToken}
+          variant="primary"
+          className={`h-[42px] ${isLoading ? "opacity-70 cursor-not-allowed" : ""}`}
+        >
+          {isLoading ? "Creating..." : "Create Token"}
+        </Button>
+      </div>
+
+      <div className="relative">
+        <Input
+          ref={tokenInputRef}
+          id="access-key"
+          label="Access Token (copy now - shown only once)"
+          type="text"
+          readOnly
+          value={accessToken}
+          placeholder={isLoading ? "Generating token..." : "Access Token"}
+          className="font-mono text-sm pr-12 cursor-default"
+        >
+          <div className="absolute right-1 bottom-1">
             <Button
-              onClick={handleCreateToken}
-              disabled={isLoading || !isFormValid}
-              variant="primary"
-            >
-              {isLoading ? "Creating..." : "Create Token"}
-            </Button>
+              onClick={handleCopyToken}
+              disabled={!accessToken}
+              title="Copy Access Token"
+              variant="ghost"
+              icon={faCopy}
+            />
           </div>
-        )}
-
-        {accessToken && (
-          <>
-            <div className="relative">
-              <Input
-                ref={tokenInputRef}
-                id="access-key"
-                label="Access Token (copy now - shown only once)"
-                type="text"
-                readOnly
-                value={accessToken}
-                className="font-mono text-sm pr-12 cursor-default"
-              >
-                <div className="absolute right-1 bottom-1">
-                  <Button
-                    onClick={handleCopyToken}
-                    disabled={!accessToken}
-                    title="Copy Access Token"
-                    variant="ghost"
-                    icon={faCopy}
-                  />
-                </div>
-                {copyFeedback && (
-                  <span
-                    className={`absolute right-10 bottom-1.5 text-xs px-2 py-1 rounded
-                      bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark
-                      transition-opacity duration-300
-                      ${copyFeedback === "Copied!" ? "opacity-100" : "opacity-0"}`}
-                  >
-                    {copyFeedback}
-                  </span>
-                )}
-              </Input>
-            </div>
-
-            <div className="flex justify-end pt-4 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark">
-              <Button onClick={handleClose} variant="primary">
-                Done
-              </Button>
-            </div>
-          </>
-        )}
+          {copyFeedback && (
+            <span
+              className={`absolute right-10 bottom-1.5 text-xs px-2 py-1 rounded
+                bg-btn-primary dark:bg-btn-primary-dark text-btn-primary-text dark:text-btn-primary-text-dark
+                transition-opacity duration-300
+                ${copyFeedback === "Copied!" ? "opacity-100" : "opacity-0"}`}
+            >
+              {copyFeedback}
+            </span>
+          )}
+        </Input>
       </div>
     </Modal>
   );

@@ -107,7 +107,7 @@ export const TokensList: React.FC = () => {
       render: (token) => (
         <IconButton
           icon={faTrash}
-          onClick={() => handleDeleteToken(token)}
+          onClick={() => void handleDeleteToken(token)}
           disabled={deletingTokenId === token.id}
           title={`Delete token "${token.name}"`}
         />
