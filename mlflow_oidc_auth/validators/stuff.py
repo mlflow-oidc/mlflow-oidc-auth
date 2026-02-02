@@ -98,7 +98,60 @@ def validate_can_create_promptlab_run(username: str) -> bool:
     return effective_experiment_permission(experiment_id, username).permission.can_update
 
 
-def validate_gateway_proxy(_username: str) -> bool:
-    """Allow gateway proxy requests without permission checks."""
+def validate_can_create_gateway(username: str) -> bool:
+    """Validate gateway create requests.
 
+    Gateway creation is allowed for any authenticated (non-admin) user. This
+    mirrors the UX for other resource creation endpoints where creators are
+    granted MANAGE post-creation in an after-request handler.
+    """
+
+    # We intentionally allow authenticated users to create gateways. The
+    # after-request hook will grant MANAGE permissions to the creator.
     return True
+
+
+def validate_gateway_proxy(username: str) -> bool:
+    """Validate gateway proxy requests.
+
+    This attempts to extract a gateway identifier from the request and
+    enforce READ for GET requests and UPDATE for POST (create/update).
+
+    When no explicit gateway name can be extracted, it falls back to
+    checking whether the user has the required capability on any gateway.
+    """
+
+    from mlflow_oidc_auth.store import store
+    from mlflow_oidc_auth.permissions import get_permission
+    from mlflow_oidc_auth.utils.permissions import can_use_gateway, can_update_gateway
+
+    def _extract_gateway_name():
+        # Try query params first
+        if request.args:
+            for key in ("gateway_name", "gateway", "name", "target"):
+                if key in request.args:
+                    return request.args.get(key)
+        # Try JSON body
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            for key in ("gateway_name", "gateway", "name", "target"):
+                if key in data:
+                    return data.get(key)
+        return None
+
+    gateway_name = _extract_gateway_name()
+
+    # Map HTTP method to required capability
+    if request.method == "GET":
+        # USE
+        if gateway_name:
+            return can_use_gateway(str(gateway_name), username)
+        # Fallback: check if user has any gateway with use
+        perms = store.list_gateway_permissions(username)
+        return any(get_permission(p.permission).can_use for p in perms)
+    else:
+        # POST/PUT/DELETE -> UPDATE required
+        if gateway_name:
+            return can_update_gateway(str(gateway_name), username)
+        perms = store.list_gateway_permissions(username)
+        return any(get_permission(p.permission).can_update for p in perms)

@@ -244,7 +244,7 @@ def test_proxy_artifact_authorization_failure(client, mock_bridge):
 def test_proxy_artifact_no_validator(client, mock_bridge):
     """Test proxy artifact path when no validator is found"""
     with app.test_request_context(path="/api/2.0/mlflow-artifacts/artifacts/experiment1/file.txt", method="PATCH"):  # Unsupported method
-        with patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None):
+        with patch("mlflow_oidc_auth.hooks.before_request._get_proxy_artifact_validator", return_value=None):
             response = before_request_hook()
             assert response is None  # No validator, so no authorization check
 

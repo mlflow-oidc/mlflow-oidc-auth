@@ -6,8 +6,9 @@ from mlflow_oidc_auth.validators import experiment
 
 
 class DummyPermission:
-    def __init__(self, can_read=False, can_update=False, can_delete=False, can_manage=False):
+    def __init__(self, can_read=False, can_use=False, can_update=False, can_delete=False, can_manage=False):
         self.can_read = can_read
+        self.can_use = can_use
         self.can_update = can_update
         self.can_delete = can_delete
         self.can_manage = can_manage

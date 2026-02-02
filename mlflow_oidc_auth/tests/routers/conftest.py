@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from mlflow_oidc_auth.db.models import Base
+from mlflow_oidc_auth.db.models._base import Base
 from mlflow_oidc_auth.entities import ExperimentPermission as ExperimentPermissionEntity
 from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.permissions import Permission
@@ -47,6 +47,8 @@ def temp_db():
 def test_engine(temp_db):
     """Create a test database engine."""
     engine = create_engine(f"sqlite:///{temp_db}", echo=False)
+    # Import models package to ensure all model modules are loaded and tables are registered
+    import mlflow_oidc_auth.db.models  # noqa: F401  (import triggers model registration)
     Base.metadata.create_all(engine)
     return engine
 

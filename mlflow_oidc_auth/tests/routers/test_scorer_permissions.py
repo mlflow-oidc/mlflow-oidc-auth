@@ -3,41 +3,55 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from mlflow_oidc_auth.entities import ScorerPermission
+from mlflow_oidc_auth.utils import get_is_admin, get_username
 
 
 @pytest.mark.usefixtures("authenticated_session")
 class TestScorerPermissionRoutes:
-    def test_list_scorers_admin_sees_all(self, authenticated_client, monkeypatch):
-        scorer_one = MagicMock(
-            experiment_id="exp-1",
-            scorer_name="alpha",
-            scorer_version=1,
-            creation_time=111,
-            scorer_id="s-1",
-        )
-        scorer_two = MagicMock(
-            experiment_id="exp-1",
-            scorer_name="beta",
-            scorer_version=2,
-            creation_time=222,
-            scorer_id="s-2",
-        )
+    def test_list_scorers_admin_sees_all(self, test_app, authenticated_client, monkeypatch):
+        # Use FastAPI's dependency_overrides to override the dependencies
+        async def override_get_is_admin():
+            return True
 
-        tracking_store = MagicMock()
-        tracking_store.list_scorers.return_value = [scorer_one, scorer_two]
+        async def override_get_username():
+            return "admin@example.com"
 
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(return_value=tracking_store))
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_username", AsyncMock(return_value="admin@example.com"))
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_is_admin", AsyncMock(return_value=True))
+        test_app.dependency_overrides[get_is_admin] = override_get_is_admin
+        test_app.dependency_overrides[get_username] = override_get_username
 
-        resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/exp-1")
+        try:
+            scorer_one = MagicMock(
+                experiment_id="exp-1",
+                scorer_name="alpha",
+                scorer_version=1,
+                creation_time=111,
+                scorer_id="s-1",
+            )
+            scorer_two = MagicMock(
+                experiment_id="exp-1",
+                scorer_name="beta",
+                scorer_version=2,
+                creation_time=222,
+                scorer_id="s-2",
+            )
 
-        assert resp.status_code == 200
-        assert resp.json() == [
-            {"experiment_id": "exp-1", "name": "alpha", "version": 1, "creation_time": 111, "scorer_id": "s-1"},
-            {"experiment_id": "exp-1", "name": "beta", "version": 2, "creation_time": 222, "scorer_id": "s-2"},
-        ]
-        tracking_store.list_scorers.assert_called_once_with("exp-1")
+            tracking_store = MagicMock()
+            tracking_store.list_scorers.return_value = [scorer_one, scorer_two]
+
+            monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(return_value=tracking_store))
+
+            resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/exp-1")
+
+            assert resp.status_code == 200
+            assert resp.json() == [
+                {"experiment_id": "exp-1", "name": "alpha", "version": 1, "creation_time": 111, "scorer_id": "s-1"},
+                {"experiment_id": "exp-1", "name": "beta", "version": 2, "creation_time": 222, "scorer_id": "s-2"},
+            ]
+            tracking_store.list_scorers.assert_called_once_with("exp-1")
+        finally:
+            # Clean up overrides
+            test_app.dependency_overrides.pop(get_is_admin, None)
+            test_app.dependency_overrides.pop(get_username, None)
 
     def test_list_scorers_filters_by_permission(self, authenticated_client, monkeypatch):
         scorer_one = MagicMock(
@@ -105,8 +119,8 @@ class TestScorerPermissionRoutes:
 
     def test_list_scorer_users(self, authenticated_client, mock_store):
         _admin_user, regular_user, service_user = mock_store.list_users.return_value
-        regular_user.scorer_permissions = [ScorerPermission("123", "my_scorer", regular_user.id, "READ")]
-        service_user.scorer_permissions = [ScorerPermission("123", "my_scorer", service_user.id, "MANAGE")]
+        regular_user.scorer_permissions = [ScorerPermission("123", "my_scorer", "READ", user_id=regular_user.id)]
+        service_user.scorer_permissions = [ScorerPermission("123", "my_scorer", "MANAGE", user_id=service_user.id)]
 
         resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/123/my_scorer/users")
 

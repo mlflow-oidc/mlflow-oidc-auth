@@ -36,6 +36,9 @@ class TestUser(unittest.TestCase):
             "experiment_permissions": [{"experiment_id": "exp1", "permission": "read", "user_id": None, "group_id": None}],
             "registered_model_permissions": [{"name": "model1", "user_id": None, "permission": "EDIT", "group_id": None, "prompt": False}],
             "scorer_permissions": [],
+            "gateway_endpoint_permissions": [],
+            "gateway_model_definition_permissions": [],
+            "gateway_secret_permissions": [],
             "password_expiration": None,
             "display_name": "Test User",
             "groups": [{"id": "group1", "group_name": "Group 1"}],
@@ -93,6 +96,9 @@ class TestUser(unittest.TestCase):
             "experiment_permissions": [],
             "registered_model_permissions": [],
             "scorer_permissions": [],
+            "gateway_endpoint_permissions": [],
+            "gateway_model_definition_permissions": [],
+            "gateway_secret_permissions": [],
             "password_expiration": None,
             "display_name": "Test User",
             "groups": [],
@@ -125,58 +131,58 @@ class TestUser(unittest.TestCase):
 
 class TestExperimentPermission(unittest.TestCase):
     def test_experiment_permission_properties_and_setters(self):
-        perm = ExperimentPermission("exp1", "read", user_id="u1", group_id="g1")
+        perm = ExperimentPermission("exp1", "read", user_id=1, group_id=1)
         self.assertEqual(perm.experiment_id, "exp1")
-        self.assertEqual(perm.user_id, "u1")
+        self.assertEqual(perm.user_id, 1)
         self.assertEqual(perm.permission, "read")
-        self.assertEqual(perm.group_id, "g1")
+        self.assertEqual(perm.group_id, 1)
         perm.permission = "EDIT"
-        perm.group_id = "g2"
+        perm.group_id = 2
         self.assertEqual(perm.permission, "EDIT")
-        self.assertEqual(perm.group_id, "g2")
+        self.assertEqual(perm.group_id, 2)
 
     def test_experiment_permission_to_json_and_from_json(self):
-        perm = ExperimentPermission("exp1", "read", user_id="u1", group_id="g1")
+        perm = ExperimentPermission("exp1", "read", user_id=1, group_id=1)
         json_data = perm.to_json()
         self.assertEqual(json_data["experiment_id"], "exp1")
         self.assertEqual(json_data["permission"], "read")
-        self.assertEqual(json_data["user_id"], "u1")
-        self.assertEqual(json_data["group_id"], "g1")
+        self.assertEqual(json_data["user_id"], 1)
+        self.assertEqual(json_data["group_id"], 1)
         perm2 = ExperimentPermission.from_json(json_data)
         self.assertEqual(perm2.experiment_id, "exp1")
         self.assertEqual(perm2.permission, "read")
-        self.assertEqual(perm2.user_id, "u1")
-        self.assertEqual(perm2.group_id, "g1")
+        self.assertEqual(perm2.user_id, 1)
+        self.assertEqual(perm2.group_id, 1)
 
 
 class TestRegisteredModelPermission(unittest.TestCase):
     def test_registered_model_permission_properties_and_setters(self):
-        perm = RegisteredModelPermission("model1", "read", user_id="u1", group_id="g1", prompt=True)
+        perm = RegisteredModelPermission("model1", "read", user_id=1, group_id=1, prompt=True)
         self.assertEqual(perm.name, "model1")
-        self.assertEqual(perm.user_id, "u1")
+        self.assertEqual(perm.user_id, 1)
         self.assertEqual(perm.permission, "read")
-        self.assertEqual(perm.group_id, "g1")
+        self.assertEqual(perm.group_id, 1)
         self.assertTrue(perm.prompt)
         perm.permission = "EDIT"
-        perm.group_id = "g2"
+        perm.group_id = 2
         perm.prompt = False
         self.assertEqual(perm.permission, "EDIT")
-        self.assertEqual(perm.group_id, "g2")
+        self.assertEqual(perm.group_id, 2)
         self.assertFalse(perm.prompt)
 
     def test_registered_model_permission_to_json_and_from_json(self):
-        perm = RegisteredModelPermission("model1", "read", user_id="u1", group_id="g1", prompt=True)
+        perm = RegisteredModelPermission("model1", "read", user_id=1, group_id=1, prompt=True)
         json_data = perm.to_json()
         self.assertEqual(json_data["name"], "model1")
         self.assertEqual(json_data["permission"], "read")
-        self.assertEqual(json_data["user_id"], "u1")
-        self.assertEqual(json_data["group_id"], "g1")
+        self.assertEqual(json_data["user_id"], 1)
+        self.assertEqual(json_data["group_id"], 1)
         self.assertTrue(json_data["prompt"])
         perm2 = RegisteredModelPermission.from_json(json_data)
         self.assertEqual(perm2.name, "model1")
         self.assertEqual(perm2.permission, "read")
-        self.assertEqual(perm2.user_id, "u1")
-        self.assertEqual(perm2.group_id, "g1")
+        self.assertEqual(perm2.user_id, 1)
+        self.assertEqual(perm2.group_id, 1)
         self.assertTrue(perm2.prompt)
 
 
@@ -198,18 +204,18 @@ class TestGroup(unittest.TestCase):
 
 class TestUserGroup(unittest.TestCase):
     def test_user_group_properties(self):
-        ug = UserGroup("u1", "g1")
-        self.assertEqual(ug.user_id, "u1")
-        self.assertEqual(ug.group_id, "g1")
+        ug = UserGroup(1, 1)
+        self.assertEqual(ug.user_id, 1)
+        self.assertEqual(ug.group_id, 1)
 
     def test_user_group_to_json_and_from_json(self):
-        ug = UserGroup("u1", "g1")
+        ug = UserGroup(1, 1)
         json_data = ug.to_json()
-        self.assertEqual(json_data["user_id"], "u1")
-        self.assertEqual(json_data["group_id"], "g1")
+        self.assertEqual(json_data["user_id"], 1)
+        self.assertEqual(json_data["group_id"], 1)
         ug2 = UserGroup.from_json(json_data)
-        self.assertEqual(ug2.user_id, "u1")
-        self.assertEqual(ug2.group_id, "g1")
+        self.assertEqual(ug2.user_id, 1)
+        self.assertEqual(ug2.group_id, 1)
 
 
 class TestUserPropertiesSetters(unittest.TestCase):
@@ -291,17 +297,17 @@ class TestUserPropertiesSetters(unittest.TestCase):
 
 class TestRegisteredModelGroupRegexPermission(unittest.TestCase):
     def test_registered_model_group_regex_permission_properties(self):
-        perm = RegisteredModelGroupRegexPermission(id_="1", regex="model-.*", priority=10, group_id="g1", permission="READ", prompt=True)
+        perm = RegisteredModelGroupRegexPermission(id_="1", regex="model-.*", priority=10, group_id=1, permission="READ", prompt=True)
 
         self.assertEqual(perm.id, "1")
         self.assertEqual(perm.regex, "model-.*")
         self.assertEqual(perm.priority, 10)
-        self.assertEqual(perm.group_id, "g1")
+        self.assertEqual(perm.group_id, 1)
         self.assertEqual(perm.permission, "READ")
         self.assertTrue(perm.prompt)
 
     def test_registered_model_group_regex_permission_setters(self):
-        perm = RegisteredModelGroupRegexPermission(id_="1", regex="model-.*", priority=10, group_id="g1", permission="READ", prompt=False)
+        perm = RegisteredModelGroupRegexPermission(id_="1", regex="model-.*", priority=10, group_id=1, permission="READ", prompt=False)
 
         perm.priority = 20
         perm.permission = "EDIT"
@@ -310,25 +316,25 @@ class TestRegisteredModelGroupRegexPermission(unittest.TestCase):
         self.assertEqual(perm.permission, "EDIT")
 
     def test_registered_model_group_regex_permission_to_json(self):
-        perm = RegisteredModelGroupRegexPermission(id_="1", regex="model-.*", priority=10, group_id="g1", permission="READ", prompt=True)
+        perm = RegisteredModelGroupRegexPermission(id_="1", regex="model-.*", priority=10, group_id=1, permission="READ", prompt=True)
 
         json_data = perm.to_json()
-        expected = {"id": "1", "regex": "model-.*", "priority": 10, "group_id": "g1", "permission": "READ", "prompt": True}
+        expected = {"id": "1", "regex": "model-.*", "priority": 10, "group_id": 1, "permission": "READ", "prompt": True}
         self.assertEqual(json_data, expected)
 
     def test_registered_model_group_regex_permission_from_json(self):
-        json_data = {"id": "1", "regex": "model-.*", "priority": 10, "group_id": "g1", "permission": "READ", "prompt": True}
+        json_data = {"id": "1", "regex": "model-.*", "priority": 10, "group_id": 1, "permission": "READ", "prompt": True}
 
         perm = RegisteredModelGroupRegexPermission.from_json(json_data)
         self.assertEqual(perm.id, "1")
         self.assertEqual(perm.regex, "model-.*")
         self.assertEqual(perm.priority, 10)
-        self.assertEqual(perm.group_id, "g1")
+        self.assertEqual(perm.group_id, 1)
         self.assertEqual(perm.permission, "READ")
         self.assertTrue(perm.prompt)
 
     def test_registered_model_group_regex_permission_from_json_default_prompt(self):
-        json_data = {"id": "1", "regex": "model-.*", "priority": 10, "group_id": "g1", "permission": "READ"}
+        json_data = {"id": "1", "regex": "model-.*", "priority": 10, "group_id": 1, "permission": "READ"}
 
         perm = RegisteredModelGroupRegexPermission.from_json(json_data)
         self.assertFalse(perm.prompt)  # Should default to False
@@ -336,16 +342,16 @@ class TestRegisteredModelGroupRegexPermission(unittest.TestCase):
 
 class TestExperimentGroupRegexPermission(unittest.TestCase):
     def test_experiment_group_regex_permission_properties(self):
-        perm = ExperimentGroupRegexPermission(id_="1", regex="exp-.*", priority=5, group_id="g1", permission="READ")
+        perm = ExperimentGroupRegexPermission(id_="1", regex="exp-.*", priority=5, group_id=1, permission="READ")
 
         self.assertEqual(perm.id, "1")
         self.assertEqual(perm.regex, "exp-.*")
         self.assertEqual(perm.priority, 5)
-        self.assertEqual(perm.group_id, "g1")
+        self.assertEqual(perm.group_id, 1)
         self.assertEqual(perm.permission, "READ")
 
     def test_experiment_group_regex_permission_setters(self):
-        perm = ExperimentGroupRegexPermission(id_="1", regex="exp-.*", priority=5, group_id="g1", permission="READ")
+        perm = ExperimentGroupRegexPermission(id_="1", regex="exp-.*", priority=5, group_id=1, permission="READ")
 
         perm.priority = 15
         perm.permission = "EDIT"
@@ -354,36 +360,36 @@ class TestExperimentGroupRegexPermission(unittest.TestCase):
         self.assertEqual(perm.permission, "EDIT")
 
     def test_experiment_group_regex_permission_to_json(self):
-        perm = ExperimentGroupRegexPermission(id_="1", regex="exp-.*", priority=5, group_id="g1", permission="READ")
+        perm = ExperimentGroupRegexPermission(id_="1", regex="exp-.*", priority=5, group_id=1, permission="READ")
 
         json_data = perm.to_json()
-        expected = {"id": "1", "regex": "exp-.*", "priority": 5, "group_id": "g1", "permission": "READ"}
+        expected = {"id": "1", "regex": "exp-.*", "priority": 5, "group_id": 1, "permission": "READ"}
         self.assertEqual(json_data, expected)
 
     def test_experiment_group_regex_permission_from_json(self):
-        json_data = {"id": "1", "regex": "exp-.*", "priority": 5, "group_id": "g1", "permission": "READ"}
+        json_data = {"id": "1", "regex": "exp-.*", "priority": 5, "group_id": 1, "permission": "READ"}
 
         perm = ExperimentGroupRegexPermission.from_json(json_data)
         self.assertEqual(perm.id, "1")
         self.assertEqual(perm.regex, "exp-.*")
         self.assertEqual(perm.priority, 5)
-        self.assertEqual(perm.group_id, "g1")
+        self.assertEqual(perm.group_id, 1)
         self.assertEqual(perm.permission, "READ")
 
 
 class TestRegisteredModelRegexPermission(unittest.TestCase):
     def test_registered_model_regex_permission_properties(self):
-        perm = RegisteredModelRegexPermission(id_="1", regex="model-.*", priority=10, user_id="u1", permission="READ", prompt=True)
+        perm = RegisteredModelRegexPermission(id_="1", regex="model-.*", priority=10, user_id=1, permission="READ", prompt=True)
 
         self.assertEqual(perm.id, "1")
         self.assertEqual(perm.regex, "model-.*")
         self.assertEqual(perm.priority, 10)
-        self.assertEqual(perm.user_id, "u1")
+        self.assertEqual(perm.user_id, 1)
         self.assertEqual(perm.permission, "READ")
         self.assertTrue(perm.prompt)
 
     def test_registered_model_regex_permission_setters(self):
-        perm = RegisteredModelRegexPermission(id_="1", regex="model-.*", priority=10, user_id="u1", permission="READ", prompt=False)
+        perm = RegisteredModelRegexPermission(id_="1", regex="model-.*", priority=10, user_id=1, permission="READ", prompt=False)
 
         perm.priority = 20
         perm.permission = "EDIT"
@@ -394,25 +400,25 @@ class TestRegisteredModelRegexPermission(unittest.TestCase):
         self.assertTrue(perm.prompt)
 
     def test_registered_model_regex_permission_to_json(self):
-        perm = RegisteredModelRegexPermission(id_="1", regex="model-.*", priority=10, user_id="u1", permission="READ", prompt=True)
+        perm = RegisteredModelRegexPermission(id_="1", regex="model-.*", priority=10, user_id=1, permission="READ", prompt=True)
 
         json_data = perm.to_json()
-        expected = {"id": "1", "regex": "model-.*", "priority": 10, "user_id": "u1", "permission": "READ", "prompt": True}
+        expected = {"id": "1", "regex": "model-.*", "priority": 10, "user_id": 1, "permission": "READ", "prompt": True}
         self.assertEqual(json_data, expected)
 
     def test_registered_model_regex_permission_from_json(self):
-        json_data = {"id": "1", "regex": "model-.*", "priority": 10, "user_id": "u1", "permission": "READ", "prompt": True}
+        json_data = {"id": "1", "regex": "model-.*", "priority": 10, "user_id": 1, "permission": "READ", "prompt": True}
 
         perm = RegisteredModelRegexPermission.from_json(json_data)
         self.assertEqual(perm.id, "1")
         self.assertEqual(perm.regex, "model-.*")
         self.assertEqual(perm.priority, 10)
-        self.assertEqual(perm.user_id, "u1")
+        self.assertEqual(perm.user_id, 1)
         self.assertEqual(perm.permission, "READ")
         self.assertTrue(perm.prompt)
 
     def test_registered_model_regex_permission_from_json_default_prompt(self):
-        json_data = {"id": "1", "regex": "model-.*", "priority": 10, "user_id": "u1", "permission": "READ"}
+        json_data = {"id": "1", "regex": "model-.*", "priority": 10, "user_id": 1, "permission": "READ"}
 
         perm = RegisteredModelRegexPermission.from_json(json_data)
         self.assertFalse(perm.prompt)  # Should default to False
@@ -420,16 +426,16 @@ class TestRegisteredModelRegexPermission(unittest.TestCase):
 
 class TestExperimentRegexPermission(unittest.TestCase):
     def test_experiment_regex_permission_properties(self):
-        perm = ExperimentRegexPermission(id_="1", regex="exp-.*", priority=5, user_id="u1", permission="READ")
+        perm = ExperimentRegexPermission(id_="1", regex="exp-.*", priority=5, user_id=1, permission="READ")
 
         self.assertEqual(perm.id, "1")
         self.assertEqual(perm.regex, "exp-.*")
         self.assertEqual(perm.priority, 5)
-        self.assertEqual(perm.user_id, "u1")
+        self.assertEqual(perm.user_id, 1)
         self.assertEqual(perm.permission, "READ")
 
     def test_experiment_regex_permission_setters(self):
-        perm = ExperimentRegexPermission(id_="1", regex="exp-.*", priority=5, user_id="u1", permission="READ")
+        perm = ExperimentRegexPermission(id_="1", regex="exp-.*", priority=5, user_id=1, permission="READ")
 
         perm.priority = 15
         perm.permission = "EDIT"
@@ -438,42 +444,42 @@ class TestExperimentRegexPermission(unittest.TestCase):
         self.assertEqual(perm.permission, "EDIT")
 
     def test_experiment_regex_permission_to_json(self):
-        perm = ExperimentRegexPermission(id_="1", regex="exp-.*", priority=5, user_id="u1", permission="READ")
+        perm = ExperimentRegexPermission(id_="1", regex="exp-.*", priority=5, user_id=1, permission="READ")
 
         json_data = perm.to_json()
-        expected = {"id": "1", "regex": "exp-.*", "priority": 5, "user_id": "u1", "permission": "READ"}
+        expected = {"id": "1", "regex": "exp-.*", "priority": 5, "user_id": 1, "permission": "READ"}
         self.assertEqual(json_data, expected)
 
     def test_experiment_regex_permission_from_json(self):
-        json_data = {"id": "1", "regex": "exp-.*", "priority": 5, "user_id": "u1", "permission": "READ"}
+        json_data = {"id": "1", "regex": "exp-.*", "priority": 5, "user_id": 1, "permission": "READ"}
 
         perm = ExperimentRegexPermission.from_json(json_data)
         self.assertEqual(perm.id, "1")
         self.assertEqual(perm.regex, "exp-.*")
         self.assertEqual(perm.priority, 5)
-        self.assertEqual(perm.user_id, "u1")
+        self.assertEqual(perm.user_id, 1)
         self.assertEqual(perm.permission, "READ")
 
 
 class TestExperimentPermissionEdgeCases(unittest.TestCase):
     def test_experiment_permission_from_json_without_group_id(self):
-        json_data = {"experiment_id": "exp1", "permission": "read", "user_id": "u1"}
+        json_data = {"experiment_id": "exp1", "permission": "read", "user_id": 1}
 
         perm = ExperimentPermission.from_json(json_data)
         self.assertEqual(perm.experiment_id, "exp1")
         self.assertEqual(perm.permission, "read")
-        self.assertEqual(perm.user_id, "u1")
+        self.assertEqual(perm.user_id, 1)
         self.assertIsNone(perm.group_id)
 
 
 class TestRegisteredModelPermissionEdgeCases(unittest.TestCase):
     def test_registered_model_permission_from_json_without_group_id(self):
-        json_data = {"name": "model1", "permission": "read", "user_id": "u1"}
+        json_data = {"name": "model1", "permission": "read", "user_id": 1}
 
         perm = RegisteredModelPermission.from_json(json_data)
         self.assertEqual(perm.name, "model1")
         self.assertEqual(perm.permission, "read")
-        self.assertEqual(perm.user_id, "u1")
+        self.assertEqual(perm.user_id, 1)
         self.assertIsNone(perm.group_id)
 
     def test_registered_model_permission_from_json_prompt_conversion(self):
@@ -490,7 +496,7 @@ class TestRegisteredModelPermissionEdgeCases(unittest.TestCase):
         ]
 
         for prompt_value, expected in test_cases:
-            json_data = {"name": "model1", "permission": "read", "user_id": "u1", "prompt": prompt_value}
+            json_data = {"name": "model1", "permission": "read", "user_id": 1, "prompt": prompt_value}
 
             perm = RegisteredModelPermission.from_json(json_data)
             self.assertEqual(perm.prompt, expected, f"Failed for prompt value: {prompt_value}")

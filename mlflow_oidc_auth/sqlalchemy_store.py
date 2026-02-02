@@ -18,6 +18,7 @@ from mlflow_oidc_auth.entities import (
     ScorerRegexPermission,
     User,
 )
+from mlflow_oidc_auth.entities.gateway_endpoint import GatewayEndpointGroupRegexPermission
 from mlflow_oidc_auth.repository import (
     ExperimentPermissionGroupRegexRepository,
     ExperimentPermissionGroupRepository,
@@ -33,6 +34,18 @@ from mlflow_oidc_auth.repository import (
     ScorerPermissionGroupRepository,
     ScorerPermissionRegexRepository,
     ScorerPermissionRepository,
+    GatewaySecretPermissionRepository,
+    GatewaySecretPermissionRegexRepository,
+    GatewaySecretGroupPermissionRepository,
+    GatewaySecretPermissionGroupRegexRepository,
+    GatewayEndpointPermissionRepository,
+    GatewayEndpointPermissionRegexRepository,
+    GatewayEndpointGroupPermissionRepository,
+    GatewayEndpointPermissionGroupRegexRepository,
+    GatewayModelDefinitionPermissionRepository,
+    GatewayModelDefinitionPermissionRegexRepository,
+    GatewayModelDefinitionGroupPermissionRepository,
+    GatewayModelDefinitionPermissionGroupRegexRepository,
     UserRepository,
 )
 
@@ -64,6 +77,22 @@ class SqlAlchemyStore:
         self.scorer_group_repo = ScorerPermissionGroupRepository(self.ManagedSessionMaker)
         self.scorer_regex_repo = ScorerPermissionRegexRepository(self.ManagedSessionMaker)
         self.scorer_group_regex_repo = ScorerPermissionGroupRegexRepository(self.ManagedSessionMaker)
+
+        # Gateway permissions
+        self.gateway_secret_repo = GatewaySecretPermissionRepository(self.ManagedSessionMaker)
+        self.gateway_secret_group_repo = GatewaySecretGroupPermissionRepository(self.ManagedSessionMaker)
+        self.gateway_secret_regex_repo = GatewaySecretPermissionRegexRepository(self.ManagedSessionMaker)
+        self.gateway_secret_group_regex_repo = GatewaySecretPermissionGroupRegexRepository(self.ManagedSessionMaker)
+
+        self.gateway_endpoint_repo = GatewayEndpointPermissionRepository(self.ManagedSessionMaker)
+        self.gateway_endpoint_group_repo = GatewayEndpointGroupPermissionRepository(self.ManagedSessionMaker)
+        self.gateway_endpoint_regex_repo = GatewayEndpointPermissionRegexRepository(self.ManagedSessionMaker)
+        self.gateway_endpoint_group_regex_repo = GatewayEndpointPermissionGroupRegexRepository(self.ManagedSessionMaker)
+
+        self.gateway_model_definition_repo = GatewayModelDefinitionPermissionRepository(self.ManagedSessionMaker)
+        self.gateway_model_definition_group_repo = GatewayModelDefinitionGroupPermissionRepository(self.ManagedSessionMaker)
+        self.gateway_model_definition_regex_repo = GatewayModelDefinitionPermissionRegexRepository(self.ManagedSessionMaker)
+        self.gateway_model_definition_group_regex_repo = GatewayModelDefinitionPermissionGroupRegexRepository(self.ManagedSessionMaker)
 
     def ping(self) -> bool:
         """Lightweight database connectivity check for health probes.
@@ -467,3 +496,195 @@ class SqlAlchemyStore:
 
     def delete_group_prompt_regex_permission(self, id: int, group_name: str) -> None:
         return self.prompt_group_regex_repo.revoke(id=id, group_name=group_name, prompt=True)
+
+    # gateway_secret_repo
+    def create_gateway_secret_permission(self, gateway_name: str, username: str, permission: str):
+        return self.gateway_secret_repo.grant_permission(gateway_name, username, permission)
+
+    def get_gateway_secret_permission(self, gateway_name: str, username: str):
+        return self.gateway_secret_repo.get_permission(gateway_name, username)
+
+    def list_gateway_secret_permissions(self, username: str):
+        return self.gateway_secret_repo.list_permissions_for_user(username)
+
+    def update_gateway_secret_permission(self, gateway_name: str, username: str, permission: str):
+        return self.gateway_secret_repo.update_permission(gateway_name, username, permission)
+
+    def delete_gateway_secret_permission(self, gateway_name: str, username: str) -> None:
+        return self.gateway_secret_repo.revoke_permission(gateway_name, username)
+
+    # gateway_secret_group_repo
+    def create_group_gateway_secret_permission(self, group_name: str, gateway_name: str, permission: str):
+        return self.gateway_secret_group_repo.grant_group_permission(group_name, gateway_name, permission)
+
+    def list_group_gateway_secret_permissions(self, group_name: str):
+        return self.gateway_secret_group_repo.list_permissions_for_group(group_name)
+
+    def get_user_groups_gateway_secret_permission(self, gateway_name: str, group_name: str):
+        return self.gateway_secret_group_repo.get_group_permission_for_user(gateway_name, group_name)
+
+    def delete_group_gateway_secret_permission(self, group_name: str, gateway_name: str):
+        return self.gateway_secret_group_repo.revoke_group_permission(group_name, gateway_name)
+
+    # gateway_secret_regex_repo
+    def create_gateway_secret_regex_permission(self, regex: str, priority: int, permission: str, username: str):
+        return self.gateway_secret_regex_repo.grant(regex, priority, permission, username)
+
+    def get_gateway_secret_regex_permission(self, id: int, username: str):
+        return self.gateway_secret_regex_repo.get(id, username)
+
+    def list_gateway_secret_regex_permissions(self, username: str):
+        return self.gateway_secret_regex_repo.list_regex_for_user(username)
+
+    def update_gateway_secret_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str):
+        return self.gateway_secret_regex_repo.update(id, regex, priority, permission, username)
+
+    def delete_gateway_secret_regex_permission(self, id: int, username: str):
+        return self.gateway_secret_regex_repo.revoke(id, username)
+
+    # gateway_secret_group_regex_repo
+    def create_group_gateway_secret_regex_permission(self, group_name: str, regex: str, priority: int, permission: str):
+        return self.gateway_secret_group_regex_repo.grant(group_name, regex, priority, permission)
+
+    def get_group_gateway_secret_regex_permission(self, id: int, group_name: str):
+        return self.gateway_secret_group_regex_repo.get(id, group_name)
+
+    def list_group_gateway_secret_regex_permissions(self, group_name: str):
+        return self.gateway_secret_group_regex_repo.list_permissions_for_group(group_name)
+
+    def update_group_gateway_secret_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str):
+        return self.gateway_secret_group_regex_repo.update(id, group_name, regex, priority, permission)
+
+    def delete_group_gateway_secret_regex_permission(self, id: int, group_name: str):
+        return self.gateway_secret_group_regex_repo.revoke(id, group_name)
+
+    # gateway_endpoint_repo
+    def create_gateway_endpoint_permission(self, gateway_name: str, username: str, permission: str):
+        return self.gateway_endpoint_repo.grant_permission(gateway_name, username, permission)
+
+    def get_gateway_endpoint_permission(self, gateway_name: str, username: str):
+        return self.gateway_endpoint_repo.get_permission(gateway_name, username)
+
+    def list_gateway_endpoint_permissions(self, username: str):
+        return self.gateway_endpoint_repo.list_permissions_for_user(username)
+
+    def update_gateway_endpoint_permission(self, gateway_name: str, username: str, permission: str):
+        return self.gateway_endpoint_repo.update_permission(gateway_name, username, permission)
+
+    def delete_gateway_endpoint_permission(self, gateway_name: str, username: str) -> None:
+        return self.gateway_endpoint_repo.revoke_permission(gateway_name, username)
+
+    # gateway_endpoint_group_repo
+    def create_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str, permission: str):
+        return self.gateway_endpoint_group_repo.grant_group_permission(group_name, gateway_name, permission)
+
+    def list_group_gateway_endpoint_permissions(self, group_name: str):
+        return self.gateway_endpoint_group_repo.list_permissions_for_group(group_name)
+
+    def list_group_gateway_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewayEndpointGroupRegexPermission]:
+        return self.gateway_endpoint_group_regex_repo.list_permissions_for_groups_ids(group_ids)
+
+    def get_user_groups_gateway_endpoint_permission(self, gateway_name: str, group_name: str):
+        return self.gateway_endpoint_group_repo.get_group_permission_for_user(gateway_name, group_name)
+
+    def update_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str, permission: str):
+        return self.gateway_endpoint_group_repo.update_group_permission(group_name, gateway_name, permission)
+
+    def delete_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str):
+        return self.gateway_endpoint_group_repo.revoke_group_permission(group_name, gateway_name)
+
+    # gateway_endpoint_regex_repo
+    def create_gateway_endpoint_regex_permission(self, regex: str, priority: int, permission: str, username: str):
+        return self.gateway_endpoint_regex_repo.grant(regex, priority, permission, username)
+
+    def get_gateway_endpoint_regex_permission(self, id: int, username: str):
+        return self.gateway_endpoint_regex_repo.get(id, username)
+
+    def list_gateway_endpoint_regex_permissions(self, username: str):
+        return self.gateway_endpoint_regex_repo.list_regex_for_user(username)
+
+    def update_gateway_endpoint_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str):
+        return self.gateway_endpoint_regex_repo.update(id, regex, priority, permission, username)
+
+    def delete_gateway_endpoint_regex_permission(self, id: int, username: str):
+        return self.gateway_endpoint_regex_repo.revoke(id, username)
+
+    # gateway_endpoint_group_regex_repo
+    def create_group_gateway_endpoint_regex_permission(self, group_name: str, regex: str, priority: int, permission: str):
+        return self.gateway_endpoint_group_regex_repo.grant(group_name, regex, priority, permission)
+
+    def get_group_gateway_endpoint_regex_permission(self, id: int, group_name: str):
+        return self.gateway_endpoint_group_regex_repo.get(id, group_name)
+
+    def list_group_gateway_endpoint_regex_permissions(self, group_name: str):
+        return self.gateway_endpoint_group_regex_repo.list_permissions_for_group(group_name)
+
+    def update_group_gateway_endpoint_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str):
+        return self.gateway_endpoint_group_regex_repo.update(id, group_name, regex, priority, permission)
+
+    def delete_group_gateway_endpoint_regex_permission(self, id: int, group_name: str):
+        return self.gateway_endpoint_group_regex_repo.revoke(id, group_name)
+
+    # gateway_model_definition_repo
+    def create_gateway_model_definition_permission(self, gateway_name: str, username: str, permission: str):
+        return self.gateway_model_definition_repo.grant_permission(gateway_name, username, permission)
+
+    def get_gateway_model_definition_permission(self, gateway_name: str, username: str):
+        return self.gateway_model_definition_repo.get_permission(gateway_name, username)
+
+    def list_gateway_model_definition_permissions(self, username: str):
+        return self.gateway_model_definition_repo.list_permissions_for_user(username)
+
+    def update_gateway_model_definition_permission(self, gateway_name: str, username: str, permission: str):
+        return self.gateway_model_definition_repo.update_permission(gateway_name, username, permission)
+
+    def delete_gateway_model_definition_permission(self, gateway_name: str, username: str) -> None:
+        return self.gateway_model_definition_repo.revoke_permission(gateway_name, username)
+
+    # gateway_model_definition_group_repo
+    def create_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str, permission: str):
+        return self.gateway_model_definition_group_repo.grant_group_permission(group_name, gateway_name, permission)
+
+    def list_group_gateway_model_definition_permissions(self, group_name: str):
+        return self.gateway_model_definition_group_repo.list_permissions_for_group(group_name)
+
+    def get_user_groups_gateway_model_definition_permission(self, gateway_name: str, group_name: str):
+        return self.gateway_model_definition_group_repo.get_group_permission_for_user(gateway_name, group_name)
+
+    def update_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str, permission: str):
+        return self.gateway_model_definition_group_repo.update_group_permission(group_name, gateway_name, permission)
+
+    def delete_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str):
+        return self.gateway_model_definition_group_repo.revoke_group_permission(group_name, gateway_name)
+
+    # gateway_model_definition_regex_repo
+    def create_gateway_model_definition_regex_permission(self, regex: str, priority: int, permission: str, username: str):
+        return self.gateway_model_definition_regex_repo.grant(regex, priority, permission, username)
+
+    def get_gateway_model_definition_regex_permission(self, id: int, username: str):
+        return self.gateway_model_definition_regex_repo.get(id, username)
+
+    def list_gateway_model_definition_regex_permissions(self, username: str):
+        return self.gateway_model_definition_regex_repo.list_regex_for_user(username)
+
+    def update_gateway_model_definition_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str):
+        return self.gateway_model_definition_regex_repo.update(id, regex, priority, permission, username)
+
+    def delete_gateway_model_definition_regex_permission(self, id: int, username: str):
+        return self.gateway_model_definition_regex_repo.revoke(id, username)
+
+    # gateway_model_definition_group_regex_repo
+    def create_group_gateway_model_definition_regex_permission(self, group_name: str, regex: str, priority: int, permission: str):
+        return self.gateway_model_definition_group_regex_repo.grant(group_name, regex, priority, permission)
+
+    def get_group_gateway_model_definition_regex_permission(self, id: int, group_name: str):
+        return self.gateway_model_definition_group_regex_repo.get(id, group_name)
+
+    def list_group_gateway_model_definition_regex_permissions(self, group_name: str):
+        return self.gateway_model_definition_group_regex_repo.list_permissions_for_group(group_name)
+
+    def update_group_gateway_model_definition_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str):
+        return self.gateway_model_definition_group_regex_repo.update(id, group_name, regex, priority, permission)
+
+    def delete_group_gateway_model_definition_regex_permission(self, id: int, group_name: str):
+        return self.gateway_model_definition_group_regex_repo.revoke(id, group_name)

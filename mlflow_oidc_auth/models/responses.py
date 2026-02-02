@@ -129,6 +129,37 @@ class ScorerRegexPermissionResponse(BaseModel):
     pattern: ScorerRegexPermissionRecord
 
 
+class GatewayPermissionRecord(BaseModel):
+    """Serialized gateway permission record."""
+
+    gateway_name: str = Field(..., description="Gateway name")
+    user_id: Optional[int] = Field(None, description="User ID")
+    permission: str = Field(..., description="Permission name")
+    group_id: Optional[int] = Field(None, description="Group ID (if permission granted via group)")
+
+
+class GatewayPermissionResponse(BaseModel):
+    """Wrapper response for a single gateway permission."""
+
+    gateway_permission: GatewayPermissionRecord
+
+
+class GatewayRegexPermissionRecord(BaseModel):
+    """Serialized gateway regex permission record."""
+
+    id: int = Field(..., description="Pattern ID")
+    regex: str = Field(..., description="Regex pattern")
+    priority: int = Field(..., description="Evaluation priority")
+    user_id: int = Field(..., description="User ID")
+    permission: str = Field(..., description="Permission name")
+
+
+class GatewayRegexPermissionResponse(BaseModel):
+    """Wrapper response for a single gateway regex permission record."""
+
+    gateway_permission: GatewayRegexPermissionRecord
+
+
 class RegisteredModelRegexPermissionListResponse(BaseModel):
     """List wrapper for prompt/model regex permissions.
 

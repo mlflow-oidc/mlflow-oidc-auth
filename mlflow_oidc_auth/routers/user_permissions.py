@@ -16,27 +16,31 @@ from mlflow_oidc_auth.dependencies import check_admin_permission, check_experime
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
     ExperimentPermission,
+    ExperimentPermissionRecord,
+    ExperimentPermissionResponse,
     ExperimentPermissionSummary,
     ExperimentRegexCreate,
     ExperimentRegexPermission,
-    ExperimentPermissionRecord,
-    ExperimentPermissionResponse,
+    GatewayPermissionRecord,
+    GatewayPermissionResponse,
+    GatewayRegexPermissionRecord,
+    GatewayRegexPermissionResponse,
     MessageResponse,
     NamedPermissionSummary,
     PromptPermission,
-    PromptRegexCreate,
     PromptPermissionResponse,
+    PromptRegexCreate,
     PromptRegexPermissionResponse,
     RegisteredModelPermission,
-    RegisteredModelRegexCreate,
     RegisteredModelPermissionRecord,
     RegisteredModelPermissionResponse,
+    RegisteredModelRegexCreate,
     RegisteredModelRegexPermissionRecord,
     RegisteredModelRegexPermissionResponse,
     ScorerPermission,
-    ScorerRegexCreate,
     ScorerPermissionRecord,
     ScorerPermissionResponse,
+    ScorerRegexCreate,
     ScorerRegexPermissionRecord,
     ScorerRegexPermissionResponse,
     StatusMessageResponse,
@@ -44,18 +48,8 @@ from mlflow_oidc_auth.models import (
 )
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import (
-    effective_experiment_permission,
-    fetch_all_prompts,
-    fetch_all_registered_models,
-    get_is_admin,
-    get_username,
-)
-from mlflow_oidc_auth.utils.batch_permissions import (
-    batch_resolve_experiment_permissions,
-    batch_resolve_model_permissions,
-    batch_resolve_prompt_permissions,
-)
+from mlflow_oidc_auth.utils import effective_experiment_permission, fetch_all_prompts, fetch_all_registered_models, get_is_admin, get_username
+from mlflow_oidc_auth.utils.batch_permissions import batch_resolve_experiment_permissions, batch_resolve_model_permissions, batch_resolve_prompt_permissions
 
 from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
 
@@ -80,6 +74,21 @@ USER_SCORER_PERMISSIONS = "/{username}/scorers"
 USER_SCORER_PERMISSION_DETAIL = "/{username}/scorers/{experiment_id}/{scorer_name}"
 USER_SCORER_PATTERN_PERMISSIONS = "/{username}/scorer-patterns"
 USER_SCORER_PATTERN_PERMISSION_DETAIL = "/{username}/scorer-patterns/{id}"
+
+USER_GATEWAY_ENDPOINT_PERMISSIONS = "/{username}/gateways/endpoints"
+USER_GATEWAY_ENDPOINT_PERMISSION_DETAIL = "/{username}/gateways/endpoints/{name}"
+USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS = "/{username}/gateways/endpoints-patterns"
+USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/endpoints-patterns/{id}"
+
+USER_GATEWAY_MODEL_DEFINITION_PERMISSIONS = "/{username}/gateways/model-definitions"
+USER_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL = "/{username}/gateways/model-definitions/{name}"
+USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS = "/{username}/gateways/model-definitions-patterns"
+USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/model-definitions-patterns/{id}"
+
+USER_GATEWAY_SECRET_PERMISSIONS = "/{username}/gateways/secrets"
+USER_GATEWAY_SECRET_PERMISSION_DETAIL = "/{username}/gateways/secrets/{name}"
+USER_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{username}/gateways/secrets-patterns"
+USER_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/secrets-patterns/{id}"
 
 user_permissions_router = APIRouter(
     prefix=USER_PERMISSIONS_ROUTER_PREFIX,

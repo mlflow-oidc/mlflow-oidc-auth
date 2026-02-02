@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from mlflow_oidc_auth.entities import ExperimentPermission, RegisteredModelPermission, ScorerPermission, Group
+
+# Import directly from sibling modules to avoid circular imports
+from mlflow_oidc_auth.entities.experiment import ExperimentPermission
+from mlflow_oidc_auth.entities.gateway_endpoint import GatewayEndpointPermission
+from mlflow_oidc_auth.entities.gateway_model_definition import GatewayModelDefinitionPermission
+from mlflow_oidc_auth.entities.gateway_secret import GatewaySecretPermission
+from mlflow_oidc_auth.entities.group import Group
+from mlflow_oidc_auth.entities.registered_model import RegisteredModelPermission
+from mlflow_oidc_auth.entities.scorer import ScorerPermission
 
 
 def _parse_optional_datetime(value: Any) -> datetime | None:
@@ -38,6 +46,9 @@ class User:
         experiment_permissions=None,
         registered_model_permissions=None,
         scorer_permissions=None,
+        gateway_endpoint_permissions=None,
+        gateway_model_definition_permissions=None,
+        gateway_secret_permissions=None,
         groups=None,
     ):
         # Provide sensible defaults so tests can construct User with partial data.
@@ -50,6 +61,9 @@ class User:
         self._experiment_permissions = experiment_permissions or []
         self._registered_model_permissions = registered_model_permissions or []
         self._scorer_permissions = scorer_permissions or []
+        self._gateway_endpoint_permissions = gateway_endpoint_permissions or []
+        self._gateway_model_definition_permissions = gateway_model_definition_permissions or []
+        self._gateway_secret_permissions = gateway_secret_permissions or []
         self._display_name = display_name
         self._groups = groups or []
 
@@ -114,6 +128,30 @@ class User:
         self._scorer_permissions = scorer_permissions
 
     @property
+    def gateway_endpoint_permissions(self):
+        return self._gateway_endpoint_permissions
+
+    @gateway_endpoint_permissions.setter
+    def gateway_endpoint_permissions(self, gateway_endpoint_permissions):
+        self._gateway_endpoint_permissions = gateway_endpoint_permissions
+
+    @property
+    def gateway_model_definition_permissions(self):
+        return self._gateway_model_definition_permissions
+
+    @gateway_model_definition_permissions.setter
+    def gateway_model_definition_permissions(self, gateway_model_definition_permissions):
+        self._gateway_model_definition_permissions = gateway_model_definition_permissions
+
+    @property
+    def gateway_secret_permissions(self):
+        return self._gateway_secret_permissions
+
+    @gateway_secret_permissions.setter
+    def gateway_secret_permissions(self, gateway_secret_permissions):
+        self._gateway_secret_permissions = gateway_secret_permissions
+
+    @property
     def display_name(self):
         return self._display_name
 
@@ -138,6 +176,9 @@ class User:
             "experiment_permissions": [p.to_json() for p in self.experiment_permissions],
             "registered_model_permissions": [p.to_json() for p in self.registered_model_permissions],
             "scorer_permissions": [p.to_json() for p in self.scorer_permissions],
+            "gateway_endpoint_permissions": [p.to_json() for p in self.gateway_endpoint_permissions],
+            "gateway_model_definition_permissions": [p.to_json() for p in self.gateway_model_definition_permissions],
+            "gateway_secret_permissions": [p.to_json() for p in self.gateway_secret_permissions],
             "password_expiration": self.password_expiration.isoformat() if self.password_expiration else None,
             "display_name": self.display_name,
             "groups": [g.to_json() for g in self.groups] if self.groups else [],
@@ -149,7 +190,15 @@ class User:
         If a test deletes a collection-like attribute (e.g. 'registered_model_permissions'),
         reset it to an empty list instead of raising AttributeError from the property.
         """
-        if name in ("experiment_permissions", "registered_model_permissions", "groups"):
+        if name in (
+            "experiment_permissions",
+            "gateway_endpoint_permissions",
+            "gateway_model_definition_permissions",
+            "gateway_secret_permissions",
+            "groups",
+            "registered_model_permissions",
+            "scorer_permissions",
+        ):
             # reset to empty list
             object.__setattr__(self, f"_{name}", [])
             return
@@ -169,6 +218,11 @@ class User:
             experiment_permissions=[ExperimentPermission.from_json(p) for p in dictionary.get("experiment_permissions", [])],
             registered_model_permissions=[RegisteredModelPermission.from_json(p) for p in dictionary.get("registered_model_permissions", [])],
             scorer_permissions=[ScorerPermission.from_json(p) for p in dictionary.get("scorer_permissions", [])],
+            gateway_endpoint_permissions=[GatewayEndpointPermission.from_json(p) for p in dictionary.get("gateway_endpoint_permissions", [])],
+            gateway_model_definition_permissions=[
+                GatewayModelDefinitionPermission.from_json(p) for p in dictionary.get("gateway_model_definition_permissions", [])
+            ],
+            gateway_secret_permissions=[GatewaySecretPermission.from_json(p) for p in dictionary.get("gateway_secret_permissions", [])],
             groups=[Group.from_json(g) for g in dictionary.get("groups", [])],
         )
 
