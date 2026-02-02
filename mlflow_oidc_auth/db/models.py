@@ -30,12 +30,8 @@ class SqlUser(Base):
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     username: Mapped[str] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    # DEPRECATED: password_hash is no longer used for authentication.
-    # Authentication now uses the user_tokens table (see SqlUserToken).
-    # This column is kept for backwards compatibility and will be removed in a future release.
+    # Legacy columns - authentication uses the user_tokens table (see SqlUserToken)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    # DEPRECATED: password_expiration is no longer used. Token expiration is now
-    # stored per-token in the user_tokens table. Will be removed in a future release.
     password_expiration: Mapped[datetime] = mapped_column(nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
