@@ -10,6 +10,7 @@ describe("api-utils", () => {
       uiPath: "/ui",
       provider: "oidc",
       authenticated: true,
+      gen_ai_gateway_enabled: false,
     };
     vi.spyOn(runtimeConfig, "getRuntimeConfig").mockResolvedValue(mockConfig);
 
@@ -23,6 +24,7 @@ describe("api-utils", () => {
       uiPath: "/ui",
       provider: "oidc",
       authenticated: true,
+      gen_ai_gateway_enabled: false,
     };
     vi.spyOn(runtimeConfig, "getRuntimeConfig").mockResolvedValue(mockConfig);
 

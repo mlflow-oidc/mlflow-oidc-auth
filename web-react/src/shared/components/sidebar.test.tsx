@@ -14,6 +14,16 @@ vi.mock("./sidebar-data", () => ({
   ],
 }));
 
+vi.mock("../context/use-runtime-config", () => ({
+  useRuntimeConfig: () => ({
+    gen_ai_gateway_enabled: false,
+    basePath: "/api",
+    uiPath: "/ui",
+    provider: "oidc",
+    authenticated: true,
+  }),
+}));
+
 describe("Sidebar", () => {
   it("renders sidebar items for regular user", () => {
     render(
