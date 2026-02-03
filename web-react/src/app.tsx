@@ -7,6 +7,15 @@ import MainLayout from "./core/components/main-layout";
 import ForbiddenPage from "./features/forbidden/forbidden-page";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
+const AiEndpointsPage = React.lazy(
+  () => import("./features/ai-gateway/ai-endpoints-page"),
+);
+const AiSecretsPage = React.lazy(
+  () => import("./features/ai-gateway/ai-secrets-page"),
+);
+const AiModelsPage = React.lazy(
+  () => import("./features/ai-gateway/ai-models-page"),
+);
 const ExperimentsPage = React.lazy(
   () => import("./features/experiments/experiments-page"),
 );
@@ -60,6 +69,30 @@ const ProtectedLayoutRoute = ({
 export default function App() {
   return (
     <Routes>
+      <Route
+        path="/ai-gateway/endpoints"
+        element={
+          <ProtectedLayoutRoute>
+            <AiEndpointsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/ai-gateway/secrets"
+        element={
+          <ProtectedLayoutRoute>
+            <AiSecretsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/ai-gateway/models"
+        element={
+          <ProtectedLayoutRoute>
+            <AiModelsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
       <Route
         path="/auth"
         element={
