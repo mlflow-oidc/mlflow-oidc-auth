@@ -204,15 +204,173 @@ describe("API Endpoints", () => {
       );
     });
 
-    it("covers all remaining dynamic endpoints", () => {
-      // Exercise all functions to reach 100% function coverage
-      Object.values(DYNAMIC_API_ENDPOINTS).forEach((fn) => {
-        if (typeof fn === "function") {
-          // Call with dummy args based on length
-          const args: string[] = new Array(fn.length).fill("test") as string[];
-          (fn as (...args: string[]) => string)(...args);
-        }
-      });
+    it("returns correct user pattern permission URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PATTERN_PERMISSION(
+          "u1",
+          "pat1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/experiment-patterns/pat1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_MODEL_PATTERN_PERMISSION("u1", "pat1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/registered-models-patterns/pat1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSION("u1", "pat1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/prompts-patterns/pat1",
+      );
+    });
+
+    it("returns correct group permission URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION("g1", "exp1"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/experiments/exp1");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION("g1", "mod1"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/registered-models/mod1");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION("g1", "prompt1"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/prompts/prompt1");
+    });
+
+    it("returns correct group pattern permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PATTERN_PERMISSION(
+          "g1",
+          "pat1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/experiment-patterns/pat1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PATTERN_PERMISSIONS("g1"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/registered-models-patterns");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSIONS("g1"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/prompts-patterns");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSION("g1", "pat1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/prompts-patterns/pat1",
+      );
+    });
+
+    it("returns correct resource group permissions URLs", () => {
+      expect(DYNAMIC_API_ENDPOINTS.EXPERIMENT_GROUP_PERMISSIONS("exp1")).toBe(
+        "/api/2.0/mlflow/permissions/experiments/exp1/groups",
+      );
+      expect(DYNAMIC_API_ENDPOINTS.MODEL_GROUP_PERMISSIONS("mod1")).toBe(
+        "/api/2.0/mlflow/permissions/registered-models/mod1/groups",
+      );
+      expect(DYNAMIC_API_ENDPOINTS.PROMPT_GROUP_PERMISSIONS("p1")).toBe(
+        "/api/2.0/mlflow/permissions/prompts/p1/groups",
+      );
+    });
+
+    it("returns correct gateway group permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSION(
+          "g1",
+          "end1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/endpoints/end1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_SECRET_PERMISSION("g1", "sec1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/secrets/sec1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_MODEL_PERMISSION("g1", "mod1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/model-definitions/mod1",
+      );
+    });
+
+    it("returns correct gateway group pattern permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION(
+          "g1",
+          "pat1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/endpoints-patterns/pat1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_SECRET_PATTERN_PERMISSION(
+          "g1",
+          "pat1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/secrets-patterns/pat1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_MODEL_PATTERN_PERMISSION(
+          "g1",
+          "pat1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/model-definitions-patterns/pat1",
+      );
+    });
+
+    it("returns correct gateway user permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSION("u1", "end1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/endpoints/end1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_SECRET_PERMISSION("u1", "sec1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/secrets/sec1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PERMISSION("u1", "mod1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/model-definitions/mod1",
+      );
+    });
+
+    it("returns correct gateway user pattern permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION(
+          "u1",
+          "pat1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/endpoints-patterns/pat1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_SECRET_PATTERN_PERMISSION(
+          "u1",
+          "pat1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/secrets-patterns/pat1",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PATTERN_PERMISSION(
+          "u1",
+          "pat1",
+        ),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/model-definitions-patterns/pat1",
+      );
+    });
+
+    it("returns correct webhook URLs", () => {
+      expect(DYNAMIC_API_ENDPOINTS.WEBHOOK_DETAILS("wh1")).toBe(
+        "/oidc/webhook/wh1",
+      );
+      expect(DYNAMIC_API_ENDPOINTS.TEST_WEBHOOK("wh1")).toBe(
+        "/oidc/webhook/wh1/test",
+      );
     });
   });
 });
