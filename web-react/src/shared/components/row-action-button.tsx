@@ -1,7 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router";
 import { faLock } from "@fortawesome/free-solid-svg-icons";
-import { useRuntimeConfig } from "../context/use-runtime-config";
 import { Button } from "./button";
 
 interface RowActionButtonProps {
@@ -16,8 +15,8 @@ export function RowActionButton({
   buttonText,
 }: RowActionButtonProps) {
   const navigate = useNavigate();
-  const basePath = useRuntimeConfig().basePath;
-  const targetRoute = `${basePath}/${route}/${entityId}`;
+  const normalizedRoute = route.replace(/^\/+/, "");
+  const targetRoute = `/${normalizedRoute}/${entityId}`;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
