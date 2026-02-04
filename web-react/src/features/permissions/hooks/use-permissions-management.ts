@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { http } from "../../../core/services/http";
+import { resolveUrl } from "../../../core/services/api-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { DYNAMIC_API_ENDPOINTS } from "../../../core/configs/api-endpoints";
 import type {
@@ -76,7 +77,8 @@ export function usePermissionsManagement({
                 );
         }
 
-        await http(url, {
+        const resolvedUrl = await resolveUrl(url, {});
+        await http(resolvedUrl, {
           method: "PATCH",
           body: JSON.stringify({ permission: newPermission }),
         });
@@ -136,7 +138,8 @@ export function usePermissionsManagement({
                 );
         }
 
-        await http(url, {
+        const resolvedUrl = await resolveUrl(url, {});
+        await http(resolvedUrl, {
           method: "DELETE",
         });
 
@@ -186,7 +189,8 @@ export function usePermissionsManagement({
               : DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(name, resourceId);
         }
 
-        await http(url, {
+        const resolvedUrl = await resolveUrl(url, {});
+        await http(resolvedUrl, {
           method: "POST",
           body: JSON.stringify({ permission }),
         });

@@ -3,6 +3,7 @@ import {
   createStaticApiFetcher,
 } from "./create-api-fetcher";
 import { http } from "./http";
+import { resolveUrl } from "./api-utils";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import type { CurrentUser } from "../../shared/types/user";
 
@@ -41,14 +42,16 @@ export const createUser = async (data: {
   is_admin: boolean;
   is_service_account: boolean;
 }) => {
-  return http(STATIC_API_ENDPOINTS.USERS_RESOURCE, {
+  const url = await resolveUrl(STATIC_API_ENDPOINTS.USERS_RESOURCE, {});
+  return http(url, {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
 export const deleteUser = async (username: string) => {
-  return http(STATIC_API_ENDPOINTS.USERS_RESOURCE, {
+  const url = await resolveUrl(STATIC_API_ENDPOINTS.USERS_RESOURCE, {});
+  return http(url, {
     method: "DELETE",
     body: JSON.stringify({ username }),
   });

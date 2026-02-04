@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { http } from "../../../core/services/http";
+import { resolveUrl } from "../../../core/services/api-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { getPermissionUrl } from "../utils/permission-utils";
 import { EditPermissionModal } from "../../users/components/edit-permission-modal";
@@ -151,7 +152,8 @@ export const NormalPermissionsView = ({
       const isCreate = !isTargetType;
       const method = isCreate ? "POST" : "PATCH";
 
-      await http(url, {
+      const resolvedUrl = await resolveUrl(url, {});
+      await http(resolvedUrl, {
         method,
         body: JSON.stringify({ permission: newPermission }),
       });
@@ -184,7 +186,8 @@ export const NormalPermissionsView = ({
         identifier,
       });
 
-      await http(url, {
+      const resolvedUrl = await resolveUrl(url, {});
+      await http(resolvedUrl, {
         method: "POST",
         body: JSON.stringify({ permission }),
       });
@@ -219,7 +222,8 @@ export const NormalPermissionsView = ({
         identifier: String(identifier),
       });
 
-      await http(url, {
+      const resolvedUrl = await resolveUrl(url, {});
+      await http(resolvedUrl, {
         method: "DELETE",
       });
 

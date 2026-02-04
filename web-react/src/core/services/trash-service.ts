@@ -1,5 +1,6 @@
 import { createStaticApiFetcher } from "./create-api-fetcher";
 import { http } from "./http";
+import { resolveUrl } from "./api-utils";
 import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
@@ -29,16 +30,7 @@ export const cleanupTrash = async (params: {
   run_ids?: string;
   experiment_ids?: string;
 }) => {
-  const searchParams = new URLSearchParams();
-  if (params.older_than) searchParams.append("older_than", params.older_than);
-  if (params.run_ids) searchParams.append("run_ids", params.run_ids);
-  if (params.experiment_ids)
-    searchParams.append("experiment_ids", params.experiment_ids);
-
-  const queryString = searchParams.toString();
-  const url = `${STATIC_API_ENDPOINTS.TRASH_CLEANUP}${
-    queryString ? `?${queryString}` : ""
-  }`;
+  const url = await resolveUrl(STATIC_API_ENDPOINTS.TRASH_CLEANUP, params);
 
   return http(url, {
     method: "POST",
@@ -46,13 +38,18 @@ export const cleanupTrash = async (params: {
 };
 
 export const restoreExperiment = async (experimentId: string) => {
-  return http(DYNAMIC_API_ENDPOINTS.RESTORE_EXPERIMENT(experimentId), {
+  const url = await resolveUrl(
+    DYNAMIC_API_ENDPOINTS.RESTORE_EXPERIMENT(experimentId),
+    {},
+  );
+  return http(url, {
     method: "POST",
   });
 };
 
 export const restoreRun = async (runId: string) => {
-  return http(DYNAMIC_API_ENDPOINTS.RESTORE_RUN(runId), {
+  const url = await resolveUrl(DYNAMIC_API_ENDPOINTS.RESTORE_RUN(runId), {});
+  return http(url, {
     method: "POST",
   });
 };

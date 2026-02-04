@@ -9,10 +9,18 @@ import {
 } from "./webhook-service";
 import { http } from "./http";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
+import { getRuntimeConfig } from "../../shared/services/runtime-config";
 
 vi.mock("./http");
 vi.mock("../../shared/services/runtime-config", () => ({
-  getRuntimeConfig: vi.fn().mockResolvedValue({ basePath: "" }),
+  getRuntimeConfig: vi.fn(() =>
+    Promise.resolve({
+      basePath: "",
+      uiPath: "",
+      provider: "",
+      authenticated: true,
+    }),
+  ),
 }));
 
 describe("webhook-service", () => {
@@ -106,6 +114,24 @@ describe("webhook-service", () => {
         method: "POST",
         body: undefined,
       }),
+    );
+  });
+
+  it("prefixes URL with basePath from runtime config", async () => {
+    vi.mocked(getRuntimeConfig).mockResolvedValue({
+      basePath: "/mlflow",
+      uiPath: "",
+      provider: "",
+      authenticated: true,
+    });
+    await createWebhook({
+      name: "test",
+      url: "http://example.com",
+      events: [],
+    });
+    expect(http).toHaveBeenCalledWith(
+      "/mlflow/oidc/webhook",
+      expect.anything(),
     );
   });
 });

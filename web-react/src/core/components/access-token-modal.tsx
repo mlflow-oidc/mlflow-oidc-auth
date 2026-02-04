@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import { useUser } from "../hooks/use-user";
 import { http } from "../services/http";
+import { resolveUrl } from "../services/api-utils";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import { faCopy } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "../../shared/components/button";
@@ -17,16 +18,14 @@ const requestAccessTokenApi = async (
   username: string,
   expiration: Date,
 ): Promise<string> => {
-  const tokenModel = await http<TokenModel>(
-    STATIC_API_ENDPOINTS.CREATE_ACCESS_TOKEN,
-    {
-      method: "PATCH",
-      body: JSON.stringify({
-        username: username,
-        expiration: expiration.toISOString(),
-      }),
-    },
-  );
+  const url = await resolveUrl(STATIC_API_ENDPOINTS.CREATE_ACCESS_TOKEN, {});
+  const tokenModel = await http<TokenModel>(url, {
+    method: "PATCH",
+    body: JSON.stringify({
+      username: username,
+      expiration: expiration.toISOString(),
+    }),
+  });
 
   if (!tokenModel.token) {
     throw new Error(

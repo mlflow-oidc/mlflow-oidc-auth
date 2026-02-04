@@ -1,4 +1,5 @@
 import { http } from "./http";
+import { resolveUrl } from "./api-utils";
 import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
@@ -22,44 +23,55 @@ export const listWebhooks = createStaticApiFetcher<WebhookListResponse>({
 });
 
 export const createWebhook = async (data: WebhookCreateRequest) => {
-  return http<Webhook>(STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE, {
+  const url = await resolveUrl(STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE, {});
+  return http<Webhook>(url, {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
 export const getWebhook = async (webhookId: string) => {
-  return http<Webhook>(DYNAMIC_API_ENDPOINTS.WEBHOOK_DETAILS(webhookId));
+  const url = await resolveUrl(
+    DYNAMIC_API_ENDPOINTS.WEBHOOK_DETAILS(webhookId),
+    {},
+  );
+  return http<Webhook>(url);
 };
 
 export const updateWebhook = async (
   webhookId: string,
   data: WebhookUpdateRequest,
 ) => {
-  return http<Webhook>(DYNAMIC_API_ENDPOINTS.WEBHOOK_DETAILS(webhookId), {
+  const url = await resolveUrl(
+    DYNAMIC_API_ENDPOINTS.WEBHOOK_DETAILS(webhookId),
+    {},
+  );
+  return http<Webhook>(url, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 };
 
 export const deleteWebhook = async (webhookId: string) => {
-  return http<{ message: string }>(
+  const url = await resolveUrl(
     DYNAMIC_API_ENDPOINTS.WEBHOOK_DETAILS(webhookId),
-    {
-      method: "DELETE",
-    },
+    {},
   );
+  return http<{ message: string }>(url, {
+    method: "DELETE",
+  });
 };
 
 export const testWebhook = async (
   webhookId: string,
   data?: WebhookTestRequest,
 ) => {
-  return http<WebhookTestResponse>(
+  const url = await resolveUrl(
     DYNAMIC_API_ENDPOINTS.TEST_WEBHOOK(webhookId),
-    {
-      method: "POST",
-      body: data ? JSON.stringify(data) : undefined,
-    },
+    {},
   );
+  return http<WebhookTestResponse>(url, {
+    method: "POST",
+    body: data ? JSON.stringify(data) : undefined,
+  });
 };
