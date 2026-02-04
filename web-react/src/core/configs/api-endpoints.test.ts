@@ -5,6 +5,9 @@ describe("API Endpoints", () => {
   it("static endpoints are defined", () => {
     expect(STATIC_API_ENDPOINTS.ALL_GROUPS).toBeDefined();
     expect(STATIC_API_ENDPOINTS.GET_CURRENT_USER).toBeDefined();
+    expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_ENDPOINTS).toBeDefined();
+    expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_SECRETS).toBeDefined();
+    expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_MODELS).toBeDefined();
   });
 
   describe("Dynamic Endpoints", () => {
@@ -110,6 +113,94 @@ describe("API Endpoints", () => {
       );
       expect(DYNAMIC_API_ENDPOINTS.RESTORE_RUN("run1")).toBe(
         "/oidc/trash/runs/run1/restore",
+      );
+    });
+
+    it("returns correct gateway user permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.GATEWAY_ENDPOINT_USER_PERMISSIONS("endpoint1"),
+      ).toBe("/api/2.0/mlflow/permissions/gateways/endpoints/endpoint1/users");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GATEWAY_SECRET_USER_PERMISSIONS("secret1"),
+      ).toBe("/api/2.0/mlflow/permissions/gateways/secrets/secret1/users");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GATEWAY_MODEL_USER_PERMISSIONS("model1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/gateways/model-definitions/model1/users",
+      );
+    });
+
+    it("returns correct gateway group permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.GATEWAY_ENDPOINT_GROUP_PERMISSIONS("endpoint1"),
+      ).toBe("/api/2.0/mlflow/permissions/gateways/endpoints/endpoint1/groups");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GATEWAY_SECRET_GROUP_PERMISSIONS("secret1"),
+      ).toBe("/api/2.0/mlflow/permissions/gateways/secrets/secret1/groups");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GATEWAY_MODEL_GROUP_PERMISSIONS("model1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/gateways/model-definitions/model1/groups",
+      );
+    });
+
+    it("returns correct group gateway permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSIONS("g1"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/gateways/endpoints");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_SECRET_PERMISSIONS("g1"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/gateways/secrets");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_MODEL_PERMISSIONS("g1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/model-definitions",
+      );
+    });
+
+    it("returns correct group gateway pattern permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS("g1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/endpoints-patterns",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS("g1"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/gateways/secrets-patterns");
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_MODEL_PATTERN_PERMISSIONS("g1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/gateways/model-definitions-patterns",
+      );
+    });
+
+    it("returns correct user gateway permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSIONS("u1"),
+      ).toBe("/api/2.0/mlflow/permissions/users/u1/gateways/endpoints");
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_SECRET_PERMISSIONS("u1"),
+      ).toBe("/api/2.0/mlflow/permissions/users/u1/gateways/secrets");
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PERMISSIONS("u1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/model-definitions",
+      );
+    });
+
+    it("returns correct user gateway pattern permissions URLs", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS("u1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/endpoints-patterns",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_SECRET_PATTERN_PERMISSIONS("u1"),
+      ).toBe("/api/2.0/mlflow/permissions/users/u1/gateways/secrets-patterns");
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PATTERN_PERMISSIONS("u1"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/gateways/model-definitions-patterns",
       );
     });
 

@@ -4,6 +4,11 @@ export const STATIC_API_ENDPOINTS = {
   ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
   ALL_PROMPTS: "/api/2.0/mlflow/permissions/prompts",
 
+  // Gateway management
+  ALL_GATEWAY_ENDPOINTS: "/api/2.0/mlflow/permissions/gateways/endpoints",
+  ALL_GATEWAY_SECRETS: "/api/2.0/mlflow/permissions/gateways/secrets",
+  ALL_GATEWAY_MODELS: "/api/2.0/mlflow/permissions/gateways/model-definitions",
+
   // User management
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
@@ -91,6 +96,104 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/registered-models/${encodeURIComponent(String(modelName))}/groups`,
   PROMPT_GROUP_PERMISSIONS: (promptName: string) =>
     `/api/2.0/mlflow/permissions/prompts/${encodeURIComponent(String(promptName))}/groups`,
+
+  // Gateway Resource user permissions
+  GATEWAY_ENDPOINT_USER_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/gateways/endpoints/${encodeURIComponent(String(name))}/users`,
+  GATEWAY_SECRET_USER_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/gateways/secrets/${encodeURIComponent(String(name))}/users`,
+  GATEWAY_MODEL_USER_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/gateways/model-definitions/${encodeURIComponent(String(name))}/users`,
+
+  // Gateway Resource group permissions
+  GATEWAY_ENDPOINT_GROUP_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/gateways/endpoints/${encodeURIComponent(String(name))}/groups`,
+  GATEWAY_SECRET_GROUP_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/gateways/secrets/${encodeURIComponent(String(name))}/groups`,
+  GATEWAY_MODEL_GROUP_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/gateways/model-definitions/${encodeURIComponent(String(name))}/groups`,
+
+  // Gateway Group permissions for resources
+  GROUP_GATEWAY_ENDPOINT_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/endpoints`,
+  GROUP_GATEWAY_ENDPOINT_PERMISSION: (groupName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/endpoints/${name}`,
+
+  GROUP_GATEWAY_SECRET_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/secrets`,
+  GROUP_GATEWAY_SECRET_PERMISSION: (groupName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/secrets/${name}`,
+
+  GROUP_GATEWAY_MODEL_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/model-definitions`,
+  GROUP_GATEWAY_MODEL_PERMISSION: (groupName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/model-definitions/${name}`,
+
+  // Gateway Group pattern permissions
+  GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/endpoints-patterns`,
+  GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION: (
+    groupName: string,
+    patternId: string,
+  ) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/endpoints-patterns/${patternId}`,
+
+  GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/secrets-patterns`,
+  GROUP_GATEWAY_SECRET_PATTERN_PERMISSION: (
+    groupName: string,
+    patternId: string,
+  ) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/secrets-patterns/${patternId}`,
+
+  GROUP_GATEWAY_MODEL_PATTERN_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/model-definitions-patterns`,
+  GROUP_GATEWAY_MODEL_PATTERN_PERMISSION: (
+    groupName: string,
+    patternId: string,
+  ) =>
+    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/model-definitions-patterns/${patternId}`,
+
+  // Gateway User permissions for resources
+  USER_GATEWAY_ENDPOINT_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/endpoints`,
+  USER_GATEWAY_ENDPOINT_PERMISSION: (userName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/endpoints/${name}`,
+
+  USER_GATEWAY_SECRET_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/secrets`,
+  USER_GATEWAY_SECRET_PERMISSION: (userName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/secrets/${name}`,
+
+  USER_GATEWAY_MODEL_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/model-definitions`,
+  USER_GATEWAY_MODEL_PERMISSION: (userName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/model-definitions/${name}`,
+
+  // Gateway User pattern permissions
+  USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/endpoints-patterns`,
+  USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION: (
+    userName: string,
+    patternId: string,
+  ) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/endpoints-patterns/${patternId}`,
+
+  USER_GATEWAY_SECRET_PATTERN_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/secrets-patterns`,
+  USER_GATEWAY_SECRET_PATTERN_PERMISSION: (
+    userName: string,
+    patternId: string,
+  ) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/secrets-patterns/${patternId}`,
+
+  USER_GATEWAY_MODEL_PATTERN_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/model-definitions-patterns`,
+  USER_GATEWAY_MODEL_PATTERN_PERMISSION: (
+    userName: string,
+    patternId: string,
+  ) =>
+    `/api/2.0/mlflow/permissions/users/${userName}/gateways/model-definitions-patterns/${patternId}`,
 
   // Trash management
   RESTORE_EXPERIMENT: (experimentId: string) =>
