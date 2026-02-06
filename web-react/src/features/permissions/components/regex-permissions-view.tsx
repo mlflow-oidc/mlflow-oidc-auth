@@ -10,6 +10,8 @@ import { useUserPromptPatternPermissions } from "../../../core/hooks/use-user-pr
 import { useGroupExperimentPatternPermissions } from "../../../core/hooks/use-group-experiment-pattern-permissions";
 import { useGroupModelPatternPermissions } from "../../../core/hooks/use-group-model-pattern-permissions";
 import { useGroupPromptPatternPermissions } from "../../../core/hooks/use-group-prompt-pattern-permissions";
+import { useUserGatewayEndpointPatternPermissions } from "../../../core/hooks/use-user-gateway-endpoint-pattern-permissions";
+import { useGroupGatewayEndpointPatternPermissions } from "../../../core/hooks/use-group-gateway-endpoint-pattern-permissions";
 import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
@@ -70,19 +72,29 @@ export const RegexPermissionsView = ({
   const groupPromptPatternHook = useGroupPromptPatternPermissions({
     groupName: entityKind === "group" ? entityName : null,
   });
+  const userGatewayEndpointPatternHook =
+    useUserGatewayEndpointPatternPermissions({
+      username: entityKind === "user" ? entityName : null,
+    });
+  const groupGatewayEndpointPatternHook =
+    useGroupGatewayEndpointPatternPermissions({
+      groupName: entityKind === "group" ? entityName : null,
+    });
 
   const activeHook =
-    entityKind === "user"
+    (entityKind === "user"
       ? {
           experiments: userExperimentPatternHook,
           models: userModelPatternHook,
           prompts: userPromptPatternHook,
+          endpoints: userGatewayEndpointPatternHook,
         }[type]
       : {
           experiments: groupExperimentPatternHook,
           models: groupModelPatternHook,
           prompts: groupPromptPatternHook,
-        }[type];
+          endpoints: groupGatewayEndpointPatternHook,
+        }[type]);
 
   const { isLoading, error, refresh, permissions } = activeHook;
 
@@ -227,7 +239,7 @@ export const RegexPermissionsView = ({
     },
   ];
 
-  const filteredData = permissions.filter((p) =>
+  const filteredData = permissions.filter((p: PatternPermissionItem) =>
     p.regex?.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 

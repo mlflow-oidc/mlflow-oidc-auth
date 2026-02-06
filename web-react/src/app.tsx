@@ -10,6 +10,9 @@ const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const AiEndpointsPage = React.lazy(
   () => import("./features/ai-gateway/ai-endpoints-page"),
 );
+const AiEndpointsPermissionPage = React.lazy(
+  () => import("./features/ai-gateway/ai-endpoints-permission-page"),
+);
 const AiSecretsPage = React.lazy(
   () => import("./features/ai-gateway/ai-secrets-page"),
 );
@@ -74,6 +77,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <AiEndpointsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/ai-gateway/endpoints/:name"
+        element={
+          <ProtectedLayoutRoute>
+            <AiEndpointsPermissionPage />
           </ProtectedLayoutRoute>
         }
       />

@@ -9,6 +9,9 @@ import { useUserPromptPermissions } from "../../../core/hooks/use-user-prompt-pe
 import { useGroupExperimentPermissions } from "../../../core/hooks/use-group-experiment-permissions";
 import { useGroupRegisteredModelPermissions } from "../../../core/hooks/use-group-model-permissions";
 import { useGroupPromptPermissions } from "../../../core/hooks/use-group-prompt-permissions";
+import { useUserGatewayEndpointPermissions } from "../../../core/hooks/use-user-gateway-endpoint-permissions";
+import { useGroupGatewayEndpointPermissions } from "../../../core/hooks/use-group-gateway-endpoint-permissions";
+import { useAllGatewayEndpoints } from "../../../core/hooks/use-all-gateway-endpoints";
 import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
@@ -72,37 +75,48 @@ export const NormalPermissionsView = ({
   const groupPromptHook = useGroupPromptPermissions({
     groupName: entityKind === "group" ? entityName : null,
   });
+  const userGatewayEndpointHook = useUserGatewayEndpointPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const groupGatewayEndpointHook = useGroupGatewayEndpointPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
 
   const activeHook =
-    entityKind === "user"
+    (entityKind === "user"
       ? {
           experiments: userExperimentHook,
           models: userModelHook,
           prompts: userPromptHook,
+          endpoints: userGatewayEndpointHook,
         }[type]
       : {
           experiments: groupExperimentHook,
           models: groupModelHook,
           prompts: groupPromptHook,
-        }[type];
+          endpoints: groupGatewayEndpointHook,
+        }[type]);
 
   const { isLoading, error, refresh, permissions } = activeHook;
 
   const { allExperiments } = useAllExperiments();
   const { allModels } = useAllModels();
   const { allPrompts } = useAllPrompts();
+  const { allGatewayEndpoints } = useAllGatewayEndpoints();
 
   const getAvailableEntities = () => {
     if (type === "experiments") {
       const existingIds = new Set(
-        permissions.map((p) => (p as ExperimentPermission).id),
+        permissions.map((p: PermissionItem) => (p as ExperimentPermission).id),
       );
       return (allExperiments || [])
         .filter((e) => !existingIds.has(e.id))
         .map((e) => ({ label: e.name, value: e.id }));
     }
 
-    const existingNames = new Set(permissions.map((p) => p.name));
+    const existingNames = new Set(
+      permissions.map((p: PermissionItem) => p.name),
+    );
     if (type === "models") {
       return (allModels || [])
         .filter((m) => !existingNames.has(m.name))
@@ -112,6 +126,11 @@ export const NormalPermissionsView = ({
       return (allPrompts || [])
         .filter((p) => !existingNames.has(p.name))
         .map((p) => p.name);
+    }
+    if (type === "endpoints") {
+      return (allGatewayEndpoints || [])
+        .filter((e) => !existingNames.has(e.name))
+        .map((e) => e.name);
     }
     return [];
   };
@@ -275,7 +294,7 @@ export const NormalPermissionsView = ({
     },
   ];
 
-  const filteredData = permissions.filter((p) =>
+  const filteredData = permissions.filter((p: PermissionItem) =>
     p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
@@ -311,7 +330,9 @@ export const NormalPermissionsView = ({
                   ? "experiment"
                   : type === "models"
                     ? "model"
-                    : "prompt"}
+                    : type === "prompts"
+                      ? "prompt"
+                      : "endpoint"}
               </Button>
             )}
           </div>
@@ -342,13 +363,15 @@ export const NormalPermissionsView = ({
         onSave={(identifier, permission) =>
           handleGrantPermission(identifier, permission)
         }
-        title={`Grant ${type === "experiments" ? "experiment" : type === "models" ? "model" : "prompt"} permissions for ${entityName}`}
+        title={`Grant ${type === "experiments" ? "experiment" : type === "models" ? "model" : type === "prompts" ? "prompt" : "endpoint"} permissions for ${entityName}`}
         label={
           type === "experiments"
             ? "Experiment"
             : type === "models"
               ? "Model"
-              : "Prompt"
+              : type === "prompts"
+                ? "Prompt"
+                : "Endpoint"
         }
         options={availableEntities}
         isLoading={isSaving}
