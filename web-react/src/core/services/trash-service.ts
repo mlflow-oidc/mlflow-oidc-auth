@@ -1,6 +1,5 @@
 import { createStaticApiFetcher } from "./create-api-fetcher";
-import { http } from "./http";
-import { resolveUrl } from "./api-utils";
+import { request } from "./api-utils";
 import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
@@ -30,26 +29,20 @@ export const cleanupTrash = async (params: {
   run_ids?: string;
   experiment_ids?: string;
 }) => {
-  const url = await resolveUrl(STATIC_API_ENDPOINTS.TRASH_CLEANUP, params);
-
-  return http(url, {
+  return request(STATIC_API_ENDPOINTS.TRASH_CLEANUP, {
+    queryParams: params,
     method: "POST",
   });
 };
 
 export const restoreExperiment = async (experimentId: string) => {
-  const url = await resolveUrl(
-    DYNAMIC_API_ENDPOINTS.RESTORE_EXPERIMENT(experimentId),
-    {},
-  );
-  return http(url, {
+  return request(DYNAMIC_API_ENDPOINTS.RESTORE_EXPERIMENT(experimentId), {
     method: "POST",
   });
 };
 
 export const restoreRun = async (runId: string) => {
-  const url = await resolveUrl(DYNAMIC_API_ENDPOINTS.RESTORE_RUN(runId), {});
-  return http(url, {
+  return request(DYNAMIC_API_ENDPOINTS.RESTORE_RUN(runId), {
     method: "POST",
   });
 };
