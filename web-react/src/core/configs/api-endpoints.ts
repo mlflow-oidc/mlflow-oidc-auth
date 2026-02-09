@@ -58,31 +58,31 @@ export const DYNAMIC_API_ENDPOINTS = {
 
   // Group permissions for resources
   GROUP_EXPERIMENT_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/experiments`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/experiments`,
   GROUP_EXPERIMENT_PERMISSION: (groupName: string, experimentId: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/experiments/${experimentId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/experiments/${experimentId}`,
   GROUP_MODEL_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/registered-models`,
   GROUP_MODEL_PERMISSION: (groupName: string, modelName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models/${modelName}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/registered-models/${modelName}`,
   GROUP_PROMPT_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/prompts`,
   GROUP_PROMPT_PERMISSION: (groupName: string, promptName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts/${promptName}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/prompts/${promptName}`,
 
   // Group pattern permissions
   GROUP_EXPERIMENT_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/experiment-patterns`,
   GROUP_EXPERIMENT_PATTERN_PERMISSION: (groupName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/experiment-patterns/${patternId}`,
   GROUP_MODEL_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/registered-models-patterns`,
   GROUP_MODEL_PATTERN_PERMISSION: (groupName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/registered-models-patterns/${patternId}`,
   GROUP_PROMPT_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/prompts-patterns`,
   GROUP_PROMPT_PATTERN_PERMISSION: (groupName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/prompts-patterns/${patternId}`,
 
   // Resource group permissions
   EXPERIMENT_GROUP_PERMISSIONS: (experimentId: string) =>

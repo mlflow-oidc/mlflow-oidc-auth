@@ -84,7 +84,7 @@ export const SharedPermissionsPage = ({
           {tabs.map((tab) => (
             <Link
               key={tab.id}
-              to={`${baseRoute}/${entityName}/${tab.id}`}
+              to={`${baseRoute}/${encodeURIComponent(entityName)}/${tab.id}`}
               className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 ${
                 type === tab.id
                   ? "border-btn-primary text-btn-primary dark:border-btn-primary-dark dark:text-btn-primary-dark"
