@@ -135,17 +135,8 @@ export const TokensList: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center space-x-2 mb-4">
-        <Button
-          onClick={() => setIsCreateModalOpen(true)}
-          variant="secondary"
-          icon={faPlus}
-        >
-          Create Token
-        </Button>
-      </div>
-      <div className="mb-2">
+    <>
+      <div className="mb-4 flex items-center gap-6">
         <SearchInput
           value={searchTerm}
           onInputChange={handleInputChange}
@@ -153,6 +144,14 @@ export const TokensList: React.FC = () => {
           onClear={handleClearSearch}
           placeholder="Search tokens..."
         />
+        <Button
+          onClick={() => setIsCreateModalOpen(true)}
+          variant="secondary"
+          icon={faPlus}
+          className="whitespace-nowrap h-8 mb-1 mt-2"
+        >
+          Create Token
+        </Button>
       </div>
 
       {isLoading ? (
@@ -172,6 +171,6 @@ export const TokensList: React.FC = () => {
         onClose={() => setIsCreateModalOpen(false)}
         onTokenCreated={handleTokenCreated}
       />
-    </div>
+    </>
   );
 };
