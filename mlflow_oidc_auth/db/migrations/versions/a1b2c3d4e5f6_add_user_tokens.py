@@ -6,7 +6,7 @@ Create Date: 2026-01-21 12:00:00.000000
 
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import sqlalchemy as sa
 from alembic import op
@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("token_hash", sa.String(length=255), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("expires_at", sa.DateTime(), nullable=True),
+        sa.Column("expires_at", sa.DateTime(), nullable=False),
         sa.Column("last_used_at", sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="fk_user_token_user_id"),
         sa.UniqueConstraint("user_id", "name", name="unique_user_token_name"),
@@ -58,16 +58,19 @@ def upgrade() -> None:
     users = connection.execute(sa.select(users_table.c.id, users_table.c.password_hash, users_table.c.password_expiration)).fetchall()
 
     now = datetime.now(timezone.utc)
+    default_expiration = now + timedelta(days=365)  # 1 year from migration date
     for user in users:
         user_id, password_hash, password_expiration = user
         if password_hash:
+            # Use existing expiration or default to 1 year from migration
+            expiration = password_expiration if password_expiration is not None else default_expiration
             connection.execute(
                 user_tokens_table.insert().values(
                     user_id=user_id,
                     name=LEGACY_TOKEN_NAME,
                     token_hash=password_hash,
                     created_at=now,
-                    expires_at=password_expiration,
+                    expires_at=expiration,
                 )
             )
 
