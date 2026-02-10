@@ -136,34 +136,28 @@ export const TokensList: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex-grow">
-          <SearchInput
-            value={searchTerm}
-            onInputChange={handleInputChange}
-            onSubmit={handleSearchSubmit}
-            onClear={handleClearSearch}
-            placeholder="Search tokens..."
-          />
-        </div>
+      <div className="flex items-center space-x-2 mb-4">
         <Button
           onClick={() => setIsCreateModalOpen(true)}
-          variant="primary"
+          variant="secondary"
           icon={faPlus}
         >
           Create Token
         </Button>
       </div>
+      <div className="mb-2">
+        <SearchInput
+          value={searchTerm}
+          onInputChange={handleInputChange}
+          onSubmit={handleSearchSubmit}
+          onClear={handleClearSearch}
+          placeholder="Search tokens..."
+        />
+      </div>
 
       {isLoading ? (
         <div className="text-center py-8 text-text-secondary dark:text-text-secondary-dark">
           Loading tokens...
-        </div>
-      ) : filteredTokens.length === 0 ? (
-        <div className="text-center py-8 text-text-secondary dark:text-text-secondary-dark">
-          {submittedTerm
-            ? `No tokens matching "${submittedTerm}"`
-            : "No tokens found. Create your first token to get started."}
         </div>
       ) : (
         <EntityListTable
