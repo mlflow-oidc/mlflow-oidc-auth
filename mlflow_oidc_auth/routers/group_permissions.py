@@ -1546,7 +1546,7 @@ async def get_group_gateway_endpoint_permissions(
     """List gateway endpoint permissions for a group."""
     try:
         perms = store.list_group_gateway_endpoint_permissions(group_name=group_name)
-        return [GatewayPermissionRecord(gateway_name=p.gateway_name, user_id=None, permission=p.permission, group_id=p.group_id) for p in perms]
+        return [GatewayPermissionRecord(gateway_name=p.endpoint_id, user_id=None, permission=p.permission, group_id=p.group_id) for p in perms]
     except Exception as e:
         logger.error(f"Error listing group gateway endpoint permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve group gateway endpoint permissions")
@@ -1570,7 +1570,7 @@ async def create_group_gateway_endpoint_permission(
     try:
         perm = store.create_group_gateway_endpoint_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=None, permission=perm.permission, group_id=perm.group_id)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.endpoint_id, user_id=None, permission=perm.permission, group_id=perm.group_id)
         )
     except Exception as e:
         logger.error(f"Error creating group gateway endpoint permission: {str(e)}")
@@ -1593,7 +1593,7 @@ async def get_group_gateway_endpoint_permission(
     try:
         perm = store.get_user_groups_gateway_endpoint_permission(gateway_name=name, group_name=group_name)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=None, permission=perm.permission, group_id=perm.group_id)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.endpoint_id, user_id=None, permission=perm.permission, group_id=perm.group_id)
         )
     except Exception as e:
         logger.error(f"Error getting group gateway endpoint permission: {str(e)}")
@@ -1789,7 +1789,7 @@ async def get_group_gateway_model_definition_permissions(
     """List gateway model definition permissions for a group."""
     try:
         perms = store.list_group_gateway_model_definition_permissions(group_name=group_name)
-        return [GatewayPermissionRecord(gateway_name=p.gateway_name, user_id=None, permission=p.permission, group_id=p.group_id) for p in perms]
+        return [GatewayPermissionRecord(gateway_name=p.model_definition_id, user_id=None, permission=p.permission, group_id=p.group_id) for p in perms]
     except Exception as e:
         logger.error(f"Error listing group gateway model definition permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve group gateway model definition permissions")
@@ -1813,7 +1813,7 @@ async def create_group_gateway_model_definition_permission(
     try:
         perm = store.create_group_gateway_model_definition_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=None, permission=perm.permission, group_id=perm.group_id)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.model_definition_id, user_id=None, permission=perm.permission, group_id=perm.group_id)
         )
     except Exception as e:
         logger.error(f"Error creating group gateway model definition permission: {str(e)}")
@@ -1836,7 +1836,7 @@ async def get_group_gateway_model_definition_permission(
     try:
         perm = store.get_user_groups_gateway_model_definition_permission(gateway_name=name, group_name=group_name)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=None, permission=perm.permission, group_id=perm.group_id)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.model_definition_id, user_id=None, permission=perm.permission, group_id=perm.group_id)
         )
     except Exception as e:
         logger.error(f"Error getting group gateway model definition permission: {str(e)}")
@@ -2032,7 +2032,7 @@ async def get_group_gateway_secret_permissions(
     """List gateway secret permissions for a group."""
     try:
         perms = store.list_group_gateway_secret_permissions(group_name=group_name)
-        return [GatewayPermissionRecord(gateway_name=p.gateway_name, user_id=None, permission=p.permission, group_id=p.group_id) for p in perms]
+        return [GatewayPermissionRecord(gateway_name=p.secret_id, user_id=None, permission=p.permission, group_id=p.group_id) for p in perms]
     except Exception as e:
         logger.error(f"Error listing group gateway secret permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve group gateway secret permissions")
@@ -2056,7 +2056,7 @@ async def create_group_gateway_secret_permission(
     try:
         perm = store.create_group_gateway_secret_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=None, permission=perm.permission, group_id=perm.group_id)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.secret_id, user_id=None, permission=perm.permission, group_id=perm.group_id)
         )
     except Exception as e:
         logger.error(f"Error creating group gateway secret permission: {str(e)}")
@@ -2079,7 +2079,7 @@ async def get_group_gateway_secret_permission(
     try:
         perm = store.get_user_groups_gateway_secret_permission(gateway_name=name, group_name=group_name)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=None, permission=perm.permission, group_id=perm.group_id)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.secret_id, user_id=None, permission=perm.permission, group_id=perm.group_id)
         )
     except Exception as e:
         logger.error(f"Error getting group gateway secret permission: {str(e)}")

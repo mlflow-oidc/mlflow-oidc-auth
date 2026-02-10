@@ -1651,7 +1651,7 @@ async def get_user_gateway_endpoint_permissions(
     """List gateway endpoint permissions for a user."""
     try:
         perms = store.list_gateway_endpoint_permissions(username=username)
-        return [GatewayPermissionRecord(gateway_name=p.gateway_name, user_id=p.user_id, permission=p.permission, group_id=None) for p in perms]
+        return [GatewayPermissionRecord(gateway_name=p.endpoint_id, user_id=p.user_id, permission=p.permission, group_id=None) for p in perms]
     except Exception as e:
         logger.error(f"Error listing gateway endpoint permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway endpoint permissions")
@@ -1675,7 +1675,7 @@ async def create_user_gateway_endpoint_permission(
     try:
         perm = store.create_gateway_endpoint_permission(gateway_name=name, username=username, permission=permission_data.permission)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=perm.user_id, permission=perm.permission, group_id=None)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.endpoint_id, user_id=perm.user_id, permission=perm.permission, group_id=None)
         )
     except Exception as e:
         logger.error(f"Error creating gateway endpoint permission: {str(e)}")
@@ -1698,7 +1698,7 @@ async def get_user_gateway_endpoint_permission(
     try:
         perm = store.get_gateway_endpoint_permission(gateway_name=name, username=username)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=perm.user_id, permission=perm.permission, group_id=None)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.endpoint_id, user_id=perm.user_id, permission=perm.permission, group_id=None)
         )
     except Exception as e:
         logger.error(f"Error getting gateway endpoint permission: {str(e)}")
@@ -1894,7 +1894,7 @@ async def get_user_gateway_model_definition_permissions(
     """List gateway model definition permissions for a user."""
     try:
         perms = store.list_gateway_model_definition_permissions(username=username)
-        return [GatewayPermissionRecord(gateway_name=p.gateway_name, user_id=p.user_id, permission=p.permission, group_id=None) for p in perms]
+        return [GatewayPermissionRecord(gateway_name=p.model_definition_id, user_id=p.user_id, permission=p.permission, group_id=None) for p in perms]
     except Exception as e:
         logger.error(f"Error listing gateway model definition permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway model definition permissions")
@@ -1918,7 +1918,7 @@ async def create_user_gateway_model_definition_permission(
     try:
         perm = store.create_gateway_model_definition_permission(gateway_name=name, username=username, permission=permission_data.permission)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=perm.user_id, permission=perm.permission, group_id=None)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.model_definition_id, user_id=perm.user_id, permission=perm.permission, group_id=None)
         )
     except Exception as e:
         logger.error(f"Error creating gateway model definition permission: {str(e)}")
@@ -1941,7 +1941,7 @@ async def get_user_gateway_model_definition_permission(
     try:
         perm = store.get_gateway_model_definition_permission(gateway_name=name, username=username)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=perm.user_id, permission=perm.permission, group_id=None)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.model_definition_id, user_id=perm.user_id, permission=perm.permission, group_id=None)
         )
     except Exception as e:
         logger.error(f"Error getting gateway model definition permission: {str(e)}")
@@ -2137,7 +2137,7 @@ async def get_user_gateway_secret_permissions(
     """List gateway secret permissions for a user."""
     try:
         perms = store.list_gateway_secret_permissions(username=username)
-        return [GatewayPermissionRecord(gateway_name=p.gateway_name, user_id=p.user_id, permission=p.permission, group_id=None) for p in perms]
+        return [GatewayPermissionRecord(gateway_name=p.secret_id, user_id=p.user_id, permission=p.permission, group_id=None) for p in perms]
     except Exception as e:
         logger.error(f"Error listing gateway secret permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway secret permissions")
@@ -2161,7 +2161,7 @@ async def create_user_gateway_secret_permission(
     try:
         perm = store.create_gateway_secret_permission(gateway_name=name, username=username, permission=permission_data.permission)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=perm.user_id, permission=perm.permission, group_id=None)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.secret_id, user_id=perm.user_id, permission=perm.permission, group_id=None)
         )
     except Exception as e:
         logger.error(f"Error creating gateway secret permission: {str(e)}")
@@ -2184,7 +2184,7 @@ async def get_user_gateway_secret_permission(
     try:
         perm = store.get_gateway_secret_permission(gateway_name=name, username=username)
         return GatewayPermissionResponse(
-            gateway_permission=GatewayPermissionRecord(gateway_name=perm.gateway_name, user_id=perm.user_id, permission=perm.permission, group_id=None)
+            gateway_permission=GatewayPermissionRecord(gateway_name=perm.secret_id, user_id=perm.user_id, permission=perm.permission, group_id=None)
         )
     except Exception as e:
         logger.error(f"Error getting gateway secret permission: {str(e)}")
