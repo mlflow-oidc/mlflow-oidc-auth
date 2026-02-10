@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from "react";
 import { useUser } from "../hooks/use-user";
-import { http } from "../services/http";
+import { request } from "../services/api-utils";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import { faCopy } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "../../shared/components/button";
@@ -17,7 +17,7 @@ const requestAccessTokenApi = async (
   username: string,
   expiration: Date,
 ): Promise<string> => {
-  const tokenModel = await http<TokenModel>(
+  const tokenModel = await request<TokenModel>(
     STATIC_API_ENDPOINTS.CREATE_ACCESS_TOKEN,
     {
       method: "PATCH",

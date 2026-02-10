@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { http } from "../../../core/services/http";
+import { request } from "../../../core/services/api-utils";
 import { getPermissionUrl } from "../utils/permission-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { EditPermissionModal } from "../../users/components/edit-permission-modal";
@@ -115,7 +115,7 @@ export const RegexPermissionsView = ({
         identifier: String(identifier),
       });
 
-      await http(url, {
+      await request(url, {
         method: "PATCH",
         body: JSON.stringify({
           regex: regex ?? editingItem.regex,
@@ -153,7 +153,7 @@ export const RegexPermissionsView = ({
         isPattern: true,
       });
 
-      await http(url, {
+      await request(url, {
         method: "POST",
         body: JSON.stringify({ regex, permission, priority }),
       });
@@ -181,7 +181,7 @@ export const RegexPermissionsView = ({
         identifier: String(identifier),
       });
 
-      await http(url, {
+      await request(url, {
         method: "DELETE",
       });
 

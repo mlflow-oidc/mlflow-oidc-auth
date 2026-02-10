@@ -3,18 +3,13 @@ import {
   createStaticApiFetcher,
   createDynamicApiFetcher,
 } from "./create-api-fetcher";
-import { http } from "./http";
 import * as apiUtils from "./api-utils";
 
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 
 // Mock dependencies
-vi.mock("./http", () => ({
-  http: vi.fn(),
-}));
-
 vi.mock("./api-utils", () => ({
-  resolveUrl: vi.fn(),
+  request: vi.fn(),
 }));
 
 describe("create-api-fetcher", () => {
@@ -36,22 +31,19 @@ describe("create-api-fetcher", () => {
         headers: { "X-Custom": "value" },
       });
 
-      const mockUrl = "resolved-url";
-      (apiUtils.resolveUrl as Mock).mockResolvedValue(mockUrl);
-      (http as Mock).mockResolvedValue({ data: "success" });
+      (apiUtils.request as Mock).mockResolvedValue({ data: "success" });
 
       const result = await fetcher();
 
-      expect(apiUtils.resolveUrl).toHaveBeenCalledWith(
+      expect(apiUtils.request).toHaveBeenCalledWith(
         STATIC_API_ENDPOINTS.ALL_GROUPS,
-        {},
-        undefined,
+        {
+          method: "GET",
+          signal: undefined,
+          headers: { "X-Custom": "value" },
+          queryParams: {}, // createStaticApiFetcher calls with default empty queryParams if not provided
+        },
       );
-      expect(http).toHaveBeenCalledWith(mockUrl, {
-        method: "GET",
-        signal: undefined,
-        headers: { "X-Custom": "value" },
-      });
       expect(result).toEqual({ data: "success" });
     });
   });
@@ -69,24 +61,18 @@ describe("create-api-fetcher", () => {
         endpointKey: "USER_EXPERIMENT_PERMISSION",
       });
 
-      const mockUrl = "resolved-dynamic-url";
-      (apiUtils.resolveUrl as Mock).mockResolvedValue(mockUrl);
-      (http as Mock).mockResolvedValue({ data: "dynamic-success" });
+      (apiUtils.request as Mock).mockResolvedValue({ data: "dynamic-success" });
 
       const result = await fetcher("user123", "exp456");
 
       const expectedPath =
         "/api/2.0/mlflow/permissions/users/user123/experiments/exp456";
 
-      expect(apiUtils.resolveUrl).toHaveBeenCalledWith(
-        expectedPath,
-        {},
-        undefined,
-      );
-      expect(http).toHaveBeenCalledWith(mockUrl, {
+      expect(apiUtils.request).toHaveBeenCalledWith(expectedPath, {
         method: "GET",
         signal: undefined,
         headers: {},
+        queryParams: {}, // createDynamicApiFetcher calls with default empty queryParams if not provided
       });
       expect(result).toEqual({ data: "dynamic-success" });
     });
@@ -96,20 +82,17 @@ describe("create-api-fetcher", () => {
         endpointKey: "USER_EXPERIMENT_PERMISSION",
       });
       const signal = new AbortController().signal;
-      const mockUrl = "url-with-signal";
-      (apiUtils.resolveUrl as Mock).mockResolvedValue(mockUrl);
+      (apiUtils.request as Mock).mockResolvedValue({ data: "success" });
 
       await fetcher("user1", "exp1", signal);
 
-      expect(apiUtils.resolveUrl).toHaveBeenCalledWith(
+      expect(apiUtils.request).toHaveBeenCalledWith(
         expect.any(String),
-        {},
-        signal,
-      );
-      expect(http).toHaveBeenCalledWith(
-        mockUrl,
         expect.objectContaining({
+          method: "GET",
           signal,
+          headers: {},
+          queryParams: {}, // createDynamicApiFetcher calls with default empty queryParams if not provided
         }),
       );
     });

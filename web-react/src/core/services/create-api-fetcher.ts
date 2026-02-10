@@ -5,8 +5,7 @@ import {
   type DynamicEndpointKey,
 } from "../configs/api-endpoints";
 import type { StaticFetcherConfig, DynamicFetcherConfig } from "../types/api";
-import { resolveUrl } from "./api-utils";
-import { http } from "./http";
+import { request } from "./api-utils";
 
 export function createStaticApiFetcher<T>({
   endpointKey,
@@ -16,8 +15,8 @@ export function createStaticApiFetcher<T>({
   const endpointPath = STATIC_API_ENDPOINTS[endpointKey];
 
   return async function fetcher(signal?: AbortSignal): Promise<T> {
-    const url = await resolveUrl(endpointPath, queryParams, signal);
-    return http<T>(url, {
+    return request<T>(endpointPath, {
+      queryParams,
       method: "GET",
       signal,
       headers: {
@@ -47,9 +46,8 @@ export function createDynamicApiFetcher<T, K extends DynamicEndpointKey>({
       endpointFunction as (...args: PathParams<K>) => string
     )(...pathParamsTuple);
 
-    const url = await resolveUrl(endpointPath, queryParams, signal);
-
-    return http<T>(url, {
+    return request<T>(endpointPath, {
+      queryParams,
       method: "GET",
       signal,
       headers: {

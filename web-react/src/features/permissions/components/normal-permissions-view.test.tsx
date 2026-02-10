@@ -20,8 +20,19 @@ import type {
   ExperimentListItem,
 } from "../../../shared/types/entity";
 import type { ToastContextType } from "../../../shared/components/toast/toast-context-val";
+import { getRuntimeConfig } from "../../../shared/services/runtime-config";
 
 vi.mock("../../../core/services/http");
+vi.mock("../../../shared/services/runtime-config", () => ({
+  getRuntimeConfig: vi.fn(() =>
+    Promise.resolve({
+      basePath: "",
+      uiPath: "",
+      provider: "",
+      authenticated: true,
+    }),
+  ),
+}));
 vi.mock("../../../shared/components/toast/use-toast");
 vi.mock("../../../core/hooks/use-search");
 vi.mock("../../../core/hooks/use-user-experiment-permissions");
@@ -258,6 +269,33 @@ describe("NormalPermissionsView", () => {
       expect(mockShowToast).toHaveBeenCalledWith(
         expect.stringContaining("Failed"),
         "error",
+      );
+    });
+  });
+
+  it("prefixes URL with basePath from runtime config", async () => {
+    vi.mocked(getRuntimeConfig).mockResolvedValue({
+      basePath: "/mlflow",
+      uiPath: "",
+      provider: "",
+      authenticated: true,
+    });
+    vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
+    render(
+      <NormalPermissionsView
+        type="experiments"
+        entityKind="user"
+        entityName="user1"
+      />,
+    );
+
+    const removeButtons = screen.getAllByTitle(/Remove permission/i);
+    fireEvent.click(removeButtons[0]);
+
+    await waitFor(() => {
+      expect(httpModule.http).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/mlflow\//),
+        expect.objectContaining({ method: "DELETE" }),
       );
     });
   });

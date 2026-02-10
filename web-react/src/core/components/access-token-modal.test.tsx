@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AccessTokenModal } from "./access-token-modal";
 import { http } from "../services/http";
+import { getRuntimeConfig } from "../../shared/services/runtime-config";
 
 const mockRefresh = vi.fn();
 const mockShowToast = vi.fn();
@@ -17,6 +18,17 @@ vi.mock("../../shared/components/toast/use-toast", () => ({
 
 vi.mock("../services/http", () => ({
   http: (...args: Parameters<typeof http>) => mockHttp(...args),
+}));
+
+vi.mock("../../shared/services/runtime-config", () => ({
+  getRuntimeConfig: vi.fn(() =>
+    Promise.resolve({
+      basePath: "",
+      uiPath: "",
+      provider: "",
+      authenticated: true,
+    }),
+  ),
 }));
 
 // Mock clipboard
@@ -82,6 +94,26 @@ describe("AccessTokenModal", () => {
       expect(mockShowToast).toHaveBeenCalledWith(
         "Failed to generate access token",
         "error",
+      );
+    });
+  });
+
+  it("prefixes URL with basePath from runtime config", async () => {
+    vi.mocked(getRuntimeConfig).mockResolvedValue({
+      basePath: "/mlflow",
+      uiPath: "",
+      provider: "",
+      authenticated: true,
+    });
+    mockHttp.mockResolvedValue({ token: "tok" });
+
+    render(<AccessTokenModal onClose={() => {}} username="testuser" />);
+    fireEvent.click(screen.getByText("Request Token"));
+
+    await waitFor(() => {
+      expect(mockHttp).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/mlflow\//),
+        expect.anything(),
       );
     });
   });

@@ -5,8 +5,19 @@ import * as httpModule from "../../../core/services/http";
 import * as useToastModule from "../../../shared/components/toast/use-toast";
 import type { PermissionType } from "../../../shared/types/entity";
 import type { ToastContextType } from "../../../shared/components/toast/toast-context-val";
+import { getRuntimeConfig } from "../../../shared/services/runtime-config";
 
 vi.mock("../../../core/services/http");
+vi.mock("../../../shared/services/runtime-config", () => ({
+  getRuntimeConfig: vi.fn(() =>
+    Promise.resolve({
+      basePath: "",
+      uiPath: "",
+      provider: "",
+      authenticated: true,
+    }),
+  ),
+}));
 vi.mock("../../../shared/components/toast/use-toast");
 
 describe("usePermissionsManagement", () => {
@@ -226,6 +237,32 @@ describe("usePermissionsManagement", () => {
     expect(mockShowToast).toHaveBeenCalledWith(
       expect.stringContaining("Failed"),
       "error",
+    );
+  });
+
+  it("prefixes URL with basePath from runtime config", async () => {
+    vi.mocked(getRuntimeConfig).mockResolvedValue({
+      basePath: "/mlflow",
+      uiPath: "",
+      provider: "",
+      authenticated: true,
+    });
+    vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
+    const { result } = renderHook(() =>
+      usePermissionsManagement({
+        resourceId: "id1",
+        resourceType: "experiments",
+        refresh: mockRefresh,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleGrantPermission("user1", "READ", "user");
+    });
+
+    expect(httpModule.http).toHaveBeenCalledWith(
+      "/mlflow/api/2.0/mlflow/permissions/users/user1/experiments/id1",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 
