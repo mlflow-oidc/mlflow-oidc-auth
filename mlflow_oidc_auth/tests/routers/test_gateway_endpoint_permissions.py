@@ -1,6 +1,6 @@
 """Tests for gateway endpoint permissions router."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

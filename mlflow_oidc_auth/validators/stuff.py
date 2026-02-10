@@ -123,7 +123,7 @@ def validate_gateway_proxy(username: str) -> bool:
 
     from mlflow_oidc_auth.store import store
     from mlflow_oidc_auth.permissions import get_permission
-    from mlflow_oidc_auth.utils.permissions import can_use_gateway, can_update_gateway
+    from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint, can_update_gateway_endpoint
 
     def _extract_gateway_name():
         # Try query params first
@@ -145,13 +145,13 @@ def validate_gateway_proxy(username: str) -> bool:
     if request.method == "GET":
         # USE
         if gateway_name:
-            return can_use_gateway(str(gateway_name), username)
+            return can_use_gateway_endpoint(str(gateway_name), username)
         # Fallback: check if user has any gateway with use
         perms = store.list_gateway_permissions(username)
         return any(get_permission(p.permission).can_use for p in perms)
     else:
         # POST/PUT/DELETE -> UPDATE required
         if gateway_name:
-            return can_update_gateway(str(gateway_name), username)
+            return can_update_gateway_endpoint(str(gateway_name), username)
         perms = store.list_gateway_permissions(username)
         return any(get_permission(p.permission).can_update for p in perms)

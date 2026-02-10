@@ -2,7 +2,8 @@ from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mlflow_oidc_auth.db.models._base import Base
-from mlflow_oidc_auth.entities import GatewayEndpointGroupRegexPermission, GatewayEndpointPermission, GatewayEndpointRegexPermission
+from mlflow_oidc_auth.entities import GatewayEndpointPermission, GatewayEndpointRegexPermission
+from mlflow_oidc_auth.entities.gateway_endpoint import GatewayEndpointGroupRegexPermission
 
 
 class SqlGatewayEndpointPermission(Base):
@@ -30,7 +31,7 @@ class SqlGatewayEndpointGroupPermission(Base):
     __table_args__ = (UniqueConstraint("endpoint_id", "group_id", name="unique_endpoint_group"),)
 
     def to_mlflow_entity(self):
-        return GatewayEndpointGroupRegexPermission(
+        return GatewayEndpointPermission(
             endpoint_id=self.endpoint_id,
             group_id=self.group_id,
             permission=self.permission,

@@ -81,11 +81,6 @@ __all__ = [
     "can_manage_experiment",
     "can_manage_registered_model",
     "can_manage_scorer",
-    "can_read_gateway",
-    "can_use_gateway",
-    "can_update_gateway",
-    "can_manage_gateway",
-    "effective_gateway_permission",
     "get_permission_from_store_or_default",
     # Request helpers
     "get_url_param",

@@ -423,8 +423,8 @@ def filter_manageable_gateway_secrets(username: str, secrets: List) -> List:
         try:
             if can_manage_gateway_secret(secret_name, username):
                 manageable.append(secret)
-        except Exception as e:
-            logger.debug(f"Error checking gateway secret permission for {secret_name}: {e}")
+        except Exception:
+            logger.debug("Error checking gateway secret permission")
             continue
 
     return manageable

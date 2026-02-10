@@ -5,7 +5,7 @@ from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS,
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
-from mlflow_oidc_auth.db.models import SqlGatewayModelDefinitionGroupRegexPermission, SqlGroup
+from mlflow_oidc_auth.db.models import SqlGatewayModelDefinitionGroupRegexPermission
 from mlflow_oidc_auth.entities import GatewayModelDefinitionGroupRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository.utils import get_group

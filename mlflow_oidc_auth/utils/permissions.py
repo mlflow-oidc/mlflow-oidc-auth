@@ -289,7 +289,7 @@ def can_manage_gateway_endpoint(gateway_name: str, user: str) -> bool:
 def _get_gateway_secret_permission_from_regex(regexes: List[GatewaySecretRegexPermission], gateway_name: str) -> str:
     for regex in regexes:
         if re.match(regex.regex, gateway_name):
-            logger.debug(f"Regex permission found for gateway secret {gateway_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
+            logger.debug(f"Regex permission found for gateway secret: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
             return regex.permission
     raise MlflowException(
         f"gateway name {gateway_name}",
@@ -300,9 +300,7 @@ def _get_gateway_secret_permission_from_regex(regexes: List[GatewaySecretRegexPe
 def _get_gateway_secret_group_permission_from_regex(regexes: List[GatewaySecretGroupRegexPermission], gateway_name: str) -> str:
     for regex in regexes:
         if re.match(regex.regex, gateway_name):
-            logger.debug(
-                f"Regex group permission found for gateway secret {gateway_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
-            )
+            logger.debug(f"Regex group permission found for gateway secret: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
             return regex.permission
     raise MlflowException(
         f"gateway name {gateway_name}",

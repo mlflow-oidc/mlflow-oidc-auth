@@ -30,7 +30,7 @@ class SqlGatewayModelDefinitionGroupPermission(Base):
     __table_args__ = (UniqueConstraint("model_definition_id", "group_id", name="unique_model_def_group"),)
 
     def to_mlflow_entity(self):
-        return GatewayModelDefinitionGroupRegexPermission(
+        return GatewayModelDefinitionPermission(
             model_definition_id=self.model_definition_id,
             group_id=self.group_id,
             permission=self.permission,
