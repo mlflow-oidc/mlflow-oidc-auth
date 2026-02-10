@@ -153,14 +153,11 @@ class UserTokenRepository:
 
             for token in tokens:
                 # Skip expired tokens
-                # NOTE: We check for None to support legacy tokens migrated from password_hash
-                # that may not have had an expiration set. New tokens always require expiration.
-                if token.expires_at is not None:
-                    expires_at = token.expires_at
-                    if expires_at.tzinfo is None:
-                        expires_at = expires_at.replace(tzinfo=timezone.utc)
-                    if expires_at < now:
-                        continue
+                expires_at = token.expires_at
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if expires_at < now:
+                    continue
 
                 # Check password hash
                 if check_password_hash(token.token_hash, password):
@@ -205,14 +202,11 @@ class UserTokenRepository:
 
             for token in tokens:
                 # Skip expired tokens
-                # NOTE: We check for None to support legacy tokens migrated from password_hash
-                # that may not have had an expiration set. New tokens always require expiration.
-                if token.expires_at is not None:
-                    expires_at = token.expires_at
-                    if expires_at.tzinfo is None:
-                        expires_at = expires_at.replace(tzinfo=timezone.utc)
-                    if expires_at < now:
-                        continue
+                expires_at = token.expires_at
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if expires_at < now:
+                    continue
 
                 # Check password hash
                 if check_password_hash(token.token_hash, password):
