@@ -32,7 +32,7 @@ class UserTokenResponse(BaseModel):
     id: int
     name: str
     created_at: str  # ISO 8601
-    expires_at: Optional[str] = None  # ISO 8601
+    expires_at: str  # ISO 8601
     last_used_at: Optional[str] = None  # ISO 8601
 
 
@@ -43,7 +43,7 @@ class UserTokenCreatedResponse(BaseModel):
     name: str
     token: str  # The actual token value - only shown once at creation time
     created_at: str  # ISO 8601
-    expires_at: Optional[str] = None  # ISO 8601
+    expires_at: str  # ISO 8601
     message: str
 
 

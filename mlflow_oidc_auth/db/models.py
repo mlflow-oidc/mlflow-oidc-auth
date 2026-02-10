@@ -320,7 +320,7 @@ class SqlUserToken(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
     last_used_at: Mapped[datetime] = mapped_column(nullable=True)
     user: Mapped["SqlUser"] = relationship("SqlUser", back_populates="tokens")
     __table_args__ = (UniqueConstraint("user_id", "name", name="unique_user_token_name"),)
