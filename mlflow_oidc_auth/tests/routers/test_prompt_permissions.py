@@ -265,8 +265,9 @@ class TestListPromptsEndpoint:
         mock_prompt2.aliases = []
 
         # Mock filter_manageable_prompts to return only prompt-1
-        with patch("mlflow_oidc_auth.routers.prompt_permissions.fetch_all_prompts") as mock_fetch, patch(
-            "mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts", return_value=[mock_prompt1]
+        with (
+            patch("mlflow_oidc_auth.routers.prompt_permissions.fetch_all_prompts") as mock_fetch,
+            patch("mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts", return_value=[mock_prompt1]),
         ):
             mock_fetch.return_value = [mock_prompt1, mock_prompt2]
 
@@ -290,8 +291,9 @@ class TestListPromptsEndpoint:
         mock_prompt1.description = "Test Prompt 1"
         mock_prompt1.aliases = []
 
-        with patch("mlflow_oidc_auth.routers.prompt_permissions.fetch_all_prompts") as mock_fetch, patch(
-            "mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts", return_value=[]
+        with (
+            patch("mlflow_oidc_auth.routers.prompt_permissions.fetch_all_prompts") as mock_fetch,
+            patch("mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts", return_value=[]),
         ):
             mock_fetch.return_value = [mock_prompt1]
 

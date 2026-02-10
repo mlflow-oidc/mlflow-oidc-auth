@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { DYNAMIC_API_ENDPOINTS } from "../../../core/configs/api-endpoints";
-import { http } from "../../../core/services/http";
+import { request } from "../../../core/services/api-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
+import { getPermissionUrl } from "../utils/permission-utils";
 import { EditPermissionModal } from "../../users/components/edit-permission-modal";
 import { useUserExperimentPermissions } from "../../../core/hooks/use-user-experiment-permissions";
 import { useUserRegisteredModelPermissions } from "../../../core/hooks/use-user-model-permissions";
@@ -95,7 +95,7 @@ export const NormalPermissionsView = ({
   const getAvailableEntities = () => {
     if (type === "experiments") {
       const existingIds = new Set(
-        permissions.map((p) => (p as ExperimentPermission).id)
+        permissions.map((p) => (p as ExperimentPermission).id),
       );
       return (allExperiments || [])
         .filter((e) => !existingIds.has(e.id))
@@ -133,76 +133,75 @@ export const NormalPermissionsView = ({
 
     setIsSaving(true);
     try {
-      let url = "";
-      const identifier = "id" in editingItem ? String(editingItem.id) : editingItem.name;
+      const identifier =
+        "id" in editingItem ? String(editingItem.id) : editingItem.name;
 
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(entityName, identifier);
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(entityName, identifier);
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(entityName, identifier);
-      }
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        identifier,
+      });
 
       const isTargetType =
         entityKind === "user"
-          ? editingItem.kind === "user" || editingItem.kind === "service-account"
+          ? editingItem.kind === "user" ||
+            editingItem.kind === "service-account"
           : editingItem.kind === "group";
       const isCreate = !isTargetType;
       const method = isCreate ? "POST" : "PATCH";
 
-      await http(url, {
+      await request(url, {
         method,
         body: JSON.stringify({ permission: newPermission }),
       });
 
-      showToast(`Permission for ${editingItem.name} has been updated.`, "success");
+      showToast(
+        `Permission for ${editingItem.name} has been updated`,
+        "success",
+      );
       refresh();
       handleModalClose();
     } catch {
-      showToast("Failed to update permission. Please try again.", "error");
+      showToast("Failed to update permission", "error");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleGrantPermission = async (identifier: string, permission: PermissionLevel) => {
+  const handleGrantPermission = async (
+    identifier: string,
+    permission: PermissionLevel,
+  ) => {
     if (!entityName) return;
 
     setIsSaving(true);
     try {
-      let url = "";
-      if (type === "experiments") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(entityName, identifier);
-      } else if (type === "models") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(entityName, identifier);
-      } else if (type === "prompts") {
-        url = DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(entityName, identifier);
-      }
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type,
+        identifier,
+      });
 
-      await http(url, {
+      await request(url, {
         method: "POST",
         body: JSON.stringify({ permission }),
       });
 
-      const entityDisplayName = type === "experiments"
-        ? allExperiments?.find(e => e.id === identifier)?.name || identifier
-        : identifier;
+      const entityDisplayName =
+        type === "experiments"
+          ? allExperiments?.find((e) => e.id === identifier)?.name || identifier
+          : identifier;
 
-      showToast(`Permission for ${entityDisplayName} has been granted.`, "success");
+      showToast(
+        `Permission for ${entityDisplayName} has been granted`,
+        "success",
+      );
       refresh();
       setIsGrantModalOpen(false);
     } catch {
-      showToast("Failed to grant permission. Please try again.", "error");
+      showToast("Failed to grant permission", "error");
     } finally {
       setIsSaving(false);
     }
@@ -212,39 +211,34 @@ export const NormalPermissionsView = ({
     if (!entityName) return;
 
     try {
-      let url = "";
       const identifier = "id" in item ? item.id : item.name;
+      const url = getPermissionUrl({
+        entityKind,
+        entityName,
+        type,
+        identifier: String(identifier),
+      });
 
-      if (type === "experiments") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_EXPERIMENT_PERMISSION(entityName, identifier);
-      } else if (type === "models") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_MODEL_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_MODEL_PERMISSION(entityName, identifier);
-      } else if (type === "prompts") {
-        url =
-          entityKind === "user"
-            ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(entityName, identifier)
-            : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(entityName, identifier);
-      }
-
-      await http(url, {
+      await request(url, {
         method: "DELETE",
       });
 
-      showToast(`Permission for ${item.name} has been removed.`, "success");
+      showToast(`Permission for ${item.name} has been removed`, "success");
       refresh();
     } catch {
-      showToast("Failed to remove permission. Please try again.", "error");
+      showToast("Failed to remove permission", "error");
     }
   };
 
   const permissionColumns: ColumnConfig<PermissionItem>[] = [
-    { header: "Name", render: (item) => item.name },
+    {
+      header: "Name",
+      render: (item) => (
+        <span className="truncate block" title={item.name}>
+          {item.name}
+        </span>
+      ),
+    },
     { header: "Permission", render: (item) => item.permission },
     { header: "Kind", render: (item) => item.kind },
     {
@@ -282,7 +276,7 @@ export const NormalPermissionsView = ({
   ];
 
   const filteredData = permissions.filter((p) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase())
+    p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   return (
@@ -312,12 +306,16 @@ export const NormalPermissionsView = ({
                 icon={faPlus}
                 className="whitespace-nowrap h-8 mb-1 mt-2"
               >
-                Add {type === "experiments" ? "experiment" : type === "models" ? "model" : "prompt"}
+                Add{" "}
+                {type === "experiments"
+                  ? "experiment"
+                  : type === "models"
+                    ? "model"
+                    : "prompt"}
               </Button>
             )}
           </div>
           <EntityListTable
-            mode="object"
             data={filteredData}
             columns={permissionColumns}
             searchTerm={submittedTerm}
@@ -325,24 +323,36 @@ export const NormalPermissionsView = ({
         </>
       )}
 
-      <EditPermissionModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        onSave={handleSavePermission}
-        item={editingItem}
-        username={entityName}
-        type={type}
-        isLoading={isSaving}
-      />
+      {isModalOpen && editingItem && (
+        <EditPermissionModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSave={handleSavePermission}
+          item={editingItem}
+          username={entityName}
+          type={type}
+          isLoading={isSaving}
+          key={"id" in editingItem ? String(editingItem.id) : editingItem.name}
+        />
+      )}
 
       <GrantPermissionModal
         isOpen={isGrantModalOpen}
         onClose={() => setIsGrantModalOpen(false)}
-        onSave={(identifier, permission) => handleGrantPermission(identifier, permission)}
+        onSave={(identifier, permission) =>
+          handleGrantPermission(identifier, permission)
+        }
         title={`Grant ${type === "experiments" ? "experiment" : type === "models" ? "model" : "prompt"} permissions for ${entityName}`}
-        label={type === "experiments" ? "Experiment" : type === "models" ? "Model" : "Prompt"}
+        label={
+          type === "experiments"
+            ? "Experiment"
+            : type === "models"
+              ? "Model"
+              : "Prompt"
+        }
         options={availableEntities}
         isLoading={isSaving}
+        key={isGrantModalOpen ? "open" : "closed"}
       />
     </>
   );

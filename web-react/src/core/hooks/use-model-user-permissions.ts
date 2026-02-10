@@ -17,7 +17,7 @@ export function useModelUserPermissions({
       }
       return fetchModelUserPermissions(modelName, signal);
     },
-    [modelName]
+    [modelName],
   );
 
   const {

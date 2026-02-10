@@ -1,18 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
-import { Select } from "../../../shared/components/select";
+import { PermissionLevelSelect } from "../../../shared/components/permission-level-select";
 import type { PermissionLevel } from "../../../shared/types/entity";
 
 interface AddRegexRuleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (regex: string, permission: PermissionLevel, priority: number) => Promise<void>;
+  onSave: (
+    regex: string,
+    permission: PermissionLevel,
+    priority: number,
+  ) => Promise<void>;
   isLoading?: boolean;
 }
-
-const PERMISSION_LEVELS: PermissionLevel[] = ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"];
 
 export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   isOpen,
@@ -23,16 +25,9 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   const [regex, setRegex] = useState("");
   const [priority, setPriority] = useState<number>(100);
   const [permission, setPermission] = useState<PermissionLevel>("READ");
-  const [errors, setErrors] = useState<{ regex?: string; priority?: string }>({});
-
-  useEffect(() => {
-    if (isOpen) {
-      setRegex("");
-      setPriority(100);
-      setPermission("READ");
-      setErrors({});
-    }
-  }, [isOpen]);
+  const [errors, setErrors] = useState<{ regex?: string; priority?: string }>(
+    {},
+  );
 
   if (!isOpen) return null;
 
@@ -40,11 +35,17 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
     const newErrors: { regex?: string; priority?: string } = {};
     let hasError = false;
 
-    try {
-      new RegExp(regex);
-    } catch {
-      newErrors.regex = "Invalid regular expression. Please enter a valid Python regex.";
+    if (!regex.trim()) {
+      newErrors.regex = "Regex is required.";
       hasError = true;
+    } else {
+      try {
+        new RegExp(regex);
+      } catch {
+        newErrors.regex =
+          "Invalid regular expression. Please enter a valid Python regex.";
+        hasError = true;
+      }
     }
 
     if (priority === undefined || isNaN(priority)) {
@@ -87,8 +88,7 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
         value={isNaN(priority) ? "" : priority}
         onChange={(e) => {
           setPriority(parseInt(e.target.value, 10));
-          if (errors.priority)
-            setErrors({ ...errors, priority: undefined });
+          if (errors.priority) setErrors({ ...errors, priority: undefined });
         }}
         required
         step="1"
@@ -98,13 +98,12 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
         reserveErrorSpace
       />
 
-      <Select
+      <PermissionLevelSelect
         id="permission-level"
         label="Permissions*"
         value={permission}
-        onChange={(e) => setPermission(e.target.value as PermissionLevel)}
+        onChange={(val) => setPermission(val)}
         required
-        options={PERMISSION_LEVELS.map(level => ({ label: level, value: level }))}
         containerClassName="mb-4"
       />
 
@@ -113,9 +112,11 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
           Cancel
         </Button>
         <Button
-            onClick={() => { void handleSave(); }}
-            variant="primary"
-            disabled={isLoading}
+          onClick={() => {
+            void handleSave();
+          }}
+          variant="primary"
+          disabled={isLoading}
         >
           {isLoading ? "Saving..." : "Save"}
         </Button>

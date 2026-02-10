@@ -1,10 +1,15 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { vi } from "vitest";
+import { vi, describe, it, expect, beforeEach } from "vitest";
 import ProtectedRoute from "./protected-route";
 
-const mockUseAuth = vi.fn();
-const mockUseUser = vi.fn();
+import type { CurrentUser } from "../../../shared/types/user";
+import type { UseAuthResult } from "../../../core/hooks/use-auth";
+import type { UserContextValue } from "../../../core/hooks/use-user";
+import type { Mock } from "vitest";
+
+const mockUseAuth: Mock<() => UseAuthResult> = vi.fn();
+const mockUseUser: Mock<() => UserContextValue> = vi.fn();
 
 vi.mock("../../../core/hooks/use-auth", () => ({
   useAuth: () => mockUseAuth(),
@@ -25,7 +30,10 @@ vi.mock("../../../shared/components/loading-spinner", () => ({
 }));
 
 vi.mock("../../../shared/components/button", () => ({
-  Button: ({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+  Button: ({
+    children,
+    ...rest
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button type="button" {...rest}>
       {children}
     </button>
@@ -50,7 +58,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("navigate").dataset.to).toBe("/auth");
@@ -68,7 +76,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByText("Error Loading User")).toBeInTheDocument();
@@ -88,7 +96,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("spinner")).toBeInTheDocument();
@@ -106,7 +114,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("spinner")).toBeInTheDocument();
@@ -118,7 +126,7 @@ describe("ProtectedRoute", () => {
       currentUser: {
         username: "user",
         is_admin: false,
-      },
+      } as unknown as CurrentUser,
       isLoading: false,
       error: null,
       refresh: vi.fn(),
@@ -127,7 +135,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute isAdminRequired>
         <div>Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("navigate").dataset.to).toBe("/403");
@@ -139,7 +147,7 @@ describe("ProtectedRoute", () => {
       currentUser: {
         username: "admin",
         is_admin: true,
-      },
+      } as unknown as CurrentUser,
       isLoading: false,
       error: null,
       refresh: vi.fn(),
@@ -148,7 +156,7 @@ describe("ProtectedRoute", () => {
     render(
       <ProtectedRoute>
         <div data-testid="secret">Secret</div>
-      </ProtectedRoute>
+      </ProtectedRoute>,
     );
 
     expect(screen.getByTestId("secret")).toBeInTheDocument();

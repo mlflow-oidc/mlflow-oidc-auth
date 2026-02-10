@@ -17,7 +17,7 @@ export function useUserRegisteredModelPermissions({
       }
       return fetchUserRegisteredModelPermissions(username, signal);
     },
-    [username]
+    [username],
   );
 
   const {

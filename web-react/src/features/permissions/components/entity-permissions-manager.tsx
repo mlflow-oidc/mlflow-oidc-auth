@@ -63,13 +63,13 @@ export function EntityPermissionsManager({
   const existingNames = new Set(permissions.map((p) => p.name));
 
   const availableUsers = (allUsers || []).filter(
-    (username) => !existingNames.has(username)
+    (username) => !existingNames.has(username),
   );
   const availableAccounts = (allServiceAccounts || []).filter(
-    (username) => !existingNames.has(username)
+    (username) => !existingNames.has(username),
   );
   const availableGroups = (allGroups || []).filter(
-    (groupname) => !existingNames.has(groupname)
+    (groupname) => !existingNames.has(groupname),
   );
 
   const {
@@ -81,7 +81,7 @@ export function EntityPermissionsManager({
   } = useSearch();
 
   const filteredPermissions = permissions.filter((p) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase())
+    p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const columns: ColumnConfig<EntityPermission>[] = [
@@ -177,7 +177,6 @@ export function EntityPermissionsManager({
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredPermissions}
             columns={columns}
             searchTerm={submittedTerm}
@@ -185,55 +184,68 @@ export function EntityPermissionsManager({
         </>
       )}
 
-      <EditPermissionModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        onSave={handleSavePermission}
-        item={editingItem}
-        username={editingItem?.name || ""}
-        resourceId={resourceId}
-        type={resourceType}
-        isLoading={isSaving}
-      />
+      {isModalOpen && editingItem && (
+        <EditPermissionModal
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSave={handleSavePermission}
+          item={editingItem}
+          username={editingItem?.name || ""}
+          resourceId={resourceId}
+          type={resourceType}
+          isLoading={isSaving}
+          key={editingItem.name}
+        />
+      )}
 
-      <GrantPermissionModal
-        isOpen={isAddUserModalOpen}
-        onClose={() => setIsAddUserModalOpen(false)}
-        onSave={async (username, permission) => {
-          const success = await handleGrantPermission(username, permission);
-          if (success) setIsAddUserModalOpen(false);
-        }}
-        title={`Grant user permissions for ${resourceName}`}
-        label="User"
-        options={availableUsers}
-        isLoading={isSaving}
-      />
+      {isAddUserModalOpen && (
+        <GrantPermissionModal
+          isOpen={isAddUserModalOpen}
+          onClose={() => setIsAddUserModalOpen(false)}
+          onSave={async (username, permission) => {
+            const success = await handleGrantPermission(username, permission);
+            if (success) setIsAddUserModalOpen(false);
+          }}
+          title={`Grant user permissions for ${resourceName}`}
+          label="User"
+          options={availableUsers}
+          isLoading={isSaving}
+        />
+      )}
 
-      <GrantPermissionModal
-        isOpen={isAddAccountModalOpen}
-        onClose={() => setIsAddAccountModalOpen(false)}
-        onSave={async (username, permission) => {
-          const success = await handleGrantPermission(username, permission);
-          if (success) setIsAddAccountModalOpen(false);
-        }}
-        title={`Grant service account permissions for ${resourceName}`}
-        label="Service account"
-        options={availableAccounts}
-        isLoading={isSaving}
-      />
+      {isAddAccountModalOpen && (
+        <GrantPermissionModal
+          isOpen={isAddAccountModalOpen}
+          onClose={() => setIsAddAccountModalOpen(false)}
+          onSave={async (username, permission) => {
+            const success = await handleGrantPermission(username, permission);
+            if (success) setIsAddAccountModalOpen(false);
+          }}
+          title={`Grant service account permissions for ${resourceName}`}
+          label="Service account"
+          options={availableAccounts}
+          isLoading={isSaving}
+        />
+      )}
 
-      <GrantPermissionModal
-        isOpen={isAddGroupModalOpen}
-        onClose={() => setIsAddGroupModalOpen(false)}
-        onSave={async (name, permission) => {
-          const success = await handleGrantPermission(name, permission, "group");
-          if (success) setIsAddGroupModalOpen(false);
-        }}
-        title={`Grant group permissions for ${resourceName}`}
-        label="Group"
-        options={availableGroups}
-        isLoading={isSaving}
-      />
+      {isAddGroupModalOpen && (
+        <GrantPermissionModal
+          isOpen={isAddGroupModalOpen}
+          onClose={() => setIsAddGroupModalOpen(false)}
+          onSave={async (name, permission) => {
+            const success = await handleGrantPermission(
+              name,
+              permission,
+              "group",
+            );
+            if (success) setIsAddGroupModalOpen(false);
+          }}
+          title={`Grant group permissions for ${resourceName}`}
+          label="Group"
+          options={availableGroups}
+          isLoading={isSaving}
+        />
+      )}
     </>
   );
 }

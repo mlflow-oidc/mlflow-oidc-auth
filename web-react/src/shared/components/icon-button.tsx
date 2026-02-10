@@ -9,7 +9,12 @@ interface IconButtonProps {
   disabled?: boolean;
 }
 
-export function IconButton({ icon, onClick, title, disabled }: IconButtonProps) {
+export function IconButton({
+  icon,
+  onClick,
+  title,
+  disabled,
+}: IconButtonProps) {
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!disabled) {
@@ -22,7 +27,7 @@ export function IconButton({ icon, onClick, title, disabled }: IconButtonProps) 
       onClick={handleClick}
       title={title}
       icon={icon}
-      className="w-8 h-8"
+      className="w-7 h-7"
       disabled={disabled}
     />
   );

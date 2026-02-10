@@ -664,8 +664,10 @@ class TestHackModuleIntegration:
 
             with patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}):
                 # Mock the file paths to use our temp files
-                with patch("mlflow_oidc_auth.hack.os.path.join") as mock_join, patch("mlflow_oidc_auth.hack.os.path.dirname") as mock_dirname, patch(
-                    "mlflow_oidc_auth.hack.os.path.exists", return_value=True
+                with (
+                    patch("mlflow_oidc_auth.hack.os.path.join") as mock_join,
+                    patch("mlflow_oidc_auth.hack.os.path.dirname") as mock_dirname,
+                    patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True),
                 ):
 
                     def join_side_effect(*args):

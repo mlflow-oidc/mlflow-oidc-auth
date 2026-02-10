@@ -19,7 +19,7 @@ describe("HeaderDesktopNav", () => {
           mainLinks={mockMainLinks}
           userControls={mockUserControls}
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.getByText("Main 1")).toBeInTheDocument();

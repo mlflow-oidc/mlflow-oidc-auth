@@ -22,7 +22,7 @@ export default function ExperimentsPage() {
   const experimentsList = allExperiments || [];
 
   const filteredExperiments = experimentsList.filter((experiment) =>
-    experiment.name.toLowerCase().includes(submittedTerm.toLowerCase())
+    experiment.name.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const renderPermissionsButton = (experiment: ExperimentListItem) => (
@@ -69,7 +69,6 @@ export default function ExperimentsPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredExperiments}
             columns={columnsWithAction}
             searchTerm={submittedTerm}

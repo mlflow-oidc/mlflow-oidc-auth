@@ -10,7 +10,7 @@ describe("SearchInput", () => {
         onInputChange={() => {}}
         onSubmit={() => {}}
         onClear={() => {}}
-      />
+      />,
     );
     expect(screen.getByPlaceholderText("Search...")).toBeInTheDocument();
   });
@@ -23,7 +23,7 @@ describe("SearchInput", () => {
         onInputChange={handleChange}
         onSubmit={() => {}}
         onClear={() => {}}
-      />
+      />,
     );
 
     const input = screen.getByPlaceholderText("Search...");
@@ -32,14 +32,14 @@ describe("SearchInput", () => {
   });
 
   it("calls onSubmit", () => {
-    const handleSubmit = vi.fn((e) => e.preventDefault());
+    const handleSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
     render(
       <SearchInput
         value="test"
         onInputChange={() => {}}
         onSubmit={handleSubmit}
         onClear={() => {}}
-      />
+      />,
     );
 
     const submitBtn = screen.getByTitle("Search");
@@ -56,7 +56,7 @@ describe("SearchInput", () => {
         onInputChange={() => {}}
         onSubmit={() => {}}
         onClear={handleClear}
-      />
+      />,
     );
 
     const clearBtn = screen.getByTitle("Clear search");
@@ -73,7 +73,7 @@ describe("SearchInput", () => {
         onInputChange={() => {}}
         onSubmit={() => {}}
         onClear={() => {}}
-      />
+      />,
     );
 
     expect(screen.queryByTitle("Clear search")).toBeNull();

@@ -13,7 +13,11 @@ import { faUndo, faTrash } from "@fortawesome/free-solid-svg-icons";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { DeletedExperiment, DeletedRun } from "../../shared/types/entity";
 import { useToast } from "../../shared/components/toast/use-toast";
-import { restoreExperiment, restoreRun, cleanupTrash } from "../../core/services/trash-service";
+import {
+  restoreExperiment,
+  restoreRun,
+  cleanupTrash,
+} from "../../core/services/trash-service";
 import { RemoveFromTrashModal } from "./remove-from-trash-modal";
 
 type TrashTab = "experiments" | "runs";
@@ -30,9 +34,9 @@ interface TrashItem {
 
 export default function TrashPage() {
   const { tab } = useParams<{ tab?: string }>();
-  const activeTab: TrashTab = (tab === "runs" ? "runs" : "experiments");
+  const activeTab: TrashTab = tab === "runs" ? "runs" : "experiments";
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [isProcessing, setIsProcessing] = useState(false);
   const { showToast } = useToast();
   const [itemsToDelete, setItemsToDelete] = useState<TrashItem[] | null>(null);
@@ -91,7 +95,7 @@ export default function TrashPage() {
 
   const filteredData = useMemo(() => {
     return data.filter((item) =>
-      item.name.toLowerCase().includes(submittedTerm.toLowerCase())
+      item.name.toLowerCase().includes(submittedTerm.toLowerCase()),
     );
   }, [data, submittedTerm]);
 
@@ -164,23 +168,26 @@ export default function TrashPage() {
     {
       header: (
         <div className="flex items-center justify-center">
-            <input
+          <input
             type="checkbox"
             className="w-4 h-4 rounded custom-checkbox"
-            checked={filteredData.length > 0 && selectedIds.size === filteredData.length}
+            checked={
+              filteredData.length > 0 &&
+              selectedIds.size === filteredData.length
+            }
             onChange={(e) => handleSelectAll(e.target.checked)}
-            />
+          />
         </div>
       ),
       id: "select",
       render: (item) => (
         <div className="flex items-center justify-center">
-            <input
+          <input
             type="checkbox"
             className="w-4 h-4 rounded custom-checkbox"
             checked={selectedIds.has(item.id)}
             onChange={(e) => handleSelectOne(item.id, e.target.checked)}
-            />
+          />
         </div>
       ),
       className: "w-8 m-[2px] flex-none",
@@ -191,16 +198,35 @@ export default function TrashPage() {
     },
     {
       header: "Name",
-      render: (item) => item.name,
+      render: (item) => (
+        <span className="truncate block" title={item.name}>
+          {item.name}
+        </span>
+      ),
     },
     {
       header: "Creation",
-      render: (item) => new Date(item.creation).toLocaleString(),
+      render: (item) => {
+        const dateStr = new Date(item.creation).toLocaleString();
+        return (
+          <span className="truncate block" title={dateStr}>
+            {dateStr}
+          </span>
+        );
+      },
     },
     {
       header: "Last Update",
-      render: (item) =>
-        item.lastUpdate ? new Date(item.lastUpdate).toLocaleString() : "-",
+      render: (item) => {
+        const dateStr = item.lastUpdate
+          ? new Date(item.lastUpdate).toLocaleString()
+          : "-";
+        return (
+          <span className="truncate block" title={dateStr}>
+            {dateStr}
+          </span>
+        );
+      },
     },
     {
       header: "Actions",
@@ -209,13 +235,17 @@ export default function TrashPage() {
           <IconButton
             icon={faUndo}
             title="Restore"
-            onClick={() => handleRestore([item.id])}
+            onClick={() => {
+              void handleRestore([item.id]);
+            }}
             disabled={isProcessing}
           />
           <IconButton
             icon={faTrash}
             title="Delete Permanently"
-            onClick={() => handleDeleteClick([item.id])}
+            onClick={() => {
+              void handleDeleteClick([item.id]);
+            }}
             disabled={isProcessing}
           />
         </div>
@@ -267,14 +297,18 @@ export default function TrashPage() {
             <div className="flex space-x-2">
               <Button
                 variant="secondary"
-                onClick={() => handleRestore(Array.from(selectedIds))}
+                onClick={() => {
+                  void handleRestore(Array.from(selectedIds));
+                }}
                 disabled={selectedIds.size === 0 || isProcessing}
               >
                 Restore
               </Button>
               <Button
-                variant="danger-outline"
-                onClick={() => handleDeleteClick(Array.from(selectedIds))}
+                variant="danger"
+                onClick={() => {
+                  void handleDeleteClick(Array.from(selectedIds));
+                }}
                 disabled={selectedIds.size === 0 || isProcessing}
               >
                 Delete
@@ -283,7 +317,6 @@ export default function TrashPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredData}
             columns={columns}
             searchTerm={submittedTerm}
@@ -294,7 +327,9 @@ export default function TrashPage() {
         <RemoveFromTrashModal
           isOpen={!!itemsToDelete}
           onClose={() => setItemsToDelete(null)}
-          onConfirm={confirmDelete}
+          onConfirm={() => {
+            void confirmDelete();
+          }}
           items={itemsToDelete}
           itemType={activeTab}
           isProcessing={isProcessing}

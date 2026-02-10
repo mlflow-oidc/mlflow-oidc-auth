@@ -39,7 +39,7 @@ describe("IconButton", () => {
     render(
       <div onClick={handleWrapperClick}>
         <IconButton icon={faHome} onClick={handleButtonClick} />
-      </div>
+      </div>,
     );
 
     fireEvent.click(screen.getByRole("button"));

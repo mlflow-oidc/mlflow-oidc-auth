@@ -28,8 +28,9 @@ def test_grant(repo, session):
     group = MagicMock(id=1)
     session.add = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group), patch(
-        "mlflow_oidc_auth.db.models.SqlRegisteredModelGroupRegexPermission", return_value=MagicMock()
+    with (
+        patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group),
+        patch("mlflow_oidc_auth.db.models.SqlRegisteredModelGroupRegexPermission", return_value=MagicMock()),
     ):
         result = repo.grant("group1", "r", "READ", priority=1, prompt=True)
         session.add.assert_called_once()

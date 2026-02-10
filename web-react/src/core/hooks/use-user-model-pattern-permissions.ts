@@ -17,7 +17,7 @@ export function useUserModelPatternPermissions({
       }
       return fetchUserModelPatternPermissions(username, signal);
     },
-    [username]
+    [username],
   );
 
   const {

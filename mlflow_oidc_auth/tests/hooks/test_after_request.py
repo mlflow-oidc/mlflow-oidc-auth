@@ -42,9 +42,10 @@ def mock_store():
 
 @pytest.fixture
 def mock_bridge():
-    with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_username", return_value="test_user") as mock_username, patch(
-        "mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False
-    ) as mock_is_admin:
+    with (
+        patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_username", return_value="test_user") as mock_username,
+        patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False) as mock_is_admin,
+    ):
         yield mock_username, mock_is_admin
 
 
@@ -87,8 +88,9 @@ def test_set_can_manage_experiment_permission(mock_response, mock_store, mock_br
     """Test _set_can_manage_experiment_permission handler"""
     mock_response.json = {"experiment_id": "test_exp_123"}
 
-    with app.test_request_context(path="/api/2.0/mlflow/experiments/create", method="POST", headers={"Content-Type": "application/json"}), patch(
-        "mlflow_oidc_auth.hooks.after_request.parse_dict"
+    with (
+        app.test_request_context(path="/api/2.0/mlflow/experiments/create", method="POST", headers={"Content-Type": "application/json"}),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
     ):
         # Mock the response message
         mock_response_message = MagicMock()
@@ -103,8 +105,9 @@ def test_set_can_manage_registered_model_permission(mock_response, mock_store, m
     """Test _set_can_manage_registered_model_permission handler"""
     mock_response.json = {"registered_model": {"name": "test_model_123"}}
 
-    with app.test_request_context(path="/api/2.0/mlflow/registered-models/create", method="POST", headers={"Content-Type": "application/json"}), patch(
-        "mlflow_oidc_auth.hooks.after_request.parse_dict"
+    with (
+        app.test_request_context(path="/api/2.0/mlflow/registered-models/create", method="POST", headers={"Content-Type": "application/json"}),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
     ):
         # Mock the response message
         mock_response_message = MagicMock()
@@ -117,12 +120,15 @@ def test_set_can_manage_registered_model_permission(mock_response, mock_store, m
 
 def test_delete_can_manage_registered_model_permission(mock_response, mock_store):
     """Test _delete_can_manage_registered_model_permission handler"""
-    with app.test_request_context(
-        path="/api/2.0/mlflow/registered-models/delete",
-        method="DELETE",
-        json={"name": "test_model"},
-        headers={"Content-Type": "application/json"},
-    ), patch("mlflow_oidc_auth.hooks.after_request.get_model_name", return_value="test_model"):
+    with (
+        app.test_request_context(
+            path="/api/2.0/mlflow/registered-models/delete",
+            method="DELETE",
+            json={"name": "test_model"},
+            headers={"Content-Type": "application/json"},
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.get_model_name", return_value="test_model"),
+    ):
         _delete_can_manage_registered_model_permission(mock_response)
         mock_store.wipe_group_model_permissions.assert_called_once_with("test_model")
         mock_store.wipe_registered_model_permissions.assert_called_once_with("test_model")
@@ -157,14 +163,13 @@ def test_filter_search_experiments_non_admin(mock_response, mock_bridge):
     tracking_store.search_experiments.return_value = _FakePagedList([], token=None)
 
     with app.test_request_context(path="/api/2.0/mlflow/experiments/search", method="POST", headers={"Content-Type": "application/json"}):
-        with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
-        ) as mock_can_read, patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
-            "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": [{"experiment_id": "123"}]}'
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True) as mock_can_read,
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": [{"experiment_id": "123"}]}'),
+            patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
         ):
             exp = MagicMock()
             exp.experiment_id = "123"
@@ -201,19 +206,16 @@ def test_filter_search_experiments_with_pagination(mock_response, mock_bridge):
         tracking_store = MagicMock()
         tracking_store.search_experiments.return_value = _FakePagedList(exp_entities, token=None)
 
-        with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store), patch(
-            "mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": []}'
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token", return_value=0
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token", return_value="page_token_123"
-        ) as mock_page_token:
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True),
+            patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": []}'),
+            patch("mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token", return_value=0),
+            patch("mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token", return_value="page_token_123") as mock_page_token,
+        ):
             mock_response_message = MagicMock()
             mock_response_message.experiments = []
             mock_response_message.next_page_token = "page_token_0"
@@ -241,14 +243,13 @@ def test_filter_search_experiments_no_pagination(mock_response, mock_bridge):
     tracking_store.search_experiments.return_value = _FakePagedList([], token=None)
 
     with app.test_request_context(path="/api/2.0/mlflow/experiments/search", method="POST", headers={"Content-Type": "application/json"}):
-        with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
-            "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": []}'
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True),
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"experiments": []}'),
+            patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
         ):
             mock_response_message = MagicMock()
             mock_response_message.experiments = []
@@ -284,12 +285,12 @@ def test_filter_search_registered_models_non_admin(mock_response, mock_bridge):
     mock_request_message.max_results = 1000
 
     with app.test_request_context(path="/api/2.0/mlflow/registered-models/search", method="POST", headers={"Content-Type": "application/json"}):
-        with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_registered_model", return_value=True
-        ) as mock_can_read, patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
-            "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"registered_models": [{"name": "test_model"}]}'
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_registered_model", return_value=True) as mock_can_read,
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"registered_models": [{"name": "test_model"}]}'),
         ):
             rm = MagicMock()
             rm.name = "test_model"
@@ -325,19 +326,16 @@ def test_filter_search_registered_models_with_pagination(mock_response, mock_bri
         model_registry_store = MagicMock()
         model_registry_store.search_registered_models.return_value = _FakePagedList(rm_entities, token=None)
 
-        with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_registered_model", return_value=True
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_model_registry_store", return_value=model_registry_store), patch(
-            "mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"registered_models": []}'
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token", return_value=0
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token", return_value="page_token_456"
-        ) as mock_page_token:
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_registered_model", return_value=True),
+            patch("mlflow_oidc_auth.hooks.after_request._get_model_registry_store", return_value=model_registry_store),
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"registered_models": []}'),
+            patch("mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token", return_value=0),
+            patch("mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token", return_value="page_token_456") as mock_page_token,
+        ):
             mock_response_message = MagicMock()
             mock_response_message.registered_models = []
             mock_response_message.next_page_token = "page_token_0"
@@ -433,14 +431,13 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
         def fake_can_read(exp_id: str, _user: str) -> bool:
             return exp_id == "123"
 
-        with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", side_effect=fake_can_read
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
-            "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}'
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", side_effect=fake_can_read),
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}'),
+            patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
         ):
             m1 = MagicMock()
             m1.info.experiment_id = "123"
@@ -484,16 +481,14 @@ def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge)
         mock_token_class.decode.return_value = MagicMock(offset=0)
         mock_token_class.return_value.encode.return_value = "encoded_token"
 
-        with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store), patch(
-            "mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": [], "next_page_token": "token123"}'
-        ), patch(
-            "mlflow.utils.search_utils.SearchLoggedModelsPaginationToken", mock_token_class
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True),
+            patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": [], "next_page_token": "token123"}'),
+            patch("mlflow.utils.search_utils.SearchLoggedModelsPaginationToken", mock_token_class),
         ):
             mock_response_message = MagicMock()
             mock_response_message.models = []
@@ -523,14 +518,13 @@ def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_br
     tracking_store.search_logged_models.return_value = _FakePagedList([], token=None)
 
     with app.test_request_context(path="/api/2.0/mlflow/logged-models/search", method="POST", headers={"Content-Type": "application/json"}):
-        with patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False), patch(
-            "mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True
-        ), patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message), patch(
-            "mlflow_oidc_auth.hooks.after_request.parse_dict"
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}'
-        ), patch(
-            "mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", return_value=True),
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=mock_request_message),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}'),
+            patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
         ):
             m = MagicMock()
             m.info.experiment_id = "exp_1"
@@ -548,8 +542,9 @@ def test_after_request_hook_with_handler(mock_response, mock_store, mock_bridge)
     mock_response.status_code = 200
     mock_response.json = {"experiment_id": "test_exp_123"}
 
-    with app.test_request_context(path="/api/2.0/mlflow/experiments/create", method="POST", headers={"Content-Type": "application/json"}), patch(
-        "mlflow_oidc_auth.hooks.after_request.parse_dict"
+    with (
+        app.test_request_context(path="/api/2.0/mlflow/experiments/create", method="POST", headers={"Content-Type": "application/json"}),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
     ):
         # Mock the response message
         mock_response_message = MagicMock()

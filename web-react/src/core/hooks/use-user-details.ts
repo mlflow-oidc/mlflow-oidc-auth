@@ -11,7 +11,7 @@ export function useUserDetails({ username }: { username: string | null }) {
       }
       return fetchUserDetails(username, signal);
     },
-    [username]
+    [username],
   );
 
   const {

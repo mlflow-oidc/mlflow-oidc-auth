@@ -1,5 +1,6 @@
 import { getRuntimeConfig } from "../../shared/services/runtime-config";
 import type { QueryParams } from "../types/api";
+import { http, type RequestOptions } from "./http";
 
 function buildQueryString(params: QueryParams): string {
   const searchParams = new URLSearchParams();
@@ -15,8 +16,21 @@ function buildQueryString(params: QueryParams): string {
 export async function resolveUrl(
   endpoint: string,
   queryParams: QueryParams,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<string> {
   const cfg = await getRuntimeConfig(signal);
   return `${cfg.basePath}${endpoint}${buildQueryString(queryParams)}`;
+}
+
+export async function request<T>(
+  endpoint: string,
+  options: RequestOptions & { queryParams?: QueryParams } = {},
+): Promise<T> {
+  const { queryParams, ...httpOptions } = options;
+  const url = await resolveUrl(
+    endpoint,
+    queryParams || {},
+    options.signal || undefined,
+  );
+  return http<T>(url, httpOptions);
 }

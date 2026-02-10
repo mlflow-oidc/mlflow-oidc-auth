@@ -1,56 +1,66 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router";
 import { RowActionButton } from "./row-action-button";
 
-const mockNavigate = vi.fn();
-
-vi.mock("react-router", () => ({
-  useNavigate: () => mockNavigate,
-}));
-
 vi.mock("../context/use-runtime-config", () => ({
-  useRuntimeConfig: () => ({ basePath: "/app" }),
+  useRuntimeConfig: () => ({ basePath: "/app", uiPath: "/mlflow/oidc/ui" }),
 }));
+
+function LocationDisplay() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
 
 describe("RowActionButton", () => {
   it("renders with text", () => {
     render(
-      <RowActionButton
-        entityId="123"
-        route="details"
-        buttonText="View Details"
-      />
+      <MemoryRouter>
+        <RowActionButton
+          entityId="123"
+          route="details"
+          buttonText="View Details"
+        />
+      </MemoryRouter>,
     );
     expect(screen.getByText("View Details")).toBeInTheDocument();
   });
 
   it("navigates on click", () => {
-    render(
-      <RowActionButton
-        entityId="123"
-        route="details"
-        buttonText="View"
-      />
-    );
-
-    // It stops propagation
     const handleUpstreamClick = vi.fn();
     render(
-      <div onClick={handleUpstreamClick}>
-         <RowActionButton
-          entityId="123"
-          route="details"
-          buttonText="View"
-        />
-      </div>
+      <MemoryRouter>
+        <div onClick={handleUpstreamClick}>
+          <RowActionButton entityId="123" route="details" buttonText="View" />
+        </div>
+        <LocationDisplay />
+      </MemoryRouter>,
     );
 
-    // Find button
-    const buttons = screen.getAllByRole("button");
-    const button = buttons[buttons.length - 1]; // get the last rendered one, or specifically key them
-
-    fireEvent.click(button);
-    expect(mockNavigate).toHaveBeenCalledWith("/app/details/123");
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/details/123");
     expect(handleUpstreamClick).not.toHaveBeenCalled();
+  });
+
+  it("normalizes leading slashes in route", () => {
+    render(
+      <MemoryRouter
+        basename="/mlflow/oidc/ui"
+        initialEntries={["/mlflow/oidc/ui"]}
+      >
+        <RowActionButton
+          entityId="456"
+          route="/experiments"
+          buttonText="Manage permissions"
+        />
+        <LocationDisplay />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage permissions" }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/experiments/456",
+    );
   });
 });

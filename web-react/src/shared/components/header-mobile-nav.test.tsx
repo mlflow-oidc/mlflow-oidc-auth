@@ -20,7 +20,7 @@ describe("HeaderMobileNav", () => {
           mainLinks={mockMainLinks}
           userControls={mockUserControls}
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     expect(screen.getByText("Main 1")).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe("HeaderMobileNav", () => {
           mainLinks={mockMainLinks}
           userControls={mockUserControls}
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByText("Main 1"));
@@ -53,7 +53,7 @@ describe("HeaderMobileNav", () => {
           mainLinks={mockMainLinks}
           userControls={mockUserControls}
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     // Use container query or check class
     // id="mobile-menu"
@@ -68,7 +68,7 @@ describe("HeaderMobileNav", () => {
           mainLinks={mockMainLinks}
           userControls={mockUserControls}
         />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     expect(menu).toHaveClass("translate-x-full");
   });

@@ -17,7 +17,7 @@ export function useGroupModelPatternPermissions({
       }
       return fetchGroupModelPatternPermissions(groupName, signal);
     },
-    [groupName]
+    [groupName],
   );
 
   const {

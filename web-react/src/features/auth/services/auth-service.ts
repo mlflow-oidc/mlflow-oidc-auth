@@ -6,13 +6,13 @@ import {
 export type AuthStatus = Pick<RuntimeConfig, "authenticated">;
 
 export async function fetchRuntimeConfig(
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<RuntimeConfig> {
   return getRuntimeConfig(signal);
 }
 
 export async function fetchAuthStatus(
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<AuthStatus> {
   const cfg = await fetchRuntimeConfig(signal);
   return { authenticated: !!cfg.authenticated };

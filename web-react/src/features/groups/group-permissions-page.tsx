@@ -5,6 +5,10 @@ interface GroupPermissionsPageProps {
   type: PermissionType;
 }
 
-export default function GroupPermissionsPage({ type }: GroupPermissionsPageProps) {
-  return <SharedPermissionsPage type={type} baseRoute="/groups" entityKind="group" />;
+export default function GroupPermissionsPage({
+  type,
+}: GroupPermissionsPageProps) {
+  return (
+    <SharedPermissionsPage type={type} baseRoute="/groups" entityKind="group" />
+  );
 }

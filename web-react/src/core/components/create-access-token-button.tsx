@@ -14,11 +14,7 @@ export const CreateAccessTokenButton: React.FC<{
 
   return (
     <>
-      <Button
-        onClick={openModal}
-        variant="secondary"
-        icon={faPlus}
-      >
+      <Button onClick={openModal} variant="secondary" icon={faPlus}>
         Create Access Token
       </Button>
 

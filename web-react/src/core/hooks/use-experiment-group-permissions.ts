@@ -17,7 +17,7 @@ export function useExperimentGroupPermissions({
       }
       return fetchExperimentGroupPermissions(experimentId, signal);
     },
-    [experimentId]
+    [experimentId],
   );
 
   const {

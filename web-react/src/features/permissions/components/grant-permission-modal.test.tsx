@@ -5,14 +5,14 @@ import { GrantPermissionModal } from "./grant-permission-modal";
 describe("GrantPermissionModal", () => {
   it("renders correctly", () => {
     render(
-        <GrantPermissionModal
-            isOpen={true}
-            onClose={() => {}}
-            onSave={vi.fn()}
-            title="Grant Perms"
-            label="User"
-            options={["user1", "user2"]}
-        />
+      <GrantPermissionModal
+        isOpen={true}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        title="Grant Perms"
+        label="User"
+        options={["user1", "user2"]}
+      />,
     );
     expect(screen.getByText("Grant Perms")).toBeInTheDocument();
     expect(screen.getByLabelText(/User/i)).toBeInTheDocument();
@@ -21,14 +21,14 @@ describe("GrantPermissionModal", () => {
   it("calls onSave with selected values", async () => {
     const handleSave = vi.fn();
     render(
-        <GrantPermissionModal
-            isOpen={true}
-            onClose={() => {}}
-            onSave={handleSave}
-            title="Grant Perms"
-            label="User"
-            options={["user1"]}
-        />
+      <GrantPermissionModal
+        isOpen={true}
+        onClose={() => {}}
+        onSave={handleSave}
+        title="Grant Perms"
+        label="User"
+        options={["user1"]}
+      />,
     );
 
     const userSelect = screen.getByLabelText(/User/i);
@@ -41,7 +41,7 @@ describe("GrantPermissionModal", () => {
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
-         expect(handleSave).toHaveBeenCalledWith("user1", "EDIT");
+      expect(handleSave).toHaveBeenCalledWith("user1", "EDIT");
     });
   });
 });

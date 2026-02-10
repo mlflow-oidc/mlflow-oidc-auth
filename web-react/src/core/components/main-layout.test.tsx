@@ -1,8 +1,9 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { vi } from "vitest";
 import MainLayout from "./main-layout";
+import type { UserContextValue } from "../hooks/use-user";
 
-const mockUseUser = vi.fn();
+const mockUseUser = vi.fn<() => UserContextValue>();
 
 vi.mock("../hooks/use-user", () => ({
   useUser: () => mockUseUser(),
@@ -51,23 +52,27 @@ describe("MainLayout", () => {
         display_name: "Jane Doe",
         username: "jane",
         is_admin: false,
+        groups: [],
+        id: 1,
+        is_service_account: false,
+        password_expiration: null,
       },
       isLoading: false,
       error: null,
-      refresh: vi.fn(),
+      refresh: vi.fn<() => void>(),
     });
 
     render(
       <MainLayout>
         <div data-testid="content">Child Content</div>
-      </MainLayout>
+      </MainLayout>,
     );
 
     expect(screen.getByTestId("header").textContent).toContain("Jane Doe");
     expect(screen.getByTestId("content")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-open").textContent).toBe("true");
     expect(screen.getByTestId("sidebar-width").textContent).toContain(
-      "w-[200px]"
+      "w-[185px]",
     );
 
     fireEvent.click(screen.getByTestId("sidebar-toggle"));
@@ -81,21 +86,24 @@ describe("MainLayout", () => {
       currentUser: {
         username: "fallback-user",
         is_admin: false,
+        display_name: "",
+        groups: [],
+        id: 2,
+        is_service_account: false,
+        password_expiration: null,
       },
       isLoading: false,
       error: null,
-      refresh: vi.fn(),
+      refresh: vi.fn<() => void>(),
     });
 
     render(
       <MainLayout>
         <div>Content</div>
-      </MainLayout>
+      </MainLayout>,
     );
 
-    expect(screen.getByTestId("header").textContent).toContain(
-      "fallback-user"
-    );
+    expect(screen.getByTestId("header").textContent).toContain("fallback-user");
   });
 
   it("uses Guest label when no user present", () => {
@@ -103,13 +111,13 @@ describe("MainLayout", () => {
       currentUser: null,
       isLoading: false,
       error: null,
-      refresh: vi.fn(),
+      refresh: vi.fn<() => void>(),
     });
 
     render(
       <MainLayout>
         <div>Content</div>
-      </MainLayout>
+      </MainLayout>,
     );
 
     expect(screen.getByTestId("header").textContent).toContain("Guest");

@@ -14,6 +14,6 @@ export function useDeletedRuns() {
     deletedRuns: response?.deleted_runs || [],
     isLoading,
     error,
-    refresh
+    refresh,
   };
 }

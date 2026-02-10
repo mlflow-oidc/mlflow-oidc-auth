@@ -22,7 +22,7 @@ export default function PromptsPage() {
   const promptsList = allPrompts || [];
 
   const filteredPrompts = promptsList.filter((p) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase())
+    p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
   const renderPermissionsButton = (prompt: PromptListItem) => (
@@ -69,7 +69,6 @@ export default function PromptsPage() {
           </div>
 
           <EntityListTable
-            mode="object"
             data={filteredPrompts}
             columns={columnsWithAction}
             searchTerm={submittedTerm}

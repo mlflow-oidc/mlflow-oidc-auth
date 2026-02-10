@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, it, expect } from "vitest";
 import { TableEmptyState } from "./table-empty-state";
 import { TableHeader } from "./table-header";
 import { TableFooter } from "./table-footer";
-import { PrimitiveTableRow, ObjectTableRow } from "./table-rows";
+import { ObjectTableRow } from "./table-rows";
+import type { ColumnConfig } from "../types/table";
 
 describe("Table Components", () => {
   describe("TableEmptyState", () => {
@@ -31,34 +32,31 @@ describe("Table Components", () => {
   });
 
   describe("TableFooter", () => {
-     it("renders footer", () => {
-        render(<TableFooter />);
-        expect(screen.getByText(/placeholder/)).toBeInTheDocument();
-     });
-  });
-
-  describe("PrimitiveTableRow", () => {
-    it("renders value", () => {
-      // Mock console.log
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      render(<PrimitiveTableRow value="Test Value" index={0} />);
-
-      expect(screen.getByText("Test Value")).toBeInTheDocument();
-
-      fireEvent.click(screen.getByText("Test Value"));
-      expect(logSpy).toHaveBeenCalledWith("row-click:", "Test Value");
-      logSpy.mockRestore();
+    it("renders footer", () => {
+      render(<TableFooter />);
+      expect(screen.getByText(/placeholder/)).toBeInTheDocument();
     });
   });
 
   describe("ObjectTableRow", () => {
-      it("renders row cells", () => {
-          const item = { id: "1", name: "Test" };
-          const columns = [
-              { header: "Name", accessorKey: "name", render: (i: any) => i.name },
-          ];
-          render(<ObjectTableRow item={item} columns={columns} index={0} fallbackKey={0} />);
-          expect(screen.getByText("Test")).toBeInTheDocument();
-      });
+    it("renders row cells", () => {
+      interface MockItem extends Record<string, unknown> {
+        id: string;
+        name: string;
+      }
+      const item: MockItem = { id: "1", name: "Test" };
+      const columns: ColumnConfig<MockItem>[] = [
+        { header: "Name", id: "name", render: (i) => i.name },
+      ];
+      render(
+        <ObjectTableRow
+          item={item}
+          columns={columns}
+          index={0}
+          fallbackKey={0}
+        />,
+      );
+      expect(screen.getByText("Test")).toBeInTheDocument();
+    });
   });
 });

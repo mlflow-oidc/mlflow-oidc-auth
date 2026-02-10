@@ -3,8 +3,27 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import ExperimentsPage from "./experiments-page";
 
-const mockUseAllExperiments = vi.fn();
-const mockUseSearch = vi.fn();
+import type { ExperimentListItem } from "../../shared/types/entity";
+import type { Mock } from "vitest";
+
+const mockUseAllExperiments: Mock<
+  () => {
+    allExperiments: ExperimentListItem[] | null;
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+  }
+> = vi.fn();
+
+const mockUseSearch: Mock<
+  () => {
+    searchTerm: string;
+    submittedTerm: string;
+    handleInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    handleSearchSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+    handleClearSearch: () => void;
+  }
+> = vi.fn();
 
 vi.mock("../../core/hooks/use-all-experiments", () => ({
   useAllExperiments: () => mockUseAllExperiments(),
@@ -15,13 +34,27 @@ vi.mock("../../core/hooks/use-search", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
-  default: ({ children, title }: { children: React.ReactNode; title: string }) => (
-    <div data-testid="page-container" title={title}>{children}</div>
+  default: ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => (
+    <div data-testid="page-container" title={title}>
+      {children}
+    </div>
   ),
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading, error }: any) => {
+  default: ({
+    isLoading,
+    error,
+  }: {
+    isLoading: boolean;
+    error: Error | null;
+  }) => {
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div>Error</div>;
     return null;
@@ -33,9 +66,9 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({ data }: any) => (
+  EntityListTable: ({ data }: { data: ExperimentListItem[] }) => (
     <div data-testid="entity-list">
-      {data.map((item: any) => (
+      {data.map((item) => (
         <div key={item.id}>{item.name}</div>
       ))}
     </div>
@@ -65,10 +98,10 @@ describe("ExperimentsPage", () => {
 
   it("renders loading state", () => {
     mockUseAllExperiments.mockReturnValue({
-        isLoading: true,
-        error: null,
-        refresh: vi.fn(),
-        allExperiments: [],
+      isLoading: true,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [],
     });
 
     render(<ExperimentsPage />);
@@ -76,14 +109,14 @@ describe("ExperimentsPage", () => {
   });
 
   it("renders experiment list", () => {
-     mockUseAllExperiments.mockReturnValue({
-        isLoading: false,
-        error: null,
-        refresh: vi.fn(),
-        allExperiments: [
-            { id: "1", name: "Exp 1" },
-            { id: "2", name: "Exp 2" },
-        ],
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [
+        { id: "1", name: "Exp 1", tags: {} },
+        { id: "2", name: "Exp 2", tags: {} },
+      ],
     });
 
     render(<ExperimentsPage />);
@@ -101,17 +134,78 @@ describe("ExperimentsPage", () => {
     });
 
     mockUseAllExperiments.mockReturnValue({
-        isLoading: false,
-        error: null,
-        refresh: vi.fn(),
-        allExperiments: [
-            { id: "1", name: "Exp 1" },
-            { id: "2", name: "Exp 2" },
-        ],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [
+        { id: "1", name: "Exp 1", tags: {} },
+        { id: "2", name: "Exp 2", tags: {} },
+      ],
     });
 
     render(<ExperimentsPage />);
     expect(screen.getByText("Exp 1")).toBeInTheDocument();
     expect(screen.queryByText("Exp 2")).not.toBeInTheDocument();
+  });
+
+  it("renders error state", () => {
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: new Error("Failed to load"),
+      refresh: vi.fn(),
+      allExperiments: [],
+    });
+
+    render(<ExperimentsPage />);
+    expect(screen.getByText("Error")).toBeInTheDocument();
+  });
+
+  it("renders empty state when no experiments", () => {
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [],
+    });
+
+    render(<ExperimentsPage />);
+    expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+    expect(screen.getByTestId("entity-list")).toBeEmptyDOMElement();
+  });
+
+  it("renders empty results when search has no matches", () => {
+    mockUseSearch.mockReturnValue({
+      searchTerm: "NonExistent",
+      submittedTerm: "NonExistent",
+      handleInputChange: vi.fn(),
+      handleSearchSubmit: vi.fn(),
+      handleClearSearch: vi.fn(),
+    });
+
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: [
+        { id: "1", name: "Exp 1", tags: {} },
+        { id: "2", name: "Exp 2", tags: {} },
+      ],
+    });
+
+    render(<ExperimentsPage />);
+    expect(screen.queryByText("Exp 1")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exp 2")).not.toBeInTheDocument();
+  });
+
+  it("handles null allExperiments", () => {
+    mockUseAllExperiments.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allExperiments: null,
+    });
+
+    render(<ExperimentsPage />);
+    expect(screen.getByTestId("entity-list")).toBeInTheDocument();
   });
 });

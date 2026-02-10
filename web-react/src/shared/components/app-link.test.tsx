@@ -10,7 +10,7 @@ describe("AppLink", () => {
         <AppLink href="/internal" isInternalLink>
           Internal Link
         </AppLink>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     const link = screen.getByRole("link", { name: "Internal Link" });
@@ -21,11 +21,7 @@ describe("AppLink", () => {
   });
 
   it("renders external link as anchor tag with correct attributes", () => {
-    render(
-      <AppLink href="https://example.com">
-        External Link
-      </AppLink>
-    );
+    render(<AppLink href="https://example.com">External Link</AppLink>);
 
     const link = screen.getByRole("link", { name: "External Link" });
     expect(link).toHaveAttribute("href", "https://example.com");
@@ -39,11 +35,7 @@ describe("AppLink", () => {
     // The component defaults to <a> tag if !isInternalLink.
     // isExternalLink checks using http/https.
 
-    render(
-      <AppLink href="/relative">
-        Relative Link
-      </AppLink>
-    );
+    render(<AppLink href="/relative">Relative Link</AppLink>);
 
     const link = screen.getByRole("link", { name: "Relative Link" });
     expect(link).toHaveAttribute("href", "/relative");
@@ -58,7 +50,7 @@ describe("AppLink", () => {
         <AppLink href="/test" onClick={handleClick}>
           Click Me
         </AppLink>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Click Me" }));
@@ -71,9 +63,11 @@ describe("AppLink", () => {
         <AppLink href="/test" className="custom-class">
           Styled Link
         </AppLink>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
-    expect(screen.getByRole("link", { name: "Styled Link" })).toHaveClass("custom-class");
+    expect(screen.getByRole("link", { name: "Styled Link" })).toHaveClass(
+      "custom-class",
+    );
   });
 });

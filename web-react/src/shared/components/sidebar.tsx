@@ -35,7 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {sidebarData.map((link, index) => (
             <React.Fragment key={link.href}>
               {index === ADMIN_LINKS_START_INDEX && isAdmin && (
-                <div className="my-2 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark  pt-2" />
+                <div className="my-3 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark pt-1" />
               )}
 
               <AppLink
@@ -54,9 +54,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <span
                     className={`
                       whitespace-nowrap
-                      ${isOpen
-                        ? "opacity-100 max-w-xs ml-2"
-                        : "opacity-0 max-w-0"
+                      ${
+                        isOpen
+                          ? "opacity-100 max-w-xs ml-2"
+                          : "opacity-0 max-w-0"
                       }
                     `}
                   >
@@ -103,8 +104,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             className={`w-full ${isOpen ? "justify-end" : "justify-center"}`}
             aria-label={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
             icon={faAnglesLeft}
-            iconClassName={`w-5 h-5 transition-transform duration-150 ${isOpen ? "rotate-0" : "rotate-180"
-              }`}
+            iconClassName={`w-5 h-5 transition-transform duration-150 ${
+              isOpen ? "rotate-0" : "rotate-180"
+            }`}
           />
         </div>
       </div>

@@ -21,9 +21,12 @@ def _patch_permission(**kwargs):
 
 
 def test__get_permission_from_experiment_id():
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"), patch(
-        "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
-        return_value=MagicMock(permission=DummyPermission(can_read=True)),
+    with (
+        patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"),
+        patch(
+            "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
+            return_value=MagicMock(permission=DummyPermission(can_read=True)),
+        ),
     ):
         perm = experiment._get_permission_from_experiment_id("alice")
         assert perm.can_read is True
@@ -32,11 +35,13 @@ def test__get_permission_from_experiment_id():
 def test__get_permission_from_experiment_name_found():
     store_exp = MagicMock()
     store_exp.experiment_id = "456"
-    with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="expname"), patch(
-        "mlflow_oidc_auth.validators.experiment._get_tracking_store"
-    ) as mock_store, patch(
-        "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
-        return_value=MagicMock(permission=DummyPermission(can_update=True)),
+    with (
+        patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="expname"),
+        patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
+        patch(
+            "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
+            return_value=MagicMock(permission=DummyPermission(can_update=True)),
+        ),
     ):
         mock_store.return_value.get_experiment_by_name.return_value = store_exp
         perm = experiment._get_permission_from_experiment_name("alice")
@@ -44,9 +49,11 @@ def test__get_permission_from_experiment_name_found():
 
 
 def test__get_permission_from_experiment_name_not_found():
-    with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="expname"), patch(
-        "mlflow_oidc_auth.validators.experiment._get_tracking_store"
-    ) as mock_store, patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission:
+    with (
+        patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="expname"),
+        patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
+        patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission,
+    ):
         mock_store.return_value.get_experiment_by_name.return_value = None
         mock_permission = DummyPermission(can_read=True, can_update=True, can_delete=True, can_manage=True)
         mock_get_permission.return_value = mock_permission
@@ -80,9 +87,12 @@ def test__get_experiment_id_from_view_args_none():
 
 
 def test__get_permission_from_experiment_id_artifact_proxy_with_id():
-    with patch("mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args", return_value="123"), patch(
-        "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
-        return_value=MagicMock(permission=DummyPermission(can_manage=True)),
+    with (
+        patch("mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args", return_value="123"),
+        patch(
+            "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
+            return_value=MagicMock(permission=DummyPermission(can_manage=True)),
+        ),
     ):
         perm = experiment._get_permission_from_experiment_id_artifact_proxy("alice")
         assert perm.can_manage is True
@@ -90,9 +100,11 @@ def test__get_permission_from_experiment_id_artifact_proxy_with_id():
 
 def test__get_permission_from_experiment_id_artifact_proxy_no_id():
     dummy_perm = DummyPermission(can_read=True)
-    with patch("mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args", return_value=None), patch(
-        "mlflow_oidc_auth.validators.experiment.config"
-    ) as mock_config, patch("mlflow_oidc_auth.validators.experiment.get_permission", return_value=dummy_perm):
+    with (
+        patch("mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args", return_value=None),
+        patch("mlflow_oidc_auth.validators.experiment.config") as mock_config,
+        patch("mlflow_oidc_auth.validators.experiment.get_permission", return_value=dummy_perm),
+    ):
         mock_config.DEFAULT_MLFLOW_PERMISSION = "default"
         perm = experiment._get_permission_from_experiment_id_artifact_proxy("alice")
         assert perm.can_read is True
@@ -159,9 +171,12 @@ def test_validate_can_delete_experiment_artifact_proxy():
 
 def test__get_permission_from_experiment_id_no_permission():
     """Test when user has no permissions"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"), patch(
-        "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
-        return_value=MagicMock(permission=DummyPermission()),
+    with (
+        patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"),
+        patch(
+            "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
+            return_value=MagicMock(permission=DummyPermission()),
+        ),
     ):
         perm = experiment._get_permission_from_experiment_id("alice")
         assert perm.can_read is False
@@ -172,9 +187,11 @@ def test__get_permission_from_experiment_id_no_permission():
 
 def test__get_permission_from_experiment_name_empty_name():
     """Test with empty experiment name"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value=""), patch(
-        "mlflow_oidc_auth.validators.experiment._get_tracking_store"
-    ) as mock_store, patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission:
+    with (
+        patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value=""),
+        patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
+        patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission,
+    ):
         mock_store.return_value.get_experiment_by_name.return_value = None
         mock_permission = DummyPermission(can_read=True, can_update=True, can_delete=True, can_manage=True)
         mock_get_permission.return_value = mock_permission
@@ -184,9 +201,11 @@ def test__get_permission_from_experiment_name_empty_name():
 
 def test__get_permission_from_experiment_name_store_exception():
     """Test when store raises an exception"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="expname"), patch(
-        "mlflow_oidc_auth.validators.experiment._get_tracking_store"
-    ) as mock_store, patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission:
+    with (
+        patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="expname"),
+        patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
+        patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission,
+    ):
         mock_store.return_value.get_experiment_by_name.side_effect = Exception("Store error")
         mock_permission = DummyPermission(can_read=True, can_update=True, can_delete=True, can_manage=True)
         mock_get_permission.return_value = mock_permission

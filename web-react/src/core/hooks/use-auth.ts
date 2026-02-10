@@ -1,6 +1,6 @@
 import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 
-type UseAuthResult = {
+export type UseAuthResult = {
   isAuthenticated: boolean;
 };
 

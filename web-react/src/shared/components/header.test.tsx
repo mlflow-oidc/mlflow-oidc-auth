@@ -4,19 +4,22 @@ import Header from "./header";
 import { MemoryRouter } from "react-router";
 
 // Mock dependencies
+import type { NavigationData, NavLinkData } from "./navigation-data";
+
+// Mock dependencies
 vi.mock("../context/use-runtime-config", () => ({
   useRuntimeConfig: () => ({ basePath: "/" }),
 }));
 
 vi.mock("./navigation-data", () => ({
-  getNavigationData: (userName: string, _basePath: string) => ({
-    mainLinks: [
-      { to: "/link1", label: "Link 1" },
-    ],
-    userControls: [
-      { to: "/user", label: userName },
-    ],
-  }),
+  getNavigationData: (userName: string, basePath: string): NavigationData => {
+    // Suppress unused variable warning if needed, but here we can just use it if relevant
+    // or just leave it out if the interface allows. The original had _basePath.
+    return {
+      mainLinks: [{ href: "/link1", label: "Link 1" }],
+      userControls: [{ href: "/user", label: userName + basePath.length * 0 }],
+    };
+  },
 }));
 
 vi.mock("./dark-mode-toggle", () => ({
@@ -24,16 +27,28 @@ vi.mock("./dark-mode-toggle", () => ({
 }));
 
 vi.mock("./header-desktop-nav", () => ({
-  default: ({ mainLinks, userControls }: any) => (
+  default: ({
+    mainLinks,
+    userControls,
+  }: {
+    mainLinks: NavLinkData[];
+    userControls: NavLinkData[];
+  }) => (
     <div data-testid="desktop-nav">
-      {mainLinks.map((l: any) => <span key={l.to}>{l.label}</span>)}
-      {userControls.map((l: any) => <span key={l.to}>{l.label}</span>)}
+      {mainLinks.map((l) => (
+        <span key={l.href}>{l.label}</span>
+      ))}
+      {userControls.map((l) => (
+        <span key={l.href}>{l.label}</span>
+      ))}
     </div>
   ),
 }));
 
 vi.mock("./header-mobile-nav", () => ({
-  default: ({ isMenuOpen }: any) => <div data-testid="mobile-nav">Open: {String(isMenuOpen)}</div>,
+  default: ({ isMenuOpen }: { isMenuOpen: boolean }) => (
+    <div data-testid="mobile-nav">Open: {String(isMenuOpen)}</div>
+  ),
 }));
 
 describe("Header", () => {
@@ -41,7 +56,7 @@ describe("Header", () => {
     render(
       <MemoryRouter>
         <Header />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     expect(screen.getByText("Permissions")).toBeInTheDocument();
     expect(screen.getByAltText("Logo")).toBeInTheDocument();
@@ -51,7 +66,7 @@ describe("Header", () => {
     render(
       <MemoryRouter>
         <Header userName="TestUser" />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     expect(screen.getByTestId("desktop-nav")).toHaveTextContent("Link 1");
     expect(screen.getByTestId("desktop-nav")).toHaveTextContent("TestUser");
@@ -61,7 +76,7 @@ describe("Header", () => {
     render(
       <MemoryRouter>
         <Header />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
 
     // Initial state

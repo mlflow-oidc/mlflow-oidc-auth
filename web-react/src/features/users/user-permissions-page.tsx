@@ -5,6 +5,10 @@ interface UserPermissionsPageProps {
   type: PermissionType;
 }
 
-export default function UserPermissionsPage({ type }: UserPermissionsPageProps) {
-  return <SharedPermissionsPage type={type} baseRoute="/users" entityKind="user" />;
+export default function UserPermissionsPage({
+  type,
+}: UserPermissionsPageProps) {
+  return (
+    <SharedPermissionsPage type={type} baseRoute="/users" entityKind="user" />
+  );
 }

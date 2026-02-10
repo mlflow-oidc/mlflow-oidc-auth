@@ -228,10 +228,11 @@ class TestDependencyIntegration:
     @pytest.mark.asyncio
     async def test_all_dependencies_return_none_on_success(self):
         """Test that all permission dependencies return None on successful authorization."""
-        with patch("mlflow_oidc_auth.dependencies.can_manage_experiment", return_value=True), patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=True
-        ), patch("mlflow_oidc_auth.dependencies.get_is_admin", return_value=True), patch(
-            "mlflow_oidc_auth.dependencies.get_username", return_value="admin@example.com"
+        with (
+            patch("mlflow_oidc_auth.dependencies.can_manage_experiment", return_value=True),
+            patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=True),
+            patch("mlflow_oidc_auth.dependencies.get_is_admin", return_value=True),
+            patch("mlflow_oidc_auth.dependencies.get_username", return_value="admin@example.com"),
         ):
             mock_request = MagicMock(spec=Request)
 
@@ -249,9 +250,11 @@ class TestDependencyIntegration:
     @pytest.mark.asyncio
     async def test_all_dependencies_raise_403_on_failure(self):
         """Test that all permission dependencies raise HTTPException with 403 status on failure."""
-        with patch("mlflow_oidc_auth.dependencies.can_manage_experiment", return_value=False), patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False
-        ), patch("mlflow_oidc_auth.dependencies.get_is_admin", return_value=False):
+        with (
+            patch("mlflow_oidc_auth.dependencies.can_manage_experiment", return_value=False),
+            patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False),
+            patch("mlflow_oidc_auth.dependencies.get_is_admin", return_value=False),
+        ):
             mock_request = MagicMock(spec=Request)
 
             with pytest.raises(HTTPException) as exc3:

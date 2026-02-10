@@ -26,70 +26,162 @@ import { useGroupPromptPatternPermissions } from "./use-group-prompt-pattern-per
 // Import fetchers to mock
 import * as entityService from "../services/entity-service";
 
+import type { UseAuthResult } from "./use-auth";
+
 vi.mock("./use-auth");
 vi.mock("../services/entity-service");
 
 const mockPermissions = [{ principal: "user1", permission: "MANAGE" }];
 
 describe("Entity and Pattern Permission Hooks", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        vi.spyOn(useAuthModule, "useAuth").mockReturnValue({ isAuthenticated: true } as any);
-    });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
+      isAuthenticated: true,
+    } as UseAuthResult);
+  });
 
-    const testHook = (hook: any, props: any, fetcherName: string) => {
-        if (!hook) {
-            console.error(`Hook for fetcher ${fetcherName} is undefined!`);
-            return;
-        }
+  const testHook = <
+    P extends Record<string, unknown>,
+    R extends Record<string, unknown>,
+  >(
+    hook: (props: P) => R,
+    props: P,
+    fetcherName: keyof typeof entityService,
+  ) => {
+    if (!hook) {
+      console.error(`Hook for fetcher ${fetcherName} is undefined!`);
+      return;
+    }
 
-        describe(hook.name || fetcherName, () => {
-            it(`fetches data for ${fetcherName} when props provided`, async () => {
-                const spy = vi.spyOn(entityService, fetcherName as any).mockResolvedValue(mockPermissions as any);
-                const { result } = renderHook(() => hook(props));
+    describe(hook.name || (fetcherName as string), () => {
+      it(`fetches data for ${fetcherName as string} when props provided`, async () => {
+        const spy = vi
+          .spyOn(entityService, fetcherName)
+          .mockResolvedValue(mockPermissions as never);
+        const { result } = renderHook(() => hook(props));
 
-                await waitFor(() => {
-                    // Find either 'permissions' or something ending with 'Permissions'
-                    const key = Object.keys(result.current).find(k => k === "permissions" || k.endsWith("Permissions"));
-                    expect(result.current[key as any]).toEqual(mockPermissions);
-                });
-                expect(spy).toHaveBeenCalled();
-            });
-
-            it(`does not fetch for ${fetcherName} when props are null`, async () => {
-                const spy = vi.spyOn(entityService, fetcherName as any);
-                const nullProps = Object.keys(props).reduce((acc: any, key) => ({ ...acc, [key]: null }), {});
-                renderHook(() => hook(nullProps));
-
-                await new Promise(resolve => setTimeout(resolve, 10));
-                expect(spy).not.toHaveBeenCalled();
-            });
+        await waitFor(() => {
+          // Find either 'permissions' or something ending with 'Permissions'
+          const key = Object.keys(result.current).find(
+            (k) => k === "permissions" || k.endsWith("Permissions"),
+          );
+          if (key) {
+            expect(result.current[key]).toEqual(mockPermissions);
+          }
         });
-    };
+        expect(spy).toHaveBeenCalled();
+      });
 
-    // Experiment/Model/Prompt Entity Permissions
-    testHook(useExperimentUserPermissions, { experimentId: "exp1" }, "fetchExperimentUserPermissions");
-    testHook(useExperimentGroupPermissions, { experimentId: "exp1" }, "fetchExperimentGroupPermissions");
-    testHook(useModelUserPermissions, { modelName: "model1" }, "fetchModelUserPermissions");
-    testHook(useModelGroupPermissions, { modelName: "model1" }, "fetchModelGroupPermissions");
-    testHook(usePromptUserPermissions, { promptName: "prompt1" }, "fetchPromptUserPermissions");
-    testHook(usePromptGroupPermissions, { promptName: "prompt1" }, "fetchPromptGroupPermissions");
+      it(`does not fetch for ${fetcherName as string} when props are null`, async () => {
+        const spy = vi.spyOn(entityService, fetcherName);
+        const nullProps = Object.keys(props).reduce(
+          (acc, key) => ({ ...acc, [key]: null }),
+          {} as P,
+        );
+        renderHook(() => hook(nullProps));
 
-    // User Permissions
-    testHook(useUserExperimentPermissions, { username: "user1" }, "fetchUserExperimentPermissions");
-    testHook(useUserRegisteredModelPermissions, { username: "user1" }, "fetchUserRegisteredModelPermissions");
-    testHook(useUserPromptPermissions, { username: "user1" }, "fetchUserPromptPermissions");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(spy).not.toHaveBeenCalled();
+      });
+    });
+  };
 
-    // Group Permissions
-    testHook(useGroupExperimentPermissions, { groupName: "group1" }, "fetchGroupExperimentPermissions");
-    testHook(useGroupRegisteredModelPermissions, { groupName: "group1" }, "fetchGroupRegisteredModelPermissions");
-    testHook(useGroupPromptPermissions, { groupName: "group1" }, "fetchGroupPromptPermissions");
+  // Experiment/Model/Prompt Entity Permissions
+  testHook(
+    useExperimentUserPermissions,
+    { experimentId: "exp1" },
+    "fetchExperimentUserPermissions",
+  );
+  testHook(
+    useExperimentGroupPermissions,
+    { experimentId: "exp1" },
+    "fetchExperimentGroupPermissions",
+  );
+  testHook(
+    useModelUserPermissions,
+    { modelName: "model1" },
+    "fetchModelUserPermissions",
+  );
+  testHook(
+    useModelGroupPermissions,
+    { modelName: "model1" },
+    "fetchModelGroupPermissions",
+  );
+  testHook(
+    usePromptUserPermissions,
+    { promptName: "prompt1" },
+    "fetchPromptUserPermissions",
+  );
+  testHook(
+    usePromptGroupPermissions,
+    { promptName: "prompt1" },
+    "fetchPromptGroupPermissions",
+  );
 
-    // Pattern Permissions
-    testHook(useUserExperimentPatternPermissions, { username: "user1" }, "fetchUserExperimentPatternPermissions");
-    testHook(useUserModelPatternPermissions, { username: "user1" }, "fetchUserModelPatternPermissions");
-    testHook(useUserPromptPatternPermissions, { username: "user1" }, "fetchUserPromptPatternPermissions");
-    testHook(useGroupExperimentPatternPermissions, { groupName: "group1" }, "fetchGroupExperimentPatternPermissions");
-    testHook(useGroupModelPatternPermissions, { groupName: "group1" }, "fetchGroupModelPatternPermissions");
-    testHook(useGroupPromptPatternPermissions, { groupName: "group1" }, "fetchGroupPromptPatternPermissions");
+  // User Permissions
+  testHook(
+    useUserExperimentPermissions,
+    { username: "user1" },
+    "fetchUserExperimentPermissions",
+  );
+  testHook(
+    useUserRegisteredModelPermissions,
+    { username: "user1" },
+    "fetchUserRegisteredModelPermissions",
+  );
+  testHook(
+    useUserPromptPermissions,
+    { username: "user1" },
+    "fetchUserPromptPermissions",
+  );
+
+  // Group Permissions
+  testHook(
+    useGroupExperimentPermissions,
+    { groupName: "group1" },
+    "fetchGroupExperimentPermissions",
+  );
+  testHook(
+    useGroupRegisteredModelPermissions,
+    { groupName: "group1" },
+    "fetchGroupRegisteredModelPermissions",
+  );
+  testHook(
+    useGroupPromptPermissions,
+    { groupName: "group1" },
+    "fetchGroupPromptPermissions",
+  );
+
+  // Pattern Permissions
+  testHook(
+    useUserExperimentPatternPermissions,
+    { username: "user1" },
+    "fetchUserExperimentPatternPermissions",
+  );
+  testHook(
+    useUserModelPatternPermissions,
+    { username: "user1" },
+    "fetchUserModelPatternPermissions",
+  );
+  testHook(
+    useUserPromptPatternPermissions,
+    { username: "user1" },
+    "fetchUserPromptPatternPermissions",
+  );
+  testHook(
+    useGroupExperimentPatternPermissions,
+    { groupName: "group1" },
+    "fetchGroupExperimentPatternPermissions",
+  );
+  testHook(
+    useGroupModelPatternPermissions,
+    { groupName: "group1" },
+    "fetchGroupModelPatternPermissions",
+  );
+  testHook(
+    useGroupPromptPatternPermissions,
+    { groupName: "group1" },
+    "fetchGroupPromptPatternPermissions",
+  );
 });
