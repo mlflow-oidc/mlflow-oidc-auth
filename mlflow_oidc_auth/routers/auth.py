@@ -382,7 +382,8 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         # Validate the token and get user info
         access_token = token_response.get("access_token")
         id_token = token_response.get("id_token")
-        userinfo = token_response.get("userinfo")
+        #userinfo = token_response.get("userinfo")
+        userinfo = await _maybe_await(oauth.oidc.userinfo(token=token_response))
 
         if not userinfo:
             errors.append("No user information received")
