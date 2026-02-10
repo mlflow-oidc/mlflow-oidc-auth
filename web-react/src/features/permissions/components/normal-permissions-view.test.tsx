@@ -13,6 +13,9 @@ import * as useGroupPromptHooks from "../../../core/hooks/use-group-prompt-permi
 import * as useAllExpHooks from "../../../core/hooks/use-all-experiments";
 import * as useAllModelHooks from "../../../core/hooks/use-all-models";
 import * as useAllPromptHooks from "../../../core/hooks/use-all-prompts";
+import * as useUserGatewayEndpointPermissions from "../../../core/hooks/use-user-gateway-endpoint-permissions";
+import * as useGroupGatewayEndpointPermissions from "../../../core/hooks/use-group-gateway-endpoint-permissions";
+import * as useAllGatewayEndpoints from "../../../core/hooks/use-all-gateway-endpoints";
 import type {
   PermissionType,
   ExperimentPermission,
@@ -44,6 +47,9 @@ vi.mock("../../../core/hooks/use-group-prompt-permissions");
 vi.mock("../../../core/hooks/use-all-experiments");
 vi.mock("../../../core/hooks/use-all-models");
 vi.mock("../../../core/hooks/use-all-prompts");
+vi.mock("../../../core/hooks/use-user-gateway-endpoint-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-endpoint-permissions");
+vi.mock("../../../core/hooks/use-all-gateway-endpoints");
 
 describe("NormalPermissionsView", () => {
   const mockShowToast = vi.fn();
@@ -141,6 +147,33 @@ describe("NormalPermissionsView", () => {
       allPrompts: [
         { name: "New Prompt", aliases: "", description: "", tags: {} },
       ],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useUserGatewayEndpointPermissions,
+      "useUserGatewayEndpointPermissions",
+    ).mockReturnValue({
+      permissions: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useGroupGatewayEndpointPermissions,
+      "useGroupGatewayEndpointPermissions",
+    ).mockReturnValue({
+      permissions: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(useAllGatewayEndpoints, "useAllGatewayEndpoints").mockReturnValue({
+      allGatewayEndpoints: [],
       isLoading: false,
       error: null,
       refresh: vi.fn(),
@@ -278,6 +311,7 @@ describe("NormalPermissionsView", () => {
       basePath: "/mlflow",
       uiPath: "",
       provider: "",
+      gen_ai_gateway_enabled: false,
       authenticated: true,
     });
     vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);

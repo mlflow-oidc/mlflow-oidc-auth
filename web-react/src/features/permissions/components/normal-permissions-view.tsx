@@ -83,7 +83,7 @@ export const NormalPermissionsView = ({
   });
 
   const activeHook =
-    (entityKind === "user"
+    entityKind === "user"
       ? {
           experiments: userExperimentHook,
           models: userModelHook,
@@ -95,7 +95,7 @@ export const NormalPermissionsView = ({
           models: groupModelHook,
           prompts: groupPromptHook,
           endpoints: groupGatewayEndpointHook,
-        }[type]);
+        }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook;
 

@@ -246,6 +246,7 @@ describe("usePermissionsManagement", () => {
       uiPath: "",
       provider: "",
       authenticated: true,
+      gen_ai_gateway_enabled: false,
     });
     vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
     const { result } = renderHook(() =>

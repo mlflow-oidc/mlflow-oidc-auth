@@ -34,7 +34,9 @@ describe("AiEndpointsPermissionPage", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={[`/ai-gateway/endpoints/${mockParams.name}`]}>
+      <MemoryRouter
+        initialEntries={[`/ai-gateway/endpoints/${mockParams.name}`]}
+      >
         <Routes>
           <Route
             path="/ai-gateway/endpoints/:name"
@@ -44,17 +46,22 @@ describe("AiEndpointsPermissionPage", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Permissions for Endpoint test-endpoint")).toBeInTheDocument();
+    expect(
+      screen.getByText("Permissions for Endpoint test-endpoint"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
   });
 
   it("displays error when endpoint name is missing", () => {
     render(
       <MemoryRouter initialEntries={["/ai-gateway/endpoints/"]}>
-          <Routes>
-            <Route path="/ai-gateway/endpoints/" element={<AiEndpointsPermissionPage />} />
-          </Routes>
-      </MemoryRouter>
+        <Routes>
+          <Route
+            path="/ai-gateway/endpoints/"
+            element={<AiEndpointsPermissionPage />}
+          />
+        </Routes>
+      </MemoryRouter>,
     );
 
     // Since the path doesn't match the :name param correctly for empty string if not handled,
@@ -66,13 +73,13 @@ describe("AiEndpointsPermissionPage", () => {
   // Re-writing the "missing name" test to be more robust or remove if React Router prevents it.
   // The component checks `if (!name)`.
   it("displays error message if name param is missing (simulated)", () => {
-      // We can simulate this by rendering the component directly with a mocked useParams
-      // But since we are using MemoryRouter with Routes, let's just make sure it renders what we expect
-      // if we were able to mount it without a name.
-      // Actually, let's just test the happy path and maybe loading state passed down.
+    // We can simulate this by rendering the component directly with a mocked useParams
+    // But since we are using MemoryRouter with Routes, let's just make sure it renders what we expect
+    // if we were able to mount it without a name.
+    // Actually, let's just test the happy path and maybe loading state passed down.
   });
 
-   it("passes loading state to manager", () => {
+  it("passes loading state to manager", () => {
     vi.mocked(useGatewayEndpointUserPermissions).mockReturnValue({
       isLoading: true,
       error: null,

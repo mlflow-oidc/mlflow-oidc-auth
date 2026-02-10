@@ -10,6 +10,8 @@ import * as usePromptHooks from "../../../core/hooks/use-user-prompt-pattern-per
 import * as useGroupExpHooks from "../../../core/hooks/use-group-experiment-pattern-permissions";
 import * as useGroupModelHooks from "../../../core/hooks/use-group-model-pattern-permissions";
 import * as useGroupPromptHooks from "../../../core/hooks/use-group-prompt-pattern-permissions";
+import * as useUserGatewayEndpointPatternPermissions from "../../../core/hooks/use-user-gateway-endpoint-pattern-permissions";
+import * as useGroupGatewayEndpointPatternPermissions from "../../../core/hooks/use-group-gateway-endpoint-pattern-permissions";
 import type {
   PermissionType,
   ExperimentPatternPermission,
@@ -37,6 +39,8 @@ vi.mock("../../../core/hooks/use-user-prompt-pattern-permissions");
 vi.mock("../../../core/hooks/use-group-experiment-pattern-permissions");
 vi.mock("../../../core/hooks/use-group-model-pattern-permissions");
 vi.mock("../../../core/hooks/use-group-prompt-pattern-permissions");
+vi.mock("../../../core/hooks/use-user-gateway-endpoint-pattern-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-endpoint-pattern-permissions");
 
 describe("RegexPermissionsView", () => {
   const mockShowToast = vi.fn();
@@ -129,6 +133,26 @@ describe("RegexPermissionsView", () => {
       error: null,
       refresh: mockRefresh,
       permissions: mockModelPatternPermissions,
+    });
+
+    vi.spyOn(
+      useUserGatewayEndpointPatternPermissions,
+      "useUserGatewayEndpointPatternPermissions",
+    ).mockReturnValue({
+      permissions: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useGroupGatewayEndpointPatternPermissions,
+      "useGroupGatewayEndpointPatternPermissions",
+    ).mockReturnValue({
+      permissions: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
     });
   });
 
@@ -270,6 +294,7 @@ describe("RegexPermissionsView", () => {
       basePath: "/mlflow",
       uiPath: "",
       provider: "",
+      gen_ai_gateway_enabled: false,
       authenticated: true,
     });
     vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);

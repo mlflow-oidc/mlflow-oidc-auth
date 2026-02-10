@@ -82,7 +82,7 @@ export const RegexPermissionsView = ({
     });
 
   const activeHook =
-    (entityKind === "user"
+    entityKind === "user"
       ? {
           experiments: userExperimentPatternHook,
           models: userModelPatternHook,
@@ -94,7 +94,7 @@ export const RegexPermissionsView = ({
           models: groupModelPatternHook,
           prompts: groupPromptPatternHook,
           endpoints: groupGatewayEndpointPatternHook,
-        }[type]);
+        }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook;
 
