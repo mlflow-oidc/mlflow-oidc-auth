@@ -161,6 +161,14 @@ export default function App() {
         }
       />
       <Route
+        path="/groups/:groupName/endpoints"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="endpoints" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/models"
         element={
           <ProtectedLayoutRoute>
@@ -224,6 +232,14 @@ export default function App() {
           </ProtectedLayoutRoute>
         }
       />
+      <Route
+        path="/service-accounts/:username/endpoints"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="endpoints" />
+          </ProtectedLayoutRoute>
+        }
+      />
 
       <Route
         path="/trash/:tab?"
@@ -270,6 +286,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <UserPermissionsPage type="prompts" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/endpoints"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="endpoints" />
           </ProtectedLayoutRoute>
         }
       />

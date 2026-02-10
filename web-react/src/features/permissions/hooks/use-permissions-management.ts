@@ -74,6 +74,17 @@ export function usePermissionsManagement({
                   editingItem.name,
                   resourceId,
                 );
+        } else if (resourceType === "endpoints") {
+          url =
+            editingItem.kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSION(
+                  editingItem.name,
+                  resourceId,
+                )
+              : DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSION(
+                  editingItem.name,
+                  resourceId,
+                );
         }
 
         await request(url, {
@@ -134,6 +145,17 @@ export function usePermissionsManagement({
                   item.name,
                   resourceId,
                 );
+        } else if (resourceType === "endpoints") {
+          url =
+            item.kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSION(
+                  item.name,
+                  resourceId,
+                )
+              : DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSION(
+                  item.name,
+                  resourceId,
+                );
         }
 
         await request(url, {
@@ -184,6 +206,17 @@ export function usePermissionsManagement({
             kind === "group"
               ? DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(name, resourceId)
               : DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(name, resourceId);
+        } else if (resourceType === "endpoints") {
+          url =
+            kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSION(
+                  name,
+                  resourceId,
+                )
+              : DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSION(
+                  name,
+                  resourceId,
+                );
         }
 
         await request(url, {

@@ -6,6 +6,7 @@ import { Switch } from "../../shared/components/switch";
 import { TokenInfoBlock } from "../../shared/components/token-info-block";
 import { useUserDetails } from "../../core/hooks/use-user-details";
 import { useUser } from "../../core/hooks/use-user";
+import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 import { NormalPermissionsView } from "./components/normal-permissions-view";
 import { RegexPermissionsView } from "./components/regex-permissions-view";
 
@@ -31,6 +32,7 @@ export const SharedPermissionsPage = ({
     (entityKind === "user" ? routeUsername : routeGroupName) || null;
 
   const { currentUser } = useUser();
+  const { gen_ai_gateway_enabled: genAiGatewayEnabled } = useRuntimeConfig();
   const { user: userDetails, refetch: userDetailsRefetch } = useUserDetails({
     username:
       entityKind === "user" && currentUser?.is_admin ? entityName : null,
@@ -59,6 +61,9 @@ export const SharedPermissionsPage = ({
     { id: "experiments", label: "Experiments" },
     { id: "models", label: "Models" },
     { id: "prompts", label: "Prompts" },
+    ...(genAiGatewayEnabled
+      ? [{ id: "endpoints", label: "Endpoints" }]
+      : []),
   ];
 
   return (
