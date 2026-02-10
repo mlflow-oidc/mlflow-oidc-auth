@@ -1,14 +1,18 @@
-from typing import List
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.dependencies import check_gateway_endpoint_manage_permission
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils import fetch_all_gateway_endpoints, get_is_admin, get_username
+from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_endpoints
+
+logger = get_logger()
 
 gateway_endpoint_permissions_router = APIRouter(
     prefix=f"{GATEWAY_PERMISSIONS_ROUTER_PREFIX}/endpoints",
@@ -66,74 +70,72 @@ async def get_gateway_endpoint_groups(
     name: str = Path(..., description="The gateway endpoint name to get permissions for"),
     _: None = Depends(check_gateway_endpoint_manage_permission),
 ) -> List[GroupPermissionEntry]:
-    list_groups = store.list_groups(all=True)
-
-    groups: List[GroupPermissionEntry] = []
-    for group in list_groups:
-        group_gateways = {}
-        if hasattr(group, "gateway_endpoint_permissions") and group.gateway_endpoint_permissions:
-            group_gateways = {g.endpoint_id: g.permission for g in group.gateway_endpoint_permissions}
-
-        if name in group_gateways:
-            groups.append(
-                GroupPermissionEntry(
-                    name=group.group_name,
-                    permission=group_gateways[name],
-                )
-            )
-    return groups
+    """List all groups with permissions for a specific gateway endpoint."""
+    try:
+        groups = store.gateway_endpoint_group_repo.list_groups_for_endpoint(name)
+        return [GroupPermissionEntry(name=group_name, permission=permission) for group_name, permission in groups]
+    except Exception as e:
+        logger.error(f"Error retrieving gateway endpoint group permissions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway endpoint group permissions")
 
 
 @gateway_endpoint_permissions_router.get(
     LIST_ENDPOINTS,
-    response_model=List[str],
-    summary="List all gateway endpoints with permissions",
-    description="Retrieves a list of all gateway endpoints that have permissions assigned.",
+    response_model=List[Dict[str, Any]],
+    summary="List all gateway endpoints",
+    description="Retrieves a list of all gateway endpoints from MLflow.",
 )
-async def list_gateway_endpoints_with_permissions(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
+async def list_gateway_endpoints(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
     """
     List gateway endpoints accessible to the authenticated user.
 
-    This endpoint returns gateway endpoints based on user permissions:
+    This endpoint returns gateway endpoints from MLflow's AI Gateway based on user permissions:
     - Administrators can see all gateway endpoints
     - Regular users only see gateway endpoints they can manage
 
-    For admins we aggregate all known endpoint IDs from stored user/group permissions.
-    For regular users we return only endpoints the user has explicit permissions for.
+    The response includes endpoint metadata like name and type from MLflow's gateway store.
+
+    Parameters:
+    -----------
+    username : str
+        The authenticated username (injected by dependency).
+    is_admin : bool
+        Whether the user has admin privileges (injected by dependency).
+
+    Returns:
+    --------
+    JSONResponse
+        A JSON response containing the list of accessible gateway endpoints.
+
+    Raises:
+    -------
+    HTTPException
+        If there is an error retrieving the endpoints.
     """
-    # Admin path: collect all endpoint IDs from stored users/groups
-    if is_admin:
-        all_users = store.list_users(all=True)
-        endpoint_names = set()
-        for user in all_users:
-            if hasattr(user, "gateway_endpoint_permissions") and user.gateway_endpoint_permissions:
-                endpoint_names.update({p.endpoint_id for p in user.gateway_endpoint_permissions})
-        return JSONResponse(content=sorted(list(endpoint_names)))
+    try:
+        # Fetch all gateway endpoints from MLflow's tracking store
+        all_endpoints = fetch_all_gateway_endpoints()
 
-    # Non-admin path: return only endpoints the user can manage.
-    # Build a set of known endpoints from stored user and group permissions, then filter
-    # by effective manage permission using the existing permission resolver.
-    all_endpoints = set()
-    # Gather endpoints from users
-    all_users = store.list_users(all=True)
-    for user in all_users:
-        if hasattr(user, "gateway_endpoint_permissions") and user.gateway_endpoint_permissions:
-            all_endpoints.update({p.endpoint_id for p in user.gateway_endpoint_permissions})
-    # Gather endpoints from groups
-    all_groups = store.list_groups(all=True)
-    for group in all_groups:
-        if hasattr(group, "gateway_endpoint_permissions") and group.gateway_endpoint_permissions:
-            all_endpoints.update({p.endpoint_id for p in group.gateway_endpoint_permissions})
+        if is_admin:
+            # Admins can see all endpoints
+            endpoints = all_endpoints
+        else:
+            # Regular users only see endpoints they can manage
+            endpoints = filter_manageable_gateway_endpoints(username, all_endpoints)
 
-    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_endpoint
-
-    manageable = []
-    for endpoint in sorted(all_endpoints):
-        try:
-            if can_manage_gateway_endpoint(endpoint, username):
-                manageable.append(endpoint)
-        except Exception:
-            # Treat errors (missing resource etc.) as not manageable
-            continue
-
-    return JSONResponse(content=manageable)
+        # Format the response to match the expected frontend schema
+        return JSONResponse(
+            content=[
+                {
+                    "name": endpoint.get("name", ""),
+                    "type": endpoint.get("endpoint_type", ""),
+                    "description": endpoint.get("description", ""),
+                    "route_type": endpoint.get("route_type", ""),
+                    "auth_type": endpoint.get("auth_type", ""),
+                }
+                for endpoint in endpoints
+            ]
+        )
+    except Exception as e:
+        logger.error(f"Error listing gateway endpoints: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway endpoints")

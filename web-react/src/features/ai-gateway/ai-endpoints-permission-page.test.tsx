@@ -62,7 +62,7 @@ describe("AiEndpointsPermissionPage", () => {
     // If name is effectively undefined/empty string, component might render "Endpoint Name is required."
     // However, the route definition expects a param.
   });
-  
+
   // Re-writing the "missing name" test to be more robust or remove if React Router prevents it.
   // The component checks `if (!name)`.
   it("displays error message if name param is missing (simulated)", () => {

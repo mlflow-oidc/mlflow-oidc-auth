@@ -12,6 +12,7 @@ from mlflow_oidc_auth.db.models.registered_model import SqlRegisteredModelPermis
 from mlflow_oidc_auth.db.models.scorer import SqlScorerPermission
 from mlflow_oidc_auth.entities import Group, User, UserGroup
 
+
 class SqlUser(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)

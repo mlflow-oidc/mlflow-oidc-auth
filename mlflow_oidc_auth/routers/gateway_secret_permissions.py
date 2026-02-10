@@ -1,14 +1,18 @@
-from typing import List
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.dependencies import check_gateway_secret_manage_permission
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils import fetch_all_gateway_secrets, get_is_admin, get_username
+from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_secrets
+
+logger = get_logger()
 
 gateway_secret_permissions_router = APIRouter(
     prefix=f"{GATEWAY_PERMISSIONS_ROUTER_PREFIX}/secrets",
@@ -65,65 +69,66 @@ async def get_gateway_secret_groups(
     name: str = Path(..., description="The gateway secret name to get permissions for"),
     _: None = Depends(check_gateway_secret_manage_permission),
 ) -> List[GroupPermissionEntry]:
-    list_groups = store.list_groups(all=True)
-
-    groups: List[GroupPermissionEntry] = []
-    for group in list_groups:
-        group_secrets = {}
-        if hasattr(group, "gateway_secret_permissions") and group.gateway_secret_permissions:
-            group_secrets = {g.secret_id: g.permission for g in group.gateway_secret_permissions}
-
-        if name in group_secrets:
-            groups.append(
-                GroupPermissionEntry(
-                    name=group.group_name,
-                    permission=group_secrets[name],
-                )
-            )
-    return groups
+    """List all groups with permissions for a specific gateway secret."""
+    try:
+        groups = store.gateway_secret_group_repo.list_groups_for_secret(name)
+        return [GroupPermissionEntry(name=group_name, permission=permission) for group_name, permission in groups]
+    except Exception as e:
+        logger.error(f"Error retrieving gateway secret group permissions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway secret group permissions")
 
 
 @gateway_secret_permissions_router.get(
     LIST_SECRETS,
-    response_model=List[str],
-    summary="List all gateway secrets with permissions",
-    description="Retrieves a list of all gateway secrets that have permissions assigned.",
+    response_model=List[Dict[str, Any]],
+    summary="List all gateway secrets",
+    description="Retrieves a list of all gateway secrets from MLflow.",
 )
-async def list_gateway_secrets_with_permissions(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
+async def list_gateway_secrets(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
     """
     List gateway secrets accessible to the authenticated user.
 
-    Admins can see all known secrets (collected from stored user/group permissions).
-    Regular users only see secrets they can manage.
+    This endpoint returns gateway secrets from MLflow's AI Gateway based on user permissions:
+    - Administrators can see all gateway secrets
+    - Regular users only see gateway secrets they can manage
+
+    Parameters:
+    -----------
+    username : str
+        The authenticated username (injected by dependency).
+    is_admin : bool
+        Whether the user has admin privileges (injected by dependency).
+
+    Returns:
+    --------
+    JSONResponse
+        A JSON response containing the list of accessible gateway secrets.
+
+    Raises:
+    -------
+    HTTPException
+        If there is an error retrieving the secrets.
     """
-    # Admin path: collect all secret IDs from stored users/groups
-    if is_admin:
-        all_users = store.list_users(all=True)
-        secret_names = set()
-        for user in all_users:
-            if hasattr(user, "gateway_secret_permissions") and user.gateway_secret_permissions:
-                secret_names.update({p.secret_id for p in user.gateway_secret_permissions})
-        return JSONResponse(content=sorted(list(secret_names)))
+    try:
+        # Fetch all gateway secrets from MLflow's tracking store
+        all_secrets = fetch_all_gateway_secrets()
 
-    # Non-admin path: gather known secrets and filter by manage capability
-    all_secrets = set()
-    all_users = store.list_users(all=True)
-    for user in all_users:
-        if hasattr(user, "gateway_secret_permissions") and user.gateway_secret_permissions:
-            all_secrets.update({p.secret_id for p in user.gateway_secret_permissions})
-    all_groups = store.list_groups(all=True)
-    for group in all_groups:
-        if hasattr(group, "gateway_secret_permissions") and group.gateway_secret_permissions:
-            all_secrets.update({p.secret_id for p in group.gateway_secret_permissions})
+        if is_admin:
+            # Admins can see all secrets
+            secrets = all_secrets
+        else:
+            # Regular users only see secrets they can manage
+            secrets = filter_manageable_gateway_secrets(username, all_secrets)
 
-    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_secret
-
-    manageable = []
-    for secret in sorted(all_secrets):
-        try:
-            if can_manage_gateway_secret(secret, username):
-                manageable.append(secret)
-        except Exception:
-            continue
-
-    return JSONResponse(content=manageable)
+        # Format the response to match the expected frontend schema
+        return JSONResponse(
+            content=[
+                {
+                    "key": secret.get("name") or secret.get("key", ""),
+                }
+                for secret in secrets
+            ]
+        )
+    except Exception as e:
+        logger.error(f"Error listing gateway secrets: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway secrets")

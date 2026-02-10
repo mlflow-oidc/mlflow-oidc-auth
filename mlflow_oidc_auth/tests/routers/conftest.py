@@ -49,6 +49,7 @@ def test_engine(temp_db):
     engine = create_engine(f"sqlite:///{temp_db}", echo=False)
     # Import models package to ensure all model modules are loaded and tables are registered
     import mlflow_oidc_auth.db.models  # noqa: F401  (import triggers model registration)
+
     Base.metadata.create_all(engine)
     return engine
 
@@ -276,6 +277,7 @@ def mock_config():
     config_mock.OIDC_GROUPS_ATTRIBUTE = "groups"
     config_mock.OIDC_ADMIN_GROUP_NAME = ["admin-group"]
     config_mock.OIDC_GROUP_NAME = ["user-group", "test-group"]
+    config_mock.OIDC_GEN_AI_GATEWAY_ENABLED = False
     return config_mock
 
 

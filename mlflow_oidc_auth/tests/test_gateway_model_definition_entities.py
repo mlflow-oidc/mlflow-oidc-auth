@@ -60,4 +60,4 @@ class TestGatewayModelDefinitionEntities(unittest.TestCase):
         p2 = GatewayModelDefinitionGroupRegexPermission.from_json(json_data)
         self.assertEqual(p2.id, "1")
         self.assertEqual(p2.group_id, 1)
-        self.assertEqual(p2.permission, "READ" )
+        self.assertEqual(p2.permission, "READ")

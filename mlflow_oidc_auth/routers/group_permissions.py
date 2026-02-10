@@ -1687,7 +1687,9 @@ async def create_group_gateway_endpoint_pattern_permission(
             group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error creating group gateway endpoint pattern permission: {str(e)}")
@@ -1710,7 +1712,9 @@ async def get_group_gateway_endpoint_pattern_permission(
     try:
         perm = store.get_group_gateway_endpoint_regex_permission(id=id, group_name=group_name)
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error getting group gateway endpoint pattern permission: {str(e)}")
@@ -1736,7 +1740,9 @@ async def update_group_gateway_endpoint_pattern_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error updating group gateway endpoint pattern permission: {str(e)}")
@@ -1924,7 +1930,9 @@ async def create_group_gateway_model_definition_pattern_permission(
             group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error creating group gateway model definition pattern permission: {str(e)}")
@@ -1947,7 +1955,9 @@ async def get_group_gateway_model_definition_pattern_permission(
     try:
         perm = store.get_group_gateway_model_definition_regex_permission(id=id, group_name=group_name)
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error getting group gateway model definition pattern permission: {str(e)}")
@@ -1973,7 +1983,9 @@ async def update_group_gateway_model_definition_pattern_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error updating group gateway model definition pattern permission: {str(e)}")
@@ -2161,7 +2173,9 @@ async def create_group_gateway_secret_pattern_permission(
             group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error creating group gateway secret pattern permission: {str(e)}")
@@ -2184,7 +2198,9 @@ async def get_group_gateway_secret_pattern_permission(
     try:
         perm = store.get_group_gateway_secret_regex_permission(id=id, group_name=group_name)
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error getting group gateway secret pattern permission: {str(e)}")
@@ -2210,7 +2226,9 @@ async def update_group_gateway_secret_pattern_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
         return GatewayRegexPermissionResponse(
-            gateway_permission=GatewayRegexPermissionRecord(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission)
+            gateway_permission=GatewayRegexPermissionRecord(
+                id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.group_id, permission=perm.permission
+            )
         )
     except Exception as e:
         logger.error(f"Error updating group gateway secret pattern permission: {str(e)}")

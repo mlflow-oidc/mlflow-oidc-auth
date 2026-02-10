@@ -23,6 +23,7 @@ def mock_gateway_permissions():
 @pytest.fixture
 def override_gateway_manage_permission(test_app):
     """Override the gateway manage permission check to always pass."""
+
     async def always_allow():
         return None
 
@@ -110,19 +111,11 @@ class TestGatewayEndpointPermissionRoutes:
 
     def test_list_gateway_endpoint_groups(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
         """Test listing groups with permissions for a gateway endpoint."""
-        mock_group1 = MagicMock()
-        mock_group1.group_name = "developers"
-        mock_group1.gateway_endpoint_permissions = [mock_gateway_permissions("my-endpoint", "READ")]
-
-        mock_group2 = MagicMock()
-        mock_group2.group_name = "admins"
-        mock_group2.gateway_endpoint_permissions = [mock_gateway_permissions("my-endpoint", "MANAGE")]
-
-        mock_group3 = MagicMock()
-        mock_group3.group_name = "viewers"
-        mock_group3.gateway_endpoint_permissions = []
-
-        mock_store.list_groups.return_value = [mock_group1, mock_group2, mock_group3]
+        # Mock the repository method to return groups with permissions
+        mock_store.gateway_endpoint_group_repo.list_groups_for_endpoint.return_value = [
+            ("developers", "READ"),
+            ("admins", "MANAGE"),
+        ]
 
         with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
             resp = authenticated_client.get(f"{GATEWAY_ENDPOINT_BASE}/my-endpoint/groups")
@@ -130,21 +123,16 @@ class TestGatewayEndpointPermissionRoutes:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 2
-        assert {"name": "developers", "permission": "READ", "kind": "group"} in body
-        assert {"name": "admins", "permission": "MANAGE", "kind": "group"} in body
-        mock_store.list_groups.assert_called_with(all=True)
+        assert {"kind": "group", "name": "developers", "permission": "READ"} in body
+        assert {"kind": "group", "name": "admins", "permission": "MANAGE"} in body
+        mock_store.gateway_endpoint_group_repo.list_groups_for_endpoint.assert_called_with("my-endpoint")
 
     def test_list_gateway_endpoint_groups_filters_by_endpoint(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
         """Test that only groups with permissions for the specific endpoint are returned."""
-        mock_group1 = MagicMock()
-        mock_group1.group_name = "developers"
-        mock_group1.gateway_endpoint_permissions = [mock_gateway_permissions("other-endpoint", "READ")]
-
-        mock_group2 = MagicMock()
-        mock_group2.group_name = "admins"
-        mock_group2.gateway_endpoint_permissions = [mock_gateway_permissions("my-endpoint", "MANAGE")]
-
-        mock_store.list_groups.return_value = [mock_group1, mock_group2]
+        # Only one group has permission for this endpoint
+        mock_store.gateway_endpoint_group_repo.list_groups_for_endpoint.return_value = [
+            ("admins", "MANAGE"),
+        ]
 
         with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
             resp = authenticated_client.get(f"{GATEWAY_ENDPOINT_BASE}/my-endpoint/groups")
@@ -152,15 +140,11 @@ class TestGatewayEndpointPermissionRoutes:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 1
-        assert {"name": "admins", "permission": "MANAGE", "kind": "group"} in body
+        assert {"kind": "group", "name": "admins", "permission": "MANAGE"} in body
 
     def test_list_gateway_endpoint_groups_empty(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
         """Test listing groups when no group has permissions for the endpoint."""
-        mock_group = MagicMock()
-        mock_group.group_name = "developers"
-        mock_group.gateway_endpoint_permissions = []
-
-        mock_store.list_groups.return_value = [mock_group]
+        mock_store.gateway_endpoint_group_repo.list_groups_for_endpoint.return_value = []
 
         with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
             resp = authenticated_client.get(f"{GATEWAY_ENDPOINT_BASE}/unknown-endpoint/groups")
@@ -170,10 +154,7 @@ class TestGatewayEndpointPermissionRoutes:
 
     def test_list_gateway_endpoint_groups_no_gateway_permissions_attr(self, test_app, authenticated_client, mock_store):
         """Test listing groups when groups don't have gateway_endpoint_permissions attribute."""
-        mock_group = MagicMock(spec=[])  # Empty spec means no attributes
-        mock_group.group_name = "developers"
-
-        mock_store.list_groups.return_value = [mock_group]
+        mock_store.gateway_endpoint_group_repo.list_groups_for_endpoint.return_value = []
 
         with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
             resp = authenticated_client.get(f"{GATEWAY_ENDPOINT_BASE}/my-endpoint/groups")
@@ -184,10 +165,11 @@ class TestGatewayEndpointPermissionRoutes:
 
 @pytest.mark.usefixtures("authenticated_session")
 class TestListGatewayEndpoints:
-    """Tests for listing all gateway endpoints with permissions."""
+    """Tests for listing all gateway endpoints."""
 
     def test_list_endpoints_admin_sees_all(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
-        """Test that admin sees all endpoints from all users."""
+        """Test that admin sees all endpoints from MLflow."""
+
         # Override to make current user admin
         async def override_get_is_admin():
             return True
@@ -199,25 +181,29 @@ class TestListGatewayEndpoints:
         test_app.dependency_overrides[get_username] = override_get_username
 
         try:
-            admin_user, regular_user, service_user = mock_store.list_users.return_value
+            # Mock fetch_all_gateway_endpoints to return sample endpoints
+            mock_endpoints = [
+                {"name": "endpoint-a", "endpoint_type": "llm/v1/chat"},
+                {"name": "endpoint-b", "endpoint_type": "llm/v1/completions"},
+                {"name": "endpoint-c", "endpoint_type": "llm/v1/embeddings"},
+            ]
 
-            admin_user.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-a", "MANAGE")]
-            regular_user.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-b", "READ")]
-            service_user.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-c", "EDIT")]
-
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
-                resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
+            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
+                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+                    resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
             body = resp.json()
-            assert sorted(body) == ["endpoint-a", "endpoint-b", "endpoint-c"]
-            mock_store.list_users.assert_called_with(all=True)
+            assert len(body) == 3
+            endpoint_names = [e["name"] for e in body]
+            assert sorted(endpoint_names) == ["endpoint-a", "endpoint-b", "endpoint-c"]
         finally:
             test_app.dependency_overrides.pop(get_is_admin, None)
             test_app.dependency_overrides.pop(get_username, None)
 
     def test_list_endpoints_admin_deduplicates(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
         """Test that admin sees deduplicated endpoint list."""
+
         async def override_get_is_admin():
             return True
 
@@ -228,25 +214,27 @@ class TestListGatewayEndpoints:
         test_app.dependency_overrides[get_username] = override_get_username
 
         try:
-            admin_user, regular_user, service_user = mock_store.list_users.return_value
+            # Mock endpoints - MLflow should already return unique endpoints
+            mock_endpoints = [
+                {"name": "shared-endpoint", "endpoint_type": "llm/v1/chat"},
+                {"name": "unique-endpoint", "endpoint_type": "llm/v1/completions"},
+            ]
 
-            # Multiple users have the same endpoint
-            admin_user.gateway_endpoint_permissions = [mock_gateway_permissions("shared-endpoint", "MANAGE")]
-            regular_user.gateway_endpoint_permissions = [mock_gateway_permissions("shared-endpoint", "READ")]
-            service_user.gateway_endpoint_permissions = [mock_gateway_permissions("unique-endpoint", "EDIT")]
-
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
-                resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
+            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
+                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+                    resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
             body = resp.json()
-            assert sorted(body) == ["shared-endpoint", "unique-endpoint"]
+            endpoint_names = [e["name"] for e in body]
+            assert sorted(endpoint_names) == ["shared-endpoint", "unique-endpoint"]
         finally:
             test_app.dependency_overrides.pop(get_is_admin, None)
             test_app.dependency_overrides.pop(get_username, None)
 
     def test_list_endpoints_non_admin_filters_by_manage_permission(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
         """Test that non-admin users only see endpoints they can manage."""
+
         async def override_get_is_admin():
             return False
 
@@ -257,34 +245,33 @@ class TestListGatewayEndpoints:
         test_app.dependency_overrides[get_username] = override_get_username
 
         try:
-            admin_user, regular_user, service_user = mock_store.list_users.return_value
+            mock_endpoints = [
+                {"name": "endpoint-a", "endpoint_type": "llm/v1/chat"},
+                {"name": "endpoint-b", "endpoint_type": "llm/v1/completions"},
+                {"name": "endpoint-c", "endpoint_type": "llm/v1/embeddings"},
+                {"name": "endpoint-d", "endpoint_type": "llm/v1/chat"},
+            ]
 
-            admin_user.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-a", "MANAGE")]
-            regular_user.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-b", "READ")]
-            service_user.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-c", "EDIT")]
-
-            mock_group = MagicMock()
-            mock_group.group_name = "developers"
-            mock_group.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-d", "MANAGE")]
-            mock_store.list_groups.return_value = [mock_group]
-
-            def can_manage_mock(endpoint, username):
+            def filter_mock(username, endpoints):
                 # User can manage endpoint-b and endpoint-d
-                return endpoint in ["endpoint-b", "endpoint-d"]
+                return [e for e in endpoints if e["name"] in ["endpoint-b", "endpoint-d"]]
 
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
-                with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_endpoint", can_manage_mock):
-                    resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
+            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
+                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.filter_manageable_gateway_endpoints", filter_mock):
+                    with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+                        resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
             body = resp.json()
-            assert sorted(body) == ["endpoint-b", "endpoint-d"]
+            endpoint_names = [e["name"] for e in body]
+            assert sorted(endpoint_names) == ["endpoint-b", "endpoint-d"]
         finally:
             test_app.dependency_overrides.pop(get_is_admin, None)
             test_app.dependency_overrides.pop(get_username, None)
 
     def test_list_endpoints_non_admin_handles_permission_errors(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
         """Test that permission errors are handled gracefully for non-admin users."""
+
         async def override_get_is_admin():
             return False
 
@@ -295,33 +282,31 @@ class TestListGatewayEndpoints:
         test_app.dependency_overrides[get_username] = override_get_username
 
         try:
-            admin_user, regular_user, service_user = mock_store.list_users.return_value
+            mock_endpoints = [
+                {"name": "endpoint-a", "endpoint_type": "llm/v1/chat"},
+                {"name": "endpoint-b", "endpoint_type": "llm/v1/completions"},
+            ]
 
-            admin_user.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-a", "MANAGE")]
-            regular_user.gateway_endpoint_permissions = [mock_gateway_permissions("endpoint-b", "READ")]
-            service_user.gateway_endpoint_permissions = []
+            def filter_mock(username, endpoints):
+                # Return only endpoint-b (simulating endpoint-a being filtered due to error)
+                return [e for e in endpoints if e["name"] == "endpoint-b"]
 
-            mock_store.list_groups.return_value = []
-
-            def can_manage_mock(endpoint, username):
-                if endpoint == "endpoint-a":
-                    raise Exception("Permission check failed")
-                return endpoint == "endpoint-b"
-
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
-                with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_endpoint", can_manage_mock):
-                    resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
+            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
+                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.filter_manageable_gateway_endpoints", filter_mock):
+                    with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+                        resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
             body = resp.json()
-            # endpoint-a should be excluded due to error, endpoint-b should be included
-            assert body == ["endpoint-b"]
+            endpoint_names = [e["name"] for e in body]
+            assert endpoint_names == ["endpoint-b"]
         finally:
             test_app.dependency_overrides.pop(get_is_admin, None)
             test_app.dependency_overrides.pop(get_username, None)
 
     def test_list_endpoints_empty_when_no_permissions(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
-        """Test that empty list is returned when no gateway permissions exist."""
+        """Test that empty list is returned when no gateway endpoints exist."""
+
         async def override_get_is_admin():
             return True
 
@@ -332,14 +317,10 @@ class TestListGatewayEndpoints:
         test_app.dependency_overrides[get_username] = override_get_username
 
         try:
-            admin_user, regular_user, service_user = mock_store.list_users.return_value
-
-            admin_user.gateway_endpoint_permissions = []
-            regular_user.gateway_endpoint_permissions = []
-            service_user.gateway_endpoint_permissions = []
-
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
-                resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
+            # No endpoints returned from MLflow
+            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=[]):
+                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+                    resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
             assert resp.json() == []
@@ -348,7 +329,8 @@ class TestListGatewayEndpoints:
             test_app.dependency_overrides.pop(get_username, None)
 
     def test_list_endpoints_handles_missing_gateway_permissions_attr(self, test_app, authenticated_client, mock_store):
-        """Test handling users without gateway_endpoint_permissions attribute."""
+        """Test handling endpoints without all expected attributes."""
+
         async def override_get_is_admin():
             return True
 
@@ -359,21 +341,20 @@ class TestListGatewayEndpoints:
         test_app.dependency_overrides[get_username] = override_get_username
 
         try:
-            admin_user, regular_user, service_user = mock_store.list_users.return_value
+            # Endpoints with minimal attributes
+            mock_endpoints = [
+                {"name": "endpoint-a"},  # Missing endpoint_type
+            ]
 
-            # Remove the attribute entirely
-            if hasattr(admin_user, "gateway_endpoint_permissions"):
-                delattr(admin_user, "gateway_endpoint_permissions")
-            if hasattr(regular_user, "gateway_endpoint_permissions"):
-                delattr(regular_user, "gateway_endpoint_permissions")
-            if hasattr(service_user, "gateway_endpoint_permissions"):
-                delattr(service_user, "gateway_endpoint_permissions")
-
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
-                resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
+            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
+                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+                    resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
-            assert resp.json() == []
+            body = resp.json()
+            assert len(body) == 1
+            assert body[0]["name"] == "endpoint-a"
+            assert body[0]["type"] == ""  # Default when missing
         finally:
             test_app.dependency_overrides.pop(get_is_admin, None)
             test_app.dependency_overrides.pop(get_username, None)
