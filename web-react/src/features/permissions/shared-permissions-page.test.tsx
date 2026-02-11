@@ -8,9 +8,7 @@ const mockUseUser =
   >();
 const mockUseUserDetails =
   vi.fn<() => { user: unknown; refetch: () => void }>();
-const mockUseRuntimeConfig = vi.fn<
-  () => { gen_ai_gateway_enabled: boolean }
->();
+const mockUseRuntimeConfig = vi.fn<() => { gen_ai_gateway_enabled: boolean }>();
 
 // Mock localStorage
 const localStorageMock = (() => {
