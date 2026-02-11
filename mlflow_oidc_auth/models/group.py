@@ -146,3 +146,14 @@ class GroupScorerRegexPermissionItem(BaseModel):
     group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
     permission: str = Field(..., description="Permission granted when the regex matches")
     kind: Literal["group"] = Field("group", description="Indicates this is a group scorer regex permission")
+
+
+class GroupGatewayRegexPermissionItem(BaseModel):
+    """Serialized gateway regex permission entry for a group."""
+
+    id: int = Field(..., description="Pattern identifier")
+    regex: str = Field(..., description="Regex pattern")
+    priority: int = Field(..., description="Evaluation priority")
+    group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
+    permission: str = Field(..., description="Permission granted when the regex matches")
+    kind: Literal["group"] = Field("group", description="Indicates this is a group gateway regex permission")

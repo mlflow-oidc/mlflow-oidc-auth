@@ -73,6 +73,14 @@ class GatewaySecretGroupPermissionRepository:
             session.delete(perm)
             session.flush()
 
+    def update_group_permission(self, group_name: str, secret_id: str, permission: str) -> GatewaySecretPermission:
+        _validate_permission(permission)
+        with self._Session() as session:
+            perm = self._get_group_permission(session, secret_id, group_name)
+            perm.permission = permission
+            session.flush()
+            return perm.to_mlflow_entity()
+
     def list_groups_for_secret(self, secret_id: str):
         with self._Session() as session:
             rows = (

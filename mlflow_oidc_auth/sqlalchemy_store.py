@@ -523,6 +523,9 @@ class SqlAlchemyStore:
     def get_user_groups_gateway_secret_permission(self, gateway_name: str, group_name: str):
         return self.gateway_secret_group_repo.get_group_permission_for_user(gateway_name, group_name)
 
+    def update_group_gateway_secret_permission(self, group_name: str, gateway_name: str, permission: str):
+        return self.gateway_secret_group_repo.update_group_permission(group_name, gateway_name, permission)
+
     def delete_group_gateway_secret_permission(self, group_name: str, gateway_name: str):
         return self.gateway_secret_group_repo.revoke_group_permission(group_name, gateway_name)
 

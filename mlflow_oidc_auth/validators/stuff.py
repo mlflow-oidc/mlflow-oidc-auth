@@ -146,12 +146,12 @@ def validate_gateway_proxy(username: str) -> bool:
         # USE
         if gateway_name:
             return can_use_gateway_endpoint(str(gateway_name), username)
-        # Fallback: check if user has any gateway with use
-        perms = store.list_gateway_permissions(username)
+        # Fallback: check if user has any gateway endpoint with use
+        perms = store.list_gateway_endpoint_permissions(username)
         return any(get_permission(p.permission).can_use for p in perms)
     else:
         # POST/PUT/DELETE -> UPDATE required
         if gateway_name:
             return can_update_gateway_endpoint(str(gateway_name), username)
-        perms = store.list_gateway_permissions(username)
+        perms = store.list_gateway_endpoint_permissions(username)
         return any(get_permission(p.permission).can_update for p in perms)
