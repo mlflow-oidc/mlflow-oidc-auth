@@ -1,6 +1,7 @@
 from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils import (
     effective_registered_model_permission,
+    effective_new_registered_model_permission,
     effective_experiment_permission,
     get_model_name,
     get_model_id,
@@ -41,6 +42,11 @@ def _get_permission_from_trace_request_id(username: str) -> Permission:
     experiment_id = trace.experiment_id
 
     return effective_experiment_permission(experiment_id, username).permission
+
+
+def validate_can_create_registered_model(username: str) -> bool:
+    model_name = get_model_name()
+    return effective_new_registered_model_permission(model_name, username).permission.can_update
 
 
 def validate_can_read_registered_model(username: str) -> bool:

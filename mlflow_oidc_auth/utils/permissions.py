@@ -298,6 +298,48 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
 # ---------------------------------------------------------------------------
 
 
+def _permission_new_experiment_sources_config(experiment_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    """Permission sources for experiment creation (by name, no experiment_id yet).
+
+    Only regex-based sources are used because "user" and "group" sources
+    require a per-resource-ID permission record which doesn't exist yet.
+    """
+    return {
+        "regex": lambda experiment_name=experiment_name, user=username: _match_regex_permission(
+            store.list_experiment_regex_permissions(user), experiment_name, "experiment name"
+        ),
+        "group-regex": lambda experiment_name=experiment_name, user=username: _match_regex_permission(
+            store.list_group_experiment_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)), experiment_name, "experiment name"
+        ),
+    }
+
+
+def _permission_new_registered_model_sources_config(model_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    """Permission sources for registered model creation (by name, no permission record yet).
+
+    Only regex-based sources are used because "user" and "group" sources
+    require a per-resource permission record which doesn't exist yet.
+    """
+    return {
+        "regex": lambda model_name=model_name, user=username: _match_regex_permission(
+            store.list_registered_model_regex_permissions(user), model_name, "model name"
+        ),
+        "group-regex": lambda model_name=model_name, user=username: _match_regex_permission(
+            store.list_group_registered_model_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)), model_name, "model name"
+        ),
+    }
+
+
+def effective_new_experiment_permission(experiment_name: str, user: str) -> PermissionResult:
+    """Resolve permission for creating a new experiment by name."""
+    return get_permission_from_store_or_default(_permission_new_experiment_sources_config(experiment_name, user))
+
+
+def effective_new_registered_model_permission(model_name: str, user: str) -> PermissionResult:
+    """Resolve permission for creating a new registered model by name."""
+    return get_permission_from_store_or_default(_permission_new_registered_model_sources_config(model_name, user))
+
+
 def effective_experiment_permission(experiment_id: str, user: str) -> PermissionResult:
     """
     Attempts to get permission from store based on configured sources,
