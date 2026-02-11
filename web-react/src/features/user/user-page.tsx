@@ -4,6 +4,7 @@ import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { useUser } from "../../core/hooks/use-user";
 import { UserDetailsCard } from "./components/user-details-card";
+import { TokensList } from "./components/tokens-list";
 import { useSearch } from "../../core/hooks/use-search";
 import { useUserExperimentPermissions } from "../../core/hooks/use-user-experiment-permissions";
 import { useUserRegisteredModelPermissions } from "../../core/hooks/use-user-model-permissions";
@@ -12,8 +13,6 @@ import { EntityListTable } from "../../shared/components/entity-list-table";
 import { SearchInput } from "../../shared/components/search-input";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { PermissionItem } from "../../shared/types/entity";
-import { TokenInfoBlock } from "../../shared/components/token-info-block";
-
 export const UserPage = () => {
   const { tab = "info" } = useParams<{ tab?: string }>();
   const { currentUser, isLoading: isUserLoading, error: userError } = useUser();
@@ -45,6 +44,7 @@ export const UserPage = () => {
 
   const tabs = [
     { id: "info", label: "Info" },
+    { id: "tokens", label: "Tokens" },
     { id: "experiments", label: "Experiments" },
     { id: "prompts", label: "Prompts" },
     { id: "models", label: "Models" },
@@ -73,13 +73,6 @@ export const UserPage = () => {
 
   return (
     <PageContainer title="User Page">
-      {currentUser && (
-        <TokenInfoBlock
-          username={currentUser.username}
-          passwordExpiration={currentUser.password_expiration}
-        />
-      )}
-
       <div className="flex space-x-4 border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
         {tabs.map((tabItem) => (
           <Link
@@ -108,8 +101,13 @@ export const UserPage = () => {
 
       {!isLoading && !error && currentUser && (
         <>
-          {tab === "info" && <UserDetailsCard currentUser={currentUser} />}
-          {tab !== "info" && activeHook && (
+          {tab === "info" && (
+            <UserDetailsCard currentUser={currentUser} />
+          )}
+          {tab === "tokens" && (
+            <TokensList />
+          )}
+          {tab !== "info" && tab !== "tokens" && activeHook && (
             <>
               <div className="mb-2">
                 <SearchInput

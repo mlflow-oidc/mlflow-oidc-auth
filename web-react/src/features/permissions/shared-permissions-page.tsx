@@ -3,8 +3,6 @@ import { useParams, Link } from "react-router";
 import PageContainer from "../../shared/components/page/page-container";
 import type { PermissionType } from "../../shared/types/entity";
 import { Switch } from "../../shared/components/switch";
-import { TokenInfoBlock } from "../../shared/components/token-info-block";
-import { useUserDetails } from "../../core/hooks/use-user-details";
 import { useUser } from "../../core/hooks/use-user";
 import { NormalPermissionsView } from "./components/normal-permissions-view";
 import { RegexPermissionsView } from "./components/regex-permissions-view";
@@ -31,10 +29,6 @@ export const SharedPermissionsPage = ({
     (entityKind === "user" ? routeUsername : routeGroupName) || null;
 
   const { currentUser } = useUser();
-  const { user: userDetails, refetch: userDetailsRefetch } = useUserDetails({
-    username:
-      entityKind === "user" && currentUser?.is_admin ? entityName : null,
-  });
 
   const [isRegexMode, setIsRegexMode] = useState(() => {
     const savedValue = localStorage.getItem(IS_REGEX_MODE_KEY);
@@ -69,16 +63,6 @@ export const SharedPermissionsPage = ({
           : `Permissions for ${entityName}`
       }
     >
-      <div className="flex items-end gap-6">
-        {entityKind === "user" && currentUser?.is_admin && (
-          <TokenInfoBlock
-            username={entityName}
-            passwordExpiration={userDetails?.password_expiration}
-            onTokenGenerated={userDetailsRefetch}
-          />
-        )}
-      </div>
-
       <div className="flex justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
         <div className="flex space-x-4">
           {tabs.map((tab) => (

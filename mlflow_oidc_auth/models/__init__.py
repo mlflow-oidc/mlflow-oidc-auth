@@ -49,7 +49,14 @@ from mlflow_oidc_auth.models.responses import (
     StatusMessageResponse,
     StatusOnlyResponse,
 )
-from mlflow_oidc_auth.models.user import CreateAccessTokenRequest, CreateUserRequest
+from mlflow_oidc_auth.models.user import (
+    CreateAccessTokenRequest,
+    CreateUserRequest,
+    CreateUserTokenRequest,
+    UserTokenCreatedResponse,
+    UserTokenListResponse,
+    UserTokenResponse,
+)
 from mlflow_oidc_auth.models.webhook import (
     WebhookCreateRequest,
     WebhookListResponse,
@@ -106,6 +113,10 @@ __all__ = [
     "ScorerRegexPermissionResponse",
     "CreateAccessTokenRequest",
     "CreateUserRequest",
+    "CreateUserTokenRequest",
+    "UserTokenResponse",
+    "UserTokenCreatedResponse",
+    "UserTokenListResponse",
     "WebhookCreateRequest",
     "WebhookUpdateRequest",
     "WebhookTestRequest",

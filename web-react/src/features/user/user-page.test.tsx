@@ -64,10 +64,6 @@ vi.mock("./components/user-details-card", () => ({
   ),
 }));
 
-vi.mock("../../shared/components/token-info-block", () => ({
-  TokenInfoBlock: () => <div>Token Info</div>,
-}));
-
 describe("UserPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();

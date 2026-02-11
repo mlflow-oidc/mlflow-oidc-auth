@@ -1,60 +1,28 @@
 import React, { useState, useCallback, useRef } from "react";
-import { useUser } from "../hooks/use-user";
-import { request } from "../services/api-utils";
-import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import { faCopy } from "@fortawesome/free-solid-svg-icons";
-import { Button } from "../../shared/components/button";
-import { Modal } from "../../shared/components/modal";
-import { Input } from "../../shared/components/input";
-import { useToast } from "../../shared/components/toast/use-toast";
+import { Button } from "../../../shared/components/button";
+import { Modal } from "../../../shared/components/modal";
+import { Input } from "../../../shared/components/input";
+import { useToast } from "../../../shared/components/toast/use-toast";
+import { createUserToken } from "../../../core/services/token-service";
 
-interface TokenModel {
-  token: string;
-  message: string;
-}
-
-const requestAccessTokenApi = async (
-  username: string,
-  expiration: Date,
-): Promise<string> => {
-  const tokenModel = await request<TokenModel>(
-    STATIC_API_ENDPOINTS.CREATE_ACCESS_TOKEN,
-    {
-      method: "PATCH",
-      body: JSON.stringify({
-        username: username,
-        expiration: expiration.toISOString(),
-      }),
-    },
-  );
-
-  if (!tokenModel.token) {
-    throw new Error(
-      "API response did not contain an access token (token field).",
-    );
-  }
-
-  return tokenModel.token;
-};
-
-interface AccessTokenModalProps {
+interface CreateTokenModalProps {
+  isOpen: boolean;
   onClose: () => void;
-  username: string;
-  onTokenGenerated?: () => void;
+  onTokenCreated: () => void;
 }
 
-export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
+export const CreateTokenModal: React.FC<CreateTokenModalProps> = ({
+  isOpen,
   onClose,
-  username,
-  onTokenGenerated,
+  onTokenCreated,
 }) => {
   const today = new Date().toISOString().split("T")[0];
   const maxDate = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
     .toISOString()
     .split("T")[0];
 
-  const { refresh } = useUser();
-
+  const [tokenName, setTokenName] = useState<string>("");
   const [expirationDate, setExpirationDate] = useState<string>(maxDate);
   const [accessToken, setAccessToken] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -62,25 +30,50 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
   const { showToast } = useToast();
   const tokenInputRef = useRef<HTMLInputElement>(null);
 
-  const handleRequestToken = useCallback(async () => {
+  const resetForm = useCallback(() => {
+    setTokenName("");
+    setExpirationDate(maxDate);
+    setAccessToken("");
+    setCopyFeedback(null);
+  }, [maxDate]);
+
+  const handleClose = useCallback(() => {
+    resetForm();
+    onClose();
+  }, [resetForm, onClose]);
+
+  const handleCreateToken = useCallback(async () => {
+    if (!tokenName.trim()) {
+      showToast("Token name is required", "error");
+      return;
+    }
+
     setIsLoading(true);
     setAccessToken("");
+
     try {
       const expirationDateObject = new Date(expirationDate);
+      const response = await createUserToken({
+        name: tokenName.trim(),
+        expiration: expirationDateObject.toISOString(),
+      });
 
-      const token = await requestAccessTokenApi(username, expirationDateObject);
-      setAccessToken(token);
-
-      showToast("Access token generated successfully", "success");
-      refresh();
-      onTokenGenerated?.();
+      setAccessToken(response.token);
+      showToast(`Token '${tokenName}' created successfully!`, "success");
+      onTokenCreated();
     } catch (error) {
-      console.error("Error requesting access token:", error);
-      showToast("Failed to generate access token", "error");
+      console.error("Error creating token:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to create token";
+      if (errorMessage.toLowerCase().includes("already exists")) {
+        showToast(`Token with name '${tokenName}' already exists`, "error");
+      } else {
+        showToast(errorMessage, "error");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [expirationDate, username, refresh, showToast, onTokenGenerated]);
+  }, [tokenName, expirationDate, showToast, onTokenCreated]);
 
   const handleCopyToken = useCallback(() => {
     if (accessToken && tokenInputRef.current) {
@@ -92,22 +85,31 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
         })
         .catch((err) => {
           console.error("Could not copy text: ", err);
-          setCopyFeedback("Failed to copy!");
+          setCopyFeedback("Failed!");
           setTimeout(() => setCopyFeedback(null), 2000);
         });
     }
   }, [accessToken]);
 
+  const isFormValid = tokenName.trim().length > 0 && expirationDate;
+
   return (
-    <Modal
-      isOpen={true}
-      onClose={onClose}
-      title={`Generate Access Token for ${username}`}
-    >
-      <p className="text-left text-text-primary dark:text-text-primary-dark ">
-        Use the form below to generate a new access token. Select an expiration
-        date (maximum validity: 1 year) and click "Request Token".
+    <Modal isOpen={isOpen} onClose={handleClose} title="Create New Token">
+      <p className="text-left text-text-primary dark:text-text-primary-dark">
+        Create a new named access token. Each token can have a unique name for
+        easy identification (e.g., "CI/CD Pipeline", "Local Development").
       </p>
+
+      <Input
+        id="token-name"
+        label="Token Name*"
+        type="text"
+        value={tokenName}
+        onChange={(e) => setTokenName(e.target.value)}
+        placeholder="my-token"
+        required
+        disabled={!!accessToken}
+      />
 
       <div className="flex items-end space-x-4">
         <Input
@@ -119,17 +121,18 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
           min={today}
           max={maxDate}
           required
+          disabled={!!accessToken}
           containerClassName="flex-grow"
           className="text-text-primary dark:text-text-primary-dark dark:scheme-dark cursor-pointer"
         />
 
         <Button
-          onClick={handleRequestToken as () => void}
-          disabled={isLoading || !expirationDate}
+          onClick={() => void handleCreateToken()}
+          disabled={isLoading || !isFormValid || !!accessToken}
           variant="primary"
           className={`h-[42px] ${isLoading ? "opacity-70 cursor-not-allowed" : ""}`}
         >
-          {isLoading ? "Requesting..." : "Request Token"}
+          {isLoading ? "Creating..." : "Create Token"}
         </Button>
       </div>
 
@@ -137,7 +140,7 @@ export const AccessTokenModal: React.FC<AccessTokenModalProps> = ({
         <Input
           ref={tokenInputRef}
           id="access-key"
-          label="Access Key"
+          label="Access Token (copy now - shown only once)"
           type="text"
           readOnly
           value={accessToken}

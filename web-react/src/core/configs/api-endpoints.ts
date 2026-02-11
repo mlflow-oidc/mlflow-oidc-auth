@@ -8,6 +8,7 @@ export const STATIC_API_ENDPOINTS = {
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
   USERS_RESOURCE: "/api/2.0/mlflow/users",
+  USER_TOKENS: "/api/2.0/mlflow/users/tokens",
 
   // Trash management
   TRASH_EXPERIMENTS: "/oidc/trash/experiments",
@@ -19,6 +20,10 @@ export const STATIC_API_ENDPOINTS = {
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {
+  // User token management
+  DELETE_USER_TOKEN: (tokenId: string) =>
+    `/api/2.0/mlflow/users/tokens/${tokenId}`,
+
   // User permissions for resources
   GET_USER_DETAILS: (userName: string) => `/api/2.0/mlflow/users/${userName}`,
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>

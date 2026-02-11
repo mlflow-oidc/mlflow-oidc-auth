@@ -17,6 +17,7 @@ from mlflow_oidc_auth.entities import (
     ScorerRegexPermission,
     User,
     UserGroup,
+    UserToken,
 )
 
 
@@ -29,6 +30,7 @@ class SqlUser(Base):
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     username: Mapped[str] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Legacy columns - authentication uses the user_tokens table (see SqlUserToken)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     password_expiration: Mapped[datetime] = mapped_column(nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -36,6 +38,7 @@ class SqlUser(Base):
     experiment_permissions: Mapped[list["SqlExperimentPermission"]] = relationship("SqlExperimentPermission", backref="users")
     registered_model_permissions: Mapped[list["SqlRegisteredModelPermission"]] = relationship("SqlRegisteredModelPermission", backref="users")
     scorer_permissions: Mapped[list["SqlScorerPermission"]] = relationship("SqlScorerPermission", backref="users")
+    tokens: Mapped[list["SqlUserToken"]] = relationship("SqlUserToken", back_populates="user", cascade="all, delete-orphan")
     groups: Mapped[list["SqlGroup"]] = relationship(
         "SqlGroup",
         secondary="user_groups",
@@ -307,4 +310,28 @@ class SqlScorerGroupRegexPermission(Base):
             priority=self.priority,
             group_id=self.group_id,
             permission=self.permission,
+        )
+
+
+class SqlUserToken(Base):
+    __tablename__ = "user_tokens"
+    id: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    last_used_at: Mapped[datetime] = mapped_column(nullable=True)
+    user: Mapped["SqlUser"] = relationship("SqlUser", back_populates="tokens")
+    __table_args__ = (UniqueConstraint("user_id", "name", name="unique_user_token_name"),)
+
+    def to_mlflow_entity(self):
+        return UserToken(
+            id_=self.id,
+            user_id=self.user_id,
+            name=self.name,
+            token_hash=self.token_hash,
+            created_at=self.created_at,
+            expires_at=self.expires_at,
+            last_used_at=self.last_used_at,
         )
