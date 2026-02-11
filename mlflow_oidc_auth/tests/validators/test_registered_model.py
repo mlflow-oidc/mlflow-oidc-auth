@@ -20,6 +20,41 @@ def _patch_permission(**kwargs):
     )
 
 
+def _patch_new_model_permission(**kwargs):
+    return patch(
+        "mlflow_oidc_auth.validators.registered_model.effective_new_registered_model_permission",
+        return_value=MagicMock(permission=DummyPermission(**kwargs)),
+    )
+
+
+def test_validate_can_create_registered_model_allowed():
+    """Test that user with update permission can create registered model."""
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="my-model"):
+        with _patch_new_model_permission(can_update=True):
+            assert registered_model.validate_can_create_registered_model("alice") is True
+
+
+def test_validate_can_create_registered_model_denied():
+    """Test that user without update permission cannot create registered model."""
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="my-model"):
+        with _patch_new_model_permission(can_update=False):
+            assert registered_model.validate_can_create_registered_model("alice") is False
+
+
+def test_validate_can_create_registered_model_read_only():
+    """Test that READ permission is not enough to create registered model."""
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="my-model"):
+        with _patch_new_model_permission(can_read=True, can_update=False):
+            assert registered_model.validate_can_create_registered_model("alice") is False
+
+
+def test_validate_can_create_registered_model_manage():
+    """Test that MANAGE permission allows registered model creation."""
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="my-model"):
+        with _patch_new_model_permission(can_update=True, can_manage=True):
+            assert registered_model.validate_can_create_registered_model("alice") is True
+
+
 def test__get_permission_from_registered_model_name():
     with (
         patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value="modelA"),
