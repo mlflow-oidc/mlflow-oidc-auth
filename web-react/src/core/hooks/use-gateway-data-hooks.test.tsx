@@ -46,10 +46,9 @@ describe("Gateway Data Hooks", () => {
           auth_type: "bearer",
         },
       ];
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewayEndpoints",
-      ).mockResolvedValue(mockEndpoints);
+      vi.spyOn(gatewayService, "fetchAllGatewayEndpoints").mockResolvedValue(
+        mockEndpoints,
+      );
 
       const { result } = renderHook(() => useAllGatewayEndpoints());
 
@@ -59,10 +58,9 @@ describe("Gateway Data Hooks", () => {
     });
 
     it("returns loading state initially", () => {
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewayEndpoints",
-      ).mockReturnValue(new Promise(() => {}));
+      vi.spyOn(gatewayService, "fetchAllGatewayEndpoints").mockReturnValue(
+        new Promise(() => {}),
+      );
 
       const { result } = renderHook(() => useAllGatewayEndpoints());
 
@@ -71,10 +69,9 @@ describe("Gateway Data Hooks", () => {
     });
 
     it("returns error on failure", async () => {
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewayEndpoints",
-      ).mockRejectedValue(new Error("Network error"));
+      vi.spyOn(gatewayService, "fetchAllGatewayEndpoints").mockRejectedValue(
+        new Error("Network error"),
+      );
 
       const { result } = renderHook(() => useAllGatewayEndpoints());
 
@@ -91,10 +88,9 @@ describe("Gateway Data Hooks", () => {
         { key: "secret-1" },
         { key: "secret-2" },
       ];
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewaySecrets",
-      ).mockResolvedValue(mockSecrets);
+      vi.spyOn(gatewayService, "fetchAllGatewaySecrets").mockResolvedValue(
+        mockSecrets,
+      );
 
       const { result } = renderHook(() => useAllGatewaySecrets());
 
@@ -104,10 +100,9 @@ describe("Gateway Data Hooks", () => {
     });
 
     it("returns loading state initially", () => {
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewaySecrets",
-      ).mockReturnValue(new Promise(() => {}));
+      vi.spyOn(gatewayService, "fetchAllGatewaySecrets").mockReturnValue(
+        new Promise(() => {}),
+      );
 
       const { result } = renderHook(() => useAllGatewaySecrets());
 
@@ -116,10 +111,9 @@ describe("Gateway Data Hooks", () => {
     });
 
     it("returns error on failure", async () => {
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewaySecrets",
-      ).mockRejectedValue(new Error("Network error"));
+      vi.spyOn(gatewayService, "fetchAllGatewaySecrets").mockRejectedValue(
+        new Error("Network error"),
+      );
 
       const { result } = renderHook(() => useAllGatewaySecrets());
 
@@ -136,10 +130,9 @@ describe("Gateway Data Hooks", () => {
         { name: "model-1", source: "openai" },
         { name: "model-2", source: "anthropic" },
       ];
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewayModels",
-      ).mockResolvedValue(mockModels);
+      vi.spyOn(gatewayService, "fetchAllGatewayModels").mockResolvedValue(
+        mockModels,
+      );
 
       const { result } = renderHook(() => useAllGatewayModels());
 
@@ -149,10 +142,9 @@ describe("Gateway Data Hooks", () => {
     });
 
     it("returns loading state initially", () => {
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewayModels",
-      ).mockReturnValue(new Promise(() => {}));
+      vi.spyOn(gatewayService, "fetchAllGatewayModels").mockReturnValue(
+        new Promise(() => {}),
+      );
 
       const { result } = renderHook(() => useAllGatewayModels());
 
@@ -161,10 +153,9 @@ describe("Gateway Data Hooks", () => {
     });
 
     it("returns error on failure", async () => {
-      vi.spyOn(
-        gatewayService,
-        "fetchAllGatewayModels",
-      ).mockRejectedValue(new Error("Network error"));
+      vi.spyOn(gatewayService, "fetchAllGatewayModels").mockRejectedValue(
+        new Error("Network error"),
+      );
 
       const { result } = renderHook(() => useAllGatewayModels());
 

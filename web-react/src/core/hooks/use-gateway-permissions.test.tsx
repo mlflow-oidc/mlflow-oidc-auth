@@ -34,9 +34,7 @@ import type { UseAuthResult } from "./use-auth";
 vi.mock("./use-auth");
 vi.mock("../services/gateway-service");
 
-const mockPermissions = [
-  { name: "user1", permission: "MANAGE", kind: "user" },
-];
+const mockPermissions = [{ name: "user1", permission: "MANAGE", kind: "user" }];
 
 describe("Gateway Permission Hooks", () => {
   beforeEach(() => {

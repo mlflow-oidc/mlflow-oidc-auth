@@ -21,9 +21,7 @@ describe("gateway-service", () => {
 
   describe("user permission fetchers", () => {
     it("fetchUserGatewayEndpointPermissions is defined", () => {
-      expect(
-        gatewayService.fetchUserGatewayEndpointPermissions,
-      ).toBeDefined();
+      expect(gatewayService.fetchUserGatewayEndpointPermissions).toBeDefined();
     });
 
     it("fetchUserGatewaySecretPermissions is defined", () => {
@@ -57,9 +55,7 @@ describe("gateway-service", () => {
 
   describe("group permission fetchers", () => {
     it("fetchGroupGatewayEndpointPermissions is defined", () => {
-      expect(
-        gatewayService.fetchGroupGatewayEndpointPermissions,
-      ).toBeDefined();
+      expect(gatewayService.fetchGroupGatewayEndpointPermissions).toBeDefined();
     });
 
     it("fetchGroupGatewaySecretPermissions is defined", () => {
@@ -93,9 +89,7 @@ describe("gateway-service", () => {
 
   describe("resource user permission fetchers", () => {
     it("fetchGatewayEndpointUserPermissions is defined", () => {
-      expect(
-        gatewayService.fetchGatewayEndpointUserPermissions,
-      ).toBeDefined();
+      expect(gatewayService.fetchGatewayEndpointUserPermissions).toBeDefined();
     });
 
     it("fetchGatewaySecretUserPermissions is defined", () => {
@@ -109,9 +103,7 @@ describe("gateway-service", () => {
 
   describe("resource group permission fetchers", () => {
     it("fetchGatewayEndpointGroupPermissions is defined", () => {
-      expect(
-        gatewayService.fetchGatewayEndpointGroupPermissions,
-      ).toBeDefined();
+      expect(gatewayService.fetchGatewayEndpointGroupPermissions).toBeDefined();
     });
 
     it("fetchGatewaySecretGroupPermissions is defined", () => {
