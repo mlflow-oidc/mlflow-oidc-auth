@@ -89,18 +89,29 @@ class TestFilterManageableGatewaySecrets:
         mock_can_manage.side_effect = lambda name, user: name == "secret-ok"
 
         secrets = [
-            {"name": "secret-ok"},
-            {"name": "secret-nope"},
+            {"secret_name": "secret-ok"},
+            {"secret_name": "secret-nope"},
         ]
 
         result = filter_manageable_gateway_secrets("alice", secrets)
 
         assert len(result) == 1
-        assert result[0]["name"] == "secret-ok"
+        assert result[0]["secret_name"] == "secret-ok"
 
     @patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_secret")
-    def test_uses_key_when_name_absent(self, mock_can_manage: MagicMock) -> None:
-        """Should fall back to 'key' field when 'name' is not present."""
+    def test_uses_name_when_secret_name_absent(self, mock_can_manage: MagicMock) -> None:
+        """Should fall back to 'name' field when 'secret_name' is not present."""
+        mock_can_manage.return_value = True
+
+        secrets = [{"name": "my-name"}]
+        result = filter_manageable_gateway_secrets("alice", secrets)
+
+        assert len(result) == 1
+        mock_can_manage.assert_called_once_with("my-name", "alice")
+
+    @patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_secret")
+    def test_uses_key_when_secret_name_and_name_absent(self, mock_can_manage: MagicMock) -> None:
+        """Should fall back to 'key' field when neither 'secret_name' nor 'name' is present."""
         mock_can_manage.return_value = True
 
         secrets = [{"key": "my-key"}]
@@ -110,8 +121,8 @@ class TestFilterManageableGatewaySecrets:
         mock_can_manage.assert_called_once_with("my-key", "alice")
 
     @patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_secret")
-    def test_skips_secrets_without_name_or_key(self, mock_can_manage: MagicMock) -> None:
-        """Should skip secrets that have neither 'name' nor 'key'."""
+    def test_skips_secrets_without_secret_name_or_key(self, mock_can_manage: MagicMock) -> None:
+        """Should skip secrets that have neither 'secret_name', 'name', nor 'key'."""
         mock_can_manage.return_value = True
 
         secrets = [{"description": "orphan"}]
@@ -130,7 +141,7 @@ class TestFilterManageableGatewaySecrets:
         """Should skip secrets that raise exceptions during permission check."""
         mock_can_manage.side_effect = Exception("DB error")
 
-        secrets = [{"name": "secret-1"}]
+        secrets = [{"secret_name": "secret-1"}]
         result = filter_manageable_gateway_secrets("alice", secrets)
 
         assert result == []

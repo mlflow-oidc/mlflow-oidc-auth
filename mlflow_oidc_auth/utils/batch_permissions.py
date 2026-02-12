@@ -407,7 +407,7 @@ def filter_manageable_gateway_secrets(username: str, secrets: List) -> List:
 
     Parameters:
         username: The user to check permissions for.
-        secrets: List of gateway secret dictionaries with 'name' or 'key' key.
+        secrets: List of gateway secret dictionaries with 'secret_name', 'name', or 'key' key.
 
     Returns:
         List of secret dictionaries the user can manage.
@@ -416,8 +416,8 @@ def filter_manageable_gateway_secrets(username: str, secrets: List) -> List:
 
     manageable = []
     for secret in secrets:
-        # Secrets might use 'key' or 'name' depending on the MLflow version
-        secret_name = secret.get("name") or secret.get("key", "")
+        # MLflow GatewaySecretInfo uses 'secret_name'; fall back to 'name'/'key' for compatibility
+        secret_name = secret.get("secret_name") or secret.get("name") or secret.get("key", "")
         if not secret_name:
             continue
         try:

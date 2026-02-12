@@ -146,8 +146,8 @@ class TestListGatewaySecrets:
 
         try:
             mock_secrets = [
-                {"name": "api-key-1"},
-                {"name": "api-key-2"},
+                {"secret_name": "api-key-1"},
+                {"secret_name": "api-key-2"},
             ]
 
             with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets", return_value=mock_secrets):
@@ -177,10 +177,10 @@ class TestListGatewaySecrets:
         test_app.dependency_overrides[get_username] = get_user
 
         try:
-            mock_secrets = [{"name": "api-key-1"}, {"name": "api-key-2"}, {"name": "api-key-3"}]
+            mock_secrets = [{"secret_name": "api-key-1"}, {"secret_name": "api-key-2"}, {"secret_name": "api-key-3"}]
 
             def filter_mock(username, secrets):
-                return [s for s in secrets if s["name"] == "api-key-2"]
+                return [s for s in secrets if s["secret_name"] == "api-key-2"]
 
             with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets", return_value=mock_secrets):
                 with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.filter_manageable_gateway_secrets", filter_mock):

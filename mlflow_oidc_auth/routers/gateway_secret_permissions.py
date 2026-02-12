@@ -124,7 +124,7 @@ async def list_gateway_secrets(username: str = Depends(get_username), is_admin: 
         return JSONResponse(
             content=[
                 {
-                    "key": secret.get("name") or secret.get("key", ""),
+                    "key": secret.get("secret_name") or secret.get("name") or secret.get("key", ""),
                 }
                 for secret in secrets
             ]
