@@ -55,8 +55,16 @@ class TestGatewayEndpointPermissionRoutes:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 2
-        assert {"name": "admin@example.com", "permission": "MANAGE", "kind": "user"} in body
-        assert {"name": "user@example.com", "permission": "READ", "kind": "user"} in body
+        assert {
+            "name": "admin@example.com",
+            "permission": "MANAGE",
+            "kind": "user",
+        } in body
+        assert {
+            "name": "user@example.com",
+            "permission": "READ",
+            "kind": "user",
+        } in body
         mock_store.list_users.assert_called_with(all=True)
 
     def test_list_gateway_endpoint_users_filters_by_endpoint(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
@@ -74,8 +82,16 @@ class TestGatewayEndpointPermissionRoutes:
         body = resp.json()
         assert len(body) == 2
         # admin should not be included since they have permissions for a different endpoint
-        assert {"name": "user@example.com", "permission": "READ", "kind": "user"} in body
-        assert {"name": "service@example.com", "permission": "EDIT", "kind": "service-account"} in body
+        assert {
+            "name": "user@example.com",
+            "permission": "READ",
+            "kind": "user",
+        } in body
+        assert {
+            "name": "service@example.com",
+            "permission": "EDIT",
+            "kind": "service-account",
+        } in body
 
     def test_list_gateway_endpoint_users_empty(self, test_app, authenticated_client, mock_store, mock_gateway_permissions):
         """Test listing users when no one has permissions for the endpoint."""
@@ -188,8 +204,14 @@ class TestListGatewayEndpoints:
                 {"name": "endpoint-c", "endpoint_type": "llm/v1/embeddings"},
             ]
 
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
-                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints",
+                return_value=mock_endpoints,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_endpoint_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
@@ -220,8 +242,14 @@ class TestListGatewayEndpoints:
                 {"name": "unique-endpoint", "endpoint_type": "llm/v1/completions"},
             ]
 
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
-                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints",
+                return_value=mock_endpoints,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_endpoint_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
@@ -256,9 +284,18 @@ class TestListGatewayEndpoints:
                 # User can manage endpoint-b and endpoint-d
                 return [e for e in endpoints if e["name"] in ["endpoint-b", "endpoint-d"]]
 
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
-                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.filter_manageable_gateway_endpoints", filter_mock):
-                    with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints",
+                return_value=mock_endpoints,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_endpoint_permissions.filter_manageable_gateway_endpoints",
+                    filter_mock,
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.routers.gateway_endpoint_permissions.store",
+                        mock_store,
+                    ):
                         resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
@@ -291,9 +328,18 @@ class TestListGatewayEndpoints:
                 # Return only endpoint-b (simulating endpoint-a being filtered due to error)
                 return [e for e in endpoints if e["name"] == "endpoint-b"]
 
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
-                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.filter_manageable_gateway_endpoints", filter_mock):
-                    with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints",
+                return_value=mock_endpoints,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_endpoint_permissions.filter_manageable_gateway_endpoints",
+                    filter_mock,
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.routers.gateway_endpoint_permissions.store",
+                        mock_store,
+                    ):
                         resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
@@ -318,8 +364,14 @@ class TestListGatewayEndpoints:
 
         try:
             # No endpoints returned from MLflow
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=[]):
-                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints",
+                return_value=[],
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_endpoint_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200
@@ -346,8 +398,14 @@ class TestListGatewayEndpoints:
                 {"name": "endpoint-a"},  # Missing endpoint_type
             ]
 
-            with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints", return_value=mock_endpoints):
-                with patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_endpoint_permissions.fetch_all_gateway_endpoints",
+                return_value=mock_endpoints,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_endpoint_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_ENDPOINT_BASE)
 
             assert resp.status_code == 200

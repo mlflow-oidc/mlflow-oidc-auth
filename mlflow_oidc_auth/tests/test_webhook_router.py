@@ -169,7 +169,9 @@ def test_create_get_update_delete_test_flow(client, monkeypatch):
     # Test webhook
     # patch the delivery test function
     monkeypatch.setattr(
-        webhook_module, "test_webhook", lambda webhook, event=None: SimpleNamespace(success=True, response_status=200, response_body="ok", error_message=None)
+        webhook_module,
+        "test_webhook",
+        lambda webhook, event=None: SimpleNamespace(success=True, response_status=200, response_body="ok", error_message=None),
     )
     resp = client.post("/oidc/webhook/created-id/test")
     assert resp.status_code == 200

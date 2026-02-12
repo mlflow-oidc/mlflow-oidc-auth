@@ -33,11 +33,28 @@ class TestRegexPermissionBase(unittest.TestCase):
         perm = RegexPermissionBase(id=2, regex="^a-.*", priority=3, permission="MANAGE", user_id=1, group_id=2)
         data = perm.to_json()
 
-        self.assertEqual(data, {"id": 2, "regex": "^a-.*", "priority": 3, "permission": "MANAGE", "user_id": 1, "group_id": 2})
+        self.assertEqual(
+            data,
+            {
+                "id": 2,
+                "regex": "^a-.*",
+                "priority": 3,
+                "permission": "MANAGE",
+                "user_id": 1,
+                "group_id": 2,
+            },
+        )
 
     def test_from_json_all_fields(self) -> None:
         """Should construct from a dict with all fields."""
-        data = {"id": 10, "regex": "prod-.*", "priority": 1, "permission": "EDIT", "user_id": 5, "group_id": 3}
+        data = {
+            "id": 10,
+            "regex": "prod-.*",
+            "priority": 1,
+            "permission": "EDIT",
+            "user_id": 5,
+            "group_id": 3,
+        }
         perm = RegexPermissionBase.from_json(data)
 
         self.assertEqual(perm.id, 10)
@@ -54,7 +71,14 @@ class TestRegexPermissionBase(unittest.TestCase):
 
     def test_from_json_casts_string_ids(self) -> None:
         """Should cast string user_id and group_id to integers."""
-        data = {"id": 1, "regex": ".*", "priority": 0, "permission": "READ", "user_id": "42", "group_id": "7"}
+        data = {
+            "id": 1,
+            "regex": ".*",
+            "priority": 0,
+            "permission": "READ",
+            "user_id": "42",
+            "group_id": "7",
+        }
         perm = RegexPermissionBase.from_json(data)
 
         self.assertEqual(perm.user_id, 42)
@@ -62,13 +86,25 @@ class TestRegexPermissionBase(unittest.TestCase):
 
     def test_from_json_invalid_user_id_raises(self) -> None:
         """Should raise ValueError for non-integer user_id."""
-        data = {"id": 1, "regex": ".*", "priority": 0, "permission": "READ", "user_id": "abc"}
+        data = {
+            "id": 1,
+            "regex": ".*",
+            "priority": 0,
+            "permission": "READ",
+            "user_id": "abc",
+        }
         with self.assertRaises(ValueError):
             RegexPermissionBase.from_json(data)
 
     def test_from_json_invalid_group_id_raises(self) -> None:
         """Should raise ValueError for non-integer group_id."""
-        data = {"id": 1, "regex": ".*", "priority": 0, "permission": "READ", "group_id": "xyz"}
+        data = {
+            "id": 1,
+            "regex": ".*",
+            "priority": 0,
+            "permission": "READ",
+            "group_id": "xyz",
+        }
         with self.assertRaises(ValueError):
             RegexPermissionBase.from_json(data)
 

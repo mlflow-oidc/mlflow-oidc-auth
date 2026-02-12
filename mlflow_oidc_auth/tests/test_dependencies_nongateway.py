@@ -36,7 +36,10 @@ class TestCheckPromptManagePermission:
     @pytest.mark.anyio
     async def test_allows_user_with_manage_permission(self) -> None:
         """Non-admin with manage permission should be allowed."""
-        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=True):
+        with patch(
+            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
+            return_value=True,
+        ):
             result = await check_prompt_manage_permission(
                 prompt_name="my-prompt",
                 current_username="user@example.com",
@@ -47,7 +50,10 @@ class TestCheckPromptManagePermission:
     @pytest.mark.anyio
     async def test_denies_user_without_manage_permission(self) -> None:
         """Non-admin without manage permission should get 403."""
-        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
+            return_value=False,
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await check_prompt_manage_permission(
                     prompt_name="locked-prompt",
@@ -71,7 +77,10 @@ class TestCheckScorerManagePermission:
         """Admin should be allowed when params come from query string."""
         mock_request = MagicMock()
         mock_request.method = "GET"
-        mock_request.query_params = {"experiment_id": "exp-1", "scorer_name": "accuracy"}
+        mock_request.query_params = {
+            "experiment_id": "exp-1",
+            "scorer_name": "accuracy",
+        }
         mock_request.path_params = {}
 
         result = await check_scorer_manage_permission(
@@ -101,7 +110,10 @@ class TestCheckScorerManagePermission:
         """Non-admin with manage permission should be allowed."""
         mock_request = MagicMock()
         mock_request.method = "GET"
-        mock_request.query_params = {"experiment_id": "exp-1", "scorer_name": "accuracy"}
+        mock_request.query_params = {
+            "experiment_id": "exp-1",
+            "scorer_name": "accuracy",
+        }
         mock_request.path_params = {}
 
         with patch("mlflow_oidc_auth.dependencies.can_manage_scorer", return_value=True):
@@ -117,7 +129,10 @@ class TestCheckScorerManagePermission:
         """Non-admin without manage permission should get 403."""
         mock_request = MagicMock()
         mock_request.method = "GET"
-        mock_request.query_params = {"experiment_id": "exp-1", "scorer_name": "accuracy"}
+        mock_request.query_params = {
+            "experiment_id": "exp-1",
+            "scorer_name": "accuracy",
+        }
         mock_request.path_params = {}
 
         with patch("mlflow_oidc_auth.dependencies.can_manage_scorer", return_value=False):
@@ -151,7 +166,10 @@ class TestCheckScorerManagePermission:
         """POST with invalid JSON should fall back to query/path params."""
         mock_request = MagicMock()
         mock_request.method = "DELETE"
-        mock_request.query_params = {"experiment_id": "exp-1", "scorer_name": "precision"}
+        mock_request.query_params = {
+            "experiment_id": "exp-1",
+            "scorer_name": "precision",
+        }
         mock_request.path_params = {}
         mock_request.json = AsyncMock(side_effect=Exception("no JSON"))
 
@@ -234,7 +252,10 @@ class TestCheckScorerManagePermission:
         """POST with non-dict JSON body should not fail but fall back to query params."""
         mock_request = MagicMock()
         mock_request.method = "POST"
-        mock_request.query_params = {"experiment_id": "exp-1", "scorer_name": "accuracy"}
+        mock_request.query_params = {
+            "experiment_id": "exp-1",
+            "scorer_name": "accuracy",
+        }
         mock_request.path_params = {}
         mock_request.json = AsyncMock(return_value=["not", "a", "dict"])
 

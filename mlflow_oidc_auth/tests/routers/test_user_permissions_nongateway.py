@@ -8,10 +8,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission, check_registered_model_manage_permission
+from mlflow_oidc_auth.dependencies import (
+    check_admin_permission,
+    check_experiment_manage_permission,
+    check_registered_model_manage_permission,
+)
 from mlflow_oidc_auth.entities import ExperimentPermission as ExperimentPermissionEntity
-from mlflow_oidc_auth.entities import RegisteredModelPermission as RegisteredModelPermissionEntity
-from mlflow_oidc_auth.entities import RegisteredModelRegexPermission as RegisteredModelRegexPermissionEntity
+from mlflow_oidc_auth.entities import (
+    RegisteredModelPermission as RegisteredModelPermissionEntity,
+)
+from mlflow_oidc_auth.entities import (
+    RegisteredModelRegexPermission as RegisteredModelRegexPermissionEntity,
+)
 
 USER_BASE = "/api/2.0/mlflow/permissions/users"
 
@@ -77,7 +85,10 @@ class TestUserExperimentList:
 
         with (
             patch(f"{_UP}._get_tracking_store") as mock_ts,
-            patch(f"{_UP}.batch_resolve_experiment_permissions", return_value=mock_permissions_map),
+            patch(
+                f"{_UP}.batch_resolve_experiment_permissions",
+                return_value=mock_permissions_map,
+            ),
         ):
             mock_ts.return_value.search_experiments.return_value = [mock_exp]
             resp = admin_client.get(f"{USER_BASE}/user@example.com/experiments")
@@ -94,7 +105,10 @@ class TestUserExperimentCRUD:
 
     def test_create(self, authenticated_client, mock_store):
         """Test creating experiment permission for a user."""
-        resp = authenticated_client.post(f"{USER_BASE}/user@example.com/experiments/exp-1", json={"permission": "READ"})
+        resp = authenticated_client.post(
+            f"{USER_BASE}/user@example.com/experiments/exp-1",
+            json={"permission": "READ"},
+        )
         assert resp.status_code == 200
         mock_store.create_experiment_permission.assert_called_once()
 
@@ -108,7 +122,10 @@ class TestUserExperimentCRUD:
 
     def test_update(self, authenticated_client, mock_store):
         """Test updating experiment permission for a user."""
-        resp = authenticated_client.patch(f"{USER_BASE}/user@example.com/experiments/exp-1", json={"permission": "EDIT"})
+        resp = authenticated_client.patch(
+            f"{USER_BASE}/user@example.com/experiments/exp-1",
+            json={"permission": "EDIT"},
+        )
         assert resp.status_code == 200
         mock_store.update_experiment_permission.assert_called_once()
 
@@ -253,7 +270,10 @@ class TestUserRegisteredModelList:
 
         with (
             patch(f"{_UP}.fetch_all_registered_models", return_value=[mock_model]),
-            patch(f"{_UP}.batch_resolve_model_permissions", return_value=mock_permissions_map),
+            patch(
+                f"{_UP}.batch_resolve_model_permissions",
+                return_value=mock_permissions_map,
+            ),
         ):
             resp = admin_client.get(f"{USER_BASE}/user@example.com/registered-models")
         assert resp.status_code == 200
@@ -269,14 +289,20 @@ class TestUserRegisteredModelCRUD:
 
     def test_create(self, authenticated_client, mock_store):
         """Test creating registered model permission for a user."""
-        resp = authenticated_client.post(f"{USER_BASE}/user@example.com/registered-models/my-model", json={"permission": "READ"})
+        resp = authenticated_client.post(
+            f"{USER_BASE}/user@example.com/registered-models/my-model",
+            json={"permission": "READ"},
+        )
         assert resp.status_code == 201
         mock_store.create_registered_model_permission.assert_called_once()
 
     def test_create_error(self, authenticated_client, mock_store):
         """Test error handling for create."""
         mock_store.create_registered_model_permission.side_effect = Exception("DB error")
-        resp = authenticated_client.post(f"{USER_BASE}/user@example.com/registered-models/my-model", json={"permission": "READ"})
+        resp = authenticated_client.post(
+            f"{USER_BASE}/user@example.com/registered-models/my-model",
+            json={"permission": "READ"},
+        )
         assert resp.status_code == 500
 
     def test_get(self, authenticated_client, mock_store):
@@ -295,14 +321,20 @@ class TestUserRegisteredModelCRUD:
 
     def test_update(self, authenticated_client, mock_store):
         """Test updating registered model permission for a user."""
-        resp = authenticated_client.patch(f"{USER_BASE}/user@example.com/registered-models/my-model", json={"permission": "EDIT"})
+        resp = authenticated_client.patch(
+            f"{USER_BASE}/user@example.com/registered-models/my-model",
+            json={"permission": "EDIT"},
+        )
         assert resp.status_code == 200
         mock_store.update_registered_model_permission.assert_called_once()
 
     def test_update_error(self, authenticated_client, mock_store):
         """Test error handling for update."""
         mock_store.update_registered_model_permission.side_effect = Exception("DB error")
-        resp = authenticated_client.patch(f"{USER_BASE}/user@example.com/registered-models/my-model", json={"permission": "EDIT"})
+        resp = authenticated_client.patch(
+            f"{USER_BASE}/user@example.com/registered-models/my-model",
+            json={"permission": "EDIT"},
+        )
         assert resp.status_code == 500
 
     def test_delete(self, authenticated_client, mock_store):
@@ -434,19 +466,28 @@ class TestUserPromptCRUD:
 
     def test_create(self, authenticated_client, mock_store):
         """Test creating prompt permission for a user."""
-        resp = authenticated_client.post(f"{USER_BASE}/user@example.com/prompts/my-prompt", json={"permission": "READ"})
+        resp = authenticated_client.post(
+            f"{USER_BASE}/user@example.com/prompts/my-prompt",
+            json={"permission": "READ"},
+        )
         assert resp.status_code == 201
         mock_store.create_registered_model_permission.assert_called_once()
 
     def test_create_error(self, authenticated_client, mock_store):
         """Test error handling for create."""
         mock_store.create_registered_model_permission.side_effect = Exception("DB error")
-        resp = authenticated_client.post(f"{USER_BASE}/user@example.com/prompts/my-prompt", json={"permission": "READ"})
+        resp = authenticated_client.post(
+            f"{USER_BASE}/user@example.com/prompts/my-prompt",
+            json={"permission": "READ"},
+        )
         assert resp.status_code == 500
 
     def test_update(self, authenticated_client, mock_store):
         """Test updating prompt permission for a user."""
-        resp = authenticated_client.patch(f"{USER_BASE}/user@example.com/prompts/my-prompt", json={"permission": "EDIT"})
+        resp = authenticated_client.patch(
+            f"{USER_BASE}/user@example.com/prompts/my-prompt",
+            json={"permission": "EDIT"},
+        )
         assert resp.status_code == 200
 
     def test_delete(self, authenticated_client, mock_store):
@@ -490,7 +531,14 @@ class TestUserPromptPatterns:
 
     def test_get(self, authenticated_client, mock_store):
         """Test getting a specific prompt regex permission."""
-        rmp = RegisteredModelRegexPermissionEntity(id_=1, regex="prompt-.*", priority=1, user_id=2, permission="READ", prompt=True)
+        rmp = RegisteredModelRegexPermissionEntity(
+            id_=1,
+            regex="prompt-.*",
+            priority=1,
+            user_id=2,
+            permission="READ",
+            prompt=True,
+        )
         mock_store.get_prompt_regex_permission.return_value = rmp
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/prompts-patterns/1")
         assert resp.status_code == 200
@@ -508,7 +556,14 @@ class TestUserPromptPatterns:
 
     def test_update(self, authenticated_client, mock_store):
         """Test updating prompt regex permission."""
-        rmp = RegisteredModelRegexPermissionEntity(id_=1, regex="new-.*", priority=2, user_id=2, permission="MANAGE", prompt=True)
+        rmp = RegisteredModelRegexPermissionEntity(
+            id_=1,
+            regex="new-.*",
+            priority=2,
+            user_id=2,
+            permission="MANAGE",
+            prompt=True,
+        )
         mock_store.update_prompt_regex_permission.return_value = rmp
         resp = authenticated_client.patch(
             f"{USER_BASE}/user@example.com/prompts-patterns/1",
@@ -562,7 +617,12 @@ class TestUserScorerCRUD:
     def test_create(self, authenticated_client, mock_store):
         """Test creating scorer permission for a user."""
         sp = MagicMock()
-        sp.to_json.return_value = {"experiment_id": "1", "scorer_name": "s1", "user_id": 2, "permission": "READ"}
+        sp.to_json.return_value = {
+            "experiment_id": "1",
+            "scorer_name": "s1",
+            "user_id": 2,
+            "permission": "READ",
+        }
         mock_store.create_scorer_permission.return_value = sp
         resp = authenticated_client.post(f"{USER_BASE}/user@example.com/scorers/1/s1", json={"permission": "READ"})
         assert resp.status_code == 201
@@ -576,7 +636,12 @@ class TestUserScorerCRUD:
     def test_get(self, authenticated_client, mock_store):
         """Test getting scorer permission for a user."""
         sp = MagicMock()
-        sp.to_json.return_value = {"experiment_id": "1", "scorer_name": "s1", "user_id": 2, "permission": "READ"}
+        sp.to_json.return_value = {
+            "experiment_id": "1",
+            "scorer_name": "s1",
+            "user_id": 2,
+            "permission": "READ",
+        }
         mock_store.get_scorer_permission.return_value = sp
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/scorers/1/s1")
         assert resp.status_code == 200
@@ -623,7 +688,13 @@ class TestUserScorerPatterns:
     def test_create(self, authenticated_client, mock_store):
         """Test creating scorer regex permission."""
         sp = MagicMock()
-        sp.to_json.return_value = {"id": 1, "regex": ".*", "priority": 1, "user_id": 2, "permission": "READ"}
+        sp.to_json.return_value = {
+            "id": 1,
+            "regex": ".*",
+            "priority": 1,
+            "user_id": 2,
+            "permission": "READ",
+        }
         mock_store.create_scorer_regex_permission.return_value = sp
         resp = authenticated_client.post(
             f"{USER_BASE}/user@example.com/scorer-patterns",
@@ -643,7 +714,13 @@ class TestUserScorerPatterns:
     def test_get(self, authenticated_client, mock_store):
         """Test getting a specific scorer regex permission."""
         sp = MagicMock()
-        sp.to_json.return_value = {"id": 1, "regex": ".*", "priority": 1, "user_id": 2, "permission": "READ"}
+        sp.to_json.return_value = {
+            "id": 1,
+            "regex": ".*",
+            "priority": 1,
+            "user_id": 2,
+            "permission": "READ",
+        }
         mock_store.get_scorer_regex_permission.return_value = sp
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/scorer-patterns/1")
         assert resp.status_code == 200
@@ -657,7 +734,13 @@ class TestUserScorerPatterns:
     def test_update(self, authenticated_client, mock_store):
         """Test updating scorer regex permission."""
         sp = MagicMock()
-        sp.to_json.return_value = {"id": 1, "regex": "new-.*", "priority": 2, "user_id": 2, "permission": "MANAGE"}
+        sp.to_json.return_value = {
+            "id": 1,
+            "regex": "new-.*",
+            "priority": 2,
+            "user_id": 2,
+            "permission": "MANAGE",
+        }
         mock_store.update_scorer_regex_permission.return_value = sp
         resp = authenticated_client.patch(
             f"{USER_BASE}/user@example.com/scorer-patterns/1",

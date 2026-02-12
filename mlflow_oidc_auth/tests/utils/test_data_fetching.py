@@ -61,7 +61,10 @@ class TestDataFetching(unittest.TestCase):
         second_page.__len__ = MagicMock(return_value=1)
         second_page.token = None
 
-        mock_model_store().search_registered_models.side_effect = [first_page, second_page]
+        mock_model_store().search_registered_models.side_effect = [
+            first_page,
+            second_page,
+        ]
 
         result = fetch_all_registered_models()
         self.assertEqual(len(result), 2)
@@ -74,7 +77,10 @@ class TestDataFetching(unittest.TestCase):
 
         result = fetch_all_prompts()
         self.assertEqual(result, mock_models)
-        mock_fetch_models.assert_called_once_with(filter_string="tags.`mlflow.prompt.is_prompt` = 'true'", max_results_per_page=1000)
+        mock_fetch_models.assert_called_once_with(
+            filter_string="tags.`mlflow.prompt.is_prompt` = 'true'",
+            max_results_per_page=1000,
+        )
 
     @patch("mlflow_oidc_auth.utils.data_fetching._get_model_registry_store")
     def test_fetch_registered_models_paginated(self, mock_model_store):
@@ -82,11 +88,19 @@ class TestDataFetching(unittest.TestCase):
         mock_result = MagicMock()
         mock_model_store().search_registered_models.return_value = mock_result
 
-        result = fetch_registered_models_paginated(filter_string="test_filter", max_results=100, order_by=["name"], page_token="token123")
+        result = fetch_registered_models_paginated(
+            filter_string="test_filter",
+            max_results=100,
+            order_by=["name"],
+            page_token="token123",
+        )
 
         self.assertEqual(result, mock_result)
         mock_model_store().search_registered_models.assert_called_once_with(
-            filter_string="test_filter", max_results=100, order_by=["name"], page_token="token123"
+            filter_string="test_filter",
+            max_results=100,
+            order_by=["name"],
+            page_token="token123",
         )
 
     @patch("mlflow_oidc_auth.utils.data_fetching._get_tracking_store")
@@ -124,11 +138,21 @@ class TestDataFetching(unittest.TestCase):
         mock_result = MagicMock()
         mock_tracking_store().search_experiments.return_value = mock_result
 
-        result = fetch_experiments_paginated(view_type=1, max_results=100, order_by=["name"], filter_string="test_filter", page_token="token123")
+        result = fetch_experiments_paginated(
+            view_type=1,
+            max_results=100,
+            order_by=["name"],
+            filter_string="test_filter",
+            page_token="token123",
+        )
 
         self.assertEqual(result, mock_result)
         mock_tracking_store().search_experiments.assert_called_once_with(
-            view_type=1, max_results=100, order_by=["name"], filter_string="test_filter", page_token="token123"
+            view_type=1,
+            max_results=100,
+            order_by=["name"],
+            filter_string="test_filter",
+            page_token="token123",
         )
 
     @patch("mlflow_oidc_auth.utils.data_fetching.fetch_all_experiments")
@@ -260,11 +284,17 @@ class TestDataFetching(unittest.TestCase):
             mock_search_result2.__iter__ = lambda self: iter([mock_logged_model2])
             mock_search_result2.token = None
 
-            mock_tracking_store.return_value.search_logged_models.side_effect = [mock_search_result1, mock_search_result2]
+            mock_tracking_store.return_value.search_logged_models.side_effect = [
+                mock_search_result1,
+                mock_search_result2,
+            ]
 
             # Call function
             result = fetch_readable_logged_models(
-                experiment_ids=["exp1", "exp2"], filter_string="filter", order_by=[{"field_name": "name"}], username="custom_user"
+                experiment_ids=["exp1", "exp2"],
+                filter_string="filter",
+                order_by=[{"field_name": "name"}],
+                username="custom_user",
             )
 
             # Verify

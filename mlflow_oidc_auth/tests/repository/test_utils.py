@@ -92,7 +92,10 @@ def test_validate_regex_invalid():
 def test_validate_regex_with_syntax_warning():
     """Test validate_regex with syntax warning - covers lines 81-82"""
     # Mock the warnings.catch_warnings to simulate a SyntaxWarning
-    with patch("warnings.catch_warnings") as mock_catch_warnings, patch("re.compile") as mock_compile:
+    with (
+        patch("warnings.catch_warnings") as mock_catch_warnings,
+        patch("re.compile") as mock_compile,
+    ):
         mock_warning = MagicMock()
         mock_warning.category = SyntaxWarning
         mock_warning.message = "invalid escape sequence"

@@ -5,9 +5,15 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.gateway_endpoint_group_permissions import GatewayEndpointGroupPermissionRepository
-from mlflow_oidc_auth.repository.gateway_secret_group_permissions import GatewaySecretGroupPermissionRepository
-from mlflow_oidc_auth.repository.gateway_model_definition_group_permissions import GatewayModelDefinitionGroupPermissionRepository
+from mlflow_oidc_auth.repository.gateway_endpoint_group_permissions import (
+    GatewayEndpointGroupPermissionRepository,
+)
+from mlflow_oidc_auth.repository.gateway_secret_group_permissions import (
+    GatewaySecretGroupPermissionRepository,
+)
+from mlflow_oidc_auth.repository.gateway_model_definition_group_permissions import (
+    GatewayModelDefinitionGroupPermissionRepository,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -241,7 +247,10 @@ class TestListGroupsForResource:
         repo = repo_cls(session_maker)
         perm1 = MagicMock(permission="READ")
         perm2 = MagicMock(permission="MANAGE")
-        session.query().join().filter().all.return_value = [(perm1, "group-a"), (perm2, "group-b")]
+        session.query().join().filter().all.return_value = [
+            (perm1, "group-a"),
+            (perm2, "group-b"),
+        ]
         method = getattr(repo, list_groups_method)
         result = method("res-1")
         assert result == [("group-a", "READ"), ("group-b", "MANAGE")]

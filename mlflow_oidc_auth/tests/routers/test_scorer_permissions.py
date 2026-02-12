@@ -38,14 +38,29 @@ class TestScorerPermissionRoutes:
             tracking_store = MagicMock()
             tracking_store.list_scorers.return_value = [scorer_one, scorer_two]
 
-            monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(return_value=tracking_store))
+            monkeypatch.setattr(
+                "mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store",
+                MagicMock(return_value=tracking_store),
+            )
 
             resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/exp-1")
 
             assert resp.status_code == 200
             assert resp.json() == [
-                {"experiment_id": "exp-1", "name": "alpha", "version": 1, "creation_time": 111, "scorer_id": "s-1"},
-                {"experiment_id": "exp-1", "name": "beta", "version": 2, "creation_time": 222, "scorer_id": "s-2"},
+                {
+                    "experiment_id": "exp-1",
+                    "name": "alpha",
+                    "version": 1,
+                    "creation_time": 111,
+                    "scorer_id": "s-1",
+                },
+                {
+                    "experiment_id": "exp-1",
+                    "name": "beta",
+                    "version": 2,
+                    "creation_time": 222,
+                    "scorer_id": "s-2",
+                },
             ]
             tracking_store.list_scorers.assert_called_once_with("exp-1")
         finally:
@@ -72,24 +87,53 @@ class TestScorerPermissionRoutes:
         tracking_store = MagicMock()
         tracking_store.list_scorers.return_value = [scorer_one, scorer_two]
 
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(return_value=tracking_store))
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_username", AsyncMock(return_value="user@example.com"))
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_is_admin", AsyncMock(return_value=False))
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store",
+            MagicMock(return_value=tracking_store),
+        )
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.scorers_permissions.get_username",
+            AsyncMock(return_value="user@example.com"),
+        )
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.scorers_permissions.get_is_admin",
+            AsyncMock(return_value=False),
+        )
 
         def _can_manage(experiment_id: str, scorer_name: str, username: str) -> bool:
             return scorer_name == "alpha"
 
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.can_manage_scorer", _can_manage)
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.scorers_permissions.can_manage_scorer",
+            _can_manage,
+        )
 
         resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/exp-1")
 
         assert resp.status_code == 200
-        assert resp.json() == [{"experiment_id": "exp-1", "name": "alpha", "version": 1, "creation_time": 111, "scorer_id": "s-1"}]
+        assert resp.json() == [
+            {
+                "experiment_id": "exp-1",
+                "name": "alpha",
+                "version": 1,
+                "creation_time": 111,
+                "scorer_id": "s-1",
+            }
+        ]
 
     def test_list_scorers_handles_backend_error(self, authenticated_client, monkeypatch):
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store", MagicMock(side_effect=Exception("boom")))
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_username", AsyncMock(return_value="user@example.com"))
-        monkeypatch.setattr("mlflow_oidc_auth.routers.scorers_permissions.get_is_admin", AsyncMock(return_value=False))
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.scorers_permissions._get_tracking_store",
+            MagicMock(side_effect=Exception("boom")),
+        )
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.scorers_permissions.get_username",
+            AsyncMock(return_value="user@example.com"),
+        )
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.scorers_permissions.get_is_admin",
+            AsyncMock(return_value=False),
+        )
 
         resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/exp-1")
 
@@ -97,7 +141,10 @@ class TestScorerPermissionRoutes:
         assert resp.json()["detail"] == "Failed to retrieve scorers"
 
     def test_list_scorer_groups(self, authenticated_client, mock_store):
-        mock_store.scorer_group_repo.list_groups_for_scorer.return_value = [("my-group", "READ"), ("admins", "MANAGE")]
+        mock_store.scorer_group_repo.list_groups_for_scorer.return_value = [
+            ("my-group", "READ"),
+            ("admins", "MANAGE"),
+        ]
 
         resp = authenticated_client.get("/api/3.0/mlflow/permissions/scorers/123/my_scorer/groups")
 
@@ -127,7 +174,11 @@ class TestScorerPermissionRoutes:
         assert resp.status_code == 200
         assert resp.json() == [
             {"name": "user@example.com", "permission": "READ", "kind": "user"},
-            {"name": "service@example.com", "permission": "MANAGE", "kind": "service-account"},
+            {
+                "name": "service@example.com",
+                "permission": "MANAGE",
+                "kind": "service-account",
+            },
         ]
         mock_store.list_users.assert_called_once_with(all=True)
 

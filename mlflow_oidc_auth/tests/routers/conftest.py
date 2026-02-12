@@ -162,7 +162,10 @@ class TestClientWrapper:
         resp = self._client.request("GET", url, **kwargs)
         # Historical tests expect an exception for unauthenticated users listing users.
         # Keep this behavior tightly scoped to the list-users endpoint only.
-        if url.split("?", 1)[0] == "/api/2.0/mlflow/users" and resp.status_code in (401, 403):
+        if url.split("?", 1)[0] == "/api/2.0/mlflow/users" and resp.status_code in (
+            401,
+            403,
+        ):
             raise Exception("Authentication required")
         return resp
 
@@ -240,7 +243,11 @@ def mock_oauth():
         return_value={
             "access_token": "mock_access_token",
             "id_token": "mock_id_token",
-            "userinfo": {"email": "test@example.com", "name": "Test User", "groups": ["test-group"]},
+            "userinfo": {
+                "email": "test@example.com",
+                "name": "Test User",
+                "groups": ["test-group"],
+            },
         }
     )
     oidc_mock.server_metadata = {"end_session_endpoint": "https://provider.com/logout"}
@@ -351,11 +358,23 @@ def _patch_router_stores(mock_store):
         patch("mlflow_oidc_auth.routers.scorers_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.gateway_secret_permissions.store", mock_store),
-        patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store),
+        patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ),
         # Patch filter_manageable_* functions at router level so integration tests work
-        patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", _mock_filter_manageable_experiments),
-        patch("mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models", _mock_filter_manageable_models),
-        patch("mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts", _mock_filter_manageable_prompts),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments",
+            _mock_filter_manageable_experiments,
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models",
+            _mock_filter_manageable_models,
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts",
+            _mock_filter_manageable_prompts,
+        ),
     ]
 
     for p in patches:
@@ -377,7 +396,11 @@ def _patch_router_stores(mock_store):
 @pytest.fixture
 def authenticated_session():
     """Mock authenticated session data."""
-    return {"username": "test@example.com", "authenticated": True, "oauth_state": "test_state"}
+    return {
+        "username": "test@example.com",
+        "authenticated": True,
+        "oauth_state": "test_state",
+    }
 
 
 @pytest.fixture
@@ -410,26 +433,65 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
         patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
         patch("mlflow_oidc_auth.oauth.oauth", mock_oauth),
         patch("mlflow_oidc_auth.config.config", mock_config),
-        patch("mlflow.server.handlers._get_tracking_store", return_value=mock_tracking_store),
+        patch(
+            "mlflow.server.handlers._get_tracking_store",
+            return_value=mock_tracking_store,
+        ),
         # Patch _get_tracking_store at router level since it's imported at module-import time
-        patch("mlflow_oidc_auth.routers.experiment_permissions._get_tracking_store", return_value=mock_tracking_store),
-        patch("mlflow_oidc_auth.utils.can_manage_experiment", mock_permissions["can_manage_experiment"]),
-        patch("mlflow_oidc_auth.utils.can_manage_scorer", mock_permissions["can_manage_scorer"]),
-        patch("mlflow_oidc_auth.utils.can_manage_registered_model", mock_permissions["can_manage_registered_model"]),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions._get_tracking_store",
+            return_value=mock_tracking_store,
+        ),
+        patch(
+            "mlflow_oidc_auth.utils.can_manage_experiment",
+            mock_permissions["can_manage_experiment"],
+        ),
+        patch(
+            "mlflow_oidc_auth.utils.can_manage_scorer",
+            mock_permissions["can_manage_scorer"],
+        ),
+        patch(
+            "mlflow_oidc_auth.utils.can_manage_registered_model",
+            mock_permissions["can_manage_registered_model"],
+        ),
         # utils.* are used synchronously in some places; leave those as MagicMock
         patch("mlflow_oidc_auth.utils.get_username", mock_permissions["get_username"]),
         patch("mlflow_oidc_auth.utils.get_is_admin", mock_permissions["get_is_admin"]),
         # dependencies.* are awaited by FastAPI; patch them with AsyncMock variants
-        patch("mlflow_oidc_auth.dependencies.get_username", mock_permissions["get_username_async"]),
-        patch("mlflow_oidc_auth.dependencies.get_is_admin", mock_permissions["get_is_admin_async"]),
-        patch("mlflow_oidc_auth.dependencies.can_manage_experiment", _deleg_can_manage_experiment),
+        patch(
+            "mlflow_oidc_auth.dependencies.get_username",
+            mock_permissions["get_username_async"],
+        ),
+        patch(
+            "mlflow_oidc_auth.dependencies.get_is_admin",
+            mock_permissions["get_is_admin_async"],
+        ),
+        patch(
+            "mlflow_oidc_auth.dependencies.can_manage_experiment",
+            _deleg_can_manage_experiment,
+        ),
         patch("mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer),
-        patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", _deleg_can_manage_registered_model),
+        patch(
+            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
+            _deleg_can_manage_registered_model,
+        ),
         # Patch names imported directly into router modules (they were imported at module-import time)
-        patch("mlflow_oidc_auth.routers.experiment_permissions.get_is_admin", mock_permissions["get_is_admin"]),
-        patch("mlflow_oidc_auth.routers.experiment_permissions.get_username", mock_permissions["get_username"]),
-        patch("mlflow_oidc_auth.routers.scorers_permissions.check_scorer_manage_permission", MagicMock(return_value=None)),
-        patch("mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment", mock_permissions["can_manage_experiment"]),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.get_is_admin",
+            mock_permissions["get_is_admin"],
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.get_username",
+            mock_permissions["get_username"],
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.scorers_permissions.check_scorer_manage_permission",
+            MagicMock(return_value=None),
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment",
+            mock_permissions["can_manage_experiment"],
+        ),
         # Patch the module-level 'store' used by request helper functions
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
         patch("mlflow_oidc_auth.store.store", mock_store),
@@ -447,7 +509,9 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
     try:
         # Build a local FastAPI app similar to production but avoid mounting the real Flask app
         from fastapi import FastAPI
-        from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
+        from starlette.middleware.sessions import (
+            SessionMiddleware as StarletteSessionMiddleware,
+        )
 
         from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
         from mlflow_oidc_auth.routers import get_all_routers
@@ -506,31 +570,76 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
         patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
         patch("mlflow_oidc_auth.oauth.oauth", mock_oauth),
         patch("mlflow_oidc_auth.config.config", mock_config),
-        patch("mlflow.server.handlers._get_tracking_store", return_value=mock_tracking_store),
+        patch(
+            "mlflow.server.handlers._get_tracking_store",
+            return_value=mock_tracking_store,
+        ),
         # Patch _get_tracking_store at router level since it's imported at module-import time
-        patch("mlflow_oidc_auth.routers.experiment_permissions._get_tracking_store", return_value=mock_tracking_store),
-        patch("mlflow_oidc_auth.utils.can_manage_experiment", admin_permissions["can_manage_experiment"]),
-        patch("mlflow_oidc_auth.utils.can_manage_registered_model", admin_permissions["can_manage_registered_model"]),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions._get_tracking_store",
+            return_value=mock_tracking_store,
+        ),
+        patch(
+            "mlflow_oidc_auth.utils.can_manage_experiment",
+            admin_permissions["can_manage_experiment"],
+        ),
+        patch(
+            "mlflow_oidc_auth.utils.can_manage_registered_model",
+            admin_permissions["can_manage_registered_model"],
+        ),
         patch("mlflow_oidc_auth.utils.can_manage_scorer", MagicMock(return_value=True)),
         # utils.* remain sync mocks
         patch("mlflow_oidc_auth.utils.get_username", admin_permissions["get_username"]),
         patch("mlflow_oidc_auth.utils.get_is_admin", admin_permissions["get_is_admin"]),
         # dependencies.* patched to async variants for FastAPI awaits
-        patch("mlflow_oidc_auth.dependencies.get_username", admin_permissions["get_username_async"]),
-        patch("mlflow_oidc_auth.dependencies.get_is_admin", admin_permissions["get_is_admin_async"]),
+        patch(
+            "mlflow_oidc_auth.dependencies.get_username",
+            admin_permissions["get_username_async"],
+        ),
+        patch(
+            "mlflow_oidc_auth.dependencies.get_is_admin",
+            admin_permissions["get_is_admin_async"],
+        ),
         # Also patch router-level imported names for admin app
-        patch("mlflow_oidc_auth.routers.experiment_permissions.get_is_admin", admin_permissions["get_is_admin"]),
-        patch("mlflow_oidc_auth.routers.experiment_permissions.get_username", admin_permissions["get_username"]),
-        patch("mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment", admin_permissions["can_manage_experiment"]),
-        patch("mlflow_oidc_auth.dependencies.can_manage_experiment", _deleg_can_manage_experiment),
-        patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", _deleg_can_manage_registered_model),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.get_is_admin",
+            admin_permissions["get_is_admin"],
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.get_username",
+            admin_permissions["get_username"],
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.can_manage_experiment",
+            admin_permissions["can_manage_experiment"],
+        ),
+        patch(
+            "mlflow_oidc_auth.dependencies.can_manage_experiment",
+            _deleg_can_manage_experiment,
+        ),
+        patch(
+            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
+            _deleg_can_manage_registered_model,
+        ),
         patch("mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer),
         # Patch request helper module-level store
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
-        patch("mlflow_oidc_auth.routers.prompt_permissions.check_admin_permission", MagicMock(return_value="admin@example.com")),
-        patch("mlflow_oidc_auth.routers.prompt_permissions.get_username", admin_permissions["get_username"]),
-        patch("mlflow_oidc_auth.routers.prompt_permissions.get_is_admin", admin_permissions["get_is_admin"]),
-        patch("mlflow_oidc_auth.routers.scorers_permissions.check_scorer_manage_permission", MagicMock(return_value=None)),
+        patch(
+            "mlflow_oidc_auth.routers.prompt_permissions.check_admin_permission",
+            MagicMock(return_value="admin@example.com"),
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.prompt_permissions.get_username",
+            admin_permissions["get_username"],
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.prompt_permissions.get_is_admin",
+            admin_permissions["get_is_admin"],
+        ),
+        patch(
+            "mlflow_oidc_auth.routers.scorers_permissions.check_scorer_manage_permission",
+            MagicMock(return_value=None),
+        ),
     ]
 
     for p in patches:
@@ -541,7 +650,9 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
 
     try:
         from fastapi import FastAPI
-        from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
+        from starlette.middleware.sessions import (
+            SessionMiddleware as StarletteSessionMiddleware,
+        )
 
         from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
         from mlflow_oidc_auth.routers import get_all_routers
@@ -586,9 +697,24 @@ def sample_experiment_permissions():
 def sample_users_data():
     """Sample user data for testing."""
     return [
-        {"username": "admin@example.com", "display_name": "Admin User", "is_admin": True, "is_service_account": False},
-        {"username": "user@example.com", "display_name": "Regular User", "is_admin": False, "is_service_account": False},
-        {"username": "service@example.com", "display_name": "Service Account", "is_admin": False, "is_service_account": True},
+        {
+            "username": "admin@example.com",
+            "display_name": "Admin User",
+            "is_admin": True,
+            "is_service_account": False,
+        },
+        {
+            "username": "user@example.com",
+            "display_name": "Regular User",
+            "is_admin": False,
+            "is_service_account": False,
+        },
+        {
+            "username": "service@example.com",
+            "display_name": "Service Account",
+            "is_admin": False,
+            "is_service_account": True,
+        },
     ]
 
 

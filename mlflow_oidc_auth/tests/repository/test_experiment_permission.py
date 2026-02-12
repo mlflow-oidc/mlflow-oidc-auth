@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound, IntegrityError
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.experiment_permission import ExperimentPermissionRepository
+from mlflow_oidc_auth.repository.experiment_permission import (
+    ExperimentPermissionRepository,
+)
 
 
 @pytest.fixture
@@ -33,7 +35,10 @@ def test_grant_permission_success(repo, session):
     session.flush = MagicMock()
 
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission.get_user", return_value=user),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission.get_user",
+            return_value=user,
+        ),
         patch("mlflow_oidc_auth.db.models.SqlExperimentPermission", return_value=perm),
         patch("mlflow_oidc_auth.repository.experiment_permission._validate_permission"),
     ):
@@ -48,8 +53,14 @@ def test_grant_permission_integrity_error(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock(side_effect=IntegrityError("statement", "params", "orig"))
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission.get_user", return_value=user),
-        patch("mlflow_oidc_auth.db.models.SqlExperimentPermission", return_value=MagicMock()),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission.get_user",
+            return_value=user,
+        ),
+        patch(
+            "mlflow_oidc_auth.db.models.SqlExperimentPermission",
+            return_value=MagicMock(),
+        ),
         patch("mlflow_oidc_auth.repository.experiment_permission._validate_permission"),
     ):
         with pytest.raises(MlflowException) as exc:

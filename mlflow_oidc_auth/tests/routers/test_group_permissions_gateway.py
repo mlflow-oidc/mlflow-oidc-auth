@@ -38,7 +38,13 @@ def _make_direct_perm(attr_name: str, value: str, permission: str = "READ") -> M
     return perm
 
 
-def _make_regex_perm(perm_id: int = 1, regex: str = ".*", priority: int = 1, group_id: int = 10, permission: str = "READ") -> MagicMock:
+def _make_regex_perm(
+    perm_id: int = 1,
+    regex: str = ".*",
+    priority: int = 1,
+    group_id: int = 10,
+    permission: str = "READ",
+) -> MagicMock:
     """Create a mock regex permission entity."""
     perm = MagicMock()
     perm.id = perm_id
@@ -75,7 +81,10 @@ class TestGroupGatewayEndpointPermissions:
         """Test creating a group gateway endpoint permission."""
         mock_store.create_group_gateway_endpoint_permission.return_value = _make_direct_perm("endpoint_id", "ep-1", "MANAGE")
         with patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store):
-            resp = authenticated_client.post(f"{GROUP_BASE}/devs/gateways/endpoints/ep-1", json={"permission": "MANAGE"})
+            resp = authenticated_client.post(
+                f"{GROUP_BASE}/devs/gateways/endpoints/ep-1",
+                json={"permission": "MANAGE"},
+            )
         assert resp.status_code == 201
         assert resp.json() == {"kind": "group", "name": "ep-1", "permission": "MANAGE"}
 
@@ -90,7 +99,10 @@ class TestGroupGatewayEndpointPermissions:
     def test_update(self, authenticated_client, mock_store):
         """Test updating a group gateway endpoint permission."""
         with patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store):
-            resp = authenticated_client.patch(f"{GROUP_BASE}/devs/gateways/endpoints/ep-1", json={"permission": "EDIT"})
+            resp = authenticated_client.patch(
+                f"{GROUP_BASE}/devs/gateways/endpoints/ep-1",
+                json={"permission": "EDIT"},
+            )
         assert resp.status_code == 200
         assert "updated" in resp.json()["message"].lower()
         mock_store.update_group_gateway_endpoint_permission.assert_called_once()
@@ -206,7 +218,10 @@ class TestGroupGatewayModelDefinitionPermissions:
         """Test creating a group gateway model definition permission."""
         mock_store.create_group_gateway_model_definition_permission.return_value = _make_direct_perm("model_definition_id", "gpt-4", "MANAGE")
         with patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store):
-            resp = authenticated_client.post(f"{GROUP_BASE}/devs/gateways/model-definitions/gpt-4", json={"permission": "MANAGE"})
+            resp = authenticated_client.post(
+                f"{GROUP_BASE}/devs/gateways/model-definitions/gpt-4",
+                json={"permission": "MANAGE"},
+            )
         assert resp.status_code == 201
         assert resp.json() == {"kind": "group", "name": "gpt-4", "permission": "MANAGE"}
 
@@ -221,7 +236,10 @@ class TestGroupGatewayModelDefinitionPermissions:
     def test_update(self, authenticated_client, mock_store):
         """Test updating a group gateway model definition permission."""
         with patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store):
-            resp = authenticated_client.patch(f"{GROUP_BASE}/devs/gateways/model-definitions/gpt-4", json={"permission": "EDIT"})
+            resp = authenticated_client.patch(
+                f"{GROUP_BASE}/devs/gateways/model-definitions/gpt-4",
+                json={"permission": "EDIT"},
+            )
         assert resp.status_code == 200
         mock_store.update_group_gateway_model_definition_permission.assert_called_once()
 
@@ -324,9 +342,16 @@ class TestGroupGatewaySecretPermissions:
         """Test creating a group gateway secret permission."""
         mock_store.create_group_gateway_secret_permission.return_value = _make_direct_perm("secret_id", "api-key", "MANAGE")
         with patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store):
-            resp = authenticated_client.post(f"{GROUP_BASE}/devs/gateways/secrets/api-key", json={"permission": "MANAGE"})
+            resp = authenticated_client.post(
+                f"{GROUP_BASE}/devs/gateways/secrets/api-key",
+                json={"permission": "MANAGE"},
+            )
         assert resp.status_code == 201
-        assert resp.json() == {"kind": "group", "name": "api-key", "permission": "MANAGE"}
+        assert resp.json() == {
+            "kind": "group",
+            "name": "api-key",
+            "permission": "MANAGE",
+        }
 
     def test_get(self, authenticated_client, mock_store):
         """Test getting a specific group gateway secret permission."""
@@ -339,7 +364,10 @@ class TestGroupGatewaySecretPermissions:
     def test_update(self, authenticated_client, mock_store):
         """Test updating a group gateway secret permission."""
         with patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store):
-            resp = authenticated_client.patch(f"{GROUP_BASE}/devs/gateways/secrets/api-key", json={"permission": "EDIT"})
+            resp = authenticated_client.patch(
+                f"{GROUP_BASE}/devs/gateways/secrets/api-key",
+                json={"permission": "EDIT"},
+            )
         assert resp.status_code == 200
         mock_store.update_group_gateway_secret_permission.assert_called_once()
 

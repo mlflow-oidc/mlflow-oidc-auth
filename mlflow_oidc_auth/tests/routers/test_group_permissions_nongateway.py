@@ -8,7 +8,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission
+from mlflow_oidc_auth.dependencies import (
+    check_admin_permission,
+    check_experiment_manage_permission,
+)
 
 GROUP_BASE = "/api/2.0/mlflow/permissions/groups"
 
@@ -50,21 +53,41 @@ def override_experiment_manage(test_app):
 def _make_regex_pattern():
     """Create a mock regex pattern with to_json support."""
     perm = MagicMock()
-    perm.to_json.return_value = {"id": 1, "regex": ".*", "priority": 1, "group_id": 10, "permission": "READ"}
+    perm.to_json.return_value = {
+        "id": 1,
+        "regex": ".*",
+        "priority": 1,
+        "group_id": 10,
+        "permission": "READ",
+    }
     return perm
 
 
 def _make_model_regex_pattern():
     """Create a mock registered model regex pattern with to_json support."""
     perm = MagicMock()
-    perm.to_json.return_value = {"id": 1, "regex": ".*", "priority": 1, "group_id": 10, "permission": "READ", "prompt": False}
+    perm.to_json.return_value = {
+        "id": 1,
+        "regex": ".*",
+        "priority": 1,
+        "group_id": 10,
+        "permission": "READ",
+        "prompt": False,
+    }
     return perm
 
 
 def _make_prompt_regex_pattern():
     """Create a mock prompt regex pattern with to_json support."""
     perm = MagicMock()
-    perm.to_json.return_value = {"id": 1, "regex": ".*", "priority": 1, "group_id": 10, "permission": "READ", "prompt": True}
+    perm.to_json.return_value = {
+        "id": 1,
+        "regex": ".*",
+        "priority": 1,
+        "group_id": 10,
+        "permission": "READ",
+        "prompt": True,
+    }
     return perm
 
 
@@ -229,7 +252,10 @@ class TestGroupRegisteredModelList:
         model_perm.permission = "READ"
         mock_store.get_group_models.return_value = [model_perm]
 
-        with patch(f"{_GP}.effective_registered_model_permission", return_value=_mock_eff_perm()):
+        with patch(
+            f"{_GP}.effective_registered_model_permission",
+            return_value=_mock_eff_perm(),
+        ):
             resp = authenticated_client.get(f"{GROUP_BASE}/devs/registered-models")
         assert resp.status_code == 200
 
@@ -252,8 +278,14 @@ class TestGroupRegisteredModelCRUD:
 
     def test_create_non_admin_with_manage(self, authenticated_client, mock_store):
         """Non-admin with manage permission can create."""
-        with patch(f"{_GP}.effective_registered_model_permission", return_value=_mock_eff_perm()):
-            resp = authenticated_client.post(f"{GROUP_BASE}/devs/registered-models/my-model", json={"permission": "READ"})
+        with patch(
+            f"{_GP}.effective_registered_model_permission",
+            return_value=_mock_eff_perm(),
+        ):
+            resp = authenticated_client.post(
+                f"{GROUP_BASE}/devs/registered-models/my-model",
+                json={"permission": "READ"},
+            )
         assert resp.status_code == 201
 
     def test_create_non_admin_no_manage(self, authenticated_client, mock_store):
@@ -261,7 +293,10 @@ class TestGroupRegisteredModelCRUD:
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
         with patch(f"{_GP}.effective_registered_model_permission", return_value=no_perm):
-            resp = authenticated_client.post(f"{GROUP_BASE}/devs/registered-models/my-model", json={"permission": "READ"})
+            resp = authenticated_client.post(
+                f"{GROUP_BASE}/devs/registered-models/my-model",
+                json={"permission": "READ"},
+            )
         assert resp.status_code == 403
 
     def test_create_error(self, admin_client, mock_store):

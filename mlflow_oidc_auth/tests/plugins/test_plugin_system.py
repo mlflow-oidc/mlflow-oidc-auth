@@ -40,7 +40,9 @@ class TestPluginSystem(unittest.TestCase):
 
     def test_plugin_function_availability(self):
         """Test that required plugin functions are available."""
-        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
+        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import (
+            get_user_groups,
+        )
 
         # Verify function exists and is callable
         self.assertTrue(callable(get_user_groups), "get_user_groups should be callable")
@@ -83,7 +85,11 @@ class TestPluginSystem(unittest.TestCase):
         # Verify no dangerous imports
         dangerous_imports = ["os", "sys", "subprocess", "eval", "exec", "__import__"]
         for dangerous in dangerous_imports:
-            self.assertNotIn(dangerous, module_globals, f"Plugin should not import dangerous module: {dangerous}")
+            self.assertNotIn(
+                dangerous,
+                module_globals,
+                f"Plugin should not import dangerous module: {dangerous}",
+            )
 
     def test_plugin_error_handling_isolation(self):
         """Test that plugin errors don't crash the main application."""
@@ -91,7 +97,9 @@ class TestPluginSystem(unittest.TestCase):
             # Simulate a plugin that raises an exception
             mock_get.side_effect = Exception("Plugin internal error")
 
-            from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
+            from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import (
+                get_user_groups,
+            )
 
             # The plugin should raise its own exception, not crash the system
             with self.assertRaises(Exception) as context:
@@ -101,7 +109,9 @@ class TestPluginSystem(unittest.TestCase):
 
     def test_plugin_interface_compliance(self):
         """Test that plugins comply with expected interface contracts."""
-        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
+        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import (
+            get_user_groups,
+        )
 
         # Test with mock to verify interface compliance
         with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get") as mock_get:
@@ -175,7 +185,14 @@ class TestPluginSystem(unittest.TestCase):
         # Only expected modules should be added
 
         # Allow for requests and its dependencies if not already loaded
-        allowed_patterns = ["mlflow_oidc_auth.plugins", "requests", "urllib3", "certifi", "charset_normalizer", "idna"]
+        allowed_patterns = [
+            "mlflow_oidc_auth.plugins",
+            "requests",
+            "urllib3",
+            "certifi",
+            "charset_normalizer",
+            "idna",
+        ]
 
         unexpected_modules = []
         for module in new_modules:
@@ -193,7 +210,9 @@ class TestPluginSecurityAndIsolation(unittest.TestCase):
         # This is a conceptual test - in a real implementation,
         # you would verify that plugins run in a restricted context
 
-        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
+        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import (
+            get_user_groups,
+        )
 
         # Verify plugin function doesn't have access to sensitive globals
 
@@ -212,7 +231,9 @@ class TestPluginSecurityAndIsolation(unittest.TestCase):
         # This test verifies that plugins don't consume excessive resources
 
         import time
-        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
+        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import (
+            get_user_groups,
+        )
 
         with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get") as mock_get:
             mock_response = Mock()
@@ -231,7 +252,9 @@ class TestPluginSecurityAndIsolation(unittest.TestCase):
 
     def test_plugin_thread_safety(self):
         """Test that plugins are thread-safe."""
-        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import get_user_groups
+        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import (
+            get_user_groups,
+        )
 
         results = []
         errors = []

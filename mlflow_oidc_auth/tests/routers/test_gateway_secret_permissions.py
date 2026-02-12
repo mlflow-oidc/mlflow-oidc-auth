@@ -53,8 +53,16 @@ class TestGatewaySecretPermissionRoutes:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 2
-        assert {"name": "admin@example.com", "permission": "MANAGE", "kind": "user"} in body
-        assert {"name": "user@example.com", "permission": "READ", "kind": "user"} in body
+        assert {
+            "name": "admin@example.com",
+            "permission": "MANAGE",
+            "kind": "user",
+        } in body
+        assert {
+            "name": "user@example.com",
+            "permission": "READ",
+            "kind": "user",
+        } in body
 
     def test_list_users_filters_by_secret(self, test_app, authenticated_client, mock_store, mock_secret_permissions):
         """Test that only users with permissions for the specific secret are returned."""
@@ -70,8 +78,16 @@ class TestGatewaySecretPermissionRoutes:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 2
-        assert {"name": "user@example.com", "permission": "READ", "kind": "user"} in body
-        assert {"name": "service@example.com", "permission": "EDIT", "kind": "service-account"} in body
+        assert {
+            "name": "user@example.com",
+            "permission": "READ",
+            "kind": "user",
+        } in body
+        assert {
+            "name": "service@example.com",
+            "permission": "EDIT",
+            "kind": "service-account",
+        } in body
 
     def test_list_users_empty(self, test_app, authenticated_client, mock_store, mock_secret_permissions):
         """Test listing users when no one has permissions."""
@@ -150,8 +166,14 @@ class TestListGatewaySecrets:
                 {"secret_name": "api-key-2"},
             ]
 
-            with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets", return_value=mock_secrets):
-                with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets",
+                return_value=mock_secrets,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_secret_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_SECRET_BASE)
 
             assert resp.status_code == 200
@@ -177,14 +199,27 @@ class TestListGatewaySecrets:
         test_app.dependency_overrides[get_username] = get_user
 
         try:
-            mock_secrets = [{"secret_name": "api-key-1"}, {"secret_name": "api-key-2"}, {"secret_name": "api-key-3"}]
+            mock_secrets = [
+                {"secret_name": "api-key-1"},
+                {"secret_name": "api-key-2"},
+                {"secret_name": "api-key-3"},
+            ]
 
             def filter_mock(username, secrets):
                 return [s for s in secrets if s["secret_name"] == "api-key-2"]
 
-            with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets", return_value=mock_secrets):
-                with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.filter_manageable_gateway_secrets", filter_mock):
-                    with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets",
+                return_value=mock_secrets,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_secret_permissions.filter_manageable_gateway_secrets",
+                    filter_mock,
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.routers.gateway_secret_permissions.store",
+                        mock_store,
+                    ):
                         resp = authenticated_client.get(GATEWAY_SECRET_BASE)
 
             assert resp.status_code == 200
@@ -210,8 +245,14 @@ class TestListGatewaySecrets:
         try:
             mock_secrets = [{"key": "secret-key-1"}]
 
-            with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets", return_value=mock_secrets):
-                with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets",
+                return_value=mock_secrets,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_secret_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_SECRET_BASE)
 
             assert resp.status_code == 200
@@ -235,8 +276,14 @@ class TestListGatewaySecrets:
         test_app.dependency_overrides[get_username] = get_user
 
         try:
-            with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets", return_value=[]):
-                with patch("mlflow_oidc_auth.routers.gateway_secret_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_secret_permissions.fetch_all_gateway_secrets",
+                return_value=[],
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_secret_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_SECRET_BASE)
 
             assert resp.status_code == 200

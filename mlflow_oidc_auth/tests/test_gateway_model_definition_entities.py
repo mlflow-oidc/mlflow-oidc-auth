@@ -37,7 +37,13 @@ class TestGatewayModelDefinitionEntities(unittest.TestCase):
         self.assertEqual(perm.permission, "USE")
 
         json_data = perm.to_json()
-        expected = {"id": "1", "regex": "md-.*", "priority": 5, "user_id": 1, "permission": "USE"}
+        expected = {
+            "id": "1",
+            "regex": "md-.*",
+            "priority": 5,
+            "user_id": 1,
+            "permission": "USE",
+        }
         self.assertEqual(json_data, expected)
 
         p2 = GatewayModelDefinitionRegexPermission.from_json(json_data)
@@ -54,7 +60,13 @@ class TestGatewayModelDefinitionEntities(unittest.TestCase):
         self.assertEqual(perm.permission, "READ")
 
         json_data = perm.to_json()
-        expected = {"id": "1", "regex": "md-.*", "priority": 5, "group_id": 1, "permission": "READ"}
+        expected = {
+            "id": "1",
+            "regex": "md-.*",
+            "priority": 5,
+            "group_id": 1,
+            "permission": "READ",
+        }
         self.assertEqual(json_data, expected)
 
         p2 = GatewayModelDefinitionGroupRegexPermission.from_json(json_data)

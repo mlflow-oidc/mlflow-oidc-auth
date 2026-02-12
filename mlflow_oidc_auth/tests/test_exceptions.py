@@ -308,7 +308,10 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
         register_exception_handlers(self.app)
 
         # Create exception with potentially sensitive information
-        exc = mlflow.exceptions.MlflowException("Database connection failed: password=secret123", error_code="INTERNAL_ERROR")
+        exc = mlflow.exceptions.MlflowException(
+            "Database connection failed: password=secret123",
+            error_code="INTERNAL_ERROR",
+        )
 
         # The handler should only return the message as provided, not filter it
         # This test verifies the handler behavior, but in practice, the calling code

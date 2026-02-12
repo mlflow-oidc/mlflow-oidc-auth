@@ -9,7 +9,12 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from alembic.config import Config
 
-from mlflow_oidc_auth.db.utils import migrate, migrate_if_needed, _get_alembic_dir, _get_alembic_config
+from mlflow_oidc_auth.db.utils import (
+    migrate,
+    migrate_if_needed,
+    _get_alembic_dir,
+    _get_alembic_config,
+)
 
 
 class TestPrivateFunctions:

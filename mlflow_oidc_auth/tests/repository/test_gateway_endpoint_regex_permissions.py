@@ -5,9 +5,15 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.gateway_endpoint_regex_permissions import GatewayEndpointPermissionRegexRepository
-from mlflow_oidc_auth.repository.gateway_secret_regex_permissions import GatewaySecretPermissionRegexRepository
-from mlflow_oidc_auth.repository.gateway_model_definition_regex_permissions import GatewayModelDefinitionPermissionRegexRepository
+from mlflow_oidc_auth.repository.gateway_endpoint_regex_permissions import (
+    GatewayEndpointPermissionRegexRepository,
+)
+from mlflow_oidc_auth.repository.gateway_secret_regex_permissions import (
+    GatewaySecretPermissionRegexRepository,
+)
+from mlflow_oidc_auth.repository.gateway_model_definition_regex_permissions import (
+    GatewayModelDefinitionPermissionRegexRepository,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -32,12 +38,6 @@ def session_maker(session):
 # ---------------------------------------------------------------------------
 # Parameterised definitions for each resource type
 # ---------------------------------------------------------------------------
-
-_PRIVATE_GETTER = {
-    "endpoint": "_get_endpoint_regex_permission",
-    "secret": "_get_secret_regex_permission",
-    "model_definition": "_get_model_definition_regex_permission",
-}
 
 RESOURCE_CONFIGS = [
     pytest.param(

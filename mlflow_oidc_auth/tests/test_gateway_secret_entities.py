@@ -61,7 +61,12 @@ class TestGatewaySecretPermission(unittest.TestCase):
 
     def test_from_json_casts_string_ids(self) -> None:
         """Should cast string IDs to integers."""
-        data = {"secret_id": "s4", "permission": "READ", "user_id": "42", "group_id": "7"}
+        data = {
+            "secret_id": "s4",
+            "permission": "READ",
+            "user_id": "42",
+            "group_id": "7",
+        }
         perm = GatewaySecretPermission.from_json(data)
 
         self.assertEqual(perm.user_id, 42)
@@ -106,7 +111,13 @@ class TestGatewaySecretRegexPermission(unittest.TestCase):
 
     def test_from_json(self) -> None:
         """Should deserialize from JSON dict."""
-        data = {"id": "30", "regex": "test-.*", "priority": 3, "user_id": 5, "permission": "EDIT"}
+        data = {
+            "id": "30",
+            "regex": "test-.*",
+            "priority": 3,
+            "user_id": 5,
+            "permission": "EDIT",
+        }
         perm = GatewaySecretRegexPermission.from_json(data)
 
         self.assertEqual(perm.id, "30")
@@ -117,14 +128,26 @@ class TestGatewaySecretRegexPermission(unittest.TestCase):
 
     def test_from_json_casts_string_user_id(self) -> None:
         """Should cast string user_id to int."""
-        data = {"id": "1", "regex": ".*", "priority": 0, "user_id": "99", "permission": "READ"}
+        data = {
+            "id": "1",
+            "regex": ".*",
+            "priority": 0,
+            "user_id": "99",
+            "permission": "READ",
+        }
         perm = GatewaySecretRegexPermission.from_json(data)
 
         self.assertEqual(perm.user_id, 99)
 
     def test_from_json_invalid_user_id_raises(self) -> None:
         """Should raise ValueError for non-integer user_id."""
-        data = {"id": "1", "regex": ".*", "priority": 0, "user_id": "bad", "permission": "READ"}
+        data = {
+            "id": "1",
+            "regex": ".*",
+            "priority": 0,
+            "user_id": "bad",
+            "permission": "READ",
+        }
         with self.assertRaises(ValueError):
             GatewaySecretRegexPermission.from_json(data)
 
@@ -155,7 +178,13 @@ class TestGatewaySecretGroupRegexPermission(unittest.TestCase):
 
     def test_from_json(self) -> None:
         """Should deserialize from JSON dict."""
-        data = {"id": "5", "regex": "prod-.*", "priority": 7, "group_id": 8, "permission": "EDIT"}
+        data = {
+            "id": "5",
+            "regex": "prod-.*",
+            "priority": 7,
+            "group_id": 8,
+            "permission": "EDIT",
+        }
         perm = GatewaySecretGroupRegexPermission.from_json(data)
 
         self.assertEqual(perm.id, "5")
@@ -164,14 +193,26 @@ class TestGatewaySecretGroupRegexPermission(unittest.TestCase):
 
     def test_from_json_casts_string_group_id(self) -> None:
         """Should cast string group_id to int."""
-        data = {"id": "1", "regex": ".*", "priority": 0, "group_id": "42", "permission": "READ"}
+        data = {
+            "id": "1",
+            "regex": ".*",
+            "priority": 0,
+            "group_id": "42",
+            "permission": "READ",
+        }
         perm = GatewaySecretGroupRegexPermission.from_json(data)
 
         self.assertEqual(perm.group_id, 42)
 
     def test_from_json_invalid_group_id_raises(self) -> None:
         """Should raise ValueError for non-integer group_id."""
-        data = {"id": "1", "regex": ".*", "priority": 0, "group_id": "nope", "permission": "READ"}
+        data = {
+            "id": "1",
+            "regex": ".*",
+            "priority": 0,
+            "group_id": "nope",
+            "permission": "READ",
+        }
         with self.assertRaises(ValueError):
             GatewaySecretGroupRegexPermission.from_json(data)
 

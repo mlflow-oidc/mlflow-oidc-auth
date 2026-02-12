@@ -4,7 +4,9 @@ from mlflow_oidc_auth.db.models import SqlExperimentPermission, SqlUser
 from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
 
 
-def test_delete_user_with_experiment_permissions_deletes_permissions_rows(tmp_path) -> None:
+def test_delete_user_with_experiment_permissions_deletes_permissions_rows(
+    tmp_path,
+) -> None:
     store = SqlAlchemyStore()
     db_path = tmp_path / "test.db"
     store.init_db(f"sqlite:///{db_path.as_posix()}")

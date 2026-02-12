@@ -101,7 +101,11 @@ class TestClientErrorResponseSecurity:
     def test_forbidden_response_custom_message_sanitization(self, test_app):
         """Test that custom messages in forbidden responses are properly handled."""
         # Test with potentially dangerous custom message
-        dangerous_msg = {"message": "Access denied", "debug_info": "Internal server details", "user_id": "12345"}
+        dangerous_msg = {
+            "message": "Access denied",
+            "debug_info": "Internal server details",
+            "user_id": "12345",
+        }
 
         response = make_forbidden_response(dangerous_msg)
         assert response.status_code == 403
@@ -209,7 +213,11 @@ class TestClientErrorResponseSerialization:
 
     def test_json_serialization_custom_message(self, test_app):
         """Test JSON serialization with custom message."""
-        custom_msg = {"message": "Custom error", "code": "ERR_001", "details": {"field": "value"}}
+        custom_msg = {
+            "message": "Custom error",
+            "code": "ERR_001",
+            "details": {"field": "value"},
+        }
 
         response = make_forbidden_response(custom_msg)
 

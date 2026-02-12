@@ -132,8 +132,17 @@ async def test_login_authorize_redirect_success(monkeypatch):
     import types
 
     monkeypatch.setattr(auth_router_mod.oauth, "oidc", types.SimpleNamespace(), raising=False)
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_redirect", fake_authorize_redirect, raising=False)
-    monkeypatch.setattr(auth_router_mod, "get_configured_or_dynamic_redirect_uri", lambda request, callback_path, configured_uri: "http://cb")
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_redirect",
+        fake_authorize_redirect,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod,
+        "get_configured_or_dynamic_redirect_uri",
+        lambda request, callback_path, configured_uri: "http://cb",
+    )
 
     req = DummyRequest()
     res = await auth_router_mod.login(req)
@@ -164,7 +173,12 @@ async def test_logout_with_end_session_endpoint(monkeypatch):
     import types
 
     monkeypatch.setattr(auth_router_mod.oauth, "oidc", types.SimpleNamespace(), raising=False)
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "server_metadata", {"end_session_endpoint": "http://end"}, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "server_metadata",
+        {"end_session_endpoint": "http://end"},
+        raising=False,
+    )
 
     res = await auth_router_mod.logout(req)
     assert isinstance(res, RedirectResponse)
@@ -330,7 +344,12 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     async def fake_exchange(request):
         return None
 
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_access_token",
+        fake_exchange,
+        raising=False,
+    )
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
@@ -340,7 +359,12 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     async def fake_exchange2(request):
         return {"access_token": "a", "id_token": "i"}
 
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange2, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_access_token",
+        fake_exchange2,
+        raising=False,
+    )
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
@@ -350,7 +374,12 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     async def fake_exchange3(request):
         return {"access_token": "a", "id_token": "i", "userinfo": {"name": "n"}}
 
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange3, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_access_token",
+        fake_exchange3,
+        raising=False,
+    )
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
@@ -360,7 +389,12 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     async def fake_exchange4(request):
         return {"access_token": "a", "id_token": "i", "userinfo": {"email": "e@x.com"}}
 
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange4, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_access_token",
+        fake_exchange4,
+        raising=False,
+    )
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
@@ -374,7 +408,12 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
             "userinfo": {"email": "e@x.com", "name": "Name", "groups": ["other"]},
         }
 
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange5, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_access_token",
+        fake_exchange5,
+        raising=False,
+    )
     monkeypatch.setattr(config, "OIDC_GROUP_DETECTION_PLUGIN", "")
     monkeypatch.setattr(config, "OIDC_ADMIN_GROUP_NAME", ["admin"])
     monkeypatch.setattr(config, "OIDC_GROUP_NAME", ["users"])
@@ -392,11 +431,21 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
             "userinfo": {"email": "e@x.com", "name": "Name", "groups": ["users"]},
         }
 
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange6, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_access_token",
+        fake_exchange6,
+        raising=False,
+    )
     # monkeypatch user module to raise
     import mlflow_oidc_auth.user as user_module
 
-    monkeypatch.setattr(user_module, "create_user", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")), raising=False)
+    monkeypatch.setattr(
+        user_module,
+        "create_user",
+        lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+        raising=False,
+    )
     monkeypatch.setattr(user_module, "populate_groups", lambda **kw: None, raising=False)
     monkeypatch.setattr(user_module, "update_user", lambda **kw: None, raising=False)
 
@@ -412,7 +461,12 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     monkeypatch.setattr(user_module, "populate_groups", lambda **kw: None, raising=False)
     monkeypatch.setattr(user_module, "update_user", lambda **kw: None, raising=False)
 
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange6, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_access_token",
+        fake_exchange6,
+        raising=False,
+    )
     monkeypatch.setattr(config, "OIDC_ADMIN_GROUP_NAME", ["admin", "users"])
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
@@ -432,7 +486,12 @@ async def test_refresh_oidc_jwks_load_server_metadata_and_exception(monkeypatch)
         called["count"] += 1
 
     monkeypatch.setattr(auth_router_mod.oauth, "oidc", types.SimpleNamespace(), raising=False)
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "load_server_metadata", load_server_metadata, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "load_server_metadata",
+        load_server_metadata,
+        raising=False,
+    )
 
     await auth_router_mod._refresh_oidc_jwks()
     assert called["count"] == 1
@@ -441,7 +500,12 @@ async def test_refresh_oidc_jwks_load_server_metadata_and_exception(monkeypatch)
     async def load_server_metadata_bad(force=False):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "load_server_metadata", load_server_metadata_bad, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "load_server_metadata",
+        load_server_metadata_bad,
+        raising=False,
+    )
     # Should not raise
     await auth_router_mod._refresh_oidc_jwks()
 
@@ -497,8 +561,17 @@ async def test_login_fallback_redirect_uri_on_error(monkeypatch):
         return RedirectResponse(url=redirect_uri)
 
     monkeypatch.setattr(auth_router_mod.oauth, "oidc", types.SimpleNamespace(), raising=False)
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_redirect", fake_authorize_redirect, raising=False)
-    monkeypatch.setattr(auth_router_mod, "get_configured_or_dynamic_redirect_uri", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_redirect",
+        fake_authorize_redirect,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod,
+        "get_configured_or_dynamic_redirect_uri",
+        lambda **kw: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
 
     req = DummyRequest()
     res = await auth_router_mod.login(req)
@@ -536,7 +609,12 @@ async def test_process_oidc_callback_final_except(monkeypatch):
     import types
 
     monkeypatch.setattr(auth_router_mod.oauth, "oidc", types.SimpleNamespace(), raising=False)
-    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange, raising=False)
+    monkeypatch.setattr(
+        auth_router_mod.oauth.oidc,
+        "authorize_access_token",
+        fake_exchange,
+        raising=False,
+    )
 
     req = DummyRequest()
     req.query_params = {"state": "s", "code": "c"}

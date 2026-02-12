@@ -21,7 +21,10 @@ from mlflow_oidc_auth.routers.experiment_permissions import (
     EXPERIMENT_USER_PERMISSIONS,
 )
 from mlflow_oidc_auth.models import ExperimentSummary
-from mlflow_oidc_auth.entities import User, ExperimentPermission as ExperimentPermissionEntity
+from mlflow_oidc_auth.entities import (
+    User,
+    ExperimentPermission as ExperimentPermissionEntity,
+)
 
 
 class TestExperimentPermissionsRouter:
@@ -49,7 +52,10 @@ class TestGetExperimentGroupsEndpoint:
     async def test_get_experiment_groups_success(self, mock_store_module: MagicMock, mock_store: MagicMock):
         """Test successful retrieval of experiment groups."""
 
-        mock_store_module.experiment_group_repo.list_groups_for_experiment.return_value = [("my-group", "READ"), ("admins", "MANAGE")]
+        mock_store_module.experiment_group_repo.list_groups_for_experiment.return_value = [
+            ("my-group", "READ"),
+            ("admins", "MANAGE"),
+        ]
 
         result = await get_experiment_groups(experiment_id="123", _=None)
         assert len(result) == 2
@@ -217,14 +223,22 @@ class TestListExperimentsEndpoint:
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.experiment_permissions._get_tracking_store")
-    async def test_list_experiments_regular_user(self, mock_get_tracking_store: MagicMock, mock_tracking_store: MagicMock, mock_permissions: dict[str, Any]):
+    async def test_list_experiments_regular_user(
+        self,
+        mock_get_tracking_store: MagicMock,
+        mock_tracking_store: MagicMock,
+        mock_permissions: dict[str, Any],
+    ):
         """Test listing experiments as regular user."""
         mock_get_tracking_store.return_value = mock_tracking_store
 
         # Mock filter_manageable_experiments to return the experiments
         mock_experiments = mock_tracking_store.search_experiments.return_value
 
-        with patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", return_value=mock_experiments):
+        with patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments",
+            return_value=mock_experiments,
+        ):
             result = await list_experiments(username="user@example.com", is_admin=False)
 
             assert len(result) == 1
@@ -234,13 +248,19 @@ class TestListExperimentsEndpoint:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.experiment_permissions._get_tracking_store")
     async def test_list_experiments_regular_user_no_permissions(
-        self, mock_get_tracking_store: MagicMock, mock_tracking_store: MagicMock, mock_permissions: dict[str, Any]
+        self,
+        mock_get_tracking_store: MagicMock,
+        mock_tracking_store: MagicMock,
+        mock_permissions: dict[str, Any],
     ):
         """Test listing experiments as regular user with no permissions."""
         mock_get_tracking_store.return_value = mock_tracking_store
 
         # Mock filter_manageable_experiments to return empty list (no permissions)
-        with patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", return_value=[]):
+        with patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments",
+            return_value=[],
+        ):
             result = await list_experiments(username="user@example.com", is_admin=False)
 
             assert len(result) == 0
@@ -269,12 +289,19 @@ class TestListExperimentsEndpoint:
         mock_experiment3.name = "Experiment 3"
         mock_experiment3.tags = {}
 
-        mock_tracking_store.search_experiments.return_value = [mock_experiment1, mock_experiment2, mock_experiment3]
+        mock_tracking_store.search_experiments.return_value = [
+            mock_experiment1,
+            mock_experiment2,
+            mock_experiment3,
+        ]
 
         # Mock filter_manageable_experiments - user can manage experiments 123 and 789 but not 456
         manageable_experiments = [mock_experiment1, mock_experiment3]
 
-        with patch("mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments", return_value=manageable_experiments):
+        with patch(
+            "mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments",
+            return_value=manageable_experiments,
+        ):
             result = await list_experiments(username="user@example.com", is_admin=False)
 
             assert len(result) == 2
@@ -344,7 +371,10 @@ class TestExperimentPermissionsRouterIntegration:
 
     def test_all_endpoints_require_authentication(self, client: TestClient):
         """Test that all experiment permission endpoints require authentication."""
-        endpoints = [("GET", "/api/2.0/mlflow/permissions/experiments"), ("GET", "/api/2.0/mlflow/permissions/experiments/123/users")]
+        endpoints = [
+            ("GET", "/api/2.0/mlflow/permissions/experiments"),
+            ("GET", "/api/2.0/mlflow/permissions/experiments/123/users"),
+        ]
 
         for method, endpoint in endpoints:
             response = client.get(endpoint)
@@ -363,7 +393,10 @@ class TestExperimentPermissionsRouterIntegration:
 
     def test_endpoints_response_content_type(self, authenticated_client: TestClient):
         """Test that endpoints return proper content type."""
-        endpoints = ["/api/2.0/mlflow/permissions/experiments", "/api/2.0/mlflow/permissions/experiments/123/users"]
+        endpoints = [
+            "/api/2.0/mlflow/permissions/experiments",
+            "/api/2.0/mlflow/permissions/experiments/123/users",
+        ]
 
         for endpoint in endpoints:
             response = authenticated_client.get(endpoint)
@@ -443,7 +476,10 @@ class TestExperimentPermissionsRouterIntegration:
         """Test that experiment permissions endpoints respond in reasonable time."""
         import time
 
-        endpoints = ["/api/2.0/mlflow/permissions/experiments", "/api/2.0/mlflow/permissions/experiments/123/users"]
+        endpoints = [
+            "/api/2.0/mlflow/permissions/experiments",
+            "/api/2.0/mlflow/permissions/experiments/123/users",
+        ]
 
         for endpoint in endpoints:
             start_time = time.time()

@@ -46,9 +46,20 @@ class TestCheckGatewayEndpointManagePermission:
     @pytest.mark.anyio
     async def test_allows_admin(self) -> None:
         """Admin should be allowed regardless of can_manage result."""
-        with patch("mlflow_oidc_auth.dependencies.get_username", new_callable=AsyncMock, return_value="admin@example.com"):
-            with patch("mlflow_oidc_auth.dependencies.get_is_admin", new_callable=AsyncMock, return_value=True):
-                with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_endpoint", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.dependencies.get_username",
+            new_callable=AsyncMock,
+            return_value="admin@example.com",
+        ):
+            with patch(
+                "mlflow_oidc_auth.dependencies.get_is_admin",
+                new_callable=AsyncMock,
+                return_value=True,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.utils.permissions.can_manage_gateway_endpoint",
+                    return_value=False,
+                ):
                     result = await check_gateway_endpoint_manage_permission(
                         name="ep-1",
                         current_username="admin@example.com",
@@ -60,7 +71,10 @@ class TestCheckGatewayEndpointManagePermission:
     @pytest.mark.anyio
     async def test_allows_user_with_manage_permission(self) -> None:
         """Non-admin with manage permission should be allowed."""
-        with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_endpoint", return_value=True):
+        with patch(
+            "mlflow_oidc_auth.utils.permissions.can_manage_gateway_endpoint",
+            return_value=True,
+        ):
             result = await check_gateway_endpoint_manage_permission(
                 name="ep-1",
                 current_username="user@example.com",
@@ -74,7 +88,10 @@ class TestCheckGatewayEndpointManagePermission:
         """Non-admin without manage permission should be denied."""
         from fastapi import HTTPException
 
-        with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_endpoint", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.utils.permissions.can_manage_gateway_endpoint",
+            return_value=False,
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await check_gateway_endpoint_manage_permission(
                     name="ep-1",
@@ -107,7 +124,10 @@ class TestCheckGatewaySecretManagePermission:
     @pytest.mark.anyio
     async def test_allows_user_with_manage_permission(self) -> None:
         """Non-admin with manage permission should be allowed."""
-        with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_secret", return_value=True):
+        with patch(
+            "mlflow_oidc_auth.utils.permissions.can_manage_gateway_secret",
+            return_value=True,
+        ):
             result = await check_gateway_secret_manage_permission(
                 name="secret-1",
                 current_username="user@example.com",
@@ -121,7 +141,10 @@ class TestCheckGatewaySecretManagePermission:
         """Non-admin without manage permission should be denied."""
         from fastapi import HTTPException
 
-        with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_secret", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.utils.permissions.can_manage_gateway_secret",
+            return_value=False,
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await check_gateway_secret_manage_permission(
                     name="secret-1",
@@ -154,7 +177,10 @@ class TestCheckGatewayModelDefinitionManagePermission:
     @pytest.mark.anyio
     async def test_allows_user_with_manage_permission(self) -> None:
         """Non-admin with manage permission should be allowed."""
-        with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_model_definition", return_value=True):
+        with patch(
+            "mlflow_oidc_auth.utils.permissions.can_manage_gateway_model_definition",
+            return_value=True,
+        ):
             result = await check_gateway_model_definition_manage_permission(
                 name="model-1",
                 current_username="user@example.com",
@@ -168,7 +194,10 @@ class TestCheckGatewayModelDefinitionManagePermission:
         """Non-admin without manage permission should be denied."""
         from fastapi import HTTPException
 
-        with patch("mlflow_oidc_auth.utils.permissions.can_manage_gateway_model_definition", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.utils.permissions.can_manage_gateway_model_definition",
+            return_value=False,
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await check_gateway_model_definition_manage_permission(
                     name="model-1",

@@ -206,7 +206,13 @@ def test_read_user_cannot_update_experiment(
 
     with http_client_factory(user) as client:
         api = "ajax-api/2.0/mlflow/experiments/update"
-        resp = client.patch(api, json={"experiment_id": resources["experiment_id"], "new_name": f"should-not-rename-{uuid.uuid4().hex[:6]}"})
+        resp = client.patch(
+            api,
+            json={
+                "experiment_id": resources["experiment_id"],
+                "new_name": f"should-not-rename-{uuid.uuid4().hex[:6]}",
+            },
+        )
         assert _is_denied(resp.status_code), f"READ should NOT update experiment: {resp.status_code}"
 
 
@@ -266,7 +272,10 @@ def test_read_user_cannot_update_model(
 
     with http_client_factory(user) as client:
         api = "ajax-api/2.0/mlflow/registered-models/update"
-        resp = client.patch(api, json={"name": resources["model_name"], "description": "should not update"})
+        resp = client.patch(
+            api,
+            json={"name": resources["model_name"], "description": "should not update"},
+        )
         assert _is_denied(resp.status_code), f"READ should NOT update model: {resp.status_code}"
 
 
@@ -448,7 +457,13 @@ def test_edit_user_can_update_model(
 
     with http_client_factory(user) as client:
         api = "ajax-api/2.0/mlflow/registered-models/update"
-        resp = client.patch(api, json={"name": resources["model_name"], "description": "updated by edit user"})
+        resp = client.patch(
+            api,
+            json={
+                "name": resources["model_name"],
+                "description": "updated by edit user",
+            },
+        )
         assert _is_ok(resp.status_code), f"EDIT should update model: {resp.status_code}"
 
 
@@ -641,7 +656,13 @@ def test_manage_user_can_update_model(
 
     with http_client_factory(user) as client:
         api = "ajax-api/2.0/mlflow/registered-models/update"
-        resp = client.patch(api, json={"name": resources["model_name"], "description": "updated by manage user"})
+        resp = client.patch(
+            api,
+            json={
+                "name": resources["model_name"],
+                "description": "updated by manage user",
+            },
+        )
         assert _is_ok(resp.status_code), f"MANAGE should update model: {resp.status_code}"
 
 

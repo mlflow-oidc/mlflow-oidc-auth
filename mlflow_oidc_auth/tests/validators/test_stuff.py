@@ -55,7 +55,10 @@ class TestValidateGatewayProxy:
         """GET with an explicit gateway name should check can_use."""
         with (
             flask_app.test_request_context("/?name=my-endpoint", method="GET"),
-            patch("mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint", return_value=True) as mock_use,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint",
+                return_value=True,
+            ) as mock_use,
         ):
             result = validate_gateway_proxy("alice")
 
@@ -66,7 +69,10 @@ class TestValidateGatewayProxy:
         """GET denied when user cannot use the named endpoint."""
         with (
             flask_app.test_request_context("/?name=secret-ep", method="GET"),
-            patch("mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint", return_value=False) as mock_use,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint",
+                return_value=False,
+            ) as mock_use,
         ):
             result = validate_gateway_proxy("bob")
 
@@ -77,7 +83,10 @@ class TestValidateGatewayProxy:
         """POST with an explicit gateway name should check can_update."""
         with (
             flask_app.test_request_context("/?name=my-endpoint", method="POST"),
-            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=True) as mock_upd,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
+                return_value=True,
+            ) as mock_upd,
         ):
             result = validate_gateway_proxy("alice")
 
@@ -88,7 +97,10 @@ class TestValidateGatewayProxy:
         """POST denied when user cannot update the named endpoint."""
         with (
             flask_app.test_request_context("/?name=locked-ep", method="POST"),
-            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=False) as mock_upd,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
+                return_value=False,
+            ) as mock_upd,
         ):
             result = validate_gateway_proxy("bob")
 
@@ -153,7 +165,10 @@ class TestValidateGatewayProxy:
         """Should extract gateway name from 'gateway' query param."""
         with (
             flask_app.test_request_context("/?gateway=gw-1", method="GET"),
-            patch("mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint", return_value=True) as mock_use,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint",
+                return_value=True,
+            ) as mock_use,
         ):
             validate_gateway_proxy("alice")
 
@@ -163,7 +178,10 @@ class TestValidateGatewayProxy:
         """Should extract gateway name from 'target' query param."""
         with (
             flask_app.test_request_context("/?target=tgt-1", method="GET"),
-            patch("mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint", return_value=True) as mock_use,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint",
+                return_value=True,
+            ) as mock_use,
         ):
             validate_gateway_proxy("alice")
 
@@ -178,7 +196,10 @@ class TestValidateGatewayProxy:
                 json={"name": "json-ep"},
                 content_type="application/json",
             ),
-            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=True) as mock_upd,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
+                return_value=True,
+            ) as mock_upd,
         ):
             validate_gateway_proxy("alice")
 
@@ -188,7 +209,10 @@ class TestValidateGatewayProxy:
         """DELETE should check can_update (same as POST/PUT)."""
         with (
             flask_app.test_request_context("/?name=ep-del", method="DELETE"),
-            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=True) as mock_upd,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
+                return_value=True,
+            ) as mock_upd,
         ):
             result = validate_gateway_proxy("alice")
 
@@ -199,7 +223,10 @@ class TestValidateGatewayProxy:
         """PUT should check can_update."""
         with (
             flask_app.test_request_context("/?name=ep-put", method="PUT"),
-            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=True) as mock_upd,
+            patch(
+                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
+                return_value=True,
+            ) as mock_upd,
         ):
             result = validate_gateway_proxy("alice")
 

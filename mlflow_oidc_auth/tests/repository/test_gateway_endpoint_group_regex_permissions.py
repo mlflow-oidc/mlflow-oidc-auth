@@ -5,9 +5,15 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.gateway_endpoint_group_regex_permissions import GatewayEndpointPermissionGroupRegexRepository
-from mlflow_oidc_auth.repository.gateway_secret_group_regex_permissions import GatewaySecretPermissionGroupRegexRepository
-from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permissions import GatewayModelDefinitionPermissionGroupRegexRepository
+from mlflow_oidc_auth.repository.gateway_endpoint_group_regex_permissions import (
+    GatewayEndpointPermissionGroupRegexRepository,
+)
+from mlflow_oidc_auth.repository.gateway_secret_group_regex_permissions import (
+    GatewaySecretPermissionGroupRegexRepository,
+)
+from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permissions import (
+    GatewayModelDefinitionPermissionGroupRegexRepository,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures

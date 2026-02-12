@@ -4,7 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from mlflow_oidc_auth.dependencies import check_gateway_model_definition_manage_permission
+from mlflow_oidc_auth.dependencies import (
+    check_gateway_model_definition_manage_permission,
+)
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 
 
@@ -47,14 +49,25 @@ class TestGatewayModelDefinitionPermissionRoutes:
         regular_user.gateway_model_definition_permissions = [mock_model_def_permissions("my-model", "READ")]
         service_user.gateway_model_definition_permissions = []
 
-        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+        with patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ):
             resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/my-model/users")
 
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 2
-        assert {"name": "admin@example.com", "permission": "MANAGE", "kind": "user"} in body
-        assert {"name": "user@example.com", "permission": "READ", "kind": "user"} in body
+        assert {
+            "name": "admin@example.com",
+            "permission": "MANAGE",
+            "kind": "user",
+        } in body
+        assert {
+            "name": "user@example.com",
+            "permission": "READ",
+            "kind": "user",
+        } in body
 
     def test_list_users_filters_by_model(self, test_app, authenticated_client, mock_store, mock_model_def_permissions):
         """Test that only users with permissions for the specific model are returned."""
@@ -64,14 +77,25 @@ class TestGatewayModelDefinitionPermissionRoutes:
         regular_user.gateway_model_definition_permissions = [mock_model_def_permissions("my-model", "READ")]
         service_user.gateway_model_definition_permissions = [mock_model_def_permissions("my-model", "EDIT")]
 
-        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+        with patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ):
             resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/my-model/users")
 
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 2
-        assert {"name": "user@example.com", "permission": "READ", "kind": "user"} in body
-        assert {"name": "service@example.com", "permission": "EDIT", "kind": "service-account"} in body
+        assert {
+            "name": "user@example.com",
+            "permission": "READ",
+            "kind": "user",
+        } in body
+        assert {
+            "name": "service@example.com",
+            "permission": "EDIT",
+            "kind": "service-account",
+        } in body
 
     def test_list_users_empty(self, test_app, authenticated_client, mock_store, mock_model_def_permissions):
         """Test listing users when no one has permissions."""
@@ -81,7 +105,10 @@ class TestGatewayModelDefinitionPermissionRoutes:
         regular_user.gateway_model_definition_permissions = []
         service_user.gateway_model_definition_permissions = []
 
-        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+        with patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ):
             resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/unknown/users")
 
         assert resp.status_code == 200
@@ -95,7 +122,10 @@ class TestGatewayModelDefinitionPermissionRoutes:
             if hasattr(user, "gateway_model_definition_permissions"):
                 delattr(user, "gateway_model_definition_permissions")
 
-        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+        with patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ):
             resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/my-model/users")
 
         assert resp.status_code == 200
@@ -108,7 +138,10 @@ class TestGatewayModelDefinitionPermissionRoutes:
             ("admins", "MANAGE"),
         ]
 
-        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+        with patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ):
             resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/my-model/groups")
 
         assert resp.status_code == 200
@@ -121,7 +154,10 @@ class TestGatewayModelDefinitionPermissionRoutes:
         """Test listing groups when none have permissions."""
         mock_store.gateway_model_definition_group_repo.list_groups_for_model_definition.return_value = []
 
-        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+        with patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ):
             resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/my-model/groups")
 
         assert resp.status_code == 200
@@ -136,7 +172,10 @@ class TestGatewayModelDefinitionPermissionRoutes:
         regular_user.gateway_model_definition_permissions = []
         service_user.gateway_model_definition_permissions = []
 
-        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+        with patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ):
             resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/{model_name}/users")
 
         assert resp.status_code == 200
@@ -153,7 +192,10 @@ class TestGatewayModelDefinitionPermissionRoutes:
             ("developers", "READ"),
         ]
 
-        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+        with patch(
+            "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+            mock_store,
+        ):
             resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/{model_name}/groups")
 
         assert resp.status_code == 200
@@ -184,8 +226,14 @@ class TestListGatewayModelDefinitions:
                 {"name": "claude", "provider": "anthropic"},
             ]
 
-            with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.fetch_all_gateway_model_definitions", return_value=mock_models):
-                with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_model_definition_permissions.fetch_all_gateway_model_definitions",
+                return_value=mock_models,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_MODEL_DEF_BASE)
 
             assert resp.status_code == 200
@@ -216,9 +264,18 @@ class TestListGatewayModelDefinitions:
             def filter_mock(username, models):
                 return [m for m in models if m["name"] == "claude"]
 
-            with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.fetch_all_gateway_model_definitions", return_value=mock_models):
-                with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.filter_manageable_gateway_model_definitions", filter_mock):
-                    with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_model_definition_permissions.fetch_all_gateway_model_definitions",
+                return_value=mock_models,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_model_definition_permissions.filter_manageable_gateway_model_definitions",
+                    filter_mock,
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+                        mock_store,
+                    ):
                         resp = authenticated_client.get(GATEWAY_MODEL_DEF_BASE)
 
             assert resp.status_code == 200
@@ -242,8 +299,14 @@ class TestListGatewayModelDefinitions:
         test_app.dependency_overrides[get_username] = get_user
 
         try:
-            with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.fetch_all_gateway_model_definitions", return_value=[]):
-                with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+            with patch(
+                "mlflow_oidc_auth.routers.gateway_model_definition_permissions.fetch_all_gateway_model_definitions",
+                return_value=[],
+            ):
+                with patch(
+                    "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
+                    mock_store,
+                ):
                     resp = authenticated_client.get(GATEWAY_MODEL_DEF_BASE)
 
             assert resp.status_code == 200

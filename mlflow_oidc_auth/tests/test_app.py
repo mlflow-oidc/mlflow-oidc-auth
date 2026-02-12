@@ -609,7 +609,10 @@ class TestAppConfiguration:
         test_versions = ["1.0.0", "2.5.1", "3.0.0-dev"]
 
         for version in test_versions:
-            with patch("mlflow_oidc_auth.app.VERSION", version), patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
+            with (
+                patch("mlflow_oidc_auth.app.VERSION", version),
+                patch("mlflow_oidc_auth.app.getattr") as mock_getattr,
+            ):
                 mock_getattr.return_value = True
 
                 # Call the function

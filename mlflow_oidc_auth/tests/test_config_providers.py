@@ -14,7 +14,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from mlflow_oidc_auth.config_providers.base import ConfigProvider, SecretLevel, get_secret_level
+from mlflow_oidc_auth.config_providers.base import (
+    ConfigProvider,
+    SecretLevel,
+    get_secret_level,
+)
 from mlflow_oidc_auth.config_providers.env_provider import EnvProvider
 from mlflow_oidc_auth.config_providers.manager import ConfigManager
 
@@ -224,7 +228,9 @@ class TestKubernetesSecretsProvider(unittest.TestCase):
 
     def test_reads_secrets_from_mounted_files(self) -> None:
         """Verify secrets are read from mounted files."""
-        from mlflow_oidc_auth.config_providers.kubernetes_provider import KubernetesSecretsProvider
+        from mlflow_oidc_auth.config_providers.kubernetes_provider import (
+            KubernetesSecretsProvider,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create mock secret files
@@ -232,7 +238,13 @@ class TestKubernetesSecretsProvider(unittest.TestCase):
             (secret_path / "OIDC_CLIENT_SECRET").write_text("my_secret_value")
             (secret_path / "SECRET_KEY").write_text("session_key\n")  # With trailing newline
 
-            with patch.dict(os.environ, {"CONFIG_K8S_SECRETS_ENABLED": "true", "CONFIG_K8S_SECRETS_PATH": tmpdir}):
+            with patch.dict(
+                os.environ,
+                {
+                    "CONFIG_K8S_SECRETS_ENABLED": "true",
+                    "CONFIG_K8S_SECRETS_PATH": tmpdir,
+                },
+            ):
                 provider = KubernetesSecretsProvider()
                 self.assertTrue(provider.is_available())
 
@@ -245,7 +257,9 @@ class TestKubernetesSecretsProvider(unittest.TestCase):
 
     def test_not_available_when_disabled(self) -> None:
         """Provider is not available when not enabled."""
-        from mlflow_oidc_auth.config_providers.kubernetes_provider import KubernetesSecretsProvider
+        from mlflow_oidc_auth.config_providers.kubernetes_provider import (
+            KubernetesSecretsProvider,
+        )
 
         with patch.dict(os.environ, {"CONFIG_K8S_SECRETS_ENABLED": "false"}, clear=False):
             provider = KubernetesSecretsProvider()
@@ -257,7 +271,9 @@ class TestAWSProvidersAvailability(unittest.TestCase):
 
     def test_secrets_manager_not_available_when_disabled(self) -> None:
         """AWS Secrets Manager is not available when not enabled."""
-        from mlflow_oidc_auth.config_providers.aws_secrets_provider import AWSSecretsManagerProvider
+        from mlflow_oidc_auth.config_providers.aws_secrets_provider import (
+            AWSSecretsManagerProvider,
+        )
 
         with patch.dict(os.environ, {"CONFIG_AWS_SECRETS_ENABLED": "false"}, clear=False):
             provider = AWSSecretsManagerProvider()
@@ -265,7 +281,9 @@ class TestAWSProvidersAvailability(unittest.TestCase):
 
     def test_parameter_store_not_available_when_disabled(self) -> None:
         """AWS Parameter Store is not available when not enabled."""
-        from mlflow_oidc_auth.config_providers.aws_parameter_store_provider import AWSParameterStoreProvider
+        from mlflow_oidc_auth.config_providers.aws_parameter_store_provider import (
+            AWSParameterStoreProvider,
+        )
 
         with patch.dict(os.environ, {"CONFIG_AWS_PARAMETER_STORE_ENABLED": "false"}, clear=False):
             provider = AWSParameterStoreProvider()
@@ -277,7 +295,9 @@ class TestAzureProviderAvailability(unittest.TestCase):
 
     def test_keyvault_not_available_when_disabled(self) -> None:
         """Azure Key Vault is not available when not enabled."""
-        from mlflow_oidc_auth.config_providers.azure_keyvault_provider import AzureKeyVaultProvider
+        from mlflow_oidc_auth.config_providers.azure_keyvault_provider import (
+            AzureKeyVaultProvider,
+        )
 
         with patch.dict(os.environ, {"CONFIG_AZURE_KEYVAULT_ENABLED": "false"}, clear=False):
             provider = AzureKeyVaultProvider()
@@ -285,9 +305,15 @@ class TestAzureProviderAvailability(unittest.TestCase):
 
     def test_keyvault_not_available_without_vault_name(self) -> None:
         """Azure Key Vault requires vault name."""
-        from mlflow_oidc_auth.config_providers.azure_keyvault_provider import AzureKeyVaultProvider
+        from mlflow_oidc_auth.config_providers.azure_keyvault_provider import (
+            AzureKeyVaultProvider,
+        )
 
-        with patch.dict(os.environ, {"CONFIG_AZURE_KEYVAULT_ENABLED": "true", "CONFIG_AZURE_KEYVAULT_NAME": ""}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"CONFIG_AZURE_KEYVAULT_ENABLED": "true", "CONFIG_AZURE_KEYVAULT_NAME": ""},
+            clear=False,
+        ):
             provider = AzureKeyVaultProvider()
             self.assertFalse(provider.is_available())
 
@@ -297,7 +323,9 @@ class TestVaultProviderAvailability(unittest.TestCase):
 
     def test_vault_not_available_when_disabled(self) -> None:
         """HashiCorp Vault is not available when not enabled."""
-        from mlflow_oidc_auth.config_providers.vault_provider import HashiCorpVaultProvider
+        from mlflow_oidc_auth.config_providers.vault_provider import (
+            HashiCorpVaultProvider,
+        )
 
         with patch.dict(os.environ, {"CONFIG_VAULT_ENABLED": "false"}, clear=False):
             provider = HashiCorpVaultProvider()
@@ -305,10 +333,19 @@ class TestVaultProviderAvailability(unittest.TestCase):
 
     def test_vault_not_available_without_auth(self) -> None:
         """HashiCorp Vault requires authentication credentials."""
-        from mlflow_oidc_auth.config_providers.vault_provider import HashiCorpVaultProvider
+        from mlflow_oidc_auth.config_providers.vault_provider import (
+            HashiCorpVaultProvider,
+        )
 
         with patch.dict(
-            os.environ, {"CONFIG_VAULT_ENABLED": "true", "CONFIG_VAULT_TOKEN": "", "CONFIG_VAULT_ROLE_ID": "", "CONFIG_VAULT_SECRET_ID": ""}, clear=False
+            os.environ,
+            {
+                "CONFIG_VAULT_ENABLED": "true",
+                "CONFIG_VAULT_TOKEN": "",
+                "CONFIG_VAULT_ROLE_ID": "",
+                "CONFIG_VAULT_SECRET_ID": "",
+            },
+            clear=False,
         ):
             provider = HashiCorpVaultProvider()
             self.assertFalse(provider.is_available())

@@ -18,7 +18,10 @@ from mlflow_oidc_auth.routers.prompt_permissions import (
     list_prompts,
     prompt_permissions_router,
 )
-from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
+from mlflow_oidc_auth.entities import (
+    User,
+    RegisteredModelPermission as RegisteredModelPermissionEntity,
+)
 
 
 class TestPromptPermissionsRouter:
@@ -43,7 +46,10 @@ class TestGetPromptGroupsEndpoint:
 
     @pytest.mark.asyncio
     async def test_get_prompt_groups_success(self, mock_store):
-        mock_store.prompt_group_repo.list_groups_for_prompt.return_value = [("team-a", "READ"), ("team-b", "MANAGE")]
+        mock_store.prompt_group_repo.list_groups_for_prompt.return_value = [
+            ("team-a", "READ"),
+            ("team-b", "MANAGE"),
+        ]
 
         with patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store):
             result = await get_prompt_groups(prompt_name="test-prompt", _="admin@example.com")
@@ -156,7 +162,10 @@ class TestGetPromptUsersEndpoint:
             ],
         )
 
-        with patch("mlflow_oidc_auth.routers.prompt_permissions.store.list_users", return_value=[user1]):
+        with patch(
+            "mlflow_oidc_auth.routers.prompt_permissions.store.list_users",
+            return_value=[user1],
+        ):
             result = await get_prompt_users(prompt_name="prompt-1", _=None)
 
         assert len(result) == 1
@@ -200,7 +209,10 @@ class TestGetPromptUsersEndpoint:
 
     def test_get_prompt_users_non_admin_without_manage_permission(self, authenticated_client):
         """Non-admin without manage rights should be forbidden."""
-        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
+            return_value=False,
+        ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/users")
 
         assert response.status_code == 403
@@ -267,7 +279,10 @@ class TestListPromptsEndpoint:
         # Mock filter_manageable_prompts to return only prompt-1
         with (
             patch("mlflow_oidc_auth.routers.prompt_permissions.fetch_all_prompts") as mock_fetch,
-            patch("mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts", return_value=[mock_prompt1]),
+            patch(
+                "mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts",
+                return_value=[mock_prompt1],
+            ),
         ):
             mock_fetch.return_value = [mock_prompt1, mock_prompt2]
 
@@ -293,7 +308,10 @@ class TestListPromptsEndpoint:
 
         with (
             patch("mlflow_oidc_auth.routers.prompt_permissions.fetch_all_prompts") as mock_fetch,
-            patch("mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts", return_value=[]),
+            patch(
+                "mlflow_oidc_auth.routers.prompt_permissions.filter_manageable_prompts",
+                return_value=[],
+            ),
         ):
             mock_fetch.return_value = [mock_prompt1]
 
@@ -376,7 +394,10 @@ class TestPromptPermissionsRouterIntegration:
 
     def test_all_endpoints_require_authentication(self, client):
         """Test that all prompt permission endpoints require authentication."""
-        endpoints = [("GET", "/api/2.0/mlflow/permissions/prompts"), ("GET", "/api/2.0/mlflow/permissions/prompts/test-prompt/users")]
+        endpoints = [
+            ("GET", "/api/2.0/mlflow/permissions/prompts"),
+            ("GET", "/api/2.0/mlflow/permissions/prompts/test-prompt/users"),
+        ]
 
         for method, endpoint in endpoints:
             response = client.get(endpoint)
@@ -386,7 +407,10 @@ class TestPromptPermissionsRouterIntegration:
 
     def test_prompt_user_permissions_requires_admin(self, authenticated_client):
         """Test that prompt user permissions endpoint requires admin privileges."""
-        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
+            return_value=False,
+        ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/users")
 
         # Without manage permission a non-admin is forbidden
@@ -405,7 +429,12 @@ class TestPromptPermissionsRouterIntegration:
     def test_prompt_name_parameter_validation(self, admin_client):
         """Test prompt name parameter validation."""
         # Test with various prompt name formats
-        prompt_names = ["test-prompt", "prompt_with_underscores", "prompt123", "Prompt-Name"]
+        prompt_names = [
+            "test-prompt",
+            "prompt_with_underscores",
+            "prompt123",
+            "Prompt-Name",
+        ]
 
         for prompt_name in prompt_names:
             response = admin_client.get(f"/api/2.0/mlflow/permissions/prompts/{prompt_name}/users")
@@ -470,7 +499,11 @@ class TestPromptPermissionsRouterIntegration:
     def test_prompt_permissions_with_special_characters(self, admin_client):
         """Test prompt permissions with special characters in prompt name."""
         # Test with URL-encoded special characters
-        special_names = ["prompt%20name", "prompt-with-dashes", "prompt_with_underscores"]
+        special_names = [
+            "prompt%20name",
+            "prompt-with-dashes",
+            "prompt_with_underscores",
+        ]
 
         for prompt_name in special_names:
             response = admin_client.get(f"/api/2.0/mlflow/permissions/prompts/{prompt_name}/users")
