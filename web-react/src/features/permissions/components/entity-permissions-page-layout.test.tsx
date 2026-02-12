@@ -2,7 +2,10 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { EntityPermissionsPageLayout } from "./entity-permissions-page-layout";
-import type { EntityPermission, PermissionType } from "../../../shared/types/entity";
+import type {
+  EntityPermission,
+  PermissionType,
+} from "../../../shared/types/entity";
 import type { Mock } from "vitest";
 
 interface EntityPermissionsManagerProps {
@@ -15,7 +18,9 @@ interface EntityPermissionsManagerProps {
   refresh: () => void;
 }
 
-const mockEntityPermissionsManager: Mock<(props: EntityPermissionsManagerProps) => void> = vi.fn();
+const mockEntityPermissionsManager: Mock<
+  (props: EntityPermissionsManagerProps) => void
+> = vi.fn();
 
 vi.mock("./entity-permissions-manager", () => ({
   EntityPermissionsManager: (props: EntityPermissionsManagerProps) => {
@@ -25,7 +30,13 @@ vi.mock("./entity-permissions-manager", () => ({
 }));
 
 vi.mock("../../../shared/components/page/page-container", () => ({
-  default: ({ children, title }: { children: React.ReactNode; title: string }) => (
+  default: ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => (
     <div data-testid="page-container" title={title}>
       {children}
     </div>
@@ -46,7 +57,10 @@ describe("EntityPermissionsPageLayout", () => {
   it("renders correctly with basic props", () => {
     render(<EntityPermissionsPageLayout {...defaultProps} />);
 
-    expect(screen.getByTestId("page-container")).toHaveAttribute("title", "Test Title");
+    expect(screen.getByTestId("page-container")).toHaveAttribute(
+      "title",
+      "Test Title",
+    );
     expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
 
     const lastCall = mockEntityPermissionsManager.mock.calls[0][0];
@@ -68,24 +82,36 @@ describe("EntityPermissionsPageLayout", () => {
         {...defaultProps}
         userPermissions={userPermissions}
         groupPermissions={groupPermissions}
-      />
+      />,
     );
 
-    const lastCall = mockEntityPermissionsManager.mock.calls[mockEntityPermissionsManager.mock.calls.length - 1][0];
+    const lastCall =
+      mockEntityPermissionsManager.mock.calls[
+        mockEntityPermissionsManager.mock.calls.length - 1
+      ][0];
     expect(lastCall.permissions).toHaveLength(2);
     expect(lastCall.permissions).toEqual(
       expect.arrayContaining([
         { name: "user1", kind: "user", permission: "READ" },
         { name: "group1", kind: "group", permission: "EDIT" },
-      ])
+      ]),
     );
   });
 
   it("passes loading and error states to manager", () => {
     const error = new Error("Test error");
-    render(<EntityPermissionsPageLayout {...defaultProps} isLoading={true} error={error} />);
+    render(
+      <EntityPermissionsPageLayout
+        {...defaultProps}
+        isLoading={true}
+        error={error}
+      />,
+    );
 
-    const lastCall = mockEntityPermissionsManager.mock.calls[mockEntityPermissionsManager.mock.calls.length - 1][0];
+    const lastCall =
+      mockEntityPermissionsManager.mock.calls[
+        mockEntityPermissionsManager.mock.calls.length - 1
+      ][0];
     expect(lastCall.isLoading).toBe(true);
     expect(lastCall.error).toBe(error);
   });
@@ -94,7 +120,10 @@ describe("EntityPermissionsPageLayout", () => {
     const refresh = vi.fn();
     render(<EntityPermissionsPageLayout {...defaultProps} refresh={refresh} />);
 
-    const lastCall = mockEntityPermissionsManager.mock.calls[mockEntityPermissionsManager.mock.calls.length - 1][0];
+    const lastCall =
+      mockEntityPermissionsManager.mock.calls[
+        mockEntityPermissionsManager.mock.calls.length - 1
+      ][0];
     lastCall.refresh();
     expect(refresh).toHaveBeenCalled();
   });
