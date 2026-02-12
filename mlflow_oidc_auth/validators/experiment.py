@@ -41,6 +41,8 @@ def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permissi
 
 
 def validate_can_create_experiment(username: str):
+    if not config.RESTRICT_RESOURCE_CREATION:
+        return True
     experiment_name = get_request_param("name")
     return effective_new_experiment_permission(experiment_name, username).permission.can_update
 
