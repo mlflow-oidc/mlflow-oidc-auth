@@ -9,7 +9,6 @@ from mlflow_oidc_auth.repository.gateway_endpoint_group_permissions import Gatew
 from mlflow_oidc_auth.repository.gateway_secret_group_permissions import GatewaySecretGroupPermissionRepository
 from mlflow_oidc_auth.repository.gateway_model_definition_group_permissions import GatewayModelDefinitionGroupPermissionRepository
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

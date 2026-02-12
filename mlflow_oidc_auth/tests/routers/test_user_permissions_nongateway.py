@@ -13,7 +13,6 @@ from mlflow_oidc_auth.entities import ExperimentPermission as ExperimentPermissi
 from mlflow_oidc_auth.entities import RegisteredModelPermission as RegisteredModelPermissionEntity
 from mlflow_oidc_auth.entities import RegisteredModelRegexPermission as RegisteredModelRegexPermissionEntity
 
-
 USER_BASE = "/api/2.0/mlflow/permissions/users"
 
 # Module path for patching imports at the router module level

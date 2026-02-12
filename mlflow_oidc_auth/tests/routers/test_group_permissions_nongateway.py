@@ -10,7 +10,6 @@ import pytest
 
 from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission
 
-
 GROUP_BASE = "/api/2.0/mlflow/permissions/groups"
 
 # Module path where effective_* functions are imported in the router

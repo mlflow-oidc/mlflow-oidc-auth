@@ -9,7 +9,6 @@ from mlflow_oidc_auth.repository.gateway_endpoint_regex_permissions import Gatew
 from mlflow_oidc_auth.repository.gateway_secret_regex_permissions import GatewaySecretPermissionRegexRepository
 from mlflow_oidc_auth.repository.gateway_model_definition_regex_permissions import GatewayModelDefinitionPermissionRegexRepository
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

@@ -15,7 +15,6 @@ from mlflow_oidc_auth.dependencies import (
     check_scorer_manage_permission,
 )
 
-
 # ---------------------------------------------------------------------------
 # check_prompt_manage_permission
 # ---------------------------------------------------------------------------
