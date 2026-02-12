@@ -27,6 +27,7 @@ The application can be configured through environment variables, dotenv files, o
 | `OIDC_ADMIN_GROUP_NAME` | String | `mlflow-admin` | Name of the admin group for full privileges |
 | `DEFAULT_MLFLOW_PERMISSION` | String | `MANAGE` | Default permission level for MLflow objects |
 | `PERMISSION_SOURCE_ORDER` | String | `user,group,regex,group-regex` | Order of precedence for permission resolution |
+| `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, enforce permission checks on experiment and registered model creation. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
 
 ### Database Configuration
 
