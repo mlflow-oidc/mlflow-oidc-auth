@@ -1,8 +1,7 @@
 import { useParams } from "react-router";
-import PageContainer from "../../shared/components/page/page-container";
 import { useGatewayEndpointUserPermissions } from "../../core/hooks/use-gateway-endpoint-user-permissions";
 import { useGatewayEndpointGroupPermissions } from "../../core/hooks/use-gateway-endpoint-group-permissions";
-import { EntityPermissionsManager } from "../permissions/components/entity-permissions-manager";
+import { EntityPermissionsPageLayout } from "../permissions/components/entity-permissions-page-layout";
 
 export default function AiEndpointsPermissionPage() {
   const { name: routeName } = useParams<{
@@ -32,26 +31,21 @@ export default function AiEndpointsPermissionPage() {
     refreshGroup();
   };
 
-  const allPermissions = [
-    ...(userPermissions || []),
-    ...(groupPermissions || []),
-  ];
-
   if (!name) {
     return <div>Endpoint Name is required.</div>;
   }
 
   return (
-    <PageContainer title={`Permissions for Endpoint ${name}`}>
-      <EntityPermissionsManager
-        resourceId={name}
-        resourceName={name}
-        resourceType="endpoints"
-        permissions={allPermissions}
-        isLoading={isLoading}
-        error={error}
-        refresh={refresh}
-      />
-    </PageContainer>
+    <EntityPermissionsPageLayout
+      title={`Permissions for Endpoint ${name}`}
+      resourceId={name}
+      resourceName={name}
+      resourceType="endpoints"
+      userPermissions={userPermissions}
+      groupPermissions={groupPermissions}
+      isLoading={isLoading}
+      error={error}
+      refresh={refresh}
+    />
   );
 }
