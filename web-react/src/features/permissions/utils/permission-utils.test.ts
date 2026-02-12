@@ -102,6 +102,54 @@ describe("getPermissionUrl", () => {
       );
     });
 
+    it("generates user secret permission URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName,
+        type: "ai-secrets",
+        identifier,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/gateways/secrets/${identifier}`,
+      );
+    });
+
+    it("generates group secret permission URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type: "ai-secrets",
+        identifier,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/secrets/${identifier}`,
+      );
+    });
+
+    it("generates user AI model permission URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName,
+        type: "ai-models",
+        identifier,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/gateways/model-definitions/${identifier}`,
+      );
+    });
+
+    it("generates group AI model permission URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type: "ai-models",
+        identifier,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/model-definitions/${identifier}`,
+      );
+    });
+
     it("generates user experiment permission collection URL", () => {
       const url = getPermissionUrl({
         entityKind: "user",
@@ -187,6 +235,50 @@ describe("getPermissionUrl", () => {
       });
       expect(url).toBe(
         `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/endpoints`,
+      );
+    });
+
+    it("generates user secret permission collection URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName,
+        type: "ai-secrets",
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/gateways/secrets`,
+      );
+    });
+
+    it("generates group secret permission collection URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type: "ai-secrets",
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/secrets`,
+      );
+    });
+
+    it("generates user AI model permission collection URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName,
+        type: "ai-models",
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/gateways/model-definitions`,
+      );
+    });
+
+    it("generates group AI model permission collection URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type: "ai-models",
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/model-definitions`,
       );
     });
   });
@@ -295,6 +387,58 @@ describe("getPermissionUrl", () => {
         `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/endpoints-patterns/${identifier}`,
       );
     });
+
+    it("generates user secret pattern URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName,
+        type: "ai-secrets",
+        isPattern: true,
+        identifier,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/gateways/secrets-patterns/${identifier}`,
+      );
+    });
+
+    it("generates group secret pattern URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type: "ai-secrets",
+        isPattern: true,
+        identifier,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/secrets-patterns/${identifier}`,
+      );
+    });
+
+    it("generates user AI model pattern URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName,
+        type: "ai-models",
+        isPattern: true,
+        identifier,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/gateways/model-definitions-patterns/${identifier}`,
+      );
+    });
+
+    it("generates group AI model pattern URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type: "ai-models",
+        isPattern: true,
+        identifier,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/model-definitions-patterns/${identifier}`,
+      );
+    });
   });
 
   describe("Pattern Permissions (Collection)", () => {
@@ -391,6 +535,70 @@ describe("getPermissionUrl", () => {
       });
       expect(url).toBe(
         `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/endpoints-patterns`,
+      );
+    });
+
+    it("generates user secret pattern collection URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName,
+        type: "ai-secrets",
+        isPattern: true,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/gateways/secrets-patterns`,
+      );
+    });
+
+    it("generates group secret pattern collection URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type: "ai-secrets",
+        isPattern: true,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/secrets-patterns`,
+      );
+    });
+
+    it("generates user AI model pattern collection URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName,
+        type: "ai-models",
+        isPattern: true,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/gateways/model-definitions-patterns`,
+      );
+    });
+
+    it("generates group AI model pattern collection URL", () => {
+      const url = getPermissionUrl({
+        entityKind: "group",
+        entityName,
+        type: "ai-models",
+        isPattern: true,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/model-definitions-patterns`,
+      );
+    });
+  });
+
+  describe("URL Encoding", () => {
+    it("encodes slashes in entityName and identifier", () => {
+      const complexName = "provider/model";
+      const complexId = "id/with/slashes";
+      const url = getPermissionUrl({
+        entityKind: "user",
+        entityName: complexName,
+        type: "ai-models",
+        identifier: complexId,
+      });
+      expect(url).toBe(
+        `/api/2.0/mlflow/permissions/users/${encodeURIComponent(complexName)}/gateways/model-definitions/${encodeURIComponent(complexId)}`,
       );
     });
   });

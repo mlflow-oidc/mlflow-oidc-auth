@@ -12,6 +12,10 @@ import { useGroupModelPatternPermissions } from "../../../core/hooks/use-group-m
 import { useGroupPromptPatternPermissions } from "../../../core/hooks/use-group-prompt-pattern-permissions";
 import { useUserGatewayEndpointPatternPermissions } from "../../../core/hooks/use-user-gateway-endpoint-pattern-permissions";
 import { useGroupGatewayEndpointPatternPermissions } from "../../../core/hooks/use-group-gateway-endpoint-pattern-permissions";
+import { useUserGatewaySecretPatternPermissions } from "../../../core/hooks/use-user-gateway-secret-pattern-permissions";
+import { useGroupGatewaySecretPatternPermissions } from "../../../core/hooks/use-group-gateway-secret-pattern-permissions";
+import { useUserGatewayModelPatternPermissions } from "../../../core/hooks/use-user-gateway-model-pattern-permissions";
+import { useGroupGatewayModelPatternPermissions } from "../../../core/hooks/use-group-gateway-model-pattern-permissions";
 import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
@@ -80,6 +84,20 @@ export const RegexPermissionsView = ({
     useGroupGatewayEndpointPatternPermissions({
       groupName: entityKind === "group" ? entityName : null,
     });
+  const userGatewaySecretPatternHook = useUserGatewaySecretPatternPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const groupGatewaySecretPatternHook = useGroupGatewaySecretPatternPermissions(
+    {
+      groupName: entityKind === "group" ? entityName : null,
+    },
+  );
+  const userGatewayModelPatternHook = useUserGatewayModelPatternPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const groupGatewayModelPatternHook = useGroupGatewayModelPatternPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
 
   const activeHook =
     entityKind === "user"
@@ -88,12 +106,16 @@ export const RegexPermissionsView = ({
           models: userModelPatternHook,
           prompts: userPromptPatternHook,
           endpoints: userGatewayEndpointPatternHook,
+          "ai-secrets": userGatewaySecretPatternHook,
+          "ai-models": userGatewayModelPatternHook,
         }[type]
       : {
           experiments: groupExperimentPatternHook,
           models: groupModelPatternHook,
           prompts: groupPromptPatternHook,
           endpoints: groupGatewayEndpointPatternHook,
+          "ai-secrets": groupGatewaySecretPatternHook,
+          "ai-models": groupGatewayModelPatternHook,
         }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook;

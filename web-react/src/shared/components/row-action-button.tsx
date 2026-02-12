@@ -16,7 +16,7 @@ export function RowActionButton({
 }: RowActionButtonProps) {
   const navigate = useNavigate();
   const normalizedRoute = route.replace(/^\/+/, "");
-  const targetRoute = `/${normalizedRoute}/${entityId}`;
+  const targetRoute = `/${normalizedRoute}/${encodeURIComponent(entityId)}`;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();

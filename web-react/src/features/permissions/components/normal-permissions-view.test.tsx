@@ -15,7 +15,13 @@ import * as useAllModelHooks from "../../../core/hooks/use-all-models";
 import * as useAllPromptHooks from "../../../core/hooks/use-all-prompts";
 import * as useUserGatewayEndpointPermissions from "../../../core/hooks/use-user-gateway-endpoint-permissions";
 import * as useGroupGatewayEndpointPermissions from "../../../core/hooks/use-group-gateway-endpoint-permissions";
+import * as useUserGatewaySecretPermissions from "../../../core/hooks/use-user-gateway-secret-permissions";
+import * as useGroupGatewaySecretPermissions from "../../../core/hooks/use-group-gateway-secret-permissions";
+import * as useUserGatewayModelPermissions from "../../../core/hooks/use-user-gateway-model-permissions";
+import * as useGroupGatewayModelPermissions from "../../../core/hooks/use-group-gateway-model-permissions";
 import * as useAllGatewayEndpoints from "../../../core/hooks/use-all-gateway-endpoints";
+import * as useAllGatewaySecrets from "../../../core/hooks/use-all-gateway-secrets";
+import * as useAllGatewayModels from "../../../core/hooks/use-all-gateway-models";
 import type {
   PermissionType,
   ExperimentPermission,
@@ -49,7 +55,13 @@ vi.mock("../../../core/hooks/use-all-models");
 vi.mock("../../../core/hooks/use-all-prompts");
 vi.mock("../../../core/hooks/use-user-gateway-endpoint-permissions");
 vi.mock("../../../core/hooks/use-group-gateway-endpoint-permissions");
+vi.mock("../../../core/hooks/use-user-gateway-secret-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-secret-permissions");
+vi.mock("../../../core/hooks/use-user-gateway-model-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-model-permissions");
 vi.mock("../../../core/hooks/use-all-gateway-endpoints");
+vi.mock("../../../core/hooks/use-all-gateway-secrets");
+vi.mock("../../../core/hooks/use-all-gateway-models");
 
 describe("NormalPermissionsView", () => {
   const mockShowToast = vi.fn();
@@ -172,6 +184,46 @@ describe("NormalPermissionsView", () => {
       refresh: mockRefresh,
     });
 
+    vi.spyOn(
+      useUserGatewaySecretPermissions,
+      "useUserGatewaySecretPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPermissions,
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    vi.spyOn(
+      useGroupGatewaySecretPermissions,
+      "useGroupGatewaySecretPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPermissions,
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    vi.spyOn(
+      useUserGatewayModelPermissions,
+      "useUserGatewayModelPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPermissions,
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    vi.spyOn(
+      useGroupGatewayModelPermissions,
+      "useGroupGatewayModelPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPermissions,
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
     vi.spyOn(useAllGatewayEndpoints, "useAllGatewayEndpoints").mockReturnValue({
       allGatewayEndpoints: [
         {
@@ -186,6 +238,20 @@ describe("NormalPermissionsView", () => {
       error: null,
       refresh: vi.fn(),
     });
+
+    vi.spyOn(useAllGatewaySecrets, "useAllGatewaySecrets").mockReturnValue({
+      allGatewaySecrets: [{ key: "New Secret" }],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(useAllGatewayModels, "useAllGatewayModels").mockReturnValue({
+      allGatewayModels: [{ name: "New AI Model", source: "openai" }],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
   });
 
   const types: PermissionType[] = [
@@ -193,6 +259,8 @@ describe("NormalPermissionsView", () => {
     "models",
     "prompts",
     "endpoints",
+    "ai-secrets",
+    "ai-models",
   ];
 
   types.forEach((type) => {
@@ -201,7 +269,10 @@ describe("NormalPermissionsView", () => {
         if (t === "experiments") return "new1";
         if (t === "models") return "New Model";
         if (t === "prompts") return "New Prompt";
-        return "New Endpoint";
+        if (t === "endpoints") return "New Endpoint";
+        if (t === "ai-secrets") return "New Secret";
+        if (t === "ai-models") return "New AI Model";
+        throw new Error(`Unknown type in getExpectedValue: ${t}`);
       };
 
       it(`renders table with data for ${type}`, () => {
@@ -232,7 +303,11 @@ describe("NormalPermissionsView", () => {
               ? /Add model/i
               : type === "prompts"
                 ? /Add prompt/i
-                : /Add endpoint/i;
+                : type === "ai-secrets"
+                  ? /Add secret/i
+                  : type === "ai-models"
+                    ? /Add AI model/i
+                    : /Add endpoint/i;
         fireEvent.click(screen.getByText(addText));
 
         const labelText =
@@ -242,7 +317,11 @@ describe("NormalPermissionsView", () => {
               ? /Model/i
               : type === "prompts"
                 ? /Prompt/i
-                : /Endpoint/i;
+                : type === "ai-secrets"
+                  ? /Secret/i
+                  : type === "ai-models"
+                    ? /AI Model/i
+                    : /Endpoint/i;
         const select = screen.getByLabelText(labelText);
         fireEvent.change(select, { target: { value: getExpectedValue(type) } });
 
@@ -252,7 +331,7 @@ describe("NormalPermissionsView", () => {
         await waitFor(() => {
           expect(httpModule.http).toHaveBeenCalledWith(
             expect.stringContaining(
-              `/api/2.0/mlflow/permissions/groups/group1/${type === "models" ? "registered-models" : type === "endpoints" ? "gateways/endpoints" : type}`,
+              `/api/2.0/mlflow/permissions/groups/group1/${type === "models" ? "registered-models" : type === "endpoints" ? "gateways/endpoints" : type === "ai-secrets" ? "gateways/secrets" : type === "ai-models" ? "gateways/model-definitions" : type}`,
             ),
             expect.objectContaining({ method: "POST" }),
           );
@@ -275,7 +354,7 @@ describe("NormalPermissionsView", () => {
         await waitFor(() => {
           expect(httpModule.http).toHaveBeenCalledWith(
             expect.stringContaining(
-              `/api/2.0/mlflow/permissions/users/user1/${type === "models" ? "registered-models" : type === "endpoints" ? "gateways/endpoints" : type}`,
+              `/api/2.0/mlflow/permissions/users/user1/${type === "models" ? "registered-models" : type === "endpoints" ? "gateways/endpoints" : type === "ai-secrets" ? "gateways/secrets" : type === "ai-models" ? "gateways/model-definitions" : type}`,
             ),
             expect.objectContaining({ method: "DELETE" }),
           );

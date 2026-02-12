@@ -25,33 +25,34 @@ export const STATIC_API_ENDPOINTS = {
 
 export const DYNAMIC_API_ENDPOINTS = {
   // User permissions for resources
-  GET_USER_DETAILS: (userName: string) => `/api/2.0/mlflow/users/${userName}`,
+  GET_USER_DETAILS: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}`,
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/experiments`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiments`,
   USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/experiments/${experimentId}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiments/${encodeURIComponent(experimentId)}`,
   USER_MODEL_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/registered-models`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/registered-models`,
   USER_MODEL_PERMISSION: (userName: string, modelName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/registered-models/${modelName}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/registered-models/${encodeURIComponent(modelName)}`,
   USER_PROMPT_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/prompts`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/prompts`,
   USER_PROMPT_PERMISSION: (userName: string, promptName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/prompts/${promptName}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/prompts/${encodeURIComponent(promptName)}`,
 
   // User pattern permissions
   USER_EXPERIMENT_PATTERN_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/experiment-patterns`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiment-patterns`,
   USER_EXPERIMENT_PATTERN_PERMISSION: (userName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/experiment-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiment-patterns/${encodeURIComponent(patternId)}`,
   USER_MODEL_PATTERN_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/registered-models-patterns`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/registered-models-patterns`,
   USER_MODEL_PATTERN_PERMISSION: (userName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/registered-models-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/registered-models-patterns/${encodeURIComponent(patternId)}`,
   USER_PROMPT_PATTERN_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/prompts-patterns`,
   USER_PROMPT_PATTERN_PERMISSION: (userName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/prompts-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/prompts-patterns/${encodeURIComponent(patternId)}`,
 
   // Resource user permissions
   EXPERIMENT_USER_PERMISSIONS: (experimentId: string) =>
@@ -63,31 +64,31 @@ export const DYNAMIC_API_ENDPOINTS = {
 
   // Group permissions for resources
   GROUP_EXPERIMENT_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/experiments`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/experiments`,
   GROUP_EXPERIMENT_PERMISSION: (groupName: string, experimentId: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/experiments/${experimentId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/experiments/${encodeURIComponent(experimentId)}`,
   GROUP_MODEL_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/registered-models`,
   GROUP_MODEL_PERMISSION: (groupName: string, modelName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models/${modelName}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/registered-models/${encodeURIComponent(modelName)}`,
   GROUP_PROMPT_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/prompts`,
   GROUP_PROMPT_PERMISSION: (groupName: string, promptName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts/${promptName}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/prompts/${encodeURIComponent(promptName)}`,
 
   // Group pattern permissions
   GROUP_EXPERIMENT_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/experiment-patterns`,
   GROUP_EXPERIMENT_PATTERN_PERMISSION: (groupName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/experiment-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/experiment-patterns/${encodeURIComponent(patternId)}`,
   GROUP_MODEL_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/registered-models-patterns`,
   GROUP_MODEL_PATTERN_PERMISSION: (groupName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/registered-models-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/registered-models-patterns/${encodeURIComponent(patternId)}`,
   GROUP_PROMPT_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/prompts-patterns`,
   GROUP_PROMPT_PATTERN_PERMISSION: (groupName: string, patternId: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/prompts-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/prompts-patterns/${encodeURIComponent(patternId)}`,
 
   // Resource group permissions
   EXPERIMENT_GROUP_PERMISSIONS: (experimentId: string) =>
@@ -115,94 +116,97 @@ export const DYNAMIC_API_ENDPOINTS = {
 
   // Gateway Group permissions for resources
   GROUP_GATEWAY_ENDPOINT_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/endpoints`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/endpoints`,
   GROUP_GATEWAY_ENDPOINT_PERMISSION: (groupName: string, name: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/endpoints/${name}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/endpoints/${encodeURIComponent(name)}`,
 
   GROUP_GATEWAY_SECRET_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/secrets`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/secrets`,
   GROUP_GATEWAY_SECRET_PERMISSION: (groupName: string, name: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/secrets/${name}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/secrets/${encodeURIComponent(name)}`,
 
   GROUP_GATEWAY_MODEL_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/model-definitions`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/model-definitions`,
   GROUP_GATEWAY_MODEL_PERMISSION: (groupName: string, name: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/model-definitions/${name}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/model-definitions/${encodeURIComponent(name)}`,
 
   // Gateway Group pattern permissions
   GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/endpoints-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/endpoints-patterns`,
   GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION: (
     groupName: string,
     patternId: string,
   ) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/endpoints-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/endpoints-patterns/${encodeURIComponent(patternId)}`,
 
   GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/secrets-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/secrets-patterns`,
   GROUP_GATEWAY_SECRET_PATTERN_PERMISSION: (
     groupName: string,
     patternId: string,
   ) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/secrets-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/secrets-patterns/${encodeURIComponent(patternId)}`,
 
   GROUP_GATEWAY_MODEL_PATTERN_PERMISSIONS: (groupName: string) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/model-definitions-patterns`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/model-definitions-patterns`,
   GROUP_GATEWAY_MODEL_PATTERN_PERMISSION: (
     groupName: string,
     patternId: string,
   ) =>
-    `/api/2.0/mlflow/permissions/groups/${groupName}/gateways/model-definitions-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/gateways/model-definitions-patterns/${encodeURIComponent(patternId)}`,
 
   // Gateway User permissions for resources
   USER_GATEWAY_ENDPOINT_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/endpoints`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/endpoints`,
   USER_GATEWAY_ENDPOINT_PERMISSION: (userName: string, name: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/endpoints/${name}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/endpoints/${encodeURIComponent(name)}`,
 
   USER_GATEWAY_SECRET_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/secrets`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/secrets`,
   USER_GATEWAY_SECRET_PERMISSION: (userName: string, name: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/secrets/${name}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/secrets/${encodeURIComponent(name)}`,
 
   USER_GATEWAY_MODEL_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/model-definitions`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions`,
   USER_GATEWAY_MODEL_PERMISSION: (userName: string, name: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/model-definitions/${name}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions/${encodeURIComponent(name)}`,
 
   // Gateway User pattern permissions
   USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/endpoints-patterns`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/endpoints-patterns`,
   USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION: (
     userName: string,
     patternId: string,
   ) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/endpoints-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/endpoints-patterns/${encodeURIComponent(patternId)}`,
 
   USER_GATEWAY_SECRET_PATTERN_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/secrets-patterns`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/secrets-patterns`,
   USER_GATEWAY_SECRET_PATTERN_PERMISSION: (
     userName: string,
     patternId: string,
   ) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/secrets-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/secrets-patterns/${encodeURIComponent(patternId)}`,
 
   USER_GATEWAY_MODEL_PATTERN_PERMISSIONS: (userName: string) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/model-definitions-patterns`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions-patterns`,
   USER_GATEWAY_MODEL_PATTERN_PERMISSION: (
     userName: string,
     patternId: string,
   ) =>
-    `/api/2.0/mlflow/permissions/users/${userName}/gateways/model-definitions-patterns/${patternId}`,
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions-patterns/${encodeURIComponent(patternId)}`,
 
   // Trash management
   RESTORE_EXPERIMENT: (experimentId: string) =>
-    `/oidc/trash/experiments/${experimentId}/restore`,
-  RESTORE_RUN: (runId: string) => `/oidc/trash/runs/${runId}/restore`,
+    `/oidc/trash/experiments/${encodeURIComponent(experimentId)}/restore`,
+  RESTORE_RUN: (runId: string) =>
+    `/oidc/trash/runs/${encodeURIComponent(runId)}/restore`,
 
   // Webhook management
-  WEBHOOK_DETAILS: (webhookId: string) => `/oidc/webhook/${webhookId}`,
-  TEST_WEBHOOK: (webhookId: string) => `/oidc/webhook/${webhookId}/test`,
+  WEBHOOK_DETAILS: (webhookId: string) =>
+    `/oidc/webhook/${encodeURIComponent(webhookId)}`,
+  TEST_WEBHOOK: (webhookId: string) =>
+    `/oidc/webhook/${encodeURIComponent(webhookId)}/test`,
 } as const;
 
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;

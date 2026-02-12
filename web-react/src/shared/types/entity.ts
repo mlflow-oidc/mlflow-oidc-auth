@@ -17,7 +17,13 @@ export type PermissionLevel = "READ" | "EDIT" | "MANAGE" | "NO_PERMISSIONS";
 
 export type PermissionKind = "user" | "group" | "fallback" | "service-account";
 
-export type PermissionType = "experiments" | "models" | "prompts" | "endpoints";
+export type PermissionType =
+  | "experiments"
+  | "models"
+  | "prompts"
+  | "endpoints"
+  | "ai-secrets"
+  | "ai-models";
 
 export type EntityPermission = {
   kind: PermissionKind;

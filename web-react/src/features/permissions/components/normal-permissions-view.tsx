@@ -11,7 +11,13 @@ import { useGroupRegisteredModelPermissions } from "../../../core/hooks/use-grou
 import { useGroupPromptPermissions } from "../../../core/hooks/use-group-prompt-permissions";
 import { useUserGatewayEndpointPermissions } from "../../../core/hooks/use-user-gateway-endpoint-permissions";
 import { useGroupGatewayEndpointPermissions } from "../../../core/hooks/use-group-gateway-endpoint-permissions";
+import { useUserGatewaySecretPermissions } from "../../../core/hooks/use-user-gateway-secret-permissions";
+import { useGroupGatewaySecretPermissions } from "../../../core/hooks/use-group-gateway-secret-permissions";
+import { useUserGatewayModelPermissions } from "../../../core/hooks/use-user-gateway-model-permissions";
+import { useGroupGatewayModelPermissions } from "../../../core/hooks/use-group-gateway-model-permissions";
 import { useAllGatewayEndpoints } from "../../../core/hooks/use-all-gateway-endpoints";
+import { useAllGatewaySecrets } from "../../../core/hooks/use-all-gateway-secrets";
+import { useAllGatewayModels } from "../../../core/hooks/use-all-gateway-models";
 import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
@@ -81,6 +87,18 @@ export const NormalPermissionsView = ({
   const groupGatewayEndpointHook = useGroupGatewayEndpointPermissions({
     groupName: entityKind === "group" ? entityName : null,
   });
+  const userGatewaySecretHook = useUserGatewaySecretPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const groupGatewaySecretHook = useGroupGatewaySecretPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
+  const userGatewayModelHook = useUserGatewayModelPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const groupGatewayModelHook = useGroupGatewayModelPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
 
   const activeHook =
     entityKind === "user"
@@ -89,12 +107,16 @@ export const NormalPermissionsView = ({
           models: userModelHook,
           prompts: userPromptHook,
           endpoints: userGatewayEndpointHook,
+          "ai-secrets": userGatewaySecretHook,
+          "ai-models": userGatewayModelHook,
         }[type]
       : {
           experiments: groupExperimentHook,
           models: groupModelHook,
           prompts: groupPromptHook,
           endpoints: groupGatewayEndpointHook,
+          "ai-secrets": groupGatewaySecretHook,
+          "ai-models": groupGatewayModelHook,
         }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook;
@@ -103,6 +125,8 @@ export const NormalPermissionsView = ({
   const { allModels } = useAllModels();
   const { allPrompts } = useAllPrompts();
   const { allGatewayEndpoints } = useAllGatewayEndpoints();
+  const { allGatewaySecrets } = useAllGatewaySecrets();
+  const { allGatewayModels } = useAllGatewayModels();
 
   const getAvailableEntities = () => {
     if (type === "experiments") {
@@ -131,6 +155,16 @@ export const NormalPermissionsView = ({
       return (allGatewayEndpoints || [])
         .filter((e) => !existingNames.has(e.name))
         .map((e) => e.name);
+    }
+    if (type === "ai-secrets") {
+      return (allGatewaySecrets || [])
+        .filter((s) => !existingNames.has(s.key))
+        .map((s) => s.key);
+    }
+    if (type === "ai-models") {
+      return (allGatewayModels || [])
+        .filter((m) => !existingNames.has(m.name))
+        .map((m) => m.name);
     }
     return [];
   };
@@ -332,7 +366,11 @@ export const NormalPermissionsView = ({
                     ? "model"
                     : type === "prompts"
                       ? "prompt"
-                      : "endpoint"}
+                      : type === "ai-secrets"
+                        ? "secret"
+                        : type === "ai-models"
+                          ? "AI model"
+                          : "endpoint"}
               </Button>
             )}
           </div>
@@ -363,7 +401,19 @@ export const NormalPermissionsView = ({
         onSave={(identifier, permission) =>
           handleGrantPermission(identifier, permission)
         }
-        title={`Grant ${type === "experiments" ? "experiment" : type === "models" ? "model" : type === "prompts" ? "prompt" : "endpoint"} permissions for ${entityName}`}
+        title={`Grant ${
+          type === "experiments"
+            ? "experiment"
+            : type === "models"
+              ? "model"
+              : type === "prompts"
+                ? "prompt"
+                : type === "ai-secrets"
+                  ? "secret"
+                  : type === "ai-models"
+                    ? "AI model"
+                    : "endpoint"
+        } permissions for ${entityName}`}
         label={
           type === "experiments"
             ? "Experiment"
@@ -371,7 +421,11 @@ export const NormalPermissionsView = ({
               ? "Model"
               : type === "prompts"
                 ? "Prompt"
-                : "Endpoint"
+                : type === "ai-secrets"
+                  ? "Secret"
+                  : type === "ai-models"
+                    ? "AI Model"
+                    : "Endpoint"
         }
         options={availableEntities}
         isLoading={isSaving}

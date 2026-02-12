@@ -12,6 +12,10 @@ import * as useGroupModelHooks from "../../../core/hooks/use-group-model-pattern
 import * as useGroupPromptHooks from "../../../core/hooks/use-group-prompt-pattern-permissions";
 import * as useUserGatewayEndpointPatternPermissions from "../../../core/hooks/use-user-gateway-endpoint-pattern-permissions";
 import * as useGroupGatewayEndpointPatternPermissions from "../../../core/hooks/use-group-gateway-endpoint-pattern-permissions";
+import * as useUserGatewaySecretPatternPermissions from "../../../core/hooks/use-user-gateway-secret-pattern-permissions";
+import * as useGroupGatewaySecretPatternPermissions from "../../../core/hooks/use-group-gateway-secret-pattern-permissions";
+import * as useUserGatewayModelPatternPermissions from "../../../core/hooks/use-user-gateway-model-pattern-permissions";
+import * as useGroupGatewayModelPatternPermissions from "../../../core/hooks/use-group-gateway-model-pattern-permissions";
 import type {
   PermissionType,
   ExperimentPatternPermission,
@@ -41,6 +45,10 @@ vi.mock("../../../core/hooks/use-group-model-pattern-permissions");
 vi.mock("../../../core/hooks/use-group-prompt-pattern-permissions");
 vi.mock("../../../core/hooks/use-user-gateway-endpoint-pattern-permissions");
 vi.mock("../../../core/hooks/use-group-gateway-endpoint-pattern-permissions");
+vi.mock("../../../core/hooks/use-user-gateway-secret-pattern-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-secret-pattern-permissions");
+vi.mock("../../../core/hooks/use-user-gateway-model-pattern-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-model-pattern-permissions");
 
 describe("RegexPermissionsView", () => {
   const mockShowToast = vi.fn();
@@ -139,7 +147,7 @@ describe("RegexPermissionsView", () => {
       useUserGatewayEndpointPatternPermissions,
       "useUserGatewayEndpointPatternPermissions",
     ).mockReturnValue({
-      permissions: [],
+      permissions: mockExpPatternPermissions,
       isLoading: false,
       error: null,
       refresh: vi.fn(),
@@ -149,19 +157,69 @@ describe("RegexPermissionsView", () => {
       useGroupGatewayEndpointPatternPermissions,
       "useGroupGatewayEndpointPatternPermissions",
     ).mockReturnValue({
-      permissions: [],
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useUserGatewaySecretPatternPermissions,
+      "useUserGatewaySecretPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useGroupGatewaySecretPatternPermissions,
+      "useGroupGatewaySecretPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useUserGatewayModelPatternPermissions,
+      "useUserGatewayModelPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useGroupGatewayModelPatternPermissions,
+      "useGroupGatewayModelPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
       isLoading: false,
       error: null,
       refresh: vi.fn(),
     });
   });
 
-  const types: PermissionType[] = ["experiments", "models", "prompts"];
+  const types: PermissionType[] = [
+    "experiments",
+    "models",
+    "prompts",
+    "endpoints",
+    "ai-secrets",
+    "ai-models",
+  ];
 
   const getUrlPart = (type: PermissionType) => {
     if (type === "experiments") return "experiment-patterns";
     if (type === "models") return "registered-models-patterns";
-    return "prompts-patterns";
+    if (type === "prompts") return "prompts-patterns";
+    if (type === "endpoints") return "gateways/endpoints-patterns";
+    if (type === "ai-secrets") return "gateways/secrets-patterns";
+    return "gateways/model-definitions-patterns";
   };
 
   types.forEach((type) => {
