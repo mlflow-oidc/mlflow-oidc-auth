@@ -428,6 +428,7 @@ export const NormalPermissionsView = ({
                     : "Endpoint"
         }
         options={availableEntities}
+        type={type}
         isLoading={isSaving}
         key={isGrantModalOpen ? "open" : "closed"}
       />

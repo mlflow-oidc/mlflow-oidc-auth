@@ -13,7 +13,12 @@ export type ModelListItem = {
 
 export type PromptListItem = ModelListItem;
 
-export type PermissionLevel = "READ" | "EDIT" | "MANAGE" | "NO_PERMISSIONS";
+export type PermissionLevel =
+  | "READ"
+  | "USE"
+  | "EDIT"
+  | "MANAGE"
+  | "NO_PERMISSIONS";
 
 export type PermissionKind = "user" | "group" | "fallback" | "service-account";
 

@@ -31,15 +31,96 @@ describe("PermissionLevelSelect", () => {
     expect(screen.getByLabelText("Custom Label*")).toBeInTheDocument();
   });
 
-  it("renders all permission levels options", () => {
+  it("renders default permission levels options when no type is provided", () => {
     render(<PermissionLevelSelect value="READ" onChange={vi.fn()} />);
 
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(4);
-    expect(options[0]).toHaveTextContent("READ");
-    expect(options[1]).toHaveTextContent("EDIT");
-    expect(options[2]).toHaveTextContent("MANAGE");
-    expect(options[3]).toHaveTextContent("NO_PERMISSIONS");
+    expect(options.map((o) => o.textContent)).toEqual([
+      "READ",
+      "EDIT",
+      "MANAGE",
+      "NO_PERMISSIONS",
+    ]);
+  });
+
+  it("renders gateway permission levels options (including USE) when type is endpoints", () => {
+    render(
+      <PermissionLevelSelect
+        value="READ"
+        onChange={vi.fn()}
+        type="endpoints"
+      />,
+    );
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(5);
+    expect(options.map((o) => o.textContent)).toEqual([
+      "READ",
+      "USE",
+      "EDIT",
+      "MANAGE",
+      "NO_PERMISSIONS",
+    ]);
+  });
+
+  it("renders gateway permission levels options (including USE) when type is ai-secrets", () => {
+    render(
+      <PermissionLevelSelect
+        value="READ"
+        onChange={vi.fn()}
+        type="ai-secrets"
+      />,
+    );
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(5);
+    expect(options.map((o) => o.textContent)).toEqual([
+      "READ",
+      "USE",
+      "EDIT",
+      "MANAGE",
+      "NO_PERMISSIONS",
+    ]);
+  });
+
+  it("renders gateway permission levels options (including USE) when type is ai-models", () => {
+    render(
+      <PermissionLevelSelect
+        value="READ"
+        onChange={vi.fn()}
+        type="ai-models"
+      />,
+    );
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(5);
+    expect(options.map((o) => o.textContent)).toEqual([
+      "READ",
+      "USE",
+      "EDIT",
+      "MANAGE",
+      "NO_PERMISSIONS",
+    ]);
+  });
+
+  it("renders default permission levels options when type is experiments", () => {
+    render(
+      <PermissionLevelSelect
+        value="READ"
+        onChange={vi.fn()}
+        type="experiments"
+      />,
+    );
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(4);
+    expect(options.map((o) => o.textContent)).toEqual([
+      "READ",
+      "EDIT",
+      "MANAGE",
+      "NO_PERMISSIONS",
+    ]);
   });
 
   it("respects disabled prop", () => {

@@ -325,6 +325,7 @@ export const RegexPermissionsView = ({
           isOpen={isRegexModalOpen}
           onClose={() => setIsRegexModalOpen(false)}
           onSave={handleSaveRegexRule}
+          type={type}
           isLoading={isSaving}
         />
       )}
