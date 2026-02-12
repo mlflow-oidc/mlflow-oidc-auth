@@ -6,8 +6,6 @@ These tests cover the gateway endpoint, secret, and model definition filter func
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from mlflow_oidc_auth.utils.batch_permissions import (
     filter_manageable_gateway_endpoints,
     filter_manageable_gateway_model_definitions,

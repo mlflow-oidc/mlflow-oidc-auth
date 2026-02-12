@@ -1,17 +1,15 @@
 """Tests for FastAPI dependency functions — gateway permission checks."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi import FastAPI, Path
-from fastapi.testclient import TestClient
+from fastapi import FastAPI
 
 from mlflow_oidc_auth.dependencies import (
     check_gateway_endpoint_manage_permission,
     check_gateway_model_definition_manage_permission,
     check_gateway_secret_manage_permission,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

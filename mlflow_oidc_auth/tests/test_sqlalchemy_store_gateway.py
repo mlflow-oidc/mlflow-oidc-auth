@@ -43,6 +43,7 @@ def store_with_mocked_repos() -> SqlAlchemyStore:
 # Gateway Endpoint Permissions
 # ---------------------------------------------------------------------------
 
+
 class TestGatewayEndpointPermissions:
     """Tests for gateway endpoint permission store methods."""
 
@@ -70,6 +71,7 @@ class TestGatewayEndpointPermissions:
 # ---------------------------------------------------------------------------
 # Gateway Secret Permissions
 # ---------------------------------------------------------------------------
+
 
 class TestGatewaySecretPermissions:
     """Tests for gateway secret permission store methods."""
@@ -99,6 +101,7 @@ class TestGatewaySecretPermissions:
 # Gateway Model Definition Permissions
 # ---------------------------------------------------------------------------
 
+
 class TestGatewayModelDefinitionPermissions:
     """Tests for gateway model definition permission store methods."""
 
@@ -126,6 +129,7 @@ class TestGatewayModelDefinitionPermissions:
 # ---------------------------------------------------------------------------
 # Gateway Endpoint Group Permissions
 # ---------------------------------------------------------------------------
+
 
 class TestGatewayEndpointGroupPermissions:
     """Tests for gateway endpoint group permission store methods."""
@@ -155,6 +159,7 @@ class TestGatewayEndpointGroupPermissions:
 # Gateway Secret Group Permissions
 # ---------------------------------------------------------------------------
 
+
 class TestGatewaySecretGroupPermissions:
     """Tests for gateway secret group permission store methods."""
 
@@ -182,6 +187,7 @@ class TestGatewaySecretGroupPermissions:
 # ---------------------------------------------------------------------------
 # Gateway Model Definition Group Permissions
 # ---------------------------------------------------------------------------
+
 
 class TestGatewayModelDefinitionGroupPermissions:
     """Tests for gateway model definition group permission store methods."""
@@ -211,6 +217,7 @@ class TestGatewayModelDefinitionGroupPermissions:
 # Gateway Endpoint Regex Permissions
 # ---------------------------------------------------------------------------
 
+
 class TestGatewayEndpointRegexPermissions:
     """Tests for gateway endpoint regex permission store methods."""
 
@@ -238,6 +245,7 @@ class TestGatewayEndpointRegexPermissions:
 # ---------------------------------------------------------------------------
 # Gateway Secret Regex Permissions
 # ---------------------------------------------------------------------------
+
 
 class TestGatewaySecretRegexPermissions:
     """Tests for gateway secret regex permission store methods."""
@@ -267,6 +275,7 @@ class TestGatewaySecretRegexPermissions:
 # Gateway Model Definition Regex Permissions
 # ---------------------------------------------------------------------------
 
+
 class TestGatewayModelDefinitionRegexPermissions:
     """Tests for gateway model definition regex permission store methods."""
 
@@ -294,6 +303,7 @@ class TestGatewayModelDefinitionRegexPermissions:
 # ---------------------------------------------------------------------------
 # Gateway Group Regex Permissions
 # ---------------------------------------------------------------------------
+
 
 class TestGatewayEndpointGroupRegexPermissions:
     """Tests for gateway endpoint group regex permission store methods."""

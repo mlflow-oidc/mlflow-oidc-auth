@@ -6,8 +6,6 @@ and fetch_all_gateway_model_definitions.
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from mlflow_oidc_auth.utils.data_fetching import (
     fetch_all_gateway_endpoints,
     fetch_all_gateway_model_definitions,

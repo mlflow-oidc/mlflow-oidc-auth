@@ -15,7 +15,6 @@ import pytest
 
 from mlflow_oidc_auth.dependencies import check_admin_permission
 
-
 GROUP_BASE = "/api/2.0/mlflow/permissions/groups"
 
 

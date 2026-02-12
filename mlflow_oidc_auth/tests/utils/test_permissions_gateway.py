@@ -33,7 +33,6 @@ from mlflow_oidc_auth.utils.permissions import (
     effective_gateway_secret_permission,
 )
 
-
 # ---------------------------------------------------------------------------
 # Regex matchers
 # ---------------------------------------------------------------------------

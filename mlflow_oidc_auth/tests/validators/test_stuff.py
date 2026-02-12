@@ -15,10 +15,10 @@ from mlflow_oidc_auth.validators.stuff import (
     validate_gateway_proxy,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def flask_app() -> Flask:
@@ -29,6 +29,7 @@ def flask_app() -> Flask:
 # ---------------------------------------------------------------------------
 # validate_can_create_gateway
 # ---------------------------------------------------------------------------
+
 
 class TestValidateCanCreateGateway:
     """Tests for the simple gateway creation validator."""
@@ -45,6 +46,7 @@ class TestValidateCanCreateGateway:
 # ---------------------------------------------------------------------------
 # validate_gateway_proxy
 # ---------------------------------------------------------------------------
+
 
 class TestValidateGatewayProxy:
     """Tests for the gateway proxy request validator."""
@@ -209,6 +211,7 @@ class TestValidateGatewayProxy:
 # validate_can_read_metric_history_bulk
 # ---------------------------------------------------------------------------
 
+
 class TestValidateCanReadMetricHistoryBulk:
     """Tests for bulk metric history READ validation."""
 
@@ -278,6 +281,7 @@ class TestValidateCanReadMetricHistoryBulk:
 # validate_can_search_datasets
 # ---------------------------------------------------------------------------
 
+
 class TestValidateCanSearchDatasets:
     """Tests for dataset search validation."""
 
@@ -343,6 +347,7 @@ class TestValidateCanSearchDatasets:
 # ---------------------------------------------------------------------------
 # validate_can_create_promptlab_run
 # ---------------------------------------------------------------------------
+
 
 class TestValidateCanCreatePromptlabRun:
     """Tests for promptlab run creation validation."""
