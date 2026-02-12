@@ -121,6 +121,41 @@ When a user creates a resource, the plugin automatically grants them `MANAGE` pe
 - `CreateGatewayModelDefinition` → MANAGE on the new model definition
 - `CreateWorkspace` → MANAGE workspace permission (when workspaces enabled)
 
+## Resource Creation Authorization
+
+By default, any authenticated user can create experiments and registered models. This matches upstream MLflow behavior.
+
+When `RESTRICT_RESOURCE_CREATION` is set to `true`, the system enforces permission checks on `CreateExperiment` and `CreateRegisteredModel` requests. The user must have at least **EDIT** permission (`can_update`) to create a resource.
+
+### How creation permissions are resolved
+
+Since the resource does not exist yet at creation time, only **name-based** permission sources apply:
+
+1. **`regex`** — user-specific regex patterns matched against the new resource name
+2. **`group-regex`** — group-based regex patterns matched against the new resource name
+3. **Fallback** — `DEFAULT_MLFLOW_PERMISSION` if no regex pattern matches
+
+> **Note:** The `user` and `group` sources are not used for creation checks because they are tied to existing resources (by experiment ID or model name) that don't exist yet.
+
+### Configuration
+
+```bash
+# Enable creation permission checks (opt-in)
+RESTRICT_RESOURCE_CREATION=true
+
+# Combined with deny-by-default, only users with matching regex patterns can create resources
+DEFAULT_MLFLOW_PERMISSION=NO_PERMISSIONS
+```
+
+### Affected endpoints
+
+| Endpoint | Effect when restricted |
+|----------|----------------------|
+| `CreateExperiment` | Requires EDIT+ permission for the experiment name |
+| `CreateRegisteredModel` | Requires EDIT+ permission for the model name |
+
+Child resources (`CreateRun`, `CreateModelVersion`, etc.) are not affected — they inherit permissions from their parent resource.
+
 ## Search Result Filtering
 
 For non-admin users, search and list results are filtered to only include resources the user can read:
@@ -264,4 +299,29 @@ Sources checked:
   4. group-regex: no matching patterns
   5. Workspace fallback: diana has READ on "data-team"
 Result: READ (from workspace fallback)
+```
+
+### Example 5: Resource Creation with RESTRICT_RESOURCE_CREATION
+```
+Config:
+  RESTRICT_RESOURCE_CREATION=true
+  DEFAULT_MLFLOW_PERMISSION=NO_PERMISSIONS
+
+User: alice (member of ml-team)
+Action: CreateExperiment with name "ml-team-training"
+Group-regex for ml-team: "^ml-team-.*" -> EDIT
+
+Resolution:
+- regex: No matching user patterns
+- group-regex: Pattern "^ml-team-.*" matches -> EDIT (can_update=true)
+Result: Creation ALLOWED
+
+User: bob (no group regex patterns)
+Action: CreateExperiment with name "my-experiment"
+
+Resolution:
+- regex: No matching patterns
+- group-regex: No matching patterns
+- Fallback: NO_PERMISSIONS (can_update=false)
+Result: Creation DENIED
 ```

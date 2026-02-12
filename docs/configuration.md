@@ -31,6 +31,7 @@ The application is configured through environment variables, `.env` files, or pl
 |----------|------|---------|-------------|
 | `DEFAULT_MLFLOW_PERMISSION` | String | `MANAGE` | Default permission level when no explicit permission is found. Options: `READ`, `USE`, `EDIT`, `MANAGE`, `NO_PERMISSIONS`. See [Permissions](permissions) |
 | `PERMISSION_SOURCE_ORDER` | String | `user,group,regex,group-regex` | Comma-separated order for evaluating permission sources. The first source with a matching permission wins. See [Permissions](permissions#permission-source-order) |
+| `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, enforce permission checks on experiment and registered model creation. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
 
 ### Database
 
