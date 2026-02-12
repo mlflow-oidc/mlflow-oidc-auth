@@ -1,3 +1,4 @@
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils import (
     effective_registered_model_permission,
@@ -45,6 +46,8 @@ def _get_permission_from_trace_request_id(username: str) -> Permission:
 
 
 def validate_can_create_registered_model(username: str) -> bool:
+    if not config.RESTRICT_RESOURCE_CREATION:
+        return True
     model_name = get_model_name()
     return effective_new_registered_model_permission(model_name, username).permission.can_update
 
