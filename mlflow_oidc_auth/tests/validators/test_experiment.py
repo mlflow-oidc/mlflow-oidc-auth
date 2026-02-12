@@ -20,6 +20,56 @@ def _patch_permission(**kwargs):
     )
 
 
+def _patch_new_experiment_permission(**kwargs):
+    return patch(
+        "mlflow_oidc_auth.validators.experiment.effective_new_experiment_permission",
+        return_value=MagicMock(permission=DummyPermission(**kwargs)),
+    )
+
+
+def test_validate_can_create_experiment_unrestricted():
+    """Test that creation is always allowed when RESTRICT_RESOURCE_CREATION is False."""
+    with patch("mlflow_oidc_auth.validators.experiment.config") as mock_config:
+        mock_config.RESTRICT_RESOURCE_CREATION = False
+        assert experiment.validate_can_create_experiment("alice") is True
+
+
+def test_validate_can_create_experiment_allowed():
+    """Test that user with update permission can create experiment."""
+    with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="my-experiment"):
+        with _patch_new_experiment_permission(can_update=True):
+            with patch("mlflow_oidc_auth.validators.experiment.config") as mock_config:
+                mock_config.RESTRICT_RESOURCE_CREATION = True
+                assert experiment.validate_can_create_experiment("alice") is True
+
+
+def test_validate_can_create_experiment_denied():
+    """Test that user without update permission cannot create experiment."""
+    with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="my-experiment"):
+        with _patch_new_experiment_permission(can_update=False):
+            with patch("mlflow_oidc_auth.validators.experiment.config") as mock_config:
+                mock_config.RESTRICT_RESOURCE_CREATION = True
+                assert experiment.validate_can_create_experiment("alice") is False
+
+
+def test_validate_can_create_experiment_read_only():
+    """Test that READ permission is not enough to create experiment."""
+    with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="my-experiment"):
+        with _patch_new_experiment_permission(can_read=True, can_update=False):
+            with patch("mlflow_oidc_auth.validators.experiment.config") as mock_config:
+                mock_config.RESTRICT_RESOURCE_CREATION = True
+                assert experiment.validate_can_create_experiment("alice") is False
+
+
+def test_validate_can_create_experiment_manage():
+    """Test that MANAGE permission allows experiment creation."""
+    with patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="my-experiment"):
+        with _patch_new_experiment_permission(can_update=True, can_manage=True):
+            with patch("mlflow_oidc_auth.validators.experiment.config") as mock_config:
+                mock_config.RESTRICT_RESOURCE_CREATION = True
+                assert experiment.validate_can_create_experiment("alice") is True
+
+
 def test__get_permission_from_experiment_id():
     with (
         patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"),

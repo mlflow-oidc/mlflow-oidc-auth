@@ -7,6 +7,7 @@ from mlflow_oidc_auth.hooks.before_request import (
     _is_proxy_artifact_path,
     _get_proxy_artifact_validator,
     _re_compile_path,
+    BEFORE_REQUEST_HANDLERS,
     BEFORE_REQUEST_VALIDATORS,
     LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS,
 )
@@ -387,3 +388,21 @@ def test_before_request_validators_structure():
         assert isinstance(method, str), f"Method {method} should be a string"
         # Validator should be callable or None (some endpoints may not have validators)
         assert validator is None or callable(validator), f"Validator {validator} should be callable or None"
+
+
+def test_create_experiment_has_before_request_handler():
+    """Test that CreateExperiment is registered in BEFORE_REQUEST_HANDLERS (fix for issue #202)."""
+    from mlflow.protos.service_pb2 import CreateExperiment
+    from mlflow_oidc_auth.validators import validate_can_create_experiment
+
+    assert CreateExperiment in BEFORE_REQUEST_HANDLERS, "CreateExperiment must have a before-request handler"
+    assert BEFORE_REQUEST_HANDLERS[CreateExperiment] == validate_can_create_experiment
+
+
+def test_create_registered_model_has_before_request_handler():
+    """Test that CreateRegisteredModel is registered in BEFORE_REQUEST_HANDLERS (fix for issue #202)."""
+    from mlflow.protos.model_registry_pb2 import CreateRegisteredModel
+    from mlflow_oidc_auth.validators import validate_can_create_registered_model
+
+    assert CreateRegisteredModel in BEFORE_REQUEST_HANDLERS, "CreateRegisteredModel must have a before-request handler"
+    assert BEFORE_REQUEST_HANDLERS[CreateRegisteredModel] == validate_can_create_registered_model

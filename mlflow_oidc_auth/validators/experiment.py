@@ -5,7 +5,7 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission
-from mlflow_oidc_auth.utils import effective_experiment_permission, get_experiment_id, get_request_param
+from mlflow_oidc_auth.utils import effective_experiment_permission, effective_new_experiment_permission, get_experiment_id, get_request_param
 
 
 def _get_permission_from_experiment_id(username: str) -> Permission:
@@ -38,6 +38,13 @@ def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permissi
     if experiment_id := _get_experiment_id_from_view_args():
         return effective_experiment_permission(experiment_id, username).permission
     return get_permission(config.DEFAULT_MLFLOW_PERMISSION)
+
+
+def validate_can_create_experiment(username: str):
+    if not config.RESTRICT_RESOURCE_CREATION:
+        return True
+    experiment_name = get_request_param("name")
+    return effective_new_experiment_permission(experiment_name, username).permission.can_update
 
 
 def validate_can_read_experiment(username: str):
