@@ -26,8 +26,8 @@ gateway_endpoint_permissions_router = APIRouter(
 
 LIST_ENDPOINTS = ""
 
-GATEWAY_ENDPOINT_USER_PERMISSIONS = "/{name}/users"
-GATEWAY_ENDPOINT_GROUP_PERMISSIONS = "/{name}/groups"
+GATEWAY_ENDPOINT_USER_PERMISSIONS = "/{name:path}/users"
+GATEWAY_ENDPOINT_GROUP_PERMISSIONS = "/{name:path}/groups"
 
 
 @gateway_endpoint_permissions_router.get(

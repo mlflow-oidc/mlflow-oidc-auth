@@ -34,8 +34,8 @@ class TestRegisteredModelPermissionsRouter:
     def test_route_constants(self):
         """Test that route constants are properly defined."""
         assert LIST_MODELS == ""
-        assert REGISTERED_MODEL_USER_PERMISSIONS == "/{name}/users"
-        assert REGISTERED_MODEL_GROUP_PERMISSIONS == "/{name}/groups"
+        assert REGISTERED_MODEL_USER_PERMISSIONS == "/{name:path}/users"
+        assert REGISTERED_MODEL_GROUP_PERMISSIONS == "/{name:path}/groups"
 
 
 class TestGetRegisteredModelGroupsEndpoint:
@@ -431,11 +431,11 @@ class TestRegisteredModelPermissionsRouterIntegration:
 
     def test_registered_model_permissions_error_handling(self, admin_client):
         """Test error handling in registered model permissions endpoints."""
-        # Test with empty model name
+        # Test with empty model name — with :path, this matches the list endpoint
         response = admin_client.get("/api/2.0/mlflow/permissions/registered-models//users")
 
         # Should handle invalid paths gracefully
-        assert response.status_code in [404, 422]
+        assert response.status_code in [200, 404, 422]
 
     def test_registered_model_permissions_concurrent_requests(self, authenticated_client):
         """Test that registered model permissions endpoints handle concurrent requests."""

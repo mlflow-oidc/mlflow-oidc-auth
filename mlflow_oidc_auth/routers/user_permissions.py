@@ -60,32 +60,32 @@ USER_EXPERIMENT_PATTERN_PERMISSIONS = "/{username}/experiment-patterns"
 USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{username}/experiment-patterns/{id}"
 
 USER_REGISTERED_MODEL_PERMISSIONS = "/{username}/registered-models"
-USER_REGISTERED_MODEL_PERMISSION_DETAIL = "/{username}/registered-models/{name}"
+USER_REGISTERED_MODEL_PERMISSION_DETAIL = "/{username}/registered-models/{name:path}"
 USER_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{username}/registered-models-patterns"
 USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{username}/registered-models-patterns/{id}"
 
 USER_PROMPT_PERMISSIONS = "/{username}/prompts"
-USER_PROMPT_PERMISSION_DETAIL = "/{username}/prompts/{name}"
+USER_PROMPT_PERMISSION_DETAIL = "/{username}/prompts/{name:path}"
 USER_PROMPT_PATTERN_PERMISSIONS = "/{username}/prompts-patterns"
 USER_PROMPT_PATTERN_PERMISSION_DETAIL = "/{username}/prompts-patterns/{id}"
 
 USER_SCORER_PERMISSIONS = "/{username}/scorers"
-USER_SCORER_PERMISSION_DETAIL = "/{username}/scorers/{experiment_id}/{scorer_name}"
+USER_SCORER_PERMISSION_DETAIL = "/{username}/scorers/{experiment_id}/{scorer_name:path}"
 USER_SCORER_PATTERN_PERMISSIONS = "/{username}/scorer-patterns"
 USER_SCORER_PATTERN_PERMISSION_DETAIL = "/{username}/scorer-patterns/{id}"
 
 USER_GATEWAY_ENDPOINT_PERMISSIONS = "/{username}/gateways/endpoints"
-USER_GATEWAY_ENDPOINT_PERMISSION_DETAIL = "/{username}/gateways/endpoints/{name}"
+USER_GATEWAY_ENDPOINT_PERMISSION_DETAIL = "/{username}/gateways/endpoints/{name:path}"
 USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS = "/{username}/gateways/endpoints-patterns"
 USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/endpoints-patterns/{id}"
 
 USER_GATEWAY_MODEL_DEFINITION_PERMISSIONS = "/{username}/gateways/model-definitions"
-USER_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL = "/{username}/gateways/model-definitions/{name}"
+USER_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL = "/{username}/gateways/model-definitions/{name:path}"
 USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS = "/{username}/gateways/model-definitions-patterns"
 USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/model-definitions-patterns/{id}"
 
 USER_GATEWAY_SECRET_PERMISSIONS = "/{username}/gateways/secrets"
-USER_GATEWAY_SECRET_PERMISSION_DETAIL = "/{username}/gateways/secrets/{name}"
+USER_GATEWAY_SECRET_PERMISSION_DETAIL = "/{username}/gateways/secrets/{name:path}"
 USER_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{username}/gateways/secrets-patterns"
 USER_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/secrets-patterns/{id}"
 

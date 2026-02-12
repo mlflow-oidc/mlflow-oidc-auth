@@ -58,47 +58,47 @@ group_permissions_router = APIRouter(
 
 LIST_GROUPS = ""
 
-GROUP_EXPERIMENT_PERMISSIONS = "/{group_name}/experiments"
-GROUP_EXPERIMENT_PERMISSION_DETAIL = "/{group_name}/experiments/{experiment_id}"
-GROUP_EXPERIMENT_PATTERN_PERMISSIONS = "/{group_name}/experiment-patterns"
-GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{group_name}/experiment-patterns/{id}"
+GROUP_EXPERIMENT_PERMISSIONS = "/{group_name:path}/experiments"
+GROUP_EXPERIMENT_PERMISSION_DETAIL = "/{group_name:path}/experiments/{experiment_id}"
+GROUP_EXPERIMENT_PATTERN_PERMISSIONS = "/{group_name:path}/experiment-patterns"
+GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/experiment-patterns/{id}"
 
 # GROUP, REGISTERED_MODEL, PATTERN
-GROUP_REGISTERED_MODEL_PERMISSIONS = "/{group_name}/registered-models"
-GROUP_REGISTERED_MODEL_PERMISSION_DETAIL = "/{group_name}/registered-models/{name}"
-GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{group_name}/registered-models-patterns"
-GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{group_name}/registered-models-patterns/{id}"
+GROUP_REGISTERED_MODEL_PERMISSIONS = "/{group_name:path}/registered-models"
+GROUP_REGISTERED_MODEL_PERMISSION_DETAIL = "/{group_name:path}/registered-models/{name:path}"
+GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{group_name:path}/registered-models-patterns"
+GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/registered-models-patterns/{id}"
 
 # GROUP, PROMPT, PATTERN
-GROUP_PROMPT_PERMISSIONS = "/{group_name}/prompts"
-GROUP_PROMPT_PERMISSION_DETAIL = "/{group_name}/prompts/{prompt_name}"
-GROUP_PROMPT_PATTERN_PERMISSIONS = "/{group_name}/prompts-patterns"
-GROUP_PROMPT_PATTERN_PERMISSION_DETAIL = "/{group_name}/prompts-patterns/{id}"
+GROUP_PROMPT_PERMISSIONS = "/{group_name:path}/prompts"
+GROUP_PROMPT_PERMISSION_DETAIL = "/{group_name:path}/prompts/{prompt_name:path}"
+GROUP_PROMPT_PATTERN_PERMISSIONS = "/{group_name:path}/prompts-patterns"
+GROUP_PROMPT_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/prompts-patterns/{id}"
 
 # GROUP, SCORER, PATTERN
-GROUP_SCORER_PERMISSIONS = "/{group_name}/scorers"
-GROUP_SCORER_PERMISSION_DETAIL = "/{group_name}/scorers/{experiment_id}/{scorer_name}"
-GROUP_SCORER_PATTERN_PERMISSIONS = "/{group_name}/scorer-patterns"
-GROUP_SCORER_PATTERN_PERMISSION_DETAIL = "/{group_name}/scorer-patterns/{id}"
-GROUP_USER_PERMISSIONS = "/{group_name}/users"
+GROUP_SCORER_PERMISSIONS = "/{group_name:path}/scorers"
+GROUP_SCORER_PERMISSION_DETAIL = "/{group_name:path}/scorers/{experiment_id}/{scorer_name:path}"
+GROUP_SCORER_PATTERN_PERMISSIONS = "/{group_name:path}/scorer-patterns"
+GROUP_SCORER_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/scorer-patterns/{id}"
+GROUP_USER_PERMISSIONS = "/{group_name:path}/users"
 
 # GROUP, GATEWAY ENDPOINT, PATTERN
-GROUP_GATEWAY_ENDPOINT_PERMISSIONS = "/{group_name}/gateways/endpoints"
-GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL = "/{group_name}/gateways/endpoints/{name}"
-GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS = "/{group_name}/gateways/endpoints-patterns"
-GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL = "/{group_name}/gateways/endpoints-patterns/{id}"
+GROUP_GATEWAY_ENDPOINT_PERMISSIONS = "/{group_name:path}/gateways/endpoints"
+GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL = "/{group_name:path}/gateways/endpoints/{name:path}"
+GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/endpoints-patterns"
+GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/endpoints-patterns/{id}"
 
 # GROUP, GATEWAY MODEL DEFINITION, PATTERN
-GROUP_GATEWAY_MODEL_DEFINITION_PERMISSIONS = "/{group_name}/gateways/model-definitions"
-GROUP_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL = "/{group_name}/gateways/model-definitions/{name}"
-GROUP_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS = "/{group_name}/gateways/model-definitions-patterns"
-GROUP_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL = "/{group_name}/gateways/model-definitions-patterns/{id}"
+GROUP_GATEWAY_MODEL_DEFINITION_PERMISSIONS = "/{group_name:path}/gateways/model-definitions"
+GROUP_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL = "/{group_name:path}/gateways/model-definitions/{name:path}"
+GROUP_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/model-definitions-patterns"
+GROUP_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/model-definitions-patterns/{id}"
 
 # GROUP, GATEWAY SECRET, PATTERN
-GROUP_GATEWAY_SECRET_PERMISSIONS = "/{group_name}/gateways/secrets"
-GROUP_GATEWAY_SECRET_PERMISSION_DETAIL = "/{group_name}/gateways/secrets/{name}"
-GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{group_name}/gateways/secrets-patterns"
-GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name}/gateways/secrets-patterns/{id}"
+GROUP_GATEWAY_SECRET_PERMISSIONS = "/{group_name:path}/gateways/secrets"
+GROUP_GATEWAY_SECRET_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets/{name:path}"
+GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/secrets-patterns"
+GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets-patterns/{id}"
 
 
 @group_permissions_router.get(

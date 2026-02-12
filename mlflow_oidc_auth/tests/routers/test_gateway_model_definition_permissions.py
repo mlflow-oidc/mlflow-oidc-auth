@@ -127,6 +127,40 @@ class TestGatewayModelDefinitionPermissionRoutes:
         assert resp.status_code == 200
         assert resp.json() == []
 
+    def test_list_users_name_with_slashes(self, test_app, authenticated_client, mock_store, mock_model_def_permissions):
+        """Test that model definition names containing slashes and colons are routed correctly."""
+        model_name = "us-gov-east-1/anthropic.claude-3-haiku-20240307-v1:0"
+
+        admin_user, regular_user, service_user = mock_store.list_users.return_value
+        admin_user.gateway_model_definition_permissions = [mock_model_def_permissions(model_name, "MANAGE")]
+        regular_user.gateway_model_definition_permissions = []
+        service_user.gateway_model_definition_permissions = []
+
+        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+            resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/{model_name}/users")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body) == 1
+        assert body[0]["name"] == "admin@example.com"
+        assert body[0]["permission"] == "MANAGE"
+
+    def test_list_groups_name_with_slashes(self, test_app, authenticated_client, mock_store, mock_model_def_permissions):
+        """Test that model definition names containing slashes and colons work for group listing."""
+        model_name = "us-gov-east-1/anthropic.claude-3-haiku-20240307-v1:0"
+
+        mock_store.gateway_model_definition_group_repo.list_groups_for_model_definition.return_value = [
+            ("developers", "READ"),
+        ]
+
+        with patch("mlflow_oidc_auth.routers.gateway_model_definition_permissions.store", mock_store):
+            resp = authenticated_client.get(f"{GATEWAY_MODEL_DEF_BASE}/{model_name}/groups")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body) == 1
+        mock_store.gateway_model_definition_group_repo.list_groups_for_model_definition.assert_called_once_with(model_name)
+
 
 @pytest.mark.usefixtures("authenticated_session")
 class TestListGatewayModelDefinitions:

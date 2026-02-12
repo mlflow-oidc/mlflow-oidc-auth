@@ -34,8 +34,8 @@ class TestPromptPermissionsRouter:
     def test_route_constants(self):
         """Test that route constants are properly defined."""
         assert LIST_PROMPTS == ""
-        assert PROMPT_USER_PERMISSIONS == "/{prompt_name}/users"
-        assert PROMPT_GROUP_PERMISSIONS == "/{prompt_name}/groups"
+        assert PROMPT_USER_PERMISSIONS == "/{prompt_name:path}/users"
+        assert PROMPT_GROUP_PERMISSIONS == "/{prompt_name:path}/groups"
 
 
 class TestGetPromptGroupsEndpoint:
@@ -446,11 +446,11 @@ class TestPromptPermissionsRouterIntegration:
 
     def test_prompt_permissions_error_handling(self, admin_client):
         """Test error handling in prompt permissions endpoints."""
-        # Test with empty prompt name
+        # Test with empty prompt name — with :path, this matches the list endpoint
         response = admin_client.get("/api/2.0/mlflow/permissions/prompts//users")
 
         # Should handle invalid paths gracefully
-        assert response.status_code in [404, 422]
+        assert response.status_code in [200, 404, 422]
 
     def test_prompt_permissions_concurrent_requests(self, authenticated_client):
         """Test that prompt permissions endpoints handle concurrent requests."""

@@ -26,8 +26,8 @@ gateway_model_definition_permissions_router = APIRouter(
 
 LIST_MODEL_DEFINITIONS = ""
 
-GATEWAY_MODEL_DEFINITION_USER_PERMISSIONS = "/{name}/users"
-GATEWAY_MODEL_DEFINITION_GROUP_PERMISSIONS = "/{name}/groups"
+GATEWAY_MODEL_DEFINITION_USER_PERMISSIONS = "/{name:path}/users"
+GATEWAY_MODEL_DEFINITION_GROUP_PERMISSIONS = "/{name:path}/groups"
 
 
 @gateway_model_definition_permissions_router.get(

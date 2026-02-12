@@ -26,8 +26,8 @@ gateway_secret_permissions_router = APIRouter(
 
 LIST_SECRETS = ""
 
-GATEWAY_SECRET_USER_PERMISSIONS = "/{name}/users"
-GATEWAY_SECRET_GROUP_PERMISSIONS = "/{name}/groups"
+GATEWAY_SECRET_USER_PERMISSIONS = "/{name:path}/users"
+GATEWAY_SECRET_GROUP_PERMISSIONS = "/{name:path}/groups"
 
 
 @gateway_secret_permissions_router.get(
