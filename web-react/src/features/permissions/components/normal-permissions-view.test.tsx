@@ -156,38 +156,52 @@ describe("NormalPermissionsView", () => {
       useUserGatewayEndpointPermissions,
       "useUserGatewayEndpointPermissions",
     ).mockReturnValue({
-      permissions: [],
+      permissions: mockExpPermissions,
       isLoading: false,
       error: null,
-      refresh: vi.fn(),
+      refresh: mockRefresh,
     });
 
     vi.spyOn(
       useGroupGatewayEndpointPermissions,
       "useGroupGatewayEndpointPermissions",
     ).mockReturnValue({
-      permissions: [],
+      permissions: mockExpPermissions,
       isLoading: false,
       error: null,
-      refresh: vi.fn(),
+      refresh: mockRefresh,
     });
 
     vi.spyOn(useAllGatewayEndpoints, "useAllGatewayEndpoints").mockReturnValue({
-      allGatewayEndpoints: [],
+      allGatewayEndpoints: [
+        {
+          name: "New Endpoint",
+          type: "llm/v1/chat",
+          description: "",
+          route_type: "llm/v1/chat",
+          auth_type: "bearer",
+        },
+      ],
       isLoading: false,
       error: null,
       refresh: vi.fn(),
     });
   });
 
-  const types: PermissionType[] = ["experiments", "models", "prompts"];
+  const types: PermissionType[] = [
+    "experiments",
+    "models",
+    "prompts",
+    "endpoints",
+  ];
 
   types.forEach((type) => {
     describe(`Type: ${type}`, () => {
       const getExpectedValue = (t: string) => {
         if (t === "experiments") return "new1";
         if (t === "models") return "New Model";
-        return "New Prompt";
+        if (t === "prompts") return "New Prompt";
+        return "New Endpoint";
       };
 
       it(`renders table with data for ${type}`, () => {
@@ -216,7 +230,9 @@ describe("NormalPermissionsView", () => {
             ? /Add experiment/i
             : type === "models"
               ? /Add model/i
-              : /Add prompt/i;
+              : type === "prompts"
+                ? /Add prompt/i
+                : /Add endpoint/i;
         fireEvent.click(screen.getByText(addText));
 
         const labelText =
@@ -224,7 +240,9 @@ describe("NormalPermissionsView", () => {
             ? /Experiment/i
             : type === "models"
               ? /Model/i
-              : /Prompt/i;
+              : type === "prompts"
+                ? /Prompt/i
+                : /Endpoint/i;
         const select = screen.getByLabelText(labelText);
         fireEvent.change(select, { target: { value: getExpectedValue(type) } });
 
@@ -234,7 +252,7 @@ describe("NormalPermissionsView", () => {
         await waitFor(() => {
           expect(httpModule.http).toHaveBeenCalledWith(
             expect.stringContaining(
-              `/api/2.0/mlflow/permissions/groups/group1/${type === "models" ? "registered-models" : type}`,
+              `/api/2.0/mlflow/permissions/groups/group1/${type === "models" ? "registered-models" : type === "endpoints" ? "gateways/endpoints" : type}`,
             ),
             expect.objectContaining({ method: "POST" }),
           );
@@ -257,7 +275,7 @@ describe("NormalPermissionsView", () => {
         await waitFor(() => {
           expect(httpModule.http).toHaveBeenCalledWith(
             expect.stringContaining(
-              `/api/2.0/mlflow/permissions/users/user1/${type === "models" ? "registered-models" : type}`,
+              `/api/2.0/mlflow/permissions/users/user1/${type === "models" ? "registered-models" : type === "endpoints" ? "gateways/endpoints" : type}`,
             ),
             expect.objectContaining({ method: "DELETE" }),
           );

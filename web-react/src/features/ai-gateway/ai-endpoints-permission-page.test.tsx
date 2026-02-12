@@ -52,7 +52,7 @@ describe("AiEndpointsPermissionPage", () => {
     expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
   });
 
-  it("displays error when endpoint name is missing", () => {
+  it("displays error message if name param is missing", () => {
     render(
       <MemoryRouter initialEntries={["/ai-gateway/endpoints/"]}>
         <Routes>
@@ -64,19 +64,7 @@ describe("AiEndpointsPermissionPage", () => {
       </MemoryRouter>,
     );
 
-    // Since the path doesn't match the :name param correctly for empty string if not handled,
-    // actually, adapting the test to react-router behavior.
-    // If name is effectively undefined/empty string, component might render "Endpoint Name is required."
-    // However, the route definition expects a param.
-  });
-
-  // Re-writing the "missing name" test to be more robust or remove if React Router prevents it.
-  // The component checks `if (!name)`.
-  it("displays error message if name param is missing (simulated)", () => {
-    // We can simulate this by rendering the component directly with a mocked useParams
-    // But since we are using MemoryRouter with Routes, let's just make sure it renders what we expect
-    // if we were able to mount it without a name.
-    // Actually, let's just test the happy path and maybe loading state passed down.
+    expect(screen.getByText("Endpoint Name is required.")).toBeInTheDocument();
   });
 
   it("passes loading state to manager", () => {
@@ -87,13 +75,25 @@ describe("AiEndpointsPermissionPage", () => {
       refresh: vi.fn(),
     });
     vi.mocked(useGatewayEndpointGroupPermissions).mockReturnValue({
-      isLoading: false, // One is loading
+      isLoading: false,
       error: null,
       permissions: [],
       refresh: vi.fn(),
     });
 
-    // We can't easily check the prop passed to the mock unless we make the mock display it.
-    // Let's assume the previous test covered the main rendering logic.
+    render(
+      <MemoryRouter
+        initialEntries={[`/ai-gateway/endpoints/${mockParams.name}`]}
+      >
+        <Routes>
+          <Route
+            path="/ai-gateway/endpoints/:name"
+            element={<AiEndpointsPermissionPage />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("permissions-manager")).toBeInTheDocument();
   });
 });

@@ -15,6 +15,7 @@ vi.mock("../../../shared/services/runtime-config", () => ({
       uiPath: "",
       provider: "",
       authenticated: true,
+      gen_ai_gateway_enabled: false,
     }),
   ),
 }));

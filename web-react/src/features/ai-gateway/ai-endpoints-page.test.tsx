@@ -112,10 +112,11 @@ describe("AiEndpointsPage", () => {
   });
 
   it("renders permission buttons", () => {
-    (useAllGatewayEndpoints as jest.Mock).mockReturnValue({
+    vi.mocked(useAllGatewayEndpoints).mockReturnValue({
       isLoading: false,
       error: null,
       allGatewayEndpoints: mockEndpoints,
+      refresh: vi.fn(),
     });
 
     render(
