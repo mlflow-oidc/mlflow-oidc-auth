@@ -198,7 +198,7 @@ describe("SharedPermissionsPage", () => {
     expect(localStorage.getItem("_mlflow_is_regex_mode")).toBe("true");
   });
 
-  it("shows Endpoints tab when gen_ai_gateway_enabled is true", () => {
+  it("shows AI Gateway tabs when gen_ai_gateway_enabled is true", () => {
     mockUseRuntimeConfig.mockReturnValue({
       gen_ai_gateway_enabled: true,
     });
@@ -209,8 +209,10 @@ describe("SharedPermissionsPage", () => {
         entityKind="user"
       />,
     );
-
+ 
     expect(screen.getByText("Endpoints")).toBeInTheDocument();
+    expect(screen.getByText("AI Secrets")).toBeInTheDocument();
+    expect(screen.getByText("AI Models")).toBeInTheDocument();
   });
 
   it("hides Endpoints tab when gen_ai_gateway_enabled is false", () => {
@@ -241,12 +243,12 @@ describe("SharedPermissionsPage", () => {
       />,
     );
 
-    const experimentLink = screen.getByText("Experiments");
+    const experimentLink = screen.getByRole("link", { name: "Experiments" });
     expect(experimentLink.getAttribute("href")).toContain(
       "/users/alice@example.com/experiments",
     );
-
-    const modelsLink = screen.getByText("Models");
+ 
+    const modelsLink = screen.getByRole("link", { name: "Models" });
     expect(modelsLink.getAttribute("href")).toContain(
       "/users/alice@example.com/models",
     );

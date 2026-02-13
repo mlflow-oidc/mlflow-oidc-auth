@@ -62,7 +62,13 @@ export const SharedPermissionsPage = ({
     { id: "experiments", label: "Experiments" },
     { id: "models", label: "Models" },
     { id: "prompts", label: "Prompts" },
-    ...(genAiGatewayEnabled ? [{ id: "endpoints", label: "Endpoints" }] : []),
+    ...(genAiGatewayEnabled
+      ? [
+          { id: "endpoints", label: "Endpoints" },
+          { id: "ai-secrets", label: "AI\u00A0Secrets" },
+          { id: "ai-models", label: "AI\u00A0Models" },
+        ]
+      : []),
   ];
 
   return (
@@ -103,7 +109,7 @@ export const SharedPermissionsPage = ({
           <Switch
             checked={isRegexMode}
             onChange={setIsRegexMode}
-            label="Regex Mode"
+            label={"Regex\u00A0Mode"}
             className="mr-5"
             labelClassName={`py-2 px-2 font-medium text-sm transition-colors duration-200 ${
               isRegexMode
