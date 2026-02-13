@@ -587,6 +587,11 @@ class SqlAlchemyStore:
     def delete_gateway_endpoint_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_endpoint_repo.revoke_permission(gateway_name, username)
 
+    def rename_gateway_endpoint_permissions(self, old_name: str, new_name: str) -> None:
+        """Rename all user and group permissions for a gateway endpoint."""
+        self.gateway_endpoint_repo.rename(old_name, new_name)
+        self.gateway_endpoint_group_repo.rename(old_name, new_name)
+
     def wipe_gateway_endpoint_permissions(self, gateway_name: str) -> None:
         """Delete all user and group permissions for a gateway endpoint."""
         self.gateway_endpoint_repo.wipe(gateway_name)

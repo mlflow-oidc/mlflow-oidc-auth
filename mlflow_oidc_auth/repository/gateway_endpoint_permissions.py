@@ -81,6 +81,14 @@ class GatewayEndpointPermissionRepository:
             session.delete(perm)
             session.flush()
 
+    def rename(self, old_name: str, new_name: str) -> None:
+        """Update all user-level permissions from *old_name* to *new_name*."""
+        with self._Session() as session:
+            perms = session.query(SqlGatewayEndpointPermission).filter(SqlGatewayEndpointPermission.endpoint_id == old_name).all()
+            for perm in perms:
+                perm.endpoint_id = new_name
+            session.flush()
+
     def wipe(self, endpoint_id: str) -> None:
         """Delete all user-level permissions for a gateway endpoint."""
         with self._Session() as session:

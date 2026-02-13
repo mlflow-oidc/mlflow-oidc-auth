@@ -67,6 +67,11 @@ class TestGatewayEndpointPermissions:
         store_with_mocked_repos.delete_gateway_endpoint_permission("ep-1", "alice")
         store_with_mocked_repos.gateway_endpoint_repo.revoke_permission.assert_called_once_with("ep-1", "alice")
 
+    def test_rename(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
+        store_with_mocked_repos.rename_gateway_endpoint_permissions("old-ep", "new-ep")
+        store_with_mocked_repos.gateway_endpoint_repo.rename.assert_called_once_with("old-ep", "new-ep")
+        store_with_mocked_repos.gateway_endpoint_group_repo.rename.assert_called_once_with("old-ep", "new-ep")
+
 
 # ---------------------------------------------------------------------------
 # Gateway Secret Permissions

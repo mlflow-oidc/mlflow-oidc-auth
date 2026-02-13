@@ -43,10 +43,15 @@ def validate_can_read_gateway_endpoint(username: str) -> bool:
 
 
 def validate_can_update_gateway_endpoint(username: str) -> bool:
-    """Validate UPDATE permission on a gateway endpoint."""
+    """Validate UPDATE permission on a gateway endpoint.
+
+    Also stashes the resolved name in ``flask.g`` so the after-request
+    rename handler can propagate name changes to permission records.
+    """
     name = _get_gateway_endpoint_name()
     if not name:
         return False
+    g._updating_gateway_endpoint_old_name = name
     return can_update_gateway_endpoint(name, username)
 
 

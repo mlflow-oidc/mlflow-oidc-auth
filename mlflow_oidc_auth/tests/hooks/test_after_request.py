@@ -21,6 +21,7 @@ from mlflow_oidc_auth.hooks.after_request import (
     _delete_gateway_endpoint_permissions_cascade,
     _delete_gateway_secret_permissions_cascade,
     _delete_gateway_model_definition_permissions_cascade,
+    _rename_gateway_endpoint_permission,
 )
 
 app = Flask(__name__)
@@ -935,11 +936,12 @@ def test_set_can_manage_gateway_model_definition_permission(mock_response, mock_
 
 def test_get_after_request_handler_gateway_endpoints():
     """Test _get_after_request_handler returns correct handlers for gateway protos"""
-    from mlflow.protos.service_pb2 import CreateGatewayEndpoint, CreateGatewaySecret, CreateGatewayModelDefinition
+    from mlflow.protos.service_pb2 import CreateGatewayEndpoint, CreateGatewaySecret, CreateGatewayModelDefinition, UpdateGatewayEndpoint
 
     assert _get_after_request_handler(CreateGatewayEndpoint) == _set_can_manage_gateway_endpoint_permission
     assert _get_after_request_handler(CreateGatewaySecret) == _set_can_manage_gateway_secret_permission
     assert _get_after_request_handler(CreateGatewayModelDefinition) == _set_can_manage_gateway_model_definition_permission
+    assert _get_after_request_handler(UpdateGatewayEndpoint) == _rename_gateway_endpoint_permission
 
 
 def test_get_after_request_handler_gateway_list():
@@ -1149,3 +1151,59 @@ def test_delete_gateway_model_definition_permissions_cascade(mock_response, mock
         g._deleting_gateway_model_definition_name = "my-model-def"
         _delete_gateway_model_definition_permissions_cascade(mock_response)
         mock_store.wipe_gateway_model_definition_permissions.assert_called_once_with("my-model-def")
+
+
+def test_rename_gateway_endpoint_permission(mock_response, mock_store):
+    """Test renaming gateway endpoint permissions when endpoint name changes."""
+    mock_response_message = MagicMock()
+    mock_response_message.endpoint.name = "new-endpoint-name"
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/update",
+            method="PATCH",
+        ),
+        patch(
+            "mlflow_oidc_auth.hooks.after_request.UpdateGatewayEndpoint.Response",
+            return_value=mock_response_message,
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+    ):
+        from flask import g
+
+        g._updating_gateway_endpoint_old_name = "old-endpoint-name"
+        _rename_gateway_endpoint_permission(mock_response)
+        mock_store.rename_gateway_endpoint_permissions.assert_called_once_with("old-endpoint-name", "new-endpoint-name")
+
+
+def test_rename_gateway_endpoint_permission_same_name(mock_response, mock_store):
+    """Test no rename when endpoint name hasn't changed."""
+    mock_response_message = MagicMock()
+    mock_response_message.endpoint.name = "same-name"
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/update",
+            method="PATCH",
+        ),
+        patch(
+            "mlflow_oidc_auth.hooks.after_request.UpdateGatewayEndpoint.Response",
+            return_value=mock_response_message,
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+    ):
+        from flask import g
+
+        g._updating_gateway_endpoint_old_name = "same-name"
+        _rename_gateway_endpoint_permission(mock_response)
+        mock_store.rename_gateway_endpoint_permissions.assert_not_called()
+
+
+def test_rename_gateway_endpoint_permission_no_old_name(mock_response, mock_store):
+    """Test no rename when no old name was stashed."""
+    with app.test_request_context(
+        path="/api/3.0/mlflow/gateway/endpoints/update",
+        method="PATCH",
+    ):
+        _rename_gateway_endpoint_permission(mock_response)
+        mock_store.rename_gateway_endpoint_permissions.assert_not_called()

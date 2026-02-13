@@ -86,6 +86,23 @@ class TestGatewayEndpointValidators:
             ):
                 assert validate_can_update_gateway_endpoint("user1") is False
 
+    def test_update_gateway_endpoint_stashes_old_name(self):
+        """Test UPDATE stashes old name in flask.g for rename handler."""
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/update",
+            method="POST",
+            json={"name": "my-endpoint"},
+            content_type="application/json",
+        ):
+            with patch(
+                "mlflow_oidc_auth.validators.gateway.can_update_gateway_endpoint",
+                return_value=True,
+            ):
+                from flask import g
+
+                validate_can_update_gateway_endpoint("user1")
+                assert g._updating_gateway_endpoint_old_name == "my-endpoint"
+
     def test_manage_gateway_endpoint_allowed(self):
         """Test MANAGE when user has permission."""
         with app.test_request_context(

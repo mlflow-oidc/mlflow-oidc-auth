@@ -81,6 +81,14 @@ class GatewayEndpointGroupPermissionRepository:
             session.flush()
             return perm.to_mlflow_entity()
 
+    def rename(self, old_name: str, new_name: str) -> None:
+        """Update all group-level permissions from *old_name* to *new_name*."""
+        with self._Session() as session:
+            perms = session.query(SqlGatewayEndpointGroupPermission).filter(SqlGatewayEndpointGroupPermission.endpoint_id == old_name).all()
+            for perm in perms:
+                perm.endpoint_id = new_name
+            session.flush()
+
     def list_groups_for_endpoint(self, endpoint_id: str):
         with self._Session() as session:
             rows = (

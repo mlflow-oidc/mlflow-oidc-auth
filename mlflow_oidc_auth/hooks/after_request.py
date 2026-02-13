@@ -15,6 +15,7 @@ from mlflow.protos.service_pb2 import (
     RegisterScorer,
     SearchExperiments,
     SearchLoggedModels,
+    UpdateGatewayEndpoint,
 )
 from mlflow.server.handlers import _get_model_registry_store, _get_request_message, _get_tracking_store, catch_mlflow_exception, get_endpoints
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
@@ -255,6 +256,30 @@ def _set_can_manage_gateway_endpoint_permission(resp: Response):
     store.create_gateway_endpoint_permission(name, username, MANAGE.name)
 
 
+def _rename_gateway_endpoint_permission(resp: Response):
+    """Propagate endpoint name changes to all user and group permission records.
+
+    The old name was stashed in ``flask.g`` by the before-request validator.
+    The new name is read from the response.
+    """
+    old_name = getattr(g, "_updating_gateway_endpoint_old_name", None)
+    if not old_name:
+        return
+
+    response_message = UpdateGatewayEndpoint.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    new_name = response_message.endpoint.name
+
+    if not new_name or new_name == old_name:
+        # Name unchanged — nothing to do.
+        return
+
+    try:
+        store.rename_gateway_endpoint_permissions(old_name, new_name)
+    except Exception:
+        get_logger().warning(f"Failed to rename gateway endpoint permissions from '{old_name}' to '{new_name}'")
+
+
 def _set_can_manage_gateway_secret_permission(resp: Response):
     """Create MANAGE gateway secret permission for the secret creator."""
     response_message = CreateGatewaySecret.Response()  # type: ignore
@@ -373,6 +398,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     CreateGatewayEndpoint: _set_can_manage_gateway_endpoint_permission,
     CreateGatewaySecret: _set_can_manage_gateway_secret_permission,
     CreateGatewayModelDefinition: _set_can_manage_gateway_model_definition_permission,
+    UpdateGatewayEndpoint: _rename_gateway_endpoint_permission,
     DeleteGatewayEndpoint: _delete_gateway_endpoint_permissions_cascade,
     DeleteGatewaySecret: _delete_gateway_secret_permissions_cascade,
     DeleteGatewayModelDefinition: _delete_gateway_model_definition_permissions_cascade,
