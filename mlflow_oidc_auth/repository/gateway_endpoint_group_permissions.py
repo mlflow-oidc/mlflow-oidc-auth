@@ -90,3 +90,11 @@ class GatewayEndpointGroupPermissionRepository:
                 .all()
             )
             return [(group_name, perm.permission) for perm, group_name in rows]
+
+    def wipe(self, endpoint_id: str) -> None:
+        """Delete all group-level permissions for a gateway endpoint."""
+        with self._Session() as session:
+            perms = session.query(SqlGatewayEndpointGroupPermission).filter(SqlGatewayEndpointGroupPermission.endpoint_id == endpoint_id).all()
+            for p in perms:
+                session.delete(p)
+            session.flush()

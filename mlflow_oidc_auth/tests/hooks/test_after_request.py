@@ -12,6 +12,15 @@ from mlflow_oidc_auth.hooks.after_request import (
     _filter_search_logged_models,
     _rename_registered_model_permission,
     _get_after_request_handler,
+    _set_can_manage_gateway_endpoint_permission,
+    _set_can_manage_gateway_secret_permission,
+    _set_can_manage_gateway_model_definition_permission,
+    _filter_list_gateway_endpoints,
+    _filter_list_gateway_secrets,
+    _filter_list_gateway_model_definitions,
+    _delete_gateway_endpoint_permissions_cascade,
+    _delete_gateway_secret_permissions_cascade,
+    _delete_gateway_model_definition_permissions_cascade,
 )
 
 app = Flask(__name__)
@@ -853,3 +862,290 @@ def test_rename_registered_model_permission_invalid_json(mock_response, mock_sto
         _rename_registered_model_permission(mock_response)
         mock_store.rename_registered_model_permissions.assert_not_called()
         mock_store.rename_group_model_permissions.assert_not_called()
+
+
+def test_set_can_manage_gateway_endpoint_permission(mock_response, mock_store, mock_bridge):
+    """Test _set_can_manage_gateway_endpoint_permission handler"""
+    mock_response.json = {"endpoint": {"name": "my-endpoint"}}
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/create",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+    ):
+        mock_response_message = MagicMock()
+        mock_response_message.endpoint.name = "my-endpoint"
+
+        with patch(
+            "mlflow_oidc_auth.hooks.after_request.CreateGatewayEndpoint.Response",
+            return_value=mock_response_message,
+        ):
+            _set_can_manage_gateway_endpoint_permission(mock_response)
+            mock_store.create_gateway_endpoint_permission.assert_called_once_with("my-endpoint", "test_user", "MANAGE")
+
+
+def test_set_can_manage_gateway_secret_permission(mock_response, mock_store, mock_bridge):
+    """Test _set_can_manage_gateway_secret_permission handler"""
+    mock_response.json = {"secret": {"secret_name": "my-secret"}}
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/secrets/create",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+    ):
+        mock_response_message = MagicMock()
+        mock_response_message.secret.secret_name = "my-secret"
+
+        with patch(
+            "mlflow_oidc_auth.hooks.after_request.CreateGatewaySecret.Response",
+            return_value=mock_response_message,
+        ):
+            _set_can_manage_gateway_secret_permission(mock_response)
+            mock_store.create_gateway_secret_permission.assert_called_once_with("my-secret", "test_user", "MANAGE")
+
+
+def test_set_can_manage_gateway_model_definition_permission(mock_response, mock_store, mock_bridge):
+    """Test _set_can_manage_gateway_model_definition_permission handler"""
+    mock_response.json = {"model_definition": {"name": "us-east-1/claude-3"}}
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/create",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+    ):
+        mock_response_message = MagicMock()
+        mock_response_message.model_definition.name = "us-east-1/claude-3"
+
+        with patch(
+            "mlflow_oidc_auth.hooks.after_request.CreateGatewayModelDefinition.Response",
+            return_value=mock_response_message,
+        ):
+            _set_can_manage_gateway_model_definition_permission(mock_response)
+            mock_store.create_gateway_model_definition_permission.assert_called_once_with("us-east-1/claude-3", "test_user", "MANAGE")
+
+
+def test_get_after_request_handler_gateway_endpoints():
+    """Test _get_after_request_handler returns correct handlers for gateway protos"""
+    from mlflow.protos.service_pb2 import CreateGatewayEndpoint, CreateGatewaySecret, CreateGatewayModelDefinition
+
+    assert _get_after_request_handler(CreateGatewayEndpoint) == _set_can_manage_gateway_endpoint_permission
+    assert _get_after_request_handler(CreateGatewaySecret) == _set_can_manage_gateway_secret_permission
+    assert _get_after_request_handler(CreateGatewayModelDefinition) == _set_can_manage_gateway_model_definition_permission
+
+
+def test_get_after_request_handler_gateway_list():
+    """Test _get_after_request_handler returns correct handlers for gateway list protos"""
+    from mlflow.protos.service_pb2 import ListGatewayEndpoints, ListGatewaySecretInfos, ListGatewayModelDefinitions
+
+    assert _get_after_request_handler(ListGatewayEndpoints) == _filter_list_gateway_endpoints
+    assert _get_after_request_handler(ListGatewaySecretInfos) == _filter_list_gateway_secrets
+    assert _get_after_request_handler(ListGatewayModelDefinitions) == _filter_list_gateway_model_definitions
+
+
+def test_filter_list_gateway_endpoints_admin(mock_response, mock_bridge):
+    """Test that admin users see all gateway endpoints without filtering."""
+    mock_response.json = {"endpoints": [{"name": "ep1"}, {"name": "ep2"}]}
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/list",
+            method="GET",
+            headers={"Content-Type": "application/json"},
+        ),
+        patch(
+            "mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status",
+            return_value=True,
+        ),
+    ):
+        original_json = mock_response.json.copy()
+        _filter_list_gateway_endpoints(mock_response)
+        assert mock_response.json == original_json
+
+
+def test_filter_list_gateway_endpoints_non_admin(mock_response, mock_bridge):
+    """Test that non-admin users only see endpoints they can read."""
+    mock_response.json = {"endpoints": [{"name": "ep1"}, {"name": "ep2"}, {"name": "ep3"}]}
+
+    def can_read_side_effect(name, user):
+        return name in ("ep1", "ep3")
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/list",
+            method="GET",
+            headers={"Content-Type": "application/json"},
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+        patch(
+            "mlflow_oidc_auth.hooks.after_request.message_to_json",
+            return_value='{"endpoints": []}',
+        ),
+    ):
+        mock_response_message = MagicMock()
+        ep1 = MagicMock()
+        ep1.name = "ep1"
+        ep2 = MagicMock()
+        ep2.name = "ep2"
+        ep3 = MagicMock()
+        ep3.name = "ep3"
+        mock_response_message.endpoints = [ep1, ep2, ep3]
+
+        with (
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.ListGatewayEndpoints.Response",
+                return_value=mock_response_message,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_endpoint",
+                side_effect=can_read_side_effect,
+            ),
+        ):
+            _filter_list_gateway_endpoints(mock_response)
+            # ep2 should have been removed
+            assert ep1 in mock_response_message.endpoints
+            assert ep2 not in mock_response_message.endpoints
+            assert ep3 in mock_response_message.endpoints
+
+
+def test_filter_list_gateway_secrets_non_admin(mock_response, mock_bridge):
+    """Test that non-admin users only see secrets they can read."""
+    mock_response.json = {"secrets": [{"secret_name": "s1"}, {"secret_name": "s2"}]}
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/secrets/list",
+            method="GET",
+            headers={"Content-Type": "application/json"},
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+        patch(
+            "mlflow_oidc_auth.hooks.after_request.message_to_json",
+            return_value='{"secrets": []}',
+        ),
+    ):
+        mock_response_message = MagicMock()
+        s1 = MagicMock()
+        s1.secret_name = "s1"
+        s2 = MagicMock()
+        s2.secret_name = "s2"
+        mock_response_message.secrets = [s1, s2]
+
+        with (
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.ListGatewaySecretInfos.Response",
+                return_value=mock_response_message,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_secret",
+                return_value=False,
+            ),
+        ):
+            _filter_list_gateway_secrets(mock_response)
+            # Both should have been removed
+            assert len(mock_response_message.secrets) == 0
+
+
+def test_filter_list_gateway_model_definitions_non_admin(mock_response, mock_bridge):
+    """Test that non-admin users only see model definitions they can read."""
+    mock_response.json = {"model_definitions": [{"name": "md1"}, {"name": "md2"}]}
+
+    with (
+        app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/list",
+            method="GET",
+            headers={"Content-Type": "application/json"},
+        ),
+        patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+        patch(
+            "mlflow_oidc_auth.hooks.after_request.message_to_json",
+            return_value='{"model_definitions": []}',
+        ),
+    ):
+        mock_response_message = MagicMock()
+        md1 = MagicMock()
+        md1.name = "md1"
+        md2 = MagicMock()
+        md2.name = "md2"
+        mock_response_message.model_definitions = [md1, md2]
+
+        with (
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.ListGatewayModelDefinitions.Response",
+                return_value=mock_response_message,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_model_definition",
+                side_effect=lambda name, user: name == "md2",
+            ),
+        ):
+            _filter_list_gateway_model_definitions(mock_response)
+            # Only md2 should remain
+            assert md1 not in mock_response_message.model_definitions
+            assert md2 in mock_response_message.model_definitions
+
+
+def test_get_after_request_handler_gateway_deletes():
+    """Test that delete cascade handlers are registered for gateway resources."""
+    from mlflow.protos.service_pb2 import DeleteGatewayEndpoint, DeleteGatewaySecret, DeleteGatewayModelDefinition
+
+    assert _get_after_request_handler(DeleteGatewayEndpoint) is _delete_gateway_endpoint_permissions_cascade
+    assert _get_after_request_handler(DeleteGatewaySecret) is _delete_gateway_secret_permissions_cascade
+    assert _get_after_request_handler(DeleteGatewayModelDefinition) is _delete_gateway_model_definition_permissions_cascade
+
+
+def test_delete_gateway_endpoint_permissions_cascade(mock_response, mock_store):
+    """Test cascade deletion of gateway endpoint permissions."""
+    with app.test_request_context(
+        path="/api/3.0/mlflow/gateway/endpoints/delete",
+        method="POST",
+    ):
+        from flask import g
+
+        g._deleting_gateway_endpoint_name = "my-endpoint"
+        _delete_gateway_endpoint_permissions_cascade(mock_response)
+        mock_store.wipe_gateway_endpoint_permissions.assert_called_once_with("my-endpoint")
+
+
+def test_delete_gateway_endpoint_permissions_cascade_no_name(mock_response, mock_store):
+    """Test cascade does nothing when no name was stashed."""
+    with app.test_request_context(
+        path="/api/3.0/mlflow/gateway/endpoints/delete",
+        method="POST",
+    ):
+        _delete_gateway_endpoint_permissions_cascade(mock_response)
+        mock_store.wipe_gateway_endpoint_permissions.assert_not_called()
+
+
+def test_delete_gateway_secret_permissions_cascade(mock_response, mock_store):
+    """Test cascade deletion of gateway secret permissions."""
+    with app.test_request_context(
+        path="/api/3.0/mlflow/gateway/secrets/delete",
+        method="POST",
+    ):
+        from flask import g
+
+        g._deleting_gateway_secret_name = "my-secret"
+        _delete_gateway_secret_permissions_cascade(mock_response)
+        mock_store.wipe_gateway_secret_permissions.assert_called_once_with("my-secret")
+
+
+def test_delete_gateway_model_definition_permissions_cascade(mock_response, mock_store):
+    """Test cascade deletion of gateway model definition permissions."""
+    with app.test_request_context(
+        path="/api/3.0/mlflow/gateway/model-definitions/delete",
+        method="POST",
+    ):
+        from flask import g
+
+        g._deleting_gateway_model_definition_name = "my-model-def"
+        _delete_gateway_model_definition_permissions_cascade(mock_response)
+        mock_store.wipe_gateway_model_definition_permissions.assert_called_once_with("my-model-def")

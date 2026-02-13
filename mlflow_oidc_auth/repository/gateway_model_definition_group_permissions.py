@@ -90,3 +90,11 @@ class GatewayModelDefinitionGroupPermissionRepository:
                 .all()
             )
             return [(group_name, perm.permission) for perm, group_name in rows]
+
+    def wipe(self, model_definition_id: str) -> None:
+        """Delete all group-level permissions for a gateway model definition."""
+        with self._Session() as session:
+            perms = session.query(SqlGatewayModelDefinitionGroupPermission).filter(SqlGatewayModelDefinitionGroupPermission.model_definition_id == model_definition_id).all()
+            for p in perms:
+                session.delete(p)
+            session.flush()

@@ -80,3 +80,11 @@ class GatewayEndpointPermissionRepository:
             perm = self._get_permission(session, endpoint_id, username)
             session.delete(perm)
             session.flush()
+
+    def wipe(self, endpoint_id: str) -> None:
+        """Delete all user-level permissions for a gateway endpoint."""
+        with self._Session() as session:
+            perms = session.query(SqlGatewayEndpointPermission).filter(SqlGatewayEndpointPermission.endpoint_id == endpoint_id).all()
+            for p in perms:
+                session.delete(p)
+            session.flush()

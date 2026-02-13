@@ -90,3 +90,11 @@ class GatewaySecretGroupPermissionRepository:
                 .all()
             )
             return [(group_name, perm.permission) for perm, group_name in rows]
+
+    def wipe(self, secret_id: str) -> None:
+        """Delete all group-level permissions for a gateway secret."""
+        with self._Session() as session:
+            perms = session.query(SqlGatewaySecretGroupPermission).filter(SqlGatewaySecretGroupPermission.secret_id == secret_id).all()
+            for p in perms:
+                session.delete(p)
+            session.flush()

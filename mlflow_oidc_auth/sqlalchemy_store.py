@@ -19,6 +19,8 @@ from mlflow_oidc_auth.entities import (
     User,
 )
 from mlflow_oidc_auth.entities.gateway_endpoint import GatewayEndpointGroupRegexPermission
+from mlflow_oidc_auth.entities.gateway_model_definition import GatewayModelDefinitionGroupRegexPermission
+from mlflow_oidc_auth.entities.gateway_secret import GatewaySecretGroupRegexPermission
 from mlflow_oidc_auth.repository import (
     ExperimentPermissionGroupRegexRepository,
     ExperimentPermissionGroupRepository,
@@ -513,6 +515,11 @@ class SqlAlchemyStore:
     def delete_gateway_secret_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_secret_repo.revoke_permission(gateway_name, username)
 
+    def wipe_gateway_secret_permissions(self, gateway_name: str) -> None:
+        """Delete all user and group permissions for a gateway secret."""
+        self.gateway_secret_repo.wipe(gateway_name)
+        self.gateway_secret_group_repo.wipe(gateway_name)
+
     # gateway_secret_group_repo
     def create_group_gateway_secret_permission(self, group_name: str, gateway_name: str, permission: str):
         return self.gateway_secret_group_repo.grant_group_permission(group_name, gateway_name, permission)
@@ -555,6 +562,9 @@ class SqlAlchemyStore:
     def list_group_gateway_secret_regex_permissions(self, group_name: str):
         return self.gateway_secret_group_regex_repo.list_permissions_for_group(group_name)
 
+    def list_group_gateway_secret_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewaySecretGroupRegexPermission]:
+        return self.gateway_secret_group_regex_repo.list_permissions_for_groups_ids(group_ids)
+
     def update_group_gateway_secret_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str):
         return self.gateway_secret_group_regex_repo.update(id, group_name, regex, priority, permission)
 
@@ -577,6 +587,11 @@ class SqlAlchemyStore:
     def delete_gateway_endpoint_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_endpoint_repo.revoke_permission(gateway_name, username)
 
+    def wipe_gateway_endpoint_permissions(self, gateway_name: str) -> None:
+        """Delete all user and group permissions for a gateway endpoint."""
+        self.gateway_endpoint_repo.wipe(gateway_name)
+        self.gateway_endpoint_group_repo.wipe(gateway_name)
+
     # gateway_endpoint_group_repo
     def create_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str, permission: str):
         return self.gateway_endpoint_group_repo.grant_group_permission(group_name, gateway_name, permission)
@@ -584,7 +599,7 @@ class SqlAlchemyStore:
     def list_group_gateway_endpoint_permissions(self, group_name: str):
         return self.gateway_endpoint_group_repo.list_permissions_for_group(group_name)
 
-    def list_group_gateway_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewayEndpointGroupRegexPermission]:
+    def list_group_gateway_endpoint_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewayEndpointGroupRegexPermission]:
         return self.gateway_endpoint_group_regex_repo.list_permissions_for_groups_ids(group_ids)
 
     def get_user_groups_gateway_endpoint_permission(self, gateway_name: str, group_name: str):
@@ -644,6 +659,11 @@ class SqlAlchemyStore:
     def delete_gateway_model_definition_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_model_definition_repo.revoke_permission(gateway_name, username)
 
+    def wipe_gateway_model_definition_permissions(self, gateway_name: str) -> None:
+        """Delete all user and group permissions for a gateway model definition."""
+        self.gateway_model_definition_repo.wipe(gateway_name)
+        self.gateway_model_definition_group_repo.wipe(gateway_name)
+
     # gateway_model_definition_group_repo
     def create_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str, permission: str):
         return self.gateway_model_definition_group_repo.grant_group_permission(group_name, gateway_name, permission)
@@ -685,6 +705,9 @@ class SqlAlchemyStore:
 
     def list_group_gateway_model_definition_regex_permissions(self, group_name: str):
         return self.gateway_model_definition_group_regex_repo.list_permissions_for_group(group_name)
+
+    def list_group_gateway_model_definition_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewayModelDefinitionGroupRegexPermission]:
+        return self.gateway_model_definition_group_regex_repo.list_permissions_for_groups_ids(group_ids)
 
     def update_group_gateway_model_definition_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str):
         return self.gateway_model_definition_group_regex_repo.update(id, group_name, regex, priority, permission)
