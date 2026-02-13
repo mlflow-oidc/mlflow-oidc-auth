@@ -84,7 +84,9 @@ class GatewayModelDefinitionPermissionRepository:
     def wipe(self, model_definition_id: str) -> None:
         """Delete all user-level permissions for a gateway model definition."""
         with self._Session() as session:
-            perms = session.query(SqlGatewayModelDefinitionPermission).filter(SqlGatewayModelDefinitionPermission.model_definition_id == model_definition_id).all()
+            perms = (
+                session.query(SqlGatewayModelDefinitionPermission).filter(SqlGatewayModelDefinitionPermission.model_definition_id == model_definition_id).all()
+            )
             for p in perms:
                 session.delete(p)
             session.flush()
