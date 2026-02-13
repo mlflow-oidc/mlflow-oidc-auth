@@ -419,7 +419,7 @@ describe("RegexPermissionsView", () => {
         type="experiments"
         entityKind="user"
         entityName="user1"
-      />
+      />,
     );
 
     rerender(
@@ -427,7 +427,7 @@ describe("RegexPermissionsView", () => {
         type="models"
         entityKind="user"
         entityName="user1"
-      />
+      />,
     );
 
     expect(defaultSearch.handleClearSearch).toHaveBeenCalled();

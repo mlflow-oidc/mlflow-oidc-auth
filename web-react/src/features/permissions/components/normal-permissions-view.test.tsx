@@ -469,7 +469,7 @@ describe("NormalPermissionsView", () => {
         type="experiments"
         entityKind="user"
         entityName="user1"
-      />
+      />,
     );
 
     rerender(
@@ -477,7 +477,7 @@ describe("NormalPermissionsView", () => {
         type="models"
         entityKind="user"
         entityName="user1"
-      />
+      />,
     );
 
     expect(defaultSearch.handleClearSearch).toHaveBeenCalled();

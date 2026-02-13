@@ -61,7 +61,7 @@ export const NormalPermissionsView = ({
     handleSearchSubmit,
     handleClearSearch,
   } = useSearch();
-  
+
   useEffect(() => {
     handleClearSearch();
   }, [type, handleClearSearch]);

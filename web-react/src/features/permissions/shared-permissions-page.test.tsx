@@ -209,7 +209,7 @@ describe("SharedPermissionsPage", () => {
         entityKind="user"
       />,
     );
- 
+
     expect(screen.getByText("Endpoints")).toBeInTheDocument();
     expect(screen.getByText("AI Secrets")).toBeInTheDocument();
     expect(screen.getByText("AI Models")).toBeInTheDocument();
@@ -247,7 +247,7 @@ describe("SharedPermissionsPage", () => {
     expect(experimentLink.getAttribute("href")).toContain(
       "/users/alice@example.com/experiments",
     );
- 
+
     const modelsLink = screen.getByRole("link", { name: "Models" });
     expect(modelsLink.getAttribute("href")).toContain(
       "/users/alice@example.com/models",
