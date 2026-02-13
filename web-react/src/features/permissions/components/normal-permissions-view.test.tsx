@@ -462,4 +462,24 @@ describe("NormalPermissionsView", () => {
     );
     expect(screen.getByText(/Error/i)).toBeDefined();
   });
+
+  it("clears search when type prop changes", () => {
+    const { rerender } = render(
+      <NormalPermissionsView
+        type="experiments"
+        entityKind="user"
+        entityName="user1"
+      />
+    );
+
+    rerender(
+      <NormalPermissionsView
+        type="models"
+        entityKind="user"
+        entityName="user1"
+      />
+    );
+
+    expect(defaultSearch.handleClearSearch).toHaveBeenCalled();
+  });
 });

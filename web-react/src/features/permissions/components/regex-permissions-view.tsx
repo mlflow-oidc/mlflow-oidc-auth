@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { request } from "../../../core/services/api-utils";
 import { getPermissionUrl } from "../utils/permission-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
@@ -56,6 +56,10 @@ export const RegexPermissionsView = ({
     handleSearchSubmit,
     handleClearSearch,
   } = useSearch();
+
+  useEffect(() => {
+    handleClearSearch();
+  }, [type, handleClearSearch]);
 
   const userExperimentPatternHook = useUserExperimentPatternPermissions({
     username: entityKind === "user" ? entityName : null,

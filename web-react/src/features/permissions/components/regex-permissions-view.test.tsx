@@ -412,4 +412,24 @@ describe("RegexPermissionsView", () => {
     );
     expect(screen.getByText(/Error/i)).toBeDefined();
   });
+
+  it("clears search when type prop changes", () => {
+    const { rerender } = render(
+      <RegexPermissionsView
+        type="experiments"
+        entityKind="user"
+        entityName="user1"
+      />
+    );
+
+    rerender(
+      <RegexPermissionsView
+        type="models"
+        entityKind="user"
+        entityName="user1"
+      />
+    );
+
+    expect(defaultSearch.handleClearSearch).toHaveBeenCalled();
+  });
 });

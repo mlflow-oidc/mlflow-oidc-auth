@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { request } from "../../../core/services/api-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { getPermissionUrl } from "../utils/permission-utils";
@@ -61,6 +61,10 @@ export const NormalPermissionsView = ({
     handleSearchSubmit,
     handleClearSearch,
   } = useSearch();
+  
+  useEffect(() => {
+    handleClearSearch();
+  }, [type, handleClearSearch]);
 
   const userExperimentHook = useUserExperimentPermissions({
     username: entityKind === "user" ? entityName : null,
