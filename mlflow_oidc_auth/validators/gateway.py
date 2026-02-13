@@ -6,7 +6,7 @@ in the Flask before-request hook.
 
 from __future__ import annotations
 
-from flask import g, request
+from flask import request
 
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils import get_request_param
@@ -45,26 +45,26 @@ def validate_can_read_gateway_endpoint(username: str) -> bool:
 def validate_can_update_gateway_endpoint(username: str) -> bool:
     """Validate UPDATE permission on a gateway endpoint.
 
-    Also stashes the resolved name in ``flask.g`` so the after-request
-    rename handler can propagate name changes to permission records.
+    The old name is already stashed in ``flask.g`` by
+    ``_stash_gateway_context`` (which runs for all users).
+    For the permission check we resolve the current endpoint name
+    via ``endpoint_id`` since the request ``name`` is the *new* name.
     """
-    name = _get_gateway_endpoint_name()
+    name = _get_gateway_endpoint_name_for_update()
     if not name:
         return False
-    g._updating_gateway_endpoint_old_name = name
     return can_update_gateway_endpoint(name, username)
 
 
 def validate_can_delete_gateway_endpoint(username: str) -> bool:
     """Validate MANAGE permission for deleting a gateway endpoint.
 
-    Also stashes the resolved name in ``flask.g`` so the after-request
-    cascade handler can clean up associated permissions.
+    The name is already stashed in ``flask.g`` by
+    ``_stash_gateway_context`` (which runs for all users).
     """
     name = _get_gateway_endpoint_name()
     if not name:
         return False
-    g._deleting_gateway_endpoint_name = name
     return can_manage_gateway_endpoint(name, username)
 
 
@@ -103,13 +103,12 @@ def validate_can_update_gateway_secret(username: str) -> bool:
 def validate_can_delete_gateway_secret(username: str) -> bool:
     """Validate MANAGE permission for deleting a gateway secret.
 
-    Also stashes the resolved name in ``flask.g`` so the after-request
-    cascade handler can clean up associated permissions.
+    The name is already stashed in ``flask.g`` by
+    ``_stash_gateway_context`` (which runs for all users).
     """
     name = _get_gateway_secret_name()
     if not name:
         return False
-    g._deleting_gateway_secret_name = name
     return can_manage_gateway_secret(name, username)
 
 
@@ -143,13 +142,12 @@ def validate_can_update_gateway_model_definition(username: str) -> bool:
 def validate_can_delete_gateway_model_definition(username: str) -> bool:
     """Validate MANAGE permission for deleting a gateway model definition.
 
-    Also stashes the resolved name in ``flask.g`` so the after-request
-    cascade handler can clean up associated permissions.
+    The name is already stashed in ``flask.g`` by
+    ``_stash_gateway_context`` (which runs for all users).
     """
     name = _get_gateway_model_definition_name()
     if not name:
         return True
-    g._deleting_gateway_model_definition_name = name
     return can_manage_gateway_model_definition(name, username)
 
 
@@ -204,6 +202,21 @@ def _get_gateway_endpoint_name() -> str | None:
         return get_request_param("name")
     except Exception:
         pass
+    try:
+        endpoint_id = get_request_param("endpoint_id")
+        return _resolve_endpoint_name_from_id(endpoint_id)
+    except Exception:
+        return None
+
+
+def _get_gateway_endpoint_name_for_update() -> str | None:
+    """Extract the *current* gateway endpoint name for update requests.
+
+    Unlike ``_get_gateway_endpoint_name``, this deliberately skips the
+    ``name`` request parameter because in ``UpdateGatewayEndpoint`` the
+    ``name`` field holds the *new* name.  We resolve the current name
+    via ``endpoint_id`` instead.
+    """
     try:
         endpoint_id = get_request_param("endpoint_id")
         return _resolve_endpoint_name_from_id(endpoint_id)

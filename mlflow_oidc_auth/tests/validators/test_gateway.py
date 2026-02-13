@@ -63,12 +63,18 @@ class TestGatewayEndpointValidators:
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/endpoints/update",
             method="POST",
-            json={"name": "my-endpoint"},
+            json={"endpoint_id": "ep-uuid-123", "name": "new-name"},
             content_type="application/json",
         ):
-            with patch(
-                "mlflow_oidc_auth.validators.gateway.can_update_gateway_endpoint",
-                return_value=True,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                    return_value="my-endpoint",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_update_gateway_endpoint",
+                    return_value=True,
+                ),
             ):
                 assert validate_can_update_gateway_endpoint("user1") is True
 
@@ -77,31 +83,30 @@ class TestGatewayEndpointValidators:
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/endpoints/update",
             method="POST",
-            json={"name": "my-endpoint"},
+            json={"endpoint_id": "ep-uuid-123", "name": "new-name"},
             content_type="application/json",
         ):
-            with patch(
-                "mlflow_oidc_auth.validators.gateway.can_update_gateway_endpoint",
-                return_value=False,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                    return_value="my-endpoint",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_update_gateway_endpoint",
+                    return_value=False,
+                ),
             ):
                 assert validate_can_update_gateway_endpoint("user1") is False
 
-    def test_update_gateway_endpoint_stashes_old_name(self):
-        """Test UPDATE stashes old name in flask.g for rename handler."""
+    def test_update_gateway_endpoint_no_endpoint_id(self):
+        """Test UPDATE returns False when endpoint_id cannot be resolved."""
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/endpoints/update",
             method="POST",
-            json={"name": "my-endpoint"},
+            json={"name": "new-name"},
             content_type="application/json",
         ):
-            with patch(
-                "mlflow_oidc_auth.validators.gateway.can_update_gateway_endpoint",
-                return_value=True,
-            ):
-                from flask import g
-
-                validate_can_update_gateway_endpoint("user1")
-                assert g._updating_gateway_endpoint_old_name == "my-endpoint"
+            assert validate_can_update_gateway_endpoint("user1") is False
 
     def test_manage_gateway_endpoint_allowed(self):
         """Test MANAGE when user has permission."""
@@ -143,23 +148,6 @@ class TestGatewayEndpointValidators:
                 return_value=False,
             ):
                 assert validate_can_delete_gateway_endpoint("user1") is False
-
-    def test_delete_gateway_endpoint_stashes_name(self):
-        """Test that delete validator stashes the name in flask.g for cascade."""
-        with app.test_request_context(
-            path="/api/3.0/mlflow/gateway/endpoints/delete",
-            method="POST",
-            json={"name": "my-endpoint"},
-            content_type="application/json",
-        ):
-            from flask import g
-
-            with patch(
-                "mlflow_oidc_auth.validators.gateway.can_manage_gateway_endpoint",
-                return_value=True,
-            ):
-                validate_can_delete_gateway_endpoint("user1")
-                assert g._deleting_gateway_endpoint_name == "my-endpoint"
 
     def test_read_gateway_endpoint_fallback_to_id(self):
         """Test READ falls back to resolving endpoint_id via tracking store."""
@@ -260,23 +248,6 @@ class TestGatewaySecretValidators:
                 return_value=False,
             ):
                 assert validate_can_delete_gateway_secret("user1") is False
-
-    def test_delete_gateway_secret_stashes_name(self):
-        """Test that delete validator stashes the name in flask.g for cascade."""
-        with app.test_request_context(
-            path="/api/3.0/mlflow/gateway/secrets/delete",
-            method="POST",
-            json={"secret_name": "my-secret"},
-            content_type="application/json",
-        ):
-            from flask import g
-
-            with patch(
-                "mlflow_oidc_auth.validators.gateway.can_manage_gateway_secret",
-                return_value=True,
-            ):
-                validate_can_delete_gateway_secret("user1")
-                assert g._deleting_gateway_secret_name == "my-secret"
 
     def test_read_gateway_secret_fallback_to_id(self):
         """Test READ falls back to resolving secret_id via tracking store."""

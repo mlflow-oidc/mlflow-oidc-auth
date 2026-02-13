@@ -7,6 +7,7 @@ from mlflow_oidc_auth.hooks.before_request import (
     _is_proxy_artifact_path,
     _get_proxy_artifact_validator,
     _re_compile_path,
+    _stash_gateway_context,
     BEFORE_REQUEST_VALIDATORS,
     LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS,
 )
@@ -492,3 +493,141 @@ def test_before_request_validators_structure():
         assert isinstance(method, str), f"Method {method} should be a string"
         # Validator should be callable or None (some endpoints may not have validators)
         assert validator is None or callable(validator), f"Validator {validator} should be callable or None"
+
+
+# ---------------------------------------------------------------------------
+# _stash_gateway_context tests
+# ---------------------------------------------------------------------------
+
+
+class TestStashGatewayContext:
+    """Tests for _stash_gateway_context which stashes gateway resource info in flask.g."""
+
+    def test_noop_when_validator_is_none(self):
+        """No stashing occurs when no validator matches the request."""
+        with app.test_request_context(path="/some/random/path", method="GET"):
+            from flask import g
+
+            _stash_gateway_context(None)
+            assert not hasattr(g, "_updating_gateway_endpoint_old_name")
+            assert not hasattr(g, "_deleting_gateway_endpoint_name")
+            assert not hasattr(g, "_deleting_gateway_secret_name")
+            assert not hasattr(g, "_deleting_gateway_model_definition_name")
+
+    def test_stash_update_endpoint_old_name(self):
+        """Stashes old endpoint name on update via endpoint_id resolution."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_update_gateway_endpoint
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/update",
+            method="POST",
+            json={"endpoint_id": "ep-uuid-123", "name": "new-name"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                return_value="old-endpoint-name",
+            ):
+                _stash_gateway_context(validate_can_update_gateway_endpoint)
+                assert g._updating_gateway_endpoint_old_name == "old-endpoint-name"
+
+    def test_stash_delete_endpoint_name(self):
+        """Stashes endpoint name on delete via endpoint_id resolution."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_endpoint
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/delete",
+            method="POST",
+            json={"endpoint_id": "ep-uuid-456"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                return_value="doomed-endpoint",
+            ):
+                _stash_gateway_context(validate_can_delete_gateway_endpoint)
+                assert g._deleting_gateway_endpoint_name == "doomed-endpoint"
+
+    def test_stash_delete_secret_name_from_field(self):
+        """Stashes secret name on delete when secret_name is provided directly."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_secret
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/secrets/delete",
+            method="POST",
+            json={"secret_name": "my-secret"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            _stash_gateway_context(validate_can_delete_gateway_secret)
+            assert g._deleting_gateway_secret_name == "my-secret"
+
+    def test_stash_delete_secret_name_from_id(self):
+        """Stashes secret name on delete via secret_id resolution."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_secret
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/secrets/delete",
+            method="POST",
+            json={"secret_id": "secret-uuid-789"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_secret_name_from_id",
+                return_value="resolved-secret",
+            ):
+                _stash_gateway_context(validate_can_delete_gateway_secret)
+                assert g._deleting_gateway_secret_name == "resolved-secret"
+
+    def test_stash_delete_model_definition_name_from_field(self):
+        """Stashes model definition name on delete when name is provided directly."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_model_definition
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/delete",
+            method="POST",
+            json={"name": "my-model-def"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            _stash_gateway_context(validate_can_delete_gateway_model_definition)
+            assert g._deleting_gateway_model_definition_name == "my-model-def"
+
+    def test_stash_delete_model_definition_name_from_id(self):
+        """Stashes model definition name on delete via model_definition_id resolution."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_model_definition
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/delete",
+            method="POST",
+            json={"model_definition_id": "md-uuid-101"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_model_definition_name_from_id",
+                return_value="resolved-model-def",
+            ):
+                _stash_gateway_context(validate_can_delete_gateway_model_definition)
+                assert g._deleting_gateway_model_definition_name == "resolved-model-def"
+
+    def test_noop_for_unrelated_validator(self):
+        """No stashing for validators not related to gateway operations."""
+        unrelated_validator = MagicMock()
+        with app.test_request_context(path="/api/2.0/mlflow/experiments/get", method="GET"):
+            from flask import g
+
+            _stash_gateway_context(unrelated_validator)
+            assert not hasattr(g, "_updating_gateway_endpoint_old_name")
+            assert not hasattr(g, "_deleting_gateway_endpoint_name")
+            assert not hasattr(g, "_deleting_gateway_secret_name")
+            assert not hasattr(g, "_deleting_gateway_model_definition_name")

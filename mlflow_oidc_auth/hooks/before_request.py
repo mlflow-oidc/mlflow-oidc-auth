@@ -1,7 +1,7 @@
 import re
 from typing import Any, Callable, Dict, Optional
 
-from flask import Request, request
+from flask import Request, g, request
 from mlflow.protos.model_registry_pb2 import (
     CreateModelVersion,
     DeleteModelVersion,
@@ -352,10 +352,12 @@ def before_request_hook():
         return responses.make_auth_required_response()
 
     logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
+    validator = _find_validator(request)
+    _stash_gateway_context(validator)
     if is_admin:
         return
     # authorization
-    if validator := _find_validator(request):
+    if validator:
         if not validator(username):
             return responses.make_forbidden_response()
     elif _is_proxy_artifact_path(request.path):
@@ -365,3 +367,62 @@ def before_request_hook():
 
 
 before_request_hook = catch_mlflow_exception(before_request_hook)
+
+
+def _stash_gateway_context(validator) -> None:
+    """Resolve and stash gateway resource names for after-request handlers.
+
+    This must run for ALL users (including admins) because after-request
+    handlers need the old resource name to propagate permission changes
+    (renames) or clean up permission records (deletes).  The before-request
+    validators run only for non-admin users and therefore cannot be relied
+    upon for stashing.
+
+    The tracking store still has the old name/state at before-request time,
+    so ID-based resolution works correctly here.
+    """
+    if validator is None:
+        return
+
+    from mlflow_oidc_auth.validators.gateway import (
+        _resolve_endpoint_name_from_id,
+        _resolve_secret_name_from_id,
+        _resolve_model_definition_name_from_id,
+    )
+
+    # --- Gateway endpoint: update (rename) or delete ---
+    if validator in (validate_can_update_gateway_endpoint, validate_can_delete_gateway_endpoint):
+        data = request.get_json(force=True, silent=True) or {}
+        endpoint_id = data.get("endpoint_id")
+        if endpoint_id:
+            name = _resolve_endpoint_name_from_id(endpoint_id)
+            if name:
+                if validator is validate_can_update_gateway_endpoint:
+                    g._updating_gateway_endpoint_old_name = name
+                else:
+                    g._deleting_gateway_endpoint_name = name
+        return
+
+    # --- Gateway secret: delete ---
+    if validator is validate_can_delete_gateway_secret:
+        data = request.get_json(force=True, silent=True) or {}
+        secret_name = data.get("secret_name")
+        if not secret_name:
+            secret_id = data.get("secret_id")
+            if secret_id:
+                secret_name = _resolve_secret_name_from_id(secret_id)
+        if secret_name:
+            g._deleting_gateway_secret_name = secret_name
+        return
+
+    # --- Gateway model definition: delete ---
+    if validator is validate_can_delete_gateway_model_definition:
+        data = request.get_json(force=True, silent=True) or {}
+        name = data.get("name")
+        if not name:
+            model_definition_id = data.get("model_definition_id")
+            if model_definition_id:
+                name = _resolve_model_definition_name_from_id(model_definition_id)
+        if name:
+            g._deleting_gateway_model_definition_name = name
+        return
