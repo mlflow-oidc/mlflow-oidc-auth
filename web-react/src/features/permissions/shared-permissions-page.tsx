@@ -89,13 +89,13 @@ export const SharedPermissionsPage = ({
         )}
       </div>
 
-      <div className="flex justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
-        <div className="flex space-x-4">
+      <div className="flex space-x-2 justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3 min-w-0">
+        <div className="flex space-x-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
           {tabs.map((tab) => (
             <Link
               key={tab.id}
               to={`${baseRoute}/${encodeRouteParam(entityName)}/${tab.id}`}
-              className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 ${
+              className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 shrink-0 ${
                 type === tab.id
                   ? "border-btn-primary text-btn-primary dark:border-btn-primary-dark dark:text-btn-primary-dark"
                   : "border-transparent text-text-primary dark:text-text-primary-dark hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark hover:border-btn-secondary-border dark:hover:border-btn-secondary-border-dark"
@@ -110,7 +110,7 @@ export const SharedPermissionsPage = ({
             checked={isRegexMode}
             onChange={setIsRegexMode}
             label={"Regex\u00A0Mode"}
-            className="mr-5"
+            className="mr-2 shrink-0"
             labelClassName={`py-2 px-2 font-medium text-sm transition-colors duration-200 ${
               isRegexMode
                 ? "text-btn-primary dark:text-btn-primary-dark"
