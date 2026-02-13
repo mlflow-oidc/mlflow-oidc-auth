@@ -29,8 +29,9 @@ const localStorageMock = (() => {
 
 Object.defineProperty(window, "localStorage", { value: localStorageMock });
 
+const mockUseParams = vi.fn<() => { username?: string; groupName?: string }>();
 vi.mock("react-router", () => ({
-  useParams: () => ({ username: "testuser" }),
+  useParams: () => mockUseParams(),
   Link: ({
     children,
     to,
@@ -109,6 +110,7 @@ vi.mock("../../shared/components/token-info-block", () => ({
 describe("SharedPermissionsPage", () => {
   beforeEach(() => {
     localStorage.clear();
+    mockUseParams.mockReturnValue({ username: "testuser" });
     mockUseUser.mockReturnValue({
       currentUser: { is_admin: false, username: "testuser" },
     });
@@ -224,5 +226,29 @@ describe("SharedPermissionsPage", () => {
     );
 
     expect(screen.queryByText("Endpoints")).not.toBeInTheDocument();
+  });
+
+  it("encodes entityName in tab links", () => {
+    mockUseParams.mockReturnValue({
+      username: "alice@example.com",
+    });
+
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    const experimentLink = screen.getByText("Experiments");
+    expect(experimentLink.getAttribute("href")).toContain(
+      "/users/alice@example.com/experiments",
+    );
+
+    const modelsLink = screen.getByText("Models");
+    expect(modelsLink.getAttribute("href")).toContain(
+      "/users/alice@example.com/models",
+    );
   });
 });
