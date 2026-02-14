@@ -47,8 +47,22 @@ from mlflow_oidc_auth.models import (
 )
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import effective_experiment_permission, fetch_all_prompts, fetch_all_registered_models, get_is_admin, get_username
+from mlflow_oidc_auth.utils import (
+    effective_experiment_permission,
+    fetch_all_gateway_endpoints,
+    fetch_all_gateway_model_definitions,
+    fetch_all_gateway_secrets,
+    fetch_all_prompts,
+    fetch_all_registered_models,
+    get_is_admin,
+    get_username,
+)
 from mlflow_oidc_auth.utils.batch_permissions import batch_resolve_experiment_permissions, batch_resolve_model_permissions, batch_resolve_prompt_permissions
+from mlflow_oidc_auth.utils.permissions import (
+    effective_gateway_endpoint_permission,
+    effective_gateway_model_definition_permission,
+    effective_gateway_secret_permission,
+)
 
 from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
 
@@ -1643,12 +1657,34 @@ async def delete_user_registered_model_regex_permission(
 )
 async def get_user_gateway_endpoint_permissions(
     username: str = Path(..., description="The username to get gateway endpoint permissions for"),
-    admin_username: str = Depends(check_admin_permission),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
 ) -> List[NamedPermissionSummary]:
-    """List gateway endpoint permissions for a user."""
+    """List gateway endpoint permissions for a user.
+
+    - Admins see all gateway endpoints with the target user's effective permissions.
+    - The target user sees endpoints where their effective permission is not NO_PERMISSIONS.
+    - Other users see only endpoints they themselves can MANAGE.
+    """
     try:
-        perms = store.list_gateway_endpoint_permissions(username=username)
-        return [NamedPermissionSummary(name=p.endpoint_id, permission=p.permission, kind="user") for p in perms]
+        all_endpoints = fetch_all_gateway_endpoints()
+
+        results: list[NamedPermissionSummary] = []
+        for ep in all_endpoints:
+            ep_name = ep.get("name", "")
+            if not ep_name:
+                continue
+            perm_result = effective_gateway_endpoint_permission(ep_name, username)
+            if is_admin:
+                results.append(NamedPermissionSummary(name=ep_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            elif current_username == username:
+                if perm_result.permission.name != NO_PERMISSIONS.name:
+                    results.append(NamedPermissionSummary(name=ep_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            else:
+                caller_perm = effective_gateway_endpoint_permission(ep_name, current_username)
+                if caller_perm.permission.can_manage:
+                    results.append(NamedPermissionSummary(name=ep_name, permission=perm_result.permission.name, kind=perm_result.kind))
+        return results
     except Exception as e:
         logger.error(f"Error listing gateway endpoint permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway endpoint permissions")
@@ -1870,12 +1906,34 @@ async def delete_user_gateway_endpoint_pattern_permission(
 )
 async def get_user_gateway_model_definition_permissions(
     username: str = Path(..., description="The username to get gateway model definition permissions for"),
-    admin_username: str = Depends(check_admin_permission),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
 ) -> List[NamedPermissionSummary]:
-    """List gateway model definition permissions for a user."""
+    """List gateway model definition permissions for a user.
+
+    - Admins see all gateway model definitions with the target user's effective permissions.
+    - The target user sees model definitions where their effective permission is not NO_PERMISSIONS.
+    - Other users see only model definitions they themselves can MANAGE.
+    """
     try:
-        perms = store.list_gateway_model_definition_permissions(username=username)
-        return [NamedPermissionSummary(name=p.model_definition_id, permission=p.permission, kind="user") for p in perms]
+        all_models = fetch_all_gateway_model_definitions()
+
+        results: list[NamedPermissionSummary] = []
+        for md in all_models:
+            md_name = md.get("name", "")
+            if not md_name:
+                continue
+            perm_result = effective_gateway_model_definition_permission(md_name, username)
+            if is_admin:
+                results.append(NamedPermissionSummary(name=md_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            elif current_username == username:
+                if perm_result.permission.name != NO_PERMISSIONS.name:
+                    results.append(NamedPermissionSummary(name=md_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            else:
+                caller_perm = effective_gateway_model_definition_permission(md_name, current_username)
+                if caller_perm.permission.can_manage:
+                    results.append(NamedPermissionSummary(name=md_name, permission=perm_result.permission.name, kind=perm_result.kind))
+        return results
     except Exception as e:
         logger.error(f"Error listing gateway model definition permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway model definition permissions")
@@ -2097,12 +2155,34 @@ async def delete_user_gateway_model_definition_pattern_permission(
 )
 async def get_user_gateway_secret_permissions(
     username: str = Path(..., description="The username to get gateway secret permissions for"),
-    admin_username: str = Depends(check_admin_permission),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
 ) -> List[NamedPermissionSummary]:
-    """List gateway secret permissions for a user."""
+    """List gateway secret permissions for a user.
+
+    - Admins see all gateway secrets with the target user's effective permissions.
+    - The target user sees secrets where their effective permission is not NO_PERMISSIONS.
+    - Other users see only secrets they themselves can MANAGE.
+    """
     try:
-        perms = store.list_gateway_secret_permissions(username=username)
-        return [NamedPermissionSummary(name=p.secret_id, permission=p.permission, kind="user") for p in perms]
+        all_secrets = fetch_all_gateway_secrets()
+
+        results: list[NamedPermissionSummary] = []
+        for secret in all_secrets:
+            secret_name = secret.get("secret_name") or secret.get("name") or secret.get("key", "")
+            if not secret_name:
+                continue
+            perm_result = effective_gateway_secret_permission(secret_name, username)
+            if is_admin:
+                results.append(NamedPermissionSummary(name=secret_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            elif current_username == username:
+                if perm_result.permission.name != NO_PERMISSIONS.name:
+                    results.append(NamedPermissionSummary(name=secret_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            else:
+                caller_perm = effective_gateway_secret_permission(secret_name, current_username)
+                if caller_perm.permission.can_manage:
+                    results.append(NamedPermissionSummary(name=secret_name, permission=perm_result.permission.name, kind=perm_result.kind))
+        return results
     except Exception as e:
         logger.error(f"Error listing gateway secret permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway secret permissions")
