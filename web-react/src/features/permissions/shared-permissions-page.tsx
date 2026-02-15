@@ -64,7 +64,7 @@ export const SharedPermissionsPage = ({
     { id: "prompts", label: "Prompts" },
     ...(genAiGatewayEnabled
       ? [
-          { id: "endpoints", label: "Endpoints" },
+          { id: "ai-endpoints", label: "AI\u00A0Endpoints" },
           { id: "ai-secrets", label: "AI\u00A0Secrets" },
           { id: "ai-models", label: "AI\u00A0Models" },
         ]

@@ -82,7 +82,7 @@ describe("getPermissionUrl", () => {
       const url = getPermissionUrl({
         entityKind: "user",
         entityName,
-        type: "endpoints",
+        type: "ai-endpoints",
         identifier,
       });
       expect(url).toBe(
@@ -94,7 +94,7 @@ describe("getPermissionUrl", () => {
       const url = getPermissionUrl({
         entityKind: "group",
         entityName,
-        type: "endpoints",
+        type: "ai-endpoints",
         identifier,
       });
       expect(url).toBe(
@@ -220,7 +220,7 @@ describe("getPermissionUrl", () => {
       const url = getPermissionUrl({
         entityKind: "user",
         entityName,
-        type: "endpoints",
+        type: "ai-endpoints",
       });
       expect(url).toBe(
         `/api/2.0/mlflow/permissions/users/${entityName}/gateways/endpoints`,
@@ -231,7 +231,7 @@ describe("getPermissionUrl", () => {
       const url = getPermissionUrl({
         entityKind: "group",
         entityName,
-        type: "endpoints",
+        type: "ai-endpoints",
       });
       expect(url).toBe(
         `/api/2.0/mlflow/permissions/groups/${entityName}/gateways/endpoints`,
@@ -366,7 +366,7 @@ describe("getPermissionUrl", () => {
       const url = getPermissionUrl({
         entityKind: "user",
         entityName,
-        type: "endpoints",
+        type: "ai-endpoints",
         isPattern: true,
         identifier,
       });
@@ -379,7 +379,7 @@ describe("getPermissionUrl", () => {
       const url = getPermissionUrl({
         entityKind: "group",
         entityName,
-        type: "endpoints",
+        type: "ai-endpoints",
         isPattern: true,
         identifier,
       });
@@ -518,7 +518,7 @@ describe("getPermissionUrl", () => {
       const url = getPermissionUrl({
         entityKind: "user",
         entityName,
-        type: "endpoints",
+        type: "ai-endpoints",
         isPattern: true,
       });
       expect(url).toBe(
@@ -530,7 +530,7 @@ describe("getPermissionUrl", () => {
       const url = getPermissionUrl({
         entityKind: "group",
         entityName,
-        type: "endpoints",
+        type: "ai-endpoints",
         isPattern: true,
       });
       expect(url).toBe(

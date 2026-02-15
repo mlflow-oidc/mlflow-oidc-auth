@@ -37,7 +37,7 @@ export const UserPage = () => {
       experiments: experimentHook,
       models: modelHook,
       prompts: promptHook,
-      endpoints: endpointHook,
+      "ai-endpoints": endpointHook,
       "ai-secrets": secretHook,
       "ai-models": modelGatewayHook,
     }[
@@ -46,7 +46,7 @@ export const UserPage = () => {
         | "experiments"
         | "models"
         | "prompts"
-        | "endpoints"
+        | "ai-endpoints"
         | "ai-secrets"
         | "ai-models"
     ] || null;
@@ -70,7 +70,7 @@ export const UserPage = () => {
     { id: "models", label: "Models" },
     ...(genAiGatewayEnabled
       ? [
-          { id: "endpoints", label: "Endpoints" },
+          { id: "ai-endpoints", label: "AI\u00A0Endpoints" },
           { id: "ai-secrets", label: "AI\u00A0Secrets" },
           { id: "ai-models", label: "AI\u00A0Models" },
         ]

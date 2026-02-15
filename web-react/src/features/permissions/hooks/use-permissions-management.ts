@@ -74,7 +74,7 @@ export function usePermissionsManagement({
                   editingItem.name,
                   resourceId,
                 );
-        } else if (resourceType === "endpoints") {
+        } else if (resourceType === "ai-endpoints") {
           url =
             editingItem.kind === "group"
               ? DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSION(
@@ -167,7 +167,7 @@ export function usePermissionsManagement({
                   item.name,
                   resourceId,
                 );
-        } else if (resourceType === "endpoints") {
+        } else if (resourceType === "ai-endpoints") {
           url =
             item.kind === "group"
               ? DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSION(
@@ -250,7 +250,7 @@ export function usePermissionsManagement({
             kind === "group"
               ? DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSION(name, resourceId)
               : DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSION(name, resourceId);
-        } else if (resourceType === "endpoints") {
+        } else if (resourceType === "ai-endpoints") {
           url =
             kind === "group"
               ? DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSION(

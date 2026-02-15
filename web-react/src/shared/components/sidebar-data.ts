@@ -57,7 +57,7 @@ export const getSidebarData = (
     const aiLinks: NavLinkData[] = [
       {
         label: "AI Endpoints",
-        href: "/ai-gateway/endpoints",
+        href: "/ai-gateway/ai-endpoints",
         isInternalLink: true,
         icon: faLink,
       },

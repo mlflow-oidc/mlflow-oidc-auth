@@ -109,7 +109,7 @@ export const RegexPermissionsView = ({
           experiments: userExperimentPatternHook,
           models: userModelPatternHook,
           prompts: userPromptPatternHook,
-          endpoints: userGatewayEndpointPatternHook,
+          "ai-endpoints": userGatewayEndpointPatternHook,
           "ai-secrets": userGatewaySecretPatternHook,
           "ai-models": userGatewayModelPatternHook,
         }[type]
@@ -117,7 +117,7 @@ export const RegexPermissionsView = ({
           experiments: groupExperimentPatternHook,
           models: groupModelPatternHook,
           prompts: groupPromptPatternHook,
-          endpoints: groupGatewayEndpointPatternHook,
+          "ai-endpoints": groupGatewayEndpointPatternHook,
           "ai-secrets": groupGatewaySecretPatternHook,
           "ai-models": groupGatewayModelPatternHook,
         }[type];

@@ -30,7 +30,7 @@ export default function AiEndpointsPage() {
     <div className="invisible group-hover:visible">
       <RowActionButton
         entityId={endpoint.name}
-        route="/ai-gateway/endpoints"
+        route="/ai-gateway/ai-endpoints"
         buttonText="Manage permissions"
       />
     </div>

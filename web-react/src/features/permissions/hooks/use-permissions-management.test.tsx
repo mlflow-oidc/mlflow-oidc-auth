@@ -136,13 +136,13 @@ describe("usePermissionsManagement", () => {
       expectedUrl: "/api/2.0/mlflow/permissions/groups/name1/prompts/id1",
     },
     {
-      type: "endpoints",
+      type: "ai-endpoints",
       kind: "user",
       expectedUrl:
         "/api/2.0/mlflow/permissions/users/name1/gateways/endpoints/id1",
     },
     {
-      type: "endpoints",
+      type: "ai-endpoints",
       kind: "group",
       expectedUrl:
         "/api/2.0/mlflow/permissions/groups/name1/gateways/endpoints/id1",

@@ -208,7 +208,7 @@ describe("RegexPermissionsView", () => {
     "experiments",
     "models",
     "prompts",
-    "endpoints",
+    "ai-endpoints",
     "ai-secrets",
     "ai-models",
   ];
@@ -217,7 +217,7 @@ describe("RegexPermissionsView", () => {
     if (type === "experiments") return "experiment-patterns";
     if (type === "models") return "registered-models-patterns";
     if (type === "prompts") return "prompts-patterns";
-    if (type === "endpoints") return "gateways/endpoints-patterns";
+    if (type === "ai-endpoints") return "gateways/endpoints-patterns";
     if (type === "ai-secrets") return "gateways/secrets-patterns";
     return "gateways/model-definitions-patterns";
   };

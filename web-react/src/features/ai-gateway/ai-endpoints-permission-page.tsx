@@ -40,7 +40,7 @@ export default function AiEndpointsPermissionPage() {
       title={`Permissions for Endpoint ${name}`}
       resourceId={name}
       resourceName={name}
-      resourceType="endpoints"
+      resourceType="ai-endpoints"
       userPermissions={userPermissions}
       groupPermissions={groupPermissions}
       isLoading={isLoading}

@@ -44,12 +44,12 @@ describe("PermissionLevelSelect", () => {
     ]);
   });
 
-  it("renders gateway permission levels options (including USE) when type is endpoints", () => {
+  it("renders gateway permission levels options (including USE) when type is ai-endpoints", () => {
     render(
       <PermissionLevelSelect
         value="READ"
         onChange={vi.fn()}
-        type="endpoints"
+        type="ai-endpoints"
       />,
     );
 

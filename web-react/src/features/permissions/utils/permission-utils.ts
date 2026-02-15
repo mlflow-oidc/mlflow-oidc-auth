@@ -52,7 +52,7 @@ export const getPermissionUrl = ({
               identifier,
             );
       }
-      if (type === "endpoints") {
+      if (type === "ai-endpoints") {
         return entityKind === "user"
           ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION(
               entityName,
@@ -106,7 +106,7 @@ export const getPermissionUrl = ({
           ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSIONS(entityName)
           : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSIONS(entityName);
       }
-      if (type === "endpoints") {
+      if (type === "ai-endpoints") {
         return entityKind === "user"
           ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS(
               entityName,
@@ -164,7 +164,7 @@ export const getPermissionUrl = ({
               identifier,
             );
       }
-      if (type === "endpoints") {
+      if (type === "ai-endpoints") {
         return entityKind === "user"
           ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSION(
               entityName,
@@ -214,7 +214,7 @@ export const getPermissionUrl = ({
           ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSIONS(entityName)
           : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSIONS(entityName);
       }
-      if (type === "endpoints") {
+      if (type === "ai-endpoints") {
         return entityKind === "user"
           ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSIONS(entityName)
           : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSIONS(

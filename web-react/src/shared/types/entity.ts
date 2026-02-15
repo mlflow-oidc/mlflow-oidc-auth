@@ -26,7 +26,7 @@ export type PermissionType =
   | "experiments"
   | "models"
   | "prompts"
-  | "endpoints"
+  | "ai-endpoints"
   | "ai-secrets"
   | "ai-models";
 

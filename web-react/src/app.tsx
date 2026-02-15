@@ -79,7 +79,7 @@ export default function App() {
   return (
     <Routes>
       <Route
-        path="/ai-gateway/endpoints"
+        path="/ai-gateway/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
             <AiEndpointsPage />
@@ -87,7 +87,7 @@ export default function App() {
         }
       />
       <Route
-        path="/ai-gateway/endpoints/:name"
+        path="/ai-gateway/ai-endpoints/:name"
         element={
           <ProtectedLayoutRoute>
             <AiEndpointsPermissionPage />
@@ -183,10 +183,10 @@ export default function App() {
         }
       />
       <Route
-        path="/groups/:groupName/endpoints"
+        path="/groups/:groupName/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
-            <GroupPermissionsPage type="endpoints" />
+            <GroupPermissionsPage type="ai-endpoints" />
           </ProtectedLayoutRoute>
         }
       />
@@ -271,10 +271,10 @@ export default function App() {
         }
       />
       <Route
-        path="/service-accounts/:username/endpoints"
+        path="/service-accounts/:username/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
-            <ServiceAccountPermissionPage type="endpoints" />
+            <ServiceAccountPermissionPage type="ai-endpoints" />
           </ProtectedLayoutRoute>
         }
       />
@@ -344,10 +344,10 @@ export default function App() {
         }
       />
       <Route
-        path="/users/:username/endpoints"
+        path="/users/:username/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
-            <UserPermissionsPage type="endpoints" />
+            <UserPermissionsPage type="ai-endpoints" />
           </ProtectedLayoutRoute>
         }
       />

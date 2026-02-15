@@ -121,18 +121,18 @@ describe("App Routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders AiEndpointsPage on /ai-gateway/endpoints", async () => {
+  it("renders AiEndpointsPage on /ai-gateway/ai-endpoints", async () => {
     render(
-      <MemoryRouter initialEntries={["/ai-gateway/endpoints"]}>
+      <MemoryRouter initialEntries={["/ai-gateway/ai-endpoints"]}>
         <App />
       </MemoryRouter>,
     );
     expect(await screen.findByText("AiEndpointsPage")).toBeInTheDocument();
   });
 
-  it("renders AiEndpointsPermissionPage on /ai-gateway/endpoints/:name", async () => {
+  it("renders AiEndpointsPermissionPage on /ai-gateway/ai-endpoints/:name", async () => {
     render(
-      <MemoryRouter initialEntries={["/ai-gateway/endpoints/test-endpoint"]}>
+      <MemoryRouter initialEntries={["/ai-gateway/ai-endpoints/test-endpoint"]}>
         <App />
       </MemoryRouter>,
     );

@@ -110,7 +110,7 @@ export const NormalPermissionsView = ({
           experiments: userExperimentHook,
           models: userModelHook,
           prompts: userPromptHook,
-          endpoints: userGatewayEndpointHook,
+          "ai-endpoints": userGatewayEndpointHook,
           "ai-secrets": userGatewaySecretHook,
           "ai-models": userGatewayModelHook,
         }[type]
@@ -118,7 +118,7 @@ export const NormalPermissionsView = ({
           experiments: groupExperimentHook,
           models: groupModelHook,
           prompts: groupPromptHook,
-          endpoints: groupGatewayEndpointHook,
+          "ai-endpoints": groupGatewayEndpointHook,
           "ai-secrets": groupGatewaySecretHook,
           "ai-models": groupGatewayModelHook,
         }[type];
@@ -155,7 +155,7 @@ export const NormalPermissionsView = ({
         .filter((p) => !existingNames.has(p.name))
         .map((p) => p.name);
     }
-    if (type === "endpoints") {
+    if (type === "ai-endpoints") {
       return (allGatewayEndpoints || [])
         .filter((e) => !existingNames.has(e.name))
         .map((e) => e.name);
@@ -374,7 +374,7 @@ export const NormalPermissionsView = ({
                         ? "secret"
                         : type === "ai-models"
                           ? "AI model"
-                          : "endpoint"}
+                          : "AI endpoint"}
               </Button>
             )}
           </div>
@@ -416,7 +416,7 @@ export const NormalPermissionsView = ({
                   ? "secret"
                   : type === "ai-models"
                     ? "AI model"
-                    : "endpoint"
+                    : "AI Endpoint"
         } permissions for ${entityName}`}
         label={
           type === "experiments"
@@ -429,7 +429,7 @@ export const NormalPermissionsView = ({
                   ? "Secret"
                   : type === "ai-models"
                     ? "AI Model"
-                    : "Endpoint"
+                    : "AI Endpoint"
         }
         options={availableEntities}
         type={type}

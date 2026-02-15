@@ -41,7 +41,7 @@ export const PermissionLevelSelect: React.FC<PermissionLevelSelectProps> = ({
   containerClassName,
 }) => {
   const levels =
-    type === "endpoints" || type === "ai-secrets" || type === "ai-models"
+    type === "ai-endpoints" || type === "ai-secrets" || type === "ai-models"
       ? AI_GATEWAY_PERMISSION_LEVELS
       : DEFAULT_PERMISSION_LEVELS;
 

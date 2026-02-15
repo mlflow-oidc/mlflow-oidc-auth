@@ -210,7 +210,7 @@ describe("SharedPermissionsPage", () => {
       />,
     );
 
-    expect(screen.getByText("Endpoints")).toBeInTheDocument();
+    expect(screen.getByText("AI Endpoints")).toBeInTheDocument();
     expect(screen.getByText("AI Secrets")).toBeInTheDocument();
     expect(screen.getByText("AI Models")).toBeInTheDocument();
   });
@@ -227,7 +227,7 @@ describe("SharedPermissionsPage", () => {
       />,
     );
 
-    expect(screen.queryByText("Endpoints")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI Endpoints")).not.toBeInTheDocument();
   });
 
   it("encodes entityName in tab links", () => {

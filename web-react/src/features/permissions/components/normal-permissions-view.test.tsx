@@ -258,7 +258,7 @@ describe("NormalPermissionsView", () => {
     "experiments",
     "models",
     "prompts",
-    "endpoints",
+    "ai-endpoints",
     "ai-secrets",
     "ai-models",
   ];
@@ -269,7 +269,7 @@ describe("NormalPermissionsView", () => {
         if (t === "experiments") return "new1";
         if (t === "models") return "New Model";
         if (t === "prompts") return "New Prompt";
-        if (t === "endpoints") return "New Endpoint";
+        if (t === "ai-endpoints") return "New Endpoint";
         if (t === "ai-secrets") return "New Secret";
         if (t === "ai-models") return "New AI Model";
         throw new Error(`Unknown type in getExpectedValue: ${t}`);
@@ -307,7 +307,7 @@ describe("NormalPermissionsView", () => {
                   ? /Add secret/i
                   : type === "ai-models"
                     ? /Add AI model/i
-                    : /Add endpoint/i;
+                    : /Add AI endpoint/i;
         fireEvent.click(screen.getByText(addText));
 
         const labelText =
@@ -321,7 +321,7 @@ describe("NormalPermissionsView", () => {
                   ? /Secret/i
                   : type === "ai-models"
                     ? /AI Model/i
-                    : /Endpoint/i;
+                    : /AI Endpoint/i;
         const select = screen.getByLabelText(labelText);
         fireEvent.change(select, { target: { value: getExpectedValue(type) } });
 
@@ -331,7 +331,7 @@ describe("NormalPermissionsView", () => {
         await waitFor(() => {
           expect(httpModule.http).toHaveBeenCalledWith(
             expect.stringContaining(
-              `/api/2.0/mlflow/permissions/groups/group1/${type === "models" ? "registered-models" : type === "endpoints" ? "gateways/endpoints" : type === "ai-secrets" ? "gateways/secrets" : type === "ai-models" ? "gateways/model-definitions" : type}`,
+              `/api/2.0/mlflow/permissions/groups/group1/${type === "models" ? "registered-models" : type === "ai-endpoints" ? "gateways/endpoints" : type === "ai-secrets" ? "gateways/secrets" : type === "ai-models" ? "gateways/model-definitions" : type}`,
             ),
             expect.objectContaining({ method: "POST" }),
           );
@@ -354,7 +354,7 @@ describe("NormalPermissionsView", () => {
         await waitFor(() => {
           expect(httpModule.http).toHaveBeenCalledWith(
             expect.stringContaining(
-              `/api/2.0/mlflow/permissions/users/user1/${type === "models" ? "registered-models" : type === "endpoints" ? "gateways/endpoints" : type === "ai-secrets" ? "gateways/secrets" : type === "ai-models" ? "gateways/model-definitions" : type}`,
+              `/api/2.0/mlflow/permissions/users/user1/${type === "models" ? "registered-models" : type === "ai-endpoints" ? "gateways/endpoints" : type === "ai-secrets" ? "gateways/secrets" : type === "ai-models" ? "gateways/model-definitions" : type}`,
             ),
             expect.objectContaining({ method: "DELETE" }),
           );

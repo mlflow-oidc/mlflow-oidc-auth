@@ -113,18 +113,18 @@ describe("UserPage", () => {
 
   it("renders AI Gateway tabs when enabled", () => {
     render(<UserPage />);
-    expect(screen.getByText("Endpoints")).toBeInTheDocument();
-    expect(screen.getByText("AI Secrets")).toBeInTheDocument();
-    expect(screen.getByText("AI Models")).toBeInTheDocument();
+    expect(screen.getByText(/AI\sEndpoints/)).toBeInTheDocument();
+    expect(screen.getByText(/AI\sSecrets/)).toBeInTheDocument();
+    expect(screen.getByText(/AI\sModels/)).toBeInTheDocument();
   });
 
   it("links have correct hrefs", () => {
     render(<UserPage />);
-    expect(screen.getByText("Endpoints").closest("a")).toHaveAttribute(
+    expect(screen.getByText(/AI\sEndpoints/).closest("a")).toHaveAttribute(
       "href",
-      "/user/endpoints",
+      "/user/ai-endpoints",
     );
-    expect(screen.getByText("AI Secrets").closest("a")).toHaveAttribute(
+    expect(screen.getByText(/AI\sSecrets/).closest("a")).toHaveAttribute(
       "href",
       "/user/ai-secrets",
     );
