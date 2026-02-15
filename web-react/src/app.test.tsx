@@ -13,6 +13,18 @@ vi.mock("./features/experiments/experiments-page", () => ({
 vi.mock("./features/experiments/experiment-permissions-page", () => ({
   default: () => <div>ExperimentPermissionsPage</div>,
 }));
+vi.mock("./features/ai-gateway/ai-endpoints-page", () => ({
+  default: () => <div>AiEndpointsPage</div>,
+}));
+vi.mock("./features/ai-gateway/ai-endpoints-permission-page", () => ({
+  default: () => <div>AiEndpointsPermissionPage</div>,
+}));
+vi.mock("./features/ai-gateway/ai-secrets-page", () => ({
+  default: () => <div>AiSecretsPage</div>,
+}));
+vi.mock("./features/ai-gateway/ai-models-page", () => ({
+  default: () => <div>AiModelsPage</div>,
+}));
 vi.mock("./features/groups/groups-page", () => ({
   default: () => <div>GroupsPage</div>,
 }));
@@ -107,6 +119,44 @@ describe("App Routing", () => {
     expect(
       await screen.findByText("ExperimentPermissionsPage"),
     ).toBeInTheDocument();
+  });
+
+  it("renders AiEndpointsPage on /ai-gateway/ai-endpoints", async () => {
+    render(
+      <MemoryRouter initialEntries={["/ai-gateway/ai-endpoints"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("AiEndpointsPage")).toBeInTheDocument();
+  });
+
+  it("renders AiEndpointsPermissionPage on /ai-gateway/ai-endpoints/:name", async () => {
+    render(
+      <MemoryRouter initialEntries={["/ai-gateway/ai-endpoints/test-endpoint"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByText("AiEndpointsPermissionPage"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders AiSecretsPage on /ai-gateway/secrets", async () => {
+    render(
+      <MemoryRouter initialEntries={["/ai-gateway/secrets"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("AiSecretsPage")).toBeInTheDocument();
+  });
+
+  it("renders AiModelsPage on /ai-gateway/models", async () => {
+    render(
+      <MemoryRouter initialEntries={["/ai-gateway/models"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("AiModelsPage")).toBeInTheDocument();
   });
 
   it("renders NotFoundPage on unknown route", async () => {

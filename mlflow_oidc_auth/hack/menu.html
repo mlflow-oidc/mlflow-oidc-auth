@@ -1,66 +1,139 @@
 <script>
-    function makeRequest(url, callback) {
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState === XMLHttpRequest.DONE) {
-                if (xhr.status === 200) {
-                    callback(null, JSON.parse(xhr.responseText));
-                } else {
-                    callback(xhr.status);
-                }
-            }
+    (function () {
+        "use strict";
+
+        var ICONS = {
+            user: "M224 248a120 120 0 1 0 0-240 120 120 0 1 0 0 240zm-29.7 56" +
+                "C95.8 304 16 383.8 16 482.3 16 498.7 29.3 512 45.7 512l356.6 0" +
+                "c16.4 0 29.7-13.3 29.7-29.7 0-98.5-79.8-178.3-178.3-178.3l-59.4 0z",
+            lock: "M128 96l0 64 128 0 0-64c0-35.3-28.7-64-64-64s-64 28.7-64 64z" +
+                "M64 160l0-64C64 25.3 121.3-32 192-32S320 25.3 320 96l0 64" +
+                "c35.3 0 64 28.7 64 64l0 224c0 35.3-28.7 64-64 64L64 512" +
+                "c-35.3 0-64-28.7-64-64L0 224c0-35.3 28.7-64 64-64z",
+            logout: "M224 160C241.7 160 256 145.7 256 128C256 110.3 241.7 96 224 96" +
+                "L160 96C107 96 64 139 64 192L64 448C64 501 107 544 160 544L224 544" +
+                "C241.7 544 256 529.7 256 512C256 494.3 241.7 480 224 480L160 480" +
+                "C142.3 480 128 465.7 128 448L128 192C128 174.3 142.3 160 160 160" +
+                "L224 160zM566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L438.6 169.3" +
+                "C426.1 156.8 405.8 156.8 393.3 169.3C380.8 181.8 380.8 202.1 393.3 214.6" +
+                "L466.7 288L256 288C238.3 288 224 302.3 224 320C224 337.7 238.3 352 256 352" +
+                "L466.7 352L393.3 425.4C380.8 437.9 380.8 458.2 393.3 470.7" +
+                "C405.8 483.2 426.1 483.2 438.6 470.7L566.6 342.7z"
         };
-        xhr.open("GET", url, true);
-        xhr.send();
-    }
 
-    function waitForDocsLink(callback) {
-        var docsLink = document.querySelector('a[href="https://www.mlflow.org/docs/latest/index.html"]');
-        if (docsLink) {
-            callback(docsLink);
-            return;
-        }
-        var observer = new MutationObserver(function (mutations, obs) {
-            var docsLink = document.querySelector('a[href="https://www.mlflow.org/docs/latest/index.html"]');
-            if (docsLink) {
-                obs.disconnect();
-                callback(docsLink);
-            }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-    }
+        // viewBox sizes that match each icon's original coordinate space
+        var VIEWBOXES = { user: "0 0 448 512", lock: "0 0 384 512", logout: "0 0 640 640" };
 
-    document.addEventListener("DOMContentLoaded", function () {
-        function addLinks(username, oidcLink, logoutLink, docsLink) {
-            var parentDiv = docsLink.parentElement;
-            function createLinkElement(text, link) {
-                var linkElement = document.createElement('a');
-                linkElement.href = link;
-                linkElement.classList.add('css-3cyd2n');
-                var divElement = document.createElement('div');
-                divElement.className = 'docs';
-                var spanElement = document.createElement('span');
-                spanElement.textContent = text;
-                divElement.appendChild(spanElement);
-                linkElement.appendChild(divElement);
-                return linkElement;
-            }
-            parentDiv.appendChild(createLinkElement(username, '#'));
-            parentDiv.appendChild(createLinkElement('Permissions', oidcLink));
-            parentDiv.appendChild(createLinkElement('Logout', logoutLink));
+        // ── Menu items to inject (order preserved) ──────────────────────
+        // {label, href, icon} — icon key into ICONS / VIEWBOXES
+        var MENU_ITEMS = [
+            { label: null, href: "#", icon: "user" },
+            { label: "Permissions", href: "oidc/ui/user", icon: "lock" },
+            { label: "Logout", href: "logout", icon: "logout" }
+        ];
+
+        // ── Helpers ─────────────────────────────────────────────────────
+
+        /** Build an SVG string from an icon key. */
+        function svgFor(key) {
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" ' +
+                'fill="none" viewBox="' + VIEWBOXES[key] + '" aria-hidden="true" ' +
+                'focusable="false"><path fill="currentColor" d="' + ICONS[key] + '"></path></svg>';
         }
-        // Get username and add links after Docs
-        makeRequest("api/2.0/mlflow/users/current", function (error, response) {
-            if (error) {
-                console.error("Error fetching username:", error);
-                return;
+
+        /** Simple GET-JSON via XHR. */
+        function getJSON(url, cb) {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState !== XMLHttpRequest.DONE) return;
+                if (xhr.status === 200) cb(null, JSON.parse(xhr.responseText));
+                else cb(xhr.status);
+            };
+            xhr.open("GET", url, true);
+            xhr.send();
+        }
+
+        /** Wait for a DOM element to appear, then invoke cb(element). */
+        function waitForElement(selector, cb) {
+            var el = document.querySelector(selector);
+            if (el) { cb(el); return; }
+            var obs = new MutationObserver(function (_, o) {
+                el = document.querySelector(selector);
+                if (el) { o.disconnect(); cb(el); }
+            });
+            obs.observe(document.body, { childList: true, subtree: true });
+        }
+
+        // ── Core ────────────────────────────────────────────────────────
+
+        function injectMenu(username, settingsLink) {
+            var settingsLi = settingsLink.parentElement;
+            var container = settingsLi.parentElement;
+            var anchors = [];
+            var textSpans = [];
+
+            function isSidebarCollapsed() {
+                return !settingsLink.textContent.trim();
             }
-            var username = response.display_name;
-            var oidcLink = "oidc/ui/user";
-            var logoutLink = "logout";
-            waitForDocsLink(function(docsLink) {
-                addLinks(username, oidcLink, logoutLink, docsLink);
+
+            function createMenuItem(label, href, iconKey) {
+                var li = document.createElement("li");
+                var a = document.createElement("a");
+                a.href = href;
+                a.className = settingsLink.className;
+                a.setAttribute("data-state", "closed");
+
+                // icon
+                var icon = document.createElement("span");
+                icon.setAttribute("role", "img");
+                icon.setAttribute("aria-hidden", "true");
+                icon.classList.add("anticon", "css-6xix1i");
+                icon.innerHTML = svgFor(iconKey);
+                a.appendChild(icon);
+
+                // label (hidden when sidebar is collapsed)
+                var span = document.createElement("span");
+                span.textContent = label;
+                if (isSidebarCollapsed()) span.style.display = "none";
+                a.appendChild(span);
+
+                li.appendChild(a);
+                anchors.push(a);
+                textSpans.push(span);
+                return li;
+            }
+
+            // Build items (insert before nextSibling so order stays correct)
+            MENU_ITEMS[0].label = username;
+            var ref = settingsLi.nextSibling;
+            MENU_ITEMS.forEach(function (item) {
+                container.insertBefore(
+                    createMenuItem(item.label, item.href, item.icon),
+                    ref
+                );
+            });
+
+            // Keep in sync with sidebar collapse / expand
+            new MutationObserver(function () {
+                var cls = settingsLink.className;
+                var collapsed = !settingsLink.textContent.trim();
+                anchors.forEach(function (a) { a.className = cls; });
+                textSpans.forEach(function (s) { s.style.display = collapsed ? "none" : ""; });
+            }).observe(settingsLink, {
+                attributes: true, attributeFilter: ["class"],
+                childList: true, characterData: true, subtree: true
+            });
+        }
+
+        // ── Bootstrap ───────────────────────────────────────────────────
+
+        document.addEventListener("DOMContentLoaded", function () {
+            getJSON("api/2.0/mlflow/users/current", function (err, res) {
+                if (err) { console.error("Error fetching username:", err); return; }
+                waitForElement('a[href="#/settings"]', function (settingsLink) {
+                    injectMenu(res.display_name, settingsLink);
+                });
             });
         });
-    });
+    })();
 </script>

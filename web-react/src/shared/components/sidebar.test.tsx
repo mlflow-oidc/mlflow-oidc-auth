@@ -6,12 +6,34 @@ import { faHome } from "@fortawesome/free-solid-svg-icons";
 
 // Mock dependencies
 vi.mock("./sidebar-data", () => ({
-  getSidebarData: (isAdmin: boolean) => [
+  getSidebarData: (isAdmin: boolean, genAiGatewayEnabled: boolean) => [
     { label: "Home", href: "/home", icon: faHome, isInternalLink: true },
+    ...(genAiGatewayEnabled
+      ? [
+          {
+            label: "AI Endpoints",
+            href: "/ai-gateway/endpoints",
+            icon: faHome,
+            isInternalLink: true,
+          },
+        ]
+      : []),
     ...(isAdmin
       ? [{ label: "Admin", href: "/admin", icon: faHome, isInternalLink: true }]
       : []),
   ],
+}));
+
+const mockRuntimeConfig = {
+  gen_ai_gateway_enabled: false,
+  basePath: "/api",
+  uiPath: "/ui",
+  provider: "oidc",
+  authenticated: true,
+};
+
+vi.mock("../context/use-runtime-config", () => ({
+  useRuntimeConfig: () => mockRuntimeConfig,
 }));
 
 describe("Sidebar", () => {
@@ -99,5 +121,37 @@ describe("Sidebar", () => {
       "href",
       "https://github.com/sponsors/mlflow-oidc?o=esb",
     );
+  });
+
+  it("renders AI Gateway links when enabled", () => {
+    mockRuntimeConfig.gen_ai_gateway_enabled = true;
+    render(
+      <MemoryRouter>
+        <Sidebar
+          currentUser={null}
+          isOpen={true}
+          toggleSidebar={() => {}}
+          widthClass="w-64"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("AI Endpoints")).toBeInTheDocument();
+  });
+
+  it("hides AI Gateway links when disabled", () => {
+    mockRuntimeConfig.gen_ai_gateway_enabled = false;
+    render(
+      <MemoryRouter>
+        <Sidebar
+          currentUser={null}
+          isOpen={true}
+          toggleSidebar={() => {}}
+          widthClass="w-64"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("AI Endpoints")).not.toBeInTheDocument();
   });
 });

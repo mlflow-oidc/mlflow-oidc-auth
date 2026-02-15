@@ -8,9 +8,15 @@ import {
   faHexagonNodes,
   faTrash,
   faWrench,
+  faLink,
+  faKey,
+  faHexagonNodesBolt,
 } from "@fortawesome/free-solid-svg-icons";
 
-export const getSidebarData = (isAdmin: boolean): NavLinkData[] => {
+export const getSidebarData = (
+  isAdmin: boolean,
+  genAiGatewayEnabled: boolean,
+): NavLinkData[] => {
   const baseLinks: NavLinkData[] = [
     { label: "Users", href: "/users", isInternalLink: true, icon: faUser },
     {
@@ -47,6 +53,30 @@ export const getSidebarData = (isAdmin: boolean): NavLinkData[] => {
 
   let sidebarContent: NavLinkData[] = [...baseLinks];
 
+  if (genAiGatewayEnabled) {
+    const aiLinks: NavLinkData[] = [
+      {
+        label: "AI Endpoints",
+        href: "/ai-gateway/ai-endpoints",
+        isInternalLink: true,
+        icon: faLink,
+      },
+      {
+        label: "AI Secrets",
+        href: "/ai-gateway/secrets",
+        isInternalLink: true,
+        icon: faKey,
+      },
+      {
+        label: "AI Models",
+        href: "/ai-gateway/models",
+        isInternalLink: true,
+        icon: faHexagonNodesBolt,
+      },
+    ];
+    sidebarContent = [...sidebarContent, ...aiLinks];
+  }
+
   if (isAdmin) {
     const adminLinks: NavLinkData[] = [
       { label: "Trash", href: "/trash", isInternalLink: true, icon: faTrash },
@@ -58,7 +88,7 @@ export const getSidebarData = (isAdmin: boolean): NavLinkData[] => {
       },
     ];
 
-    sidebarContent = [...baseLinks, ...adminLinks];
+    sidebarContent = [...sidebarContent, ...adminLinks];
   }
 
   return sidebarContent;

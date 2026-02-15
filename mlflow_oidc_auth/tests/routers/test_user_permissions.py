@@ -8,10 +8,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mlflow_oidc_auth.entities import RegisteredModelPermission as RegisteredModelPermissionEntity
-from mlflow_oidc_auth.entities import RegisteredModelRegexPermission as RegisteredModelRegexPermissionEntity
+from mlflow_oidc_auth.entities import (
+    RegisteredModelPermission as RegisteredModelPermissionEntity,
+)
+from mlflow_oidc_auth.entities import (
+    RegisteredModelRegexPermission as RegisteredModelRegexPermissionEntity,
+)
 from mlflow_oidc_auth.entities import ScorerPermission as ScorerPermissionEntity
-from mlflow_oidc_auth.entities import ScorerRegexPermission as ScorerRegexPermissionEntity
+from mlflow_oidc_auth.entities import (
+    ScorerRegexPermission as ScorerRegexPermissionEntity,
+)
 
 
 @pytest.mark.usefixtures("authenticated_session")
@@ -30,8 +36,14 @@ class TestUserPermissionsRoutes:
         mock_permissions = {"prompt-a": perm_result, "prompt-b": perm_result}
 
         with (
-            patch("mlflow_oidc_auth.routers.user_permissions.fetch_all_prompts", return_value=[prompt_a, prompt_b]),
-            patch("mlflow_oidc_auth.routers.user_permissions.batch_resolve_prompt_permissions", return_value=mock_permissions),
+            patch(
+                "mlflow_oidc_auth.routers.user_permissions.fetch_all_prompts",
+                return_value=[prompt_a, prompt_b],
+            ),
+            patch(
+                "mlflow_oidc_auth.routers.user_permissions.batch_resolve_prompt_permissions",
+                return_value=mock_permissions,
+            ),
         ):
             resp = authenticated_client.get("/api/2.0/mlflow/permissions/users/user@example.com/prompts")
 
@@ -55,12 +67,34 @@ class TestUserPermissionsRoutes:
             resp = authenticated_client.get("/api/2.0/mlflow/permissions/users/user@example.com/prompts/prompt-a")
 
         assert resp.status_code == 200
-        assert resp.json() == {"prompt_permission": {"name": "prompt-a", "user_id": 123, "permission": "MANAGE", "group_id": None, "prompt": True}}
+        assert resp.json() == {
+            "prompt_permission": {
+                "name": "prompt-a",
+                "user_id": 123,
+                "permission": "MANAGE",
+                "group_id": None,
+                "prompt": True,
+            }
+        }
 
     def test_list_user_prompt_patterns_returns_typed_records(self, admin_client, mock_store):
         mock_store.list_prompt_regex_permissions.return_value = [
-            RegisteredModelRegexPermissionEntity(id_=1, regex=".*", priority=1, user_id=123, permission="READ", prompt=True),
-            RegisteredModelRegexPermissionEntity(id_=2, regex="^x$", priority=2, user_id=123, permission="MANAGE", prompt=True),
+            RegisteredModelRegexPermissionEntity(
+                id_=1,
+                regex=".*",
+                priority=1,
+                user_id=123,
+                permission="READ",
+                prompt=True,
+            ),
+            RegisteredModelRegexPermissionEntity(
+                id_=2,
+                regex="^x$",
+                priority=2,
+                user_id=123,
+                permission="MANAGE",
+                prompt=True,
+            ),
         ]
 
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
@@ -68,8 +102,22 @@ class TestUserPermissionsRoutes:
 
         assert resp.status_code == 200
         assert resp.json() == [
-            {"id": 1, "regex": ".*", "priority": 1, "user_id": 123, "permission": "READ", "prompt": True},
-            {"id": 2, "regex": "^x$", "priority": 2, "user_id": 123, "permission": "MANAGE", "prompt": True},
+            {
+                "id": 1,
+                "regex": ".*",
+                "priority": 1,
+                "user_id": 123,
+                "permission": "READ",
+                "prompt": True,
+            },
+            {
+                "id": 2,
+                "regex": "^x$",
+                "priority": 2,
+                "user_id": 123,
+                "permission": "MANAGE",
+                "prompt": True,
+            },
         ]
 
     def test_list_user_scorer_permissions_returns_typed_records(self, authenticated_client, mock_store):
@@ -83,8 +131,18 @@ class TestUserPermissionsRoutes:
 
         assert resp.status_code == 200
         assert resp.json() == [
-            {"experiment_id": "1", "scorer_name": "s1", "user_id": 123, "permission": "READ"},
-            {"experiment_id": "1", "scorer_name": "s2", "user_id": 123, "permission": "MANAGE"},
+            {
+                "experiment_id": "1",
+                "scorer_name": "s1",
+                "user_id": 123,
+                "permission": "READ",
+            },
+            {
+                "experiment_id": "1",
+                "scorer_name": "s2",
+                "user_id": 123,
+                "permission": "MANAGE",
+            },
         ]
 
     def test_list_user_scorer_patterns_returns_typed_records(self, admin_client, mock_store):
@@ -96,4 +154,12 @@ class TestUserPermissionsRoutes:
             resp = admin_client.get("/api/2.0/mlflow/permissions/users/user@example.com/scorer-patterns")
 
         assert resp.status_code == 200
-        assert resp.json() == [{"id": 1, "regex": ".*", "priority": 1, "user_id": 123, "permission": "READ"}]
+        assert resp.json() == [
+            {
+                "id": 1,
+                "regex": ".*",
+                "priority": 1,
+                "user_id": 123,
+                "permission": "READ",
+            }
+        ]

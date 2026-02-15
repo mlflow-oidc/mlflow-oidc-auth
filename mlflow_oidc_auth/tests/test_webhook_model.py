@@ -67,7 +67,12 @@ def test_webhook_test_request_event_type_validation():
 
 def test_create_request_validates_events_and_status():
     # valid
-    req = WebhookCreateRequest(name="n", url="https://example.com", events=["registered_model.created"], status="ACTIVE")
+    req = WebhookCreateRequest(
+        name="n",
+        url="https://example.com",
+        events=["registered_model.created"],
+        status="ACTIVE",
+    )
     assert req.status == "ACTIVE"
 
     # invalid event
@@ -76,7 +81,12 @@ def test_create_request_validates_events_and_status():
 
     # invalid status
     with pytest.raises(ValidationError):
-        WebhookCreateRequest(name="n", url="https://example.com", events=["registered_model.created"], status="BAD")
+        WebhookCreateRequest(
+            name="n",
+            url="https://example.com",
+            events=["registered_model.created"],
+            status="BAD",
+        )
 
 
 def test_update_request_validates_events_and_status_when_present():

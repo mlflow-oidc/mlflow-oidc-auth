@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.registered_model_permission_regex_group import RegisteredModelGroupRegexPermissionRepository
+from mlflow_oidc_auth.repository.registered_model_permission_regex_group import (
+    RegisteredModelGroupRegexPermissionRepository,
+)
 
 
 @pytest.fixture
@@ -30,7 +32,10 @@ def test_grant(repo, session):
     session.flush = MagicMock()
     with (
         patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group),
-        patch("mlflow_oidc_auth.db.models.SqlRegisteredModelGroupRegexPermission", return_value=MagicMock()),
+        patch(
+            "mlflow_oidc_auth.db.models.SqlRegisteredModelGroupRegexPermission",
+            return_value=MagicMock(),
+        ),
     ):
         result = repo.grant("group1", "r", "READ", priority=1, prompt=True)
         session.add.assert_called_once()

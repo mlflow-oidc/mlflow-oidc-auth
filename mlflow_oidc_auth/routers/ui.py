@@ -42,6 +42,7 @@ async def serve_spa_config(base_path: str = Depends(get_base_path), authenticate
             "uiPath": f"{base_path}{UI_ROUTER_PREFIX}",
             "provider": config.OIDC_PROVIDER_DISPLAY_NAME,
             "authenticated": authenticated,
+            "gen_ai_gateway_enabled": config.OIDC_GEN_AI_GATEWAY_ENABLED,
         }
     )
 

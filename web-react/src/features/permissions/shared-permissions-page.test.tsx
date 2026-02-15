@@ -8,6 +8,7 @@ const mockUseUser =
   >();
 const mockUseUserDetails =
   vi.fn<() => { user: unknown; refetch: () => void }>();
+const mockUseRuntimeConfig = vi.fn<() => { gen_ai_gateway_enabled: boolean }>();
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -28,8 +29,9 @@ const localStorageMock = (() => {
 
 Object.defineProperty(window, "localStorage", { value: localStorageMock });
 
+const mockUseParams = vi.fn<() => { username?: string; groupName?: string }>();
 vi.mock("react-router", () => ({
-  useParams: () => ({ username: "testuser" }),
+  useParams: () => mockUseParams(),
   Link: ({
     children,
     to,
@@ -51,6 +53,10 @@ vi.mock("../../core/hooks/use-user", () => ({
 
 vi.mock("../../core/hooks/use-user-details", () => ({
   useUserDetails: () => mockUseUserDetails(),
+}));
+
+vi.mock("../../shared/context/use-runtime-config", () => ({
+  useRuntimeConfig: () => mockUseRuntimeConfig(),
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
@@ -104,12 +110,16 @@ vi.mock("../../shared/components/token-info-block", () => ({
 describe("SharedPermissionsPage", () => {
   beforeEach(() => {
     localStorage.clear();
+    mockUseParams.mockReturnValue({ username: "testuser" });
     mockUseUser.mockReturnValue({
       currentUser: { is_admin: false, username: "testuser" },
     });
     mockUseUserDetails.mockReturnValue({
       user: null,
       refetch: vi.fn(),
+    });
+    mockUseRuntimeConfig.mockReturnValue({
+      gen_ai_gateway_enabled: false,
     });
   });
 
@@ -186,5 +196,61 @@ describe("SharedPermissionsPage", () => {
     fireEvent.click(switchEl);
 
     expect(localStorage.getItem("_mlflow_is_regex_mode")).toBe("true");
+  });
+
+  it("shows AI Gateway tabs when gen_ai_gateway_enabled is true", () => {
+    mockUseRuntimeConfig.mockReturnValue({
+      gen_ai_gateway_enabled: true,
+    });
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    expect(screen.getByText("AI Endpoints")).toBeInTheDocument();
+    expect(screen.getByText("AI Secrets")).toBeInTheDocument();
+    expect(screen.getByText("AI Models")).toBeInTheDocument();
+  });
+
+  it("hides Endpoints tab when gen_ai_gateway_enabled is false", () => {
+    mockUseRuntimeConfig.mockReturnValue({
+      gen_ai_gateway_enabled: false,
+    });
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    expect(screen.queryByText("AI Endpoints")).not.toBeInTheDocument();
+  });
+
+  it("encodes entityName in tab links", () => {
+    mockUseParams.mockReturnValue({
+      username: "alice@example.com",
+    });
+
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    const experimentLink = screen.getByRole("link", { name: "Experiments" });
+    expect(experimentLink.getAttribute("href")).toContain(
+      "/users/alice@example.com/experiments",
+    );
+
+    const modelsLink = screen.getByRole("link", { name: "Models" });
+    expect(modelsLink.getAttribute("href")).toContain(
+      "/users/alice@example.com/models",
+    );
   });
 });

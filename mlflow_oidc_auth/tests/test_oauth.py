@@ -90,7 +90,15 @@ class TestOAuthModule(unittest.TestCase):
         # Verify the oauth instance exists
         self.assertIsNotNone(mlflow_oidc_auth.oauth.oauth)
 
-    @patch.dict("os.environ", {"OIDC_CLIENT_ID": "", "OIDC_CLIENT_SECRET": "", "OIDC_DISCOVERY_URL": "", "OIDC_SCOPE": ""})
+    @patch.dict(
+        "os.environ",
+        {
+            "OIDC_CLIENT_ID": "",
+            "OIDC_CLIENT_SECRET": "",
+            "OIDC_DISCOVERY_URL": "",
+            "OIDC_SCOPE": "",
+        },
+    )
     def test_oauth_with_empty_environment_variables(self):
         """Test OAuth initialization with empty environment variables."""
         # Clear the module cache to force re-import with new env vars
@@ -331,7 +339,12 @@ class TestOAuthSecurity(unittest.TestCase):
 
     @patch.dict(
         "os.environ",
-        {"OIDC_CLIENT_ID": "client-id", "OIDC_CLIENT_SECRET": "client-secret", "OIDC_DISCOVERY_URL": "not-a-valid-url", "OIDC_SCOPE": "openid email profile"},
+        {
+            "OIDC_CLIENT_ID": "client-id",
+            "OIDC_CLIENT_SECRET": "client-secret",
+            "OIDC_DISCOVERY_URL": "not-a-valid-url",
+            "OIDC_SCOPE": "openid email profile",
+        },
     )
     def test_oauth_malformed_url_handling(self):
         """Test OAuth handling of malformed URLs."""

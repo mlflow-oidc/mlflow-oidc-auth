@@ -178,7 +178,12 @@ def test_admin_modifies_any_experiment(
             json={
                 "experiment_id": resources["experiment_id"],
                 "start_time": int(time.time() * 1000),
-                "tags": [{"key": "mlflow.runName", "value": f"admin-run-{uuid.uuid4().hex[:6]}"}],
+                "tags": [
+                    {
+                        "key": "mlflow.runName",
+                        "value": f"admin-run-{uuid.uuid4().hex[:6]}",
+                    }
+                ],
             },
         )
         assert _is_ok(resp.status_code), f"Admin should create run: {resp.status_code}"

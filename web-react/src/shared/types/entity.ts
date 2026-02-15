@@ -13,11 +13,22 @@ export type ModelListItem = {
 
 export type PromptListItem = ModelListItem;
 
-export type PermissionLevel = "READ" | "EDIT" | "MANAGE" | "NO_PERMISSIONS";
+export type PermissionLevel =
+  | "READ"
+  | "USE"
+  | "EDIT"
+  | "MANAGE"
+  | "NO_PERMISSIONS";
 
 export type PermissionKind = "user" | "group" | "fallback" | "service-account";
 
-export type PermissionType = "experiments" | "models" | "prompts";
+export type PermissionType =
+  | "experiments"
+  | "models"
+  | "prompts"
+  | "ai-endpoints"
+  | "ai-secrets"
+  | "ai-models";
 
 export type EntityPermission = {
   kind: PermissionKind;
@@ -45,7 +56,7 @@ export type PermissionItem = ExperimentPermission | ModelPermission;
 export type AnyPermissionItem = PermissionItem | PatternPermissionItem;
 
 // Pattern permission types for Regex Mode
-export type ExperimentPatternPermission = {
+export type BasePatternPermission = {
   id: number;
   permission: PermissionLevel;
   priority: number;
@@ -54,14 +65,10 @@ export type ExperimentPatternPermission = {
   group_id?: number;
 };
 
-export type ModelPatternPermission = {
-  id: number;
-  permission: PermissionLevel;
-  priority: number;
+export type ExperimentPatternPermission = BasePatternPermission;
+
+export type ModelPatternPermission = BasePatternPermission & {
   prompt: boolean;
-  regex: string;
-  user_id?: number;
-  group_id?: number;
 };
 
 export type PromptPatternPermission = ModelPatternPermission;
@@ -125,4 +132,22 @@ export type WebhookTestResponse = {
   response_status?: number;
   response_body?: string;
   error_message?: string;
+};
+
+// Gateway types
+export type GatewayEndpointListItem = {
+  name: string;
+  type: string;
+  description: string;
+  route_type: string;
+  auth_type: string;
+};
+
+export type GatewaySecretListItem = {
+  key: string;
+};
+
+export type GatewayModelListItem = {
+  name: string;
+  source: string;
 };

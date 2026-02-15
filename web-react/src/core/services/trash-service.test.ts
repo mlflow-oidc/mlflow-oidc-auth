@@ -34,6 +34,7 @@ describe("trash-service", () => {
       basePath: "/mlflow",
       uiPath: "",
       provider: "",
+      gen_ai_gateway_enabled: false,
       authenticated: true,
     });
     await cleanupTrash({ older_than: "7d" });

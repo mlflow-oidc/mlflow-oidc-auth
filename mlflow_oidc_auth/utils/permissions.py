@@ -9,15 +9,21 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities import (
     ExperimentGroupRegexPermission,
     ExperimentRegexPermission,
+    GatewayEndpointGroupRegexPermission,
+    GatewayEndpointRegexPermission,
+    GatewayModelDefinitionGroupRegexPermission,
+    GatewayModelDefinitionRegexPermission,
+    GatewaySecretGroupRegexPermission,
+    GatewaySecretRegexPermission,
     RegisteredModelGroupRegexPermission,
     RegisteredModelRegexPermission,
     ScorerGroupRegexPermission,
     ScorerRegexPermission,
 )
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth.permissions import get_permission
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.models import PermissionResult
 
 logger = get_logger()
 
@@ -216,7 +222,203 @@ def can_manage_scorer(experiment_id: str, scorer_name: str, user: str) -> bool:
     return permission.can_manage
 
 
-# TODO: check fi str can be replaced by Permission in function signature
+def _permission_gateway_endpoint_sources_config(gateway_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_endpoint_permission(gateway_name, user).permission,
+        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_endpoint_permission(gateway_name, user).permission,
+        "regex": lambda gateway_name=gateway_name, user=username: _get_gateway_endpoint_permission_from_regex(
+            store.list_gateway_endpoint_regex_permissions(user), gateway_name
+        ),
+        "group-regex": lambda gateway_name=gateway_name, user=username: _get_gateway_endpoint_group_permission_from_regex(
+            store.list_group_gateway_endpoint_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)), gateway_name
+        ),
+    }
+
+
+def _get_gateway_endpoint_permission_from_regex(regexes: List[GatewayEndpointRegexPermission], gateway_name: str) -> str:
+    for regex in regexes:
+        if re.match(regex.regex, gateway_name):
+            logger.debug(f"Regex permission found for gateway {gateway_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
+            return regex.permission
+    raise MlflowException(
+        f"gateway name {gateway_name}",
+        error_code=RESOURCE_DOES_NOT_EXIST,
+    )
+
+
+def _get_gateway_endpoint_group_permission_from_regex(regexes: List[GatewayEndpointGroupRegexPermission], gateway_name: str) -> str:
+    for regex in regexes:
+        if re.match(regex.regex, gateway_name):
+            logger.debug(f"Regex group permission found for gateway {gateway_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
+            return regex.permission
+    raise MlflowException(
+        f"gateway name {gateway_name}",
+        error_code=RESOURCE_DOES_NOT_EXIST,
+    )
+
+
+def effective_gateway_endpoint_permission(gateway_name: str, user: str) -> PermissionResult:
+    """
+    Attempts to get permission from store based on configured sources,
+    and returns default permission if no record is found.
+    Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
+    """
+    return get_permission_from_store_or_default(_permission_gateway_endpoint_sources_config(gateway_name, user))
+
+
+def can_read_gateway_endpoint(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_endpoint_permission(gateway_name, user).permission
+    return permission.can_read
+
+
+def can_use_gateway_endpoint(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_endpoint_permission(gateway_name, user).permission
+    return permission.can_use
+
+
+def can_update_gateway_endpoint(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_endpoint_permission(gateway_name, user).permission
+    return permission.can_update
+
+
+def can_manage_gateway_endpoint(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_endpoint_permission(gateway_name, user).permission
+    return permission.can_manage
+
+
+def _get_gateway_secret_permission_from_regex(regexes: List[GatewaySecretRegexPermission], gateway_name: str) -> str:
+    for regex in regexes:
+        if re.match(regex.regex, gateway_name):
+            logger.debug(f"Regex permission found for gateway secret: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
+            return regex.permission
+    raise MlflowException(
+        f"gateway name {gateway_name}",
+        error_code=RESOURCE_DOES_NOT_EXIST,
+    )
+
+
+def _get_gateway_secret_group_permission_from_regex(regexes: List[GatewaySecretGroupRegexPermission], gateway_name: str) -> str:
+    for regex in regexes:
+        if re.match(regex.regex, gateway_name):
+            logger.debug(f"Regex group permission found for gateway secret: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
+            return regex.permission
+    raise MlflowException(
+        f"gateway name {gateway_name}",
+        error_code=RESOURCE_DOES_NOT_EXIST,
+    )
+
+
+def _permission_gateway_secret_sources_config(gateway_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_secret_permission(gateway_name, user).permission,
+        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_secret_permission(gateway_name, user).permission,
+        "regex": lambda gateway_name=gateway_name, user=username: _get_gateway_secret_permission_from_regex(
+            store.list_gateway_secret_regex_permissions(user), gateway_name
+        ),
+        "group-regex": lambda gateway_name=gateway_name, user=username: _get_gateway_secret_group_permission_from_regex(
+            store.list_group_gateway_secret_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)), gateway_name
+        ),
+    }
+
+
+def effective_gateway_secret_permission(gateway_name: str, user: str) -> PermissionResult:
+    """
+    Attempts to get permission from store based on configured sources,
+    and returns default permission if no record is found.
+    Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
+    """
+    return get_permission_from_store_or_default(_permission_gateway_secret_sources_config(gateway_name, user))
+
+
+def can_read_gateway_secret(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_secret_permission(gateway_name, user).permission
+    return permission.can_read
+
+
+def can_use_gateway_secret(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_secret_permission(gateway_name, user).permission
+    return permission.can_use
+
+
+def can_update_gateway_secret(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_secret_permission(gateway_name, user).permission
+    return permission.can_update
+
+
+def can_manage_gateway_secret(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_secret_permission(gateway_name, user).permission
+    return permission.can_manage
+
+
+def _get_gateway_model_definition_permission_from_regex(regexes: List[GatewayModelDefinitionRegexPermission], gateway_name: str) -> str:
+    for regex in regexes:
+        if re.match(regex.regex, gateway_name):
+            logger.debug(
+                f"Regex permission found for gateway model definition {gateway_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
+            )
+            return regex.permission
+    raise MlflowException(
+        f"gateway name {gateway_name}",
+        error_code=RESOURCE_DOES_NOT_EXIST,
+    )
+
+
+def _get_gateway_model_definition_group_permission_from_regex(regexes: List[GatewayModelDefinitionGroupRegexPermission], gateway_name: str) -> str:
+    for regex in regexes:
+        if re.match(regex.regex, gateway_name):
+            logger.debug(
+                f"Regex group permission found for gateway model definition {gateway_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
+            )
+            return regex.permission
+    raise MlflowException(
+        f"gateway name {gateway_name}",
+        error_code=RESOURCE_DOES_NOT_EXIST,
+    )
+
+
+def _permission_gateway_model_definition_sources_config(gateway_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_model_definition_permission(gateway_name, user).permission,
+        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_model_definition_permission(gateway_name, user).permission,
+        "regex": lambda gateway_name=gateway_name, user=username: _get_gateway_model_definition_permission_from_regex(
+            store.list_gateway_model_definition_regex_permissions(user), gateway_name
+        ),
+        "group-regex": lambda gateway_name=gateway_name, user=username: _get_gateway_model_definition_group_permission_from_regex(
+            store.list_group_gateway_model_definition_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)), gateway_name
+        ),
+    }
+
+
+def effective_gateway_model_definition_permission(gateway_name: str, user: str) -> PermissionResult:
+    """
+    Attempts to get permission from store based on configured sources,
+    and returns default permission if no record is found.
+    Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
+    """
+    return get_permission_from_store_or_default(_permission_gateway_model_definition_sources_config(gateway_name, user))
+
+
+def can_read_gateway_model_definition(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_model_definition_permission(gateway_name, user).permission
+    return permission.can_read
+
+
+def can_use_gateway_model_definition(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_model_definition_permission(gateway_name, user).permission
+    return permission.can_use
+
+
+def can_update_gateway_model_definition(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_model_definition_permission(gateway_name, user).permission
+    return permission.can_update
+
+
+def can_manage_gateway_model_definition(gateway_name: str, user: str) -> bool:
+    permission = effective_gateway_model_definition_permission(gateway_name, user).permission
+    return permission.can_manage
+
+
+# TODO: check if str can be replaced by Permission in function signature
 def get_permission_from_store_or_default(PERMISSION_SOURCES_CONFIG: Dict[str, Callable[[], str]]) -> PermissionResult:
     """
     Attempts to get permission from store based on configured sources.

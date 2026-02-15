@@ -1,11 +1,31 @@
 # Users and groups as defined in the OIDC mock provider:
 # https://oidc-mock.technicaldomain.xyz/
 USERS = [
-    ("alice@example.com", ["mlflow-users", "experiments-reader", "prompts-reader", "models-reader"]),
-    ("bob@example.com", ["mlflow-users", "experiments-editor", "prompts-editor", "models-editor"]),
-    ("charlie@example.com", ["mlflow-users", "experiments-manager", "prompts-manager", "models-manager"]),
-    ("dave@example.com", ["mlflow-users", "experiments-no-access", "prompts-no-access", "models-no-access"]),
-    ("eve@example.com", ["mlflow-users"]),  # Only mlflow-users, uses default permissions
+    (
+        "alice@example.com",
+        ["mlflow-users", "experiments-reader", "prompts-reader", "models-reader"],
+    ),
+    (
+        "bob@example.com",
+        ["mlflow-users", "experiments-editor", "prompts-editor", "models-editor"],
+    ),
+    (
+        "charlie@example.com",
+        ["mlflow-users", "experiments-manager", "prompts-manager", "models-manager"],
+    ),
+    (
+        "dave@example.com",
+        [
+            "mlflow-users",
+            "experiments-no-access",
+            "prompts-no-access",
+            "models-no-access",
+        ],
+    ),
+    (
+        "eve@example.com",
+        ["mlflow-users"],
+    ),  # Only mlflow-users, uses default permissions
     ("frank@example.com", ["mlflow-admin"]),  # Administrator
     ("peter@example.com", ["random-group"]),  # Not in mlflow-users group
 ]

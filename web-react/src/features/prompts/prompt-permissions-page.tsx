@@ -1,8 +1,7 @@
 import { useParams } from "react-router";
-import PageContainer from "../../shared/components/page/page-container";
 import { usePromptUserPermissions } from "../../core/hooks/use-prompt-user-permissions";
 import { usePromptGroupPermissions } from "../../core/hooks/use-prompt-group-permissions";
-import { EntityPermissionsManager } from "../permissions/components/entity-permissions-manager";
+import { EntityPermissionsPageLayout } from "../permissions/components/entity-permissions-page-layout";
 
 export default function PromptPermissionsPage() {
   const { promptName } = useParams<{
@@ -30,26 +29,21 @@ export default function PromptPermissionsPage() {
     refreshGroup();
   };
 
-  const allPermissions = [
-    ...(promptUserPermissions || []),
-    ...(promptGroupPermissions || []),
-  ];
-
   if (!promptName) {
     return <div>Prompt Name is required.</div>;
   }
 
   return (
-    <PageContainer title={`Permissions for Prompt ${promptName}`}>
-      <EntityPermissionsManager
-        resourceId={promptName}
-        resourceName={promptName}
-        resourceType="prompts"
-        permissions={allPermissions}
-        isLoading={isLoading}
-        error={error}
-        refresh={refresh}
-      />
-    </PageContainer>
+    <EntityPermissionsPageLayout
+      title={`Permissions for Prompt ${promptName}`}
+      resourceId={promptName}
+      resourceName={promptName}
+      resourceType="prompts"
+      userPermissions={promptUserPermissions}
+      groupPermissions={promptGroupPermissions}
+      isLoading={isLoading}
+      error={error}
+      refresh={refresh}
+    />
   );
 }

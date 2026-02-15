@@ -127,6 +127,57 @@ async def check_prompt_manage_permission(
     return None
 
 
+async def check_gateway_endpoint_manage_permission(
+    name: str = Path(..., description="Gateway endpoint name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Check if the current user can manage the specified gateway endpoint.
+
+    This mirrors gateway checks but targets endpoint-scoped permissions.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_endpoint
+
+    if not is_admin and not can_manage_gateway_endpoint(name, current_username):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage endpoint {name}")
+
+    return None
+
+
+async def check_gateway_secret_manage_permission(
+    name: str = Path(..., description="Gateway secret name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Check if the current user can manage the specified gateway secret.
+
+    This mirrors gateway checks but targets secret-scoped permissions.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_secret
+
+    if not is_admin and not can_manage_gateway_secret(name, current_username):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage secret {name}")
+
+    return None
+
+
+async def check_gateway_model_definition_manage_permission(
+    name: str = Path(..., description="Gateway model definition name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Check if the current user can manage the specified gateway model definition.
+
+    This mirrors gateway checks but targets model definition-scoped permissions.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_model_definition
+
+    if not is_admin and not can_manage_gateway_model_definition(name, current_username):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage model definition {name}")
+
+    return None
+
+
 async def check_scorer_manage_permission(
     request: Request,
     current_username: str = Depends(get_username),

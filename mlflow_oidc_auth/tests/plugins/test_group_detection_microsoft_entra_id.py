@@ -68,7 +68,10 @@ class TestGetUserGroups(unittest.TestCase):
         # Verify both API calls were made
         self.assertEqual(mock_get.call_count, 2)
         mock_get.assert_any_call(self.graph_url, headers=self.base_headers)
-        mock_get.assert_any_call("https://graph.microsoft.com/v1.0/me/memberOf?$skiptoken=abc123", headers=self.base_headers)
+        mock_get.assert_any_call(
+            "https://graph.microsoft.com/v1.0/me/memberOf?$skiptoken=abc123",
+            headers=self.base_headers,
+        )
 
         expected_groups = ["Group 1", "Group 2", "Group 3", "Group 4"]
         self.assertEqual(groups, expected_groups)
@@ -117,7 +120,10 @@ class TestGetUserGroups(unittest.TestCase):
         with self.assertRaises(Exception) as context:
             get_user_groups(self.access_token)
 
-        self.assertIn("Error retrieving user groups: 401-Unauthorized: Invalid token", str(context.exception))
+        self.assertIn(
+            "Error retrieving user groups: 401-Unauthorized: Invalid token",
+            str(context.exception),
+        )
         mock_get.assert_called_once_with(self.graph_url, headers=self.base_headers)
 
     @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
@@ -132,7 +138,10 @@ class TestGetUserGroups(unittest.TestCase):
         with self.assertRaises(Exception) as context:
             get_user_groups(self.access_token)
 
-        self.assertIn("Error retrieving user groups: 403-Forbidden: Insufficient permissions", str(context.exception))
+        self.assertIn(
+            "Error retrieving user groups: 403-Forbidden: Insufficient permissions",
+            str(context.exception),
+        )
 
     @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
     def test_get_user_groups_http_error_500(self, mock_get):
@@ -146,7 +155,10 @@ class TestGetUserGroups(unittest.TestCase):
         with self.assertRaises(Exception) as context:
             get_user_groups(self.access_token)
 
-        self.assertIn("Error retrieving user groups: 500-Internal Server Error", str(context.exception))
+        self.assertIn(
+            "Error retrieving user groups: 500-Internal Server Error",
+            str(context.exception),
+        )
 
     @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
     def test_get_user_groups_network_error(self, mock_get):
@@ -212,7 +224,10 @@ class TestGetUserGroups(unittest.TestCase):
         with self.assertRaises(Exception) as context:
             get_user_groups(self.access_token)
 
-        self.assertIn("Error retrieving user groups: 429-Too Many Requests", str(context.exception))
+        self.assertIn(
+            "Error retrieving user groups: 429-Too Many Requests",
+            str(context.exception),
+        )
         self.assertEqual(mock_get.call_count, 2)
 
     @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
@@ -260,7 +275,13 @@ class TestGetUserGroups(unittest.TestCase):
         self.assertEqual(mock_get.call_count, 3)
 
         # Verify deduplication and filtering worked correctly
-        expected_groups = ["Admin Group", "User Group", "Developer Group", "Test Group", "Final Group"]
+        expected_groups = [
+            "Admin Group",
+            "User Group",
+            "Developer Group",
+            "Test Group",
+            "Final Group",
+        ]
         self.assertEqual(groups, expected_groups)
 
     def test_get_user_groups_parameter_validation(self):

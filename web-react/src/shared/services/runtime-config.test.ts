@@ -7,6 +7,7 @@ describe("runtime-config", () => {
     uiPath: "/",
     provider: "oidc",
     authenticated: true,
+    gen_ai_gateway_enabled: false,
   };
 
   beforeEach(() => {

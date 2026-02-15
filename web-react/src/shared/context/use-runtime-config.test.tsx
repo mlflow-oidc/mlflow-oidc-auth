@@ -11,6 +11,7 @@ describe("useRuntimeConfig", () => {
       uiPath: "/ui",
       provider: "oidc",
       authenticated: true,
+      gen_ai_gateway_enabled: false,
     };
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <RuntimeConfigContext value={mockConfig}>{children}</RuntimeConfigContext>

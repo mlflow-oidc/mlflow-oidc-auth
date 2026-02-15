@@ -25,8 +25,8 @@ prompt_permissions_router = APIRouter(
 
 
 LIST_PROMPTS = ""
-PROMPT_USER_PERMISSIONS = "/{prompt_name}/users"
-PROMPT_GROUP_PERMISSIONS = "/{prompt_name}/groups"
+PROMPT_USER_PERMISSIONS = "/{prompt_name:path}/users"
+PROMPT_GROUP_PERMISSIONS = "/{prompt_name:path}/groups"
 
 
 @prompt_permissions_router.get(

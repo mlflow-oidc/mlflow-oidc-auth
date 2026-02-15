@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.experiment_permission_regex import ExperimentPermissionRegexRepository
+from mlflow_oidc_auth.repository.experiment_permission_regex import (
+    ExperimentPermissionRegexRepository,
+)
 
 
 @pytest.fixture
@@ -33,7 +35,10 @@ def test_grant_success(repo, session):
     session.flush = MagicMock()
 
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex.get_user",
+            return_value=user,
+        ),
         patch("mlflow_oidc_auth.db.models.SqlExperimentRegexPermission", return_value=perm),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex._validate_permission"),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex.validate_regex"),
@@ -49,9 +54,18 @@ def test_grant_integrity_error(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock(side_effect=Exception("IntegrityError"))
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user),
-        patch("mlflow_oidc_auth.db.models.SqlExperimentRegexPermission", return_value=MagicMock()),
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex.IntegrityError", Exception),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex.get_user",
+            return_value=user,
+        ),
+        patch(
+            "mlflow_oidc_auth.db.models.SqlExperimentRegexPermission",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex.IntegrityError",
+            Exception,
+        ),
     ):
         with pytest.raises(MlflowException):
             repo.grant("r", 1, "READ", "user")
@@ -76,7 +90,10 @@ def test_list_regex_for_user(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().order_by().all.return_value = [perm]
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex.get_user", return_value=user):
+    with patch(
+        "mlflow_oidc_auth.repository.experiment_permission_regex.get_user",
+        return_value=user,
+    ):
         assert repo.list_regex_for_user("user") == ["entity"]
 
 

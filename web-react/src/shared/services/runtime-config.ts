@@ -3,6 +3,7 @@ export type RuntimeConfig = {
   uiPath: string;
   provider: string;
   authenticated: boolean;
+  gen_ai_gateway_enabled: boolean;
 };
 
 let cachedConfig: RuntimeConfig | null = null;

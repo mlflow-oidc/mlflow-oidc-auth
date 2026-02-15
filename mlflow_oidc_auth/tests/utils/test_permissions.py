@@ -60,31 +60,59 @@ class TestPermissions(unittest.TestCase):
             mock_store_permission_group_func = MagicMock()
             mock_store_permission_user_func.return_value = "user_perm"
             mock_store_permission_group_func.return_value = "group_perm"
-            mock_get_permission.return_value = Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True)
+            mock_get_permission.return_value = Permission(
+                name="perm",
+                priority=1,
+                can_read=True,
+                can_use=True,
+                can_update=True,
+                can_delete=True,
+                can_manage=True,
+            )
             mock_config.PERMISSION_SOURCE_ORDER = ["user", "group"]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "default_perm"
 
             # user permission found
-            result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
+            result = get_permission_from_store_or_default(
+                {
+                    "user": mock_store_permission_user_func,
+                    "group": mock_store_permission_group_func,
+                }
+            )
             self.assertTrue(result.permission.can_manage)
             self.assertEqual(result.kind, "user")
 
             # user not found, group found
             mock_store_permission_user_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
-            result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
+            result = get_permission_from_store_or_default(
+                {
+                    "user": mock_store_permission_user_func,
+                    "group": mock_store_permission_group_func,
+                }
+            )
             self.assertTrue(result.permission.can_manage)
             self.assertEqual(result.kind, "group")
 
             # both not found, fallback to default
             mock_store_permission_group_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
-            result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
+            result = get_permission_from_store_or_default(
+                {
+                    "user": mock_store_permission_user_func,
+                    "group": mock_store_permission_group_func,
+                }
+            )
             self.assertTrue(result.permission.can_manage)
             self.assertEqual(result.kind, "fallback")
 
             # invalid source in config
             mock_config.PERMISSION_SOURCE_ORDER = ["invalid"]
             # Just call and check fallback, don't assert logs
-            result = get_permission_from_store_or_default({"user": mock_store_permission_user_func, "group": mock_store_permission_group_func})
+            result = get_permission_from_store_or_default(
+                {
+                    "user": mock_store_permission_user_func,
+                    "group": mock_store_permission_group_func,
+                }
+            )
             self.assertEqual(result.kind, "fallback")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
@@ -93,12 +121,30 @@ class TestPermissions(unittest.TestCase):
         """Test experiment management permission checking."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=True,
+                ),
+                "user",
             )
             self.assertTrue(can_manage_experiment("exp_id", "user"))
 
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=False), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=False,
+                ),
+                "user",
             )
             self.assertFalse(can_manage_experiment("exp_id", "user"))
 
@@ -108,12 +154,30 @@ class TestPermissions(unittest.TestCase):
         """Test registered model management permission checking."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=True,
+                ),
+                "user",
             )
             self.assertTrue(can_manage_registered_model("model_name", "user"))
 
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=False), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=False,
+                ),
+                "user",
             )
             self.assertFalse(can_manage_registered_model("model_name", "user"))
 
@@ -123,7 +187,16 @@ class TestPermissions(unittest.TestCase):
         """Test effective experiment permission retrieval."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=True,
+                ),
+                "user",
             )
             result = effective_experiment_permission("exp_id", "user")
             self.assertEqual(result.kind, "user")
@@ -134,7 +207,16 @@ class TestPermissions(unittest.TestCase):
         """Test effective registered model permission retrieval."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=True,
+                ),
+                "user",
             )
             result = effective_registered_model_permission("model_name", "user")
             self.assertEqual(result.kind, "user")
@@ -145,7 +227,16 @@ class TestPermissions(unittest.TestCase):
         """Test effective prompt permission retrieval."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=True,
+                ),
+                "user",
             )
             result = effective_prompt_permission("model_name", "user")
             self.assertEqual(result.kind, "user")
@@ -156,7 +247,16 @@ class TestPermissions(unittest.TestCase):
         """Test experiment read permission checking."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=True,
+                ),
+                "user",
             )
             self.assertTrue(can_read_experiment("exp_id", "user"))
 
@@ -166,7 +266,16 @@ class TestPermissions(unittest.TestCase):
         """Test registered model read permission checking."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
-                Permission(name="perm", priority=1, can_read=True, can_update=True, can_delete=True, can_manage=True), "user"
+                Permission(
+                    name="perm",
+                    priority=1,
+                    can_read=True,
+                    can_use=True,
+                    can_update=True,
+                    can_delete=True,
+                    can_manage=True,
+                ),
+                "user",
             )
             self.assertTrue(can_read_registered_model("model_name", "user"))
 

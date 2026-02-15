@@ -15,6 +15,9 @@ from .data_fetching import (
     fetch_readable_experiments,
     fetch_readable_registered_models,
     fetch_readable_logged_models,
+    fetch_all_gateway_endpoints,
+    fetch_all_gateway_secrets,
+    fetch_all_gateway_model_definitions,
 )
 
 from .permissions import (
@@ -65,6 +68,9 @@ __all__ = [
     "fetch_readable_experiments",
     "fetch_readable_registered_models",
     "fetch_readable_logged_models",
+    "fetch_all_gateway_endpoints",
+    "fetch_all_gateway_secrets",
+    "fetch_all_gateway_model_definitions",
     # Permissions
     "effective_experiment_permission",
     "effective_registered_model_permission",

@@ -4,7 +4,10 @@ from unittest.mock import MagicMock, patch
 from flask import Flask
 
 from mlflow_oidc_auth.permissions import get_permission
-from mlflow_oidc_auth.validators.run import validate_can_read_run_artifact, validate_can_update_run_artifact
+from mlflow_oidc_auth.validators.run import (
+    validate_can_read_run_artifact,
+    validate_can_update_run_artifact,
+)
 
 
 def test_validate_can_read_run_artifact_supports_run_uuid_alias() -> None:

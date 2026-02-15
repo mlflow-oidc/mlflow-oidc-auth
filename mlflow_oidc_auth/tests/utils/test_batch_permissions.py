@@ -81,7 +81,12 @@ class TestResolvePermissionFromContext:
     def test_returns_user_permission_first(self):
         """Should return user permission when it's first in source order."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = _resolve_permission_from_context(
@@ -98,7 +103,12 @@ class TestResolvePermissionFromContext:
     def test_returns_group_permission_when_no_user(self):
         """Should return group permission when user permission is None."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = _resolve_permission_from_context(
@@ -115,7 +125,12 @@ class TestResolvePermissionFromContext:
     def test_returns_regex_permission_when_no_direct(self):
         """Should return regex permission when no direct permissions."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = _resolve_permission_from_context(
@@ -132,7 +147,12 @@ class TestResolvePermissionFromContext:
     def test_returns_group_regex_permission_when_no_user_regex(self):
         """Should return group-regex permission when no user regex."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = _resolve_permission_from_context(
@@ -149,7 +169,12 @@ class TestResolvePermissionFromContext:
     def test_returns_default_permission_when_no_match(self):
         """Should return default permission when no sources match."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
 
             result = _resolve_permission_from_context(
@@ -167,7 +192,12 @@ class TestResolvePermissionFromContext:
         """Should respect custom source order configuration."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
             # Group first
-            mock_config.PERMISSION_SOURCE_ORDER = ["group", "user", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "group",
+                "user",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = _resolve_permission_from_context(
@@ -312,7 +342,12 @@ class TestResolveExperimentPermissionFromContext:
     def test_resolves_user_experiment_permission(self, context_with_experiment_permissions):
         """Should resolve user direct experiment permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-1", "experiment-name")
@@ -323,7 +358,12 @@ class TestResolveExperimentPermissionFromContext:
     def test_resolves_group_experiment_permission(self, context_with_experiment_permissions):
         """Should resolve group experiment permission when no user permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-2", "experiment-name")
@@ -334,7 +374,12 @@ class TestResolveExperimentPermissionFromContext:
     def test_resolves_regex_experiment_permission(self, context_with_experiment_permissions):
         """Should resolve regex experiment permission by experiment name."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-unknown", "test-experiment")
@@ -345,7 +390,12 @@ class TestResolveExperimentPermissionFromContext:
     def test_resolves_group_regex_experiment_permission(self, context_with_experiment_permissions):
         """Should resolve group regex experiment permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-unknown", "prod-experiment")
@@ -361,7 +411,12 @@ class TestResolveExperimentPermissionFromContext:
         mock_get_store.return_value.get_experiment.return_value = mock_experiment
 
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_experiment_permission_from_context(context_with_experiment_permissions, "exp-unknown", None)
@@ -403,7 +458,12 @@ class TestResolveModelPermissionFromContext:
     def test_resolves_user_model_permission(self, context_with_model_permissions):
         """Should resolve user direct model permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_model_permission_from_context(context_with_model_permissions, "my-model")
@@ -414,7 +474,12 @@ class TestResolveModelPermissionFromContext:
     def test_resolves_group_model_permission(self, context_with_model_permissions):
         """Should resolve group model permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_model_permission_from_context(context_with_model_permissions, "team-model")
@@ -425,7 +490,12 @@ class TestResolveModelPermissionFromContext:
     def test_resolves_regex_model_permission(self, context_with_model_permissions):
         """Should resolve regex model permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_model_permission_from_context(context_with_model_permissions, "ml-classifier")
@@ -436,7 +506,12 @@ class TestResolveModelPermissionFromContext:
     def test_resolves_group_regex_model_permission(self, context_with_model_permissions):
         """Should resolve group regex model permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_model_permission_from_context(context_with_model_permissions, "shared-model")
@@ -477,7 +552,12 @@ class TestResolvePromptPermissionFromContext:
     def test_resolves_user_prompt_permission_from_model_permissions(self, context_with_prompt_permissions):
         """Should resolve user prompt permission from model permissions."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_prompt_permission_from_context(context_with_prompt_permissions, "my-prompt")
@@ -488,7 +568,12 @@ class TestResolvePromptPermissionFromContext:
     def test_resolves_group_prompt_permission(self, context_with_prompt_permissions):
         """Should resolve group prompt permission from model permissions."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_prompt_permission_from_context(context_with_prompt_permissions, "shared-prompt")
@@ -499,7 +584,12 @@ class TestResolvePromptPermissionFromContext:
     def test_resolves_prompt_regex_permission(self, context_with_prompt_permissions):
         """Should resolve prompt-specific regex permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_prompt_permission_from_context(context_with_prompt_permissions, "prompt-test")
@@ -510,7 +600,12 @@ class TestResolvePromptPermissionFromContext:
     def test_resolves_group_prompt_regex_permission(self, context_with_prompt_permissions):
         """Should resolve group prompt-specific regex permission."""
         with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
             mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
 
             result = resolve_prompt_permission_from_context(context_with_prompt_permissions, "team-prompt-1")

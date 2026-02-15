@@ -23,6 +23,10 @@ vi.mock("react-router", () => ({
   ),
 }));
 
+vi.mock("../../shared/context/use-runtime-config", () => ({
+  useRuntimeConfig: () => ({ gen_ai_gateway_enabled: true }),
+}));
+
 vi.mock("../../core/hooks/use-user", () => ({
   useUser: () => mockUseUser() as unknown,
 }));
@@ -41,6 +45,24 @@ vi.mock("../../core/hooks/use-user-model-permissions", () => ({
 }));
 vi.mock("../../core/hooks/use-user-prompt-permissions", () => ({
   useUserPromptPermissions: () => ({ permissions: [], isLoading: false }),
+}));
+vi.mock("../../core/hooks/use-user-gateway-endpoint-permissions", () => ({
+  useUserGatewayEndpointPermissions: () => ({
+    permissions: [],
+    isLoading: false,
+  }),
+}));
+vi.mock("../../core/hooks/use-user-gateway-secret-permissions", () => ({
+  useUserGatewaySecretPermissions: () => ({
+    permissions: [],
+    isLoading: false,
+  }),
+}));
+vi.mock("../../core/hooks/use-user-gateway-model-permissions", () => ({
+  useUserGatewayModelPermissions: () => ({
+    permissions: [],
+    isLoading: false,
+  }),
 }));
 
 vi.mock("../../core/hooks/use-search", () => ({
@@ -87,5 +109,24 @@ describe("UserPage", () => {
   it("renders user details when tab is info", () => {
     render(<UserPage />);
     expect(screen.getByText("Details for testuser")).toBeInTheDocument();
+  });
+
+  it("renders AI Gateway tabs when enabled", () => {
+    render(<UserPage />);
+    expect(screen.getByText(/AI\sEndpoints/)).toBeInTheDocument();
+    expect(screen.getByText(/AI\sSecrets/)).toBeInTheDocument();
+    expect(screen.getByText(/AI\sModels/)).toBeInTheDocument();
+  });
+
+  it("links have correct hrefs", () => {
+    render(<UserPage />);
+    expect(screen.getByText(/AI\sEndpoints/).closest("a")).toHaveAttribute(
+      "href",
+      "/user/ai-endpoints",
+    );
+    expect(screen.getByText(/AI\sSecrets/).closest("a")).toHaveAttribute(
+      "href",
+      "/user/ai-secrets",
+    );
   });
 });

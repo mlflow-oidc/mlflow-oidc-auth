@@ -6,8 +6,10 @@ import { Switch } from "../../shared/components/switch";
 import { TokenInfoBlock } from "../../shared/components/token-info-block";
 import { useUserDetails } from "../../core/hooks/use-user-details";
 import { useUser } from "../../core/hooks/use-user";
+import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 import { NormalPermissionsView } from "./components/normal-permissions-view";
 import { RegexPermissionsView } from "./components/regex-permissions-view";
+import { encodeRouteParam } from "../../shared/utils/string-utils";
 
 interface SharedPermissionsPageProps {
   type: PermissionType;
@@ -31,6 +33,7 @@ export const SharedPermissionsPage = ({
     (entityKind === "user" ? routeUsername : routeGroupName) || null;
 
   const { currentUser } = useUser();
+  const { gen_ai_gateway_enabled: genAiGatewayEnabled } = useRuntimeConfig();
   const { user: userDetails, refetch: userDetailsRefetch } = useUserDetails({
     username:
       entityKind === "user" && currentUser?.is_admin ? entityName : null,
@@ -59,6 +62,13 @@ export const SharedPermissionsPage = ({
     { id: "experiments", label: "Experiments" },
     { id: "models", label: "Models" },
     { id: "prompts", label: "Prompts" },
+    ...(genAiGatewayEnabled
+      ? [
+          { id: "ai-endpoints", label: "AI\u00A0Endpoints" },
+          { id: "ai-secrets", label: "AI\u00A0Secrets" },
+          { id: "ai-models", label: "AI\u00A0Models" },
+        ]
+      : []),
   ];
 
   return (
@@ -79,13 +89,13 @@ export const SharedPermissionsPage = ({
         )}
       </div>
 
-      <div className="flex justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3">
-        <div className="flex space-x-4">
+      <div className="flex space-x-2 justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3 min-w-0">
+        <div className="flex space-x-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
           {tabs.map((tab) => (
             <Link
               key={tab.id}
-              to={`${baseRoute}/${entityName}/${tab.id}`}
-              className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 ${
+              to={`${baseRoute}/${encodeRouteParam(entityName)}/${tab.id}`}
+              className={`py-2 px-4 border-b-2 font-medium text-sm transition-colors duration-200 shrink-0 ${
                 type === tab.id
                   ? "border-btn-primary text-btn-primary dark:border-btn-primary-dark dark:text-btn-primary-dark"
                   : "border-transparent text-text-primary dark:text-text-primary-dark hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark hover:border-btn-secondary-border dark:hover:border-btn-secondary-border-dark"
@@ -99,8 +109,8 @@ export const SharedPermissionsPage = ({
           <Switch
             checked={isRegexMode}
             onChange={setIsRegexMode}
-            label="Regex Mode"
-            className="mr-5"
+            label={"Regex\u00A0Mode"}
+            className="mr-2 shrink-0"
             labelClassName={`py-2 px-2 font-medium text-sm transition-colors duration-200 ${
               isRegexMode
                 ? "text-btn-primary dark:text-btn-primary-dark"

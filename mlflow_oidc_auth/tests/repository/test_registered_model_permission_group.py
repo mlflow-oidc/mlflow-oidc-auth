@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from mlflow_oidc_auth.repository.registered_model_permission_group import RegisteredModelPermissionGroupRepository
+from mlflow_oidc_auth.repository.registered_model_permission_group import (
+    RegisteredModelPermissionGroupRepository,
+)
 from mlflow.exceptions import MlflowException
 
 
@@ -31,8 +33,14 @@ def test_create(repo, session):
     session.flush = MagicMock()
 
     with (
-        patch("mlflow_oidc_auth.repository.registered_model_permission_group.get_group", return_value=group),
-        patch("mlflow_oidc_auth.db.models.SqlRegisteredModelGroupPermission", return_value=perm),
+        patch(
+            "mlflow_oidc_auth.repository.registered_model_permission_group.get_group",
+            return_value=group,
+        ),
+        patch(
+            "mlflow_oidc_auth.db.models.SqlRegisteredModelGroupPermission",
+            return_value=perm,
+        ),
         patch("mlflow_oidc_auth.repository.registered_model_permission_group._validate_permission"),
     ):
         result = repo.create("test_group", "test_model", "READ")
@@ -64,7 +72,10 @@ def test_get(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().all.return_value = [perm]
-    with patch("mlflow_oidc_auth.repository.registered_model_permission_group.get_group", return_value=group):
+    with patch(
+        "mlflow_oidc_auth.repository.registered_model_permission_group.get_group",
+        return_value=group,
+    ):
         result = repo.get("g")
         assert result == ["entity"]
 
@@ -89,7 +100,10 @@ def test_get_for_user_compare_permissions_true(repo, session):
 
     with (
         patch.object(repo, "_get_registered_model_group_permission", side_effect=[perm1, perm2]),
-        patch("mlflow_oidc_auth.repository.registered_model_permission_group.compare_permissions", return_value=True),
+        patch(
+            "mlflow_oidc_auth.repository.registered_model_permission_group.compare_permissions",
+            return_value=True,
+        ),
     ):
         result = repo.get_for_user("name", "user")
         assert result == "entity"
@@ -106,7 +120,10 @@ def test_get_for_user_compare_permissions_attribute_error(repo, session):
 
     with (
         patch.object(repo, "_get_registered_model_group_permission", side_effect=[perm1, perm2]),
-        patch("mlflow_oidc_auth.repository.registered_model_permission_group.compare_permissions", side_effect=AttributeError("test error")),
+        patch(
+            "mlflow_oidc_auth.repository.registered_model_permission_group.compare_permissions",
+            side_effect=AttributeError("test error"),
+        ),
     ):
         result = repo.get_for_user("name", "user")
         assert result == "entity"
@@ -135,8 +152,14 @@ def test_list_for_user(repo, session):
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().all.return_value = [perm]
     with (
-        patch("mlflow_oidc_auth.repository.registered_model_permission_group.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.registered_model_permission_group.list_user_groups", return_value=[ug]),
+        patch(
+            "mlflow_oidc_auth.repository.registered_model_permission_group.get_user",
+            return_value=user,
+        ),
+        patch(
+            "mlflow_oidc_auth.repository.registered_model_permission_group.list_user_groups",
+            return_value=[ug],
+        ),
     ):
         result = repo.list_for_user("user")
         assert result == ["entity"]
@@ -148,7 +171,10 @@ def test_update(repo, session):
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().one.return_value = perm
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.registered_model_permission_group.get_group", return_value=group):
+    with patch(
+        "mlflow_oidc_auth.repository.registered_model_permission_group.get_group",
+        return_value=group,
+    ):
         result = repo.update("g", "name", "EDIT")
         assert result == "entity"
         assert perm.permission == "EDIT"
@@ -161,7 +187,10 @@ def test_delete(repo, session):
     session.query().filter().one.return_value = perm
     session.delete = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.registered_model_permission_group.get_group", return_value=group):
+    with patch(
+        "mlflow_oidc_auth.repository.registered_model_permission_group.get_group",
+        return_value=group,
+    ):
         repo.delete("g", "name")
         session.delete.assert_called_once_with(perm)
         session.flush.assert_called_once()
