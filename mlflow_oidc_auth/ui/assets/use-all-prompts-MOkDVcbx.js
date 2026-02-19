@@ -1,0 +1,1 @@
+import{t as e}from"./use-api-CtLXpHJw.js";import{i as t}from"./entity-service-gglkTfMc.js";function n(){let{data:n,isLoading:r,error:i,refetch:a}=e(t);return{allPrompts:n,isLoading:r,error:i,refresh:a}}export{n as t};

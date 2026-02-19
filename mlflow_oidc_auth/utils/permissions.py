@@ -89,14 +89,19 @@ def _get_registered_model_permission_from_regex(regexes: List[RegisteredModelReg
 
 def _get_experiment_permission_from_regex(regexes: List[ExperimentRegexPermission], experiment_id: str) -> str:
     experiment_name = _get_tracking_store().get_experiment(experiment_id).name
+    return _get_experiment_permission_from_name_regex(regexes, experiment_name)
+
+
+def _get_experiment_permission_from_name_regex(regexes: List[ExperimentRegexPermission], experiment_name: str) -> str:
+    """Like _get_experiment_permission_from_regex but takes name directly instead of ID."""
     for regex in regexes:
         if re.match(regex.regex, experiment_name):
             logger.debug(
-                f"Regex permission found for experiment id {experiment_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
+                f"Regex permission found for experiment name {experiment_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
             )
             return regex.permission
     raise MlflowException(
-        f"experiment id {experiment_id}",
+        f"experiment name {experiment_name}",
         error_code=RESOURCE_DOES_NOT_EXIST,
     )
 
@@ -114,14 +119,19 @@ def _get_registered_model_group_permission_from_regex(regexes: List[RegisteredMo
 
 def _get_experiment_group_permission_from_regex(regexes: List[ExperimentGroupRegexPermission], experiment_id: str) -> str:
     experiment_name = _get_tracking_store().get_experiment(experiment_id).name
+    return _get_experiment_group_permission_from_name_regex(regexes, experiment_name)
+
+
+def _get_experiment_group_permission_from_name_regex(regexes: List[ExperimentGroupRegexPermission], experiment_name: str) -> str:
+    """Like _get_experiment_group_permission_from_regex but takes name directly instead of ID."""
     for regex in regexes:
         if re.match(regex.regex, experiment_name):
             logger.debug(
-                f"Regex group permission found for experiment id {experiment_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
+                f"Regex group permission found for experiment name {experiment_name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
             )
             return regex.permission
     raise MlflowException(
-        f"experiment id {experiment_id}",
+        f"experiment name {experiment_name}",
         error_code=RESOURCE_DOES_NOT_EXIST,
     )
 
@@ -146,6 +156,48 @@ def _get_scorer_group_permission_from_regex(regexes: List[ScorerGroupRegexPermis
         f"scorer name {scorer_name}",
         error_code=RESOURCE_DOES_NOT_EXIST,
     )
+
+
+def _permission_new_experiment_sources_config(experiment_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    """Permission sources for experiment creation (by name, no experiment_id yet).
+
+    Only regex-based sources are used because "user" and "group" sources
+    require a per-resource-ID permission record which doesn't exist yet.
+    """
+    return {
+        "regex": lambda experiment_name=experiment_name, user=username: _get_experiment_permission_from_name_regex(
+            store.list_experiment_regex_permissions(user), experiment_name
+        ),
+        "group-regex": lambda experiment_name=experiment_name, user=username: _get_experiment_group_permission_from_name_regex(
+            store.list_group_experiment_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)), experiment_name
+        ),
+    }
+
+
+def _permission_new_registered_model_sources_config(model_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    """Permission sources for registered model creation (by name, no permission record yet).
+
+    Only regex-based sources are used because "user" and "group" sources
+    require a per-resource permission record which doesn't exist yet.
+    """
+    return {
+        "regex": lambda model_name=model_name, user=username: _get_registered_model_permission_from_regex(
+            store.list_registered_model_regex_permissions(user), model_name
+        ),
+        "group-regex": lambda model_name=model_name, user=username: _get_registered_model_group_permission_from_regex(
+            store.list_group_registered_model_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)), model_name
+        ),
+    }
+
+
+def effective_new_experiment_permission(experiment_name: str, user: str) -> PermissionResult:
+    """Resolve permission for creating a new experiment by name."""
+    return get_permission_from_store_or_default(_permission_new_experiment_sources_config(experiment_name, user))
+
+
+def effective_new_registered_model_permission(model_name: str, user: str) -> PermissionResult:
+    """Resolve permission for creating a new registered model by name."""
+    return get_permission_from_store_or_default(_permission_new_registered_model_sources_config(model_name, user))
 
 
 def effective_experiment_permission(experiment_id: str, user: str) -> PermissionResult:

@@ -177,7 +177,7 @@ flask_session/
 
 node_modules/
 .angular/
-mlflow_oidc_auth/ui
+# mlflow_oidc_auth/ui - included for pip install from git
 pytest-coverage.txt
 
 web-react/coverage/

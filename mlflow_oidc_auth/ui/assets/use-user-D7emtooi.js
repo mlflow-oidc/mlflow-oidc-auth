@@ -1,0 +1,1 @@
+import{i as e,o as t}from"./button-DJ30HgDO.js";var n=t(e(),1);const r=(0,n.createContext)(null);function i(){let e=(0,n.use)(r);if(!e)throw Error(`useUser must be used inside <UserProvider>`);return e}export{i as n,r as t};

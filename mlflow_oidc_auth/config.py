@@ -63,6 +63,7 @@ class AppConfig:
         # Permission settings
         self.DEFAULT_MLFLOW_PERMISSION = config_manager.get("DEFAULT_MLFLOW_PERMISSION", "MANAGE")
         self.PERMISSION_SOURCE_ORDER = config_manager.get_list("PERMISSION_SOURCE_ORDER", default=["user", "group", "regex", "group-regex"])
+        self.RESTRICT_RESOURCE_CREATION = config_manager.get_bool("RESTRICT_RESOURCE_CREATION", default=False)
 
         # Security settings (secrets - may come from Secrets Manager/Key Vault)
         self.SECRET_KEY = config_manager.get("SECRET_KEY") or secrets.token_hex(16)

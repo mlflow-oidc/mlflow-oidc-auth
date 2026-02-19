@@ -1,0 +1,1 @@
+import{i as e,o as t,r as n,t as r}from"./button-DJ30HgDO.js";e();var i=t(n(),1);function a({icon:e,onClick:t,title:n,disabled:a}){return(0,i.jsx)(r,{onClick:e=>{e.stopPropagation(),a||t(e)},title:n,icon:e,className:`w-7 h-7`,disabled:a})}export{a as t};
