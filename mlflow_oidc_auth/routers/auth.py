@@ -412,6 +412,8 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
                 user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(access_token)
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
+            if isinstance(user_groups, str):
+                user_groups = [user_groups]
 
             logger.debug(f"User groups: {user_groups}")
 
