@@ -686,9 +686,7 @@ class TestUsersRouterIntegration:
             else:
                 response = admin_client.delete(endpoint, data="invalid json")
 
-            assert response.status_code == 422, (
-                "admin client should reach body validation even with invalid JSON"
-            )
+            assert response.status_code == 422, "admin client should reach body validation even with invalid JSON"
 
         # Non-admin clients may be rejected with 403 before validation; both outcomes
         # are acceptable as long as they don't succeed.
