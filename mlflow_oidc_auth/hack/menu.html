@@ -14,42 +14,48 @@
         xhr.send();
     }
 
-    function waitForDocsLink(callback) {
-        var docsLink = document.querySelector('a[href="https://www.mlflow.org/docs/latest/index.html"]');
-        if (docsLink) {
-            callback(docsLink);
-            return;
-        }
+    function waitForNavAnchor(callback) {
+        // Works for MLflow 3.10+ (redesigned nav) and MLflow < 3.10 (tested on 3.9).
+        var anchor = document.querySelector('a[href="#/settings"]');
+        if (anchor) { callback(anchor); return; }
         var observer = new MutationObserver(function (mutations, obs) {
-            var docsLink = document.querySelector('a[href="https://www.mlflow.org/docs/latest/index.html"]');
-            if (docsLink) {
-                obs.disconnect();
-                callback(docsLink);
-            }
+            var anchor = document.querySelector('a[href="#/settings"]');
+            if (anchor) { obs.disconnect(); callback(anchor); }
         });
         observer.observe(document.body, { childList: true, subtree: true });
     }
 
     document.addEventListener("DOMContentLoaded", function () {
-        function addLinks(username, oidcLink, logoutLink, docsLink) {
-            var parentDiv = docsLink.parentElement;
+        function addLinks(username, oidcLink, logoutLink, anchor) {
+            var linkClass = anchor.className;
+            var anchorParent = anchor.parentElement;
+            // MLflow 3.10+: anchor parent is <li> inside a <div> container.
+            // MLflow < 3.10 (tested on 3.9): anchor parent is the <div> container directly.
+            var parentIsLi = anchorParent.tagName === 'LI';
+            var container = parentIsLi ? anchorParent.parentElement : anchorParent;
+            var insertBefore = parentIsLi ? anchorParent : null;
+
             function createLinkElement(text, link) {
-                var linkElement = document.createElement('a');
-                linkElement.href = link;
-                linkElement.classList.add('css-3cyd2n');
-                var divElement = document.createElement('div');
-                divElement.className = 'docs';
-                var spanElement = document.createElement('span');
-                spanElement.textContent = text;
-                divElement.appendChild(spanElement);
-                linkElement.appendChild(divElement);
-                return linkElement;
+                var a = document.createElement('a');
+                a.href = link;
+                a.className = linkClass;
+                a.setAttribute('data-state', 'closed');
+                var span = document.createElement('span');
+                span.textContent = text;
+                a.appendChild(span);
+                if (parentIsLi) {
+                    var li = document.createElement('li');
+                    li.appendChild(a);
+                    return li;
+                }
+                return a;
             }
-            parentDiv.appendChild(createLinkElement(username, '#'));
-            parentDiv.appendChild(createLinkElement('Permissions', oidcLink));
-            parentDiv.appendChild(createLinkElement('Logout', logoutLink));
+
+            container.insertBefore(createLinkElement(username, '#'), insertBefore);
+            container.insertBefore(createLinkElement('Permissions', oidcLink), insertBefore);
+            container.insertBefore(createLinkElement('Logout', logoutLink), insertBefore);
         }
-        // Get username and add links after Docs
+
         makeRequest("api/2.0/mlflow/users/current", function (error, response) {
             if (error) {
                 console.error("Error fetching username:", error);
@@ -58,8 +64,8 @@
             var username = response.display_name;
             var oidcLink = "oidc/ui/user";
             var logoutLink = "logout";
-            waitForDocsLink(function(docsLink) {
-                addLinks(username, oidcLink, logoutLink, docsLink);
+            waitForNavAnchor(function (anchor) {
+                addLinks(username, oidcLink, logoutLink, anchor);
             });
         });
     });
