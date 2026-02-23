@@ -665,21 +665,40 @@ class TestUsersRouterIntegration:
             # Should require admin privileges
             assert response.status_code == 403
 
-    def test_endpoints_with_invalid_json(self, authenticated_client):
-        """Test endpoints with invalid JSON data."""
+    def test_endpoints_with_invalid_json(self, authenticated_client, admin_client):
+        """Test endpoints with invalid JSON data.
+
+        The user-creation and deletion APIs are admin-only, so a non-admin client may
+        be short-circuited with a 403 before the request body is ever parsed.  FastAPI
+        versions differ in whether validation or dependencies run first, so CI and local
+        environments could see different status codes.  To make the test robust we
+        exercise both admin and non-admin clients.
+        """
         endpoints_with_body = [
             ("POST", "/api/2.0/mlflow/users"),
             ("DELETE", "/api/2.0/mlflow/users"),
         ]
 
+        # Admins should always hit the JSON validation step and therefore receive 422
+        for method, endpoint in endpoints_with_body:
+            if method == "POST":
+                response = admin_client.post(endpoint, data="invalid json")
+            else:
+                response = admin_client.delete(endpoint, data="invalid json")
+
+            assert response.status_code == 422, (
+                "admin client should reach body validation even with invalid JSON"
+            )
+
+        # Non-admin clients may be rejected with 403 before validation; both outcomes
+        # are acceptable as long as they don't succeed.
         for method, endpoint in endpoints_with_body:
             if method == "POST":
                 response = authenticated_client.post(endpoint, data="invalid json")
-            elif method == "DELETE":
+            else:
                 response = authenticated_client.delete(endpoint, data="invalid json")
 
-            # Should return 422 for invalid JSON
-            assert response.status_code == 422
+            assert response.status_code in (403, 422)
 
     def test_endpoints_response_content_type(self, authenticated_client, admin_client):
         """Test that endpoints return proper content type."""
