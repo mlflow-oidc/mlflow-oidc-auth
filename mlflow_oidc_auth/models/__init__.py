@@ -11,10 +11,12 @@ from mlflow_oidc_auth.models.experiment import (
     ExperimentRegexPermission,
     ExperimentSummary,
 )
+from mlflow_oidc_auth.models.gateway import GatewayPermission, GatewayRegexCreate
 from mlflow_oidc_auth.models.group import (
     GroupExperimentPermission,
     GroupExperimentPermissionItem,
     GroupExperimentRegexPermissionItem,
+    GroupGatewayRegexPermissionItem,
     GroupListResponse,
     GroupNamedPermissionItem,
     GroupPermissionEntry,
@@ -56,6 +58,7 @@ from mlflow_oidc_auth.models.responses import (
     ScorerRegexPermissionResponse,
     StatusMessageResponse,
     StatusOnlyResponse,
+    UserGatewayRegexPermissionItem,
 )
 from mlflow_oidc_auth.models.user import (
     CreateAccessTokenRequest,
@@ -90,11 +93,14 @@ __all__ = [
     "ExperimentPermissionSummary",
     "ExperimentSummary",
     "ExperimentRegexPermission",
+    "GatewayPermission",
+    "GatewayRegexCreate",
     "GroupUser",
     "GroupExperimentPermission",
     "GroupListResponse",
     "GroupExperimentPermissionItem",
     "GroupExperimentRegexPermissionItem",
+    "GroupGatewayRegexPermissionItem",
     "GroupNamedPermissionItem",
     "GroupRegexPermission",
     "GroupPermissionEntry",
@@ -129,6 +135,7 @@ __all__ = [
     "ScorerPermissionResponse",
     "ScorerRegexPermissionRecord",
     "ScorerRegexPermissionResponse",
+    "UserGatewayRegexPermissionItem",
     "CreateAccessTokenRequest",
     "CreateUserRequest",
     "CreateUserTokenRequest",
