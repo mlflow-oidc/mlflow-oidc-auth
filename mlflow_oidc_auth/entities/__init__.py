@@ -16,6 +16,7 @@ from mlflow_oidc_auth.entities.scorer import (
     ScorerRegexPermission,
 )
 from mlflow_oidc_auth.entities.user import User, UserGroup
+from mlflow_oidc_auth.entities.user_token import UserToken
 from mlflow_oidc_auth.entities.gateway_endpoint import (
     GatewayEndpointPermission,
     GatewayEndpointRegexPermission,
@@ -66,4 +67,5 @@ __all__ = [
     "WorkspaceGroupPermission",
     "WorkspaceRegexPermission",
     "WorkspaceGroupRegexPermission",
+    "UserToken",
 ]

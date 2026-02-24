@@ -1,9 +1,13 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mlflow_oidc_auth.db.models._base import Base
+
+if TYPE_CHECKING:
+    from mlflow_oidc_auth.db.models.user_token import SqlUserToken
 from mlflow_oidc_auth.db.models.experiment import SqlExperimentPermission
 from mlflow_oidc_auth.db.models.gateway_endpoint import SqlGatewayEndpointPermission
 from mlflow_oidc_auth.db.models.gateway_model_definition import SqlGatewayModelDefinitionPermission
@@ -35,6 +39,7 @@ class SqlUser(Base):
         secondary="user_groups",
         back_populates="users",
     )
+    tokens: Mapped[list["SqlUserToken"]] = relationship("SqlUserToken", back_populates="user")
 
     def to_mlflow_entity(self):
         return User(
