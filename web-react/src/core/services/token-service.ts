@@ -30,7 +30,7 @@ export interface UserTokenCreatedResponse {
 
 export interface CreateTokenRequest {
   name: string;
-  expiration?: string;
+  expiration: string;
 }
 
 export const fetchUserTokens = createStaticApiFetcher<UserTokenListResponse>({
