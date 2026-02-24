@@ -1,10 +1,13 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mlflow_oidc_auth.db.models._base import Base
+
+if TYPE_CHECKING:
+    from mlflow_oidc_auth.db.models.user_token import SqlUserToken
 from mlflow_oidc_auth.db.models.experiment import SqlExperimentPermission
 from mlflow_oidc_auth.db.models.gateway_endpoint import SqlGatewayEndpointPermission
 from mlflow_oidc_auth.db.models.gateway_model_definition import SqlGatewayModelDefinitionPermission
@@ -49,6 +52,7 @@ class SqlUser(Base):
     # Unique index rather than constraint: repeated NULLs are allowed on both backends, which
     # is what "unique when present" means for an optional external identifier.
     __table_args__ = (Index("ix_users_external_id", "external_id", unique=True),)
+    tokens: Mapped[list["SqlUserToken"]] = relationship("SqlUserToken", back_populates="user")
 
     def to_mlflow_entity(self):
         return User(
