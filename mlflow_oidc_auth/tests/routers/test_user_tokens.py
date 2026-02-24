@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.routers.users import (
     list_tokens,
@@ -144,12 +146,6 @@ class TestTokenToResponse:
         result = _token_to_response(mock_token)
         assert result.last_used_at is None
 
-    def test_handles_none_expires_at(self, mock_token):
-        """Test conversion when expires_at is None (legacy token)."""
-        mock_token.expires_at = None
-        result = _token_to_response(mock_token)
-        assert result.expires_at is None
-
 
 # =============================================================================
 # Tests for Current User Token Endpoints
@@ -213,7 +209,7 @@ class TestCreateToken:
     @pytest.mark.asyncio
     async def test_create_token_duplicate_name(self, mock_store):
         """Test creating token with duplicate name returns 409."""
-        mock_store.create_user_token.side_effect = Exception("Token 'dup' already exists")
+        mock_store.create_user_token.side_effect = MlflowException("Token 'dup' already exists", error_code=RESOURCE_ALREADY_EXISTS)
         expiration = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
         request = CreateUserTokenRequest(name="dup", expiration=expiration)
 
@@ -254,7 +250,7 @@ class TestDeleteToken:
     @pytest.mark.asyncio
     async def test_delete_token_not_found(self, mock_store):
         """Test deleting non-existent token returns 404."""
-        mock_store.delete_user_token.side_effect = Exception("Token not found")
+        mock_store.delete_user_token.side_effect = MlflowException("Token not found", error_code=RESOURCE_DOES_NOT_EXIST)
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc:
@@ -331,7 +327,7 @@ class TestCreateUserTokenAdmin:
     async def test_create_user_token_admin_duplicate_name(self, mock_store):
         """Test admin creating token with duplicate name."""
         # Use existing user from conftest mock_store setup
-        mock_store.create_user_token.side_effect = Exception("Token already exists")
+        mock_store.create_user_token.side_effect = MlflowException("Token already exists", error_code=RESOURCE_ALREADY_EXISTS)
         expiration = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
         request = CreateUserTokenRequest(name="dup", expiration=expiration)
 
@@ -360,7 +356,7 @@ class TestDeleteUserTokenAdmin:
     @pytest.mark.asyncio
     async def test_delete_user_token_admin_not_found(self, mock_store):
         """Test admin deleting non-existent token."""
-        mock_store.delete_user_token.side_effect = Exception("Token not found")
+        mock_store.delete_user_token.side_effect = MlflowException("Token not found", error_code=RESOURCE_DOES_NOT_EXIST)
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc:

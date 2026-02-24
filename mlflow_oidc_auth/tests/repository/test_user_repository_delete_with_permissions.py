@@ -18,7 +18,7 @@ def test_delete_user_with_experiment_permissions_deletes_permissions_rows(
     store.init_db(f"sqlite:///{db_path.as_posix()}")
 
     username = "user@example.com"
-    store.create_user(username=username, password="pw", display_name="User")
+    store.create_user(username=username, display_name="User")
     store.create_experiment_permission(experiment_id="exp1", username=username, permission="READ")
 
     with store.ManagedSessionMaker() as session:

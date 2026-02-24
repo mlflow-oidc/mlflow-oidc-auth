@@ -4,7 +4,6 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
@@ -454,7 +453,7 @@ async def create_token(
     except HTTPException:
         raise
     except MlflowException as e:
-        if e.error_code == RESOURCE_ALREADY_EXISTS:
+        if e.error_code == "RESOURCE_ALREADY_EXISTS":
             raise HTTPException(status_code=409, detail=f"Token with name '{token_request.name}' already exists")
         logger.error(f"Error creating token: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create token")
@@ -477,7 +476,7 @@ async def delete_token(
         store.delete_user_token(token_id, current_username)
         return JSONResponse(content={"message": "Token deleted successfully"})
     except MlflowException as e:
-        if e.error_code == RESOURCE_DOES_NOT_EXIST:
+        if e.error_code == "RESOURCE_DOES_NOT_EXIST":
             raise HTTPException(status_code=404, detail=f"Token with id={token_id} not found")
         logger.error(f"Error deleting token: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete token")
@@ -610,7 +609,7 @@ async def create_user_token_admin(
     except HTTPException:
         raise
     except MlflowException as e:
-        if e.error_code == RESOURCE_ALREADY_EXISTS:
+        if e.error_code == "RESOURCE_ALREADY_EXISTS":
             raise HTTPException(status_code=409, detail=f"Token with name '{token_request.name}' already exists for user '{username}'")
         logger.error(f"Error creating token for user {username}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create token")
@@ -634,7 +633,7 @@ async def delete_user_token_admin(
         store.delete_user_token(token_id, username)
         return JSONResponse(content={"message": f"Token deleted successfully for user '{username}'"})
     except MlflowException as e:
-        if e.error_code == RESOURCE_DOES_NOT_EXIST:
+        if e.error_code == "RESOURCE_DOES_NOT_EXIST":
             raise HTTPException(status_code=404, detail=f"Token with id={token_id} not found for user '{username}'")
         logger.error(f"Error deleting token for user {username}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete token")

@@ -28,7 +28,6 @@ def test_user(store):
     username = "tokenuser@example.com"
     store.create_user(
         username=username,
-        password="initial_password",
         display_name="Token Test User",
     )
     return username
@@ -210,7 +209,6 @@ class TestTokenLifecycle:
         username = "delete_me@example.com"
         store.create_user(
             username=username,
-            password="pw",
             display_name="Delete Me",
         )
         expires = datetime.now(timezone.utc) + timedelta(days=30)
