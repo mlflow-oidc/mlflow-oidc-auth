@@ -277,7 +277,7 @@ class TestSqlAlchemyStore:
         mock_store.user_token_repo.create.return_value = mock_token
         expires_at = datetime.now()
         result = mock_store.create_user_token("testuser", "my-token", "secret", expires_at)
-        mock_store.user_token_repo.create.assert_called_once_with(username="testuser", name="my-token", token="secret", expires_at=expires_at)
+        mock_store.user_token_repo.create.assert_called_once_with("testuser", "my-token", "secret", expires_at)
         assert result == mock_token
 
     def test_list_user_tokens(self, mock_store: SqlAlchemyStore):
@@ -293,13 +293,13 @@ class TestSqlAlchemyStore:
         mock_token = MagicMock()
         mock_store.user_token_repo.get.return_value = mock_token
         result = mock_store.get_user_token(123, "testuser")
-        mock_store.user_token_repo.get.assert_called_once_with(token_id=123, username="testuser")
+        mock_store.user_token_repo.get.assert_called_once_with(123, "testuser")
         assert result == mock_token
 
     def test_delete_user_token(self, mock_store: SqlAlchemyStore):
         """Test delete_user_token delegates to user_token_repo."""
         mock_store.delete_user_token(123, "testuser")
-        mock_store.user_token_repo.delete.assert_called_once_with(token_id=123, username="testuser")
+        mock_store.user_token_repo.delete.assert_called_once_with(123, "testuser")
 
     def test_delete_all_user_tokens(self, mock_store: SqlAlchemyStore):
         """Test delete_all_user_tokens delegates to user_token_repo."""
@@ -312,7 +312,7 @@ class TestSqlAlchemyStore:
         """Test authenticate_user_token delegates to user_token_repo."""
         mock_store.user_token_repo.authenticate.return_value = True
         result = mock_store.authenticate_user_token("testuser", "secret")
-        mock_store.user_token_repo.authenticate.assert_called_once_with(username="testuser", password="secret")
+        mock_store.user_token_repo.authenticate.assert_called_once_with("testuser", "secret")
         assert result is True
 
     # Test experiment permission methods
