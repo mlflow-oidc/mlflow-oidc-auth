@@ -7,11 +7,7 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 
 from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
-from mlflow_oidc_auth.entities import (
-    User,
-    ExperimentPermission,
-    RegisteredModelPermission,
-)
+from mlflow_oidc_auth.entities import User, ExperimentPermission, RegisteredModelPermission
 
 
 @pytest.fixture
@@ -27,6 +23,7 @@ def mock_store():
     """Store with all repositories mocked for isolated testing"""
     store = SqlAlchemyStore()
     store.user_repo = MagicMock()
+    store.user_token_repo = MagicMock()
     store.experiment_repo = MagicMock()
     store.experiment_group_repo = MagicMock()
     store.group_repo = MagicMock()
@@ -42,12 +39,7 @@ def mock_store():
     return store
 
 
-def create_test_user(
-    username="testuser",
-    display_name="Test User",
-    is_admin=False,
-    is_service_account=False,
-):
+def create_test_user(username="testuser", display_name="Test User", is_admin=False, is_service_account=False):
     """Helper function to create test User entities with correct constructor"""
     return User(
         id_=1,
@@ -62,23 +54,12 @@ def create_test_user(
 
 def create_test_experiment_permission(experiment_id="exp1", permission="READ", user_id=1, group_id=None):
     """Helper function to create test ExperimentPermission entities with correct constructor"""
-    return ExperimentPermission(
-        experiment_id=experiment_id,
-        permission=permission,
-        user_id=user_id,
-        group_id=group_id,
-    )
+    return ExperimentPermission(experiment_id=experiment_id, permission=permission, user_id=user_id, group_id=group_id)
 
 
 def create_test_registered_model_permission(name="model1", permission="READ", user_id=1, group_id=None, prompt=False):
     """Helper function to create test RegisteredModelPermission entities with correct constructor"""
-    return RegisteredModelPermission(
-        name=name,
-        permission=permission,
-        user_id=user_id,
-        group_id=group_id,
-        prompt=prompt,
-    )
+    return RegisteredModelPermission(name=name, permission=permission, user_id=user_id, group_id=group_id, prompt=prompt)
 
 
 class TestSqlAlchemyStore:
@@ -195,14 +176,7 @@ class TestSqlAlchemyStore:
     def test_update_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
         store.update_prompt_regex_permission(1, ".*", 2, "EDIT", "user", prompt=True)
-        store.prompt_regex_repo.update.assert_called_once_with(
-            id=1,
-            regex=".*",
-            priority=2,
-            permission="EDIT",
-            username="user",
-            prompt=True,
-        )
+        store.prompt_regex_repo.update.assert_called_once_with(id=1, regex=".*", priority=2, permission="EDIT", username="user", prompt=True)
 
     def test_delete_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
@@ -227,14 +201,7 @@ class TestSqlAlchemyStore:
     def test_update_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
         store.update_group_prompt_regex_permission(1, ".*", 2, "EDIT", "group", prompt=True)
-        store.prompt_group_regex_repo.update.assert_called_once_with(
-            id=1,
-            regex=".*",
-            priority=2,
-            permission="EDIT",
-            group_name="group",
-            prompt=True,
-        )
+        store.prompt_group_regex_repo.update.assert_called_once_with(id=1, regex=".*", priority=2, permission="EDIT", group_name="group", prompt=True)
 
     def test_delete_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
@@ -253,9 +220,10 @@ class TestSqlAlchemyStore:
 
     # Test missing user management methods
     def test_authenticate_user(self, mock_store: SqlAlchemyStore):
-        mock_store.user_repo.authenticate.return_value = True
+        """Test authenticate_user delegates to user_token_repo."""
+        mock_store.user_token_repo.authenticate.return_value = True
         result = mock_store.authenticate_user("testuser", "password")
-        mock_store.user_repo.authenticate.assert_called_once_with("testuser", "password")
+        mock_store.user_token_repo.authenticate.assert_called_once_with("testuser", "password")
         assert result is True
 
     def test_create_user(self, mock_store: SqlAlchemyStore):
@@ -291,17 +259,58 @@ class TestSqlAlchemyStore:
         expiration = datetime.now()
         result = mock_store.update_user("testuser", "newpass", expiration, True, False)
         mock_store.user_repo.update.assert_called_once_with(
-            username="testuser",
-            password="newpass",
-            password_expiration=expiration,
-            is_admin=True,
-            is_service_account=False,
+            username="testuser", password="newpass", password_expiration=expiration, is_admin=True, is_service_account=False
         )
         assert result == mock_user
 
     def test_delete_user(self, mock_store: SqlAlchemyStore):
         mock_store.delete_user("testuser")
         mock_store.user_repo.delete.assert_called_once_with("testuser")
+
+    # Test user token methods
+    def test_create_user_token(self, mock_store: SqlAlchemyStore):
+        """Test create_user_token delegates to user_token_repo."""
+        mock_token = MagicMock()
+        mock_store.user_token_repo.create.return_value = mock_token
+        expires_at = datetime.now()
+        result = mock_store.create_user_token("testuser", "my-token", "secret", expires_at)
+        mock_store.user_token_repo.create.assert_called_once_with(username="testuser", name="my-token", token="secret", expires_at=expires_at)
+        assert result == mock_token
+
+    def test_list_user_tokens(self, mock_store: SqlAlchemyStore):
+        """Test list_user_tokens delegates to user_token_repo."""
+        mock_tokens = [MagicMock(), MagicMock()]
+        mock_store.user_token_repo.list_for_user.return_value = mock_tokens
+        result = mock_store.list_user_tokens("testuser")
+        mock_store.user_token_repo.list_for_user.assert_called_once_with("testuser")
+        assert result == mock_tokens
+
+    def test_get_user_token(self, mock_store: SqlAlchemyStore):
+        """Test get_user_token delegates to user_token_repo."""
+        mock_token = MagicMock()
+        mock_store.user_token_repo.get.return_value = mock_token
+        result = mock_store.get_user_token(123, "testuser")
+        mock_store.user_token_repo.get.assert_called_once_with(token_id=123, username="testuser")
+        assert result == mock_token
+
+    def test_delete_user_token(self, mock_store: SqlAlchemyStore):
+        """Test delete_user_token delegates to user_token_repo."""
+        mock_store.delete_user_token(123, "testuser")
+        mock_store.user_token_repo.delete.assert_called_once_with(token_id=123, username="testuser")
+
+    def test_delete_all_user_tokens(self, mock_store: SqlAlchemyStore):
+        """Test delete_all_user_tokens delegates to user_token_repo."""
+        mock_store.user_token_repo.delete_all_for_user.return_value = 3
+        result = mock_store.delete_all_user_tokens("testuser")
+        mock_store.user_token_repo.delete_all_for_user.assert_called_once_with("testuser")
+        assert result == 3
+
+    def test_authenticate_user_token(self, mock_store: SqlAlchemyStore):
+        """Test authenticate_user_token delegates to user_token_repo."""
+        mock_store.user_token_repo.authenticate.return_value = True
+        result = mock_store.authenticate_user_token("testuser", "secret")
+        mock_store.user_token_repo.authenticate.assert_called_once_with(username="testuser", password="secret")
+        assert result is True
 
     # Test experiment permission methods
     def test_create_experiment_permission(self, mock_store: SqlAlchemyStore):
@@ -589,7 +598,7 @@ class TestSqlAlchemyStoreErrorHandling:
 
     def test_user_operations_with_database_error(self, mock_store):
         """Test user operations when database operations fail"""
-        mock_store.user_repo.authenticate.side_effect = OperationalError("Database error", None, None)
+        mock_store.user_token_repo.authenticate.side_effect = OperationalError("Database error", None, None)
 
         with pytest.raises(OperationalError):
             mock_store.authenticate_user("testuser", "password")
@@ -622,10 +631,7 @@ class TestSqlAlchemyStoreTransactionHandling:
     def test_transaction_rollback_on_user_creation_failure(self, mock_store):
         """Test transaction rollback when user creation fails"""
         # Simulate a scenario where user creation fails after partial completion
-        mock_store.user_repo.create.side_effect = [
-            SQLAlchemyError("Constraint violation"),
-            create_test_user("testuser", "Test User", False),
-        ]
+        mock_store.user_repo.create.side_effect = [SQLAlchemyError("Constraint violation"), create_test_user("testuser", "Test User", False)]
 
         # First call should raise exception
         with pytest.raises(SQLAlchemyError):
@@ -772,15 +778,7 @@ class TestSqlAlchemyStorePerformance:
     def test_regex_permission_query_performance(self, mock_store):
         """Test performance of regex permission queries"""
         # Mock regex permission results
-        regex_permissions = [
-            {
-                "id": i,
-                "regex": f".*exp_{i}.*",
-                "permission": "READ",
-                "username": "testuser",
-            }
-            for i in range(100)
-        ]
+        regex_permissions = [{"id": i, "regex": f".*exp_{i}.*", "permission": "READ", "username": "testuser"} for i in range(100)]
         mock_store.experiment_regex_repo.list_regex_for_user.return_value = regex_permissions
 
         start_time = time.time()
@@ -904,14 +902,7 @@ class TestSqlAlchemyStoreInitialization:
     @patch("mlflow_oidc_auth.sqlalchemy_store.dbutils.migrate_if_needed")
     @patch("mlflow_oidc_auth.sqlalchemy_store.sessionmaker")
     @patch("mlflow_oidc_auth.sqlalchemy_store._get_managed_session_maker")
-    def test_init_db_complete_flow(
-        self,
-        mock_managed_session,
-        mock_sessionmaker,
-        mock_migrate,
-        mock_create_engine,
-        mock_extract_db_type,
-    ):
+    def test_init_db_complete_flow(self, mock_managed_session, mock_sessionmaker, mock_migrate, mock_create_engine, mock_extract_db_type):
         """Test complete database initialization flow"""
         # Setup mocks
         mock_extract_db_type.return_value = "sqlite"
@@ -960,11 +951,7 @@ class TestSqlAlchemyStoreInitialization:
         store = SqlAlchemyStore()
 
         # Test with different URI formats
-        test_uris = [
-            "sqlite:///test.db",
-            "postgresql://user:pass@localhost/db",
-            "mysql://user:pass@localhost/db",
-        ]
+        test_uris = ["sqlite:///test.db", "postgresql://user:pass@localhost/db", "mysql://user:pass@localhost/db"]
 
         for uri in test_uris:
             with patch("mlflow_oidc_auth.sqlalchemy_store.extract_db_type_from_uri") as mock_extract:
