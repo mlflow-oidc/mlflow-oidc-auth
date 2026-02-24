@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f6"
-down_revision = "3c3272527ade"
+down_revision = "6a7b8c9def01"
 branch_labels = None
 depends_on = None
 
@@ -74,9 +74,9 @@ def upgrade() -> None:
                 )
             )
 
-    # NOTE: We intentionally do NOT drop the password_hash and password_expiration
-    # columns from the users table in this migration. This allows for safe rollback
-    # if needed and maintains backwards compatibility during the transition period.
+    # Drop the old columns - all authentication now goes through user_tokens
+    op.drop_column("users", "password_hash")
+    op.drop_column("users", "password_expiration")
 
 
 def downgrade() -> None:
@@ -90,6 +90,10 @@ def downgrade() -> None:
             f"Cannot rollback: {non_default_count} non-default token(s) would be lost. "
             "Delete these tokens manually before downgrading, or backup the user_tokens table."
         )
+
+    # Recreate the old columns
+    op.add_column("users", sa.Column("password_hash", sa.String(length=255), nullable=True))
+    op.add_column("users", sa.Column("password_expiration", sa.DateTime(), nullable=True))
 
     users_table = sa.table(
         "users",

@@ -54,8 +54,6 @@ def sample_user(db_session):
     user = SqlUser(
         username="testuser",
         display_name="Test User",
-        password_hash="hashed_password",
-        password_expiration=datetime(2025, 12, 31),
         is_admin=False,
         is_service_account=False,
     )
@@ -81,8 +79,6 @@ class TestSqlUser:
         user = SqlUser(
             username="testuser",
             display_name="Test User",
-            password_hash="hashed_password",
-            password_expiration=datetime(2025, 12, 31),
             is_admin=True,
             is_service_account=False,
         )
@@ -95,8 +91,6 @@ class TestSqlUser:
         assert entity.id == user.id
         assert entity.username == "testuser"
         assert entity.display_name == "Test User"
-        assert entity.password_hash == "hashed_password"
-        assert entity.password_expiration == datetime(2025, 12, 31)
         assert entity.is_admin is True
         assert entity.is_service_account is False
 
@@ -105,7 +99,6 @@ class TestSqlUser:
         user = SqlUser(
             username="testuser",
             display_name="Test User",
-            password_hash="hashed_password",
             is_admin=False,
             is_service_account=True,
         )
@@ -142,14 +135,12 @@ class TestSqlUser:
         user1 = SqlUser(
             username="duplicate",
             display_name="User 1",
-            password_hash="hash1",
             is_admin=False,
             is_service_account=False,
         )
         user2 = SqlUser(
             username="duplicate",
             display_name="User 2",
-            password_hash="hash2",
             is_admin=False,
             is_service_account=False,
         )
@@ -715,7 +706,6 @@ class TestModelValidation:
         user = SqlUser(
             username=long_username,
             display_name="Test",
-            password_hash="hash",
             is_admin=False,
             is_service_account=False,
         )
@@ -734,7 +724,6 @@ class TestModelValidation:
         user = SqlUser(
             username="testuser",
             display_name="Test User",
-            password_hash="hash",
             # is_admin and is_service_account should default to False
         )
         db_session.add(user)
@@ -744,21 +733,17 @@ class TestModelValidation:
         assert user.is_service_account is False
 
     def test_nullable_fields(self, db_session):
-        """Test nullable field behavior."""
+        """Test nullable field behavior - model permission prompt field."""
+        # Test model permission with nullable prompt field
         user = SqlUser(
             username="testuser",
             display_name="Test User",
-            password_hash="hash",
-            password_expiration=None,  # Should be allowed
             is_admin=False,
             is_service_account=False,
         )
         db_session.add(user)
         db_session.commit()
 
-        assert user.password_expiration is None
-
-        # Test model permission with nullable prompt field
         model_perm = SqlRegisteredModelGroupPermission(
             name="test_model",
             group_id=1,

@@ -70,7 +70,6 @@ class TestCurrentUserProfileEndpoint:
             "id",
             "is_admin",
             "is_service_account",
-            "password_expiration",
             "username",
         }
 
@@ -349,7 +348,6 @@ class TestGetUserInformationEndpoint:
         mock_user.display_name = "Regular User"
         mock_user.is_admin = False
         mock_user.is_service_account = False
-        mock_user.password_expiration = None
         mock_user.groups = []
 
         mock_store.get_user_profile.return_value = mock_user

@@ -22,8 +22,6 @@ class SqlUser(Base):
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     username: Mapped[str] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_expiration: Mapped[datetime] = mapped_column(nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
     # Phase 0 lifecycle columns (issue #333). Schema only — nothing enforces ``active`` or
@@ -59,8 +57,6 @@ class SqlUser(Base):
             id_=self.id,
             username=self.username,
             display_name=self.display_name,
-            password_hash=self.password_hash,
-            password_expiration=self.password_expiration,
             is_admin=self.is_admin,
             is_service_account=self.is_service_account,
             active=self.active,
