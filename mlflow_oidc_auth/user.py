@@ -1,5 +1,6 @@
 import secrets
 import string
+from datetime import datetime, timedelta, timezone
 
 from typing import Optional
 
@@ -7,6 +8,9 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 
 from mlflow_oidc_auth.store import store
+
+# Default token name for new users and backwards compatibility
+DEFAULT_TOKEN_NAME = "default"
 
 
 def generate_token() -> str:
@@ -48,14 +52,25 @@ def create_user(
         # message, so rewording an exception cannot quietly restore that.
         if exc.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
             raise
-        password = generate_token()
+        # Generate initial token
+        token = generate_token()
+
+        # Create user with placeholder password_hash (authentication uses tokens table)
         user = store.create_user(
             username=username,
-            password=password,
+            password=token,  # This goes to password_hash for backwards compat, but won't be used for auth
             display_name=display_name,
             is_admin=is_admin,
             is_service_account=is_service_account,
+            written_by=written_by,
+            admin_override=admin_override,
         )
+
+        # Create the actual token in the tokens table (this is what's used for authentication)
+        # Default expiration is 1 year from now
+        default_expiration = datetime.now(timezone.utc) + timedelta(days=365)
+        store.create_user_token(username=username, name=DEFAULT_TOKEN_NAME, token=token, expires_at=default_expiration)
+
         return True, f"User {user.username} (ID: {user.id}) successfully created"
 
 
