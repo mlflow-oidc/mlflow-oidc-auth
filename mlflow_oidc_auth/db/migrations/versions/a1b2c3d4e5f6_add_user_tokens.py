@@ -77,13 +77,40 @@ def upgrade() -> None:
             )
 
     # Drop the old columns - all authentication now goes through user_tokens
-    op.drop_column("users", "password_hash")
-    op.drop_column("users", "password_expiration")
+    # Note: SQLite doesn't support DROP COLUMN, so we handle it differently
+    dialect = connection.dialect.name
+
+    if dialect == "sqlite":
+        # For SQLite, recreate the table without the columns
+        op.execute("""
+            CREATE TABLE users_new (
+                id INTEGER NOT NULL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE,
+                display_name VARCHAR(255) NOT NULL,
+                is_admin BOOLEAN DEFAULT 0,
+                is_service_account BOOLEAN DEFAULT 0
+            )
+            """)
+
+        # Copy data to the new table
+        op.execute("""
+            INSERT INTO users_new (id, username, display_name, is_admin, is_service_account)
+            SELECT id, username, display_name, is_admin, is_service_account FROM users
+            """)
+
+        # Drop the old table and rename the new one
+        op.execute("DROP TABLE users")
+        op.execute("ALTER TABLE users_new RENAME TO users")
+    else:
+        # For other databases (PostgreSQL, MySQL), use standard ALTER TABLE
+        op.drop_column("users", "password_hash")
+        op.drop_column("users", "password_expiration")
 
 
 def downgrade() -> None:
     # Restore the "default" tokens back to users.password_hash for rollback
     connection = op.get_bind()
+    dialect = connection.dialect.name
 
     # Check for non-default tokens that would be lost
     non_default_count = connection.execute(sa.text("SELECT COUNT(*) FROM user_tokens WHERE name != :name").bindparams(name=LEGACY_TOKEN_NAME)).scalar()
@@ -93,36 +120,67 @@ def downgrade() -> None:
             "Delete these tokens manually before downgrading, or backup the user_tokens table."
         )
 
-    # Recreate the old columns
-    op.add_column("users", sa.Column("password_hash", sa.String(length=255), nullable=True))
-    op.add_column("users", sa.Column("password_expiration", sa.DateTime(), nullable=True))
+    if dialect == "sqlite":
+        # For SQLite, recreate the table with the columns
+        op.execute("""
+            CREATE TABLE users_new (
+                id INTEGER NOT NULL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE,
+                display_name VARCHAR(255) NOT NULL,
+                password_hash VARCHAR(255) NOT NULL DEFAULT '',
+                password_expiration DATETIME,
+                is_admin BOOLEAN DEFAULT 0,
+                is_service_account BOOLEAN DEFAULT 0
+            )
+            """)
 
-    users_table = sa.table(
-        "users",
-        sa.column("id", sa.Integer),
-        sa.column("password_hash", sa.String),
-        sa.column("password_expiration", sa.DateTime),
-    )
-    user_tokens_table = sa.table(
-        "user_tokens",
-        sa.column("user_id", sa.Integer),
-        sa.column("name", sa.String),
-        sa.column("token_hash", sa.String),
-        sa.column("expires_at", sa.DateTime),
-    )
+        # Copy data back
+        op.execute("""
+            INSERT INTO users_new (id, username, display_name, is_admin, is_service_account, password_hash)
+            SELECT id, username, display_name, is_admin, is_service_account, '' FROM users
+            """)
 
-    # Get the "default" token for each user (these were the migrated legacy tokens)
-    default_tokens = connection.execute(
-        sa.select(
-            user_tokens_table.c.user_id,
-            user_tokens_table.c.token_hash,
-            user_tokens_table.c.expires_at,
-        ).where(user_tokens_table.c.name == LEGACY_TOKEN_NAME)
-    ).fetchall()
+        # Update password_hash and password_expiration from user_tokens where name='default'
+        op.execute(f"""
+            UPDATE users_new SET
+                password_hash = COALESCE((SELECT token_hash FROM user_tokens WHERE user_tokens.user_id = users_new.id AND user_tokens.name = '{LEGACY_TOKEN_NAME}'), ''),
+                password_expiration = (SELECT expires_at FROM user_tokens WHERE user_tokens.user_id = users_new.id AND user_tokens.name = '{LEGACY_TOKEN_NAME}')
+            """)
 
-    # Restore each default token back to the users table
-    for token in default_tokens:
-        user_id, token_hash, expires_at = token
-        connection.execute(users_table.update().where(users_table.c.id == user_id).values(password_hash=token_hash, password_expiration=expires_at))
+        # Drop the old table and rename the new one
+        op.execute("DROP TABLE users")
+        op.execute("ALTER TABLE users_new RENAME TO users")
+    else:
+        # For other databases, add columns back
+        op.add_column("users", sa.Column("password_hash", sa.String(length=255), nullable=False, server_default=""))
+        op.add_column("users", sa.Column("password_expiration", sa.DateTime(), nullable=True))
+
+        users_table = sa.table(
+            "users",
+            sa.column("id", sa.Integer),
+            sa.column("password_hash", sa.String),
+            sa.column("password_expiration", sa.DateTime),
+        )
+        user_tokens_table = sa.table(
+            "user_tokens",
+            sa.column("user_id", sa.Integer),
+            sa.column("name", sa.String),
+            sa.column("token_hash", sa.String),
+            sa.column("expires_at", sa.DateTime),
+        )
+
+        # Get the "default" token for each user (these were the migrated legacy tokens)
+        default_tokens = connection.execute(
+            sa.select(
+                user_tokens_table.c.user_id,
+                user_tokens_table.c.token_hash,
+                user_tokens_table.c.expires_at,
+            ).where(user_tokens_table.c.name == LEGACY_TOKEN_NAME)
+        ).fetchall()
+
+        # Restore each default token back to the users table
+        for token in default_tokens:
+            user_id, token_hash, expires_at = token
+            connection.execute(users_table.update().where(users_table.c.id == user_id).values(password_hash=token_hash, password_expiration=expires_at))
 
     op.drop_table("user_tokens")
