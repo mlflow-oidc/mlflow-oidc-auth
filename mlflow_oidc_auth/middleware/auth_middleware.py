@@ -18,6 +18,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username
 
 logger = get_logger()
 
@@ -89,10 +90,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             token = auth_header.split(" ", 1)[1]
             # Validate token and extract user info
             payload = validate_token(token)
-            username = payload.get("email") or payload.get("preferred_username")
+
+            # Extract username from configured fields
+            username, error_msg = extract_username(payload)
+            if error_msg:
+                return False, None, error_msg
+
             if username:
                 logger.debug(f"User {username} authenticated via bearer token")
-                return True, username.lower(), ""
+                return True, username, ""
             else:
                 return False, None, "Invalid token payload"
         except Exception as e:

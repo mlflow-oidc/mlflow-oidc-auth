@@ -57,6 +57,12 @@ from .uri import (
     normalize_url_port,
 )
 
+from .oidc_field_extraction import (
+    extract_field_from_payload,
+    extract_username,
+    extract_display_name,
+)
+
 # Export everything for backward compatibility
 __all__ = [
     # Data fetching
@@ -98,4 +104,8 @@ __all__ = [
     "normalize_url_port",
     "get_base_path",
     "is_authenticated",
+    # OIDC field extraction
+    "extract_field_from_payload",
+    "extract_username",
+    "extract_display_name",
 ]

@@ -370,7 +370,7 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
     assert "No user information" in errors[0]
 
-    # missing email
+    # missing username (no configured fields found)
     async def fake_exchange3(request):
         return {"access_token": "a", "id_token": "i", "userinfo": {"name": "n"}}
 
@@ -380,12 +380,13 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
         fake_exchange3,
         raising=False,
     )
+    monkeypatch.setattr(config, "OIDC_USERNAME_FIELD", ["email", "preferred_username"], raising=False)
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
-    assert "No email provided" in errors[0]
+    assert "No username provided" in errors[0]
 
-    # missing name
+    # missing display name
     async def fake_exchange4(request):
         return {"access_token": "a", "id_token": "i", "userinfo": {"email": "e@x.com"}}
 
@@ -395,10 +396,11 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
         fake_exchange4,
         raising=False,
     )
+    monkeypatch.setattr(config, "OIDC_DISPLAY_NAME_FIELD", ["name"], raising=False)
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
-    assert "No display name" in errors[0]
+    assert "No display_name provided" in errors[0]
 
     # user not allowed
     async def fake_exchange5(request):
