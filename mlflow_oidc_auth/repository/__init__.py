@@ -24,6 +24,7 @@ from mlflow_oidc_auth.repository.user import UserRepository
 from mlflow_oidc_auth.repository.auth_session import AuthSessionRepository
 from mlflow_oidc_auth.repository.auth_state import AuthStateRepository
 from mlflow_oidc_auth.repository.user_identity import UserIdentityRepository
+from mlflow_oidc_auth.repository.user_token import UserTokenRepository
 from mlflow_oidc_auth.repository.experiment_permission_regex import (
     ExperimentPermissionRegexRepository,
 )
@@ -36,7 +37,6 @@ from mlflow_oidc_auth.repository.registered_model_permission_regex import (
 from mlflow_oidc_auth.repository.registered_model_permission_regex_group import (
     RegisteredModelGroupRegexPermissionRepository,
 )
-
 from mlflow_oidc_auth.repository.scorer_permission import ScorerPermissionRepository
 from mlflow_oidc_auth.repository.scorer_permission_group import (
     ScorerPermissionGroupRepository,
@@ -115,6 +115,7 @@ __all__ = [
     "UserIdentityRepository",
     "AuthSessionRepository",
     "AuthStateRepository",
+    "UserTokenRepository",
     "ExperimentPermissionRegexRepository",
     "ExperimentPermissionGroupRegexRepository",
     "RegisteredModelPermissionRegexRepository",
