@@ -46,16 +46,16 @@ export const Toast: React.FC<ToastProps> = ({
   return (
     <div
       className={`
-        pointer-events-auto flex items-start p-4 rounded shadow-lg border w-80
+        pointer-events-auto flex items-center p-4 rounded shadow-lg border w-80
         transition-all duration-300 ease-in-out transform translate-x-0 opacity-100
         ${styles[type]}
       `}
       role="alert"
     >
-      <div className="shrink-0 mr-3 mt-0.5">
+      <div className="shrink-0 mr-3">
         <FontAwesomeIcon icon={icons[type]} className="h-4 w-4" />
       </div>
-      <div className="flex-1 text-sm font-medium wrap-break-word">
+      <div className="flex-1 text-sm font-medium wrap-break-word leading-4">
         {message}
       </div>
       <button
