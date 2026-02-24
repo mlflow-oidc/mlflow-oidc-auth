@@ -1,10 +1,11 @@
-import React, { useState, useCallback, type FormEvent } from "react";
+import React, { useState, useCallback } from "react";
 import { faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "../../../shared/components/button";
 import { IconButton } from "../../../shared/components/icon-button";
 import { EntityListTable } from "../../../shared/components/entity-list-table";
 import { SearchInput } from "../../../shared/components/search-input";
 import { useToast } from "../../../shared/components/toast/use-toast";
+import { useSearch } from "../../../core/hooks/use-search";
 import { useTokens } from "../../../core/hooks/use-tokens";
 import { deleteUserToken, type UserToken } from "../../../core/services/token-service";
 import { CreateTokenModal } from "./create-token-modal";
@@ -14,7 +15,7 @@ import type { ColumnConfig } from "../../../shared/types/table";
 const formatDate = (dateString: string | null): string => {
   if (!dateString) return "-";
   try {
-    return new Date(dateString).toLocaleDateString(undefined, {
+    return new Date(dateString).toLocaleString(undefined, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -29,28 +30,16 @@ const formatDate = (dateString: string | null): string => {
 export const TokensList: React.FC = () => {
   const { tokens, isLoading, error, refresh } = useTokens();
   const { showToast } = useToast();
+  const {
+    searchTerm,
+    submittedTerm,
+    handleInputChange,
+    handleSearchSubmit,
+    handleClearSearch,
+  } = useSearch();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [submittedTerm, setSubmittedTerm] = useState("");
   const [tokenToDelete, setTokenToDelete] = useState<UserToken | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setSearchTerm(e.target.value);
-    },
-    []
-  );
-
-  const handleSearchSubmit = useCallback((e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setSubmittedTerm(searchTerm);
-  }, [searchTerm]);
-
-  const handleClearSearch = useCallback(() => {
-    setSearchTerm("");
-    setSubmittedTerm("");
-  }, []);
 
   const handleDeleteClick = useCallback((token: UserToken) => {
     setTokenToDelete(token);

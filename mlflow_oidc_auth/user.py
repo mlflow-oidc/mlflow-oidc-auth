@@ -7,10 +7,8 @@ from typing import Optional
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 
+from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
 from mlflow_oidc_auth.store import store
-
-# Default token name for new users and backwards compatibility
-DEFAULT_TOKEN_NAME = "default"
 
 
 def generate_token() -> str:
