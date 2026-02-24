@@ -11,14 +11,16 @@ from datetime import datetime, timedelta, timezone
 import sqlalchemy as sa
 from alembic import op
 
+from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
+
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f6"
 down_revision = "6a7b8c9def01"
 branch_labels = None
 depends_on = None
 
-# Name for migrated legacy tokens
-LEGACY_TOKEN_NAME = "default"
+# Alias for clarity in migration context
+LEGACY_TOKEN_NAME = DEFAULT_TOKEN_NAME
 
 
 def upgrade() -> None:

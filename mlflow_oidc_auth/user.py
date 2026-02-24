@@ -4,10 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 from mlflow.exceptions import MlflowException
 
+from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
 from mlflow_oidc_auth.store import store
-
-# Default token name for new users and backwards compatibility
-DEFAULT_TOKEN_NAME = "default"
 
 
 def generate_token() -> str:

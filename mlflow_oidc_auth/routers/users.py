@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.audit import emit_audit_event
+from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -44,10 +45,6 @@ TOKENS = "/tokens"
 TOKEN_BY_ID = "/tokens/{token_id}"
 USER_TOKENS = "/{username}/tokens"
 USER_TOKEN_BY_ID = "/{username}/tokens/{token_id}"
-
-
-# Default token name for backwards compatibility with legacy single-token API
-DEFAULT_TOKEN_NAME = "default"
 
 
 @users_router.patch(
