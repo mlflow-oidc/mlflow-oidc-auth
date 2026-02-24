@@ -84,7 +84,7 @@ def downgrade() -> None:
     connection = op.get_bind()
 
     # Check for non-default tokens that would be lost
-    non_default_count = connection.execute(sa.text(f"SELECT COUNT(*) FROM user_tokens WHERE name != '{LEGACY_TOKEN_NAME}'")).scalar()
+    non_default_count = connection.execute(sa.text("SELECT COUNT(*) FROM user_tokens WHERE name != :name").bindparams(name=LEGACY_TOKEN_NAME)).scalar()
     if non_default_count > 0:
         raise RuntimeError(
             f"Cannot rollback: {non_default_count} non-default token(s) would be lost. "

@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
@@ -106,39 +107,11 @@ async def create_access_token(
             target_username = current_username
 
         # Parse expiration date if provided, otherwise default to 1 year
-        now = datetime.now(timezone.utc)
         if token_request and token_request.expiration:
-            expiration_str = token_request.expiration
-            # Handle ISO 8601 with 'Z' (UTC) at the end
-            if expiration_str.endswith("Z"):
-                expiration_str = expiration_str[:-1] + "+00:00"
-
-            try:
-                expiration = datetime.fromisoformat(expiration_str)
-                # An ISO 8601 timestamp carries no offset unless one is written, and both
-                # "2027-01-01" and "2027-01-01T00:00:00" are valid. Comparing a naive datetime
-                # to an aware one raises TypeError, which is not a ValueError and so used to
-                # escape as a 500. This layer deals in UTC — the 'Z' handling above says so —
-                # so read a missing offset as UTC rather than rejecting the request (issue #338).
-                if expiration.tzinfo is None:
-                    expiration = expiration.replace(tzinfo=timezone.utc)
-                now = datetime.now(timezone.utc)
-
-                if expiration < now:
-                    raise HTTPException(status_code=400, detail="Expiration date must be in the future")
-
-                if expiration > now + timedelta(days=366):
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Expiration date must be less than 1 year in the future",
-                    )
-            except (ValueError, TypeError):
-                # TypeError is belt-and-braces: the normalization above should make it
-                # unreachable, but a bad expiration must never become a 500.
-                raise HTTPException(status_code=400, detail=f"Invalid expiration date format")
+            expiration = _parse_expiration(token_request.expiration)
         else:
             # Default to 1 year expiration for legacy API compatibility
-            expiration = now + timedelta(days=365)
+            expiration = datetime.now(timezone.utc) + timedelta(days=365)
 
         # Check if the target user exists. get_user_profile raises rather than returning None,
         # so without this the outer handler turns a mistyped username into a 500 (issue #338).
@@ -480,6 +453,8 @@ def _parse_expiration(expiration_str: str) -> datetime:
 
     try:
         expiration = datetime.fromisoformat(expiration_str)
+        if expiration.tzinfo is None:
+            expiration = expiration.replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
 
         if expiration < now:
@@ -489,7 +464,7 @@ def _parse_expiration(expiration_str: str) -> datetime:
             raise HTTPException(status_code=400, detail="Expiration date must be less than 1 year in the future")
 
         return expiration
-    except ValueError:
+    except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid expiration date format")
 
 
@@ -543,9 +518,12 @@ async def create_token(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        if "already exists" in str(e).lower():
+    except MlflowException as e:
+        if e.error_code == RESOURCE_ALREADY_EXISTS:
             raise HTTPException(status_code=409, detail=f"Token with name '{token_request.name}' already exists")
+        logger.error(f"Error creating token: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create token")
+    except Exception as e:
         logger.error(f"Error creating token: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create token")
 
@@ -563,9 +541,12 @@ async def delete_token(
     try:
         store.delete_user_token(token_id, current_username)
         return JSONResponse(content={"message": "Token deleted successfully"})
-    except Exception as e:
-        if "not found" in str(e).lower():
+    except MlflowException as e:
+        if e.error_code == RESOURCE_DOES_NOT_EXIST:
             raise HTTPException(status_code=404, detail=f"Token with id={token_id} not found")
+        logger.error(f"Error deleting token: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete token")
+    except Exception as e:
         logger.error(f"Error deleting token: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete token")
 
@@ -694,9 +675,12 @@ async def create_user_token_admin(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        if "already exists" in str(e).lower():
+    except MlflowException as e:
+        if e.error_code == RESOURCE_ALREADY_EXISTS:
             raise HTTPException(status_code=409, detail=f"Token with name '{token_request.name}' already exists for user '{username}'")
+        logger.error(f"Error creating token for user {username}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create token")
+    except Exception as e:
         logger.error(f"Error creating token for user {username}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create token")
 
@@ -715,8 +699,11 @@ async def delete_user_token_admin(
     try:
         store.delete_user_token(token_id, username)
         return JSONResponse(content={"message": f"Token deleted successfully for user '{username}'"})
-    except Exception as e:
-        if "not found" in str(e).lower():
+    except MlflowException as e:
+        if e.error_code == RESOURCE_DOES_NOT_EXIST:
             raise HTTPException(status_code=404, detail=f"Token with id={token_id} not found for user '{username}'")
+        logger.error(f"Error deleting token for user {username}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete token")
+    except Exception as e:
         logger.error(f"Error deleting token for user {username}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to delete token")

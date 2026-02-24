@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple, TypeVar
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
@@ -10,6 +10,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from mlflow_oidc_auth.db.models import SqlUser, SqlUserToken
 from mlflow_oidc_auth.entities import UserToken
 from mlflow_oidc_auth.repository.utils import get_user
+
+T = TypeVar("T")
 
 
 class UserTokenRepository:
@@ -131,6 +133,43 @@ class UserTokenRepository:
             session.flush()
             return count
 
+    def _verify_token_and_get_user(self, session: Session, username: str, password: str) -> Optional[Tuple[SqlUser, SqlUserToken]]:
+        """Verify a token and return the user and token if valid.
+
+        This is a shared helper for authenticate() and get_user_id_from_token().
+
+        Args:
+            session: The database session.
+            username: The username to authenticate.
+            password: The plaintext token to verify.
+
+        Returns:
+            A tuple of (user, token) if authentication succeeds, None otherwise.
+        """
+        user = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
+        if user is None:
+            return None
+
+        tokens = session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id).all()
+        now = datetime.now(timezone.utc)
+
+        for token in tokens:
+            # Skip expired tokens
+            expires_at = token.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at < now:
+                continue
+
+            # Check password hash
+            if check_password_hash(token.token_hash, password):
+                # Update last_used_at
+                token.last_used_at = now
+                session.flush()
+                return (user, token)
+
+        return None
+
     def authenticate(self, username: str, password: str) -> bool:
         """Authenticate a user using any of their tokens.
 
@@ -144,29 +183,8 @@ class UserTokenRepository:
             True if authentication succeeds, False otherwise.
         """
         with self._Session() as session:
-            user = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
-            if user is None:
-                return False
-
-            tokens = session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id).all()
-            now = datetime.now(timezone.utc)
-
-            for token in tokens:
-                # Skip expired tokens
-                expires_at = token.expires_at
-                if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
-                if expires_at < now:
-                    continue
-
-                # Check password hash
-                if check_password_hash(token.token_hash, password):
-                    # Update last_used_at
-                    token.last_used_at = now
-                    session.flush()
-                    return True
-
-            return False
+            result = self._verify_token_and_get_user(session, username, password)
+            return result is not None
 
     def update_last_used(self, token_id: int) -> None:
         """Update the last_used_at timestamp for a token.
@@ -193,26 +211,8 @@ class UserTokenRepository:
             The user ID if authentication succeeds, None otherwise.
         """
         with self._Session() as session:
-            user = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
-            if user is None:
-                return None
-
-            tokens = session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id).all()
-            now = datetime.now(timezone.utc)
-
-            for token in tokens:
-                # Skip expired tokens
-                expires_at = token.expires_at
-                if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
-                if expires_at < now:
-                    continue
-
-                # Check password hash
-                if check_password_hash(token.token_hash, password):
-                    # Update last_used_at
-                    token.last_used_at = now
-                    session.flush()
-                    return user.id
-
+            result = self._verify_token_and_get_user(session, username, password)
+            if result is not None:
+                user, _ = result
+                return user.id
             return None
