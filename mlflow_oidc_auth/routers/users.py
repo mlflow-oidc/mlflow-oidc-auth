@@ -351,7 +351,6 @@ async def get_current_user_information(
             display_name=user.display_name,
             is_admin=bool(user.is_admin),
             is_service_account=bool(user.is_service_account),
-            password_expiration=user.password_expiration.isoformat() if user.password_expiration else None,
             groups=[GroupRecord(**g.to_json()) for g in (user.groups or [])],
         )
     except Exception as e:
@@ -532,7 +531,6 @@ async def get_user_information(username: str, admin_username: str = Depends(chec
             display_name=user.display_name,
             is_admin=bool(user.is_admin),
             is_service_account=bool(user.is_service_account),
-            password_expiration=user.password_expiration.isoformat() if user.password_expiration else None,
             groups=[GroupRecord(**g.to_json()) for g in (user.groups or [])],
         )
     except Exception as e:

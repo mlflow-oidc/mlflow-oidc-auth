@@ -44,8 +44,6 @@ def create_test_user(username="testuser", display_name="Test User", is_admin=Fal
     return User(
         id_=1,
         username=username,
-        password_hash="hashed_password",
-        password_expiration=None,
         is_admin=is_admin,
         is_service_account=is_service_account,
         display_name=display_name,
@@ -229,8 +227,8 @@ class TestSqlAlchemyStore:
     def test_create_user(self, mock_store: SqlAlchemyStore):
         mock_user = create_test_user("testuser", "Test User", False, False)
         mock_store.user_repo.create.return_value = mock_user
-        result = mock_store.create_user("testuser", "password", "Test User", False, False)
-        mock_store.user_repo.create.assert_called_once_with("testuser", "password", "Test User", False, False)
+        result = mock_store.create_user("testuser", "Test User", False, False)
+        mock_store.user_repo.create.assert_called_once_with("testuser", "Test User", False, False)
         assert result == mock_user
 
     def test_has_user(self, mock_store: SqlAlchemyStore):
@@ -256,11 +254,8 @@ class TestSqlAlchemyStore:
     def test_update_user(self, mock_store: SqlAlchemyStore):
         mock_user = create_test_user("testuser", "Updated User", True)
         mock_store.user_repo.update.return_value = mock_user
-        expiration = datetime.now()
-        result = mock_store.update_user("testuser", "newpass", expiration, True, False)
-        mock_store.user_repo.update.assert_called_once_with(
-            username="testuser", password="newpass", password_expiration=expiration, is_admin=True, is_service_account=False
-        )
+        result = mock_store.update_user("testuser", is_admin=True, is_service_account=False)
+        mock_store.user_repo.update.assert_called_once_with(username="testuser", is_admin=True, is_service_account=False)
         assert result == mock_user
 
     def test_delete_user(self, mock_store: SqlAlchemyStore):
@@ -635,10 +630,10 @@ class TestSqlAlchemyStoreTransactionHandling:
 
         # First call should raise exception
         with pytest.raises(SQLAlchemyError):
-            mock_store.create_user("testuser", "password", "Test User", False, False)
+            mock_store.create_user("testuser", "Test User", False, False)
 
         # Second call should succeed (simulating retry after rollback)
-        result = mock_store.create_user("testuser", "password", "Test User", False, False)
+        result = mock_store.create_user("testuser", "Test User", False, False)
         assert result.username == "testuser"
 
     def test_concurrent_permission_updates(self, mock_store):
@@ -684,7 +679,7 @@ class TestSqlAlchemyStoreConcurrentAccess:
 
         def create_user_worker(username):
             try:
-                return mock_store.create_user(f"user_{username}", "password", f"User {username}", False, False)
+                return mock_store.create_user(f"user_{username}", f"User {username}", False, False)
             except Exception as e:
                 return e
 
@@ -863,7 +858,7 @@ class TestSqlAlchemyStoreEdgeCases:
         # Test user creation with long values
         mock_user = create_test_user(long_username, long_display_name, False)
         mock_store.user_repo.create.return_value = mock_user
-        result = mock_store.create_user(long_username, "password", long_display_name, False, False)
+        result = mock_store.create_user(long_username, long_display_name, False, False)
         assert result.username == long_username
         assert result.display_name == long_display_name
 

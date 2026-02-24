@@ -298,15 +298,8 @@ class SqlAlchemyStore:
         """
         return self.user_token_repo.authenticate(username, password)
 
-    def create_user(
-        self,
-        username: str,
-        password: str,
-        display_name: str,
-        is_admin: bool = False,
-        is_service_account=False,
-    ):
-        return self.user_repo.create(username, password, display_name, is_admin, is_service_account)
+    def create_user(self, username: str, display_name: str, is_admin: bool = False, is_service_account=False):
+        return self.user_repo.create(username, display_name, is_admin, is_service_account)
 
     def has_user(self, username: str) -> bool:
         return self.user_repo.exist(username)
@@ -333,15 +326,11 @@ class SqlAlchemyStore:
     def update_user(
         self,
         username: str,
-        password: Optional[str] = None,
-        password_expiration: Optional[datetime] = None,
         is_admin: Optional[bool] = None,
         is_service_account: Optional[bool] = None,
     ) -> User:
         return self.user_repo.update(
             username=username,
-            password=password,
-            password_expiration=password_expiration,
             is_admin=is_admin,
             is_service_account=is_service_account,
         )

@@ -25,16 +25,15 @@ def create_user(username: str, display_name: str, is_admin: bool = False, is_ser
         # Generate initial token
         token = generate_token()
 
-        # Create user with placeholder password_hash (authentication uses tokens table)
+        # Create user (no password stored on users table - authentication uses tokens table)
         user = store.create_user(
             username=username,
-            password=token,  # This goes to password_hash for backwards compat, but won't be used for auth
             display_name=display_name,
             is_admin=is_admin,
             is_service_account=is_service_account,
         )
 
-        # Create the actual token in the tokens table (this is what's used for authentication)
+        # Create the token in the tokens table (this is what's used for authentication)
         # Default expiration is 1 year from now
         default_expiration = datetime.now(timezone.utc) + timedelta(days=365)
         store.create_user_token(username=username, name=DEFAULT_TOKEN_NAME, token=token, expires_at=default_expiration)
