@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
-from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri
+from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name
 
 from ._prefix import UI_ROUTER_PREFIX
 
@@ -332,7 +332,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         session: SessionManager instance
 
     Returns:
-        Tuple of (email, error_list)
+        Tuple of (username, error_list)
     """
     import html
 
@@ -388,15 +388,16 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             errors.append("No user information received")
             return None, errors
 
-        # Extract user details
-        email = userinfo.get("email") or userinfo.get("preferred_username")
-        display_name = userinfo.get("name")
+        # Extract user details using utility functions
+        username, username_error = extract_username(userinfo)
+        if username_error:
+            errors.append(username_error)
 
-        if not email:
-            errors.append("No email provided in OIDC userinfo")
-            return None, errors
-        if not display_name:
-            errors.append("No display name provided in OIDC userinfo")
+        display_name, display_name_error = extract_display_name(userinfo)
+        if display_name_error:
+            errors.append(display_name_error)
+
+        if username_error or display_name_error:
             return None, errors
 
         # Handle user and group management
@@ -423,18 +424,18 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
                 return None, errors
 
             # Create/update user and groups using user_module so monkeypatched functions are used in tests
-            user_module.create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
+            user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
             user_module.populate_groups(group_names=user_groups)
-            user_module.update_user(username=email.lower(), group_names=user_groups)
+            user_module.update_user(username=username, group_names=user_groups)
 
-            logger.info(f"User {email} successfully processed with groups: {user_groups}")
+            logger.info(f"User {username} successfully processed with groups: {user_groups}")
 
         except Exception as e:
             logger.error(f"User/group management error: {str(e)}")
             errors.append("Failed to update user/groups")
             return None, errors
 
-        return email.lower(), []
+        return username, []
 
     except Exception as e:
         logger.error("OIDC token exchange error (%s.%s): %s", type(e).__module__, type(e).__name__, str(e))
