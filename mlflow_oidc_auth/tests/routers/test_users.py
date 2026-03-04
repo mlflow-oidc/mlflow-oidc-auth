@@ -51,7 +51,9 @@ class TestCurrentUserProfileEndpoint:
         mock_store.get_user_profile.side_effect = mock_store.get_user.side_effect
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
-            result = await get_current_user_information(current_username="user@example.com")
+            result = await get_current_user_information(
+                current_username="user@example.com"
+            )
 
         assert result.username == "user@example.com"
         assert result.is_admin is False
@@ -147,7 +149,9 @@ class TestCreateAccessTokenEndpoint:
         mock_generate_token.return_value = "generated_token_123"
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
-            result = await create_access_token(token_request=None, current_username="user@example.com", is_admin=False)
+            result = await create_access_token(
+                token_request=None, current_username="user@example.com", is_admin=False
+            )
 
         assert result.status_code == 200
         mock_generate_token.assert_called_once()
@@ -155,7 +159,9 @@ class TestCreateAccessTokenEndpoint:
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.users.generate_token")
-    async def test_create_access_token_for_other_user_requires_admin(self, mock_generate_token, mock_store):
+    async def test_create_access_token_for_other_user_requires_admin(
+        self, mock_generate_token, mock_store
+    ):
         """Test creating access token for another user requires admin."""
         mock_user = MagicMock()
         mock_store.get_user.side_effect = None
@@ -166,14 +172,20 @@ class TestCreateAccessTokenEndpoint:
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc_info:
-                await create_access_token(token_request=token_request, current_username="test@example.com", is_admin=False)
+                await create_access_token(
+                    token_request=token_request,
+                    current_username="test@example.com",
+                    is_admin=False,
+                )
 
         assert exc_info.value.status_code == 403
         assert "Administrator privileges required" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.users.generate_token")
-    async def test_create_access_token_for_other_user_as_admin(self, mock_generate_token, mock_store):
+    async def test_create_access_token_for_other_user_as_admin(
+        self, mock_generate_token, mock_store
+    ):
         """Test admin creating access token for another user."""
         mock_store.list_user_tokens.return_value = []
         mock_generate_token.return_value = "generated_token_123"
@@ -181,7 +193,11 @@ class TestCreateAccessTokenEndpoint:
         token_request = CreateAccessTokenRequest(username="user@example.com")
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
-            result = await create_access_token(token_request=token_request, current_username="admin@example.com", is_admin=True)
+            result = await create_access_token(
+                token_request=token_request,
+                current_username="admin@example.com",
+                is_admin=True,
+            )
 
         assert result.status_code == 200
         mock_generate_token.assert_called_once()
@@ -191,7 +207,9 @@ class TestCreateAccessTokenEndpoint:
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.users.generate_token")
-    async def test_create_access_token_with_expiration(self, mock_generate_token, mock_store):
+    async def test_create_access_token_with_expiration(
+        self, mock_generate_token, mock_store
+    ):
         """Test creating access token with expiration date."""
         mock_store.list_user_tokens.return_value = []
         mock_generate_token.return_value = "generated_token_123"
@@ -200,7 +218,11 @@ class TestCreateAccessTokenEndpoint:
         token_request = CreateAccessTokenRequest(expiration=future_date.isoformat())
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
-            result = await create_access_token(token_request=token_request, current_username="user@example.com", is_admin=False)
+            result = await create_access_token(
+                token_request=token_request,
+                current_username="user@example.com",
+                is_admin=False,
+            )
 
         assert result.status_code == 200
         mock_store.create_user_token.assert_called_once()
@@ -219,7 +241,11 @@ class TestCreateAccessTokenEndpoint:
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc_info:
-                await create_access_token(token_request=token_request, current_username="test@example.com", is_admin=False)
+                await create_access_token(
+                    token_request=token_request,
+                    current_username="test@example.com",
+                    is_admin=False,
+                )
 
         assert exc_info.value.status_code == 400
         assert "must be in the future" in str(exc_info.value.detail)
@@ -236,7 +262,11 @@ class TestCreateAccessTokenEndpoint:
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc_info:
-                await create_access_token(token_request=token_request, current_username="test@example.com", is_admin=False)
+                await create_access_token(
+                    token_request=token_request,
+                    current_username="test@example.com",
+                    is_admin=False,
+                )
 
         assert exc_info.value.status_code == 400
         assert "less than 1 year" in str(exc_info.value.detail)
@@ -252,7 +282,11 @@ class TestCreateAccessTokenEndpoint:
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc_info:
-                await create_access_token(token_request=token_request, current_username="test@example.com", is_admin=False)
+                await create_access_token(
+                    token_request=token_request,
+                    current_username="test@example.com",
+                    is_admin=False,
+                )
 
         assert exc_info.value.status_code == 400
         assert "Invalid expiration date format" in str(exc_info.value.detail)
@@ -266,13 +300,19 @@ class TestCreateAccessTokenEndpoint:
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc_info:
-                await create_access_token(token_request=token_request, current_username="admin@example.com", is_admin=True)
+                await create_access_token(
+                    token_request=token_request,
+                    current_username="admin@example.com",
+                    is_admin=True,
+                )
 
         assert exc_info.value.status_code == 404
         assert "User nonexistent@example.com not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_create_access_token_user_not_found_non_admin_forbidden(self, mock_store):
+    async def test_create_access_token_user_not_found_non_admin_forbidden(
+        self, mock_store
+    ):
         """Test non-admin cannot probe other usernames even if missing."""
         mock_store.get_user.side_effect = None
         mock_store.get_user.return_value = None
@@ -280,13 +320,19 @@ class TestCreateAccessTokenEndpoint:
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc_info:
-                await create_access_token(token_request=token_request, current_username="user@example.com", is_admin=False)
+                await create_access_token(
+                    token_request=token_request,
+                    current_username="user@example.com",
+                    is_admin=False,
+                )
 
         assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.users.generate_token")
-    async def test_create_access_token_exception_handling(self, mock_generate_token, mock_store):
+    async def test_create_access_token_exception_handling(
+        self, mock_generate_token, mock_store
+    ):
         """Test create access token exception handling."""
         mock_user = MagicMock()
         mock_store.get_user.side_effect = None
@@ -295,7 +341,11 @@ class TestCreateAccessTokenEndpoint:
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
             with pytest.raises(HTTPException) as exc_info:
-                await create_access_token(token_request=None, current_username="test@example.com", is_admin=False)
+                await create_access_token(
+                    token_request=None,
+                    current_username="test@example.com",
+                    is_admin=False,
+                )
 
         assert exc_info.value.status_code == 500
         assert "Failed to create access token" in str(exc_info.value.detail)
@@ -310,18 +360,27 @@ class TestCreateAccessTokenEndpoint:
     def test_create_access_token_with_body_integration(self, authenticated_client):
         """Test create access token with request body."""
         future_date = datetime.now(timezone.utc) + timedelta(days=30)
-        request_data = {"username": "user@example.com", "expiration": future_date.isoformat()}
+        request_data = {
+            "username": "user@example.com",
+            "expiration": future_date.isoformat(),
+        }
 
-        response = authenticated_client.patch("/api/2.0/mlflow/users/access-token", json=request_data)
+        response = authenticated_client.patch(
+            "/api/2.0/mlflow/users/access-token", json=request_data
+        )
 
         assert response.status_code == 200
         assert "token" in response.json()
 
-    def test_create_access_token_for_other_user_forbidden_integration(self, authenticated_client):
+    def test_create_access_token_for_other_user_forbidden_integration(
+        self, authenticated_client
+    ):
         """Test non-admin cannot create token for another user."""
         request_data = {"username": "admin@example.com"}
 
-        response = authenticated_client.patch("/api/2.0/mlflow/users/access-token", json=request_data)
+        response = authenticated_client.patch(
+            "/api/2.0/mlflow/users/access-token", json=request_data
+        )
 
         assert response.status_code == 403
 
@@ -329,7 +388,9 @@ class TestCreateAccessTokenEndpoint:
         """Test admin can create token for another user."""
         request_data = {"username": "user@example.com"}
 
-        response = admin_client.patch("/api/2.0/mlflow/users/access-token", json=request_data)
+        response = admin_client.patch(
+            "/api/2.0/mlflow/users/access-token", json=request_data
+        )
 
         assert response.status_code == 200
         assert "token" in response.json()
@@ -353,7 +414,9 @@ class TestGetUserInformationEndpoint:
         mock_store.get_user_profile.return_value = mock_user
 
         with patch("mlflow_oidc_auth.routers.users.store", mock_store):
-            result = await get_user_information(username="user@example.com", admin_username="admin@example.com")
+            result = await get_user_information(
+                username="user@example.com", admin_username="admin@example.com"
+            )
 
         assert result.username == "user@example.com"
         assert result.is_admin is False
@@ -365,7 +428,9 @@ class TestGetUserInformationEndpoint:
 
         assert response.status_code == 200
 
-    def test_get_user_information_non_admin_forbidden_integration(self, authenticated_client):
+    def test_get_user_information_non_admin_forbidden_integration(
+        self, authenticated_client
+    ):
         """Test non-admin cannot retrieve user information for arbitrary user."""
         response = authenticated_client.get("/api/2.0/mlflow/users/user@example.com")
 
@@ -381,14 +446,26 @@ class TestCreateUserEndpoint:
         """Test successful user creation."""
         mock_create_user.return_value = (True, "User created successfully")
 
-        user_request = CreateUserRequest(username="newuser@example.com", display_name="New User", is_admin=False, is_service_account=False)
+        user_request = CreateUserRequest(
+            username="newuser@example.com",
+            display_name="New User",
+            is_admin=False,
+            is_service_account=False,
+        )
 
-        result = await create_new_user(user_request=user_request, admin_username="admin@example.com")
+        result = await create_new_user(
+            user_request=user_request, admin_username="admin@example.com"
+        )
 
         assert result.status_code == 201
 
         # Verify user creation was called with correct parameters
-        mock_create_user.assert_called_once_with(username="newuser@example.com", display_name="New User", is_admin=False, is_service_account=False)
+        mock_create_user.assert_called_once_with(
+            username="newuser@example.com",
+            display_name="New User",
+            is_admin=False,
+            is_service_account=False,
+        )
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.users.create_user")
@@ -396,9 +473,16 @@ class TestCreateUserEndpoint:
         """Test creating admin user."""
         mock_create_user.return_value = (True, "User created successfully")
 
-        user_request = CreateUserRequest(username="admin2@example.com", display_name="Admin User 2", is_admin=True, is_service_account=False)
+        user_request = CreateUserRequest(
+            username="admin2@example.com",
+            display_name="Admin User 2",
+            is_admin=True,
+            is_service_account=False,
+        )
 
-        result = await create_new_user(user_request=user_request, admin_username="admin@example.com")
+        result = await create_new_user(
+            user_request=user_request, admin_username="admin@example.com"
+        )
 
         assert result.status_code == 201
 
@@ -412,9 +496,16 @@ class TestCreateUserEndpoint:
         """Test creating service account."""
         mock_create_user.return_value = (True, "User created successfully")
 
-        user_request = CreateUserRequest(username="service2@example.com", display_name="Service Account 2", is_admin=False, is_service_account=True)
+        user_request = CreateUserRequest(
+            username="service2@example.com",
+            display_name="Service Account 2",
+            is_admin=False,
+            is_service_account=True,
+        )
 
-        result = await create_new_user(user_request=user_request, admin_username="admin@example.com")
+        result = await create_new_user(
+            user_request=user_request, admin_username="admin@example.com"
+        )
 
         assert result.status_code == 201
 
@@ -428,9 +519,16 @@ class TestCreateUserEndpoint:
         """Test creating user that already exists."""
         mock_create_user.return_value = (False, "User already exists")
 
-        user_request = CreateUserRequest(username="existing@example.com", display_name="Existing User", is_admin=False, is_service_account=False)
+        user_request = CreateUserRequest(
+            username="existing@example.com",
+            display_name="Existing User",
+            is_admin=False,
+            is_service_account=False,
+        )
 
-        result = await create_new_user(user_request=user_request, admin_username="admin@example.com")
+        result = await create_new_user(
+            user_request=user_request, admin_username="admin@example.com"
+        )
 
         assert result.status_code == 200  # Updated, not created
 
@@ -440,17 +538,29 @@ class TestCreateUserEndpoint:
         """Test create user exception handling."""
         mock_create_user.side_effect = Exception("Database error")
 
-        user_request = CreateUserRequest(username="newuser@example.com", display_name="New User", is_admin=False, is_service_account=False)
+        user_request = CreateUserRequest(
+            username="newuser@example.com",
+            display_name="New User",
+            is_admin=False,
+            is_service_account=False,
+        )
 
         with pytest.raises(HTTPException) as exc_info:
-            await create_new_user(user_request=user_request, admin_username="admin@example.com")
+            await create_new_user(
+                user_request=user_request, admin_username="admin@example.com"
+            )
 
         assert exc_info.value.status_code == 500
         assert "Failed to create user" in str(exc_info.value.detail)
 
     def test_create_user_integration_admin(self, admin_client):
         """Test create user endpoint through FastAPI test client as admin."""
-        user_data = {"username": "newuser@example.com", "display_name": "New User", "is_admin": False, "is_service_account": False}
+        user_data = {
+            "username": "newuser@example.com",
+            "display_name": "New User",
+            "is_admin": False,
+            "is_service_account": False,
+        }
 
         response = admin_client.post("/api/2.0/mlflow/users", json=user_data)
 
@@ -459,7 +569,12 @@ class TestCreateUserEndpoint:
 
     def test_create_user_integration_non_admin(self, authenticated_client):
         """Test create user endpoint as non-admin user."""
-        user_data = {"username": "newuser@example.com", "display_name": "New User", "is_admin": False, "is_service_account": False}
+        user_data = {
+            "username": "newuser@example.com",
+            "display_name": "New User",
+            "is_admin": False,
+            "is_service_account": False,
+        }
 
         response = authenticated_client.post("/api/2.0/mlflow/users", json=user_data)
 
@@ -479,7 +594,9 @@ class TestDeleteUserEndpoint:
         mock_store_patch.get_user_profile.return_value = mock_user
         mock_store_patch.delete_user.return_value = None
 
-        result = await delete_user(username="user@example.com", admin_username="admin@example.com")
+        result = await delete_user(
+            username="user@example.com", admin_username="admin@example.com"
+        )
 
         assert result.status_code == 200
 
@@ -493,7 +610,9 @@ class TestDeleteUserEndpoint:
         mock_store_patch.get_user_profile.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
-            await delete_user(username="nonexistent@example.com", admin_username="admin@example.com")
+            await delete_user(
+                username="nonexistent@example.com", admin_username="admin@example.com"
+            )
 
         assert exc_info.value.status_code == 404
         assert "User nonexistent@example.com not found" in str(exc_info.value.detail)
@@ -508,28 +627,36 @@ class TestDeleteUserEndpoint:
         mock_store_patch.delete_user.side_effect = Exception("Database error")
 
         with pytest.raises(HTTPException) as exc_info:
-            await delete_user(username="user@example.com", admin_username="admin@example.com")
+            await delete_user(
+                username="user@example.com", admin_username="admin@example.com"
+            )
 
         assert exc_info.value.status_code == 500
         assert "Failed to delete user" in str(exc_info.value.detail)
 
     def test_delete_user_integration_admin(self, admin_client):
         """Test delete user endpoint through FastAPI test client as admin."""
-        response = admin_client.delete("/api/2.0/mlflow/users", json={"username": "user@example.com"})
+        response = admin_client.delete(
+            "/api/2.0/mlflow/users", json={"username": "user@example.com"}
+        )
 
         assert response.status_code == 200
         assert "message" in response.json()
 
     def test_delete_user_integration_non_admin(self, authenticated_client):
         """Test delete user endpoint as non-admin user."""
-        response = authenticated_client.delete("/api/2.0/mlflow/users", json={"username": "user@example.com"})
+        response = authenticated_client.delete(
+            "/api/2.0/mlflow/users", json={"username": "user@example.com"}
+        )
 
         # Should fail due to insufficient permissions
         assert response.status_code == 403
 
     def test_delete_user_invalid_request_body(self, admin_client):
         """Test delete user with invalid request body."""
-        response = admin_client.delete("/api/2.0/mlflow/users", json={"invalid_field": "value"})
+        response = admin_client.delete(
+            "/api/2.0/mlflow/users", json={"invalid_field": "value"}
+        )
 
         # Should fail due to missing username field
         assert response.status_code == 422
@@ -568,7 +695,11 @@ class TestUsersRouterIntegration:
     def test_admin_endpoints_require_admin_privileges(self, authenticated_client):
         """Test that admin endpoints require admin privileges."""
         admin_endpoints = [
-            ("POST", "/api/2.0/mlflow/users", {"username": "test", "display_name": "Test"}),
+            (
+                "POST",
+                "/api/2.0/mlflow/users",
+                {"username": "test", "display_name": "Test"},
+            ),
             ("DELETE", "/api/2.0/mlflow/users", {"username": "test"}),
         ]
 
@@ -581,15 +712,18 @@ class TestUsersRouterIntegration:
             # Should require admin privileges
             assert response.status_code == 403
 
-    def test_endpoints_with_invalid_json(self, authenticated_client):
+    def test_endpoints_with_invalid_json(self, admin_client):
         """Test endpoints with invalid JSON data."""
-        endpoints_with_body = [("POST", "/api/2.0/mlflow/users"), ("DELETE", "/api/2.0/mlflow/users")]
+        endpoints_with_body = [
+            ("POST", "/api/2.0/mlflow/users"),
+            ("DELETE", "/api/2.0/mlflow/users"),
+        ]
 
         for method, endpoint in endpoints_with_body:
             if method == "POST":
-                response = authenticated_client.post(endpoint, data="invalid json")
+                response = admin_client.post(endpoint, data="invalid json")
             elif method == "DELETE":
-                response = authenticated_client.delete(endpoint, data="invalid json")
+                response = admin_client.delete(endpoint, data="invalid json")
 
             # Should return 422 for invalid JSON
             assert response.status_code == 422
@@ -605,6 +739,11 @@ class TestUsersRouterIntegration:
         assert "application/json" in response.headers.get("content-type", "")
 
         # Test create user (admin only)
-        user_data = {"username": "test@example.com", "display_name": "Test User", "is_admin": False, "is_service_account": False}
+        user_data = {
+            "username": "test@example.com",
+            "display_name": "Test User",
+            "is_admin": False,
+            "is_service_account": False,
+        }
         response = admin_client.post("/api/2.0/mlflow/users", json=user_data)
         assert "application/json" in response.headers.get("content-type", "")
