@@ -13,7 +13,13 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
-from mlflow_oidc_auth.routers.ui import ui_router, serve_spa_config, serve_spa_root, serve_spa, redirect_to_ui
+from mlflow_oidc_auth.routers.ui import (
+    ui_router,
+    serve_spa_config,
+    serve_spa_root,
+    serve_spa,
+    redirect_to_ui,
+)
 
 
 class TestUIRouter:
@@ -34,7 +40,10 @@ class TestServeSPAConfig:
     async def test_serve_spa_config_authenticated(self, mock_request_with_session, mock_config):
         """Test SPA config for authenticated user."""
         # Call the handler directly with dependency values rather than a mock Request
-        with patch("mlflow_oidc_auth.routers.ui.config", mock_config), patch("mlflow_oidc_auth.routers.ui.get_base_path") as mock_base_path:
+        with (
+            patch("mlflow_oidc_auth.routers.ui.config", mock_config),
+            patch("mlflow_oidc_auth.routers.ui.get_base_path") as mock_base_path,
+        ):
             mock_base_path.return_value = "http://localhost:8000"
 
             result = await serve_spa_config(base_path="http://localhost:8000", authenticated=True)
@@ -61,7 +70,10 @@ class TestServeSPAConfig:
     async def test_serve_spa_config_unauthenticated(self, mock_request_with_session, mock_config):
         """Test SPA config for unauthenticated user."""
         # Call the handler directly with dependency values rather than a mock Request
-        with patch("mlflow_oidc_auth.routers.ui.config", mock_config), patch("mlflow_oidc_auth.routers.ui.get_base_path") as mock_base_path:
+        with (
+            patch("mlflow_oidc_auth.routers.ui.config", mock_config),
+            patch("mlflow_oidc_auth.routers.ui.get_base_path") as mock_base_path,
+        ):
             mock_base_path.return_value = "http://localhost:8000"
 
             result = await serve_spa_config(base_path="http://localhost:8000", authenticated=False)
@@ -108,7 +120,10 @@ class TestServeSPARoot:
 
             # Patch the internal helper to return the directory and index file path
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 result = await serve_spa_root()
 
                 assert isinstance(result, FileResponse)
@@ -139,7 +154,10 @@ class TestServeSPARoot:
                 f.write("<html><body>Test SPA</body></html>")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 response = client.get("/oidc/ui/")
 
                 assert response.status_code == 200
@@ -159,7 +177,10 @@ class TestServeSPA:
                 f.write("body { margin: 0; }")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(os.path.join(temp_dir, "index.html")).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(os.path.join(temp_dir, "index.html")).resolve(),
+                )
                 result = await serve_spa("styles.css")
 
                 assert isinstance(result, FileResponse)
@@ -176,7 +197,10 @@ class TestServeSPA:
                 f.write("<html><body>SPA Router</body></html>")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 result = await serve_spa("auth")  # SPA route, not a file
 
                 assert isinstance(result, FileResponse)
@@ -237,7 +261,10 @@ class TestServeSPA:
                 f.write("<html><body>SPA Router</body></html>")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 result = await serve_spa("admin/users")  # Nested SPA route
 
                 assert isinstance(result, FileResponse)
@@ -264,7 +291,10 @@ class TestServeSPA:
                 f.write("console.log('Hello World');")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(os.path.join(temp_dir, "index.html")).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(os.path.join(temp_dir, "index.html")).resolve(),
+                )
                 result = await serve_spa("main.js")
 
                 assert isinstance(result, FileResponse)
@@ -283,7 +313,10 @@ class TestServeSPA:
                 f.write(b"fake image data")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(os.path.join(temp_dir, "index.html")).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(os.path.join(temp_dir, "index.html")).resolve(),
+                )
                 result = await serve_spa("assets/logo.png")
 
                 assert isinstance(result, FileResponse)
@@ -298,7 +331,10 @@ class TestServeSPA:
                 f.write("body { margin: 0; }")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(os.path.join(temp_dir, "index.html")).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(os.path.join(temp_dir, "index.html")).resolve(),
+                )
                 response = client.get("/oidc/ui/styles.css")
 
                 assert response.status_code == 200
@@ -311,7 +347,10 @@ class TestServeSPA:
                 f.write("<html><body>SPA</body></html>")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 response = client.get("/oidc/ui/auth")
 
                 assert response.status_code == 200
@@ -360,9 +399,16 @@ class TestUIRouterIntegration:
                 f.write("body { margin: 0; }")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 # These should work without authentication
-                endpoints = ["/oidc/ui/", "/oidc/ui/styles.css", "/oidc/ui/auth"]  # SPA route
+                endpoints = [
+                    "/oidc/ui/",
+                    "/oidc/ui/styles.css",
+                    "/oidc/ui/auth",
+                ]  # SPA route
 
                 for endpoint in endpoints:
                     response = client.get(endpoint)
@@ -406,7 +452,10 @@ class TestUIRouterIntegration:
                 f.write("<html><body>UI</body></html>")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 # Attempt path traversal
                 response = client.get("/oidc/ui/../../../etc/passwd")
 
@@ -434,7 +483,10 @@ class TestUIRouterIntegration:
                     f.write("test content")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(os.path.join(temp_dir, "index.html")).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(os.path.join(temp_dir, "index.html")).resolve(),
+                )
                 for filename, expected_type in files_and_types:
                     response = client.get(f"/oidc/ui/{filename}")
 
@@ -450,7 +502,10 @@ class TestUIRouterIntegration:
                 f.write("// Large JavaScript file\n" * 50000)  # ~1MB
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(os.path.join(temp_dir, "index.html")).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(os.path.join(temp_dir, "index.html")).resolve(),
+                )
                 response = client.get("/oidc/ui/large.js")
 
                 assert response.status_code == 200
@@ -465,7 +520,10 @@ class TestUIRouterIntegration:
                 pass  # Create empty file
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(os.path.join(temp_dir, "index.html")).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(os.path.join(temp_dir, "index.html")).resolve(),
+                )
                 response = client.get("/oidc/ui/empty.css")
 
                 assert response.status_code == 200
@@ -479,7 +537,10 @@ class TestUIRouterIntegration:
                 f.write("<html><body>SPA with params</body></html>")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 # SPA routes with query parameters should work
                 response = client.get("/oidc/ui/auth?error=test&code=123")
 
@@ -494,7 +555,10 @@ class TestUIRouterIntegration:
                 f.write("<html><body>SPA with fragments</body></html>")
 
             with patch("mlflow_oidc_auth.routers.ui._get_ui_directory") as mock_get:
-                mock_get.return_value = (Path(temp_dir).resolve(), Path(index_path).resolve())
+                mock_get.return_value = (
+                    Path(temp_dir).resolve(),
+                    Path(index_path).resolve(),
+                )
                 # Note: URL fragments are handled client-side, but the route should still work
                 response = client.get("/oidc/ui/auth")
 

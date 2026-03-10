@@ -15,6 +15,9 @@ from mlflow_oidc_auth.routers.group_permissions import group_permissions_router
 from mlflow_oidc_auth.routers.prompt_permissions import prompt_permissions_router
 from mlflow_oidc_auth.routers.registered_model_permissions import registered_model_permissions_router
 from mlflow_oidc_auth.routers.scorers_permissions import scorers_permissions_router
+from mlflow_oidc_auth.routers.gateway_endpoint_permissions import gateway_endpoint_permissions_router
+from mlflow_oidc_auth.routers.gateway_secret_permissions import gateway_secret_permissions_router
+from mlflow_oidc_auth.routers.gateway_model_definition_permissions import gateway_model_definition_permissions_router
 from mlflow_oidc_auth.routers.health import health_check_router
 from mlflow_oidc_auth.routers.trash import trash_router
 from mlflow_oidc_auth.routers.ui import ui_router
@@ -29,6 +32,9 @@ __all__ = [
     "prompt_permissions_router",
     "registered_model_permissions_router",
     "scorers_permissions_router",
+    "gateway_endpoint_permissions_router",
+    "gateway_secret_permissions_router",
+    "gateway_model_definition_permissions_router",
     "health_check_router",
     "trash_router",
     "ui_router",
@@ -52,6 +58,9 @@ def get_all_routers() -> List[APIRouter]:
         prompt_permissions_router,
         registered_model_permissions_router,
         scorers_permissions_router,
+        gateway_endpoint_permissions_router,
+        gateway_secret_permissions_router,
+        gateway_model_definition_permissions_router,
         health_check_router,
         trash_router,
         ui_router,

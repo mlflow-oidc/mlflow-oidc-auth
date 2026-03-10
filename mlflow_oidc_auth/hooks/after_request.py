@@ -1,14 +1,32 @@
-from flask import Response, request
+from flask import Response, g, request
 from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, RenameRegisteredModel, SearchRegisteredModels
-from mlflow.protos.service_pb2 import CreateExperiment, DeleteScorer, RegisterScorer, SearchExperiments, SearchLoggedModels
+from mlflow.protos.service_pb2 import (
+    CreateExperiment,
+    CreateGatewayEndpoint,
+    CreateGatewayModelDefinition,
+    CreateGatewaySecret,
+    DeleteGatewayEndpoint,
+    DeleteGatewayModelDefinition,
+    DeleteGatewaySecret,
+    DeleteScorer,
+    ListGatewayEndpoints,
+    ListGatewayModelDefinitions,
+    ListGatewaySecretInfos,
+    RegisterScorer,
+    SearchExperiments,
+    SearchLoggedModels,
+    UpdateGatewayEndpoint,
+)
 from mlflow.server.handlers import _get_model_registry_store, _get_request_message, _get_tracking_store, catch_mlflow_exception, get_endpoints
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_model_name
+from mlflow_oidc_auth.utils.permissions import can_read_gateway_endpoint, can_read_gateway_model_definition, can_read_gateway_secret
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -229,6 +247,144 @@ def _delete_scorer_permissions_cascade(resp: Response):
         store.delete_scorer_permissions_for_scorer(str(experiment_id), str(scorer_name))
 
 
+def _set_can_manage_gateway_endpoint_permission(resp: Response):
+    """Create MANAGE gateway endpoint permission for the endpoint creator."""
+    response_message = CreateGatewayEndpoint.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    name = response_message.endpoint.name
+    username = get_fastapi_username()
+    store.create_gateway_endpoint_permission(name, username, MANAGE.name)
+
+
+def _rename_gateway_endpoint_permission(resp: Response):
+    """Propagate endpoint name changes to all user and group permission records.
+
+    The old name was stashed in ``flask.g`` by the before-request validator.
+    The new name is read from the response.
+    """
+    old_name = getattr(g, "_updating_gateway_endpoint_old_name", None)
+    if not old_name:
+        return
+
+    response_message = UpdateGatewayEndpoint.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    new_name = response_message.endpoint.name
+
+    if not new_name or new_name == old_name:
+        # Name unchanged — nothing to do.
+        return
+
+    try:
+        store.rename_gateway_endpoint_permissions(old_name, new_name)
+    except Exception:
+        get_logger().warning(f"Failed to rename gateway endpoint permissions from '{old_name}' to '{new_name}'")
+
+
+def _set_can_manage_gateway_secret_permission(resp: Response):
+    """Create MANAGE gateway secret permission for the secret creator."""
+    response_message = CreateGatewaySecret.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    secret_name = response_message.secret.secret_name
+    username = get_fastapi_username()
+    store.create_gateway_secret_permission(secret_name, username, MANAGE.name)
+
+
+def _set_can_manage_gateway_model_definition_permission(resp: Response):
+    """Create MANAGE gateway model definition permission for the model definition creator."""
+    response_message = CreateGatewayModelDefinition.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    name = response_message.model_definition.name
+    username = get_fastapi_username()
+    store.create_gateway_model_definition_permission(name, username, MANAGE.name)
+
+
+def _filter_list_gateway_endpoints(resp: Response) -> None:
+    """Filter out gateway endpoints the user cannot read."""
+    if get_fastapi_admin_status():
+        return
+
+    response_message = ListGatewayEndpoints.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    username = get_fastapi_username()
+    logger = get_logger()
+
+    for endpoint in list(response_message.endpoints):
+        if not can_read_gateway_endpoint(endpoint.name, username):
+            response_message.endpoints.remove(endpoint)
+            logger.debug(f"Filtered gateway endpoint '{endpoint.name}' for user '{username}'")
+
+    resp.data = message_to_json(response_message)
+
+
+def _filter_list_gateway_secrets(resp: Response) -> None:
+    """Filter out gateway secrets the user cannot read."""
+    if get_fastapi_admin_status():
+        return
+
+    response_message = ListGatewaySecretInfos.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    username = get_fastapi_username()
+    logger = get_logger()
+
+    for secret in list(response_message.secrets):
+        if not can_read_gateway_secret(secret.secret_name, username):
+            response_message.secrets.remove(secret)
+            logger.debug(f"Filtered gateway secret '{secret.secret_name}' for user '{username}'")
+
+    resp.data = message_to_json(response_message)
+
+
+def _filter_list_gateway_model_definitions(resp: Response) -> None:
+    """Filter out gateway model definitions the user cannot read."""
+    if get_fastapi_admin_status():
+        return
+
+    response_message = ListGatewayModelDefinitions.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    username = get_fastapi_username()
+    logger = get_logger()
+
+    for model_def in list(response_message.model_definitions):
+        if not can_read_gateway_model_definition(model_def.name, username):
+            response_message.model_definitions.remove(model_def)
+            logger.debug(f"Filtered gateway model definition '{model_def.name}' for user '{username}'")
+
+    resp.data = message_to_json(response_message)
+
+
+def _delete_gateway_endpoint_permissions_cascade(resp: Response) -> None:
+    """Delete all permissions for a gateway endpoint after it is deleted."""
+    name = getattr(g, "_deleting_gateway_endpoint_name", None)
+    if not name:
+        return
+    try:
+        store.wipe_gateway_endpoint_permissions(name)
+    except Exception:
+        get_logger().warning(f"Failed to cascade-delete permissions for gateway endpoint '{name}'")
+
+
+def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
+    """Delete all permissions for a gateway secret after it is deleted."""
+    name = getattr(g, "_deleting_gateway_secret_name", None)
+    if not name:
+        return
+    try:
+        store.wipe_gateway_secret_permissions(name)
+    except Exception:
+        get_logger().warning(f"Failed to cascade-delete permissions for gateway secret '{name}'")
+
+
+def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None:
+    """Delete all permissions for a gateway model definition after it is deleted."""
+    name = getattr(g, "_deleting_gateway_model_definition_name", None)
+    if not name:
+        return
+    try:
+        store.wipe_gateway_model_definition_permissions(name)
+    except Exception:
+        get_logger().warning(f"Failed to cascade-delete permissions for gateway model definition '{name}'")
+
+
 AFTER_REQUEST_PATH_HANDLERS = {
     CreateExperiment: _set_can_manage_experiment_permission,
     CreateRegisteredModel: _set_can_manage_registered_model_permission,
@@ -239,13 +395,24 @@ AFTER_REQUEST_PATH_HANDLERS = {
     RenameRegisteredModel: _rename_registered_model_permission,
     RegisterScorer: _set_can_manage_scorer_permission,
     DeleteScorer: _delete_scorer_permissions_cascade,
+    CreateGatewayEndpoint: _set_can_manage_gateway_endpoint_permission,
+    CreateGatewaySecret: _set_can_manage_gateway_secret_permission,
+    CreateGatewayModelDefinition: _set_can_manage_gateway_model_definition_permission,
+    UpdateGatewayEndpoint: _rename_gateway_endpoint_permission,
+    DeleteGatewayEndpoint: _delete_gateway_endpoint_permissions_cascade,
+    DeleteGatewaySecret: _delete_gateway_secret_permissions_cascade,
+    DeleteGatewayModelDefinition: _delete_gateway_model_definition_permissions_cascade,
+    ListGatewayEndpoints: _filter_list_gateway_endpoints,
+    ListGatewaySecretInfos: _filter_list_gateway_secrets,
+    ListGatewayModelDefinitions: _filter_list_gateway_model_definitions,
 }
 
+_our_handlers = set(AFTER_REQUEST_PATH_HANDLERS.values())
 AFTER_REQUEST_HANDLERS = {
     (http_path, method): handler
     for http_path, handler, methods in get_endpoints(_get_after_request_handler)
     for method in methods
-    if handler is not None and "/graphql" not in http_path
+    if handler in _our_handlers and "/graphql" not in http_path
 }
 
 

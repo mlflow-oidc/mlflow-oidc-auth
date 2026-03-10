@@ -9,9 +9,13 @@ import logging
 import os
 from typing import Optional
 
+VALID_LEVELS = {
+    "DEBUG": logging.DEBUG, "INFO": logging.INFO, "WARNING": logging.WARNING,
+    "WARN": logging.WARNING, "ERROR": logging.ERROR, "CRITICAL": logging.CRITICAL
+}
+
 # Global logger instance
 _logger: Optional[logging.Logger] = None
-
 
 def get_logger() -> logging.Logger:
     """
@@ -30,9 +34,19 @@ def get_logger() -> logging.Logger:
         logger_name = os.environ.get("LOGGING_LOGGER_NAME", "uvicorn")
         _logger = logging.getLogger(logger_name)
 
+        if not _logger.handlers:  # type: ignore[attr-defined]
+            handler = logging.StreamHandler()
+            # use a minimal default formatter similar to uvicorn's default
+            handler.setFormatter(
+                logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+            )
+            handler.setLevel(logging.INFO)  # Match default; override via env
+            _logger.addHandler(handler)
+
         # Set level from environment
-        log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
-        _logger.setLevel(getattr(logging, log_level, logging.INFO))
+        log_level_str = os.environ.get("LOG_LEVEL", "INFO").upper()
+        log_level = VALID_LEVELS.get(log_level_str, logging.INFO)
+        _logger.setLevel(log_level)
 
         # Ensure propagation is enabled for testing frameworks
         _logger.propagate = True

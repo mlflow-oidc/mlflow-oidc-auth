@@ -1,9 +1,17 @@
 import React from "react";
 import { Select } from "./select";
-import type { PermissionLevel } from "../types/entity";
+import type { PermissionLevel, PermissionType } from "../types/entity";
 
-const PERMISSION_LEVELS: PermissionLevel[] = [
+const DEFAULT_PERMISSION_LEVELS: PermissionLevel[] = [
   "READ",
+  "EDIT",
+  "MANAGE",
+  "NO_PERMISSIONS",
+];
+
+const AI_GATEWAY_PERMISSION_LEVELS: PermissionLevel[] = [
+  "READ",
+  "USE",
   "EDIT",
   "MANAGE",
   "NO_PERMISSIONS",
@@ -12,6 +20,7 @@ const PERMISSION_LEVELS: PermissionLevel[] = [
 interface PermissionLevelSelectProps {
   value: PermissionLevel;
   onChange: (value: PermissionLevel) => void;
+  type?: PermissionType;
   id?: string;
   label?: string;
   disabled?: boolean;
@@ -23,6 +32,7 @@ interface PermissionLevelSelectProps {
 export const PermissionLevelSelect: React.FC<PermissionLevelSelectProps> = ({
   value,
   onChange,
+  type,
   id = "permission-level",
   label = "Permissions*",
   disabled = false,
@@ -30,6 +40,11 @@ export const PermissionLevelSelect: React.FC<PermissionLevelSelectProps> = ({
   className,
   containerClassName,
 }) => {
+  const levels =
+    type === "ai-endpoints" || type === "ai-secrets" || type === "ai-models"
+      ? AI_GATEWAY_PERMISSION_LEVELS
+      : DEFAULT_PERMISSION_LEVELS;
+
   return (
     <Select
       id={id}
@@ -38,7 +53,7 @@ export const PermissionLevelSelect: React.FC<PermissionLevelSelectProps> = ({
       onChange={(e) => onChange(e.target.value as PermissionLevel)}
       required={required}
       disabled={disabled}
-      options={PERMISSION_LEVELS.map((level) => ({
+      options={levels.map((level) => ({
         label: level,
         value: level,
       }))}

@@ -5,14 +5,24 @@ import { AddRegexRuleModal } from "./add-regex-rule-modal";
 describe("AddRegexRuleModal", () => {
   it("renders when open", () => {
     render(
-      <AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />,
+      <AddRegexRuleModal
+        isOpen={true}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        type="experiments"
+      />,
     );
     expect(screen.getByText("Add New Regex Rule")).toBeInTheDocument();
   });
 
   it("validates regex input", async () => {
     render(
-      <AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />,
+      <AddRegexRuleModal
+        isOpen={true}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        type="experiments"
+      />,
     );
 
     const regexInput = screen.getByLabelText(/Regex/i);
@@ -30,7 +40,12 @@ describe("AddRegexRuleModal", () => {
 
   it("validates empty regex input", async () => {
     render(
-      <AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />,
+      <AddRegexRuleModal
+        isOpen={true}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        type="experiments"
+      />,
     );
 
     const saveBtn = screen.getByText("Save");
@@ -41,7 +56,12 @@ describe("AddRegexRuleModal", () => {
 
   it("validates priority input", async () => {
     render(
-      <AddRegexRuleModal isOpen={true} onClose={() => {}} onSave={vi.fn()} />,
+      <AddRegexRuleModal
+        isOpen={true}
+        onClose={() => {}}
+        onSave={vi.fn()}
+        type="experiments"
+      />,
     );
 
     // Regex valid
@@ -66,6 +86,7 @@ describe("AddRegexRuleModal", () => {
         isOpen={true}
         onClose={() => {}}
         onSave={handleSave}
+        type="experiments"
       />,
     );
 

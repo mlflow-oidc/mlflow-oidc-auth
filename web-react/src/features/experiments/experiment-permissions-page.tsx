@@ -1,9 +1,8 @@
 import { useParams } from "react-router";
-import PageContainer from "../../shared/components/page/page-container";
 import { useExperimentUserPermissions } from "../../core/hooks/use-experiment-user-permissions";
 import { useExperimentGroupPermissions } from "../../core/hooks/use-experiment-group-permissions";
 import { useAllExperiments } from "../../core/hooks/use-all-experiments";
-import { EntityPermissionsManager } from "../permissions/components/entity-permissions-manager";
+import { EntityPermissionsPageLayout } from "../permissions/components/entity-permissions-page-layout";
 
 export default function ExperimentPermissionsPage() {
   const { experimentId: routeExperimentId } = useParams<{
@@ -33,11 +32,6 @@ export default function ExperimentPermissionsPage() {
     refreshGroup();
   };
 
-  const allPermissions = [
-    ...(experimentUserPermissions || []),
-    ...(experimentGroupPermissions || []),
-  ];
-
   const { allExperiments } = useAllExperiments();
 
   if (!experimentId) {
@@ -48,16 +42,16 @@ export default function ExperimentPermissionsPage() {
   const experimentName = experiment?.name || experimentId;
 
   return (
-    <PageContainer title={`Permissions for Experiment ${experimentName}`}>
-      <EntityPermissionsManager
-        resourceId={experimentId}
-        resourceName={experimentName}
-        resourceType="experiments"
-        permissions={allPermissions}
-        isLoading={isLoading}
-        error={error}
-        refresh={refresh}
-      />
-    </PageContainer>
+    <EntityPermissionsPageLayout
+      title={`Permissions for Experiment ${experimentName}`}
+      resourceId={experimentId}
+      resourceName={experimentName}
+      resourceType="experiments"
+      userPermissions={experimentUserPermissions}
+      groupPermissions={experimentGroupPermissions}
+      isLoading={isLoading}
+      error={error}
+      refresh={refresh}
+    />
   );
 }

@@ -12,6 +12,7 @@ describe("GrantPermissionModal", () => {
         title="Grant Perms"
         label="User"
         options={["user1", "user2"]}
+        type="experiments"
       />,
     );
     expect(screen.getByText("Grant Perms")).toBeInTheDocument();
@@ -28,6 +29,7 @@ describe("GrantPermissionModal", () => {
         title="Grant Perms"
         label="User"
         options={["user1"]}
+        type="experiments"
       />,
     );
 

@@ -23,7 +23,13 @@ from .users import get_admin_users, get_mlflow_users
 def _should_require_server() -> bool:
     """Return True when the test run should fail instead of skip if the server is unreachable."""
 
-    return os.environ.get("MLFLOW_OIDC_E2E_REQUIRE", "0").lower() in {"1", "true", "t", "yes", "y"}
+    return os.environ.get("MLFLOW_OIDC_E2E_REQUIRE", "0").lower() in {
+        "1",
+        "true",
+        "t",
+        "yes",
+        "y",
+    }
 
 
 @pytest.fixture(scope="session")

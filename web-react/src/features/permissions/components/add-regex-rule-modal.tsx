@@ -3,7 +3,10 @@ import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
 import { PermissionLevelSelect } from "../../../shared/components/permission-level-select";
-import type { PermissionLevel } from "../../../shared/types/entity";
+import type {
+  PermissionLevel,
+  PermissionType,
+} from "../../../shared/types/entity";
 
 interface AddRegexRuleModalProps {
   isOpen: boolean;
@@ -13,6 +16,7 @@ interface AddRegexRuleModalProps {
     permission: PermissionLevel,
     priority: number,
   ) => Promise<void>;
+  type: PermissionType;
   isLoading?: boolean;
 }
 
@@ -20,6 +24,7 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  type,
   isLoading = false,
 }) => {
   const [regex, setRegex] = useState("");
@@ -103,6 +108,7 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
         label="Permissions*"
         value={permission}
         onChange={(val) => setPermission(val)}
+        type={type}
         required
         containerClassName="mb-4"
       />

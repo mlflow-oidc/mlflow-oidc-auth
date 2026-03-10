@@ -15,6 +15,18 @@ from mlflow_oidc_auth.logger import get_logger
 class TestGetLogger:
     """Test cases for the get_logger function."""
 
+    def _make_mock_logger(self):
+        """Create a logger mock with required attributes for get_logger.
+
+        The real implementation checks ``handlers`` and ``propagate`` before
+        modifying the logger, so our mocks must provide those attributes or
+        else attribute access will raise.
+        """
+        mock_logger = Mock(spec=logging.Logger)
+        mock_logger.handlers = []
+        mock_logger.propagate = False
+        return mock_logger
+
     def setup_method(self):
         """Reset the global logger instance before each test."""
 
@@ -42,7 +54,7 @@ class TestGetLogger:
     def test_get_logger_first_call_sets_up_logger(self):
         """Test that first call to get_logger sets up the logger."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             result = get_logger()
@@ -59,7 +71,7 @@ class TestGetLogger:
     def test_get_logger_subsequent_calls_return_same_logger(self):
         """Test that subsequent calls return the same logger instance."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             result1 = get_logger()
@@ -75,7 +87,7 @@ class TestGetLogger:
     def test_get_logger_with_custom_logger_name(self):
         """Test get_logger with custom LOGGING_LOGGER_NAME."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             result = get_logger()
@@ -87,7 +99,7 @@ class TestGetLogger:
     def test_get_logger_with_debug_level(self):
         """Test get_logger with LOG_LEVEL set to DEBUG."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             get_logger()
@@ -98,7 +110,7 @@ class TestGetLogger:
     def test_get_logger_with_warning_level(self):
         """Test get_logger with LOG_LEVEL set to WARNING."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             get_logger()
@@ -109,7 +121,7 @@ class TestGetLogger:
     def test_get_logger_with_error_level(self):
         """Test get_logger with LOG_LEVEL set to ERROR."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             get_logger()
@@ -120,7 +132,7 @@ class TestGetLogger:
     def test_get_logger_with_critical_level(self):
         """Test get_logger with LOG_LEVEL set to CRITICAL."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             get_logger()
@@ -131,7 +143,7 @@ class TestGetLogger:
     def test_get_logger_with_invalid_log_level_defaults_to_info(self):
         """Test get_logger with invalid LOG_LEVEL defaults to INFO."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             get_logger()
@@ -142,7 +154,7 @@ class TestGetLogger:
     def test_get_logger_propagate_set_to_true(self):
         """Test that propagate is set to True."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             get_logger()
@@ -153,7 +165,7 @@ class TestGetLogger:
     def test_get_logger_with_both_env_vars(self):
         """Test get_logger with both LOGGING_LOGGER_NAME and LOG_LEVEL set."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             result = get_logger()
@@ -166,7 +178,7 @@ class TestGetLogger:
     def test_get_logger_logger_name_default(self):
         """Test that default logger name is 'uvicorn'."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             get_logger()
@@ -176,9 +188,31 @@ class TestGetLogger:
     def test_get_logger_log_level_default(self):
         """Test that default log level is INFO."""
         with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = Mock(spec=logging.Logger)
+            mock_logger = self._make_mock_logger()
             mock_get_logger.return_value = mock_logger
 
             get_logger()
 
             mock_logger.setLevel.assert_called_once_with(logging.INFO)
+
+    def test_get_logger_adds_stream_handler_if_none(self):
+        """Logger without handlers should gain a StreamHandler."""
+        # create a real logger object before patching
+        real_logger = logging.getLogger("test_no_handlers")
+        real_logger.handlers = []
+        with patch("logging.getLogger", return_value=real_logger) as mock_get_logger:
+            result = get_logger()
+
+            # after initialization there should be exactly one handler added
+            assert len(result.handlers) == 1
+            assert isinstance(result.handlers[0], logging.StreamHandler)
+
+    def test_get_logger_does_not_duplicate_handlers(self):
+        """Calling get_logger multiple times shouldn't add extra handlers."""
+        real_logger = logging.getLogger("test_duplicate")
+        real_logger.handlers = []
+        with patch("logging.getLogger", return_value=real_logger) as mock_get_logger:
+            first = get_logger()
+            second = get_logger()
+            assert first is second
+            assert len(first.handlers) == 1  # still only the one handler

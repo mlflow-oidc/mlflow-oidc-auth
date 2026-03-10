@@ -32,7 +32,8 @@ export default function GroupsPage() {
   const renderPermissionsButton = (groupName: string) => (
     <div className="invisible group-hover:visible">
       <RowActionButton
-        entityId={`${groupName}/experiments`}
+        entityId={groupName}
+        suffix="/experiments"
         route="/groups"
         buttonText="Manage permissions"
       />

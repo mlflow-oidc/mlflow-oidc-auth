@@ -64,7 +64,13 @@ def _base_url() -> str:
 def _require_server(base_url: str) -> None:
     """Skip the test if the server is not reachable."""
 
-    require = os.environ.get("MLFLOW_OIDC_E2E_REQUIRE", "0").lower() in {"1", "true", "t", "yes", "y"}
+    require = os.environ.get("MLFLOW_OIDC_E2E_REQUIRE", "0").lower() in {
+        "1",
+        "true",
+        "t",
+        "yes",
+        "y",
+    }
 
     try:
         # Prefer FastAPI-native health endpoint to avoid falling through to the
@@ -159,7 +165,10 @@ def _create_prompt(client: httpx.Client, base_url: str, prompt_name: str, prompt
 
     create_resp = client.post(
         urljoin(base_url, create_api),
-        json={"name": prompt_name, "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}]},
+        json={
+            "name": prompt_name,
+            "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}],
+        },
     )
     _assert_ok(create_resp, f"create prompt {prompt_name}")
 
@@ -217,7 +226,13 @@ def _create_prompt_version(client: httpx.Client, base_url: str, prompt_name: str
     )
 
 
-def _grant_experiment_permission(client: httpx.Client, base_url: str, experiment_id: str, target_user: str, permission: str) -> None:
+def _grant_experiment_permission(
+    client: httpx.Client,
+    base_url: str,
+    experiment_id: str,
+    target_user: str,
+    permission: str,
+) -> None:
     api = f"api/2.0/mlflow/permissions/users/{quote(target_user)}/experiments/{quote(experiment_id)}"
     resp = client.patch(urljoin(base_url, api), json={"permission": permission})
     if resp.status_code == 404:
@@ -225,7 +240,13 @@ def _grant_experiment_permission(client: httpx.Client, base_url: str, experiment
     assert resp.status_code in (200, 201), f"Failed to grant experiment {permission} to {target_user}: {resp.status_code} {resp.text}"
 
 
-def _grant_registered_model_permission(client: httpx.Client, base_url: str, model_name: str, target_user: str, permission: str) -> None:
+def _grant_registered_model_permission(
+    client: httpx.Client,
+    base_url: str,
+    model_name: str,
+    target_user: str,
+    permission: str,
+) -> None:
     api = f"api/2.0/mlflow/permissions/users/{quote(target_user)}/registered-models/{quote(model_name)}"
     resp = client.patch(urljoin(base_url, api), json={"permission": permission})
     if resp.status_code == 404:
@@ -233,7 +254,13 @@ def _grant_registered_model_permission(client: httpx.Client, base_url: str, mode
     assert resp.status_code in (200, 201), f"Failed to grant model {permission} to {target_user}: {resp.status_code} {resp.text}"
 
 
-def _grant_prompt_permission(client: httpx.Client, base_url: str, prompt_name: str, target_user: str, permission: str) -> None:
+def _grant_prompt_permission(
+    client: httpx.Client,
+    base_url: str,
+    prompt_name: str,
+    target_user: str,
+    permission: str,
+) -> None:
     api = f"api/2.0/mlflow/permissions/users/{quote(target_user)}/prompts/{quote(prompt_name)}"
     resp = client.patch(urljoin(base_url, api), json={"permission": permission})
     if resp.status_code == 404:
@@ -324,7 +351,12 @@ def test_e2e_permissions_workflow(
 
     for user in (user1, user2, user3, user4, user5):
         cookies[user.email] = user_cookies_factory(user.email)
-        with httpx.Client(cookies=cookies[user.email], base_url=base_url, timeout=30.0, follow_redirects=True) as client:
+        with httpx.Client(
+            cookies=cookies[user.email],
+            base_url=base_url,
+            timeout=30.0,
+            follow_redirects=True,
+        ) as client:
             r = Resources(
                 experiment_name=f"{user.email}-exp-{run_id}",
                 model_name=f"{user.email}-model-{run_id}",
@@ -333,7 +365,12 @@ def test_e2e_permissions_workflow(
 
             experiment_id = _create_experiment(client, base_url, r.experiment_name)
             _create_registered_model(client, base_url, r.model_name)
-            _create_prompt(client, base_url, r.prompt_name, prompt_text=f"prompt text for {user.email} {run_id}")
+            _create_prompt(
+                client,
+                base_url,
+                r.prompt_name,
+                prompt_text=f"prompt text for {user.email} {run_id}",
+            )
 
             resources[user.email] = r
             # Sanity: creator should be able to create a run in their own experiment.
@@ -341,7 +378,12 @@ def test_e2e_permissions_workflow(
             assert run_resp.status_code == 200, f"Owner could not create run: {run_resp.status_code} {run_resp.text}"
 
     # Resolve user1 experiment_id for subsequent permission grants.
-    with httpx.Client(cookies=cookies[user1.email], base_url=base_url, timeout=30.0, follow_redirects=True) as client1:
+    with httpx.Client(
+        cookies=cookies[user1.email],
+        base_url=base_url,
+        timeout=30.0,
+        follow_redirects=True,
+    ) as client1:
         user1_exp_resp = _get_experiment_by_name(client1, base_url, resources[user1.email].experiment_name)
         _assert_ok(user1_exp_resp, "user1 get experiment by name")
         user1_payload = user1_exp_resp.json()
@@ -358,28 +400,64 @@ def test_e2e_permissions_workflow(
         _grant_registered_model_permission(client1, base_url, resources[user1.email].model_name, user2.email, "READ")
         _grant_registered_model_permission(client1, base_url, resources[user1.email].model_name, user3.email, "EDIT")
         _grant_registered_model_permission(client1, base_url, resources[user1.email].model_name, user4.email, "MANAGE")
-        _grant_registered_model_permission(client1, base_url, resources[user1.email].model_name, user5.email, "NO_PERMISSIONS")
+        _grant_registered_model_permission(
+            client1,
+            base_url,
+            resources[user1.email].model_name,
+            user5.email,
+            "NO_PERMISSIONS",
+        )
 
         _grant_prompt_permission(client1, base_url, resources[user1.email].prompt_name, user2.email, "READ")
         _grant_prompt_permission(client1, base_url, resources[user1.email].prompt_name, user3.email, "EDIT")
         _grant_prompt_permission(client1, base_url, resources[user1.email].prompt_name, user4.email, "MANAGE")
-        _grant_prompt_permission(client1, base_url, resources[user1.email].prompt_name, user5.email, "NO_PERMISSIONS")
+        _grant_prompt_permission(
+            client1,
+            base_url,
+            resources[user1.email].prompt_name,
+            user5.email,
+            "NO_PERMISSIONS",
+        )
 
     # --- Validate user2 (READ) ---
-    with httpx.Client(cookies=cookies[user2.email], base_url=base_url, timeout=30.0, follow_redirects=True) as client2:
+    with httpx.Client(
+        cookies=cookies[user2.email],
+        base_url=base_url,
+        timeout=30.0,
+        follow_redirects=True,
+    ) as client2:
         # Can view
-        _assert_ok(_get_experiment_by_name(client2, base_url, resources[user1.email].experiment_name), "user2 read experiment")
-        _assert_ok(_get_registered_model(client2, base_url, resources[user1.email].model_name), "user2 read model")
-        _assert_ok(_get_registered_model(client2, base_url, resources[user1.email].prompt_name), "user2 read prompt")
+        _assert_ok(
+            _get_experiment_by_name(client2, base_url, resources[user1.email].experiment_name),
+            "user2 read experiment",
+        )
+        _assert_ok(
+            _get_registered_model(client2, base_url, resources[user1.email].model_name),
+            "user2 read model",
+        )
+        _assert_ok(
+            _get_registered_model(client2, base_url, resources[user1.email].prompt_name),
+            "user2 read prompt",
+        )
 
         # Cannot modify data
         _assert_denied(_create_run(client2, base_url, user1_experiment_id), "user2 create run")
         _assert_denied(
-            _update_registered_model_description(client2, base_url, resources[user1.email].model_name, "user2 should not update"),
+            _update_registered_model_description(
+                client2,
+                base_url,
+                resources[user1.email].model_name,
+                "user2 should not update",
+            ),
             "user2 update model description",
         )
         _assert_denied(
-            _create_prompt_version(client2, base_url, resources[user1.email].prompt_name, "user2 should not update"),
+            _create_prompt_version(
+                client2,
+                base_url,
+                resources[user1.email].prompt_name,
+                "user2 should not update",
+            ),
             "user2 create prompt version",
         )
 
@@ -394,9 +472,17 @@ def test_e2e_permissions_workflow(
         _assert_denied(resp, "user2 self-upgrade permissions")
 
     # --- Validate user3 (EDIT) ---
-    with httpx.Client(cookies=cookies[user3.email], base_url=base_url, timeout=30.0, follow_redirects=True) as client3:
+    with httpx.Client(
+        cookies=cookies[user3.email],
+        base_url=base_url,
+        timeout=30.0,
+        follow_redirects=True,
+    ) as client3:
         # Can view
-        _assert_ok(_get_experiment_by_name(client3, base_url, resources[user1.email].experiment_name), "user3 view experiment")
+        _assert_ok(
+            _get_experiment_by_name(client3, base_url, resources[user1.email].experiment_name),
+            "user3 view experiment",
+        )
 
         # Can modify data
         run_resp = _create_run(client3, base_url, user1_experiment_id)
@@ -409,7 +495,10 @@ def test_e2e_permissions_workflow(
         _assert_ok(prompt_ver_resp, "user3 update prompt")
 
         # Cannot delete
-        _assert_denied(_delete_registered_model(client3, base_url, resources[user1.email].model_name), "user3 delete model")
+        _assert_denied(
+            _delete_registered_model(client3, base_url, resources[user1.email].model_name),
+            "user3 delete model",
+        )
 
         # Cannot manage permissions
         resp = client3.patch(
@@ -422,9 +511,17 @@ def test_e2e_permissions_workflow(
         _assert_denied(resp, "user3 manage permissions")
 
     # --- Validate user4 (MANAGE) ---
-    with httpx.Client(cookies=cookies[user4.email], base_url=base_url, timeout=30.0, follow_redirects=True) as client4:
+    with httpx.Client(
+        cookies=cookies[user4.email],
+        base_url=base_url,
+        timeout=30.0,
+        follow_redirects=True,
+    ) as client4:
         # Can view
-        _assert_ok(_get_experiment_by_name(client4, base_url, resources[user1.email].experiment_name), "user4 view experiment")
+        _assert_ok(
+            _get_experiment_by_name(client4, base_url, resources[user1.email].experiment_name),
+            "user4 view experiment",
+        )
 
         # Can manage permissions: grant user5 READ (was NO_PERMISSIONS)
         resp = client4.patch(
@@ -437,10 +534,21 @@ def test_e2e_permissions_workflow(
         assert resp.status_code in (200, 201), f"Expected user4 to manage permissions, got {resp.status_code}: {resp.text}"
 
     # --- Validate user5 (NO_PERMISSIONS initially) ---
-    with httpx.Client(cookies=cookies[user5.email], base_url=base_url, timeout=30.0, follow_redirects=True) as client5:
+    with httpx.Client(
+        cookies=cookies[user5.email],
+        base_url=base_url,
+        timeout=30.0,
+        follow_redirects=True,
+    ) as client5:
         # The exact denial code may vary (401/403/404). We accept any denial.
-        _assert_denied(_get_experiment_by_name(client5, base_url, resources[user1.email].experiment_name), "user5 view experiment")
-        _assert_denied(_get_registered_model(client5, base_url, resources[user1.email].prompt_name), "user5 view prompt")
+        _assert_denied(
+            _get_experiment_by_name(client5, base_url, resources[user1.email].experiment_name),
+            "user5 view experiment",
+        )
+        _assert_denied(
+            _get_registered_model(client5, base_url, resources[user1.email].prompt_name),
+            "user5 view prompt",
+        )
 
         # NOTE: after user4 granted user5 READ to the *model*, user5 should now be able to see the model.
         model_get = _get_registered_model(client5, base_url, resources[user1.email].model_name)
@@ -448,6 +556,11 @@ def test_e2e_permissions_workflow(
 
         # But user5 still should not be able to modify it.
         _assert_denied(
-            _update_registered_model_description(client5, base_url, resources[user1.email].model_name, "user5 should not update"),
+            _update_registered_model_description(
+                client5,
+                base_url,
+                resources[user1.email].model_name,
+                "user5 should not update",
+            ),
             "user5 update model",
         )

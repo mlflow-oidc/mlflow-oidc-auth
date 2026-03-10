@@ -18,7 +18,10 @@ from mlflow_oidc_auth.routers.registered_model_permissions import (
     REGISTERED_MODEL_GROUP_PERMISSIONS,
     REGISTERED_MODEL_USER_PERMISSIONS,
 )
-from mlflow_oidc_auth.entities import User, RegisteredModelPermission as RegisteredModelPermissionEntity
+from mlflow_oidc_auth.entities import (
+    User,
+    RegisteredModelPermission as RegisteredModelPermissionEntity,
+)
 
 
 class TestRegisteredModelPermissionsRouter:
@@ -34,8 +37,8 @@ class TestRegisteredModelPermissionsRouter:
     def test_route_constants(self):
         """Test that route constants are properly defined."""
         assert LIST_MODELS == ""
-        assert REGISTERED_MODEL_USER_PERMISSIONS == "/{name}/users"
-        assert REGISTERED_MODEL_GROUP_PERMISSIONS == "/{name}/groups"
+        assert REGISTERED_MODEL_USER_PERMISSIONS == "/{name:path}/users"
+        assert REGISTERED_MODEL_GROUP_PERMISSIONS == "/{name:path}/groups"
 
 
 class TestGetRegisteredModelGroupsEndpoint:
@@ -43,7 +46,10 @@ class TestGetRegisteredModelGroupsEndpoint:
 
     @pytest.mark.asyncio
     async def test_get_registered_model_groups_success(self, mock_store):
-        mock_store.registered_model_group_repo.list_groups_for_model.return_value = [("team-a", "READ"), ("team-b", "MANAGE")]
+        mock_store.registered_model_group_repo.list_groups_for_model.return_value = [
+            ("team-a", "READ"),
+            ("team-b", "MANAGE"),
+        ]
 
         with patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store):
             result = await get_registered_model_groups(name="test-model", _="admin@example.com")
@@ -122,7 +128,13 @@ class TestGetRegisteredModelUsersEndpoint:
     @pytest.mark.asyncio
     async def test_get_registered_model_users_no_permissions(self, mock_store):
         """Test getting registered model users when no users have permissions."""
-        user1 = User(username="user1@example.com", display_name="User 1", is_admin=False, is_service_account=False, registered_model_permissions=[])
+        user1 = User(
+            username="user1@example.com",
+            display_name="User 1",
+            is_admin=False,
+            is_service_account=False,
+            registered_model_permissions=[],
+        )
 
         mock_store.list_users.return_value = [user1]
 
@@ -155,7 +167,12 @@ class TestGetRegisteredModelUsersEndpoint:
     @pytest.mark.asyncio
     async def test_get_registered_model_users_no_registered_model_permissions_attr(self, mock_store):
         """Test getting users when user object doesn't have registered_model_permissions attribute."""
-        user1 = User(username="user1@example.com", display_name="User 1", is_admin=False, is_service_account=False)
+        user1 = User(
+            username="user1@example.com",
+            display_name="User 1",
+            is_admin=False,
+            is_service_account=False,
+        )
         # Remove the registered_model_permissions attribute
         delattr(user1, "registered_model_permissions")
 
@@ -181,7 +198,10 @@ class TestGetRegisteredModelUsersEndpoint:
 
     def test_get_registered_model_users_non_admin_without_manage_permission(self, authenticated_client):
         """Non-admin lacking manage rights should be forbidden."""
-        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
+            return_value=False,
+        ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
 
         assert response.status_code == 403
@@ -278,7 +298,10 @@ class TestListModelsEndpoint:
 
         with (
             patch("mlflow_oidc_auth.routers.registered_model_permissions.fetch_all_registered_models") as mock_fetch,
-            patch("mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models", return_value=[]),
+            patch(
+                "mlflow_oidc_auth.routers.registered_model_permissions.filter_manageable_models",
+                return_value=[],
+            ),
         ):
             mock_fetch.return_value = [mock_model1]
 
@@ -361,7 +384,10 @@ class TestRegisteredModelPermissionsRouterIntegration:
 
     def test_all_endpoints_require_authentication(self, client):
         """Test that all registered model permission endpoints require authentication."""
-        endpoints = [("GET", "/api/2.0/mlflow/permissions/registered-models"), ("GET", "/api/2.0/mlflow/permissions/registered-models/test-model/users")]
+        endpoints = [
+            ("GET", "/api/2.0/mlflow/permissions/registered-models"),
+            ("GET", "/api/2.0/mlflow/permissions/registered-models/test-model/users"),
+        ]
 
         for method, endpoint in endpoints:
             response = client.get(endpoint)
@@ -371,7 +397,10 @@ class TestRegisteredModelPermissionsRouterIntegration:
 
     def test_model_user_permissions_requires_admin(self, authenticated_client):
         """Test that model user permissions endpoint requires admin privileges."""
-        with patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=False):
+        with patch(
+            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
+            return_value=False,
+        ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
 
         # Without manage permission a non-admin is forbidden
@@ -431,11 +460,11 @@ class TestRegisteredModelPermissionsRouterIntegration:
 
     def test_registered_model_permissions_error_handling(self, admin_client):
         """Test error handling in registered model permissions endpoints."""
-        # Test with empty model name
+        # Test with empty model name — with :path, this matches the list endpoint
         response = admin_client.get("/api/2.0/mlflow/permissions/registered-models//users")
 
         # Should handle invalid paths gracefully
-        assert response.status_code in [404, 422]
+        assert response.status_code in [200, 404, 422]
 
     def test_registered_model_permissions_concurrent_requests(self, authenticated_client):
         """Test that registered model permissions endpoints handle concurrent requests."""

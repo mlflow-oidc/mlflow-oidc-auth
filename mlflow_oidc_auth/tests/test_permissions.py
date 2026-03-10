@@ -30,6 +30,7 @@ class TestPermissionDataclass:
             name="TEST",
             priority=5,
             can_read=True,
+            can_use=False,
             can_update=False,
             can_delete=True,
             can_manage=False,
@@ -38,22 +39,23 @@ class TestPermissionDataclass:
         assert perm.name == "TEST"
         assert perm.priority == 5
         assert perm.can_read is True
+        assert perm.can_use is False
         assert perm.can_update is False
         assert perm.can_delete is True
         assert perm.can_manage is False
 
     def test_permission_equality(self):
         """Test Permission dataclass equality comparison."""
-        perm1 = Permission("TEST", 1, True, False, False, False)
-        perm2 = Permission("TEST", 1, True, False, False, False)
-        perm3 = Permission("OTHER", 1, True, False, False, False)
+        perm1 = Permission("TEST", 1, True, False, False, False, False)
+        perm2 = Permission("TEST", 1, True, False, False, False, False)
+        perm3 = Permission("OTHER", 1, True, False, False, False, False)
 
         assert perm1 == perm2
         assert perm1 != perm3
 
     def test_permission_repr(self):
         """Test Permission dataclass string representation."""
-        perm = Permission("TEST", 1, True, False, False, False)
+        perm = Permission("TEST", 1, True, False, False, False, False)
         repr_str = repr(perm)
 
         assert "Permission" in repr_str
@@ -73,11 +75,23 @@ class TestPredefinedPermissions:
         assert READ.can_delete is False
         assert READ.can_manage is False
 
+    def test_use_permission(self):
+        """Test USE permission properties."""
+        from mlflow_oidc_auth.permissions import USE
+
+        assert USE.name == "USE"
+        assert USE.priority == 2
+        assert USE.can_read is True
+        assert USE.can_use is True
+        assert USE.can_update is False
+        assert USE.can_manage is False
+
     def test_edit_permission(self):
         """Test EDIT permission properties."""
         assert EDIT.name == "EDIT"
-        assert EDIT.priority == 2
+        assert EDIT.priority == 3
         assert EDIT.can_read is True
+        assert EDIT.can_use is True
         assert EDIT.can_update is True
         assert EDIT.can_delete is False
         assert EDIT.can_manage is False
@@ -85,8 +99,9 @@ class TestPredefinedPermissions:
     def test_manage_permission(self):
         """Test MANAGE permission properties."""
         assert MANAGE.name == "MANAGE"
-        assert MANAGE.priority == 3
+        assert MANAGE.priority == 4
         assert MANAGE.can_read is True
+        assert MANAGE.can_use is True
         assert MANAGE.can_update is True
         assert MANAGE.can_delete is True
         assert MANAGE.can_manage is True
@@ -102,8 +117,11 @@ class TestPredefinedPermissions:
 
     def test_all_permissions_dict(self):
         """Test ALL_PERMISSIONS dictionary contains all predefined permissions."""
-        assert len(ALL_PERMISSIONS) == 4
+        assert len(ALL_PERMISSIONS) == 5
         assert ALL_PERMISSIONS["READ"] == READ
+        from mlflow_oidc_auth.permissions import USE
+
+        assert ALL_PERMISSIONS["USE"] == USE
         assert ALL_PERMISSIONS["EDIT"] == EDIT
         assert ALL_PERMISSIONS["MANAGE"] == MANAGE
         assert ALL_PERMISSIONS["NO_PERMISSIONS"] == NO_PERMISSIONS
@@ -168,6 +186,7 @@ class TestValidatePermission:
         """Test validation of valid permissions passes without exception."""
         # These should not raise any exceptions
         _validate_permission("READ")
+        _validate_permission("USE")
         _validate_permission("EDIT")
         _validate_permission("MANAGE")
         _validate_permission("NO_PERMISSIONS")
@@ -181,7 +200,7 @@ class TestValidatePermission:
         assert exc_info.value.error_code == "INVALID_PARAMETER_VALUE"
         assert "Invalid permission 'INVALID_PERMISSION'" in str(exc_info.value)
         assert "Valid permissions are:" in str(exc_info.value)
-        assert "('READ', 'EDIT', 'MANAGE', 'NO_PERMISSIONS')" in str(exc_info.value)
+        assert "('READ', 'USE', 'EDIT', 'MANAGE', 'NO_PERMISSIONS')" in str(exc_info.value)
 
     def test_validate_permission_case_sensitive(self):
         """Test validation is case sensitive."""
@@ -332,7 +351,7 @@ class TestPermissionSystemIntegration:
 
     def test_permission_hierarchy_consistency(self):
         """Test that permission hierarchy is consistent across all functions."""
-        permissions = ["READ", "EDIT", "MANAGE", "NO_PERMISSIONS"]
+        permissions = ["READ", "USE", "EDIT", "MANAGE", "NO_PERMISSIONS"]
 
         # Test that each permission can be retrieved and validated
         for perm_name in permissions:
@@ -343,7 +362,8 @@ class TestPermissionSystemIntegration:
     def test_permission_comparison_transitivity(self):
         """Test transitivity of permission comparisons."""
         # If A <= B and B <= C, then A <= C
-        assert compare_permissions("READ", "EDIT") is True
+        assert compare_permissions("READ", "USE") is True
+        assert compare_permissions("USE", "EDIT") is True
         assert compare_permissions("EDIT", "MANAGE") is True
         assert compare_permissions("READ", "MANAGE") is True  # Transitivity
 
@@ -356,7 +376,7 @@ class TestPermissionSystemIntegration:
     def test_permission_system_completeness(self):
         """Test that the permission system covers all expected scenarios."""
         # Verify all predefined permissions are in ALL_PERMISSIONS
-        expected_permissions = {"READ", "EDIT", "MANAGE", "NO_PERMISSIONS"}
+        expected_permissions = {"READ", "USE", "EDIT", "MANAGE", "NO_PERMISSIONS"}
         actual_permissions = set(ALL_PERMISSIONS.keys())
 
         assert expected_permissions == actual_permissions

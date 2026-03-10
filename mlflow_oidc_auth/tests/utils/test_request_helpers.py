@@ -74,7 +74,12 @@ class TestRequestHelpers(unittest.TestCase):
             self.assertEqual(get_request_param("param"), "value")
 
         # JSON data
-        with self.app.test_request_context("/", method="POST", json={"param": "json_value"}, content_type="application/json"):
+        with self.app.test_request_context(
+            "/",
+            method="POST",
+            json={"param": "json_value"},
+            content_type="application/json",
+        ):
             self.assertEqual(get_request_param("param"), "json_value")
 
         # Form data
@@ -229,7 +234,12 @@ class TestRequestHelpers(unittest.TestCase):
             self.assertEqual(get_model_name(), "query_model")
 
         # JSON data
-        with self.app.test_request_context("/", method="POST", json={"name": "json_model"}, content_type="application/json"):
+        with self.app.test_request_context(
+            "/",
+            method="POST",
+            json={"name": "json_model"},
+            content_type="application/json",
+        ):
             self.assertEqual(get_model_name(), "json_model")
 
         # Missing name
@@ -279,12 +289,22 @@ class TestRequestHelpers(unittest.TestCase):
 
     def test_get_request_param_post_json(self):
         """Test request parameter extraction from POST JSON data."""
-        with self.app.test_request_context("/", method="POST", json={"param": "json_value"}, content_type="application/json"):
+        with self.app.test_request_context(
+            "/",
+            method="POST",
+            json={"param": "json_value"},
+            content_type="application/json",
+        ):
             self.assertEqual(get_request_param("param"), "json_value")
 
     def test_get_optional_request_param_post_json(self):
         """Test optional request parameter extraction from POST JSON data."""
-        with self.app.test_request_context("/", method="POST", json={"param": "json_value"}, content_type="application/json"):
+        with self.app.test_request_context(
+            "/",
+            method="POST",
+            json={"param": "json_value"},
+            content_type="application/json",
+        ):
             self.assertEqual(get_optional_request_param("param"), "json_value")
 
     def test_get_experiment_id_view_args(self):
@@ -318,7 +338,12 @@ class TestRequestHelpers(unittest.TestCase):
         mock_experiment.experiment_id = "789"
         mock_tracking_store.return_value.get_experiment_by_name.return_value = mock_experiment
 
-        with self.app.test_request_context("/", method="POST", json={"experiment_name": "test_exp"}, content_type="application/json"):
+        with self.app.test_request_context(
+            "/",
+            method="POST",
+            json={"experiment_name": "test_exp"},
+            content_type="application/json",
+        ):
             self.assertEqual(get_experiment_id(), "789")
             mock_tracking_store.return_value.get_experiment_by_name.assert_called_with("test_exp")
 
@@ -337,7 +362,12 @@ class TestRequestHelpers(unittest.TestCase):
             self.assertEqual(get_model_id(), "456")
 
         # JSON data
-        with self.app.test_request_context("/", method="POST", json={"model_id": "789"}, content_type="application/json"):
+        with self.app.test_request_context(
+            "/",
+            method="POST",
+            json={"model_id": "789"},
+            content_type="application/json",
+        ):
             self.assertEqual(get_model_id(), "789")
 
         # Missing model_id
@@ -362,7 +392,12 @@ class TestRequestHelpers(unittest.TestCase):
                 self.assertEqual(get_model_id(), "args_id")
 
         # Empty view_args and args, but model_id in json
-        with self.app.test_request_context("/", method="POST", json={"model_id": "json_id"}, content_type="application/json"):
+        with self.app.test_request_context(
+            "/",
+            method="POST",
+            json={"model_id": "json_id"},
+            content_type="application/json",
+        ):
             with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()

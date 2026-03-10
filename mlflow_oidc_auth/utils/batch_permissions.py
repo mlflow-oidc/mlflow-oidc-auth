@@ -369,3 +369,89 @@ def filter_manageable_prompts(username: str, prompts: List) -> List:
     """
     permissions = batch_resolve_prompt_permissions(username, prompts)
     return [prompt for prompt in prompts if permissions[prompt.name].permission.can_manage]
+
+
+def filter_manageable_gateway_endpoints(username: str, endpoints: List) -> List:
+    """Filter gateway endpoints to only those the user can manage.
+
+    This function checks permissions for each endpoint using the existing
+    gateway permission resolution logic.
+
+    Parameters:
+        username: The user to check permissions for.
+        endpoints: List of gateway endpoint dictionaries with 'name' key.
+
+    Returns:
+        List of endpoint dictionaries the user can manage.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_endpoint
+
+    manageable = []
+    for endpoint in endpoints:
+        endpoint_name = endpoint.get("name", "")
+        if not endpoint_name:
+            continue
+        try:
+            if can_manage_gateway_endpoint(endpoint_name, username):
+                manageable.append(endpoint)
+        except Exception as e:
+            # Treat errors (missing resource etc.) as not manageable
+            logger.debug(f"Error checking gateway endpoint permission for {endpoint_name}: {e}")
+            continue
+
+    return manageable
+
+
+def filter_manageable_gateway_secrets(username: str, secrets: List) -> List:
+    """Filter gateway secrets to only those the user can manage.
+
+    Parameters:
+        username: The user to check permissions for.
+        secrets: List of gateway secret dictionaries with 'secret_name', 'name', or 'key' key.
+
+    Returns:
+        List of secret dictionaries the user can manage.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_secret
+
+    manageable = []
+    for secret in secrets:
+        # MLflow GatewaySecretInfo uses 'secret_name'; fall back to 'name'/'key' for compatibility
+        secret_name = secret.get("secret_name") or secret.get("name") or secret.get("key", "")
+        if not secret_name:
+            continue
+        try:
+            if can_manage_gateway_secret(secret_name, username):
+                manageable.append(secret)
+        except Exception:
+            logger.debug("Error checking gateway secret permission")
+            continue
+
+    return manageable
+
+
+def filter_manageable_gateway_model_definitions(username: str, models: List) -> List:
+    """Filter gateway model definitions to only those the user can manage.
+
+    Parameters:
+        username: The user to check permissions for.
+        models: List of gateway model definition dictionaries with 'name' key.
+
+    Returns:
+        List of model definition dictionaries the user can manage.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_manage_gateway_model_definition
+
+    manageable = []
+    for model in models:
+        model_name = model.get("name", "")
+        if not model_name:
+            continue
+        try:
+            if can_manage_gateway_model_definition(model_name, username):
+                manageable.append(model)
+        except Exception as e:
+            logger.debug(f"Error checking gateway model definition permission for {model_name}: {e}")
+            continue
+
+    return manageable

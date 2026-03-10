@@ -89,7 +89,8 @@ export default function ServiceAccountsPage() {
       render: ({ username }) => (
         <div className="invisible group-hover:visible">
           <RowActionButton
-            entityId={`${username}/experiments`}
+            entityId={username}
+            suffix="/experiments"
             route="/service-accounts"
             buttonText="Manage permissions"
           />

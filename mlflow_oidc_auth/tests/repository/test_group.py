@@ -35,7 +35,10 @@ def test_create_group_success(repo, session):
 def test_create_group_integrity_error(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock(side_effect=Exception("IntegrityError"))
-    with patch("mlflow_oidc_auth.db.models.SqlGroup", return_value=MagicMock()), patch("mlflow_oidc_auth.repository.group.IntegrityError", Exception):
+    with (
+        patch("mlflow_oidc_auth.db.models.SqlGroup", return_value=MagicMock()),
+        patch("mlflow_oidc_auth.repository.group.IntegrityError", Exception),
+    ):
         with pytest.raises(MlflowException):
             repo.create_group("g2")
 
@@ -111,7 +114,10 @@ def test_remove_user_from_group(repo, session):
     session.query().filter().one.return_value = ug
     session.delete = MagicMock()
     session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.group.get_user", return_value=user), patch("mlflow_oidc_auth.repository.group.get_group", return_value=grp):
+    with (
+        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
+        patch("mlflow_oidc_auth.repository.group.get_group", return_value=grp),
+    ):
         repo.remove_user_from_group("user", "g7")
         session.delete.assert_called_once_with(ug)
         session.flush.assert_called_once()
@@ -126,7 +132,10 @@ def test_list_groups_for_user(repo, session):
     session.query().filter().all.return_value = [g1, g2]
     with (
         patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.group.list_user_groups", return_value=[group1, group2]),
+        patch(
+            "mlflow_oidc_auth.repository.group.list_user_groups",
+            return_value=[group1, group2],
+        ),
     ):
         assert repo.list_groups_for_user("user") == ["g1", "g2"]
 
@@ -137,7 +146,10 @@ def test_list_group_ids_for_user(repo, session):
     ug2 = MagicMock(group_id=20)
     with (
         patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.group.list_user_groups", return_value=[ug1, ug2]),
+        patch(
+            "mlflow_oidc_auth.repository.group.list_user_groups",
+            return_value=[ug1, ug2],
+        ),
     ):
         result = repo.list_group_ids_for_user("user")
         assert result == [10, 20]

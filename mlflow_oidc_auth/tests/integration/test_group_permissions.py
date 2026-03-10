@@ -73,7 +73,10 @@ def _create_prompt(client: httpx.Client, prompt_name: str, prompt_text: str) -> 
 
     create_resp = client.post(
         create_api,
-        json={"name": prompt_name, "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}]},
+        json={
+            "name": prompt_name,
+            "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}],
+        },
     )
     if create_resp.status_code != 200:
         return False

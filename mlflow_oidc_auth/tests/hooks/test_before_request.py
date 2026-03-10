@@ -7,6 +7,7 @@ from mlflow_oidc_auth.hooks.before_request import (
     _is_proxy_artifact_path,
     _get_proxy_artifact_validator,
     _re_compile_path,
+    _stash_gateway_context,
     BEFORE_REQUEST_VALIDATORS,
     LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS,
 )
@@ -24,8 +25,14 @@ def client():
 @pytest.fixture
 def mock_bridge():
     with (
-        patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="test_user") as mock_username,
-        patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False) as mock_is_admin,
+        patch(
+            "mlflow_oidc_auth.hooks.before_request.get_fastapi_username",
+            return_value="test_user",
+        ) as mock_username,
+        patch(
+            "mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status",
+            return_value=False,
+        ) as mock_is_admin,
     ):
         yield mock_username, mock_is_admin
 
@@ -33,7 +40,10 @@ def mock_bridge():
 def test_before_request_hook_admin_bypass(client, mock_bridge):
     """Test that admin users bypass authorization"""
     with app.test_request_context(path="/protected", method="GET"):
-        with patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=True):
+        with patch(
+            "mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status",
+            return_value=True,
+        ):
             response = before_request_hook()
             assert response is None  # Admin should bypass authorization
 
@@ -42,8 +52,14 @@ def test_before_request_hook_no_validator(client, mock_bridge):
     """Test when no validator is found for a route"""
     with app.test_request_context(path="/unknown/route", method="GET"):
         with (
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None),
-            patch("mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path", return_value=False),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=None,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path",
+                return_value=False,
+            ),
         ):
             response = before_request_hook()
             assert response is None  # No validator, so no authorization check
@@ -55,8 +71,14 @@ def test_before_request_hook_validator_success(client, mock_bridge):
 
     with app.test_request_context(path="/protected", method="GET"):
         with (
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=mock_validator),
-            patch("mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path", return_value=False),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=mock_validator,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path",
+                return_value=False,
+            ),
         ):
             response = before_request_hook()
             assert response is None  # Authorization succeeded
@@ -69,9 +91,18 @@ def test_before_request_hook_validator_failure(client, mock_bridge):
 
     with app.test_request_context(path="/protected", method="GET"):
         with (
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=mock_validator),
-            patch("mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path", return_value=False),
-            patch("mlflow_oidc_auth.hooks.before_request.responses.make_forbidden_response", return_value=Response("Forbidden", status=403)) as mock_forbidden,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=mock_validator,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path",
+                return_value=False,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request.responses.make_forbidden_response",
+                return_value=Response("Forbidden", status=403),
+            ) as mock_forbidden,
         ):
             response = before_request_hook()
             assert response.status_code == 403  # type: ignore
@@ -89,7 +120,10 @@ def test_find_validator_logged_models():
     mock_pattern.fullmatch.return_value = True
     mock_validator = lambda: True
 
-    with patch("mlflow_oidc_auth.hooks.before_request.LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS", {(mock_pattern, "GET"): mock_validator}):
+    with patch(
+        "mlflow_oidc_auth.hooks.before_request.LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS",
+        {(mock_pattern, "GET"): mock_validator},
+    ):
         result = _find_validator(mock_request)
         assert result == mock_validator
         mock_pattern.fullmatch.assert_called_once_with("/api/2.0/mlflow/logged-models/12345")
@@ -105,7 +139,10 @@ def test_find_validator_logged_models_no_match():
     mock_pattern.fullmatch.return_value = False
     mock_validator = lambda: True
 
-    with patch("mlflow_oidc_auth.hooks.before_request.LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS", {(mock_pattern, "GET"): mock_validator}):
+    with patch(
+        "mlflow_oidc_auth.hooks.before_request.LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS",
+        {(mock_pattern, "GET"): mock_validator},
+    ):
         result = _find_validator(mock_request)
         assert result is None
         mock_pattern.fullmatch.assert_called_once_with("/api/2.0/mlflow/logged-models/12345")
@@ -119,7 +156,10 @@ def test_find_validator_regular_routes():
 
     mock_validator = lambda: True
 
-    with patch("mlflow_oidc_auth.hooks.before_request.BEFORE_REQUEST_VALIDATORS", {("/api/2.0/mlflow/experiments/create", "POST"): mock_validator}):
+    with patch(
+        "mlflow_oidc_auth.hooks.before_request.BEFORE_REQUEST_VALIDATORS",
+        {("/api/2.0/mlflow/experiments/create", "POST"): mock_validator},
+    ):
         result = _find_validator(mock_request)
         assert result == mock_validator
 
@@ -132,7 +172,10 @@ def test_find_validator_no_match():
 
     with (
         patch("mlflow_oidc_auth.hooks.before_request.BEFORE_REQUEST_VALIDATORS", {}),
-        patch("mlflow_oidc_auth.hooks.before_request.LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS", {}),
+        patch(
+            "mlflow_oidc_auth.hooks.before_request.LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS",
+            {},
+        ),
     ):
         result = _find_validator(mock_request)
         assert result is None
@@ -219,8 +262,14 @@ def test_proxy_artifact_authorization_success(client, mock_bridge):
     """Test proxy artifact path authorization success"""
     with app.test_request_context(path="/api/2.0/mlflow-artifacts/artifacts/experiment1/file.txt", method="GET"):
         with (
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None),
-            patch("mlflow_oidc_auth.hooks.before_request.validate_can_read_experiment_artifact_proxy", return_value=True) as mock_validator,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=None,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request.validate_can_read_experiment_artifact_proxy",
+                return_value=True,
+            ) as mock_validator,
         ):
             response = before_request_hook()
             assert response is None  # Authorization succeeded
@@ -231,9 +280,18 @@ def test_proxy_artifact_authorization_failure(client, mock_bridge):
     """Test proxy artifact path authorization failure"""
     with app.test_request_context(path="/api/2.0/mlflow-artifacts/artifacts/experiment1/file.txt", method="GET"):
         with (
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None),
-            patch("mlflow_oidc_auth.hooks.before_request.validate_can_read_experiment_artifact_proxy", return_value=False) as mock_validator,
-            patch("mlflow_oidc_auth.hooks.before_request.responses.make_forbidden_response", return_value=Response("Forbidden", status=403)) as mock_forbidden,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=None,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request.validate_can_read_experiment_artifact_proxy",
+                return_value=False,
+            ) as mock_validator,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request.responses.make_forbidden_response",
+                return_value=Response("Forbidden", status=403),
+            ) as mock_forbidden,
         ):
             response = before_request_hook()
             assert response.status_code == 403  # type: ignore
@@ -244,7 +302,10 @@ def test_proxy_artifact_authorization_failure(client, mock_bridge):
 def test_proxy_artifact_no_validator(client, mock_bridge):
     """Test proxy artifact path when no validator is found"""
     with app.test_request_context(path="/api/2.0/mlflow-artifacts/artifacts/experiment1/file.txt", method="PATCH"):  # Unsupported method
-        with patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None):
+        with patch(
+            "mlflow_oidc_auth.hooks.before_request._get_proxy_artifact_validator",
+            return_value=None,
+        ):
             response = before_request_hook()
             assert response is None  # No validator, so no authorization check
 
@@ -259,8 +320,14 @@ def test_proxy_artifact_upload_authorization(client, mock_bridge):
             mock_request.view_args = {"experiment_id": "experiment1"}
 
             with (
-                patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None),
-                patch("mlflow_oidc_auth.hooks.before_request.validate_can_update_experiment_artifact_proxy", return_value=True) as mock_validator,
+                patch(
+                    "mlflow_oidc_auth.hooks.before_request._find_validator",
+                    return_value=None,
+                ),
+                patch(
+                    "mlflow_oidc_auth.hooks.before_request.validate_can_update_experiment_artifact_proxy",
+                    return_value=True,
+                ) as mock_validator,
             ):
                 response = before_request_hook()
                 assert response is None  # Authorization succeeded
@@ -277,8 +344,14 @@ def test_proxy_artifact_delete_authorization(client, mock_bridge):
             mock_request.view_args = {"experiment_id": "experiment1"}
 
             with (
-                patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None),
-                patch("mlflow_oidc_auth.hooks.before_request.validate_can_delete_experiment_artifact_proxy", return_value=True) as mock_validator,
+                patch(
+                    "mlflow_oidc_auth.hooks.before_request._find_validator",
+                    return_value=None,
+                ),
+                patch(
+                    "mlflow_oidc_auth.hooks.before_request.validate_can_delete_experiment_artifact_proxy",
+                    return_value=True,
+                ) as mock_validator,
             ):
                 response = before_request_hook()
                 assert response is None  # Authorization succeeded
@@ -290,7 +363,10 @@ def test_logged_model_route_authorization(client, mock_bridge):
     with app.test_request_context(path="/api/2.0/mlflow/logged-models/12345", method="GET"):
         mock_validator = MagicMock(return_value=True)
 
-        with patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=mock_validator):
+        with patch(
+            "mlflow_oidc_auth.hooks.before_request._find_validator",
+            return_value=mock_validator,
+        ):
             response = before_request_hook()
             assert response is None  # Authorization succeeded
             mock_validator.assert_called_once_with("test_user")
@@ -302,8 +378,14 @@ def test_logged_model_route_authorization_failure(client, mock_bridge):
         mock_validator = MagicMock(return_value=False)
 
         with (
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=mock_validator),
-            patch("mlflow_oidc_auth.hooks.before_request.responses.make_forbidden_response", return_value=Response("Forbidden", status=403)) as mock_forbidden,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=mock_validator,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request.responses.make_forbidden_response",
+                return_value=Response("Forbidden", status=403),
+            ) as mock_forbidden,
         ):
             response = before_request_hook()
             assert response.status_code == 403  # type: ignore
@@ -316,8 +398,14 @@ def test_before_request_hook_debug_logging(client, mock_bridge):
     with app.test_request_context(path="/test/path", method="POST"):
         with (
             patch("mlflow_oidc_auth.hooks.before_request.logger.debug") as mock_debug,
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None),
-            patch("mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path", return_value=False),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=None,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path",
+                return_value=False,
+            ),
         ):
             before_request_hook()
             mock_debug.assert_called_once_with("Before request hook called for path: /test/path, method: POST, username: test_user, is admin: False")
@@ -329,9 +417,18 @@ def test_before_request_hook_execution_order(client, mock_bridge):
         mock_validator = MagicMock(return_value=True)
 
         with (
-            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False) as mock_admin,
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=mock_validator) as mock_find_validator,
-            patch("mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path", return_value=False) as mock_is_proxy,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status",
+                return_value=False,
+            ) as mock_admin,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=mock_validator,
+            ) as mock_find_validator,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path",
+                return_value=False,
+            ) as mock_is_proxy,
         ):
             before_request_hook()
 
@@ -348,9 +445,18 @@ def test_before_request_hook_dependency_management(client, mock_bridge):
     with app.test_request_context(path="/api/2.0/mlflow-artifacts/artifacts/exp1/file.txt", method="GET"):
         # When no regular validator is found, should check proxy artifacts
         with (
-            patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None) as mock_find_validator,
-            patch("mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path", return_value=True) as mock_is_proxy,
-            patch("mlflow_oidc_auth.hooks.before_request._get_proxy_artifact_validator", return_value=None) as mock_get_proxy_validator,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                return_value=None,
+            ) as mock_find_validator,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._is_proxy_artifact_path",
+                return_value=True,
+            ) as mock_is_proxy,
+            patch(
+                "mlflow_oidc_auth.hooks.before_request._get_proxy_artifact_validator",
+                return_value=None,
+            ) as mock_get_proxy_validator,
         ):
             response = before_request_hook()
             assert response is None  # No validator found, so no authorization check
@@ -387,3 +493,141 @@ def test_before_request_validators_structure():
         assert isinstance(method, str), f"Method {method} should be a string"
         # Validator should be callable or None (some endpoints may not have validators)
         assert validator is None or callable(validator), f"Validator {validator} should be callable or None"
+
+
+# ---------------------------------------------------------------------------
+# _stash_gateway_context tests
+# ---------------------------------------------------------------------------
+
+
+class TestStashGatewayContext:
+    """Tests for _stash_gateway_context which stashes gateway resource info in flask.g."""
+
+    def test_noop_when_validator_is_none(self):
+        """No stashing occurs when no validator matches the request."""
+        with app.test_request_context(path="/some/random/path", method="GET"):
+            from flask import g
+
+            _stash_gateway_context(None)
+            assert not hasattr(g, "_updating_gateway_endpoint_old_name")
+            assert not hasattr(g, "_deleting_gateway_endpoint_name")
+            assert not hasattr(g, "_deleting_gateway_secret_name")
+            assert not hasattr(g, "_deleting_gateway_model_definition_name")
+
+    def test_stash_update_endpoint_old_name(self):
+        """Stashes old endpoint name on update via endpoint_id resolution."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_update_gateway_endpoint
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/update",
+            method="POST",
+            json={"endpoint_id": "ep-uuid-123", "name": "new-name"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                return_value="old-endpoint-name",
+            ):
+                _stash_gateway_context(validate_can_update_gateway_endpoint)
+                assert g._updating_gateway_endpoint_old_name == "old-endpoint-name"
+
+    def test_stash_delete_endpoint_name(self):
+        """Stashes endpoint name on delete via endpoint_id resolution."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_endpoint
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/delete",
+            method="POST",
+            json={"endpoint_id": "ep-uuid-456"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                return_value="doomed-endpoint",
+            ):
+                _stash_gateway_context(validate_can_delete_gateway_endpoint)
+                assert g._deleting_gateway_endpoint_name == "doomed-endpoint"
+
+    def test_stash_delete_secret_name_from_field(self):
+        """Stashes secret name on delete when secret_name is provided directly."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_secret
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/secrets/delete",
+            method="POST",
+            json={"secret_name": "my-secret"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            _stash_gateway_context(validate_can_delete_gateway_secret)
+            assert g._deleting_gateway_secret_name == "my-secret"
+
+    def test_stash_delete_secret_name_from_id(self):
+        """Stashes secret name on delete via secret_id resolution."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_secret
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/secrets/delete",
+            method="POST",
+            json={"secret_id": "secret-uuid-789"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_secret_name_from_id",
+                return_value="resolved-secret",
+            ):
+                _stash_gateway_context(validate_can_delete_gateway_secret)
+                assert g._deleting_gateway_secret_name == "resolved-secret"
+
+    def test_stash_delete_model_definition_name_from_field(self):
+        """Stashes model definition name on delete when name is provided directly."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_model_definition
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/delete",
+            method="POST",
+            json={"name": "my-model-def"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            _stash_gateway_context(validate_can_delete_gateway_model_definition)
+            assert g._deleting_gateway_model_definition_name == "my-model-def"
+
+    def test_stash_delete_model_definition_name_from_id(self):
+        """Stashes model definition name on delete via model_definition_id resolution."""
+        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_model_definition
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/delete",
+            method="POST",
+            json={"model_definition_id": "md-uuid-101"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_model_definition_name_from_id",
+                return_value="resolved-model-def",
+            ):
+                _stash_gateway_context(validate_can_delete_gateway_model_definition)
+                assert g._deleting_gateway_model_definition_name == "resolved-model-def"
+
+    def test_noop_for_unrelated_validator(self):
+        """No stashing for validators not related to gateway operations."""
+        unrelated_validator = MagicMock()
+        with app.test_request_context(path="/api/2.0/mlflow/experiments/get", method="GET"):
+            from flask import g
+
+            _stash_gateway_context(unrelated_validator)
+            assert not hasattr(g, "_updating_gateway_endpoint_old_name")
+            assert not hasattr(g, "_deleting_gateway_endpoint_name")
+            assert not hasattr(g, "_deleting_gateway_secret_name")
+            assert not hasattr(g, "_deleting_gateway_model_definition_name")

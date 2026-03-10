@@ -49,6 +49,7 @@ describe("user-service", () => {
       basePath: "/mlflow",
       uiPath: "",
       provider: "",
+      gen_ai_gateway_enabled: false,
       authenticated: true,
     });
     await createUser({

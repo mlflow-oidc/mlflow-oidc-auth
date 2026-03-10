@@ -78,7 +78,10 @@ class TestAuth:
     def test_validate_token_bad_signature_after_refresh(self, mock_jwt_decode, mock_get_oidc_jwks):
         """Test token validation that fails even after JWKS refresh"""
         mock_get_oidc_jwks.side_effect = [{"keys": "old_jwks"}, {"keys": "new_jwks"}]
-        mock_jwt_decode.side_effect = [BadSignatureError("bad signature"), BadSignatureError("still bad")]
+        mock_jwt_decode.side_effect = [
+            BadSignatureError("bad signature"),
+            BadSignatureError("still bad"),
+        ]
 
         with pytest.raises(BadSignatureError):
             validate_token("invalid_token")
@@ -90,7 +93,10 @@ class TestAuth:
     def test_validate_token_unexpected_error_after_refresh(self, mock_jwt_decode, mock_get_oidc_jwks):
         """Test token validation with unexpected error after JWKS refresh"""
         mock_get_oidc_jwks.side_effect = [{"keys": "old_jwks"}, {"keys": "new_jwks"}]
-        mock_jwt_decode.side_effect = [BadSignatureError("bad signature"), ValueError("unexpected error")]
+        mock_jwt_decode.side_effect = [
+            BadSignatureError("bad signature"),
+            ValueError("unexpected error"),
+        ]
 
         with pytest.raises(ValueError, match="unexpected error"):
             validate_token("problematic_token")

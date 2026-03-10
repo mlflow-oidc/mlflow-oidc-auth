@@ -53,7 +53,10 @@ def mock_store():
     )
 
     # Mock store methods
-    store_mock.get_user.side_effect = lambda username: {"admin@example.com": admin_user, "user@example.com": regular_user}.get(username)
+    store_mock.get_user.side_effect = lambda username: {
+        "admin@example.com": admin_user,
+        "user@example.com": regular_user,
+    }.get(username)
 
     def _get_user_profile(username: str):
         return store_mock.get_user(username)
@@ -74,9 +77,19 @@ def mock_validate_token():
 
     def _validate_token(token: str) -> Dict[str, Any]:
         if token == "valid_token":
-            return {"email": "user@example.com", "preferred_username": "user@example.com", "exp": 9999999999, "iat": 1000000000}
+            return {
+                "email": "user@example.com",
+                "preferred_username": "user@example.com",
+                "exp": 9999999999,
+                "iat": 1000000000,
+            }
         elif token == "admin_token":
-            return {"email": "admin@example.com", "preferred_username": "admin@example.com", "exp": 9999999999, "iat": 1000000000}
+            return {
+                "email": "admin@example.com",
+                "preferred_username": "admin@example.com",
+                "exp": 9999999999,
+                "iat": 1000000000,
+            }
         elif token == "invalid_payload_token":
             return {}
         else:

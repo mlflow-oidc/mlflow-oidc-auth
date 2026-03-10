@@ -16,45 +16,52 @@ from mlflow_oidc_auth.dependencies import check_admin_permission, check_experime
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
     ExperimentPermission,
+    ExperimentPermissionRecord,
+    ExperimentPermissionResponse,
     ExperimentPermissionSummary,
     ExperimentRegexCreate,
     ExperimentRegexPermission,
-    ExperimentPermissionRecord,
-    ExperimentPermissionResponse,
+    GatewayPermission,
+    GatewayRegexCreate,
     MessageResponse,
     NamedPermissionSummary,
     PromptPermission,
-    PromptRegexCreate,
     PromptPermissionResponse,
+    PromptRegexCreate,
     PromptRegexPermissionResponse,
     RegisteredModelPermission,
-    RegisteredModelRegexCreate,
     RegisteredModelPermissionRecord,
     RegisteredModelPermissionResponse,
+    RegisteredModelRegexCreate,
     RegisteredModelRegexPermissionRecord,
     RegisteredModelRegexPermissionResponse,
     ScorerPermission,
-    ScorerRegexCreate,
     ScorerPermissionRecord,
     ScorerPermissionResponse,
+    ScorerRegexCreate,
     ScorerRegexPermissionRecord,
     ScorerRegexPermissionResponse,
     StatusMessageResponse,
     StatusOnlyResponse,
+    UserGatewayRegexPermissionItem,
 )
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
+    fetch_all_gateway_endpoints,
+    fetch_all_gateway_model_definitions,
+    fetch_all_gateway_secrets,
     fetch_all_prompts,
     fetch_all_registered_models,
     get_is_admin,
     get_username,
 )
-from mlflow_oidc_auth.utils.batch_permissions import (
-    batch_resolve_experiment_permissions,
-    batch_resolve_model_permissions,
-    batch_resolve_prompt_permissions,
+from mlflow_oidc_auth.utils.batch_permissions import batch_resolve_experiment_permissions, batch_resolve_model_permissions, batch_resolve_prompt_permissions
+from mlflow_oidc_auth.utils.permissions import (
+    effective_gateway_endpoint_permission,
+    effective_gateway_model_definition_permission,
+    effective_gateway_secret_permission,
 )
 
 from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
@@ -67,19 +74,34 @@ USER_EXPERIMENT_PATTERN_PERMISSIONS = "/{username}/experiment-patterns"
 USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{username}/experiment-patterns/{id}"
 
 USER_REGISTERED_MODEL_PERMISSIONS = "/{username}/registered-models"
-USER_REGISTERED_MODEL_PERMISSION_DETAIL = "/{username}/registered-models/{name}"
+USER_REGISTERED_MODEL_PERMISSION_DETAIL = "/{username}/registered-models/{name:path}"
 USER_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{username}/registered-models-patterns"
 USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{username}/registered-models-patterns/{id}"
 
 USER_PROMPT_PERMISSIONS = "/{username}/prompts"
-USER_PROMPT_PERMISSION_DETAIL = "/{username}/prompts/{name}"
+USER_PROMPT_PERMISSION_DETAIL = "/{username}/prompts/{name:path}"
 USER_PROMPT_PATTERN_PERMISSIONS = "/{username}/prompts-patterns"
 USER_PROMPT_PATTERN_PERMISSION_DETAIL = "/{username}/prompts-patterns/{id}"
 
 USER_SCORER_PERMISSIONS = "/{username}/scorers"
-USER_SCORER_PERMISSION_DETAIL = "/{username}/scorers/{experiment_id}/{scorer_name}"
+USER_SCORER_PERMISSION_DETAIL = "/{username}/scorers/{experiment_id}/{scorer_name:path}"
 USER_SCORER_PATTERN_PERMISSIONS = "/{username}/scorer-patterns"
 USER_SCORER_PATTERN_PERMISSION_DETAIL = "/{username}/scorer-patterns/{id}"
+
+USER_GATEWAY_ENDPOINT_PERMISSIONS = "/{username}/gateways/endpoints"
+USER_GATEWAY_ENDPOINT_PERMISSION_DETAIL = "/{username}/gateways/endpoints/{name:path}"
+USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS = "/{username}/gateways/endpoints-patterns"
+USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/endpoints-patterns/{id}"
+
+USER_GATEWAY_MODEL_DEFINITION_PERMISSIONS = "/{username}/gateways/model-definitions"
+USER_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL = "/{username}/gateways/model-definitions/{name:path}"
+USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS = "/{username}/gateways/model-definitions-patterns"
+USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/model-definitions-patterns/{id}"
+
+USER_GATEWAY_SECRET_PERMISSIONS = "/{username}/gateways/secrets"
+USER_GATEWAY_SECRET_PERMISSION_DETAIL = "/{username}/gateways/secrets/{name:path}"
+USER_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{username}/gateways/secrets-patterns"
+USER_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{username}/gateways/secrets-patterns/{id}"
 
 user_permissions_router = APIRouter(
     prefix=USER_PERMISSIONS_ROUTER_PREFIX,
@@ -1619,3 +1641,750 @@ async def delete_user_registered_model_regex_permission(
     except Exception as e:
         logger.error(f"Error deleting registered model pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete registered model pattern permission")
+
+
+# ========================================================================================
+# GATEWAY ENDPOINT PERMISSIONS
+# ========================================================================================
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_ENDPOINT_PERMISSIONS,
+    response_model=List[NamedPermissionSummary],
+    summary="List gateway endpoint permissions for a user",
+    description="Retrieves a list of gateway endpoint permissions for the specified user.",
+    tags=["user gateway endpoint permissions"],
+)
+async def get_user_gateway_endpoint_permissions(
+    username: str = Path(..., description="The username to get gateway endpoint permissions for"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> List[NamedPermissionSummary]:
+    """List gateway endpoint permissions for a user.
+
+    - Admins see all gateway endpoints with the target user's effective permissions.
+    - The target user sees endpoints where their effective permission is not NO_PERMISSIONS.
+    - Other users see only endpoints they themselves can MANAGE.
+    """
+    try:
+        all_endpoints = fetch_all_gateway_endpoints()
+
+        results: list[NamedPermissionSummary] = []
+        for ep in all_endpoints:
+            ep_name = ep.get("name", "")
+            if not ep_name:
+                continue
+            perm_result = effective_gateway_endpoint_permission(ep_name, username)
+            if is_admin:
+                results.append(NamedPermissionSummary(name=ep_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            elif current_username == username:
+                if perm_result.permission.name != NO_PERMISSIONS.name:
+                    results.append(NamedPermissionSummary(name=ep_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            else:
+                caller_perm = effective_gateway_endpoint_permission(ep_name, current_username)
+                if caller_perm.permission.can_manage:
+                    results.append(NamedPermissionSummary(name=ep_name, permission=perm_result.permission.name, kind=perm_result.kind))
+        return results
+    except Exception as e:
+        logger.error(f"Error listing gateway endpoint permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway endpoint permissions")
+
+
+@user_permissions_router.post(
+    USER_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
+    status_code=201,
+    response_model=NamedPermissionSummary,
+    summary="Create gateway endpoint permission for a user",
+    description="Creates a new permission for a user to access a specific gateway endpoint.",
+    tags=["user gateway endpoint permissions"],
+)
+async def create_user_gateway_endpoint_permission(
+    username: str = Path(..., description="The username to grant gateway endpoint permission to"),
+    name: str = Path(..., description="The gateway endpoint name to set permissions for"),
+    permission_data: GatewayPermission = Body(..., description="The permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> NamedPermissionSummary:
+    """Create a gateway endpoint permission for a user."""
+    try:
+        perm = store.create_gateway_endpoint_permission(gateway_name=name, username=username, permission=permission_data.permission)
+        return NamedPermissionSummary(name=perm.endpoint_id, permission=perm.permission, kind="user")
+    except Exception as e:
+        logger.error(f"Error creating gateway endpoint permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create gateway endpoint permission")
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
+    response_model=NamedPermissionSummary,
+    summary="Get gateway endpoint permission for a user",
+    description="Retrieves the permission for a user on a specific gateway endpoint.",
+    tags=["user gateway endpoint permissions"],
+)
+async def get_user_gateway_endpoint_permission(
+    username: str = Path(..., description="The username to get gateway endpoint permission for"),
+    name: str = Path(..., description="The gateway endpoint name to get permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> NamedPermissionSummary:
+    """Get a gateway endpoint permission for a user."""
+    try:
+        perm = store.get_gateway_endpoint_permission(gateway_name=name, username=username)
+        return NamedPermissionSummary(name=perm.endpoint_id, permission=perm.permission, kind="user")
+    except Exception as e:
+        logger.error(f"Error getting gateway endpoint permission: {str(e)}")
+        raise HTTPException(status_code=404, detail="Gateway endpoint permission not found")
+
+
+@user_permissions_router.patch(
+    USER_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Update gateway endpoint permission for a user",
+    description="Updates the permission for a user on a specific gateway endpoint.",
+    tags=["user gateway endpoint permissions"],
+)
+async def update_user_gateway_endpoint_permission(
+    username: str = Path(..., description="The username to update gateway endpoint permission for"),
+    name: str = Path(..., description="The gateway endpoint name to update permissions for"),
+    permission_data: GatewayPermission = Body(..., description="Updated permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Update a gateway endpoint permission for a user."""
+    try:
+        store.update_gateway_endpoint_permission(gateway_name=name, username=username, permission=permission_data.permission)
+        return StatusMessageResponse(message=f"Gateway endpoint permission updated for {username} on {name}")
+    except Exception as e:
+        logger.error(f"Error updating gateway endpoint permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update gateway endpoint permission")
+
+
+@user_permissions_router.delete(
+    USER_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Delete gateway endpoint permission for a user",
+    description="Deletes the permission for a user on a specific gateway endpoint.",
+    tags=["user gateway endpoint permissions"],
+)
+async def delete_user_gateway_endpoint_permission(
+    username: str = Path(..., description="The username to delete gateway endpoint permission for"),
+    name: str = Path(..., description="The gateway endpoint name to delete permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Delete a gateway endpoint permission for a user."""
+    try:
+        store.delete_gateway_endpoint_permission(gateway_name=name, username=username)
+        return StatusMessageResponse(message=f"Gateway endpoint permission deleted for {username} on {name}")
+    except Exception as e:
+        logger.error(f"Error deleting gateway endpoint permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete gateway endpoint permission")
+
+
+# ========================================================================================
+# GATEWAY ENDPOINT PATTERN PERMISSIONS
+# ========================================================================================
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS,
+    response_model=List[UserGatewayRegexPermissionItem],
+    summary="List gateway endpoint pattern permissions for a user",
+    description="Retrieves a list of regex-based gateway endpoint permission patterns for the specified user.",
+    tags=["user gateway endpoint pattern permissions"],
+)
+async def get_user_gateway_endpoint_pattern_permissions(
+    username: str = Path(..., description="The username to list gateway endpoint pattern permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> List[UserGatewayRegexPermissionItem]:
+    """List gateway endpoint pattern permissions for a user."""
+    try:
+        perms = store.list_gateway_endpoint_regex_permissions(username=username)
+        return [UserGatewayRegexPermissionItem(id=p.id, regex=p.regex, priority=p.priority, user_id=p.user_id, permission=p.permission) for p in perms]
+    except Exception as e:
+        logger.error(f"Error listing gateway endpoint pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway endpoint pattern permissions")
+
+
+@user_permissions_router.post(
+    USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS,
+    status_code=201,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Create gateway endpoint pattern permission for a user",
+    description="Creates a new regex-based permission pattern for gateway endpoint access.",
+    tags=["user gateway endpoint pattern permissions"],
+)
+async def create_user_gateway_endpoint_pattern_permission(
+    username: str = Path(..., description="The username to create gateway endpoint pattern permission for"),
+    pattern_data: GatewayRegexCreate = Body(..., description="The regex pattern permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Create a gateway endpoint pattern permission for a user."""
+    try:
+        perm = store.create_gateway_endpoint_regex_permission(
+            regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
+        )
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error creating gateway endpoint pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create gateway endpoint pattern permission")
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Get gateway endpoint pattern permission for a user",
+    description="Retrieves a specific regex-based gateway endpoint permission pattern for the specified user.",
+    tags=["user gateway endpoint pattern permissions"],
+)
+async def get_user_gateway_endpoint_pattern_permission(
+    username: str = Path(..., description="The username to get gateway endpoint pattern permission for"),
+    id: int = Path(..., description="The pattern ID to retrieve"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Get a gateway endpoint pattern permission for a user."""
+    try:
+        perm = store.get_gateway_endpoint_regex_permission(id=id, username=username)
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error getting gateway endpoint pattern permission: {str(e)}")
+        raise HTTPException(status_code=404, detail="Gateway endpoint pattern permission not found")
+
+
+@user_permissions_router.patch(
+    USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Update gateway endpoint pattern permission for a user",
+    description="Updates a specific regex-based gateway endpoint permission pattern for the specified user.",
+    tags=["user gateway endpoint pattern permissions"],
+)
+async def update_user_gateway_endpoint_pattern_permission(
+    username: str = Path(..., description="The username to update gateway endpoint pattern permission for"),
+    id: int = Path(..., description="The pattern ID to update"),
+    pattern_data: GatewayRegexCreate = Body(..., description="Updated pattern permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Update a gateway endpoint pattern permission for a user."""
+    try:
+        perm = store.update_gateway_endpoint_regex_permission(
+            id=id, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
+        )
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error updating gateway endpoint pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update gateway endpoint pattern permission")
+
+
+@user_permissions_router.delete(
+    USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Delete gateway endpoint pattern permission for a user",
+    description="Deletes a specific regex-based gateway endpoint permission pattern for the specified user.",
+    tags=["user gateway endpoint pattern permissions"],
+)
+async def delete_user_gateway_endpoint_pattern_permission(
+    username: str = Path(..., description="The username to delete gateway endpoint pattern permission for"),
+    id: int = Path(..., description="The pattern ID to delete"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Delete a gateway endpoint pattern permission for a user."""
+    try:
+        store.delete_gateway_endpoint_regex_permission(id=id, username=username)
+        return StatusMessageResponse(message=f"Gateway endpoint pattern permission deleted for {username}")
+    except Exception as e:
+        logger.error(f"Error deleting gateway endpoint pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete gateway endpoint pattern permission")
+
+
+# ========================================================================================
+# GATEWAY MODEL DEFINITION PERMISSIONS
+# ========================================================================================
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_MODEL_DEFINITION_PERMISSIONS,
+    response_model=List[NamedPermissionSummary],
+    summary="List gateway model definition permissions for a user",
+    description="Retrieves a list of gateway model definition permissions for the specified user.",
+    tags=["user gateway model definition permissions"],
+)
+async def get_user_gateway_model_definition_permissions(
+    username: str = Path(..., description="The username to get gateway model definition permissions for"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> List[NamedPermissionSummary]:
+    """List gateway model definition permissions for a user.
+
+    - Admins see all gateway model definitions with the target user's effective permissions.
+    - The target user sees model definitions where their effective permission is not NO_PERMISSIONS.
+    - Other users see only model definitions they themselves can MANAGE.
+    """
+    try:
+        all_models = fetch_all_gateway_model_definitions()
+
+        results: list[NamedPermissionSummary] = []
+        for md in all_models:
+            md_name = md.get("name", "")
+            if not md_name:
+                continue
+            perm_result = effective_gateway_model_definition_permission(md_name, username)
+            if is_admin:
+                results.append(NamedPermissionSummary(name=md_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            elif current_username == username:
+                if perm_result.permission.name != NO_PERMISSIONS.name:
+                    results.append(NamedPermissionSummary(name=md_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            else:
+                caller_perm = effective_gateway_model_definition_permission(md_name, current_username)
+                if caller_perm.permission.can_manage:
+                    results.append(NamedPermissionSummary(name=md_name, permission=perm_result.permission.name, kind=perm_result.kind))
+        return results
+    except Exception as e:
+        logger.error(f"Error listing gateway model definition permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway model definition permissions")
+
+
+@user_permissions_router.post(
+    USER_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL,
+    status_code=201,
+    response_model=NamedPermissionSummary,
+    summary="Create gateway model definition permission for a user",
+    description="Creates a new permission for a user to access a specific gateway model definition.",
+    tags=["user gateway model definition permissions"],
+)
+async def create_user_gateway_model_definition_permission(
+    username: str = Path(..., description="The username to grant gateway model definition permission to"),
+    name: str = Path(..., description="The gateway model definition name to set permissions for"),
+    permission_data: GatewayPermission = Body(..., description="The permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> NamedPermissionSummary:
+    """Create a gateway model definition permission for a user."""
+    try:
+        perm = store.create_gateway_model_definition_permission(gateway_name=name, username=username, permission=permission_data.permission)
+        return NamedPermissionSummary(name=perm.model_definition_id, permission=perm.permission, kind="user")
+    except Exception as e:
+        logger.error(f"Error creating gateway model definition permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create gateway model definition permission")
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL,
+    response_model=NamedPermissionSummary,
+    summary="Get gateway model definition permission for a user",
+    description="Retrieves the permission for a user on a specific gateway model definition.",
+    tags=["user gateway model definition permissions"],
+)
+async def get_user_gateway_model_definition_permission(
+    username: str = Path(..., description="The username to get gateway model definition permission for"),
+    name: str = Path(..., description="The gateway model definition name to get permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> NamedPermissionSummary:
+    """Get a gateway model definition permission for a user."""
+    try:
+        perm = store.get_gateway_model_definition_permission(gateway_name=name, username=username)
+        return NamedPermissionSummary(name=perm.model_definition_id, permission=perm.permission, kind="user")
+    except Exception as e:
+        logger.error(f"Error getting gateway model definition permission: {str(e)}")
+        raise HTTPException(status_code=404, detail="Gateway model definition permission not found")
+
+
+@user_permissions_router.patch(
+    USER_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Update gateway model definition permission for a user",
+    description="Updates the permission for a user on a specific gateway model definition.",
+    tags=["user gateway model definition permissions"],
+)
+async def update_user_gateway_model_definition_permission(
+    username: str = Path(..., description="The username to update gateway model definition permission for"),
+    name: str = Path(..., description="The gateway model definition name to update permissions for"),
+    permission_data: GatewayPermission = Body(..., description="Updated permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Update a gateway model definition permission for a user."""
+    try:
+        store.update_gateway_model_definition_permission(gateway_name=name, username=username, permission=permission_data.permission)
+        return StatusMessageResponse(message=f"Gateway model definition permission updated for {username} on {name}")
+    except Exception as e:
+        logger.error(f"Error updating gateway model definition permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update gateway model definition permission")
+
+
+@user_permissions_router.delete(
+    USER_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Delete gateway model definition permission for a user",
+    description="Deletes the permission for a user on a specific gateway model definition.",
+    tags=["user gateway model definition permissions"],
+)
+async def delete_user_gateway_model_definition_permission(
+    username: str = Path(..., description="The username to delete gateway model definition permission for"),
+    name: str = Path(..., description="The gateway model definition name to delete permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Delete a gateway model definition permission for a user."""
+    try:
+        store.delete_gateway_model_definition_permission(gateway_name=name, username=username)
+        return StatusMessageResponse(message=f"Gateway model definition permission deleted for {username} on {name}")
+    except Exception as e:
+        logger.error(f"Error deleting gateway model definition permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete gateway model definition permission")
+
+
+# ========================================================================================
+# GATEWAY MODEL DEFINITION PATTERN PERMISSIONS
+# ========================================================================================
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS,
+    response_model=List[UserGatewayRegexPermissionItem],
+    summary="List gateway model definition pattern permissions for a user",
+    description="Retrieves a list of regex-based gateway model definition permission patterns for the specified user.",
+    tags=["user gateway model definition pattern permissions"],
+)
+async def get_user_gateway_model_definition_pattern_permissions(
+    username: str = Path(..., description="The username to list gateway model definition pattern permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> List[UserGatewayRegexPermissionItem]:
+    """List gateway model definition pattern permissions for a user."""
+    try:
+        perms = store.list_gateway_model_definition_regex_permissions(username=username)
+        return [UserGatewayRegexPermissionItem(id=p.id, regex=p.regex, priority=p.priority, user_id=p.user_id, permission=p.permission) for p in perms]
+    except Exception as e:
+        logger.error(f"Error listing gateway model definition pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway model definition pattern permissions")
+
+
+@user_permissions_router.post(
+    USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS,
+    status_code=201,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Create gateway model definition pattern permission for a user",
+    description="Creates a new regex-based permission pattern for gateway model definition access.",
+    tags=["user gateway model definition pattern permissions"],
+)
+async def create_user_gateway_model_definition_pattern_permission(
+    username: str = Path(..., description="The username to create gateway model definition pattern permission for"),
+    pattern_data: GatewayRegexCreate = Body(..., description="The regex pattern permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Create a gateway model definition pattern permission for a user."""
+    try:
+        perm = store.create_gateway_model_definition_regex_permission(
+            regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
+        )
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error creating gateway model definition pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create gateway model definition pattern permission")
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Get gateway model definition pattern permission for a user",
+    description="Retrieves a specific regex-based gateway model definition permission pattern for the specified user.",
+    tags=["user gateway model definition pattern permissions"],
+)
+async def get_user_gateway_model_definition_pattern_permission(
+    username: str = Path(..., description="The username to get gateway model definition pattern permission for"),
+    id: int = Path(..., description="The pattern ID to retrieve"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Get a gateway model definition pattern permission for a user."""
+    try:
+        perm = store.get_gateway_model_definition_regex_permission(id=id, username=username)
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error getting gateway model definition pattern permission: {str(e)}")
+        raise HTTPException(status_code=404, detail="Gateway model definition pattern permission not found")
+
+
+@user_permissions_router.patch(
+    USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Update gateway model definition pattern permission for a user",
+    description="Updates a specific regex-based gateway model definition permission pattern for the specified user.",
+    tags=["user gateway model definition pattern permissions"],
+)
+async def update_user_gateway_model_definition_pattern_permission(
+    username: str = Path(..., description="The username to update gateway model definition pattern permission for"),
+    id: int = Path(..., description="The pattern ID to update"),
+    pattern_data: GatewayRegexCreate = Body(..., description="Updated pattern permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Update a gateway model definition pattern permission for a user."""
+    try:
+        perm = store.update_gateway_model_definition_regex_permission(
+            id=id, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
+        )
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error updating gateway model definition pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update gateway model definition pattern permission")
+
+
+@user_permissions_router.delete(
+    USER_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Delete gateway model definition pattern permission for a user",
+    description="Deletes a specific regex-based gateway model definition permission pattern for the specified user.",
+    tags=["user gateway model definition pattern permissions"],
+)
+async def delete_user_gateway_model_definition_pattern_permission(
+    username: str = Path(..., description="The username to delete gateway model definition pattern permission for"),
+    id: int = Path(..., description="The pattern ID to delete"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Delete a gateway model definition pattern permission for a user."""
+    try:
+        store.delete_gateway_model_definition_regex_permission(id=id, username=username)
+        return StatusMessageResponse(message=f"Gateway model definition pattern permission deleted for {username}")
+    except Exception as e:
+        logger.error(f"Error deleting gateway model definition pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete gateway model definition pattern permission")
+
+
+# ========================================================================================
+# GATEWAY SECRET PERMISSIONS
+# ========================================================================================
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_SECRET_PERMISSIONS,
+    response_model=List[NamedPermissionSummary],
+    summary="List gateway secret permissions for a user",
+    description="Retrieves a list of gateway secret permissions for the specified user.",
+    tags=["user gateway secret permissions"],
+)
+async def get_user_gateway_secret_permissions(
+    username: str = Path(..., description="The username to get gateway secret permissions for"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> List[NamedPermissionSummary]:
+    """List gateway secret permissions for a user.
+
+    - Admins see all gateway secrets with the target user's effective permissions.
+    - The target user sees secrets where their effective permission is not NO_PERMISSIONS.
+    - Other users see only secrets they themselves can MANAGE.
+    """
+    try:
+        all_secrets = fetch_all_gateway_secrets()
+
+        results: list[NamedPermissionSummary] = []
+        for secret in all_secrets:
+            secret_name = secret.get("secret_name") or secret.get("name") or secret.get("key", "")
+            if not secret_name:
+                continue
+            perm_result = effective_gateway_secret_permission(secret_name, username)
+            if is_admin:
+                results.append(NamedPermissionSummary(name=secret_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            elif current_username == username:
+                if perm_result.permission.name != NO_PERMISSIONS.name:
+                    results.append(NamedPermissionSummary(name=secret_name, permission=perm_result.permission.name, kind=perm_result.kind))
+            else:
+                caller_perm = effective_gateway_secret_permission(secret_name, current_username)
+                if caller_perm.permission.can_manage:
+                    results.append(NamedPermissionSummary(name=secret_name, permission=perm_result.permission.name, kind=perm_result.kind))
+        return results
+    except Exception as e:
+        logger.error(f"Error listing gateway secret permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway secret permissions")
+
+
+@user_permissions_router.post(
+    USER_GATEWAY_SECRET_PERMISSION_DETAIL,
+    status_code=201,
+    response_model=NamedPermissionSummary,
+    summary="Create gateway secret permission for a user",
+    description="Creates a new permission for a user to access a specific gateway secret.",
+    tags=["user gateway secret permissions"],
+)
+async def create_user_gateway_secret_permission(
+    username: str = Path(..., description="The username to grant gateway secret permission to"),
+    name: str = Path(..., description="The gateway secret name to set permissions for"),
+    permission_data: GatewayPermission = Body(..., description="The permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> NamedPermissionSummary:
+    """Create a gateway secret permission for a user."""
+    try:
+        perm = store.create_gateway_secret_permission(gateway_name=name, username=username, permission=permission_data.permission)
+        return NamedPermissionSummary(name=perm.secret_id, permission=perm.permission, kind="user")
+    except Exception as e:
+        logger.error(f"Error creating gateway secret permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create gateway secret permission")
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_SECRET_PERMISSION_DETAIL,
+    response_model=NamedPermissionSummary,
+    summary="Get gateway secret permission for a user",
+    description="Retrieves the permission for a user on a specific gateway secret.",
+    tags=["user gateway secret permissions"],
+)
+async def get_user_gateway_secret_permission(
+    username: str = Path(..., description="The username to get gateway secret permission for"),
+    name: str = Path(..., description="The gateway secret name to get permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> NamedPermissionSummary:
+    """Get a gateway secret permission for a user."""
+    try:
+        perm = store.get_gateway_secret_permission(gateway_name=name, username=username)
+        return NamedPermissionSummary(name=perm.secret_id, permission=perm.permission, kind="user")
+    except Exception as e:
+        logger.error(f"Error getting gateway secret permission: {str(e)}")
+        raise HTTPException(status_code=404, detail="Gateway secret permission not found")
+
+
+@user_permissions_router.patch(
+    USER_GATEWAY_SECRET_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Update gateway secret permission for a user",
+    description="Updates the permission for a user on a specific gateway secret.",
+    tags=["user gateway secret permissions"],
+)
+async def update_user_gateway_secret_permission(
+    username: str = Path(..., description="The username to update gateway secret permission for"),
+    name: str = Path(..., description="The gateway secret name to update permissions for"),
+    permission_data: GatewayPermission = Body(..., description="Updated permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Update a gateway secret permission for a user."""
+    try:
+        store.update_gateway_secret_permission(gateway_name=name, username=username, permission=permission_data.permission)
+        return StatusMessageResponse(message=f"Gateway secret permission updated for {username} on {name}")
+    except Exception as e:
+        logger.error(f"Error updating gateway secret permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update gateway secret permission")
+
+
+@user_permissions_router.delete(
+    USER_GATEWAY_SECRET_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Delete gateway secret permission for a user",
+    description="Deletes the permission for a user on a specific gateway secret.",
+    tags=["user gateway secret permissions"],
+)
+async def delete_user_gateway_secret_permission(
+    username: str = Path(..., description="The username to delete gateway secret permission for"),
+    name: str = Path(..., description="The gateway secret name to delete permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Delete a gateway secret permission for a user."""
+    try:
+        store.delete_gateway_secret_permission(gateway_name=name, username=username)
+        return StatusMessageResponse(message=f"Gateway secret permission deleted for {username} on {name}")
+    except Exception as e:
+        logger.error(f"Error deleting gateway secret permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete gateway secret permission")
+
+
+# ========================================================================================
+# GATEWAY SECRET PATTERN PERMISSIONS
+# ========================================================================================
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_SECRET_PATTERN_PERMISSIONS,
+    response_model=List[UserGatewayRegexPermissionItem],
+    summary="List gateway secret pattern permissions for a user",
+    description="Retrieves a list of regex-based gateway secret permission patterns for the specified user.",
+    tags=["user gateway secret pattern permissions"],
+)
+async def get_user_gateway_secret_pattern_permissions(
+    username: str = Path(..., description="The username to list gateway secret pattern permissions for"),
+    admin_username: str = Depends(check_admin_permission),
+) -> List[UserGatewayRegexPermissionItem]:
+    """List gateway secret pattern permissions for a user."""
+    try:
+        perms = store.list_gateway_secret_regex_permissions(username=username)
+        return [UserGatewayRegexPermissionItem(id=p.id, regex=p.regex, priority=p.priority, user_id=p.user_id, permission=p.permission) for p in perms]
+    except Exception as e:
+        logger.error(f"Error listing gateway secret pattern permissions: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve gateway secret pattern permissions")
+
+
+@user_permissions_router.post(
+    USER_GATEWAY_SECRET_PATTERN_PERMISSIONS,
+    status_code=201,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Create gateway secret pattern permission for a user",
+    description="Creates a new regex-based permission pattern for gateway secret access.",
+    tags=["user gateway secret pattern permissions"],
+)
+async def create_user_gateway_secret_pattern_permission(
+    username: str = Path(..., description="The username to create gateway secret pattern permission for"),
+    pattern_data: GatewayRegexCreate = Body(..., description="The regex pattern permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Create a gateway secret pattern permission for a user."""
+    try:
+        perm = store.create_gateway_secret_regex_permission(
+            regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
+        )
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error creating gateway secret pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create gateway secret pattern permission")
+
+
+@user_permissions_router.get(
+    USER_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Get gateway secret pattern permission for a user",
+    description="Retrieves a specific regex-based gateway secret permission pattern for the specified user.",
+    tags=["user gateway secret pattern permissions"],
+)
+async def get_user_gateway_secret_pattern_permission(
+    username: str = Path(..., description="The username to get gateway secret pattern permission for"),
+    id: int = Path(..., description="The pattern ID to retrieve"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Get a gateway secret pattern permission for a user."""
+    try:
+        perm = store.get_gateway_secret_regex_permission(id=id, username=username)
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error getting gateway secret pattern permission: {str(e)}")
+        raise HTTPException(status_code=404, detail="Gateway secret pattern permission not found")
+
+
+@user_permissions_router.patch(
+    USER_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL,
+    response_model=UserGatewayRegexPermissionItem,
+    summary="Update gateway secret pattern permission for a user",
+    description="Updates a specific regex-based gateway secret permission pattern for the specified user.",
+    tags=["user gateway secret pattern permissions"],
+)
+async def update_user_gateway_secret_pattern_permission(
+    username: str = Path(..., description="The username to update gateway secret pattern permission for"),
+    id: int = Path(..., description="The pattern ID to update"),
+    pattern_data: GatewayRegexCreate = Body(..., description="Updated pattern permission details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> UserGatewayRegexPermissionItem:
+    """Update a gateway secret pattern permission for a user."""
+    try:
+        perm = store.update_gateway_secret_regex_permission(
+            id=id, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, username=username
+        )
+        return UserGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, user_id=perm.user_id, permission=perm.permission)
+    except Exception as e:
+        logger.error(f"Error updating gateway secret pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update gateway secret pattern permission")
+
+
+@user_permissions_router.delete(
+    USER_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL,
+    response_model=StatusMessageResponse,
+    summary="Delete gateway secret pattern permission for a user",
+    description="Deletes a specific regex-based gateway secret permission pattern for the specified user.",
+    tags=["user gateway secret pattern permissions"],
+)
+async def delete_user_gateway_secret_pattern_permission(
+    username: str = Path(..., description="The username to delete gateway secret pattern permission for"),
+    id: int = Path(..., description="The pattern ID to delete"),
+    admin_username: str = Depends(check_admin_permission),
+) -> StatusMessageResponse:
+    """Delete a gateway secret pattern permission for a user."""
+    try:
+        store.delete_gateway_secret_regex_permission(id=id, username=username)
+        return StatusMessageResponse(message=f"Gateway secret pattern permission deleted for {username}")
+    except Exception as e:
+        logger.error(f"Error deleting gateway secret pattern permission: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete gateway secret pattern permission")

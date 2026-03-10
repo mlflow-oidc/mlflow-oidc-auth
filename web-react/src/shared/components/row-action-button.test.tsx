@@ -63,4 +63,24 @@ describe("RowActionButton", () => {
       "/experiments/456",
     );
   });
+
+  it("appends suffix correctly after encoded entityId", () => {
+    render(
+      <MemoryRouter>
+        <RowActionButton
+          entityId="alice@example.com"
+          suffix="/experiments"
+          route="/users"
+          buttonText="Manage"
+        />
+        <LocationDisplay />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/users/alice@example.com/experiments",
+    );
+  });
 });

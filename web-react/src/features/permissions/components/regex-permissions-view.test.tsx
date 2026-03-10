@@ -10,6 +10,12 @@ import * as usePromptHooks from "../../../core/hooks/use-user-prompt-pattern-per
 import * as useGroupExpHooks from "../../../core/hooks/use-group-experiment-pattern-permissions";
 import * as useGroupModelHooks from "../../../core/hooks/use-group-model-pattern-permissions";
 import * as useGroupPromptHooks from "../../../core/hooks/use-group-prompt-pattern-permissions";
+import * as useUserGatewayEndpointPatternPermissions from "../../../core/hooks/use-user-gateway-endpoint-pattern-permissions";
+import * as useGroupGatewayEndpointPatternPermissions from "../../../core/hooks/use-group-gateway-endpoint-pattern-permissions";
+import * as useUserGatewaySecretPatternPermissions from "../../../core/hooks/use-user-gateway-secret-pattern-permissions";
+import * as useGroupGatewaySecretPatternPermissions from "../../../core/hooks/use-group-gateway-secret-pattern-permissions";
+import * as useUserGatewayModelPatternPermissions from "../../../core/hooks/use-user-gateway-model-pattern-permissions";
+import * as useGroupGatewayModelPatternPermissions from "../../../core/hooks/use-group-gateway-model-pattern-permissions";
 import type {
   PermissionType,
   ExperimentPatternPermission,
@@ -37,6 +43,12 @@ vi.mock("../../../core/hooks/use-user-prompt-pattern-permissions");
 vi.mock("../../../core/hooks/use-group-experiment-pattern-permissions");
 vi.mock("../../../core/hooks/use-group-model-pattern-permissions");
 vi.mock("../../../core/hooks/use-group-prompt-pattern-permissions");
+vi.mock("../../../core/hooks/use-user-gateway-endpoint-pattern-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-endpoint-pattern-permissions");
+vi.mock("../../../core/hooks/use-user-gateway-secret-pattern-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-secret-pattern-permissions");
+vi.mock("../../../core/hooks/use-user-gateway-model-pattern-permissions");
+vi.mock("../../../core/hooks/use-group-gateway-model-pattern-permissions");
 
 describe("RegexPermissionsView", () => {
   const mockShowToast = vi.fn();
@@ -130,14 +142,84 @@ describe("RegexPermissionsView", () => {
       refresh: mockRefresh,
       permissions: mockModelPatternPermissions,
     });
+
+    vi.spyOn(
+      useUserGatewayEndpointPatternPermissions,
+      "useUserGatewayEndpointPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useGroupGatewayEndpointPatternPermissions,
+      "useGroupGatewayEndpointPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useUserGatewaySecretPatternPermissions,
+      "useUserGatewaySecretPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useGroupGatewaySecretPatternPermissions,
+      "useGroupGatewaySecretPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useUserGatewayModelPatternPermissions,
+      "useUserGatewayModelPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    vi.spyOn(
+      useGroupGatewayModelPatternPermissions,
+      "useGroupGatewayModelPatternPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPatternPermissions,
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
   });
 
-  const types: PermissionType[] = ["experiments", "models", "prompts"];
+  const types: PermissionType[] = [
+    "experiments",
+    "models",
+    "prompts",
+    "ai-endpoints",
+    "ai-secrets",
+    "ai-models",
+  ];
 
   const getUrlPart = (type: PermissionType) => {
     if (type === "experiments") return "experiment-patterns";
     if (type === "models") return "registered-models-patterns";
-    return "prompts-patterns";
+    if (type === "prompts") return "prompts-patterns";
+    if (type === "ai-endpoints") return "gateways/endpoints-patterns";
+    if (type === "ai-secrets") return "gateways/secrets-patterns";
+    return "gateways/model-definitions-patterns";
   };
 
   types.forEach((type) => {
@@ -270,6 +352,7 @@ describe("RegexPermissionsView", () => {
       basePath: "/mlflow",
       uiPath: "",
       provider: "",
+      gen_ai_gateway_enabled: false,
       authenticated: true,
     });
     vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
@@ -328,5 +411,25 @@ describe("RegexPermissionsView", () => {
       />,
     );
     expect(screen.getByText(/Error/i)).toBeDefined();
+  });
+
+  it("clears search when type prop changes", () => {
+    const { rerender } = render(
+      <RegexPermissionsView
+        type="experiments"
+        entityKind="user"
+        entityName="user1"
+      />,
+    );
+
+    rerender(
+      <RegexPermissionsView
+        type="models"
+        entityKind="user"
+        entityName="user1"
+      />,
+    );
+
+    expect(defaultSearch.handleClearSearch).toHaveBeenCalled();
   });
 });
