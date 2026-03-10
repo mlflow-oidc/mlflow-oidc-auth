@@ -382,7 +382,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         # Validate the token and get user info
         access_token = token_response.get("access_token")
         id_token = token_response.get("id_token")
-        #userinfo = token_response.get("userinfo")
+        # UserInfo endpoint supposes to return claims about authenticated End-User
         userinfo = await _maybe_await(oauth.oidc.userinfo(token=token_response))
 
         if not userinfo:
@@ -390,11 +390,17 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             return None, errors
 
         # Extract user details
-        email = userinfo.get("email") or userinfo.get("preferred_username")
+        email = userinfo.get("email")
         display_name = userinfo.get("name")
 
+        # Fallback to ID token if userinfo doesn't contain expected "email" claim
+        if not email and id_token:
+            id_token_claims = await oauth.oidc.parse_id_token(token_response, nonce=None)
+            email = id_token_claims.get("email")
+            userinfo.update({ "email": email })
+
         if not email:
-            errors.append("No email provided in OIDC userinfo")
+            errors.append("No email provided in OIDC userinfo or ID token")
             return None, errors
         if not display_name:
             errors.append("No display name provided in OIDC userinfo")
