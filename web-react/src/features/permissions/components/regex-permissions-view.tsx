@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { request } from "../../../core/services/api-utils";
 import { getPermissionUrl } from "../utils/permission-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
@@ -10,6 +10,12 @@ import { useUserPromptPatternPermissions } from "../../../core/hooks/use-user-pr
 import { useGroupExperimentPatternPermissions } from "../../../core/hooks/use-group-experiment-pattern-permissions";
 import { useGroupModelPatternPermissions } from "../../../core/hooks/use-group-model-pattern-permissions";
 import { useGroupPromptPatternPermissions } from "../../../core/hooks/use-group-prompt-pattern-permissions";
+import { useUserGatewayEndpointPatternPermissions } from "../../../core/hooks/use-user-gateway-endpoint-pattern-permissions";
+import { useGroupGatewayEndpointPatternPermissions } from "../../../core/hooks/use-group-gateway-endpoint-pattern-permissions";
+import { useUserGatewaySecretPatternPermissions } from "../../../core/hooks/use-user-gateway-secret-pattern-permissions";
+import { useGroupGatewaySecretPatternPermissions } from "../../../core/hooks/use-group-gateway-secret-pattern-permissions";
+import { useUserGatewayModelPatternPermissions } from "../../../core/hooks/use-user-gateway-model-pattern-permissions";
+import { useGroupGatewayModelPatternPermissions } from "../../../core/hooks/use-group-gateway-model-pattern-permissions";
 import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
@@ -51,6 +57,10 @@ export const RegexPermissionsView = ({
     handleClearSearch,
   } = useSearch();
 
+  useEffect(() => {
+    handleClearSearch();
+  }, [type, handleClearSearch]);
+
   const userExperimentPatternHook = useUserExperimentPatternPermissions({
     username: entityKind === "user" ? entityName : null,
   });
@@ -70,6 +80,28 @@ export const RegexPermissionsView = ({
   const groupPromptPatternHook = useGroupPromptPatternPermissions({
     groupName: entityKind === "group" ? entityName : null,
   });
+  const userGatewayEndpointPatternHook =
+    useUserGatewayEndpointPatternPermissions({
+      username: entityKind === "user" ? entityName : null,
+    });
+  const groupGatewayEndpointPatternHook =
+    useGroupGatewayEndpointPatternPermissions({
+      groupName: entityKind === "group" ? entityName : null,
+    });
+  const userGatewaySecretPatternHook = useUserGatewaySecretPatternPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const groupGatewaySecretPatternHook = useGroupGatewaySecretPatternPermissions(
+    {
+      groupName: entityKind === "group" ? entityName : null,
+    },
+  );
+  const userGatewayModelPatternHook = useUserGatewayModelPatternPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const groupGatewayModelPatternHook = useGroupGatewayModelPatternPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
 
   const activeHook =
     entityKind === "user"
@@ -77,11 +109,17 @@ export const RegexPermissionsView = ({
           experiments: userExperimentPatternHook,
           models: userModelPatternHook,
           prompts: userPromptPatternHook,
+          "ai-endpoints": userGatewayEndpointPatternHook,
+          "ai-secrets": userGatewaySecretPatternHook,
+          "ai-models": userGatewayModelPatternHook,
         }[type]
       : {
           experiments: groupExperimentPatternHook,
           models: groupModelPatternHook,
           prompts: groupPromptPatternHook,
+          "ai-endpoints": groupGatewayEndpointPatternHook,
+          "ai-secrets": groupGatewaySecretPatternHook,
+          "ai-models": groupGatewayModelPatternHook,
         }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook;
@@ -227,7 +265,7 @@ export const RegexPermissionsView = ({
     },
   ];
 
-  const filteredData = permissions.filter((p) =>
+  const filteredData = permissions.filter((p: PatternPermissionItem) =>
     p.regex?.toLowerCase().includes(submittedTerm.toLowerCase()),
   );
 
@@ -291,6 +329,7 @@ export const RegexPermissionsView = ({
           isOpen={isRegexModalOpen}
           onClose={() => setIsRegexModalOpen(false)}
           onSave={handleSaveRegexRule}
+          type={type}
           isLoading={isSaving}
         />
       )}

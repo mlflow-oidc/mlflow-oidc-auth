@@ -9,7 +9,12 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from mlflow_oidc_auth.routers.health import health_check_router, health_check_ready, health_check_live, health_check_startup
+from mlflow_oidc_auth.routers.health import (
+    health_check_router,
+    health_check_ready,
+    health_check_live,
+    health_check_startup,
+)
 
 
 class TestHealthCheckRouter:
@@ -29,7 +34,10 @@ class TestHealthCheckEndpoints:
     @pytest.mark.asyncio
     async def test_health_check_ready_all_healthy(self):
         """Test the ready health check endpoint when all checks pass."""
-        with patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=True), patch("mlflow_oidc_auth.routers.health.store") as mock_store:
+        with (
+            patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=True),
+            patch("mlflow_oidc_auth.routers.health.store") as mock_store,
+        ):
             mock_store.ping.return_value = True
             result = await health_check_ready()
 
@@ -41,7 +49,10 @@ class TestHealthCheckEndpoints:
     @pytest.mark.asyncio
     async def test_health_check_ready_oidc_not_configured(self):
         """Test the ready health check when OIDC is not configured."""
-        with patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=False), patch("mlflow_oidc_auth.routers.health.store") as mock_store:
+        with (
+            patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=False),
+            patch("mlflow_oidc_auth.routers.health.store") as mock_store,
+        ):
             mock_store.ping.return_value = True
             result = await health_check_ready()
 
@@ -52,7 +63,10 @@ class TestHealthCheckEndpoints:
     @pytest.mark.asyncio
     async def test_health_check_ready_database_not_available(self):
         """Test the ready health check when database is not available."""
-        with patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=True), patch("mlflow_oidc_auth.routers.health.store") as mock_store:
+        with (
+            patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=True),
+            patch("mlflow_oidc_auth.routers.health.store") as mock_store,
+        ):
             mock_store.ping.return_value = False
             result = await health_check_ready()
 
@@ -95,7 +109,10 @@ class TestHealthCheckIntegration:
 
     def test_ready_endpoint_integration(self, client):
         """Test ready endpoint through FastAPI test client."""
-        with patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=True), patch("mlflow_oidc_auth.routers.health.store") as mock_store:
+        with (
+            patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=True),
+            patch("mlflow_oidc_auth.routers.health.store") as mock_store,
+        ):
             mock_store.ping.return_value = True
             response = client.get("/health/ready")
 
@@ -106,7 +123,10 @@ class TestHealthCheckIntegration:
 
     def test_ready_endpoint_not_ready(self, client):
         """Test ready endpoint when checks fail."""
-        with patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=False), patch("mlflow_oidc_auth.routers.health.store") as mock_store:
+        with (
+            patch("mlflow_oidc_auth.routers.health.is_oidc_configured", return_value=False),
+            patch("mlflow_oidc_auth.routers.health.store") as mock_store,
+        ):
             mock_store.ping.return_value = True
             response = client.get("/health/ready")
 
@@ -237,7 +257,11 @@ class TestHealthCheckIntegration:
 
     def test_health_endpoints_with_headers(self, client):
         """Test that health endpoints work with various headers."""
-        headers = {"User-Agent": "Test-Agent/1.0", "Accept": "application/json", "X-Custom-Header": "test-value"}
+        headers = {
+            "User-Agent": "Test-Agent/1.0",
+            "Accept": "application/json",
+            "X-Custom-Header": "test-value",
+        }
 
         # Test with live endpoint
         response = client.get("/health/live", headers=headers)

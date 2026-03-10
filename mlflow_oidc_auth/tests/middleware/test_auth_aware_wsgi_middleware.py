@@ -12,7 +12,10 @@ This module tests WSGI middleware functionality including:
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware, AuthInjectingWSGIApp
+from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import (
+    AuthAwareWSGIMiddleware,
+    AuthInjectingWSGIApp,
+)
 
 
 class TestAuthInjectingWSGIApp:
@@ -28,7 +31,10 @@ class TestAuthInjectingWSGIApp:
     def test_call_with_auth_info(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
         """Test WSGI app call with authentication information in scope."""
         # Add auth info to scope
-        sample_asgi_scope["mlflow_oidc_auth"] = {"username": "user@example.com", "is_admin": False}
+        sample_asgi_scope["mlflow_oidc_auth"] = {
+            "username": "user@example.com",
+            "is_admin": False,
+        }
 
         app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
 
@@ -55,7 +61,10 @@ class TestAuthInjectingWSGIApp:
     def test_call_with_admin_auth_info(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
         """Test WSGI app call with admin authentication information."""
         # Add admin auth info to scope
-        sample_asgi_scope["mlflow_oidc_auth"] = {"username": "admin@example.com", "is_admin": True}
+        sample_asgi_scope["mlflow_oidc_auth"] = {
+            "username": "admin@example.com",
+            "is_admin": True,
+        }
 
         app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
 
@@ -154,7 +163,10 @@ class TestAuthInjectingWSGIApp:
         sample_wsgi_environ["HTTP_AUTHORIZATION"] = "Bearer token"
 
         # Add auth info to scope
-        sample_asgi_scope["mlflow_oidc_auth"] = {"username": "user@example.com", "is_admin": True}
+        sample_asgi_scope["mlflow_oidc_auth"] = {
+            "username": "user@example.com",
+            "is_admin": True,
+        }
 
         app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
 
@@ -213,7 +225,10 @@ class TestAuthAwareWSGIMiddleware:
     async def test_call_http_request(self, mock_flask_app, sample_asgi_scope, mock_receive, mock_send):
         """Test middleware call with HTTP request."""
         sample_asgi_scope["type"] = "http"
-        sample_asgi_scope["mlflow_oidc_auth"] = {"username": "user@example.com", "is_admin": False}
+        sample_asgi_scope["mlflow_oidc_auth"] = {
+            "username": "user@example.com",
+            "is_admin": False,
+        }
 
         middleware = AuthAwareWSGIMiddleware(mock_flask_app)
 
@@ -338,10 +353,18 @@ class TestAuthAwareWSGIMiddleware:
         middleware = AuthAwareWSGIMiddleware(mock_flask_app)
 
         # First request
-        scope1 = {"type": "http", "path": "/api/users", "mlflow_oidc_auth": {"username": "user1@example.com", "is_admin": False}}
+        scope1 = {
+            "type": "http",
+            "path": "/api/users",
+            "mlflow_oidc_auth": {"username": "user1@example.com", "is_admin": False},
+        }
 
         # Second request
-        scope2 = {"type": "http", "path": "/api/admin", "mlflow_oidc_auth": {"username": "admin@example.com", "is_admin": True}}
+        scope2 = {
+            "type": "http",
+            "path": "/api/admin",
+            "mlflow_oidc_auth": {"username": "admin@example.com", "is_admin": True},
+        }
 
         with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.WSGIMiddleware") as mock_wsgi_middleware:
             mock_wsgi_instance = AsyncMock()
@@ -368,7 +391,10 @@ class TestAuthAwareWSGIMiddleware:
         """Test complete integration flow from ASGI scope to WSGI environ injection."""
         # Setup auth info in ASGI scope
         sample_asgi_scope["type"] = "http"
-        sample_asgi_scope["mlflow_oidc_auth"] = {"username": "integration@example.com", "is_admin": True}
+        sample_asgi_scope["mlflow_oidc_auth"] = {
+            "username": "integration@example.com",
+            "is_admin": True,
+        }
 
         # Create a Flask app that captures the environ
         captured_environ = {}

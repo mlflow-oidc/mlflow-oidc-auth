@@ -9,8 +9,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 
+from mlflow_oidc_auth.db.models._base import Base
+
 from mlflow_oidc_auth.db.models import (
-    Base,
     SqlUser,
     SqlExperimentPermission,
     SqlRegisteredModelPermission,
@@ -101,7 +102,13 @@ class TestSqlUser:
 
     def test_to_mlflow_entity_with_relationships(self, db_session, sample_group):
         """Test user entity conversion with relationships - covers line 41."""
-        user = SqlUser(username="testuser", display_name="Test User", password_hash="hashed_password", is_admin=False, is_service_account=True)
+        user = SqlUser(
+            username="testuser",
+            display_name="Test User",
+            password_hash="hashed_password",
+            is_admin=False,
+            is_service_account=True,
+        )
         db_session.add(user)
         db_session.commit()
 
@@ -132,8 +139,20 @@ class TestSqlUser:
 
     def test_unique_username_constraint(self, db_session):
         """Test username uniqueness constraint."""
-        user1 = SqlUser(username="duplicate", display_name="User 1", password_hash="hash1", is_admin=False, is_service_account=False)
-        user2 = SqlUser(username="duplicate", display_name="User 2", password_hash="hash2", is_admin=False, is_service_account=False)
+        user1 = SqlUser(
+            username="duplicate",
+            display_name="User 1",
+            password_hash="hash1",
+            is_admin=False,
+            is_service_account=False,
+        )
+        user2 = SqlUser(
+            username="duplicate",
+            display_name="User 2",
+            password_hash="hash2",
+            is_admin=False,
+            is_service_account=False,
+        )
 
         db_session.add(user1)
         db_session.commit()
@@ -291,7 +310,12 @@ class TestSqlRegisteredModelGroupPermission:
 
     def test_to_mlflow_entity(self, db_session, sample_group):
         """Test registered model group permission entity conversion - covers line 145."""
-        permission = SqlRegisteredModelGroupPermission(name="group_model", group_id=sample_group.id, permission="MANAGE", prompt=True)
+        permission = SqlRegisteredModelGroupPermission(
+            name="group_model",
+            group_id=sample_group.id,
+            permission="MANAGE",
+            prompt=True,
+        )
         db_session.add(permission)
         db_session.commit()
 
@@ -305,7 +329,12 @@ class TestSqlRegisteredModelGroupPermission:
 
     def test_to_mlflow_entity_prompt_false(self, db_session, sample_group):
         """Test entity conversion with prompt=False."""
-        permission = SqlRegisteredModelGroupPermission(name="group_model2", group_id=sample_group.id, permission="READ", prompt=False)
+        permission = SqlRegisteredModelGroupPermission(
+            name="group_model2",
+            group_id=sample_group.id,
+            permission="READ",
+            prompt=False,
+        )
         db_session.add(permission)
         db_session.commit()
 
@@ -361,7 +390,13 @@ class TestSqlRegisteredModelRegexPermission:
 
     def test_to_mlflow_entity(self, db_session, sample_user):
         """Test registered model regex permission entity conversion - covers line 183."""
-        permission = SqlRegisteredModelRegexPermission(regex="model_.*", priority=2, user_id=sample_user.id, permission="WRITE", prompt=True)
+        permission = SqlRegisteredModelRegexPermission(
+            regex="model_.*",
+            priority=2,
+            user_id=sample_user.id,
+            permission="WRITE",
+            prompt=True,
+        )
         db_session.add(permission)
         db_session.commit()
 
@@ -377,7 +412,13 @@ class TestSqlRegisteredModelRegexPermission:
 
     def test_to_mlflow_entity_prompt_false(self, db_session, sample_user):
         """Test entity conversion with prompt=False."""
-        permission = SqlRegisteredModelRegexPermission(regex="model2_.*", priority=1, user_id=sample_user.id, permission="READ", prompt=False)
+        permission = SqlRegisteredModelRegexPermission(
+            regex="model2_.*",
+            priority=1,
+            user_id=sample_user.id,
+            permission="READ",
+            prompt=False,
+        )
         db_session.add(permission)
         db_session.commit()
 
@@ -386,9 +427,19 @@ class TestSqlRegisteredModelRegexPermission:
 
     def test_unique_constraint(self, db_session, sample_user):
         """Test unique constraint on regex, user_id, and prompt."""
-        perm1 = SqlRegisteredModelRegexPermission(regex="test_.*", priority=1, user_id=sample_user.id, permission="READ", prompt=True)
+        perm1 = SqlRegisteredModelRegexPermission(
+            regex="test_.*",
+            priority=1,
+            user_id=sample_user.id,
+            permission="READ",
+            prompt=True,
+        )
         perm2 = SqlRegisteredModelRegexPermission(
-            regex="test_.*", priority=2, user_id=sample_user.id, permission="WRITE", prompt=True  # Same regex, user_id, and prompt should fail
+            regex="test_.*",
+            priority=2,
+            user_id=sample_user.id,
+            permission="WRITE",
+            prompt=True,  # Same regex, user_id, and prompt should fail
         )
 
         db_session.add(perm1)
@@ -400,9 +451,19 @@ class TestSqlRegisteredModelRegexPermission:
 
     def test_unique_constraint_different_prompt(self, db_session, sample_user):
         """Test that same regex and user_id with different prompt values is allowed."""
-        perm1 = SqlRegisteredModelRegexPermission(regex="test_.*", priority=1, user_id=sample_user.id, permission="READ", prompt=True)
+        perm1 = SqlRegisteredModelRegexPermission(
+            regex="test_.*",
+            priority=1,
+            user_id=sample_user.id,
+            permission="READ",
+            prompt=True,
+        )
         perm2 = SqlRegisteredModelRegexPermission(
-            regex="test_.*", priority=2, user_id=sample_user.id, permission="WRITE", prompt=False  # Different prompt value should be allowed
+            regex="test_.*",
+            priority=2,
+            user_id=sample_user.id,
+            permission="WRITE",
+            prompt=False,  # Different prompt value should be allowed
         )
 
         db_session.add(perm1)
@@ -417,7 +478,12 @@ class TestSqlExperimentGroupRegexPermission:
 
     def test_to_mlflow_entity(self, db_session, sample_group):
         """Test experiment group regex permission entity conversion - covers line 203."""
-        permission = SqlExperimentGroupRegexPermission(regex="group_exp_.*", priority=3, group_id=sample_group.id, permission="MANAGE")
+        permission = SqlExperimentGroupRegexPermission(
+            regex="group_exp_.*",
+            priority=3,
+            group_id=sample_group.id,
+            permission="MANAGE",
+        )
         db_session.add(permission)
         db_session.commit()
 
@@ -448,7 +514,13 @@ class TestSqlRegisteredModelGroupRegexPermission:
 
     def test_to_mlflow_entity(self, db_session, sample_group):
         """Test registered model group regex permission entity conversion - covers line 223."""
-        permission = SqlRegisteredModelGroupRegexPermission(regex="group_model_.*", priority=4, group_id=sample_group.id, permission="DELETE", prompt=True)
+        permission = SqlRegisteredModelGroupRegexPermission(
+            regex="group_model_.*",
+            priority=4,
+            group_id=sample_group.id,
+            permission="DELETE",
+            prompt=True,
+        )
         db_session.add(permission)
         db_session.commit()
 
@@ -464,7 +536,13 @@ class TestSqlRegisteredModelGroupRegexPermission:
 
     def test_to_mlflow_entity_prompt_false(self, db_session, sample_group):
         """Test entity conversion with prompt=False."""
-        permission = SqlRegisteredModelGroupRegexPermission(regex="group_model2_.*", priority=1, group_id=sample_group.id, permission="READ", prompt=False)
+        permission = SqlRegisteredModelGroupRegexPermission(
+            regex="group_model2_.*",
+            priority=1,
+            group_id=sample_group.id,
+            permission="READ",
+            prompt=False,
+        )
         db_session.add(permission)
         db_session.commit()
 
@@ -473,9 +551,19 @@ class TestSqlRegisteredModelGroupRegexPermission:
 
     def test_unique_constraint(self, db_session, sample_group):
         """Test unique constraint on regex, group_id, and prompt."""
-        perm1 = SqlRegisteredModelGroupRegexPermission(regex="test_.*", priority=1, group_id=sample_group.id, permission="READ", prompt=True)
+        perm1 = SqlRegisteredModelGroupRegexPermission(
+            regex="test_.*",
+            priority=1,
+            group_id=sample_group.id,
+            permission="READ",
+            prompt=True,
+        )
         perm2 = SqlRegisteredModelGroupRegexPermission(
-            regex="test_.*", priority=2, group_id=sample_group.id, permission="WRITE", prompt=True  # Same regex, group_id, and prompt should fail
+            regex="test_.*",
+            priority=2,
+            group_id=sample_group.id,
+            permission="WRITE",
+            prompt=True,  # Same regex, group_id, and prompt should fail
         )
 
         db_session.add(perm1)
@@ -487,9 +575,19 @@ class TestSqlRegisteredModelGroupRegexPermission:
 
     def test_unique_constraint_different_prompt(self, db_session, sample_group):
         """Test that same regex and group_id with different prompt values is allowed."""
-        perm1 = SqlRegisteredModelGroupRegexPermission(regex="test_.*", priority=1, group_id=sample_group.id, permission="READ", prompt=True)
+        perm1 = SqlRegisteredModelGroupRegexPermission(
+            regex="test_.*",
+            priority=1,
+            group_id=sample_group.id,
+            permission="READ",
+            prompt=True,
+        )
         perm2 = SqlRegisteredModelGroupRegexPermission(
-            regex="test_.*", priority=2, group_id=sample_group.id, permission="WRITE", prompt=False  # Different prompt value should be allowed
+            regex="test_.*",
+            priority=2,
+            group_id=sample_group.id,
+            permission="WRITE",
+            prompt=False,  # Different prompt value should be allowed
         )
 
         db_session.add(perm1)
@@ -614,7 +712,13 @@ class TestModelValidation:
         """Test string field length constraints."""
         # Create user with very long username (assuming 255 char limit)
         long_username = "a" * 256  # Exceeds typical VARCHAR(255) limit
-        user = SqlUser(username=long_username, display_name="Test", password_hash="hash", is_admin=False, is_service_account=False)
+        user = SqlUser(
+            username=long_username,
+            display_name="Test",
+            password_hash="hash",
+            is_admin=False,
+            is_service_account=False,
+        )
 
         db_session.add(user)
         # This might not raise an error in SQLite, but would in other databases

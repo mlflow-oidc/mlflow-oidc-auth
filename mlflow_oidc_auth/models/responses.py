@@ -129,6 +129,17 @@ class ScorerRegexPermissionResponse(BaseModel):
     pattern: ScorerRegexPermissionRecord
 
 
+class UserGatewayRegexPermissionItem(BaseModel):
+    """Serialized gateway regex permission entry for a user."""
+
+    id: int = Field(..., description="Pattern identifier")
+    regex: str = Field(..., description="Regex pattern")
+    priority: int = Field(..., description="Evaluation priority")
+    user_id: Optional[int] = Field(None, description="Identifier of the user that owns the pattern")
+    permission: str = Field(..., description="Permission granted when the regex matches")
+    kind: Literal["user"] = Field("user", description="Indicates this is a user gateway regex permission")
+
+
 class RegisteredModelRegexPermissionListResponse(BaseModel):
     """List wrapper for prompt/model regex permissions.
 

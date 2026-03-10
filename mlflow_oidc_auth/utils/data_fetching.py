@@ -1,18 +1,19 @@
 """
 Data fetching utilities for MLflow resources.
 
-This module provides functions to fetch experiments, registered models, and logged models
-from MLflow stores with proper pagination and permission filtering. All functions handle
-pagination automatically to ensure complete data retrieval.
+This module provides functions to fetch experiments, registered models, logged models,
+and gateway endpoints from MLflow stores with proper pagination and permission filtering.
+All functions handle pagination automatically to ensure complete data retrieval.
 
 Key Features:
 - Automatic pagination handling for large datasets
 - Permission-based filtering for security
 - Support for both complete and paginated data retrieval
 - Efficient memory usage through streaming pagination
+- Gateway endpoint fetching from MLflow's unified gateway
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from mlflow.entities import Experiment
 from mlflow.entities.model_registry import RegisteredModel
@@ -275,5 +276,77 @@ def fetch_readable_logged_models(
             page_token = result.token
         else:
             break
+
+    return all_models
+
+
+def fetch_all_gateway_endpoints() -> List[Dict[str, Any]]:
+    """
+    Fetch ALL gateway endpoints from the MLflow tracking store.
+
+    This function retrieves gateway endpoints from MLflow's unified gateway store,
+    which stores endpoint configurations for the AI Gateway.
+
+    Returns:
+        List of gateway endpoint dictionaries containing endpoint metadata.
+        Each dictionary includes fields like 'endpoint_id', 'name', 'model_mappings', etc.
+    """
+    all_endpoints: List[Dict[str, Any]] = []
+
+    result = _get_tracking_store().list_gateway_endpoints()
+
+    # Convert endpoint objects to dictionaries if needed
+    for endpoint in result:
+        if hasattr(endpoint, "to_dict"):
+            all_endpoints.append(endpoint.to_dict())
+        elif hasattr(endpoint, "__dict__"):
+            all_endpoints.append(vars(endpoint))
+        else:
+            all_endpoints.append(endpoint)
+
+    return all_endpoints
+
+
+def fetch_all_gateway_secrets() -> List[Dict[str, Any]]:
+    """
+    Fetch ALL gateway secrets from the MLflow tracking store.
+
+    Returns:
+        List of gateway secret dictionaries.
+    """
+    all_secrets: List[Dict[str, Any]] = []
+
+    # MLflow uses list_secret_infos for gateway secrets
+    result = _get_tracking_store().list_secret_infos()
+
+    for secret in result:
+        if hasattr(secret, "to_dict"):
+            all_secrets.append(secret.to_dict())
+        elif hasattr(secret, "__dict__"):
+            all_secrets.append(vars(secret))
+        else:
+            all_secrets.append(secret)
+
+    return all_secrets
+
+
+def fetch_all_gateway_model_definitions() -> List[Dict[str, Any]]:
+    """
+    Fetch ALL gateway model definitions from the MLflow tracking store.
+
+    Returns:
+        List of gateway model definition dictionaries.
+    """
+    all_models: List[Dict[str, Any]] = []
+
+    result = _get_tracking_store().list_gateway_model_definitions()
+
+    for model in result:
+        if hasattr(model, "to_dict"):
+            all_models.append(model.to_dict())
+        elif hasattr(model, "__dict__"):
+            all_models.append(vars(model))
+        else:
+            all_models.append(model)
 
     return all_models

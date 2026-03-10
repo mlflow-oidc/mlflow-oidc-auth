@@ -73,6 +73,9 @@ class UserRepository:
                     noload(SqlUser.experiment_permissions),
                     noload(SqlUser.registered_model_permissions),
                     noload(SqlUser.scorer_permissions),
+                    noload(SqlUser.gateway_endpoint_permissions),
+                    noload(SqlUser.gateway_model_definition_permissions),
+                    noload(SqlUser.gateway_secret_permissions),
                 )
                 .filter(SqlUser.username == username)
                 .one_or_none()

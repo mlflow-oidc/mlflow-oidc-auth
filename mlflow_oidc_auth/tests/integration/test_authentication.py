@@ -167,7 +167,10 @@ def test_api_call_with_valid_bearer_token(
 
     # Use the token for API call via Basic auth (username:token)
     headers = _make_basic_auth_header(user_email, token_or_reason)
-    response = httpx.get(f"{base_url}ajax-api/2.0/mlflow/experiments/search?max_results=5", headers=headers)
+    response = httpx.get(
+        f"{base_url}ajax-api/2.0/mlflow/experiments/search?max_results=5",
+        headers=headers,
+    )
 
     assert response.status_code == 200, f"Token auth failed: {response.status_code} {response.text}"
 
@@ -179,7 +182,11 @@ def test_api_call_with_invalid_token(
 ) -> None:
     """AUTH-012: API call with invalid/expired token returns 401."""
     headers = {"Authorization": "Bearer invalid-token-12345"}
-    response = httpx.get(f"{base_url}ajax-api/2.0/mlflow/experiments", headers=headers, follow_redirects=False)
+    response = httpx.get(
+        f"{base_url}ajax-api/2.0/mlflow/experiments",
+        headers=headers,
+        follow_redirects=False,
+    )
 
     # 401/403 = direct rejection, 302 = redirect to login (also rejection)
     assert response.status_code in (401, 403, 302), f"Expected 401/403/302 for invalid token, got {response.status_code}"
@@ -205,7 +212,10 @@ def test_admin_creates_token_for_another_user(
 
     # Verify the token works for the target user via Basic auth
     headers = _make_basic_auth_header(target_user, token_or_reason)
-    response = httpx.get(f"{base_url}ajax-api/2.0/mlflow/experiments/search?max_results=5", headers=headers)
+    response = httpx.get(
+        f"{base_url}ajax-api/2.0/mlflow/experiments/search?max_results=5",
+        headers=headers,
+    )
 
     assert response.status_code == 200, f"Token for {target_user} failed: {response.status_code}"
 
@@ -308,7 +318,10 @@ def test_service_account_authenticates_via_token(
 
     # Authenticate with token via Basic auth (username:token)
     headers = _make_basic_auth_header(username, token)
-    response = httpx.get(f"{base_url}ajax-api/2.0/mlflow/experiments/search?max_results=5", headers=headers)
+    response = httpx.get(
+        f"{base_url}ajax-api/2.0/mlflow/experiments/search?max_results=5",
+        headers=headers,
+    )
 
     assert response.status_code == 200, f"Service account auth failed: {response.status_code}"
 
@@ -359,7 +372,11 @@ def test_service_account_logs_run_with_scorers(
     test_run_id: str,
 ) -> None:
     """AUTH-024: Service account can log runs with scorer metrics."""
-    from .utils import create_access_token_for_user, create_service_account, seed_scorers_with_tracking_token
+    from .utils import (
+        create_access_token_for_user,
+        create_service_account,
+        seed_scorers_with_tracking_token,
+    )
 
     username = f"svc-scorer-{test_run_id}@example.com"
     display_name = f"Scorer Service Account {test_run_id}"

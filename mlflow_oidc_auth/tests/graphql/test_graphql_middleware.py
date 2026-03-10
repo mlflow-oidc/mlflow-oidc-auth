@@ -68,8 +68,16 @@ def test_protected_field_denied(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
-    monkeypatch.setattr(mw_mod, "effective_experiment_permission", lambda _exp_id, _user: _FakePermissionResult(permission=_FakePermission(can_read=False)))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
+    monkeypatch.setattr(
+        mw_mod,
+        "effective_experiment_permission",
+        lambda _exp_id, _user: _FakePermissionResult(permission=_FakePermission(can_read=False)),
+    )
 
     called = {"count": 0}
 
@@ -78,7 +86,12 @@ def test_protected_field_denied(monkeypatch: pytest.MonkeyPatch) -> None:
         return "ok"
 
     mw = GraphQLAuthorizationMiddleware()
-    result = mw.resolve(next_, None, _FakeInfo(field_name="mlflowGetExperiment"), input={"experiment_id": "1"})
+    result = mw.resolve(
+        next_,
+        None,
+        _FakeInfo(field_name="mlflowGetExperiment"),
+        input={"experiment_id": "1"},
+    )
 
     assert result is None
     assert called["count"] == 0
@@ -89,8 +102,16 @@ def test_protected_field_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
-    monkeypatch.setattr(mw_mod, "effective_experiment_permission", lambda _exp_id, _user: _FakePermissionResult(permission=_FakePermission(can_read=True)))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
+    monkeypatch.setattr(
+        mw_mod,
+        "effective_experiment_permission",
+        lambda _exp_id, _user: _FakePermissionResult(permission=_FakePermission(can_read=True)),
+    )
 
     called = {"count": 0}
 
@@ -99,7 +120,12 @@ def test_protected_field_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
         return "ok"
 
     mw = GraphQLAuthorizationMiddleware()
-    result = mw.resolve(next_, None, _FakeInfo(field_name="mlflowGetExperiment"), input={"experiment_id": "1"})
+    result = mw.resolve(
+        next_,
+        None,
+        _FakeInfo(field_name="mlflowGetExperiment"),
+        input={"experiment_id": "1"},
+    )
 
     assert result == "ok"
     assert called["count"] == 1
@@ -110,7 +136,11 @@ def test_search_filters_unreadable_experiments(monkeypatch: pytest.MonkeyPatch) 
 
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
 
     def fake_perm(exp_id: str, _user: str) -> _FakePermissionResult:
         return _FakePermissionResult(permission=_FakePermission(can_read=(exp_id in {"1", "3"})))
@@ -137,10 +167,16 @@ def test_run_based_field_uses_tracking_store(monkeypatch: pytest.MonkeyPatch) ->
 
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
     monkeypatch.setattr(mw_mod, "_get_tracking_store", lambda: _FakeTrackingStore(experiment_id="9"))
     monkeypatch.setattr(
-        mw_mod, "effective_experiment_permission", lambda exp_id, _user: _FakePermissionResult(permission=_FakePermission(can_read=(exp_id == "9")))
+        mw_mod,
+        "effective_experiment_permission",
+        lambda exp_id, _user: _FakePermissionResult(permission=_FakePermission(can_read=(exp_id == "9"))),
     )
 
     called = {"count": 0}
@@ -156,10 +192,16 @@ def test_run_based_field_uses_tracking_store(monkeypatch: pytest.MonkeyPatch) ->
     assert called["count"] == 1
 
 
-def test_search_model_versions_denied_without_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_model_versions_denied_without_filter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
 
     called = {"count": 0}
 
@@ -174,10 +216,16 @@ def test_search_model_versions_denied_without_filter(monkeypatch: pytest.MonkeyP
     assert called["count"] == 0
 
 
-def test_search_model_versions_authorized_by_model_name(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_model_versions_authorized_by_model_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
     monkeypatch.setattr(
         mw_mod,
         "effective_registered_model_permission",
@@ -202,10 +250,16 @@ def test_search_model_versions_authorized_by_model_name(monkeypatch: pytest.Monk
     assert called["count"] == 1
 
 
-def test_search_model_versions_authorized_by_run_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_model_versions_authorized_by_run_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
     monkeypatch.setattr(mw_mod, "_get_tracking_store", lambda: _FakeTrackingStore(experiment_id="9"))
     monkeypatch.setattr(
         mw_mod,
@@ -231,12 +285,18 @@ def test_search_model_versions_authorized_by_run_id(monkeypatch: pytest.MonkeyPa
     assert called["count"] == 1
 
 
-def test_search_model_versions_denied_for_complex_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_model_versions_denied_for_complex_filter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Complex/unknown filters should fail closed (return None)."""
 
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
 
     # Defensive: if the middleware unexpectedly tries to authorize by model name,
     # make the test fail loudly.
@@ -264,10 +324,16 @@ def test_search_model_versions_denied_for_complex_filter(monkeypatch: pytest.Mon
     assert called["count"] == 0
 
 
-def test_run_model_versions_field_checks_experiment(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_model_versions_field_checks_experiment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=False))
+    monkeypatch.setattr(
+        mw_mod,
+        "_get_auth_context",
+        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
+    )
     monkeypatch.setattr(
         mw_mod,
         "effective_experiment_permission",

@@ -163,7 +163,10 @@ class TestAppConfig(unittest.TestCase):
             self.assertEqual(config.OIDC_GROUP_NAME, ["group1", "group2", "group3"])
             self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, ["admin-group"])
             self.assertEqual(config.OIDC_PROVIDER_DISPLAY_NAME, "Custom OIDC Login")
-            self.assertEqual(config.OIDC_DISCOVERY_URL, "https://provider.example.com/.well-known/openid_configuration")
+            self.assertEqual(
+                config.OIDC_DISCOVERY_URL,
+                "https://provider.example.com/.well-known/openid_configuration",
+            )
             self.assertEqual(config.OIDC_GROUPS_ATTRIBUTE, "custom_groups")
             self.assertEqual(config.OIDC_SCOPE, "openid,email,profile,groups")
             self.assertEqual(config.OIDC_GROUP_DETECTION_PLUGIN, "custom_plugin")
@@ -245,7 +248,10 @@ class TestAppConfig(unittest.TestCase):
             self.assertFalse(config.AUTOMATIC_LOGIN_REDIRECT)
 
         # Test with empty string values
-        with patch.dict(os.environ, {"OIDC_GROUP_NAME": "", "PERMISSION_SOURCE_ORDER": "", "OIDC_SCOPE": ""}):
+        with patch.dict(
+            os.environ,
+            {"OIDC_GROUP_NAME": "", "PERMISSION_SOURCE_ORDER": "", "OIDC_SCOPE": ""},
+        ):
             config = AppConfig()
             self.assertEqual(config.OIDC_GROUP_NAME, [""])
             self.assertEqual(config.PERMISSION_SOURCE_ORDER, [""])
@@ -266,7 +272,13 @@ class TestAppConfig(unittest.TestCase):
             self.assertEqual(config.SECRET_KEY, "custom-secret-key-with-sufficient-length")
 
         # Test OIDC security settings
-        with patch.dict(os.environ, {"OIDC_CLIENT_SECRET": "secure-client-secret", "OIDC_SCOPE": "openid,email,profile"}):
+        with patch.dict(
+            os.environ,
+            {
+                "OIDC_CLIENT_SECRET": "secure-client-secret",
+                "OIDC_SCOPE": "openid,email,profile",
+            },
+        ):
             config = AppConfig()
             self.assertEqual(config.OIDC_CLIENT_SECRET, "secure-client-secret")
             self.assertEqual(config.OIDC_SCOPE, "openid,email,profile")
@@ -278,7 +290,11 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.OIDC_USERS_DB_URI, "sqlite:///auth.db")
 
         # Test custom database URIs
-        test_uris = ["postgresql://user:pass@localhost:5432/mlflow_auth", "mysql://user:pass@localhost:3306/mlflow_auth", "sqlite:///custom/path/auth.db"]
+        test_uris = [
+            "postgresql://user:pass@localhost:5432/mlflow_auth",
+            "mysql://user:pass@localhost:3306/mlflow_auth",
+            "sqlite:///custom/path/auth.db",
+        ]
 
         for uri in test_uris:
             with patch.dict(os.environ, {"OIDC_USERS_DB_URI": uri}):

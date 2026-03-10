@@ -112,7 +112,11 @@ class TestCreateUser:
         mock_store.get_user_profile.assert_called_once_with("bob")
         mock_generate_token.assert_called_once()
         mock_store.create_user.assert_called_once_with(
-            username="bob", password="test_password_123", display_name="Bob", is_admin=False, is_service_account=False
+            username="bob",
+            password="test_password_123",
+            display_name="Bob",
+            is_admin=False,
+            is_service_account=False,
         )
 
     @patch("mlflow_oidc_auth.user.generate_token", return_value="admin_password_456")
@@ -129,7 +133,11 @@ class TestCreateUser:
         mock_store.get_user_profile.assert_called_once_with("admin_user")
         mock_generate_token.assert_called_once()
         mock_store.create_user.assert_called_once_with(
-            username="admin_user", password="admin_password_456", display_name="Admin User", is_admin=True, is_service_account=False
+            username="admin_user",
+            password="admin_password_456",
+            display_name="Admin User",
+            is_admin=True,
+            is_service_account=False,
         )
 
     @patch("mlflow_oidc_auth.user.generate_token", return_value="service_password_789")
@@ -146,7 +154,11 @@ class TestCreateUser:
         mock_store.get_user_profile.assert_called_once_with("service_user")
         mock_generate_token.assert_called_once()
         mock_store.create_user.assert_called_once_with(
-            username="service_user", password="service_password_789", display_name="Service User", is_admin=False, is_service_account=True
+            username="service_user",
+            password="service_password_789",
+            display_name="Service User",
+            is_admin=False,
+            is_service_account=True,
         )
 
     @patch("mlflow_oidc_auth.user.generate_token", return_value="super_password_000")
@@ -163,7 +175,11 @@ class TestCreateUser:
         mock_store.get_user_profile.assert_called_once_with("super_user")
         mock_generate_token.assert_called_once()
         mock_store.create_user.assert_called_once_with(
-            username="super_user", password="super_password_000", display_name="Super User", is_admin=True, is_service_account=True
+            username="super_user",
+            password="super_password_000",
+            display_name="Super User",
+            is_admin=True,
+            is_service_account=True,
         )
 
     @patch("mlflow_oidc_auth.user.store")
@@ -340,7 +356,13 @@ def test_create_user_new_user(mock_store, mock_generate_token):
     mock_store.create_user.return_value = dummy
     result = user.create_user("bob", "Bob", is_admin=False, is_service_account=True)
     assert result == (True, f"User bob (ID: 2) successfully created")
-    mock_store.create_user.assert_called_once_with(username="bob", password="dummy_password", display_name="Bob", is_admin=False, is_service_account=True)
+    mock_store.create_user.assert_called_once_with(
+        username="bob",
+        password="dummy_password",
+        display_name="Bob",
+        is_admin=False,
+        is_service_account=True,
+    )
 
 
 @patch("mlflow_oidc_auth.user.store")

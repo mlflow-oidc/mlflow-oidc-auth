@@ -28,8 +28,8 @@ registered_model_permissions_router = APIRouter(
 LIST_MODELS = ""
 
 
-REGISTERED_MODEL_USER_PERMISSIONS = "/{name}/users"
-REGISTERED_MODEL_GROUP_PERMISSIONS = "/{name}/groups"
+REGISTERED_MODEL_USER_PERMISSIONS = "/{name:path}/users"
+REGISTERED_MODEL_GROUP_PERMISSIONS = "/{name:path}/groups"
 
 
 @registered_model_permissions_router.get(

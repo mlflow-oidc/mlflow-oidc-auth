@@ -728,7 +728,10 @@ class TestHackModuleIntegration:
 
         with patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app3)}):
             with patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True):
-                with patch("builtins.open", mock_open(read_data="<html><body>test</body></html>")):
+                with patch(
+                    "builtins.open",
+                    mock_open(read_data="<html><body>test</body></html>"),
+                ):
                     result3 = index()
                     assert isinstance(result3, str)
 
@@ -743,7 +746,10 @@ class TestHackModuleErrorHandling:
         mock_app.static_folder = "/fake/static/folder"
 
         with patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}):
-            with patch("mlflow_oidc_auth.hack.os.path.exists", side_effect=OSError("Permission denied to check file existence")):
+            with patch(
+                "mlflow_oidc_auth.hack.os.path.exists",
+                side_effect=OSError("Permission denied to check file existence"),
+            ):
                 # Call the function and expect exception
                 with pytest.raises(OSError, match="Permission denied to check file existence"):
                     index()
@@ -756,7 +762,10 @@ class TestHackModuleErrorHandling:
 
         with patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}):
             with patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True):
-                with patch("mlflow_oidc_auth.hack.os.path.join", side_effect=TypeError("Invalid path components")):
+                with patch(
+                    "mlflow_oidc_auth.hack.os.path.join",
+                    side_effect=TypeError("Invalid path components"),
+                ):
                     # Call the function and expect exception
                     with pytest.raises(TypeError, match="Invalid path components"):
                         index()

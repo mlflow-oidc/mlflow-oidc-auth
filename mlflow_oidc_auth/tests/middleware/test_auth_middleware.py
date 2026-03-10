@@ -145,7 +145,10 @@ class TestAuthMiddleware:
         """Test successful bearer token authentication."""
         mock_validate_token_func = MagicMock(side_effect=mock_validate_token)
 
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token_func):
+        with patch(
+            "mlflow_oidc_auth.middleware.auth_middleware.validate_token",
+            mock_validate_token_func,
+        ):
             auth_header = "Bearer valid_token"
 
             success, username, error = await auth_middleware._authenticate_bearer_token(auth_header)
@@ -162,7 +165,10 @@ class TestAuthMiddleware:
         def mock_validate_token(token):
             return {"preferred_username": "preferred@example.com", "exp": 9999999999}
 
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token):
+        with patch(
+            "mlflow_oidc_auth.middleware.auth_middleware.validate_token",
+            mock_validate_token,
+        ):
             auth_header = "Bearer valid_token"
 
             success, username, error = await auth_middleware._authenticate_bearer_token(auth_header)
@@ -174,7 +180,10 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_authenticate_bearer_token_invalid_payload(self, auth_middleware, mock_validate_token):
         """Test bearer token authentication with invalid payload (no email/username)."""
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token):
+        with patch(
+            "mlflow_oidc_auth.middleware.auth_middleware.validate_token",
+            mock_validate_token,
+        ):
             auth_header = "Bearer invalid_payload_token"
 
             success, username, error = await auth_middleware._authenticate_bearer_token(auth_header)
@@ -186,7 +195,10 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_authenticate_bearer_token_invalid_token(self, auth_middleware, mock_validate_token):
         """Test bearer token authentication with invalid token."""
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token):
+        with patch(
+            "mlflow_oidc_auth.middleware.auth_middleware.validate_token",
+            mock_validate_token,
+        ):
             auth_header = "Bearer invalid_token"
 
             success, username, error = await auth_middleware._authenticate_bearer_token(auth_header)
@@ -202,7 +214,10 @@ class TestAuthMiddleware:
         def mock_validate_token(token):
             raise ValueError("Token validation failed")
 
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token):
+        with patch(
+            "mlflow_oidc_auth.middleware.auth_middleware.validate_token",
+            mock_validate_token,
+        ):
             auth_header = "Bearer some_token"
 
             success, username, error = await auth_middleware._authenticate_bearer_token(auth_header)
@@ -277,7 +292,8 @@ class TestAuthMiddleware:
         """Test that basic auth takes priority over other methods."""
         with patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store):
             request = create_mock_request(
-                headers={"authorization": "Basic YWRtaW5AZXhhbXBsZS5jb206YWRtaW5fcGFzcw=="}, session={"username": "session_user@example.com"}
+                headers={"authorization": "Basic YWRtaW5AZXhhbXBsZS5jb206YWRtaW5fcGFzcw=="},
+                session={"username": "session_user@example.com"},
             )
 
             success, username, error = await auth_middleware._authenticate_user(request)
@@ -288,8 +304,14 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_authenticate_user_bearer_auth_priority(self, auth_middleware, create_mock_request, mock_validate_token):
         """Test that bearer auth takes priority over session."""
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token):
-            request = create_mock_request(headers={"authorization": "Bearer valid_token"}, session={"username": "session_user@example.com"})
+        with patch(
+            "mlflow_oidc_auth.middleware.auth_middleware.validate_token",
+            mock_validate_token,
+        ):
+            request = create_mock_request(
+                headers={"authorization": "Bearer valid_token"},
+                session={"username": "session_user@example.com"},
+            )
 
             success, username, error = await auth_middleware._authenticate_user(request)
 
@@ -484,7 +506,10 @@ class TestAuthMiddleware:
     async def test_dispatch_basic_auth_header(self, auth_middleware, create_mock_request, mock_store):
         """Test dispatch with basic authentication header."""
         with patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store):
-            request = create_mock_request(path="/protected", headers={"authorization": "Basic YWRtaW5AZXhhbXBsZS5jb206YWRtaW5fcGFzcw=="})
+            request = create_mock_request(
+                path="/protected",
+                headers={"authorization": "Basic YWRtaW5AZXhhbXBsZS5jb206YWRtaW5fcGFzcw=="},
+            )
 
             # Mock call_next
             async def mock_call_next(req):
@@ -500,7 +525,10 @@ class TestAuthMiddleware:
     async def test_dispatch_bearer_token_header(self, auth_middleware, create_mock_request, mock_validate_token):
         """Test dispatch with bearer token authentication header."""
         with (
-            patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token", mock_validate_token),
+            patch(
+                "mlflow_oidc_auth.middleware.auth_middleware.validate_token",
+                mock_validate_token,
+            ),
             patch("mlflow_oidc_auth.middleware.auth_middleware.store") as mock_store,
         ):
             # Mock store for admin status check
@@ -547,7 +575,10 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_dispatch_successful_authentication_logging(self, auth_middleware, create_mock_request, mock_store, mock_logger):
         """Test that successful authentication is properly logged."""
-        with patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store), patch("mlflow_oidc_auth.middleware.auth_middleware.logger", mock_logger):
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
+            patch("mlflow_oidc_auth.middleware.auth_middleware.logger", mock_logger),
+        ):
             request = create_mock_request(path="/protected", session={"username": "user@example.com"})
 
             # Mock call_next

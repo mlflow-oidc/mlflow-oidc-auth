@@ -6,8 +6,16 @@ from mlflow_oidc_auth.validators import run
 
 
 class DummyPermission:
-    def __init__(self, can_read=False, can_update=False, can_delete=False, can_manage=False):
+    def __init__(
+        self,
+        can_read=False,
+        can_use=False,
+        can_update=False,
+        can_delete=False,
+        can_manage=False,
+    ):
         self.can_read = can_read
+        self.can_use = can_use
         self.can_update = can_update
         self.can_delete = can_delete
         self.can_manage = can_manage
@@ -221,7 +229,10 @@ def test_validate_with_very_long_run_id():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value=long_run_id),
+        patch(
+            "mlflow_oidc_auth.validators.run.get_request_param",
+            return_value=long_run_id,
+        ),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run

@@ -156,7 +156,11 @@ def mock_oauth():
         return_value={
             "access_token": "mock_access_token",
             "id_token": "mock_id_token",
-            "userinfo": {"email": "test@example.com", "name": "Test User", "groups": ["test-group"]},
+            "userinfo": {
+                "email": "test@example.com",
+                "name": "Test User",
+                "groups": ["test-group"],
+            },
         }
     )
     oidc_mock.fetch_jwk_set = AsyncMock(return_value={"keys": []})

@@ -59,7 +59,12 @@ def _create_run(client: httpx.Client, experiment_id: str, run_name: str | None =
     payload = {
         "experiment_id": experiment_id,
         "start_time": int(time.time() * 1000),
-        "tags": [{"key": "mlflow.runName", "value": run_name or f"run-{uuid.uuid4().hex[:8]}"}],
+        "tags": [
+            {
+                "key": "mlflow.runName",
+                "value": run_name or f"run-{uuid.uuid4().hex[:8]}",
+            }
+        ],
     }
 
     resp = client.post(api, json=payload)
@@ -171,7 +176,10 @@ def _create_prompt(client: httpx.Client, prompt_name: str, prompt_text: str) -> 
     # Create the prompt (registered model with tags)
     create_resp = client.post(
         create_api,
-        json={"name": prompt_name, "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}]},
+        json={
+            "name": prompt_name,
+            "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}],
+        },
     )
     if create_resp.status_code != 200:
         return False

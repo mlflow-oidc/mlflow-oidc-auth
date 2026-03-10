@@ -209,6 +209,7 @@ export function EntityPermissionsManager({
           title={`Grant user permissions for ${resourceName}`}
           label="User"
           options={availableUsers}
+          type={resourceType}
           isLoading={isSaving}
         />
       )}
@@ -224,6 +225,7 @@ export function EntityPermissionsManager({
           title={`Grant service account permissions for ${resourceName}`}
           label="Service account"
           options={availableAccounts}
+          type={resourceType}
           isLoading={isSaving}
         />
       )}
@@ -243,6 +245,7 @@ export function EntityPermissionsManager({
           title={`Grant group permissions for ${resourceName}`}
           label="Group"
           options={availableGroups}
+          type={resourceType}
           isLoading={isSaving}
         />
       )}

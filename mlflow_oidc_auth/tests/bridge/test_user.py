@@ -182,7 +182,10 @@ class TestBridgeIntegration:
         """Test complete user data transformation through bridge"""
         # Mock the Flask request import
         mock_request = Mock()
-        mock_request.environ = {"mlflow_oidc_auth.username": "admin@example.com", "mlflow_oidc_auth.is_admin": True}
+        mock_request.environ = {
+            "mlflow_oidc_auth.username": "admin@example.com",
+            "mlflow_oidc_auth.is_admin": True,
+        }
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             username = get_fastapi_username()
@@ -223,7 +226,10 @@ class TestBridgeIntegration:
         """Test bridge performance with multiple rapid calls"""
         # Mock the Flask request import
         mock_request = Mock()
-        mock_request.environ = {"mlflow_oidc_auth.username": "perf_user@example.com", "mlflow_oidc_auth.is_admin": True}
+        mock_request.environ = {
+            "mlflow_oidc_auth.username": "perf_user@example.com",
+            "mlflow_oidc_auth.is_admin": True,
+        }
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             # Make multiple calls to test performance
@@ -267,7 +273,10 @@ class TestBridgeErrorHandling:
         """Test bridge behavior with malformed environ data"""
         # Mock the Flask request import
         mock_request = Mock()
-        mock_request.environ = {"mlflow_oidc_auth.username": {"invalid": "object"}, "mlflow_oidc_auth.is_admin": ["invalid", "list"]}
+        mock_request.environ = {
+            "mlflow_oidc_auth.username": {"invalid": "object"},
+            "mlflow_oidc_auth.is_admin": ["invalid", "list"],
+        }
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             # Username should still be retrieved (even if it's an object)
@@ -327,7 +336,10 @@ class TestBridgeErrorHandling:
         """Test that bridge functions log appropriately"""
         # Mock the Flask request import
         mock_request = Mock()
-        mock_request.environ = {"mlflow_oidc_auth.username": "log_user@example.com", "mlflow_oidc_auth.is_admin": True}
+        mock_request.environ = {
+            "mlflow_oidc_auth.username": "log_user@example.com",
+            "mlflow_oidc_auth.is_admin": True,
+        }
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             # Call functions
@@ -384,7 +396,10 @@ class TestBridgeDataValidation:
         """Test that bridge is case-sensitive for environ keys"""
         # Mock the Flask request import with wrong case
         mock_request = Mock()
-        mock_request.environ = {"MLFLOW_OIDC_AUTH.USERNAME": "user@example.com", "mlflow_oidc_auth.IS_ADMIN": True}  # Wrong case  # Wrong case
+        mock_request.environ = {
+            "MLFLOW_OIDC_AUTH.USERNAME": "user@example.com",
+            "mlflow_oidc_auth.IS_ADMIN": True,
+        }  # Wrong case  # Wrong case
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             # Should not find the username with wrong case

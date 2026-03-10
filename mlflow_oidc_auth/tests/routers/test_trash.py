@@ -8,7 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 from mlflow.entities import ViewType
 
-from mlflow_oidc_auth.routers.trash import list_deleted_experiments, list_deleted_runs, permanently_delete_all_trashed_entities, restore_experiment, restore_run
+from mlflow_oidc_auth.routers.trash import (
+    list_deleted_experiments,
+    list_deleted_runs,
+    permanently_delete_all_trashed_entities,
+    restore_experiment,
+    restore_run,
+)
 
 
 class TestListDeletedExperimentsEndpoint:
@@ -381,7 +387,12 @@ class TestAdditionalTrashBehaviour:
         backend_store.get_experiment.side_effect = Exception("missing")
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", run_ids=None, experiment_ids="nope", older_than=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids=None,
+            experiment_ids="nope",
+            older_than=None,
+        )
         assert result.status_code == 404
         import json
 
@@ -401,7 +412,12 @@ class TestAdditionalTrashBehaviour:
         backend_store.get_experiment.return_value = active
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", run_ids=None, experiment_ids="a1", older_than=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids=None,
+            experiment_ids="a1",
+            older_than=None,
+        )
         assert result.status_code == 400
         import json
 
@@ -444,7 +460,12 @@ class TestAdditionalTrashBehaviour:
 
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", run_ids="run-1", experiment_ids="exp-1", older_than=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="run-1",
+            experiment_ids="exp-1",
+            older_than=None,
+        )
         assert result.status_code == 200
         import json
 
@@ -473,7 +494,12 @@ class TestAdditionalTrashBehaviour:
 
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", run_ids="run-2", experiment_ids="e2", older_than=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="run-2",
+            experiment_ids="e2",
+            older_than=None,
+        )
         assert result.status_code == 200
         import json
 
@@ -516,7 +542,15 @@ class TestAdditionalTrashBehaviour:
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == [
-            {"run_id": "r1", "experiment_id": "exp-1", "run_name": "n1", "status": "FINISHED", "start_time": 1, "end_time": 2, "lifecycle_stage": "deleted"}
+            {
+                "run_id": "r1",
+                "experiment_id": "exp-1",
+                "run_name": "n1",
+                "status": "FINISHED",
+                "start_time": 1,
+                "end_time": 2,
+                "lifecycle_stage": "deleted",
+            }
         ]
 
     @pytest.mark.asyncio
@@ -582,7 +616,12 @@ class TestAdditionalTrashBehaviour:
 
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None, run_ids=None, experiment_ids=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            older_than=None,
+            run_ids=None,
+            experiment_ids=None,
+        )
         assert result.status_code == 200
         import json
 
@@ -671,7 +710,12 @@ class TestAdditionalTrashBehaviour:
         backend_store.get_run.return_value = run
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than="1d", run_ids="r1", experiment_ids=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            older_than="1d",
+            run_ids="r1",
+            experiment_ids=None,
+        )
         assert result.status_code == 200
         import json
 
@@ -697,7 +741,12 @@ class TestAdditionalTrashBehaviour:
         backend_store.get_experiment.return_value = active_exp
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than="1d", run_ids=None, experiment_ids="eX")
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            older_than="1d",
+            run_ids=None,
+            experiment_ids="eX",
+        )
         assert result.status_code == 400
         import json
 
@@ -771,7 +820,12 @@ class TestAdditionalTrashBehaviour:
 
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None, run_ids=None, experiment_ids=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            older_than=None,
+            run_ids=None,
+            experiment_ids=None,
+        )
         assert result.status_code == 200
         import json
 
@@ -787,7 +841,12 @@ class TestAdditionalTrashBehaviour:
         backend_store._get_deleted_runs.side_effect = Exception("boom-fetch")
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None, run_ids=None, experiment_ids=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            older_than=None,
+            run_ids=None,
+            experiment_ids=None,
+        )
         assert result.status_code == 200
         import json
 
@@ -802,7 +861,12 @@ class TestAdditionalTrashBehaviour:
         backend_store._hard_delete_run = MagicMock()
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than="bad", run_ids=None, experiment_ids=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            older_than="bad",
+            run_ids=None,
+            experiment_ids=None,
+        )
         assert result.status_code == 400
 
     @pytest.mark.asyncio
@@ -854,7 +918,12 @@ class TestAdditionalTrashBehaviour:
         mock_repo.delete_artifacts.side_effect = Exception("boom-artifact")
         mock_get_artifact_repo.return_value = mock_repo
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", run_ids="r1", experiment_ids=None, older_than=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids=None,
+            older_than=None,
+        )
         assert result.status_code == 200
         import json
 
@@ -883,7 +952,12 @@ class TestAdditionalTrashBehaviour:
         mock_repo.delete_artifacts.return_value = None
         mock_get_artifact_repo.return_value = mock_repo
 
-        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", run_ids="r1", experiment_ids=None, older_than=None)
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids=None,
+            older_than=None,
+        )
         assert result.status_code == 200
         import json
 
@@ -914,7 +988,12 @@ class TestAdditionalTrashBehaviour:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None, run_ids=None, experiment_ids=None)
+            result = await permanently_delete_all_trashed_entities(
+                admin_username="admin@example.com",
+                older_than=None,
+                run_ids=None,
+                experiment_ids=None,
+            )
             assert result.status_code == 200
             import json
 
@@ -931,7 +1010,12 @@ class TestAdditionalTrashBehaviour:
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as excinfo:
-            await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None, run_ids=None, experiment_ids=None)
+            await permanently_delete_all_trashed_entities(
+                admin_username="admin@example.com",
+                older_than=None,
+                run_ids=None,
+                experiment_ids=None,
+            )
 
         assert excinfo.value.status_code == 500
         assert excinfo.value.detail == "Cleanup operation failed"

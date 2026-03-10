@@ -42,7 +42,11 @@ def create_experiment(
         print(f"Experiment {experiment_name} already exists")
         return True
     if respone.status_code == 404:
-        respone = httpx.post(url=urljoin(url, create_api), json={"name": experiment_name}, cookies=cookies)
+        respone = httpx.post(
+            url=urljoin(url, create_api),
+            json={"name": experiment_name},
+            cookies=cookies,
+        )
         if respone.status_code == 200:
             print(f"Experiment {experiment_name} created")
             return True
@@ -59,7 +63,11 @@ def _build_seed_scorers() -> list[Any]:
     def response_length(outputs: dict[str, Any] | None = None) -> Feedback:
         text = (outputs or {}).get("response", "")
         length = len(text)
-        return Feedback(value=length, rationale=f"Response length = {length}", metadata={"chars": length})
+        return Feedback(
+            value=length,
+            rationale=f"Response length = {length}",
+            metadata={"chars": length},
+        )
 
     @scorer_decorator
     def contains_hello(outputs: dict[str, Any] | None = None) -> Feedback:
@@ -106,7 +114,12 @@ def create_prompt(
     print(respone.status_code)
     if respone.status_code == 404:
         respone = httpx.post(
-            url=urljoin(url, create_api), json={"name": prompt_name, "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}]}, cookies=cookies
+            url=urljoin(url, create_api),
+            json={
+                "name": prompt_name,
+                "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}],
+            },
+            cookies=cookies,
         )
         if respone.status_code == 200:
             print(f"Prompt {prompt_name} created")
@@ -117,7 +130,10 @@ def create_prompt(
                     "name": prompt_name,
                     "description": commit_message,
                     "source": source,
-                    "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}, {"key": "mlflow.prompt.text", "value": prompt_text}],
+                    "tags": [
+                        {"key": "mlflow.prompt.is_prompt", "value": "true"},
+                        {"key": "mlflow.prompt.text", "value": prompt_text},
+                    ],
                 },
                 cookies=cookies,
             )
@@ -212,7 +228,12 @@ def create_access_token_for_user(
 ) -> tuple[bool, str]:
     """Request an access token for the target user using admin cookies."""
 
-    response = httpx.patch(url=urljoin(base_url, access_token_api), json={"username": username}, cookies=cookies, timeout=10.0)
+    response = httpx.patch(
+        url=urljoin(base_url, access_token_api),
+        json={"username": username},
+        cookies=cookies,
+        timeout=10.0,
+    )
     if response.status_code == 404:
         return False, "access-token endpoint unavailable"
 
@@ -365,7 +386,12 @@ def set_prompt_permission(
     return set_model_permission(prompt_name, user_email, permission, cookies, url)
 
 
-def get_experiment_id(experiment_name: str, cookies: httpx.Cookies, url: str = "http://localhost:8080/", api: str = "api/2.0/mlflow/experiments") -> str:
+def get_experiment_id(
+    experiment_name: str,
+    cookies: httpx.Cookies,
+    url: str = "http://localhost:8080/",
+    api: str = "api/2.0/mlflow/experiments",
+) -> str:
     """Resolve experiment_id using the get-by-name API (more reliable across deployments)."""
 
     get_by_name_api = "ajax-api/2.0/mlflow/experiments/get-by-name?experiment_name="
@@ -400,7 +426,10 @@ def set_group_experiment_permission(
         return False, f"Experiment {experiment_name} not found"
 
     # New RESTful API path
-    api_url = urljoin(url, f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/experiments/{quote(experiment_id)}")
+    api_url = urljoin(
+        url,
+        f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/experiments/{quote(experiment_id)}",
+    )
 
     # Delete existing permission first (ignore errors - permission may not exist)
     # Note: Server returns 500 when permission doesn't exist, not 404
@@ -456,7 +485,10 @@ def set_group_model_permission(
     - DELETE api/2.0/mlflow/permissions/groups/{group_name}/registered-models/{name} to delete
     """
     # New RESTful API path
-    api_url = urljoin(url, f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/registered-models/{quote(model_name)}")
+    api_url = urljoin(
+        url,
+        f"api/2.0/mlflow/permissions/groups/{quote(group_name)}/registered-models/{quote(model_name)}",
+    )
 
     # Delete existing permission first (ignore errors - permission may not exist)
     # Note: Server returns 500 when permission doesn't exist, not 404

@@ -17,6 +17,7 @@ describe("RuntimeConfigProvider", () => {
       basePath: "/test-base",
       uiPath: "/ui",
       provider: "oidc",
+      gen_ai_gateway_enabled: false,
     };
     render(
       <RuntimeConfigProvider config={mockConfig}>

@@ -15,6 +15,7 @@ vi.mock("../../../shared/services/runtime-config", () => ({
       uiPath: "",
       provider: "",
       authenticated: true,
+      gen_ai_gateway_enabled: false,
     }),
   ),
 }));
@@ -134,6 +135,18 @@ describe("usePermissionsManagement", () => {
       kind: "group",
       expectedUrl: "/api/2.0/mlflow/permissions/groups/name1/prompts/id1",
     },
+    {
+      type: "ai-endpoints",
+      kind: "user",
+      expectedUrl:
+        "/api/2.0/mlflow/permissions/users/name1/gateways/endpoints/id1",
+    },
+    {
+      type: "ai-endpoints",
+      kind: "group",
+      expectedUrl:
+        "/api/2.0/mlflow/permissions/groups/name1/gateways/endpoints/id1",
+    },
   ];
 
   describe("CRUD operations across all resource types and kinds", () => {
@@ -246,6 +259,7 @@ describe("usePermissionsManagement", () => {
       uiPath: "",
       provider: "",
       authenticated: true,
+      gen_ai_gateway_enabled: false,
     });
     vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
     const { result } = renderHook(() =>

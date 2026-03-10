@@ -209,7 +209,10 @@ class TestCLIArgumentParsing:
         ]
 
         for url in test_urls:
-            with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+            with (
+                patch("mlflow_oidc_auth.db.cli.utils.migrate"),
+                patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+            ):
                 mock_engine.return_value = MagicMock()
 
                 self.runner.invoke(upgrade, ["--url", url])
@@ -229,7 +232,10 @@ class TestCLIArgumentParsing:
         ]
 
         for revision in test_revisions:
-            with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+            with (
+                patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+                patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+            ):
                 mock_engine.return_value = MagicMock()
 
                 result = self.runner.invoke(upgrade, ["--url", "sqlite:///test.db", "--revision", revision])
@@ -248,7 +254,10 @@ class TestCLIArgumentParsing:
         ]
 
         for url in special_urls:
-            with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+            with (
+                patch("mlflow_oidc_auth.db.cli.utils.migrate"),
+                patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+            ):
                 mock_engine.return_value = MagicMock()
 
                 self.runner.invoke(upgrade, ["--url", url])
@@ -257,7 +266,10 @@ class TestCLIArgumentParsing:
 
     def test_long_argument_names(self):
         """Test that long argument names work correctly."""
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate"),
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
 
             result = self.runner.invoke(upgrade, ["--url", "sqlite:///test.db", "--revision", "head"])
@@ -266,7 +278,10 @@ class TestCLIArgumentParsing:
 
     def test_argument_order_independence(self):
         """Test that argument order doesn't matter."""
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
 
             # Test different argument orders
@@ -322,7 +337,10 @@ class TestCLIErrorHandling:
 
     def test_migration_errors(self):
         """Test error handling for migration failures."""
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
             mock_migrate.side_effect = SQLAlchemyError("Migration script error")
 
@@ -341,7 +359,10 @@ class TestCLIErrorHandling:
 
     def test_unexpected_errors(self):
         """Test error handling for unexpected errors."""
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
             mock_migrate.side_effect = Exception("Unexpected error")
 
@@ -351,7 +372,10 @@ class TestCLIErrorHandling:
 
     def test_keyboard_interrupt_handling(self):
         """Test handling of keyboard interrupts during execution."""
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
             mock_migrate.side_effect = KeyboardInterrupt()
 
@@ -361,7 +385,10 @@ class TestCLIErrorHandling:
 
     def test_resource_cleanup_on_error(self):
         """Test current behavior: resources are NOT cleaned up on errors."""
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine_instance = MagicMock()
             mock_engine.return_value = mock_engine_instance
             mock_migrate.side_effect = SQLAlchemyError("Test error")
@@ -385,7 +412,10 @@ class TestCLISecurity:
         # Test that passwords in URLs are handled securely
         sensitive_url = "postgresql://user:secretpass@localhost:5432/db"
 
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate"),
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
 
             self.runner.invoke(upgrade, ["--url", sensitive_url])
@@ -403,7 +433,10 @@ class TestCLISecurity:
         ]
 
         for revision in malicious_revisions:
-            with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+            with (
+                patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+                patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+            ):
                 mock_engine.return_value = MagicMock()
 
                 result = self.runner.invoke(upgrade, ["--url", "sqlite:///test.db", "--revision", revision])
@@ -461,7 +494,10 @@ class TestCLISecurity:
         os.environ["SENSITIVE_VAR"] = "secret_value"
 
         try:
-            with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+            with (
+                patch("mlflow_oidc_auth.db.cli.utils.migrate"),
+                patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+            ):
                 mock_engine.return_value = MagicMock()
 
                 result = self.runner.invoke(upgrade, ["--url", "sqlite:///test.db"])
@@ -557,7 +593,10 @@ class TestCLIEdgeCases:
         long_url = "sqlite:///" + "a" * 1000 + ".db"
         long_revision = "b" * 500
 
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate"), patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate"),
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
 
             self.runner.invoke(upgrade, ["--url", long_url, "--revision", long_revision])
@@ -570,7 +609,10 @@ class TestCLIEdgeCases:
         unicode_url = "sqlite:///tëst_databäse.db"
         unicode_revision = "rëvisiön_123"
 
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
 
             self.runner.invoke(upgrade, ["--url", unicode_url, "--revision", unicode_revision])
@@ -586,7 +628,10 @@ class TestCLIEdgeCases:
         url_with_spaces = "sqlite:///path with spaces/test.db"
         revision_with_spaces = "  head  "
 
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
 
             self.runner.invoke(upgrade, ["--url", url_with_spaces, "--revision", revision_with_spaces])
@@ -599,7 +644,10 @@ class TestCLIEdgeCases:
 
     def test_case_sensitivity(self):
         """Test case sensitivity of parameters."""
-        with patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate, patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine:
+        with (
+            patch("mlflow_oidc_auth.db.cli.utils.migrate") as mock_migrate,
+            patch("mlflow_oidc_auth.db.cli.sqlalchemy.create_engine") as mock_engine,
+        ):
             mock_engine.return_value = MagicMock()
 
             # Test different case variations

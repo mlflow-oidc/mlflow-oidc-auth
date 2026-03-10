@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.registered_model_permission import RegisteredModelPermissionRepository
+from mlflow_oidc_auth.repository.registered_model_permission import (
+    RegisteredModelPermissionRepository,
+)
 
 
 @pytest.fixture
@@ -33,7 +35,10 @@ def test_create_success(repo, session):
     session.flush = MagicMock()
 
     with (
-        patch("mlflow_oidc_auth.repository.registered_model_permission.get_user", return_value=user),
+        patch(
+            "mlflow_oidc_auth.repository.registered_model_permission.get_user",
+            return_value=user,
+        ),
         patch("mlflow_oidc_auth.db.models.SqlRegisteredModelPermission", return_value=perm),
         patch("mlflow_oidc_auth.repository.registered_model_permission._validate_permission"),
     ):
@@ -48,9 +53,18 @@ def test_create_integrity_error(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock(side_effect=Exception("IntegrityError"))
     with (
-        patch("mlflow_oidc_auth.repository.registered_model_permission.get_user", return_value=user),
-        patch("mlflow_oidc_auth.db.models.SqlRegisteredModelPermission", return_value=MagicMock()),
-        patch("mlflow_oidc_auth.repository.registered_model_permission.IntegrityError", Exception),
+        patch(
+            "mlflow_oidc_auth.repository.registered_model_permission.get_user",
+            return_value=user,
+        ),
+        patch(
+            "mlflow_oidc_auth.db.models.SqlRegisteredModelPermission",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "mlflow_oidc_auth.repository.registered_model_permission.IntegrityError",
+            Exception,
+        ),
     ):
         with pytest.raises(MlflowException):
             repo.create("name", "user", "READ")
@@ -68,7 +82,10 @@ def test_list_for_user(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().all.return_value = [perm]
-    with patch("mlflow_oidc_auth.repository.registered_model_permission.get_user", return_value=user):
+    with patch(
+        "mlflow_oidc_auth.repository.registered_model_permission.get_user",
+        return_value=user,
+    ):
         assert repo.list_for_user("user") == ["entity"]
 
 

@@ -92,6 +92,10 @@ Group B: experiment_123 -> MANAGE (priority 3)
 
 ## Regex Permission System
 
+## Gateway Permissions
+
+Gateways are now a first-class resource in the permission system. Permission sources (user, group, regex, group-regex) are evaluated in the same order as other resources. Use the same permission levels (READ, EDIT, MANAGE) to control gateway discovery and proxy operations. The plugin exposes APIs under `/mlflow/permissions/gateways` for administering gateway permissions.
+
 ### Pattern Syntax
 The system uses Python regular expression syntax:
 - `.*` - Matches any experiment/model name

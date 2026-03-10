@@ -4,7 +4,9 @@ import pytest
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.experiment_permission_regex_group import ExperimentPermissionGroupRegexRepository
+from mlflow_oidc_auth.repository.experiment_permission_regex_group import (
+    ExperimentPermissionGroupRegexRepository,
+)
 
 
 @pytest.fixture
@@ -30,7 +32,10 @@ def test_get(repo, session):
     row = MagicMock()
     row.to_mlflow_entity.return_value = "entity"
     session.query().filter().one.return_value = row
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group):
+    with patch(
+        "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group",
+        return_value=group,
+    ):
         assert repo.get("g", "r") == "entity"
 
 
@@ -39,7 +44,10 @@ def test_update(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group",
+            return_value=group,
+        ),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex_group._validate_permission"),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.validate_regex"),
         patch.object(repo, "_get_experiment_group_regex_permission", return_value=perm),
@@ -55,10 +63,17 @@ def test_update(repo, session):
 def test_update_not_found(repo, session):
     group = MagicMock(id=4)
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group",
+            return_value=group,
+        ),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex_group._validate_permission"),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.validate_regex"),
-        patch.object(repo, "_get_experiment_group_regex_permission", side_effect=ValueError("No permission found")),
+        patch.object(
+            repo,
+            "_get_experiment_group_regex_permission",
+            side_effect=ValueError("No permission found"),
+        ),
     ):
         with pytest.raises(ValueError):
             repo.update(1, "g", "r", 2, "EDIT")
@@ -68,7 +83,10 @@ def test_revoke(repo, session):
     group = MagicMock(id=5)
     perm = MagicMock()
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group",
+            return_value=group,
+        ),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.validate_regex"),
         patch.object(repo, "_get_experiment_group_regex_permission", return_value=perm),
     ):
@@ -82,9 +100,16 @@ def test_revoke(repo, session):
 def test_revoke_not_found(repo, session):
     group = MagicMock(id=6)
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group",
+            return_value=group,
+        ),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.validate_regex"),
-        patch.object(repo, "_get_experiment_group_regex_permission", side_effect=ValueError("No permission found")),
+        patch.object(
+            repo,
+            "_get_experiment_group_regex_permission",
+            side_effect=ValueError("No permission found"),
+        ),
     ):
         with pytest.raises(ValueError):
             repo.revoke("g", "r")
@@ -98,8 +123,14 @@ def test_list_permissions_for_user_groups(repo, session):
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().order_by().all.return_value = [perm]
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.list_user_groups", return_value=[group1, group2]),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_user",
+            return_value=user,
+        ),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex_group.list_user_groups",
+            return_value=[group1, group2],
+        ),
     ):
         result = repo.list_permissions_for_user_groups("user")
         assert result == ["entity"]
@@ -118,10 +149,16 @@ def test_grant(repo, session):
     session.add = MagicMock()
     session.flush = MagicMock()
     with (
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group",
+            return_value=group,
+        ),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex_group._validate_permission"),
         patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.validate_regex"),
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.SqlExperimentGroupRegexPermission", return_value=perm),
+        patch(
+            "mlflow_oidc_auth.repository.experiment_permission_regex_group.SqlExperimentGroupRegexPermission",
+            return_value=perm,
+        ),
     ):
         result = repo.grant("g", "r", 1, "EDIT")
         assert result == "entity"
@@ -134,7 +171,10 @@ def test_list_permissions_for_group(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().order_by().all.return_value = [perm]
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", return_value=group):
+    with patch(
+        "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group",
+        return_value=group,
+    ):
         result = repo.list_permissions_for_group("g")
         assert result == ["entity"]
 
@@ -145,7 +185,10 @@ def test_list_permissions_for_groups(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().order_by().all.return_value = [perm]
-    with patch("mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group", side_effect=[group1, group2]):
+    with patch(
+        "mlflow_oidc_auth.repository.experiment_permission_regex_group.get_group",
+        side_effect=[group1, group2],
+    ):
         result = repo.list_permissions_for_groups(["g1", "g2"])
         assert result == ["entity"]
 

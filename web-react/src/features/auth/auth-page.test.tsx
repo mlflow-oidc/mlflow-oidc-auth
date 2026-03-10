@@ -27,6 +27,7 @@ describe("AuthPage", () => {
       basePath: "/api",
       uiPath: "/ui",
       authenticated: false,
+      gen_ai_gateway_enabled: false,
     });
     mockUseAuthErrors.mockReturnValue([]);
   });

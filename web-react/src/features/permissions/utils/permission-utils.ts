@@ -52,6 +52,39 @@ export const getPermissionUrl = ({
               identifier,
             );
       }
+      if (type === "ai-endpoints") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PATTERN_PERMISSION(
+              entityName,
+              identifier,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION(
+              entityName,
+              identifier,
+            );
+      }
+      if (type === "ai-secrets") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_SECRET_PATTERN_PERMISSION(
+              entityName,
+              identifier,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_SECRET_PATTERN_PERMISSION(
+              entityName,
+              identifier,
+            );
+      }
+      if (type === "ai-models") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PATTERN_PERMISSION(
+              entityName,
+              identifier,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_MODEL_PATTERN_PERMISSION(
+              entityName,
+              identifier,
+            );
+      }
     } else {
       // Pattern permissions collection (POST to create)
       if (type === "experiments") {
@@ -72,6 +105,33 @@ export const getPermissionUrl = ({
         return entityKind === "user"
           ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PATTERN_PERMISSIONS(entityName)
           : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PATTERN_PERMISSIONS(entityName);
+      }
+      if (type === "ai-endpoints") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS(
+              entityName,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS(
+              entityName,
+            );
+      }
+      if (type === "ai-secrets") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_SECRET_PATTERN_PERMISSIONS(
+              entityName,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS(
+              entityName,
+            );
+      }
+      if (type === "ai-models") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PATTERN_PERMISSIONS(
+              entityName,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_MODEL_PATTERN_PERMISSIONS(
+              entityName,
+            );
       }
     }
   } else {
@@ -104,6 +164,39 @@ export const getPermissionUrl = ({
               identifier,
             );
       }
+      if (type === "ai-endpoints") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSION(
+              entityName,
+              identifier,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSION(
+              entityName,
+              identifier,
+            );
+      }
+      if (type === "ai-secrets") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_SECRET_PERMISSION(
+              entityName,
+              identifier,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_SECRET_PERMISSION(
+              entityName,
+              identifier,
+            );
+      }
+      if (type === "ai-models") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PERMISSION(
+              entityName,
+              identifier,
+            )
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_MODEL_PERMISSION(
+              entityName,
+              identifier,
+            );
+      }
     } else {
       // Normal permissions collection
       if (type === "experiments") {
@@ -120,6 +213,23 @@ export const getPermissionUrl = ({
         return entityKind === "user"
           ? DYNAMIC_API_ENDPOINTS.USER_PROMPT_PERMISSIONS(entityName)
           : DYNAMIC_API_ENDPOINTS.GROUP_PROMPT_PERMISSIONS(entityName);
+      }
+      if (type === "ai-endpoints") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_ENDPOINT_PERMISSIONS(entityName)
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_ENDPOINT_PERMISSIONS(
+              entityName,
+            );
+      }
+      if (type === "ai-secrets") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_SECRET_PERMISSIONS(entityName)
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_SECRET_PERMISSIONS(entityName);
+      }
+      if (type === "ai-models") {
+        return entityKind === "user"
+          ? DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PERMISSIONS(entityName)
+          : DYNAMIC_API_ENDPOINTS.GROUP_GATEWAY_MODEL_PERMISSIONS(entityName);
       }
     }
   }

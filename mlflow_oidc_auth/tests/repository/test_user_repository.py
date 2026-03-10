@@ -33,7 +33,10 @@ def test_create_success(repo, session):
 
     with (
         patch("mlflow_oidc_auth.db.models.SqlUser", return_value=user),
-        patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"),
+        patch(
+            "mlflow_oidc_auth.repository.user.generate_password_hash",
+            return_value="hashed",
+        ),
         patch("mlflow_oidc_auth.repository.user._validate_username"),
     ):
         result = repo.create("user", "pw", "disp")
@@ -47,7 +50,10 @@ def test_create_integrity_error(repo, session):
     session.flush = MagicMock(side_effect=IntegrityError("statement", "params", "orig"))
     with (
         patch("mlflow_oidc_auth.db.models.SqlUser", return_value=MagicMock()),
-        patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"),
+        patch(
+            "mlflow_oidc_auth.repository.user.generate_password_hash",
+            return_value="hashed",
+        ),
         patch("mlflow_oidc_auth.repository.user._validate_username"),
     ):
         with pytest.raises(MlflowException) as exc:
@@ -99,7 +105,10 @@ def test_update_partial_fields(repo, session):
     session.flush = MagicMock()
     with (
         patch("mlflow_oidc_auth.repository.user.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"),
+        patch(
+            "mlflow_oidc_auth.repository.user.generate_password_hash",
+            return_value="hashed",
+        ),
     ):
         result = repo.update("user", password=None, is_admin=None, is_service_account=None)
         assert result == "entity"
@@ -112,7 +121,10 @@ def test_update_all_fields(repo, session):
     session.flush = MagicMock()
     with (
         patch("mlflow_oidc_auth.repository.user.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"),
+        patch(
+            "mlflow_oidc_auth.repository.user.generate_password_hash",
+            return_value="hashed",
+        ),
     ):
         result = repo.update("user", password="new_pw", is_admin=True, is_service_account=True)
         assert result == "entity"

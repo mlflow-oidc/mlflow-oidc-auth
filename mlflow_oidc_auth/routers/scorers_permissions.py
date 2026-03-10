@@ -30,8 +30,8 @@ scorers_permissions_router = APIRouter(
 )
 
 LIST_SCORERS = "/{experiment_id}"
-SCORER_USER_PERMISSIONS = "/{experiment_id}/{scorer_name}/users"
-SCORER_GROUP_PERMISSIONS = "/{experiment_id}/{scorer_name}/groups"
+SCORER_USER_PERMISSIONS = "/{experiment_id}/{scorer_name:path}/users"
+SCORER_GROUP_PERMISSIONS = "/{experiment_id}/{scorer_name:path}/groups"
 
 
 @scorers_permissions_router.get(

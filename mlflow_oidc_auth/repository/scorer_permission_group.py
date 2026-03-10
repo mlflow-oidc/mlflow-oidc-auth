@@ -5,7 +5,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGroup, SqlScorerGroupPermission
-from mlflow_oidc_auth.entities import ScorerGroupPermission
+from mlflow_oidc_auth.entities import ScorerPermission
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
 from mlflow_oidc_auth.repository.utils import get_group, get_user, list_user_groups
 
@@ -35,7 +35,7 @@ class ScorerPermissionGroupRepository:
             user_groups = session.query(SqlGroup).filter(SqlGroup.id.in_([ug.group_id for ug in user_groups_ids])).all()
             return [ug.group_name for ug in user_groups]
 
-    def grant_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerGroupPermission:
+    def grant_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerPermission:
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)
@@ -49,13 +49,13 @@ class ScorerPermissionGroupRepository:
             session.flush()
             return perm.to_mlflow_entity()
 
-    def list_permissions_for_group(self, group_name: str) -> List[ScorerGroupPermission]:
+    def list_permissions_for_group(self, group_name: str) -> List[ScorerPermission]:
         with self._Session() as session:
             group = get_group(session, group_name)
             rows = session.query(SqlScorerGroupPermission).filter(SqlScorerGroupPermission.group_id == group.id).all()
             return [r.to_mlflow_entity() for r in rows]
 
-    def list_permissions_for_group_id(self, group_id: int) -> List[ScorerGroupPermission]:
+    def list_permissions_for_group_id(self, group_id: int) -> List[ScorerPermission]:
         with self._Session() as session:
             rows = session.query(SqlScorerGroupPermission).filter(SqlScorerGroupPermission.group_id == group_id).all()
             return [r.to_mlflow_entity() for r in rows]
@@ -76,7 +76,7 @@ class ScorerPermissionGroupRepository:
             )
             return [(str(group_name), str(permission)) for group_name, permission in rows]
 
-    def get_group_permission_for_user_scorer(self, experiment_id: str, scorer_name: str, username: str) -> ScorerGroupPermission:
+    def get_group_permission_for_user_scorer(self, experiment_id: str, scorer_name: str, username: str) -> ScorerPermission:
         with self._Session() as session:
             user_groups = self._list_user_groups(username)
             best: Optional[SqlScorerGroupPermission] = None
@@ -101,7 +101,7 @@ class ScorerPermissionGroupRepository:
                 RESOURCE_DOES_NOT_EXIST,
             )
 
-    def update_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerGroupPermission:
+    def update_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerPermission:
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)

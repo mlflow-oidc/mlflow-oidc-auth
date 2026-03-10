@@ -52,6 +52,20 @@ from mlflow_oidc_auth.validators.stuff import (
     validate_can_read_metric_history_bulk,
     validate_can_search_datasets,
     validate_gateway_proxy,
+    validate_can_create_gateway,
+)
+
+from mlflow_oidc_auth.validators.gateway import (
+    validate_can_read_gateway_endpoint,
+    validate_can_update_gateway_endpoint,
+    validate_can_delete_gateway_endpoint,
+    validate_can_manage_gateway_endpoint_validator,
+    validate_can_read_gateway_secret,
+    validate_can_update_gateway_secret,
+    validate_can_delete_gateway_secret,
+    validate_can_read_gateway_model_definition,
+    validate_can_update_gateway_model_definition,
+    validate_can_delete_gateway_model_definition,
 )
 
 __all__ = [
@@ -94,5 +108,16 @@ __all__ = [
     "validate_can_read_metric_history_bulk",
     "validate_can_search_datasets",
     "validate_can_create_promptlab_run",
+    "validate_can_create_gateway",
     "validate_gateway_proxy",
+    "validate_can_read_gateway_endpoint",
+    "validate_can_update_gateway_endpoint",
+    "validate_can_delete_gateway_endpoint",
+    "validate_can_manage_gateway_endpoint_validator",
+    "validate_can_read_gateway_secret",
+    "validate_can_update_gateway_secret",
+    "validate_can_delete_gateway_secret",
+    "validate_can_read_gateway_model_definition",
+    "validate_can_update_gateway_model_definition",
+    "validate_can_delete_gateway_model_definition",
 ]

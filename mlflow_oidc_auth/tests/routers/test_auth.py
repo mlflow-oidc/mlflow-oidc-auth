@@ -101,7 +101,11 @@ class TestLoginEndpoint:
             assert request.session["oauth_state"] == "test_state_token"
 
             # Verify OAuth redirect was called
-            mock_oauth.oidc.authorize_redirect.assert_called_once_with(request, redirect_uri="http://localhost:8000/callback", state="test_state_token")
+            mock_oauth.oidc.authorize_redirect.assert_called_once_with(
+                request,
+                redirect_uri="http://localhost:8000/callback",
+                state="test_state_token",
+            )
 
     @pytest.mark.asyncio
     async def test_login_oauth_not_configured(self, mock_request_with_session):
@@ -243,7 +247,10 @@ class TestCallbackEndpoint:
             patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
             patch("mlflow_oidc_auth.routers.auth._process_oidc_callback_fastapi") as mock_process,
         ):
-            mock_process.return_value = (None, ["Authentication failed", "Invalid token"])
+            mock_process.return_value = (
+                None,
+                ["Authentication failed", "Invalid token"],
+            )
 
             result = await callback(request)
 
@@ -273,7 +280,12 @@ class TestCallbackEndpoint:
     @pytest.mark.asyncio
     async def test_callback_with_redirect_after_login(self, mock_request_with_session):
         """Test callback with custom redirect after login."""
-        request = mock_request_with_session({"oauth_state": "test_state", "redirect_after_login": "http://localhost:8000/custom"})
+        request = mock_request_with_session(
+            {
+                "oauth_state": "test_state",
+                "redirect_after_login": "http://localhost:8000/custom",
+            }
+        )
 
         with (
             patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
@@ -366,7 +378,10 @@ class TestProcessOIDCCallbackFastAPI:
         request = mock_request_with_session({"oauth_state": "test_state"})
         request.query_params = {"state": "test_state", "code": "auth_code_123"}
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+        ):
             email, errors = await _process_oidc_callback_fastapi(request, request.session)
 
             assert email == "test@example.com"
@@ -378,7 +393,14 @@ class TestProcessOIDCCallbackFastAPI:
             mock_user_management["update_user"].assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_callback_refreshes_jwks_on_bad_signature(self, mock_request_with_session, mock_oauth, mock_config, mock_user_management, caplog):
+    async def test_process_callback_refreshes_jwks_on_bad_signature(
+        self,
+        mock_request_with_session,
+        mock_oauth,
+        mock_config,
+        mock_user_management,
+        caplog,
+    ):
         """Retry token exchange after JWKS refresh when the provider rotates signing keys."""
 
         caplog.set_level("DEBUG", logger="uvicorn")
@@ -390,12 +412,19 @@ class TestProcessOIDCCallbackFastAPI:
             {
                 "access_token": "token",
                 "id_token": "id_token",
-                "userinfo": {"email": "test@example.com", "name": "Test User", "groups": ["test-group"]},
+                "userinfo": {
+                    "email": "test@example.com",
+                    "name": "Test User",
+                    "groups": ["test-group"],
+                },
             },
         ]
         mock_oauth.oidc.fetch_jwk_set = AsyncMock()
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+        ):
             email, errors = await _process_oidc_callback_fastapi(request, request.session)
 
         assert errors == [], f"{caplog.text} call_count={mock_oauth.oidc.authorize_access_token.call_count}"
@@ -408,7 +437,10 @@ class TestProcessOIDCCallbackFastAPI:
     async def test_process_callback_oidc_error(self, mock_request_with_session):
         """Test callback processing with OIDC provider error."""
         request = mock_request_with_session({"oauth_state": "test_state"})
-        request.query_params = {"error": "access_denied", "error_description": "User denied access"}
+        request.query_params = {
+            "error": "access_denied",
+            "error_description": "User denied access",
+        }
 
         email, errors = await _process_oidc_callback_fastapi(request, request.session)
 
@@ -525,14 +557,21 @@ class TestProcessOIDCCallbackFastAPI:
         mock_oauth.oidc.authorize_access_token.return_value = {
             "access_token": "token",
             "id_token": "id_token",
-            "userinfo": {"email": "unauthorized@example.com", "name": "Unauthorized User", "groups": ["unauthorized-group"]},  # Not in allowed groups
+            "userinfo": {
+                "email": "unauthorized@example.com",
+                "name": "Unauthorized User",
+                "groups": ["unauthorized-group"],
+            },  # Not in allowed groups
         }
 
         # Mock config with specific allowed groups
         mock_config.OIDC_ADMIN_GROUP_NAME = ["admin-group"]
         mock_config.OIDC_GROUP_NAME = ["user-group"]
 
-        with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+        ):
             email, errors = await _process_oidc_callback_fastapi(request, request.session)
 
             assert email is None

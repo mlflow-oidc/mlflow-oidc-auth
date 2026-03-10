@@ -94,6 +94,9 @@ class AppConfig:
         self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = config_manager.get_bool("DEFAULT_LANDING_PAGE_IS_PERMISSIONS", default=True)
         self.AUTOMATIC_LOGIN_REDIRECT = config_manager.get_bool("AUTOMATIC_LOGIN_REDIRECT", default=False)
 
+        # Feature flags
+        self.OIDC_GEN_AI_GATEWAY_ENABLED = config_manager.get_bool("OIDC_GEN_AI_GATEWAY_ENABLED", default=True)
+
     def refresh(self) -> None:
         """Reload configuration from all providers.
 

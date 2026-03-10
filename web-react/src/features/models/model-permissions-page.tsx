@@ -1,8 +1,7 @@
 import { useParams } from "react-router";
-import PageContainer from "../../shared/components/page/page-container";
 import { useModelUserPermissions } from "../../core/hooks/use-model-user-permissions";
 import { useModelGroupPermissions } from "../../core/hooks/use-model-group-permissions";
-import { EntityPermissionsManager } from "../permissions/components/entity-permissions-manager";
+import { EntityPermissionsPageLayout } from "../permissions/components/entity-permissions-page-layout";
 
 export default function ModelPermissionsPage() {
   const { modelName } = useParams<{
@@ -30,26 +29,21 @@ export default function ModelPermissionsPage() {
     refreshGroup();
   };
 
-  const allPermissions = [
-    ...(modelUserPermissions || []),
-    ...(modelGroupPermissions || []),
-  ];
-
   if (!modelName) {
     return <div>Model Name is required.</div>;
   }
 
   return (
-    <PageContainer title={`Permissions for Model ${modelName}`}>
-      <EntityPermissionsManager
-        resourceId={modelName}
-        resourceName={modelName}
-        resourceType="models"
-        permissions={allPermissions}
-        isLoading={isLoading}
-        error={error}
-        refresh={refresh}
-      />
-    </PageContainer>
+    <EntityPermissionsPageLayout
+      title={`Permissions for Model ${modelName}`}
+      resourceId={modelName}
+      resourceName={modelName}
+      resourceType="models"
+      userPermissions={modelUserPermissions}
+      groupPermissions={modelGroupPermissions}
+      isLoading={isLoading}
+      error={error}
+      refresh={refresh}
+    />
   );
 }

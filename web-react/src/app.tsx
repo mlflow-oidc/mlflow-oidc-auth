@@ -7,6 +7,24 @@ import MainLayout from "./core/components/main-layout";
 import ForbiddenPage from "./features/forbidden/forbidden-page";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
+const AiEndpointsPage = React.lazy(
+  () => import("./features/ai-gateway/ai-endpoints-page"),
+);
+const AiEndpointsPermissionPage = React.lazy(
+  () => import("./features/ai-gateway/ai-endpoints-permission-page"),
+);
+const AiSecretsPage = React.lazy(
+  () => import("./features/ai-gateway/ai-secrets-page"),
+);
+const AiSecretsPermissionPage = React.lazy(
+  () => import("./features/ai-gateway/ai-secrets-permissions-page"),
+);
+const AiModelsPage = React.lazy(
+  () => import("./features/ai-gateway/ai-models-page"),
+);
+const AiModelsPermissionPage = React.lazy(
+  () => import("./features/ai-gateway/ai-models-permissions-page"),
+);
 const ExperimentsPage = React.lazy(
   () => import("./features/experiments/experiments-page"),
 );
@@ -61,6 +79,54 @@ export default function App() {
   return (
     <Routes>
       <Route
+        path="/ai-gateway/ai-endpoints"
+        element={
+          <ProtectedLayoutRoute>
+            <AiEndpointsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/ai-gateway/ai-endpoints/:name"
+        element={
+          <ProtectedLayoutRoute>
+            <AiEndpointsPermissionPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/ai-gateway/secrets"
+        element={
+          <ProtectedLayoutRoute>
+            <AiSecretsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/ai-gateway/secrets/:name"
+        element={
+          <ProtectedLayoutRoute>
+            <AiSecretsPermissionPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/ai-gateway/models"
+        element={
+          <ProtectedLayoutRoute>
+            <AiModelsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/ai-gateway/models/:name"
+        element={
+          <ProtectedLayoutRoute>
+            <AiModelsPermissionPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/auth"
         element={
           <RedirectIfAuth fallback={<LoadingSpinner />}>
@@ -113,6 +179,30 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <GroupPermissionsPage type="prompts" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/groups/:groupName/ai-endpoints"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="ai-endpoints" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/groups/:groupName/ai-secrets"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="ai-secrets" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/groups/:groupName/ai-models"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="ai-models" />
           </ProtectedLayoutRoute>
         }
       />
@@ -180,6 +270,30 @@ export default function App() {
           </ProtectedLayoutRoute>
         }
       />
+      <Route
+        path="/service-accounts/:username/ai-endpoints"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="ai-endpoints" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/service-accounts/:username/ai-secrets"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="ai-secrets" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/service-accounts/:username/ai-models"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="ai-models" />
+          </ProtectedLayoutRoute>
+        }
+      />
 
       <Route
         path="/trash/:tab?"
@@ -226,6 +340,30 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <UserPermissionsPage type="prompts" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/ai-endpoints"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="ai-endpoints" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/ai-secrets"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="ai-secrets" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/ai-models"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="ai-models" />
           </ProtectedLayoutRoute>
         }
       />
