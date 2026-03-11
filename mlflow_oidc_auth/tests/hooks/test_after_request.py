@@ -121,7 +121,7 @@ def test_set_can_manage_experiment_permission(mock_response, mock_store, mock_br
             return_value=mock_response_message,
         ):
             _set_can_manage_experiment_permission(mock_response)
-            mock_store.create_experiment_permission.assert_called_once_with("test_exp_123", "test_user", "MANAGE")
+            mock_store.create_experiment_permission.assert_called_once_with("test_exp_123", "test_user", "OWNER")
 
 
 def test_set_can_manage_registered_model_permission(mock_response, mock_store, mock_bridge):
@@ -807,7 +807,7 @@ def test_after_request_hook_with_handler(mock_response, mock_store, mock_bridge)
         ):
             result = after_request_hook(mock_response)
             assert result == mock_response
-            mock_store.create_experiment_permission.assert_called_once_with("test_exp_123", "test_user", "MANAGE")
+            mock_store.create_experiment_permission.assert_called_once_with("test_exp_123", "test_user", "OWNER")
 
 
 def test_after_request_hook_graphql_excluded():

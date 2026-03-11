@@ -97,6 +97,20 @@ class AppConfig:
         # Feature flags
         self.OIDC_GEN_AI_GATEWAY_ENABLED = config_manager.get_bool("OIDC_GEN_AI_GATEWAY_ENABLED", default=True)
 
+        # Quota settings
+        self.QUOTA_SMTP_HOST = config_manager.get("QUOTA_SMTP_HOST", "localhost")
+        self.QUOTA_SMTP_PORT = config_manager.get_int("QUOTA_SMTP_PORT", default=587)
+        self.QUOTA_SMTP_USERNAME = config_manager.get("QUOTA_SMTP_USERNAME")
+        self.QUOTA_SMTP_PASSWORD = config_manager.get("QUOTA_SMTP_PASSWORD")
+        self.QUOTA_SMTP_FROM = config_manager.get("QUOTA_SMTP_FROM", "mlflow-quota@localhost")
+        self.QUOTA_SMTP_TLS = config_manager.get_bool("QUOTA_SMTP_TLS", default=True)
+        _quota_bytes = config_manager.get("QUOTA_DEFAULT_BYTES")
+        self.QUOTA_DEFAULT_BYTES = int(_quota_bytes) if _quota_bytes is not None else None
+        _soft_cap = config_manager.get("QUOTA_SOFT_CAP_FRACTION")
+        self.QUOTA_SOFT_CAP_FRACTION = float(_soft_cap) if _soft_cap is not None else 0.9
+        self.QUOTA_RECONCILE_INTERVAL_S = config_manager.get_int("QUOTA_RECONCILE_INTERVAL_S", default=3600)
+        self.QUOTA_TRASH_RETENTION_DAYS = config_manager.get_int("QUOTA_TRASH_RETENTION_DAYS", default=30)
+
     def refresh(self) -> None:
         """Reload configuration from all providers.
 

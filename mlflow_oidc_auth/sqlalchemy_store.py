@@ -28,6 +28,7 @@ from mlflow_oidc_auth.repository import (
     ExperimentPermissionRepository,
     GroupRepository,
     PromptPermissionGroupRepository,
+    QuotaRepository,
     RegisteredModelGroupRegexPermissionRepository,
     RegisteredModelPermissionGroupRepository,
     RegisteredModelPermissionRegexRepository,
@@ -95,6 +96,7 @@ class SqlAlchemyStore:
         self.gateway_model_definition_group_repo = GatewayModelDefinitionGroupPermissionRepository(self.ManagedSessionMaker)
         self.gateway_model_definition_regex_repo = GatewayModelDefinitionPermissionRegexRepository(self.ManagedSessionMaker)
         self.gateway_model_definition_group_regex_repo = GatewayModelDefinitionPermissionGroupRegexRepository(self.ManagedSessionMaker)
+        self.quota_repo = QuotaRepository(self.ManagedSessionMaker)
 
     def ping(self) -> bool:
         """Lightweight database connectivity check for health probes.
@@ -719,3 +721,41 @@ class SqlAlchemyStore:
 
     def delete_group_gateway_model_definition_regex_permission(self, id: int, group_name: str):
         return self.gateway_model_definition_group_regex_repo.revoke(id, group_name)
+
+    # Quota CRUD
+    def get_user_quota(self, username: str):
+        return self.quota_repo.get_quota(username)
+
+    def list_all_user_quotas(self):
+        return self.quota_repo.list_all_quotas()
+
+    def set_user_quota(self, username: str, quota_bytes, soft_cap_fraction=None):
+        return self.quota_repo.set_quota(username, quota_bytes, soft_cap_fraction)
+
+    def update_quota_email(self, username: str, email) -> None:
+        return self.quota_repo.update_email(username, email)
+
+    def delete_user_quota(self, username: str) -> None:
+        return self.quota_repo.delete_quota(username)
+
+    def update_user_quota_used_bytes(self, username: str, used_bytes: int) -> None:
+        return self.quota_repo.update_used_bytes(username, used_bytes)
+
+    def increment_user_quota_used_bytes(self, username: str, delta: int) -> None:
+        return self.quota_repo.increment_used_bytes(username, delta)
+
+    def set_quota_hard_blocked(self, username: str, blocked: bool) -> None:
+        return self.quota_repo.set_hard_blocked(username, blocked)
+
+    def set_quota_soft_notified_at(self, username: str, value) -> None:
+        return self.quota_repo.set_soft_notified_at(username, value)
+
+    def get_user_by_id(self, user_id: int):
+        """Look up a user by numeric ID. Returns User entity or None."""
+        from mlflow_oidc_auth.db.models import SqlUser
+
+        with self.ManagedSessionMaker() as session:
+            u = session.query(SqlUser).filter(SqlUser.id == user_id).one_or_none()
+            if u is None:
+                return None
+            return u.to_mlflow_entity()

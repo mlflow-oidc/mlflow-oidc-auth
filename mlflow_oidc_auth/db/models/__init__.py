@@ -22,6 +22,7 @@ from mlflow_oidc_auth.db.models.gateway_secret import (
     SqlGatewaySecretPermission,
     SqlGatewaySecretRegexPermission,
 )
+from mlflow_oidc_auth.db.models.quota import SqlUserQuota
 from mlflow_oidc_auth.db.models.user import SqlUser, SqlGroup, SqlUserGroup
 from mlflow_oidc_auth.db.models.registered_model import (
     SqlRegisteredModelGroupPermission,
@@ -32,6 +33,7 @@ from mlflow_oidc_auth.db.models.registered_model import (
 from mlflow_oidc_auth.db.models.scorer import SqlScorerGroupPermission, SqlScorerGroupRegexPermission, SqlScorerPermission, SqlScorerRegexPermission
 
 __all__ = [
+    "SqlUserQuota",
     "SqlUser",
     "SqlGroup",
     "SqlUserGroup",

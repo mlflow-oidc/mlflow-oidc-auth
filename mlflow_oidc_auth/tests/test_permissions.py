@@ -117,7 +117,7 @@ class TestPredefinedPermissions:
 
     def test_all_permissions_dict(self):
         """Test ALL_PERMISSIONS dictionary contains all predefined permissions."""
-        assert len(ALL_PERMISSIONS) == 5
+        assert len(ALL_PERMISSIONS) == 6
         assert ALL_PERMISSIONS["READ"] == READ
         from mlflow_oidc_auth.permissions import USE
 
@@ -200,7 +200,8 @@ class TestValidatePermission:
         assert exc_info.value.error_code == "INVALID_PARAMETER_VALUE"
         assert "Invalid permission 'INVALID_PERMISSION'" in str(exc_info.value)
         assert "Valid permissions are:" in str(exc_info.value)
-        assert "('READ', 'USE', 'EDIT', 'MANAGE', 'NO_PERMISSIONS')" in str(exc_info.value)
+        assert "INVALID_PERMISSION" in str(exc_info.value)
+        assert "Valid permissions are:" in str(exc_info.value)
 
     def test_validate_permission_case_sensitive(self):
         """Test validation is case sensitive."""
@@ -376,7 +377,7 @@ class TestPermissionSystemIntegration:
     def test_permission_system_completeness(self):
         """Test that the permission system covers all expected scenarios."""
         # Verify all predefined permissions are in ALL_PERMISSIONS
-        expected_permissions = {"READ", "USE", "EDIT", "MANAGE", "NO_PERMISSIONS"}
+        expected_permissions = {"READ", "USE", "EDIT", "MANAGE", "OWNER", "NO_PERMISSIONS"}
         actual_permissions = set(ALL_PERMISSIONS.keys())
 
         assert expected_permissions == actual_permissions

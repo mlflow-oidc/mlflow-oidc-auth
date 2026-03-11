@@ -24,6 +24,7 @@ from mlflow.protos.model_registry_pb2 import (
 )
 from mlflow.protos.service_pb2 import (
     AttachModelToGatewayEndpoint,
+    CreateExperiment,
     CreateGatewayEndpoint,
     CreateGatewayEndpointBinding,
     CreateGatewayModelDefinition,
@@ -279,6 +280,18 @@ BEFORE_REQUEST_VALIDATORS.update(
     }
 )
 
+_SENTINEL = object()
+_CREATE_EXPERIMENT_VALIDATORS = frozenset(
+    (http_path, method)
+    for http_path, _, methods in get_endpoints(lambda rc: _SENTINEL if rc is CreateExperiment else None)
+    for method in methods
+)
+_CREATE_RUN_VALIDATORS = frozenset(
+    (http_path, method)
+    for http_path, _, methods in get_endpoints(lambda rc: _SENTINEL if rc is CreateRun else None)
+    for method in methods
+)
+
 LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
     CreateLoggedModel: validate_can_update_experiment,
     GetLoggedModel: validate_can_read_logged_model,
@@ -340,6 +353,63 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
         return BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
 
 
+def _check_quota(username: str) -> Optional[Any]:
+    """Check storage quota for quota-sensitive operations.
+
+    Returns a forbidden/limit-exceeded response if quota is breached, None otherwise.
+    Quota enforcement applies only to non-admin users (callers must check admin status).
+    """
+    from mlflow.exceptions import MlflowException
+
+    from mlflow_oidc_auth.utils.quota import enforce_quota, get_experiment_owner
+
+    path = request.path
+    method = request.method
+
+    try:
+        # CreateExperiment — charge the requesting user (who becomes OWNER)
+        if (path, method) in _CREATE_EXPERIMENT_VALIDATORS:
+            enforce_quota(username)
+            return None
+
+        # CreateRun — charge the experiment OWNER
+        if (path, method) in _CREATE_RUN_VALIDATORS:
+            data = request.get_json(force=True, silent=True) or {}
+            experiment_id = data.get("experiment_id")
+            if experiment_id:
+                owner = get_experiment_owner(str(experiment_id))
+                if owner:
+                    enforce_quota(owner)
+            return None
+
+        # Artifact upload (PUT) — charge the experiment OWNER and track bytes
+        # (check inline to avoid double-calling _is_proxy_artifact_path)
+        _proxy_prefix = f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts/"
+        if path.startswith(_proxy_prefix) and method == "PUT":
+            prefix = _proxy_prefix
+            remainder = path[len(prefix):]
+            experiment_id = remainder.split("/")[0] if remainder else None
+            if experiment_id:
+                owner = get_experiment_owner(experiment_id)
+                if owner:
+                    enforce_quota(owner)
+                    # Incremental tracking: add Content-Length to used_bytes now
+                    content_length = request.content_length
+                    if content_length and content_length > 0:
+                        from mlflow_oidc_auth.store import store
+
+                        store.increment_user_quota_used_bytes(owner, content_length)
+            return None
+
+    except MlflowException as exc:
+        logger.warning(f"Quota exceeded for user '{username}': {exc.message}")
+        return responses.make_forbidden_response()
+    except Exception as exc:
+        logger.warning(f"Quota check error for user '{username}': {exc}")
+
+    return None
+
+
 def before_request_hook():
     """Called before each request. If it did not return a response,
     the view function for the matched route is called and returns a response"""
@@ -364,6 +434,9 @@ def before_request_hook():
         if validator := _get_proxy_artifact_validator(request.method, request.view_args):
             if not validator(username):
                 return responses.make_forbidden_response()
+
+    # quota enforcement (non-admins only)
+    return _check_quota(username)
 
 
 before_request_hook = catch_mlflow_exception(before_request_hook)

@@ -23,6 +23,7 @@ from mlflow_oidc_auth.routers.trash import trash_router
 from mlflow_oidc_auth.routers.ui import ui_router
 from mlflow_oidc_auth.routers.user_permissions import user_permissions_router
 from mlflow_oidc_auth.routers.users import users_router
+from mlflow_oidc_auth.routers.quota import ownership_router, quota_router
 from mlflow_oidc_auth.routers.webhook import webhook_router
 
 __all__ = [
@@ -41,6 +42,8 @@ __all__ = [
     "user_permissions_router",
     "users_router",
     "webhook_router",
+    "quota_router",
+    "ownership_router",
 ]
 
 
@@ -67,4 +70,6 @@ def get_all_routers() -> List[APIRouter]:
         user_permissions_router,
         users_router,
         webhook_router,
+        quota_router,
+        ownership_router,
     ]

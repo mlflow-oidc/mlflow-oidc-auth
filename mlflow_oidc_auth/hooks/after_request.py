@@ -23,7 +23,7 @@ from mlflow.utils.search_utils import SearchUtils
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.permissions import MANAGE
+from mlflow_oidc_auth.permissions import MANAGE, OWNER
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_model_name
 from mlflow_oidc_auth.utils.permissions import can_read_gateway_endpoint, can_read_gateway_model_definition, can_read_gateway_secret
@@ -34,7 +34,7 @@ def _set_can_manage_experiment_permission(resp: Response):
     parse_dict(resp.json, response_message)
     experiment_id = response_message.experiment_id
     username = get_fastapi_username()
-    store.create_experiment_permission(experiment_id, username, MANAGE.name)
+    store.create_experiment_permission(experiment_id, username, OWNER.name)
 
 
 def _set_can_manage_registered_model_permission(resp: Response):

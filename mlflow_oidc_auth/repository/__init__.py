@@ -1,3 +1,4 @@
+from mlflow_oidc_auth.repository.quota import QuotaRepository
 from mlflow_oidc_auth.repository.experiment_permission import ExperimentPermissionRepository
 from mlflow_oidc_auth.repository.experiment_permission_group import ExperimentPermissionGroupRepository
 from mlflow_oidc_auth.repository.group import GroupRepository
@@ -31,6 +32,7 @@ from mlflow_oidc_auth.repository.gateway_model_definition_group_permissions impo
 from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permissions import GatewayModelDefinitionPermissionGroupRegexRepository
 
 __all__ = [
+    "QuotaRepository",
     "ExperimentPermissionRepository",
     "ExperimentPermissionGroupRepository",
     "GroupRepository",

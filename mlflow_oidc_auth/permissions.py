@@ -55,6 +55,16 @@ MANAGE = Permission(
     can_manage=True,
 )
 
+OWNER = Permission(
+    name="OWNER",
+    priority=5,
+    can_read=True,
+    can_use=True,
+    can_update=True,
+    can_delete=True,
+    can_manage=True,
+)
+
 NO_PERMISSIONS = Permission(
     name="NO_PERMISSIONS",
     priority=100,
@@ -70,6 +80,7 @@ ALL_PERMISSIONS = {
     USE.name: USE,
     EDIT.name: EDIT,
     MANAGE.name: MANAGE,
+    OWNER.name: OWNER,
     NO_PERMISSIONS.name: NO_PERMISSIONS,
 }
 

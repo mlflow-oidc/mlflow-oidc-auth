@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -8,6 +9,7 @@ from mlflow_oidc_auth.db.models.experiment import SqlExperimentPermission
 from mlflow_oidc_auth.db.models.gateway_endpoint import SqlGatewayEndpointPermission
 from mlflow_oidc_auth.db.models.gateway_model_definition import SqlGatewayModelDefinitionPermission
 from mlflow_oidc_auth.db.models.gateway_secret import SqlGatewaySecretPermission
+from mlflow_oidc_auth.db.models.quota import SqlUserQuota
 from mlflow_oidc_auth.db.models.registered_model import SqlRegisteredModelPermission
 from mlflow_oidc_auth.db.models.scorer import SqlScorerPermission
 from mlflow_oidc_auth.entities import Group, User, UserGroup
@@ -30,6 +32,7 @@ class SqlUser(Base):
         "SqlGatewayModelDefinitionPermission", backref="users"
     )
     gateway_secret_permissions: Mapped[list["SqlGatewaySecretPermission"]] = relationship("SqlGatewaySecretPermission", backref="users")
+    quota: Mapped[Optional["SqlUserQuota"]] = relationship("SqlUserQuota", uselist=False, backref="user")
     groups: Mapped[list["SqlGroup"]] = relationship(
         "SqlGroup",
         secondary="user_groups",

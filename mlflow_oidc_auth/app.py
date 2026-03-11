@@ -59,7 +59,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "OIDC authentication will not be available until configuration is corrected."
         )
 
+    # Startup: Initialize background scheduler
+    from mlflow_oidc_auth.scheduler import init_scheduler
+
+    init_scheduler()
+
     yield  # App runs here
+
+    # Shutdown: Stop background scheduler
+    from mlflow_oidc_auth.scheduler import shutdown_scheduler
+
+    shutdown_scheduler()
 
     # Shutdown: Cleanup if needed
     logger.info("Shutting down MLflow OIDC Auth Plugin...")
