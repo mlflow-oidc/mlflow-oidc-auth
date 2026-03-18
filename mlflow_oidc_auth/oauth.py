@@ -50,7 +50,7 @@ def ensure_oidc_client_registered() -> bool:
             client_id=config.OIDC_CLIENT_ID,
             client_secret=config.OIDC_CLIENT_SECRET,
             server_metadata_url=config.OIDC_DISCOVERY_URL,
-            client_kwargs={"scope": config.OIDC_SCOPE},
+            client_kwargs={"verify": config.OIDC_VERIFY_SSL, "scope": config.OIDC_SCOPE},
         )
         _oidc_client_registered = True
         return True

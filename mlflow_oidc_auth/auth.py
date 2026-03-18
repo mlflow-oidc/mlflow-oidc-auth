@@ -4,7 +4,6 @@ from authlib.jose.errors import BadSignatureError
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.user import create_user, populate_groups, update_user
 
 logger = get_logger()
 
@@ -24,13 +23,13 @@ def _get_oidc_jwks() -> dict:
 
     try:
         logger.debug("Fetching OIDC discovery metadata")
-        metadata = requests.get(config.OIDC_DISCOVERY_URL).json()
+        metadata = requests.get(config.OIDC_DISCOVERY_URL, verify=config.OIDC_VERIFY_SSL).json()
         jwks_uri = metadata.get("jwks_uri")
         if not jwks_uri:
             raise ValueError("No jwks_uri found in OIDC discovery metadata")
 
         logger.debug(f"Fetching JWKS from {jwks_uri}")
-        jwks = requests.get(jwks_uri).json()
+        jwks = requests.get(jwks_uri, verify=config.OIDC_VERIFY_SSL).json()
         return jwks
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch OIDC JWKS: {e}")
