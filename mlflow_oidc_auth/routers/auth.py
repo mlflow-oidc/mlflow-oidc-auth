@@ -197,6 +197,7 @@ async def logout(request: Request):
         # Get and clear session (using Starlette's built-in session)
         session = request.session
         username = session.get("username")
+        id_token = session.get("id_token")
         session.clear()
 
         if username:
@@ -210,7 +211,7 @@ async def logout(request: Request):
             if end_session_endpoint:
                 # Redirect to OIDC provider logout with post-logout redirect to auth page
                 post_logout_redirect = _build_ui_url(request, "/auth")
-                logout_url = f"{end_session_endpoint}?post_logout_redirect_uri={post_logout_redirect}"
+                logout_url = f"{end_session_endpoint}?post_logout_redirect_uri={post_logout_redirect}&id_token_hint={id_token}"
                 return RedirectResponse(url=logout_url, status_code=302)
 
         # Default redirect to auth page using the helper function
@@ -383,6 +384,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         access_token = token_response.get("access_token")
         id_token = token_response.get("id_token")
         userinfo = token_response.get("userinfo")
+        session["id_token"] = id_token
 
         if not userinfo:
             errors.append("No user information received")
