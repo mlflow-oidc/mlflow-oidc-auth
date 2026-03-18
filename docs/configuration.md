@@ -16,6 +16,7 @@ The application can be configured through environment variables, dotenv files, o
 | `OIDC_PROVIDER_DISPLAY_NAME` | String | `Login with OIDC` | Display name for the OIDC provider shown on the login page |
 | `OIDC_GROUPS_ATTRIBUTE` | String | `groups` | The attribute name in the ID token that contains user groups |
 | `OIDC_GROUP_DETECTION_PLUGIN` | String | None | Custom plugin for enhanced group detection |
+| `OIDC_VERIFY_SSL` | Boolean | `true` | Disable TLS verification for the OIDC provider |
 | `EXTEND_MLFLOW_MENU` | Boolean | `true` | Extend MLflow UI with OIDC management features |
 | `DEFAULT_LANDING_PAGE_IS_PERMISSIONS` | Boolean | `true` | Use the permissions page as the default landing page |
 

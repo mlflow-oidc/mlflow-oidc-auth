@@ -74,6 +74,7 @@ class AppConfig:
         # OIDC provider settings
         self.OIDC_DISCOVERY_URL = config_manager.get("OIDC_DISCOVERY_URL")
         self.OIDC_CLIENT_ID = config_manager.get("OIDC_CLIENT_ID")
+        self.OIDC_VERIFY_SSL = config_manager.get_bool("OIDC_VERIFY_SSL", default=True)
         # OIDC_REDIRECT_URI: If not set, will be calculated dynamically based on request headers
         # This enables automatic proxy path detection for OIDC callbacks
         self.OIDC_REDIRECT_URI = config_manager.get("OIDC_REDIRECT_URI")
