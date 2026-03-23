@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-23T21:12:05.094Z"
+status: Phase 3 complete — ready for Phase 4
+stopped_at: Phase 3 committed
+last_updated: "2026-03-23T21:30:00.000Z"
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  completed_phases: 3
+  total_plans: 8
+  completed_plans: 8
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Multi-tenant resource isolation — organizations share an MLflow instance while each tenant sees only their own resources
-**Current focus:** Phase 02 — workspace-auth-enforcement
+**Current focus:** Phase 03 — management-api-oidc-entity-coverage (complete)
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
+Phase: 3 (complete — ready for Phase 4)
+Plan: Both 03-01 and 03-02 committed
 
 ## Performance Metrics
 
@@ -52,6 +52,8 @@ Plan: Not started
 | Phase 02 P01 | 45min | 2 tasks | 13 files |
 | Phase 02 P02 | 11min | 2 tasks | 8 files |
 | Phase 02 P03 | 3min | 1 tasks | 2 files |
+| Phase 03 P01 | — | 2 tasks | 9 files |
+| Phase 03 P02 | — | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -81,7 +83,13 @@ Recent decisions affecting current work:
 - [Phase 02]: Creation gating uses lazy-built path set from get_endpoints() with if-handler-not-None filter
 - [Phase 02]: Workspace validators return True/False (matching existing convention), not Flask Response objects
 - [Phase 02]: Lazy imports patched at source module in tests — not at consuming module
-- [Phase 02]: Handler identity check (handler in (...)) for get_endpoints() filter — truthiness check passes non-protobuf Flask handlers
+  - [Phase 02]: Handler identity check (handler in (...)) for get_endpoints() filter — truthiness check passes non-protobuf Flask handlers
+  - [Phase 03]: Single workspace permissions router at /api/3.0/mlflow/permissions/workspaces with 8 CRUD endpoints (4 user, 4 group)
+  - [Phase 03]: check_workspace_manage_permission and check_workspace_read_permission FastAPI dependencies for authorization
+  - [Phase 03]: User permission CUD triggers targeted cache invalidation; group changes rely on TTL (per D-13/D-14/D-15)
+  - [Phase 03]: OIDC workspace detection: plugin-first, JWT claim fallback, auto-assign with configurable default permission (NO_PERMISSIONS)
+  - [Phase 03]: 5 PromptOptimizationJob entries in BEFORE_REQUEST_HANDLERS with experiment-scoped validators
+  - [Phase 03]: ENTITY-02 (GatewayBudgetPolicy) deferred — protos not in MLflow 3.10.1
 
 ### Pending Todos
 
@@ -94,6 +102,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-23T21:12:05.089Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-management-api-oidc-entity-coverage/03-CONTEXT.md
+Last session: 2026-03-23
+Stopped at: Phase 3 complete — all committed, ready for Phase 4 planning
+Resume file: .planning/ROADMAP.md
