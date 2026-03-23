@@ -31,6 +31,10 @@ from mlflow_oidc_auth.entities.gateway_secret import (
     GatewaySecretRegexPermission,
     GatewaySecretGroupRegexPermission,
 )
+from mlflow_oidc_auth.entities.workspace import (
+    WorkspacePermission,
+    WorkspaceGroupPermission,
+)
 
 __all__ = [
     "AuthContext",
@@ -55,4 +59,6 @@ __all__ = [
     "GatewaySecretPermission",
     "GatewaySecretRegexPermission",
     "GatewaySecretGroupRegexPermission",
+    "WorkspacePermission",
+    "WorkspaceGroupPermission",
 ]

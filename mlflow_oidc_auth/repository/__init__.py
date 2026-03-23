@@ -84,6 +84,13 @@ from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permission
     GatewayModelDefinitionPermissionGroupRegexRepository,
 )
 
+from mlflow_oidc_auth.repository.workspace_permission import (
+    WorkspacePermissionRepository,
+)
+from mlflow_oidc_auth.repository.workspace_group_permission import (
+    WorkspaceGroupPermissionRepository,
+)
+
 __all__ = [
     "BaseUserPermissionRepository",
     "BaseGroupPermissionRepository",
@@ -116,4 +123,6 @@ __all__ = [
     "GatewayModelDefinitionPermissionRegexRepository",
     "GatewayModelDefinitionGroupPermissionRepository",
     "GatewayModelDefinitionPermissionGroupRegexRepository",
+    "WorkspacePermissionRepository",
+    "WorkspaceGroupPermissionRepository",
 ]

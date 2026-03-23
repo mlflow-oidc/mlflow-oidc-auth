@@ -1,7 +1,10 @@
 from datetime import datetime
 from typing import List, Optional
 
-from mlflow.store.db.utils import _get_managed_session_maker, create_sqlalchemy_engine_with_retry
+from mlflow.store.db.utils import (
+    _get_managed_session_maker,
+    create_sqlalchemy_engine_with_retry,
+)
 from mlflow.utils.uri import extract_db_type_from_uri
 from sqlalchemy.orm import sessionmaker
 
@@ -17,9 +20,15 @@ from mlflow_oidc_auth.entities import (
     ScorerPermission,
     ScorerRegexPermission,
     User,
+    WorkspaceGroupPermission,
+    WorkspacePermission,
 )
-from mlflow_oidc_auth.entities.gateway_endpoint import GatewayEndpointGroupRegexPermission
-from mlflow_oidc_auth.entities.gateway_model_definition import GatewayModelDefinitionGroupRegexPermission
+from mlflow_oidc_auth.entities.gateway_endpoint import (
+    GatewayEndpointGroupRegexPermission,
+)
+from mlflow_oidc_auth.entities.gateway_model_definition import (
+    GatewayModelDefinitionGroupRegexPermission,
+)
 from mlflow_oidc_auth.entities.gateway_secret import GatewaySecretGroupRegexPermission
 from mlflow_oidc_auth.repository import (
     ExperimentPermissionGroupRegexRepository,
@@ -49,6 +58,8 @@ from mlflow_oidc_auth.repository import (
     GatewayModelDefinitionGroupPermissionRepository,
     GatewayModelDefinitionPermissionGroupRegexRepository,
     UserRepository,
+    WorkspacePermissionRepository,
+    WorkspaceGroupPermissionRepository,
 )
 
 
@@ -59,42 +70,104 @@ class SqlAlchemyStore:
         self.engine = create_sqlalchemy_engine_with_retry(db_uri)
         dbutils.migrate_if_needed(self.engine, "head")
         SessionMaker = sessionmaker(bind=self.engine)
-        self.ManagedSessionMaker = _get_managed_session_maker(SessionMaker, self.db_type)
+        self.ManagedSessionMaker = _get_managed_session_maker(
+            SessionMaker, self.db_type
+        )
         self.user_repo = UserRepository(self.ManagedSessionMaker)
         self.experiment_repo = ExperimentPermissionRepository(self.ManagedSessionMaker)
-        self.experiment_group_repo = ExperimentPermissionGroupRepository(self.ManagedSessionMaker)
+        self.experiment_group_repo = ExperimentPermissionGroupRepository(
+            self.ManagedSessionMaker
+        )
         self.group_repo = GroupRepository(self.ManagedSessionMaker)
-        self.registered_model_repo = RegisteredModelPermissionRepository(self.ManagedSessionMaker)
-        self.registered_model_group_repo = RegisteredModelPermissionGroupRepository(self.ManagedSessionMaker)
-        self.prompt_group_repo = PromptPermissionGroupRepository(self.ManagedSessionMaker)
-        self.experiment_regex_repo = ExperimentPermissionRegexRepository(self.ManagedSessionMaker)
-        self.experiment_group_regex_repo = ExperimentPermissionGroupRegexRepository(self.ManagedSessionMaker)
-        self.registered_model_regex_repo = RegisteredModelPermissionRegexRepository(self.ManagedSessionMaker)
-        self.registered_model_group_regex_repo = RegisteredModelGroupRegexPermissionRepository(self.ManagedSessionMaker)
-        self.prompt_group_regex_repo = RegisteredModelGroupRegexPermissionRepository(self.ManagedSessionMaker)
-        self.prompt_regex_repo = RegisteredModelPermissionRegexRepository(self.ManagedSessionMaker)
+        self.registered_model_repo = RegisteredModelPermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.registered_model_group_repo = RegisteredModelPermissionGroupRepository(
+            self.ManagedSessionMaker
+        )
+        self.prompt_group_repo = PromptPermissionGroupRepository(
+            self.ManagedSessionMaker
+        )
+        self.experiment_regex_repo = ExperimentPermissionRegexRepository(
+            self.ManagedSessionMaker
+        )
+        self.experiment_group_regex_repo = ExperimentPermissionGroupRegexRepository(
+            self.ManagedSessionMaker
+        )
+        self.registered_model_regex_repo = RegisteredModelPermissionRegexRepository(
+            self.ManagedSessionMaker
+        )
+        self.registered_model_group_regex_repo = (
+            RegisteredModelGroupRegexPermissionRepository(self.ManagedSessionMaker)
+        )
+        self.prompt_group_regex_repo = RegisteredModelGroupRegexPermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.prompt_regex_repo = RegisteredModelPermissionRegexRepository(
+            self.ManagedSessionMaker
+        )
 
         # Scorer permissions
         self.scorer_repo = ScorerPermissionRepository(self.ManagedSessionMaker)
-        self.scorer_group_repo = ScorerPermissionGroupRepository(self.ManagedSessionMaker)
-        self.scorer_regex_repo = ScorerPermissionRegexRepository(self.ManagedSessionMaker)
-        self.scorer_group_regex_repo = ScorerPermissionGroupRegexRepository(self.ManagedSessionMaker)
+        self.scorer_group_repo = ScorerPermissionGroupRepository(
+            self.ManagedSessionMaker
+        )
+        self.scorer_regex_repo = ScorerPermissionRegexRepository(
+            self.ManagedSessionMaker
+        )
+        self.scorer_group_regex_repo = ScorerPermissionGroupRegexRepository(
+            self.ManagedSessionMaker
+        )
 
         # Gateway permissions
-        self.gateway_secret_repo = GatewaySecretPermissionRepository(self.ManagedSessionMaker)
-        self.gateway_secret_group_repo = GatewaySecretGroupPermissionRepository(self.ManagedSessionMaker)
-        self.gateway_secret_regex_repo = GatewaySecretPermissionRegexRepository(self.ManagedSessionMaker)
-        self.gateway_secret_group_regex_repo = GatewaySecretPermissionGroupRegexRepository(self.ManagedSessionMaker)
+        self.gateway_secret_repo = GatewaySecretPermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.gateway_secret_group_repo = GatewaySecretGroupPermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.gateway_secret_regex_repo = GatewaySecretPermissionRegexRepository(
+            self.ManagedSessionMaker
+        )
+        self.gateway_secret_group_regex_repo = (
+            GatewaySecretPermissionGroupRegexRepository(self.ManagedSessionMaker)
+        )
 
-        self.gateway_endpoint_repo = GatewayEndpointPermissionRepository(self.ManagedSessionMaker)
-        self.gateway_endpoint_group_repo = GatewayEndpointGroupPermissionRepository(self.ManagedSessionMaker)
-        self.gateway_endpoint_regex_repo = GatewayEndpointPermissionRegexRepository(self.ManagedSessionMaker)
-        self.gateway_endpoint_group_regex_repo = GatewayEndpointPermissionGroupRegexRepository(self.ManagedSessionMaker)
+        self.gateway_endpoint_repo = GatewayEndpointPermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.gateway_endpoint_group_repo = GatewayEndpointGroupPermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.gateway_endpoint_regex_repo = GatewayEndpointPermissionRegexRepository(
+            self.ManagedSessionMaker
+        )
+        self.gateway_endpoint_group_regex_repo = (
+            GatewayEndpointPermissionGroupRegexRepository(self.ManagedSessionMaker)
+        )
 
-        self.gateway_model_definition_repo = GatewayModelDefinitionPermissionRepository(self.ManagedSessionMaker)
-        self.gateway_model_definition_group_repo = GatewayModelDefinitionGroupPermissionRepository(self.ManagedSessionMaker)
-        self.gateway_model_definition_regex_repo = GatewayModelDefinitionPermissionRegexRepository(self.ManagedSessionMaker)
-        self.gateway_model_definition_group_regex_repo = GatewayModelDefinitionPermissionGroupRegexRepository(self.ManagedSessionMaker)
+        self.gateway_model_definition_repo = GatewayModelDefinitionPermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.gateway_model_definition_group_repo = (
+            GatewayModelDefinitionGroupPermissionRepository(self.ManagedSessionMaker)
+        )
+        self.gateway_model_definition_regex_repo = (
+            GatewayModelDefinitionPermissionRegexRepository(self.ManagedSessionMaker)
+        )
+        self.gateway_model_definition_group_regex_repo = (
+            GatewayModelDefinitionPermissionGroupRegexRepository(
+                self.ManagedSessionMaker
+            )
+        )
+
+        # Workspace permissions
+        self.workspace_permission_repo = WorkspacePermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.workspace_group_permission_repo = WorkspaceGroupPermissionRepository(
+            self.ManagedSessionMaker
+        )
 
     def ping(self) -> bool:
         """Lightweight database connectivity check for health probes.
@@ -112,22 +185,36 @@ class SqlAlchemyStore:
             return False
 
     # Scorer CRUD (user-scoped)
-    def create_scorer_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:
-        return self.scorer_repo.grant_permission(experiment_id, scorer_name, username, permission)
+    def create_scorer_permission(
+        self, experiment_id: str, scorer_name: str, username: str, permission: str
+    ) -> ScorerPermission:
+        return self.scorer_repo.grant_permission(
+            experiment_id, scorer_name, username, permission
+        )
 
-    def get_scorer_permission(self, experiment_id: str, scorer_name: str, username: str) -> ScorerPermission:
+    def get_scorer_permission(
+        self, experiment_id: str, scorer_name: str, username: str
+    ) -> ScorerPermission:
         return self.scorer_repo.get_permission(experiment_id, scorer_name, username)
 
     def list_scorer_permissions(self, username: str) -> List[ScorerPermission]:
         return self.scorer_repo.list_permissions_for_user(username)
 
-    def update_scorer_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:
-        return self.scorer_repo.update_permission(experiment_id, scorer_name, username, permission)
+    def update_scorer_permission(
+        self, experiment_id: str, scorer_name: str, username: str, permission: str
+    ) -> ScorerPermission:
+        return self.scorer_repo.update_permission(
+            experiment_id, scorer_name, username, permission
+        )
 
-    def delete_scorer_permission(self, experiment_id: str, scorer_name: str, username: str) -> None:
+    def delete_scorer_permission(
+        self, experiment_id: str, scorer_name: str, username: str
+    ) -> None:
         return self.scorer_repo.revoke_permission(experiment_id, scorer_name, username)
 
-    def delete_scorer_permissions_for_scorer(self, experiment_id: str, scorer_name: str) -> None:
+    def delete_scorer_permissions_for_scorer(
+        self, experiment_id: str, scorer_name: str
+    ) -> None:
         """Delete all stored permissions for a scorer.
 
         This is used when a scorer is deleted. Unlike experiment permissions (keyed by UUID),
@@ -140,7 +227,10 @@ class SqlAlchemyStore:
             scorer_name: The scorer name.
         """
 
-        from mlflow_oidc_auth.db.models import SqlScorerGroupPermission, SqlScorerPermission
+        from mlflow_oidc_auth.db.models import (
+            SqlScorerGroupPermission,
+            SqlScorerPermission,
+        )
 
         with self.ManagedSessionMaker() as session:
             session.query(SqlScorerPermission).filter(
@@ -154,58 +244,114 @@ class SqlAlchemyStore:
             session.flush()
 
     # Scorer permissions (group-scoped)
-    def create_group_scorer_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str):
-        return self.scorer_group_repo.grant_group_permission(group_name, experiment_id, scorer_name, permission)
+    def create_group_scorer_permission(
+        self, group_name: str, experiment_id: str, scorer_name: str, permission: str
+    ):
+        return self.scorer_group_repo.grant_group_permission(
+            group_name, experiment_id, scorer_name, permission
+        )
 
-    def update_group_scorer_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerGroupRegexPermission:
-        return self.scorer_group_repo.update_group_permission(group_name, experiment_id, scorer_name, permission)
+    def update_group_scorer_permission(
+        self, group_name: str, experiment_id: str, scorer_name: str, permission: str
+    ) -> ScorerGroupRegexPermission:
+        return self.scorer_group_repo.update_group_permission(
+            group_name, experiment_id, scorer_name, permission
+        )
 
-    def delete_group_scorer_permission(self, group_name: str, experiment_id: str, scorer_name: str) -> None:
-        return self.scorer_group_repo.revoke_group_permission(group_name, experiment_id, scorer_name)
+    def delete_group_scorer_permission(
+        self, group_name: str, experiment_id: str, scorer_name: str
+    ) -> None:
+        return self.scorer_group_repo.revoke_group_permission(
+            group_name, experiment_id, scorer_name
+        )
 
     def list_group_scorer_permissions(self, group_name: str):
         return self.scorer_group_repo.list_permissions_for_group(group_name)
 
-    def get_user_groups_scorer_permission(self, experiment_id: str, scorer_name: str, username: str):
-        return self.scorer_group_repo.get_group_permission_for_user_scorer(experiment_id, scorer_name, username)
+    def get_user_groups_scorer_permission(
+        self, experiment_id: str, scorer_name: str, username: str
+    ):
+        return self.scorer_group_repo.get_group_permission_for_user_scorer(
+            experiment_id, scorer_name, username
+        )
 
     # Scorer regex (user-scoped)
-    def create_scorer_regex_permission(self, regex: str, priority: int, permission: str, username: str) -> ScorerRegexPermission:
-        return self.scorer_regex_repo.grant(regex=regex, priority=priority, permission=permission, username=username)
+    def create_scorer_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str
+    ) -> ScorerRegexPermission:
+        return self.scorer_regex_repo.grant(
+            regex=regex, priority=priority, permission=permission, username=username
+        )
 
-    def list_scorer_regex_permissions(self, username: str) -> List[ScorerRegexPermission]:
+    def list_scorer_regex_permissions(
+        self, username: str
+    ) -> List[ScorerRegexPermission]:
         return self.scorer_regex_repo.list_regex_for_user(username)
 
-    def get_scorer_regex_permission(self, username: str, id: int) -> ScorerRegexPermission:
+    def get_scorer_regex_permission(
+        self, username: str, id: int
+    ) -> ScorerRegexPermission:
         return self.scorer_regex_repo.get(username=username, id=id)
 
-    def update_scorer_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str) -> ScorerRegexPermission:
-        return self.scorer_regex_repo.update(id=id, regex=regex, priority=priority, permission=permission, username=username)
+    def update_scorer_regex_permission(
+        self, id: int, regex: str, priority: int, permission: str, username: str
+    ) -> ScorerRegexPermission:
+        return self.scorer_regex_repo.update(
+            id=id,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            username=username,
+        )
 
     def delete_scorer_regex_permission(self, id: int, username: str) -> None:
         return self.scorer_regex_repo.revoke(id=id, username=username)
 
     # Scorer regex (group-scoped)
-    def create_group_scorer_regex_permission(self, group_name: str, regex: str, priority: int, permission: str) -> ScorerGroupRegexPermission:
-        return self.scorer_group_regex_repo.grant(group_name=group_name, regex=regex, priority=priority, permission=permission)
+    def create_group_scorer_regex_permission(
+        self, group_name: str, regex: str, priority: int, permission: str
+    ) -> ScorerGroupRegexPermission:
+        return self.scorer_group_regex_repo.grant(
+            group_name=group_name, regex=regex, priority=priority, permission=permission
+        )
 
-    def list_group_scorer_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[ScorerGroupRegexPermission]:
+    def list_group_scorer_regex_permissions_for_groups_ids(
+        self, group_ids: List[int]
+    ) -> List[ScorerGroupRegexPermission]:
         return self.scorer_group_regex_repo.list_permissions_for_groups_ids(group_ids)
 
-    def list_group_scorer_regex_permissions(self, group_name: str) -> List[ScorerGroupRegexPermission]:
+    def list_group_scorer_regex_permissions(
+        self, group_name: str
+    ) -> List[ScorerGroupRegexPermission]:
         from mlflow_oidc_auth.db.models import SqlGroup
 
         with self.ManagedSessionMaker() as session:
-            group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one_or_none()
+            group = (
+                session.query(SqlGroup)
+                .filter(SqlGroup.group_name == group_name)
+                .one_or_none()
+            )
             if group is None:
                 return []
-            return self.scorer_group_regex_repo.list_permissions_for_groups_ids([group.id])
+            return self.scorer_group_regex_repo.list_permissions_for_groups_ids(
+                [group.id]
+            )
 
-    def get_group_scorer_regex_permission(self, group_name: str, id: int) -> ScorerGroupRegexPermission:
+    def get_group_scorer_regex_permission(
+        self, group_name: str, id: int
+    ) -> ScorerGroupRegexPermission:
         return self.scorer_group_regex_repo.get(group_name=group_name, id=id)
 
-    def update_group_scorer_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str) -> ScorerGroupRegexPermission:
-        return self.scorer_group_regex_repo.update(id=id, group_name=group_name, regex=regex, priority=priority, permission=permission)
+    def update_group_scorer_regex_permission(
+        self, id: int, group_name: str, regex: str, priority: int, permission: str
+    ) -> ScorerGroupRegexPermission:
+        return self.scorer_group_regex_repo.update(
+            id=id,
+            group_name=group_name,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+        )
 
     def delete_group_scorer_regex_permission(self, id: int, group_name: str) -> None:
         return self.scorer_group_regex_repo.revoke(id=id, group_name=group_name)
@@ -213,8 +359,17 @@ class SqlAlchemyStore:
     def authenticate_user(self, username: str, password: str) -> bool:
         return self.user_repo.authenticate(username, password)
 
-    def create_user(self, username: str, password: str, display_name: str, is_admin: bool = False, is_service_account=False):
-        return self.user_repo.create(username, password, display_name, is_admin, is_service_account)
+    def create_user(
+        self,
+        username: str,
+        password: str,
+        display_name: str,
+        is_admin: bool = False,
+        is_service_account=False,
+    ):
+        return self.user_repo.create(
+            username, password, display_name, is_admin, is_service_account
+        )
 
     def has_user(self, username: str) -> bool:
         return self.user_repo.exist(username)
@@ -231,7 +386,9 @@ class SqlAlchemyStore:
 
         return self.user_repo.get_profile(username)
 
-    def list_users(self, is_service_account: bool = False, all: bool = False) -> List[User]:
+    def list_users(
+        self, is_service_account: bool = False, all: bool = False
+    ) -> List[User]:
         return self.user_repo.list(is_service_account, all)
 
     def update_user(
@@ -253,49 +410,81 @@ class SqlAlchemyStore:
     def delete_user(self, username: str):
         return self.user_repo.delete(username)
 
-    def create_experiment_permission(self, experiment_id: str, username: str, permission: str) -> ExperimentPermission:
-        return self.experiment_repo.grant_permission(experiment_id, username, permission)
+    def create_experiment_permission(
+        self, experiment_id: str, username: str, permission: str
+    ) -> ExperimentPermission:
+        return self.experiment_repo.grant_permission(
+            experiment_id, username, permission
+        )
 
-    def get_experiment_permission(self, experiment_id: str, username: str) -> ExperimentPermission:
+    def get_experiment_permission(
+        self, experiment_id: str, username: str
+    ) -> ExperimentPermission:
         return self.experiment_repo.get_permission(experiment_id, username)
 
-    def get_user_groups_experiment_permission(self, experiment_id: str, username: str) -> ExperimentPermission:
-        return self.experiment_group_repo.get_group_permission_for_user_experiment(experiment_id, username)
+    def get_user_groups_experiment_permission(
+        self, experiment_id: str, username: str
+    ) -> ExperimentPermission:
+        return self.experiment_group_repo.get_group_permission_for_user_experiment(
+            experiment_id, username
+        )
 
     def list_experiment_permissions(self, username: str) -> List[ExperimentPermission]:
         return self.experiment_repo.list_permissions_for_user(username)
 
-    def list_group_experiment_permissions(self, group_name: str) -> List[ExperimentPermission]:
+    def list_group_experiment_permissions(
+        self, group_name: str
+    ) -> List[ExperimentPermission]:
         return self.experiment_group_repo.list_permissions_for_group(group_name)
 
-    def list_group_id_experiment_permissions(self, group_id: int) -> List[ExperimentPermission]:
+    def list_group_id_experiment_permissions(
+        self, group_id: int
+    ) -> List[ExperimentPermission]:
         return self.experiment_group_repo.list_permissions_for_group_id(group_id)
 
-    def list_user_groups_experiment_permissions(self, username: str) -> List[ExperimentPermission]:
+    def list_user_groups_experiment_permissions(
+        self, username: str
+    ) -> List[ExperimentPermission]:
         return self.experiment_group_repo.list_permissions_for_user_groups(username)
 
-    def update_experiment_permission(self, experiment_id: str, username: str, permission: str) -> ExperimentPermission:
-        return self.experiment_repo.update_permission(experiment_id, username, permission)
+    def update_experiment_permission(
+        self, experiment_id: str, username: str, permission: str
+    ) -> ExperimentPermission:
+        return self.experiment_repo.update_permission(
+            experiment_id, username, permission
+        )
 
     def delete_experiment_permission(self, experiment_id: str, username: str):
         return self.experiment_repo.revoke_permission(experiment_id, username)
 
-    def create_registered_model_permission(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
+    def create_registered_model_permission(
+        self, name: str, username: str, permission: str
+    ) -> RegisteredModelPermission:
         return self.registered_model_repo.create(name, username, permission)
 
-    def get_registered_model_permission(self, name: str, username: str) -> RegisteredModelPermission:
+    def get_registered_model_permission(
+        self, name: str, username: str
+    ) -> RegisteredModelPermission:
         return self.registered_model_repo.get(name, username)
 
-    def get_user_groups_registered_model_permission(self, name: str, username: str) -> RegisteredModelPermission:
+    def get_user_groups_registered_model_permission(
+        self, name: str, username: str
+    ) -> RegisteredModelPermission:
         return self.registered_model_group_repo.get_for_user(name, username)
 
-    def list_registered_model_permissions(self, username: str) -> List[RegisteredModelPermission]:
+    def list_registered_model_permissions(
+        self, username: str
+    ) -> List[RegisteredModelPermission]:
         return self.registered_model_repo.list_for_user(username)
 
-    def list_user_groups_registered_model_permissions(self, username: str) -> List[RegisteredModelPermission]:
+    def list_user_groups_registered_model_permissions(
+        self, username: str
+    ) -> List[RegisteredModelPermission]:
         return self.registered_model_group_repo.list_for_user(username)
 
-    def update_registered_model_permission(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
+    def update_registered_model_permission(
+        self, name: str, username: str, permission: str
+    ) -> RegisteredModelPermission:
         return self.registered_model_repo.update(name, username, permission)
 
     def rename_registered_model_permissions(self, old_name: str, new_name: str):
@@ -307,7 +496,9 @@ class SqlAlchemyStore:
     def wipe_registered_model_permissions(self, name: str):
         return self.registered_model_repo.wipe(name)
 
-    def list_experiment_permissions_for_experiment(self, experiment_id: str) -> List[ExperimentPermission]:
+    def list_experiment_permissions_for_experiment(
+        self, experiment_id: str
+    ) -> List[ExperimentPermission]:
         return self.experiment_repo.list_permissions_for_experiment(experiment_id)
 
     def populate_groups(self, group_names: List[str]):
@@ -337,19 +528,33 @@ class SqlAlchemyStore:
     def get_group_experiments(self, group_name: str) -> List[ExperimentPermission]:
         return self.experiment_group_repo.list_permissions_for_group(group_name)
 
-    def create_group_experiment_permission(self, group_name: str, experiment_id: str, permission: str) -> ExperimentPermission:
-        return self.experiment_group_repo.grant_group_permission(group_name, experiment_id, permission)
+    def create_group_experiment_permission(
+        self, group_name: str, experiment_id: str, permission: str
+    ) -> ExperimentPermission:
+        return self.experiment_group_repo.grant_group_permission(
+            group_name, experiment_id, permission
+        )
 
-    def delete_group_experiment_permission(self, group_name: str, experiment_id: str) -> None:
-        return self.experiment_group_repo.revoke_group_permission(group_name, experiment_id)
+    def delete_group_experiment_permission(
+        self, group_name: str, experiment_id: str
+    ) -> None:
+        return self.experiment_group_repo.revoke_group_permission(
+            group_name, experiment_id
+        )
 
-    def update_group_experiment_permission(self, group_name: str, experiment_id: str, permission: str) -> ExperimentPermission:
-        return self.experiment_group_repo.update_group_permission(group_name, experiment_id, permission)
+    def update_group_experiment_permission(
+        self, group_name: str, experiment_id: str, permission: str
+    ) -> ExperimentPermission:
+        return self.experiment_group_repo.update_group_permission(
+            group_name, experiment_id, permission
+        )
 
     def get_group_models(self, group_name: str) -> List[RegisteredModelPermission]:
         return self.registered_model_group_repo.get(group_name)
 
-    def create_group_model_permission(self, group_name: str, name: str, permission: str):
+    def create_group_model_permission(
+        self, group_name: str, name: str, permission: str
+    ):
         return self.registered_model_group_repo.create(group_name, name, permission)
 
     def rename_group_model_permissions(self, old_name: str, new_name: str):
@@ -361,72 +566,130 @@ class SqlAlchemyStore:
     def wipe_group_model_permissions(self, name: str):
         return self.registered_model_group_repo.wipe(name)
 
-    def update_group_model_permission(self, group_name: str, name: str, permission: str):
+    def update_group_model_permission(
+        self, group_name: str, name: str, permission: str
+    ):
         return self.registered_model_group_repo.update(group_name, name, permission)
 
     # Prompt CRUD
-    def create_group_prompt_permission(self, group_name: str, name: str, permission: str):
-        return self.prompt_group_repo.grant_prompt_permission_to_group(group_name, name, permission)
+    def create_group_prompt_permission(
+        self, group_name: str, name: str, permission: str
+    ):
+        return self.prompt_group_repo.grant_prompt_permission_to_group(
+            group_name, name, permission
+        )
 
     def get_group_prompts(self, group_name: str) -> List[RegisteredModelPermission]:
         return self.prompt_group_repo.list_prompt_permissions_for_group(group_name)
 
-    def update_group_prompt_permission(self, group_name: str, name: str, permission: str):
-        return self.prompt_group_repo.update_prompt_permission_for_group(group_name, name, permission)
+    def update_group_prompt_permission(
+        self, group_name: str, name: str, permission: str
+    ):
+        return self.prompt_group_repo.update_prompt_permission_for_group(
+            group_name, name, permission
+        )
 
     def delete_group_prompt_permission(self, group_name: str, name: str):
-        return self.prompt_group_repo.revoke_prompt_permission_from_group(group_name, name)
+        return self.prompt_group_repo.revoke_prompt_permission_from_group(
+            group_name, name
+        )
 
     # Experiment regex CRUD
-    def create_experiment_regex_permission(self, regex: str, priority: int, permission: str, username: str):
+    def create_experiment_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str
+    ):
         return self.experiment_regex_repo.grant(regex, priority, permission, username)
 
-    def get_experiment_regex_permission(self, username: str, id: int) -> ExperimentRegexPermission:
+    def get_experiment_regex_permission(
+        self, username: str, id: int
+    ) -> ExperimentRegexPermission:
         return self.experiment_regex_repo.get(username=username, id=id)
 
-    def list_experiment_regex_permissions(self, username: str) -> List[ExperimentRegexPermission]:
+    def list_experiment_regex_permissions(
+        self, username: str
+    ) -> List[ExperimentRegexPermission]:
         return self.experiment_regex_repo.list_regex_for_user(username)
 
-    def update_experiment_regex_permission(self, regex: str, priority: int, permission: str, username: str, id: int) -> ExperimentRegexPermission:
-        return self.experiment_regex_repo.update(regex=regex, priority=priority, permission=permission, username=username, id=id)
+    def update_experiment_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str, id: int
+    ) -> ExperimentRegexPermission:
+        return self.experiment_regex_repo.update(
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            username=username,
+            id=id,
+        )
 
     def delete_experiment_regex_permission(self, username: str, id: int) -> None:
         return self.experiment_regex_repo.revoke(username=username, id=id)
 
     # Experiment regex group CRUD
-    def create_group_experiment_regex_permission(self, group_name: str, regex: str, priority: int, permission: str) -> ExperimentGroupRegexPermission:
-        return self.experiment_group_regex_repo.grant(group_name, regex, priority, permission)
+    def create_group_experiment_regex_permission(
+        self, group_name: str, regex: str, priority: int, permission: str
+    ) -> ExperimentGroupRegexPermission:
+        return self.experiment_group_regex_repo.grant(
+            group_name, regex, priority, permission
+        )
 
-    def get_group_experiment_regex_permission(self, group_name: str, id: int) -> ExperimentGroupRegexPermission:
+    def get_group_experiment_regex_permission(
+        self, group_name: str, id: int
+    ) -> ExperimentGroupRegexPermission:
         return self.experiment_group_regex_repo.get(group_name, id)
 
-    def list_group_experiment_regex_permissions(self, group_name: str) -> List[ExperimentGroupRegexPermission]:
+    def list_group_experiment_regex_permissions(
+        self, group_name: str
+    ) -> List[ExperimentGroupRegexPermission]:
         return self.experiment_group_regex_repo.list_permissions_for_group(group_name)
 
-    def list_group_experiment_regex_permissions_for_groups(self, group_names: List[str]) -> List[ExperimentGroupRegexPermission]:
+    def list_group_experiment_regex_permissions_for_groups(
+        self, group_names: List[str]
+    ) -> List[ExperimentGroupRegexPermission]:
         return self.experiment_group_regex_repo.list_permissions_for_groups(group_names)
 
-    def list_group_experiment_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[ExperimentGroupRegexPermission]:
-        return self.experiment_group_regex_repo.list_permissions_for_groups_ids(group_ids)
+    def list_group_experiment_regex_permissions_for_groups_ids(
+        self, group_ids: List[int]
+    ) -> List[ExperimentGroupRegexPermission]:
+        return self.experiment_group_regex_repo.list_permissions_for_groups_ids(
+            group_ids
+        )
 
-    def update_group_experiment_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str) -> ExperimentGroupRegexPermission:
-        return self.experiment_group_regex_repo.update(id, group_name, regex, priority, permission)
+    def update_group_experiment_regex_permission(
+        self, id: int, group_name: str, regex: str, priority: int, permission: str
+    ) -> ExperimentGroupRegexPermission:
+        return self.experiment_group_regex_repo.update(
+            id, group_name, regex, priority, permission
+        )
 
-    def delete_group_experiment_regex_permission(self, group_name: str, id: int) -> None:
+    def delete_group_experiment_regex_permission(
+        self, group_name: str, id: int
+    ) -> None:
         return self.experiment_group_regex_repo.revoke(group_name, id)
 
     # Registered model regex CRUD
-    def create_registered_model_regex_permission(self, regex: str, priority: int, permission: str, username: str):
-        return self.registered_model_regex_repo.grant(regex, priority, permission, username)
+    def create_registered_model_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str
+    ):
+        return self.registered_model_regex_repo.grant(
+            regex, priority, permission, username
+        )
 
-    def get_registered_model_regex_permission(self, id: int, username: str) -> RegisteredModelRegexPermission:
+    def get_registered_model_regex_permission(
+        self, id: int, username: str
+    ) -> RegisteredModelRegexPermission:
         return self.registered_model_regex_repo.get(id, username)
 
-    def list_registered_model_regex_permissions(self, username: str) -> List[RegisteredModelRegexPermission]:
+    def list_registered_model_regex_permissions(
+        self, username: str
+    ) -> List[RegisteredModelRegexPermission]:
         return self.registered_model_regex_repo.list_regex_for_user(username)
 
-    def update_registered_model_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str) -> RegisteredModelRegexPermission:
-        return self.registered_model_regex_repo.update(id, regex, priority, permission, username)
+    def update_registered_model_regex_permission(
+        self, id: int, regex: str, priority: int, permission: str, username: str
+    ) -> RegisteredModelRegexPermission:
+        return self.registered_model_regex_repo.update(
+            id, regex, priority, permission, username
+        )
 
     def delete_registered_model_regex_permission(self, id: int, username: str) -> None:
         return self.registered_model_regex_repo.revoke(id, username)
@@ -435,73 +698,179 @@ class SqlAlchemyStore:
     def create_group_registered_model_regex_permission(
         self, group_name: str, regex: str, priority: int, permission: str
     ) -> RegisteredModelGroupRegexPermission:
-        return self.registered_model_group_regex_repo.grant(group_name=group_name, regex=regex, priority=priority, permission=permission)
+        return self.registered_model_group_regex_repo.grant(
+            group_name=group_name, regex=regex, priority=priority, permission=permission
+        )
 
-    def get_group_registered_model_regex_permission(self, group_name: str, id: int) -> RegisteredModelGroupRegexPermission:
+    def get_group_registered_model_regex_permission(
+        self, group_name: str, id: int
+    ) -> RegisteredModelGroupRegexPermission:
         return self.registered_model_group_regex_repo.get(id=id, group_name=group_name)
 
-    def list_group_registered_model_regex_permissions(self, group_name: str) -> List[RegisteredModelGroupRegexPermission]:
-        return self.registered_model_group_regex_repo.list_permissions_for_group(group_name)
+    def list_group_registered_model_regex_permissions(
+        self, group_name: str
+    ) -> List[RegisteredModelGroupRegexPermission]:
+        return self.registered_model_group_regex_repo.list_permissions_for_group(
+            group_name
+        )
 
-    def list_group_registered_model_regex_permissions_for_groups(self, group_names: List[str]) -> List[RegisteredModelGroupRegexPermission]:
-        return self.registered_model_group_regex_repo.list_permissions_for_groups(group_names)
+    def list_group_registered_model_regex_permissions_for_groups(
+        self, group_names: List[str]
+    ) -> List[RegisteredModelGroupRegexPermission]:
+        return self.registered_model_group_regex_repo.list_permissions_for_groups(
+            group_names
+        )
 
-    def list_group_registered_model_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[RegisteredModelGroupRegexPermission]:
-        return self.registered_model_group_regex_repo.list_permissions_for_groups_ids(group_ids)
+    def list_group_registered_model_regex_permissions_for_groups_ids(
+        self, group_ids: List[int]
+    ) -> List[RegisteredModelGroupRegexPermission]:
+        return self.registered_model_group_regex_repo.list_permissions_for_groups_ids(
+            group_ids
+        )
 
     def update_group_registered_model_regex_permission(
         self, id: int, group_name: str, regex: str, priority: int, permission: str
     ) -> RegisteredModelGroupRegexPermission:
-        return self.registered_model_group_regex_repo.update(id=id, group_name=group_name, regex=regex, priority=priority, permission=permission)
+        return self.registered_model_group_regex_repo.update(
+            id=id,
+            group_name=group_name,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+        )
 
-    def delete_group_registered_model_regex_permission(self, group_name: str, id: int) -> None:
-        return self.registered_model_group_regex_repo.revoke(group_name=group_name, id=id)
+    def delete_group_registered_model_regex_permission(
+        self, group_name: str, id: int
+    ) -> None:
+        return self.registered_model_group_regex_repo.revoke(
+            group_name=group_name, id=id
+        )
 
     # Prompt regex CRUD
-    def create_prompt_regex_permission(self, regex: str, priority: int, permission: str, username: str, prompt: bool = True):
-        return self.prompt_regex_repo.grant(regex=regex, priority=priority, permission=permission, username=username, prompt=prompt)
+    def create_prompt_regex_permission(
+        self,
+        regex: str,
+        priority: int,
+        permission: str,
+        username: str,
+        prompt: bool = True,
+    ):
+        return self.prompt_regex_repo.grant(
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            username=username,
+            prompt=prompt,
+        )
 
-    def get_prompt_regex_permission(self, id: int, username: str, prompt: bool = True) -> RegisteredModelRegexPermission:
+    def get_prompt_regex_permission(
+        self, id: int, username: str, prompt: bool = True
+    ) -> RegisteredModelRegexPermission:
         return self.prompt_regex_repo.get(id=id, username=username, prompt=prompt)
 
-    def list_prompt_regex_permissions(self, username: str, prompt: bool = True) -> List[RegisteredModelRegexPermission]:
-        return self.prompt_regex_repo.list_regex_for_user(username=username, prompt=prompt)
+    def list_prompt_regex_permissions(
+        self, username: str, prompt: bool = True
+    ) -> List[RegisteredModelRegexPermission]:
+        return self.prompt_regex_repo.list_regex_for_user(
+            username=username, prompt=prompt
+        )
 
     def update_prompt_regex_permission(
-        self, id: int, regex: str, priority: int, permission: str, username: str, prompt: bool = True
+        self,
+        id: int,
+        regex: str,
+        priority: int,
+        permission: str,
+        username: str,
+        prompt: bool = True,
     ) -> RegisteredModelRegexPermission:
-        return self.prompt_regex_repo.update(id=id, regex=regex, priority=priority, permission=permission, username=username, prompt=prompt)
+        return self.prompt_regex_repo.update(
+            id=id,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            username=username,
+            prompt=prompt,
+        )
 
     def delete_prompt_regex_permission(self, id: int, username: str) -> None:
         return self.prompt_regex_repo.revoke(id=id, username=username, prompt=True)
 
     # Prompt regex group CRUD
-    def create_group_prompt_regex_permission(self, regex: str, priority: int, permission: str, group_name: str, prompt: bool = True):
-        return self.prompt_group_regex_repo.grant(regex=regex, priority=priority, permission=permission, group_name=group_name, prompt=prompt)
+    def create_group_prompt_regex_permission(
+        self,
+        regex: str,
+        priority: int,
+        permission: str,
+        group_name: str,
+        prompt: bool = True,
+    ):
+        return self.prompt_group_regex_repo.grant(
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            group_name=group_name,
+            prompt=prompt,
+        )
 
-    def get_group_prompt_regex_permission(self, id: int, group_name: str, prompt: bool = True) -> RegisteredModelGroupRegexPermission:
-        return self.prompt_group_regex_repo.get(id=id, group_name=group_name, prompt=prompt)
+    def get_group_prompt_regex_permission(
+        self, id: int, group_name: str, prompt: bool = True
+    ) -> RegisteredModelGroupRegexPermission:
+        return self.prompt_group_regex_repo.get(
+            id=id, group_name=group_name, prompt=prompt
+        )
 
-    def list_group_prompt_regex_permissions(self, group_name: str, prompt: bool = True) -> List[RegisteredModelGroupRegexPermission]:
-        return self.prompt_group_regex_repo.list_permissions_for_group(group_name=group_name, prompt=prompt)
+    def list_group_prompt_regex_permissions(
+        self, group_name: str, prompt: bool = True
+    ) -> List[RegisteredModelGroupRegexPermission]:
+        return self.prompt_group_regex_repo.list_permissions_for_group(
+            group_name=group_name, prompt=prompt
+        )
 
-    def list_group_prompt_regex_permissions_for_groups(self, group_names: List[str], prompt: bool = True) -> List[RegisteredModelGroupRegexPermission]:
-        return self.prompt_group_regex_repo.list_permissions_for_groups(group_names=group_names, prompt=prompt)
+    def list_group_prompt_regex_permissions_for_groups(
+        self, group_names: List[str], prompt: bool = True
+    ) -> List[RegisteredModelGroupRegexPermission]:
+        return self.prompt_group_regex_repo.list_permissions_for_groups(
+            group_names=group_names, prompt=prompt
+        )
 
-    def list_group_prompt_regex_permissions_for_groups_ids(self, group_ids: List[int], prompt: bool = True) -> List[RegisteredModelGroupRegexPermission]:
-        return self.prompt_group_regex_repo.list_permissions_for_groups_ids(group_ids=group_ids, prompt=prompt)
+    def list_group_prompt_regex_permissions_for_groups_ids(
+        self, group_ids: List[int], prompt: bool = True
+    ) -> List[RegisteredModelGroupRegexPermission]:
+        return self.prompt_group_regex_repo.list_permissions_for_groups_ids(
+            group_ids=group_ids, prompt=prompt
+        )
 
     def update_group_prompt_regex_permission(
-        self, id: int, regex: str, priority: int, permission: str, group_name: str, prompt: bool = True
+        self,
+        id: int,
+        regex: str,
+        priority: int,
+        permission: str,
+        group_name: str,
+        prompt: bool = True,
     ) -> RegisteredModelGroupRegexPermission:
-        return self.prompt_group_regex_repo.update(id=id, regex=regex, priority=priority, permission=permission, group_name=group_name, prompt=prompt)
+        return self.prompt_group_regex_repo.update(
+            id=id,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            group_name=group_name,
+            prompt=prompt,
+        )
 
     def delete_group_prompt_regex_permission(self, id: int, group_name: str) -> None:
-        return self.prompt_group_regex_repo.revoke(id=id, group_name=group_name, prompt=True)
+        return self.prompt_group_regex_repo.revoke(
+            id=id, group_name=group_name, prompt=True
+        )
 
     # gateway_secret_repo
-    def create_gateway_secret_permission(self, gateway_name: str, username: str, permission: str):
-        return self.gateway_secret_repo.grant_permission(gateway_name, username, permission)
+    def create_gateway_secret_permission(
+        self, gateway_name: str, username: str, permission: str
+    ):
+        return self.gateway_secret_repo.grant_permission(
+            gateway_name, username, permission
+        )
 
     def get_gateway_secret_permission(self, gateway_name: str, username: str):
         return self.gateway_secret_repo.get_permission(gateway_name, username)
@@ -509,10 +878,16 @@ class SqlAlchemyStore:
     def list_gateway_secret_permissions(self, username: str):
         return self.gateway_secret_repo.list_permissions_for_user(username)
 
-    def update_gateway_secret_permission(self, gateway_name: str, username: str, permission: str):
-        return self.gateway_secret_repo.update_permission(gateway_name, username, permission)
+    def update_gateway_secret_permission(
+        self, gateway_name: str, username: str, permission: str
+    ):
+        return self.gateway_secret_repo.update_permission(
+            gateway_name, username, permission
+        )
 
-    def delete_gateway_secret_permission(self, gateway_name: str, username: str) -> None:
+    def delete_gateway_secret_permission(
+        self, gateway_name: str, username: str
+    ) -> None:
         return self.gateway_secret_repo.revoke_permission(gateway_name, username)
 
     def wipe_gateway_secret_permissions(self, gateway_name: str) -> None:
@@ -521,24 +896,44 @@ class SqlAlchemyStore:
         self.gateway_secret_group_repo.wipe(gateway_name)
 
     # gateway_secret_group_repo
-    def create_group_gateway_secret_permission(self, group_name: str, gateway_name: str, permission: str):
-        return self.gateway_secret_group_repo.grant_group_permission(group_name, gateway_name, permission)
+    def create_group_gateway_secret_permission(
+        self, group_name: str, gateway_name: str, permission: str
+    ):
+        return self.gateway_secret_group_repo.grant_group_permission(
+            group_name, gateway_name, permission
+        )
 
     def list_group_gateway_secret_permissions(self, group_name: str):
         return self.gateway_secret_group_repo.list_permissions_for_group(group_name)
 
-    def get_user_groups_gateway_secret_permission(self, gateway_name: str, group_name: str):
-        return self.gateway_secret_group_repo.get_group_permission_for_user(gateway_name, group_name)
+    def get_user_groups_gateway_secret_permission(
+        self, gateway_name: str, group_name: str
+    ):
+        return self.gateway_secret_group_repo.get_group_permission_for_user(
+            gateway_name, group_name
+        )
 
-    def update_group_gateway_secret_permission(self, group_name: str, gateway_name: str, permission: str):
-        return self.gateway_secret_group_repo.update_group_permission(group_name, gateway_name, permission)
+    def update_group_gateway_secret_permission(
+        self, group_name: str, gateway_name: str, permission: str
+    ):
+        return self.gateway_secret_group_repo.update_group_permission(
+            group_name, gateway_name, permission
+        )
 
-    def delete_group_gateway_secret_permission(self, group_name: str, gateway_name: str):
-        return self.gateway_secret_group_repo.revoke_group_permission(group_name, gateway_name)
+    def delete_group_gateway_secret_permission(
+        self, group_name: str, gateway_name: str
+    ):
+        return self.gateway_secret_group_repo.revoke_group_permission(
+            group_name, gateway_name
+        )
 
     # gateway_secret_regex_repo
-    def create_gateway_secret_regex_permission(self, regex: str, priority: int, permission: str, username: str):
-        return self.gateway_secret_regex_repo.grant(regex, priority, permission, username)
+    def create_gateway_secret_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str
+    ):
+        return self.gateway_secret_regex_repo.grant(
+            regex, priority, permission, username
+        )
 
     def get_gateway_secret_regex_permission(self, id: int, username: str):
         return self.gateway_secret_regex_repo.get(id, username)
@@ -546,34 +941,56 @@ class SqlAlchemyStore:
     def list_gateway_secret_regex_permissions(self, username: str):
         return self.gateway_secret_regex_repo.list_regex_for_user(username)
 
-    def update_gateway_secret_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str):
-        return self.gateway_secret_regex_repo.update(id, regex, priority, permission, username)
+    def update_gateway_secret_regex_permission(
+        self, id: int, regex: str, priority: int, permission: str, username: str
+    ):
+        return self.gateway_secret_regex_repo.update(
+            id, regex, priority, permission, username
+        )
 
     def delete_gateway_secret_regex_permission(self, id: int, username: str):
         return self.gateway_secret_regex_repo.revoke(id, username)
 
     # gateway_secret_group_regex_repo
-    def create_group_gateway_secret_regex_permission(self, group_name: str, regex: str, priority: int, permission: str):
-        return self.gateway_secret_group_regex_repo.grant(group_name, regex, priority, permission)
+    def create_group_gateway_secret_regex_permission(
+        self, group_name: str, regex: str, priority: int, permission: str
+    ):
+        return self.gateway_secret_group_regex_repo.grant(
+            group_name, regex, priority, permission
+        )
 
     def get_group_gateway_secret_regex_permission(self, id: int, group_name: str):
         return self.gateway_secret_group_regex_repo.get(id, group_name)
 
     def list_group_gateway_secret_regex_permissions(self, group_name: str):
-        return self.gateway_secret_group_regex_repo.list_permissions_for_group(group_name)
+        return self.gateway_secret_group_regex_repo.list_permissions_for_group(
+            group_name
+        )
 
-    def list_group_gateway_secret_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewaySecretGroupRegexPermission]:
-        return self.gateway_secret_group_regex_repo.list_permissions_for_groups_ids(group_ids)
+    def list_group_gateway_secret_regex_permissions_for_groups_ids(
+        self, group_ids: List[int]
+    ) -> List[GatewaySecretGroupRegexPermission]:
+        return self.gateway_secret_group_regex_repo.list_permissions_for_groups_ids(
+            group_ids
+        )
 
-    def update_group_gateway_secret_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str):
-        return self.gateway_secret_group_regex_repo.update(id, group_name, regex, priority, permission)
+    def update_group_gateway_secret_regex_permission(
+        self, id: int, group_name: str, regex: str, priority: int, permission: str
+    ):
+        return self.gateway_secret_group_regex_repo.update(
+            id, group_name, regex, priority, permission
+        )
 
     def delete_group_gateway_secret_regex_permission(self, id: int, group_name: str):
         return self.gateway_secret_group_regex_repo.revoke(id, group_name)
 
     # gateway_endpoint_repo
-    def create_gateway_endpoint_permission(self, gateway_name: str, username: str, permission: str):
-        return self.gateway_endpoint_repo.grant_permission(gateway_name, username, permission)
+    def create_gateway_endpoint_permission(
+        self, gateway_name: str, username: str, permission: str
+    ):
+        return self.gateway_endpoint_repo.grant_permission(
+            gateway_name, username, permission
+        )
 
     def get_gateway_endpoint_permission(self, gateway_name: str, username: str):
         return self.gateway_endpoint_repo.get_permission(gateway_name, username)
@@ -581,10 +998,16 @@ class SqlAlchemyStore:
     def list_gateway_endpoint_permissions(self, username: str):
         return self.gateway_endpoint_repo.list_permissions_for_user(username)
 
-    def update_gateway_endpoint_permission(self, gateway_name: str, username: str, permission: str):
-        return self.gateway_endpoint_repo.update_permission(gateway_name, username, permission)
+    def update_gateway_endpoint_permission(
+        self, gateway_name: str, username: str, permission: str
+    ):
+        return self.gateway_endpoint_repo.update_permission(
+            gateway_name, username, permission
+        )
 
-    def delete_gateway_endpoint_permission(self, gateway_name: str, username: str) -> None:
+    def delete_gateway_endpoint_permission(
+        self, gateway_name: str, username: str
+    ) -> None:
         return self.gateway_endpoint_repo.revoke_permission(gateway_name, username)
 
     def rename_gateway_endpoint_permissions(self, old_name: str, new_name: str) -> None:
@@ -598,27 +1021,51 @@ class SqlAlchemyStore:
         self.gateway_endpoint_group_repo.wipe(gateway_name)
 
     # gateway_endpoint_group_repo
-    def create_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str, permission: str):
-        return self.gateway_endpoint_group_repo.grant_group_permission(group_name, gateway_name, permission)
+    def create_group_gateway_endpoint_permission(
+        self, group_name: str, gateway_name: str, permission: str
+    ):
+        return self.gateway_endpoint_group_repo.grant_group_permission(
+            group_name, gateway_name, permission
+        )
 
     def list_group_gateway_endpoint_permissions(self, group_name: str):
         return self.gateway_endpoint_group_repo.list_permissions_for_group(group_name)
 
-    def list_group_gateway_endpoint_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewayEndpointGroupRegexPermission]:
-        return self.gateway_endpoint_group_regex_repo.list_permissions_for_groups_ids(group_ids)
+    def list_group_gateway_endpoint_regex_permissions_for_groups_ids(
+        self, group_ids: List[int]
+    ) -> List[GatewayEndpointGroupRegexPermission]:
+        return self.gateway_endpoint_group_regex_repo.list_permissions_for_groups_ids(
+            group_ids
+        )
 
-    def get_user_groups_gateway_endpoint_permission(self, gateway_name: str, group_name: str):
-        return self.gateway_endpoint_group_repo.get_group_permission_for_user(gateway_name, group_name)
+    def get_user_groups_gateway_endpoint_permission(
+        self, gateway_name: str, group_name: str
+    ):
+        return self.gateway_endpoint_group_repo.get_group_permission_for_user(
+            gateway_name, group_name
+        )
 
-    def update_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str, permission: str):
-        return self.gateway_endpoint_group_repo.update_group_permission(group_name, gateway_name, permission)
+    def update_group_gateway_endpoint_permission(
+        self, group_name: str, gateway_name: str, permission: str
+    ):
+        return self.gateway_endpoint_group_repo.update_group_permission(
+            group_name, gateway_name, permission
+        )
 
-    def delete_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str):
-        return self.gateway_endpoint_group_repo.revoke_group_permission(group_name, gateway_name)
+    def delete_group_gateway_endpoint_permission(
+        self, group_name: str, gateway_name: str
+    ):
+        return self.gateway_endpoint_group_repo.revoke_group_permission(
+            group_name, gateway_name
+        )
 
     # gateway_endpoint_regex_repo
-    def create_gateway_endpoint_regex_permission(self, regex: str, priority: int, permission: str, username: str):
-        return self.gateway_endpoint_regex_repo.grant(regex, priority, permission, username)
+    def create_gateway_endpoint_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str
+    ):
+        return self.gateway_endpoint_regex_repo.grant(
+            regex, priority, permission, username
+        )
 
     def get_gateway_endpoint_regex_permission(self, id: int, username: str):
         return self.gateway_endpoint_regex_repo.get(id, username)
@@ -626,31 +1073,49 @@ class SqlAlchemyStore:
     def list_gateway_endpoint_regex_permissions(self, username: str):
         return self.gateway_endpoint_regex_repo.list_regex_for_user(username)
 
-    def update_gateway_endpoint_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str):
-        return self.gateway_endpoint_regex_repo.update(id, regex, priority, permission, username)
+    def update_gateway_endpoint_regex_permission(
+        self, id: int, regex: str, priority: int, permission: str, username: str
+    ):
+        return self.gateway_endpoint_regex_repo.update(
+            id, regex, priority, permission, username
+        )
 
     def delete_gateway_endpoint_regex_permission(self, id: int, username: str):
         return self.gateway_endpoint_regex_repo.revoke(id, username)
 
     # gateway_endpoint_group_regex_repo
-    def create_group_gateway_endpoint_regex_permission(self, group_name: str, regex: str, priority: int, permission: str):
-        return self.gateway_endpoint_group_regex_repo.grant(group_name, regex, priority, permission)
+    def create_group_gateway_endpoint_regex_permission(
+        self, group_name: str, regex: str, priority: int, permission: str
+    ):
+        return self.gateway_endpoint_group_regex_repo.grant(
+            group_name, regex, priority, permission
+        )
 
     def get_group_gateway_endpoint_regex_permission(self, id: int, group_name: str):
         return self.gateway_endpoint_group_regex_repo.get(id, group_name)
 
     def list_group_gateway_endpoint_regex_permissions(self, group_name: str):
-        return self.gateway_endpoint_group_regex_repo.list_permissions_for_group(group_name)
+        return self.gateway_endpoint_group_regex_repo.list_permissions_for_group(
+            group_name
+        )
 
-    def update_group_gateway_endpoint_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str):
-        return self.gateway_endpoint_group_regex_repo.update(id, group_name, regex, priority, permission)
+    def update_group_gateway_endpoint_regex_permission(
+        self, id: int, group_name: str, regex: str, priority: int, permission: str
+    ):
+        return self.gateway_endpoint_group_regex_repo.update(
+            id, group_name, regex, priority, permission
+        )
 
     def delete_group_gateway_endpoint_regex_permission(self, id: int, group_name: str):
         return self.gateway_endpoint_group_regex_repo.revoke(id, group_name)
 
     # gateway_model_definition_repo
-    def create_gateway_model_definition_permission(self, gateway_name: str, username: str, permission: str):
-        return self.gateway_model_definition_repo.grant_permission(gateway_name, username, permission)
+    def create_gateway_model_definition_permission(
+        self, gateway_name: str, username: str, permission: str
+    ):
+        return self.gateway_model_definition_repo.grant_permission(
+            gateway_name, username, permission
+        )
 
     def get_gateway_model_definition_permission(self, gateway_name: str, username: str):
         return self.gateway_model_definition_repo.get_permission(gateway_name, username)
@@ -658,11 +1123,19 @@ class SqlAlchemyStore:
     def list_gateway_model_definition_permissions(self, username: str):
         return self.gateway_model_definition_repo.list_permissions_for_user(username)
 
-    def update_gateway_model_definition_permission(self, gateway_name: str, username: str, permission: str):
-        return self.gateway_model_definition_repo.update_permission(gateway_name, username, permission)
+    def update_gateway_model_definition_permission(
+        self, gateway_name: str, username: str, permission: str
+    ):
+        return self.gateway_model_definition_repo.update_permission(
+            gateway_name, username, permission
+        )
 
-    def delete_gateway_model_definition_permission(self, gateway_name: str, username: str) -> None:
-        return self.gateway_model_definition_repo.revoke_permission(gateway_name, username)
+    def delete_gateway_model_definition_permission(
+        self, gateway_name: str, username: str
+    ) -> None:
+        return self.gateway_model_definition_repo.revoke_permission(
+            gateway_name, username
+        )
 
     def wipe_gateway_model_definition_permissions(self, gateway_name: str) -> None:
         """Delete all user and group permissions for a gateway model definition."""
@@ -670,24 +1143,46 @@ class SqlAlchemyStore:
         self.gateway_model_definition_group_repo.wipe(gateway_name)
 
     # gateway_model_definition_group_repo
-    def create_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str, permission: str):
-        return self.gateway_model_definition_group_repo.grant_group_permission(group_name, gateway_name, permission)
+    def create_group_gateway_model_definition_permission(
+        self, group_name: str, gateway_name: str, permission: str
+    ):
+        return self.gateway_model_definition_group_repo.grant_group_permission(
+            group_name, gateway_name, permission
+        )
 
     def list_group_gateway_model_definition_permissions(self, group_name: str):
-        return self.gateway_model_definition_group_repo.list_permissions_for_group(group_name)
+        return self.gateway_model_definition_group_repo.list_permissions_for_group(
+            group_name
+        )
 
-    def get_user_groups_gateway_model_definition_permission(self, gateway_name: str, group_name: str):
-        return self.gateway_model_definition_group_repo.get_group_permission_for_user(gateway_name, group_name)
+    def get_user_groups_gateway_model_definition_permission(
+        self, gateway_name: str, group_name: str
+    ):
+        return self.gateway_model_definition_group_repo.get_group_permission_for_user(
+            gateway_name, group_name
+        )
 
-    def update_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str, permission: str):
-        return self.gateway_model_definition_group_repo.update_group_permission(group_name, gateway_name, permission)
+    def update_group_gateway_model_definition_permission(
+        self, group_name: str, gateway_name: str, permission: str
+    ):
+        return self.gateway_model_definition_group_repo.update_group_permission(
+            group_name, gateway_name, permission
+        )
 
-    def delete_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str):
-        return self.gateway_model_definition_group_repo.revoke_group_permission(group_name, gateway_name)
+    def delete_group_gateway_model_definition_permission(
+        self, group_name: str, gateway_name: str
+    ):
+        return self.gateway_model_definition_group_repo.revoke_group_permission(
+            group_name, gateway_name
+        )
 
     # gateway_model_definition_regex_repo
-    def create_gateway_model_definition_regex_permission(self, regex: str, priority: int, permission: str, username: str):
-        return self.gateway_model_definition_regex_repo.grant(regex, priority, permission, username)
+    def create_gateway_model_definition_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str
+    ):
+        return self.gateway_model_definition_regex_repo.grant(
+            regex, priority, permission, username
+        )
 
     def get_gateway_model_definition_regex_permission(self, id: int, username: str):
         return self.gateway_model_definition_regex_repo.get(id, username)
@@ -695,27 +1190,107 @@ class SqlAlchemyStore:
     def list_gateway_model_definition_regex_permissions(self, username: str):
         return self.gateway_model_definition_regex_repo.list_regex_for_user(username)
 
-    def update_gateway_model_definition_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str):
-        return self.gateway_model_definition_regex_repo.update(id, regex, priority, permission, username)
+    def update_gateway_model_definition_regex_permission(
+        self, id: int, regex: str, priority: int, permission: str, username: str
+    ):
+        return self.gateway_model_definition_regex_repo.update(
+            id, regex, priority, permission, username
+        )
 
     def delete_gateway_model_definition_regex_permission(self, id: int, username: str):
         return self.gateway_model_definition_regex_repo.revoke(id, username)
 
     # gateway_model_definition_group_regex_repo
-    def create_group_gateway_model_definition_regex_permission(self, group_name: str, regex: str, priority: int, permission: str):
-        return self.gateway_model_definition_group_regex_repo.grant(group_name, regex, priority, permission)
+    def create_group_gateway_model_definition_regex_permission(
+        self, group_name: str, regex: str, priority: int, permission: str
+    ):
+        return self.gateway_model_definition_group_regex_repo.grant(
+            group_name, regex, priority, permission
+        )
 
-    def get_group_gateway_model_definition_regex_permission(self, id: int, group_name: str):
+    def get_group_gateway_model_definition_regex_permission(
+        self, id: int, group_name: str
+    ):
         return self.gateway_model_definition_group_regex_repo.get(id, group_name)
 
     def list_group_gateway_model_definition_regex_permissions(self, group_name: str):
-        return self.gateway_model_definition_group_regex_repo.list_permissions_for_group(group_name)
+        return (
+            self.gateway_model_definition_group_regex_repo.list_permissions_for_group(
+                group_name
+            )
+        )
 
-    def list_group_gateway_model_definition_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[GatewayModelDefinitionGroupRegexPermission]:
-        return self.gateway_model_definition_group_regex_repo.list_permissions_for_groups_ids(group_ids)
+    def list_group_gateway_model_definition_regex_permissions_for_groups_ids(
+        self, group_ids: List[int]
+    ) -> List[GatewayModelDefinitionGroupRegexPermission]:
+        return self.gateway_model_definition_group_regex_repo.list_permissions_for_groups_ids(
+            group_ids
+        )
 
-    def update_group_gateway_model_definition_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str):
-        return self.gateway_model_definition_group_regex_repo.update(id, group_name, regex, priority, permission)
+    def update_group_gateway_model_definition_regex_permission(
+        self, id: int, group_name: str, regex: str, priority: int, permission: str
+    ):
+        return self.gateway_model_definition_group_regex_repo.update(
+            id, group_name, regex, priority, permission
+        )
 
-    def delete_group_gateway_model_definition_regex_permission(self, id: int, group_name: str):
+    def delete_group_gateway_model_definition_regex_permission(
+        self, id: int, group_name: str
+    ):
         return self.gateway_model_definition_group_regex_repo.revoke(id, group_name)
+
+    # Workspace permission CRUD (user-scoped)
+    def get_workspace_permission(
+        self, workspace: str, username: str
+    ) -> WorkspacePermission:
+        """Get a user's workspace permission by username."""
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        with self.ManagedSessionMaker() as session:
+            user = get_user(session, username)
+            return self.workspace_permission_repo.get(workspace, user.id)
+
+    def create_workspace_permission(
+        self, workspace: str, username: str, permission: str
+    ) -> WorkspacePermission:
+        """Create a workspace permission for a user by username."""
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        with self.ManagedSessionMaker() as session:
+            user = get_user(session, username)
+            return self.workspace_permission_repo.create(workspace, user.id, permission)
+
+    def update_workspace_permission(
+        self, workspace: str, username: str, permission: str
+    ) -> WorkspacePermission:
+        """Update a user's workspace permission by username."""
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        with self.ManagedSessionMaker() as session:
+            user = get_user(session, username)
+            return self.workspace_permission_repo.update(workspace, user.id, permission)
+
+    def delete_workspace_permission(self, workspace: str, username: str) -> None:
+        """Delete a user's workspace permission by username."""
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        with self.ManagedSessionMaker() as session:
+            user = get_user(session, username)
+            self.workspace_permission_repo.delete(workspace, user.id)
+
+    def list_workspace_permissions(self, workspace: str) -> list[WorkspacePermission]:
+        """List all user permissions in a workspace."""
+        return self.workspace_permission_repo.list_for_workspace(workspace)
+
+    # Workspace permission (group-scoped, via user lookup)
+    def get_user_groups_workspace_permission(
+        self, workspace: str, username: str
+    ) -> WorkspaceGroupPermission:
+        """Get highest workspace group permission for a user (across all their groups)."""
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        with self.ManagedSessionMaker() as session:
+            user = get_user(session, username)
+            return self.workspace_group_permission_repo.get_highest_for_user(
+                workspace, user.id
+            )

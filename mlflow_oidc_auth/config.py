@@ -131,6 +131,14 @@ class AppConfig:
             "GRANT_DEFAULT_WORKSPACE_ACCESS", default=True
         )
 
+        # Workspace cache settings
+        self.WORKSPACE_CACHE_MAX_SIZE = config_manager.get_int(
+            "WORKSPACE_CACHE_MAX_SIZE", default=1024
+        )
+        self.WORKSPACE_CACHE_TTL_SECONDS = config_manager.get_int(
+            "WORKSPACE_CACHE_TTL_SECONDS", default=300
+        )
+
     def refresh(self) -> None:
         """Reload configuration from all providers.
 
