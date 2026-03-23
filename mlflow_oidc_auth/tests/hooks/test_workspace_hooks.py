@@ -38,11 +38,26 @@ class TestWorkspaceBeforeRequestHandlers:
             validate_can_delete_workspace,
         )
 
-        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[CreateWorkspace] is validate_can_create_workspace
-        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[GetWorkspace] is validate_can_read_workspace
-        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[ListWorkspaces] is validate_can_list_workspaces
-        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[UpdateWorkspace] is validate_can_update_workspace
-        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[DeleteWorkspace] is validate_can_delete_workspace
+        assert (
+            WORKSPACE_BEFORE_REQUEST_HANDLERS[CreateWorkspace]
+            is validate_can_create_workspace
+        )
+        assert (
+            WORKSPACE_BEFORE_REQUEST_HANDLERS[GetWorkspace]
+            is validate_can_read_workspace
+        )
+        assert (
+            WORKSPACE_BEFORE_REQUEST_HANDLERS[ListWorkspaces]
+            is validate_can_list_workspaces
+        )
+        assert (
+            WORKSPACE_BEFORE_REQUEST_HANDLERS[UpdateWorkspace]
+            is validate_can_update_workspace
+        )
+        assert (
+            WORKSPACE_BEFORE_REQUEST_HANDLERS[DeleteWorkspace]
+            is validate_can_delete_workspace
+        )
 
 
 class TestWorkspaceBeforeRequestValidators:
@@ -59,7 +74,10 @@ class TestWorkspaceBeforeRequestValidators:
         has_ajax_prefix = False
         for (pattern, method), handler in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items():
             pattern_str = pattern.pattern
-            if "/api/3.0/mlflow/workspaces" in pattern_str and not pattern_str.startswith("/ajax"):
+            if (
+                "/api/3.0/mlflow/workspaces" in pattern_str
+                and not pattern_str.startswith("/ajax")
+            ):
                 has_api_prefix = True
             if "/ajax-api/3.0/mlflow/workspaces" in pattern_str:
                 has_ajax_prefix = True
@@ -75,7 +93,9 @@ class TestWorkspaceBeforeRequestValidators:
 
         assert len(WORKSPACE_BEFORE_REQUEST_VALIDATORS) > 0
         for (pattern, method), handler in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items():
-            assert hasattr(pattern, "fullmatch"), f"Pattern {pattern} should be compiled regex"
+            assert hasattr(pattern, "fullmatch"), (
+                f"Pattern {pattern} should be compiled regex"
+            )
             assert isinstance(method, str), f"Method should be a string"
             assert callable(handler), f"Handler should be callable"
 
@@ -178,6 +198,15 @@ class TestFindValidatorWorkspace:
 class TestWorkspaceCreationGating:
     """Tests for workspace creation gating in before_request_hook (WSAUTH-F)."""
 
+    @pytest.fixture(autouse=True)
+    def _reset_creation_paths_cache(self):
+        """Reset the lazy-cached creation paths set between tests."""
+        import mlflow_oidc_auth.hooks.before_request as br_module
+
+        br_module._WORKSPACE_GATED_CREATION_PATHS = None
+        yield
+        br_module._WORKSPACE_GATED_CREATION_PATHS = None
+
     def _make_flask_app(self):
         """Create a minimal Flask app for testing."""
         _app = Flask(__name__)
@@ -199,23 +228,90 @@ class TestWorkspaceCreationGating:
         from mlflow_oidc_auth.hooks.before_request import _is_workspace_gated_creation
 
         # CreateExperiment is POST to /api/2.0/mlflow/experiments/create
-        assert _is_workspace_gated_creation("/api/2.0/mlflow/experiments/create", "POST") is True
-        assert _is_workspace_gated_creation("/ajax-api/2.0/mlflow/experiments/create", "POST") is True
+        assert (
+            _is_workspace_gated_creation("/api/2.0/mlflow/experiments/create", "POST")
+            is True
+        )
+        assert (
+            _is_workspace_gated_creation(
+                "/ajax-api/2.0/mlflow/experiments/create", "POST"
+            )
+            is True
+        )
 
     def test_is_workspace_gated_creation_detects_model_create(self):
         """_is_workspace_gated_creation identifies registered model creation paths."""
         from mlflow_oidc_auth.hooks.before_request import _is_workspace_gated_creation
 
         # CreateRegisteredModel is POST to /api/2.0/mlflow/registered-models/create
-        assert _is_workspace_gated_creation("/api/2.0/mlflow/registered-models/create", "POST") is True
-        assert _is_workspace_gated_creation("/ajax-api/2.0/mlflow/registered-models/create", "POST") is True
+        assert (
+            _is_workspace_gated_creation(
+                "/api/2.0/mlflow/registered-models/create", "POST"
+            )
+            is True
+        )
+        assert (
+            _is_workspace_gated_creation(
+                "/ajax-api/2.0/mlflow/registered-models/create", "POST"
+            )
+            is True
+        )
 
     def test_is_workspace_gated_creation_rejects_non_creation_paths(self):
         """_is_workspace_gated_creation returns False for non-creation paths."""
         from mlflow_oidc_auth.hooks.before_request import _is_workspace_gated_creation
 
-        assert _is_workspace_gated_creation("/api/2.0/mlflow/experiments/get", "GET") is False
-        assert _is_workspace_gated_creation("/api/2.0/mlflow/runs/create", "POST") is False
+        assert (
+            _is_workspace_gated_creation("/api/2.0/mlflow/experiments/get", "GET")
+            is False
+        )
+        assert (
+            _is_workspace_gated_creation("/api/2.0/mlflow/runs/create", "POST") is False
+        )
+
+    def test_is_workspace_gated_creation_rejects_graphql_and_server_info(self):
+        """_is_workspace_gated_creation returns False for /graphql, /server-info, and gateway paths (regression for over-inclusive filter)."""
+        from mlflow_oidc_auth.hooks.before_request import _is_workspace_gated_creation
+
+        # These paths were previously incorrectly included due to 'if handler is not None' filter
+        assert _is_workspace_gated_creation("/graphql", "GET") is False
+        assert _is_workspace_gated_creation("/graphql", "POST") is False
+        assert (
+            _is_workspace_gated_creation("/api/3.0/mlflow/server-info", "GET") is False
+        )
+        assert (
+            _is_workspace_gated_creation(
+                "/ajax-api/3.0/mlflow/gateway/supported-providers", "GET"
+            )
+            is False
+        )
+        assert (
+            _is_workspace_gated_creation(
+                "/ajax-api/3.0/mlflow/gateway/supported-models", "GET"
+            )
+            is False
+        )
+        assert (
+            _is_workspace_gated_creation("/ajax-api/3.0/mlflow/scorer/invoke", "POST")
+            is False
+        )
+
+    def test_workspace_gated_creation_paths_count(self):
+        """_get_workspace_gated_creation_paths() returns exactly 4 paths (2 endpoints x 2 prefixes)."""
+        from mlflow_oidc_auth.hooks.before_request import (
+            _get_workspace_gated_creation_paths,
+        )
+
+        paths = _get_workspace_gated_creation_paths()
+        # CreateExperiment: /api/2.0/mlflow/experiments/create POST + /ajax-api/2.0/mlflow/experiments/create POST
+        # CreateRegisteredModel: /api/2.0/mlflow/registered-models/create POST + /ajax-api/2.0/mlflow/registered-models/create POST
+        assert len(paths) == 4, (
+            f"Expected exactly 4 creation paths, got {len(paths)}: {paths}"
+        )
+        # All should be POST
+        assert all(method == "POST" for _, method in paths), (
+            f"All creation paths should be POST: {paths}"
+        )
 
     def test_before_request_hook_blocks_experiment_creation_without_manage(self):
         """before_request_hook blocks CreateExperiment when user lacks workspace MANAGE."""
@@ -230,7 +326,9 @@ class TestWorkspaceCreationGating:
                 "mlflow_oidc_auth.hooks.before_request._get_auth_context",
                 return_value=("testuser", False),
             ):
-                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                with patch(
+                    "mlflow_oidc_auth.hooks.before_request.config"
+                ) as mock_config:
                     mock_config.MLFLOW_ENABLE_WORKSPACES = True
                     with patch(
                         "mlflow_oidc_auth.bridge.user.get_request_workspace",
@@ -262,7 +360,9 @@ class TestWorkspaceCreationGating:
                 "mlflow_oidc_auth.hooks.before_request._get_auth_context",
                 return_value=("testuser", False),
             ):
-                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                with patch(
+                    "mlflow_oidc_auth.hooks.before_request.config"
+                ) as mock_config:
                     mock_config.MLFLOW_ENABLE_WORKSPACES = True
                     with patch(
                         "mlflow_oidc_auth.bridge.user.get_request_workspace",
@@ -278,7 +378,10 @@ class TestWorkspaceCreationGating:
                             ):
                                 resp = before_request_hook()
                                 # Should not return 403 — either None or pass through
-                                assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
+                                assert resp is None or (
+                                    hasattr(resp, "status_code")
+                                    and resp.status_code != 403
+                                )
 
     def test_before_request_hook_workspaces_disabled_no_creation_check(self):
         """before_request_hook skips creation gating when workspaces disabled."""
@@ -293,7 +396,9 @@ class TestWorkspaceCreationGating:
                 "mlflow_oidc_auth.hooks.before_request._get_auth_context",
                 return_value=("testuser", False),
             ):
-                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                with patch(
+                    "mlflow_oidc_auth.hooks.before_request.config"
+                ) as mock_config:
                     mock_config.MLFLOW_ENABLE_WORKSPACES = False
                     with patch(
                         "mlflow_oidc_auth.hooks.before_request._find_validator",
@@ -303,7 +408,9 @@ class TestWorkspaceCreationGating:
                         # (no validator match either so None response = allowed)
                         resp = before_request_hook()
                         # Should NOT be 403 since workspaces are disabled
-                        assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
+                        assert resp is None or (
+                            hasattr(resp, "status_code") and resp.status_code != 403
+                        )
 
     def test_before_request_hook_admin_bypass_creation_gating(self):
         """Admin users bypass workspace creation gating entirely."""
@@ -318,7 +425,9 @@ class TestWorkspaceCreationGating:
                 "mlflow_oidc_auth.hooks.before_request._get_auth_context",
                 return_value=("admin", True),
             ):
-                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                with patch(
+                    "mlflow_oidc_auth.hooks.before_request.config"
+                ) as mock_config:
                     mock_config.MLFLOW_ENABLE_WORKSPACES = True
                     # Admin should bypass — no 403
                     resp = before_request_hook()
@@ -360,7 +469,9 @@ class TestAfterRequestListWorkspacesFiltering:
             from mlflow_oidc_auth.permissions import READ
             from mlflow_oidc_auth.entities.auth_context import AuthContext
 
-            mock_auth_ctx = AuthContext(username="testuser", is_admin=False, workspace=None)
+            mock_auth_ctx = AuthContext(
+                username="testuser", is_admin=False, workspace=None
+            )
 
             def mock_perm_cached(username, ws_name):
                 if ws_name in ("ws-allowed", "ws-also-allowed"):
