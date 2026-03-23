@@ -49,7 +49,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Workspace permission data layer (entities, standalone repos, ORM model updates, store methods, TTLCache)
+- [x] 02-01-PLAN.md — Workspace permission data layer (entities, standalone repos, ORM model updates, store methods, TTLCache)
 - [ ] 02-02-PLAN.md — Workspace auth enforcement (resolve_permission fallback, validators, hook registration, creation gating, ListWorkspaces filtering)
 
 ### Phase 3: Management API, OIDC & Entity Coverage
@@ -91,6 +91,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Refactoring & Workspace Foundation | 3/3 | Complete   | 2026-03-23 |
-| 2. Workspace Auth Enforcement | 0/2 | Not started | - |
+| 2. Workspace Auth Enforcement | 1/2 | In Progress|  |
 | 3. Management API, OIDC & Entity Coverage | 0/3 | Not started | - |
 | 4. Workspace Management UI | 0/1 | Not started | - |

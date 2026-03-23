@@ -23,10 +23,10 @@
 ### Workspace Auth Enforcement
 
 - [ ] **WSAUTH-01**: before_request handlers registered for 5 workspace protobuf RPCs: `CreateWorkspace` (admin), `GetWorkspace` (view check), `ListWorkspaces` (always allowed, filtered), `UpdateWorkspace` (admin), `DeleteWorkspace` (admin)
-- [ ] **WSAUTH-02**: Workspace-level user permissions (READ/USE/EDIT/MANAGE) with DB model (`SqlWorkspacePermission`), entity, repository, and store methods
+- [x] **WSAUTH-02**: Workspace-level user permissions (READ/USE/EDIT/MANAGE) with DB model (`SqlWorkspacePermission`), entity, repository, and store methods
 - [ ] **WSAUTH-03**: `CreateExperiment` and `CreateRegisteredModel` gated on workspace MANAGE permission in before_request (currently only auto-grant in after_request)
 - [ ] **WSAUTH-04**: Permission resolution updated with workspace-level fallback: resource-level (user→group→regex→group-regex) → workspace-level → NO_PERMISSIONS (when workspaces enabled, `default_permission` is NOT used)
-- [ ] **WSAUTH-05**: TTLCache for workspace permission lookups (configurable `workspace_cache_max_size`, `workspace_cache_ttl_seconds`) to avoid per-request DB queries
+- [x] **WSAUTH-05**: TTLCache for workspace permission lookups (configurable `workspace_cache_max_size`, `workspace_cache_ttl_seconds`) to avoid per-request DB queries
 
 ### Workspace Management
 
@@ -78,10 +78,10 @@
 | WSFND-05 | Phase 1 | Complete |
 | WSFND-06 | Phase 1 | Complete |
 | WSAUTH-01 | Phase 2 | Pending |
-| WSAUTH-02 | Phase 2 | Pending |
+| WSAUTH-02 | Phase 2 | Complete |
 | WSAUTH-03 | Phase 2 | Pending |
 | WSAUTH-04 | Phase 2 | Pending |
-| WSAUTH-05 | Phase 2 | Pending |
+| WSAUTH-05 | Phase 2 | Complete |
 | WSMGMT-01 | Phase 3 | Pending |
 | WSMGMT-02 | Phase 3 | Pending |
 | WSMGMT-03 | Phase 3 | Pending |
