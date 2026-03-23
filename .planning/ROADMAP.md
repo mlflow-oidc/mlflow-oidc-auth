@@ -46,11 +46,12 @@ Plans:
   3. CreateExperiment and CreateRegisteredModel require MANAGE permission on the target workspace (not just after_request auto-grant)
   4. Permission resolution chain with workspaces enabled follows: resource-level (user→group→regex→group-regex) → workspace-level → NO_PERMISSIONS
   5. Workspace permission lookups are cached via TTLCache — configurable `workspace_cache_max_size` and `workspace_cache_ttl_seconds`
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
 - [x] 02-01-PLAN.md — Workspace permission data layer (entities, standalone repos, ORM model updates, store methods, TTLCache)
 - [x] 02-02-PLAN.md — Workspace auth enforcement (resolve_permission fallback, validators, hook registration, creation gating, ListWorkspaces filtering)
+- [ ] 02-03-PLAN.md — Gap closure: fix over-inclusive creation gating paths filter
 
 ### Phase 3: Management API, OIDC & Entity Coverage
 **Goal**: Workspace permissions are manageable via API (user + group), OIDC login auto-assigns workspace membership, and new MLflow 3.10 entities are covered by auth handlers
@@ -91,6 +92,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Refactoring & Workspace Foundation | 3/3 | Complete   | 2026-03-23 |
-| 2. Workspace Auth Enforcement | 2/2 | Complete   | 2026-03-23 |
+| 2. Workspace Auth Enforcement | 2/3 | Gap closure | 2026-03-23 |
 | 3. Management API, OIDC & Entity Coverage | 0/3 | Not started | - |
 | 4. Workspace Management UI | 0/1 | Not started | - |
