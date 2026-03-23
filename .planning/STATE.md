@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to plan
-stopped_at: Completed 01-03-PLAN.md (workspace foundation plumbing)
-last_updated: "2026-03-23T17:07:52.649Z"
+stopped_at: Phase 2 discuss-phase complete — 02-CONTEXT.md written
+last_updated: "2026-03-23T19:30:00.000Z"
 progress:
   total_phases: 4
   completed_phases: 1
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Multi-tenant resource isolation — organizations share an MLflow instance while each tenant sees only their own resources
-**Current focus:** Phase 01 — refactoring-workspace-foundation
+**Current focus:** Phase 02 — workspace-auth-enforcement
 
 ## Current Position
 
 Phase: 2
-Plan: Not started
+Plan: Not started (discuss-phase complete, ready for research/planning)
 
 ## Performance Metrics
 
@@ -67,19 +67,24 @@ Recent decisions affecting current work:
 - [Phase 01]: AuthContext is a frozen dataclass (not TypedDict) for immutability and attribute access
 - [Phase 01]: Single environ key (environ['mlflow_oidc_auth'] = AuthContext) replaces individual keys for cleaner bridge
 - [Phase 01]: Default workspace seeded at app startup (not in migration) — schema vs data separation
+- [Phase 02]: Workspace hooks via regex pattern matching (logged model pattern) — WORKSPACE_BEFORE_REQUEST_VALIDATORS
+- [Phase 02]: Standalone workspace permission repos (not extending base classes) — workspace is a tenant boundary, not a resource
+- [Phase 02]: Wrap resolve_permission() for workspace fallback — get_permission_from_store_or_default() unchanged
+- [Phase 02]: Code-level implicit default workspace access — no seeded rows, GRANT_DEFAULT_WORKSPACE_ACCESS controls runtime
+- [Phase 02]: Module-level TTLCache in utils/workspace_cache.py — key (username, workspace), TTL-based invalidation only
+- [Phase 02]: Conditional workspace MANAGE wrapper in before_request_hook() for CreateExperiment/CreateRegisteredModel
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
 - Upstream workspace API stability: MLflow workspace endpoints are `PUBLIC_UNDOCUMENTED` (API v3.0) — could change in minor releases
-- Phase 0 refactoring scope needs precise measurement during Phase 1 planning
-- `workspace_context` ContextVar interaction with plugin needs verification during Phase 2
+- cachetools is transitive dependency only (via MLflow) — not pinned in pyproject.toml
 
 ## Session Continuity
 
-Last session: 2026-03-23T16:56:11.950Z
-Stopped at: Completed 01-03-PLAN.md (workspace foundation plumbing)
-Resume file: None
+Last session: 2026-03-23T19:30:00.000Z
+Stopped at: Phase 2 discuss-phase complete — 02-CONTEXT.md written
+Resume file: .planning/phases/02-workspace-auth-enforcement/02-CONTEXT.md
