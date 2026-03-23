@@ -113,7 +113,9 @@ class TestAppConfig(unittest.TestCase):
         # Test default values
         self.assertEqual(config.DEFAULT_MLFLOW_PERMISSION, "MANAGE")
         self.assertIsNotNone(config.SECRET_KEY)
-        self.assertEqual(len(config.SECRET_KEY), 32)  # secrets.token_hex(16) produces 32 chars
+        self.assertEqual(
+            len(config.SECRET_KEY), 32
+        )  # secrets.token_hex(16) produces 32 chars
         self.assertEqual(config.OIDC_USERS_DB_URI, "sqlite:///auth.db")
         self.assertEqual(config.OIDC_GROUP_NAME, ["mlflow"])
         self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, ["mlflow-admin"])
@@ -127,7 +129,9 @@ class TestAppConfig(unittest.TestCase):
         self.assertIsNone(config.OIDC_CLIENT_SECRET)
         self.assertFalse(config.AUTOMATIC_LOGIN_REDIRECT)
         self.assertEqual(config.OIDC_ALEMBIC_VERSION_TABLE, "alembic_version")
-        self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["user", "group", "regex", "group-regex"])
+        self.assertEqual(
+            config.PERMISSION_SOURCE_ORDER, ["user", "group", "regex", "group-regex"]
+        )
         self.assertTrue(config.EXTEND_MLFLOW_MENU)
         self.assertTrue(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
 
@@ -159,7 +163,9 @@ class TestAppConfig(unittest.TestCase):
 
             self.assertEqual(config.DEFAULT_MLFLOW_PERMISSION, "READ")
             self.assertEqual(config.SECRET_KEY, "custom-secret-key")
-            self.assertEqual(config.OIDC_USERS_DB_URI, "postgresql://user:pass@localhost/db")
+            self.assertEqual(
+                config.OIDC_USERS_DB_URI, "postgresql://user:pass@localhost/db"
+            )
             self.assertEqual(config.OIDC_GROUP_NAME, ["group1", "group2", "group3"])
             self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, ["admin-group"])
             self.assertEqual(config.OIDC_PROVIDER_DISPLAY_NAME, "Custom OIDC Login")
@@ -170,11 +176,15 @@ class TestAppConfig(unittest.TestCase):
             self.assertEqual(config.OIDC_GROUPS_ATTRIBUTE, "custom_groups")
             self.assertEqual(config.OIDC_SCOPE, "openid,email,profile,groups")
             self.assertEqual(config.OIDC_GROUP_DETECTION_PLUGIN, "custom_plugin")
-            self.assertEqual(config.OIDC_REDIRECT_URI, "https://app.example.com/callback")
+            self.assertEqual(
+                config.OIDC_REDIRECT_URI, "https://app.example.com/callback"
+            )
             self.assertEqual(config.OIDC_CLIENT_ID, "test-client-id")
             self.assertEqual(config.OIDC_CLIENT_SECRET, "test-client-secret")
             self.assertTrue(config.AUTOMATIC_LOGIN_REDIRECT)
-            self.assertEqual(config.OIDC_ALEMBIC_VERSION_TABLE, "custom_alembic_version")
+            self.assertEqual(
+                config.OIDC_ALEMBIC_VERSION_TABLE, "custom_alembic_version"
+            )
             self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["group", "user", "regex"])
             self.assertFalse(config.EXTEND_MLFLOW_MENU)
             self.assertFalse(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
@@ -267,9 +277,13 @@ class TestAppConfig(unittest.TestCase):
         self.assertGreaterEqual(len(config.SECRET_KEY), 32)
 
         # Test with custom SECRET_KEY
-        with patch.dict(os.environ, {"SECRET_KEY": "custom-secret-key-with-sufficient-length"}):
+        with patch.dict(
+            os.environ, {"SECRET_KEY": "custom-secret-key-with-sufficient-length"}
+        ):
             config = AppConfig()
-            self.assertEqual(config.SECRET_KEY, "custom-secret-key-with-sufficient-length")
+            self.assertEqual(
+                config.SECRET_KEY, "custom-secret-key-with-sufficient-length"
+            )
 
         # Test OIDC security settings
         with patch.dict(
@@ -300,6 +314,36 @@ class TestAppConfig(unittest.TestCase):
             with patch.dict(os.environ, {"OIDC_USERS_DB_URI": uri}):
                 config = AppConfig()
                 self.assertEqual(config.OIDC_USERS_DB_URI, uri)
+
+    def test_workspace_feature_flags_defaults(self):
+        """Test that workspace feature flags have correct default values."""
+        config = AppConfig()
+        self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
+        self.assertTrue(config.GRANT_DEFAULT_WORKSPACE_ACCESS)
+
+    def test_workspace_feature_flags_override(self):
+        """Test that workspace feature flags can be overridden via environment variables."""
+        with patch.dict(
+            os.environ,
+            {
+                "MLFLOW_ENABLE_WORKSPACES": "true",
+                "GRANT_DEFAULT_WORKSPACE_ACCESS": "false",
+            },
+        ):
+            config = AppConfig()
+            self.assertTrue(config.MLFLOW_ENABLE_WORKSPACES)
+            self.assertFalse(config.GRANT_DEFAULT_WORKSPACE_ACCESS)
+
+    def test_workspace_feature_flags_disabled_by_default(self):
+        """Test that workspaces are disabled by default and grant access is enabled."""
+        # Ensure neither env var is set
+        for var in ["MLFLOW_ENABLE_WORKSPACES", "GRANT_DEFAULT_WORKSPACE_ACCESS"]:
+            if var in os.environ:
+                del os.environ[var]
+
+        config = AppConfig()
+        self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
+        self.assertTrue(config.GRANT_DEFAULT_WORKSPACE_ACCESS)
 
 
 if __name__ == "__main__":

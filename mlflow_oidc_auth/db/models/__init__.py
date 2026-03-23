@@ -29,7 +29,16 @@ from mlflow_oidc_auth.db.models.registered_model import (
     SqlRegisteredModelPermission,
     SqlRegisteredModelRegexPermission,
 )
-from mlflow_oidc_auth.db.models.scorer import SqlScorerGroupPermission, SqlScorerGroupRegexPermission, SqlScorerPermission, SqlScorerRegexPermission
+from mlflow_oidc_auth.db.models.scorer import (
+    SqlScorerGroupPermission,
+    SqlScorerGroupRegexPermission,
+    SqlScorerPermission,
+    SqlScorerRegexPermission,
+)
+from mlflow_oidc_auth.db.models.workspace import (
+    SqlWorkspaceGroupPermission,
+    SqlWorkspacePermission,
+)
 
 __all__ = [
     "SqlUser",
@@ -59,4 +68,6 @@ __all__ = [
     "SqlGatewaySecretGroupPermission",
     "SqlGatewaySecretRegexPermission",
     "SqlGatewaySecretGroupRegexPermission",
+    "SqlWorkspacePermission",
+    "SqlWorkspaceGroupPermission",
 ]
