@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Permission resolution refactoring (registry + resolve_permission)
+- [x] 01-01-PLAN.md — Permission resolution refactoring (registry + resolve_permission)
 - [ ] 01-02-PLAN.md — Repository base class refactoring (4 generic base classes for 28 repos)
 - [ ] 01-03-PLAN.md — Workspace foundation plumbing (feature flag, AuthContext, middleware, migration, seeding)
 
