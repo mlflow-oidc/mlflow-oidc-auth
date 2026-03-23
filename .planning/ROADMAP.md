@@ -29,12 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `workspace_permissions` table exists after Alembic migration with `(workspace, user_id, permission)` composite primary key
   4. Existing permissions are assigned to a "default" workspace during migration — no data loss or permission breakage
   5. `get_request_workspace()` bridge function returns the workspace from `X-MLFLOW-WORKSPACE` header when workspaces are enabled
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md — Permission resolution refactoring (registry + resolve_permission)
+- [ ] 01-02-PLAN.md — Repository base class refactoring (4 generic base classes for 28 repos)
+- [ ] 01-03-PLAN.md — Workspace foundation plumbing (feature flag, AuthContext, middleware, migration, seeding)
 
 ### Phase 2: Workspace Auth Enforcement
 **Goal**: Workspace boundaries are enforced in the permission resolution chain — users can only access resources in workspaces they have permission for, with no cross-tenant data leakage
