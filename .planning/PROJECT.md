@@ -37,10 +37,16 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 
 ### Active
 
-- [ ] Implement workspace auth enforcement — workspace permission model and security boundary in permission resolution chain
 - [ ] Implement workspace management API — CRUD endpoints, OIDC claim mapping, new entity auth handlers
 - [ ] Implement workspace management UI — React workspace module with list, detail, member management, workspace switcher
-- [ ] Wire up actual default workspace seeding (deferred from Phase 1 WSFND-04 to Phase 2 WSAUTH-02)
+
+### Validated in Phase 2: Workspace Auth Enforcement
+
+- ✓ WSAUTH-01: before_request handlers intercept all 5 workspace protobuf RPCs with correct access levels (admin for CUD, perm check for Get, filtered for List)
+- ✓ WSAUTH-02: Workspace permission data layer — entities, standalone repos, ORM models, store facade, TTLCache with configurable size/TTL
+- ✓ WSAUTH-03: CreateExperiment and CreateRegisteredModel gated on workspace MANAGE permission
+- ✓ WSAUTH-04: resolve_permission() workspace fallback — resource-level → workspace-level → NO_PERMISSIONS (hard deny)
+- ✓ WSAUTH-05: Cached workspace permission lookups with implicit default workspace MANAGE access
 
 ### Validated in Phase 1: Refactoring & Workspace Foundation
 
@@ -65,7 +71,7 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 
 **Existing architecture:** FastAPI wraps MLflow's Flask app via AuthAwareWSGIMiddleware. RBAC is enforced in Flask before_request hooks that map MLflow protobuf request classes to validator functions. Permission management is via FastAPI routers. The plugin has 7 resource types, each with 4 permission variants (user, group, regex, group-regex). Permission resolution is now consolidated into a single `resolve_permission()` function via `PERMISSION_REGISTRY`. All 28 repository classes extend generic base classes. Workspace plumbing (feature flag, AuthContext, middleware, DB tables) is in place.
 
-**Current state:** Phase 1 complete — refactoring and workspace foundation done. MLflow uses "Workspaces" (not "Organizations"). The plugin now has `MLFLOW_ENABLE_WORKSPACES` feature flag, `AuthContext` dataclass replacing individual environ keys, `X-MLFLOW-WORKSPACE` header propagation, and workspace permission tables. Ready for Phase 2: Workspace Auth Enforcement.
+**Current state:** Phase 2 complete — workspace auth enforcement done. The permission resolution chain includes workspace-level fallback (resource → workspace → NO_PERMISSIONS). All 5 workspace protobuf RPCs are intercepted. CreateExperiment/CreateRegisteredModel are gated on workspace MANAGE. ListWorkspaces is filtered per user permissions. TTLCache provides cached workspace permission lookups. All behavior gated by MLFLOW_ENABLE_WORKSPACES feature flag. Ready for Phase 3: Management API, OIDC & Entity Coverage.
 
 **Production deployments:** The plugin has existing production deployments with established users, groups, and permissions. Backward compatibility is important but breaking changes are acceptable with a major version bump.
 
@@ -92,7 +98,13 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 | REFAC-01: Registry-driven permission resolution | 8 copy-paste functions → single resolve_permission() | ✓ Implemented in Phase 1 |
 | REFAC-02: Generic repository base classes | 28 repos with duplicated CRUD → 4 generic bases | ✓ Implemented in Phase 1 |
 | WSFND-06: AuthContext replaces individual environ keys | Single frozen dataclass for auth state propagation | ✓ Implemented in Phase 1 |
-| WSFND-04: Default workspace seeding deferred to Phase 2 | Store methods needed for actual data insertion | ⚠ Accepted gap — Phase 2 will wire up |
+| WSFND-04: Default workspace seeding deferred to Phase 2 | Store methods needed for actual data insertion | ✓ Resolved — workspace store methods + implicit default workspace MANAGE via TTLCache |
+
+| WSAUTH-B: Standalone workspace repos (not extending base classes) | Workspace is a tenant boundary, not a resource — different access patterns | ✓ Implemented in Phase 2 |
+| WSAUTH-C: Wrap resolve_permission() for workspace fallback | get_permission_from_store_or_default() unchanged, workspace check only on fallback | ✓ Implemented in Phase 2 |
+| WSAUTH-D: Implicit default workspace MANAGE via TTLCache | GRANT_DEFAULT_WORKSPACE_ACCESS=True grants MANAGE on "default" workspace | ✓ Implemented in Phase 2 |
+| WSAUTH-E: Module-level TTLCache with lazy init | Avoids import-time config reads, configurable size/TTL | ✓ Implemented in Phase 2 |
+| WSAUTH-F: Conditional creation gating in before_request_hook() | CreateExperiment/CreateRegisteredModel require workspace MANAGE | ✓ Implemented in Phase 2 |
 
 ## Evolution
 
@@ -112,4 +124,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-23 after Phase 1 completion*
+*Last updated: 2026-03-23 after Phase 2 completion*
