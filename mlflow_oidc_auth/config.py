@@ -61,15 +61,21 @@ class AppConfig:
     def __init__(self) -> None:
         """Initialize configuration from the provider chain."""
         # Permission settings
-        self.DEFAULT_MLFLOW_PERMISSION = config_manager.get("DEFAULT_MLFLOW_PERMISSION", "MANAGE")
-        self.PERMISSION_SOURCE_ORDER = config_manager.get_list("PERMISSION_SOURCE_ORDER", default=["user", "group", "regex", "group-regex"])
+        self.DEFAULT_MLFLOW_PERMISSION = config_manager.get(
+            "DEFAULT_MLFLOW_PERMISSION", "MANAGE"
+        )
+        self.PERMISSION_SOURCE_ORDER = config_manager.get_list(
+            "PERMISSION_SOURCE_ORDER", default=["user", "group", "regex", "group-regex"]
+        )
 
         # Security settings (secrets - may come from Secrets Manager/Key Vault)
         self.SECRET_KEY = config_manager.get("SECRET_KEY") or secrets.token_hex(16)
         self.OIDC_CLIENT_SECRET = config_manager.get("OIDC_CLIENT_SECRET")
 
         # Database settings (sensitive)
-        self.OIDC_USERS_DB_URI = config_manager.get("OIDC_USERS_DB_URI", "sqlite:///auth.db")
+        self.OIDC_USERS_DB_URI = config_manager.get(
+            "OIDC_USERS_DB_URI", "sqlite:///auth.db"
+        )
 
         # OIDC provider settings
         self.OIDC_DISCOVERY_URL = config_manager.get("OIDC_DISCOVERY_URL")
@@ -78,24 +84,52 @@ class AppConfig:
         # This enables automatic proxy path detection for OIDC callbacks
         self.OIDC_REDIRECT_URI = config_manager.get("OIDC_REDIRECT_URI")
         self.OIDC_SCOPE = config_manager.get("OIDC_SCOPE", "openid,email,profile")
-        self.OIDC_PROVIDER_DISPLAY_NAME = config_manager.get("OIDC_PROVIDER_DISPLAY_NAME", "Login with OIDC")
-        self.OIDC_GROUPS_ATTRIBUTE = config_manager.get("OIDC_GROUPS_ATTRIBUTE", "groups")
+        self.OIDC_PROVIDER_DISPLAY_NAME = config_manager.get(
+            "OIDC_PROVIDER_DISPLAY_NAME", "Login with OIDC"
+        )
+        self.OIDC_GROUPS_ATTRIBUTE = config_manager.get(
+            "OIDC_GROUPS_ATTRIBUTE", "groups"
+        )
 
         # Group settings
-        self.OIDC_GROUP_NAME = config_manager.get_list("OIDC_GROUP_NAME", default=["mlflow"])
-        self.OIDC_ADMIN_GROUP_NAME = config_manager.get_list("OIDC_ADMIN_GROUP_NAME", default=["mlflow-admin"])
-        self.OIDC_GROUP_DETECTION_PLUGIN = config_manager.get("OIDC_GROUP_DETECTION_PLUGIN")
+        self.OIDC_GROUP_NAME = config_manager.get_list(
+            "OIDC_GROUP_NAME", default=["mlflow"]
+        )
+        self.OIDC_ADMIN_GROUP_NAME = config_manager.get_list(
+            "OIDC_ADMIN_GROUP_NAME", default=["mlflow-admin"]
+        )
+        self.OIDC_GROUP_DETECTION_PLUGIN = config_manager.get(
+            "OIDC_GROUP_DETECTION_PLUGIN"
+        )
 
         # Database migration settings
-        self.OIDC_ALEMBIC_VERSION_TABLE = config_manager.get("OIDC_ALEMBIC_VERSION_TABLE", "alembic_version")
+        self.OIDC_ALEMBIC_VERSION_TABLE = config_manager.get(
+            "OIDC_ALEMBIC_VERSION_TABLE", "alembic_version"
+        )
 
         # UI settings
-        self.EXTEND_MLFLOW_MENU = config_manager.get_bool("EXTEND_MLFLOW_MENU", default=True)
-        self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = config_manager.get_bool("DEFAULT_LANDING_PAGE_IS_PERMISSIONS", default=True)
-        self.AUTOMATIC_LOGIN_REDIRECT = config_manager.get_bool("AUTOMATIC_LOGIN_REDIRECT", default=False)
+        self.EXTEND_MLFLOW_MENU = config_manager.get_bool(
+            "EXTEND_MLFLOW_MENU", default=True
+        )
+        self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = config_manager.get_bool(
+            "DEFAULT_LANDING_PAGE_IS_PERMISSIONS", default=True
+        )
+        self.AUTOMATIC_LOGIN_REDIRECT = config_manager.get_bool(
+            "AUTOMATIC_LOGIN_REDIRECT", default=False
+        )
 
         # Feature flags
-        self.OIDC_GEN_AI_GATEWAY_ENABLED = config_manager.get_bool("OIDC_GEN_AI_GATEWAY_ENABLED", default=True)
+        self.OIDC_GEN_AI_GATEWAY_ENABLED = config_manager.get_bool(
+            "OIDC_GEN_AI_GATEWAY_ENABLED", default=True
+        )
+
+        # Workspace feature flags
+        self.MLFLOW_ENABLE_WORKSPACES = config_manager.get_bool(
+            "MLFLOW_ENABLE_WORKSPACES", default=False
+        )
+        self.GRANT_DEFAULT_WORKSPACE_ACCESS = config_manager.get_bool(
+            "GRANT_DEFAULT_WORKSPACE_ACCESS", default=True
+        )
 
     def refresh(self) -> None:
         """Reload configuration from all providers.

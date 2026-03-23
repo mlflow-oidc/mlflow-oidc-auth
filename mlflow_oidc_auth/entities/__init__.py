@@ -1,7 +1,20 @@
-from mlflow_oidc_auth.entities.experiment import ExperimentPermission, ExperimentGroupRegexPermission, ExperimentRegexPermission
+from mlflow_oidc_auth.entities.auth_context import AuthContext
+from mlflow_oidc_auth.entities.experiment import (
+    ExperimentPermission,
+    ExperimentGroupRegexPermission,
+    ExperimentRegexPermission,
+)
 from mlflow_oidc_auth.entities.group import Group
-from mlflow_oidc_auth.entities.registered_model import RegisteredModelPermission, RegisteredModelGroupRegexPermission, RegisteredModelRegexPermission
-from mlflow_oidc_auth.entities.scorer import ScorerPermission, ScorerGroupRegexPermission, ScorerRegexPermission
+from mlflow_oidc_auth.entities.registered_model import (
+    RegisteredModelPermission,
+    RegisteredModelGroupRegexPermission,
+    RegisteredModelRegexPermission,
+)
+from mlflow_oidc_auth.entities.scorer import (
+    ScorerPermission,
+    ScorerGroupRegexPermission,
+    ScorerRegexPermission,
+)
 from mlflow_oidc_auth.entities.user import User, UserGroup
 from mlflow_oidc_auth.entities.gateway_endpoint import (
     GatewayEndpointPermission,
@@ -20,6 +33,7 @@ from mlflow_oidc_auth.entities.gateway_secret import (
 )
 
 __all__ = [
+    "AuthContext",
     "ExperimentPermission",
     "ExperimentGroupRegexPermission",
     "ExperimentRegexPermission",
