@@ -13,12 +13,12 @@
 
 ### Workspace Foundation
 
-- [ ] **WSFND-01**: Feature flag (`MLFLOW_ENABLE_WORKSPACES` / `ENABLE_WORKSPACES` config) gates all workspace behavior — disabled by default, zero behavioral changes when off
-- [ ] **WSFND-02**: `X-MLFLOW-WORKSPACE` header propagated through FastAPI AuthMiddleware → ASGI scope `mlflow_oidc_auth` dict → AuthAwareWSGIMiddleware → Flask request.environ
-- [ ] **WSFND-03**: Alembic migration adds `workspace_permissions` table with `(workspace, user_id, permission)` composite primary key
-- [ ] **WSFND-04**: Default workspace seeded on migration — all existing resources assigned to default workspace for backward compatibility
-- [ ] **WSFND-05**: `grant_default_workspace_access` config option — existing users get implicit access to default workspace when workspaces first enabled
-- [ ] **WSFND-06**: Bridge extension with `get_request_workspace()` function following existing `get_request_username()` pattern in `bridge/user.py`
+- [x] **WSFND-01**: Feature flag (`MLFLOW_ENABLE_WORKSPACES` / `ENABLE_WORKSPACES` config) gates all workspace behavior — disabled by default, zero behavioral changes when off
+- [x] **WSFND-02**: `X-MLFLOW-WORKSPACE` header propagated through FastAPI AuthMiddleware → ASGI scope `mlflow_oidc_auth` dict → AuthAwareWSGIMiddleware → Flask request.environ
+- [x] **WSFND-03**: Alembic migration adds `workspace_permissions` table with `(workspace, user_id, permission)` composite primary key
+- [x] **WSFND-04**: Default workspace seeded on migration — all existing resources assigned to default workspace for backward compatibility
+- [x] **WSFND-05**: `grant_default_workspace_access` config option — existing users get implicit access to default workspace when workspaces first enabled
+- [x] **WSFND-06**: Bridge extension with `get_request_workspace()` function following existing `get_request_username()` pattern in `bridge/user.py`
 
 ### Workspace Auth Enforcement
 
@@ -71,12 +71,12 @@
 |--------|-------|--------|
 | REFAC-01 | Phase 1 | Complete |
 | REFAC-02 | Phase 1 | Complete |
-| WSFND-01 | Phase 1 | Pending |
-| WSFND-02 | Phase 1 | Pending |
-| WSFND-03 | Phase 1 | Pending |
-| WSFND-04 | Phase 1 | Pending |
-| WSFND-05 | Phase 1 | Pending |
-| WSFND-06 | Phase 1 | Pending |
+| WSFND-01 | Phase 1 | Complete |
+| WSFND-02 | Phase 1 | Complete |
+| WSFND-03 | Phase 1 | Complete |
+| WSFND-04 | Phase 1 | Complete |
+| WSFND-05 | Phase 1 | Complete |
+| WSFND-06 | Phase 1 | Complete |
 | WSAUTH-01 | Phase 2 | Pending |
 | WSAUTH-02 | Phase 2 | Pending |
 | WSAUTH-03 | Phase 2 | Pending |
