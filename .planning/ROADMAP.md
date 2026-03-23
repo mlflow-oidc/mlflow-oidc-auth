@@ -63,12 +63,11 @@ Plans:
   3. OIDC login with a workspace claim in the JWT token auto-creates workspace membership with configurable default permission level
   4. Custom workspace resolution logic can be plugged in via `OIDC_WORKSPACE_DETECTION_PLUGIN` (following existing group detection plugin pattern)
   5. Prompt Optimization Job and Gateway Budget Policy protobuf RPCs are intercepted by before_request handlers with appropriate permission checks
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md — Workspace permission CRUD API (Pydantic models, store group methods, cache invalidation, FastAPI dependencies, router with 8 endpoints, tests)
+- [ ] 03-02-PLAN.md — OIDC workspace claim mapping + PromptOptimizationJob entity coverage (3 config entries, callback workspace detection, 5 before_request handlers, tests)
 
 ### Phase 4: Workspace Management UI
 **Goal**: Users can manage workspace membership and permissions through the React admin UI with workspace-scoped views
@@ -92,6 +91,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Refactoring & Workspace Foundation | 3/3 | Complete   | 2026-03-23 |
-| 2. Workspace Auth Enforcement | 2/3 | Gap closure | 2026-03-23 |
-| 3. Management API, OIDC & Entity Coverage | 0/3 | Not started | - |
+| 2. Workspace Auth Enforcement | 3/3 | Complete | 2026-03-23 |
+| 3. Management API, OIDC & Entity Coverage | 0/2 | Planned | - |
 | 4. Workspace Management UI | 0/1 | Not started | - |
