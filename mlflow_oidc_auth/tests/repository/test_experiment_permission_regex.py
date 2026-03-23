@@ -36,12 +36,12 @@ def test_grant_success(repo, session):
 
     with (
         patch(
-            "mlflow_oidc_auth.repository.experiment_permission_regex.get_user",
+            "mlflow_oidc_auth.repository._base.get_user",
             return_value=user,
         ),
-        patch("mlflow_oidc_auth.db.models.SqlExperimentRegexPermission", return_value=perm),
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex._validate_permission"),
-        patch("mlflow_oidc_auth.repository.experiment_permission_regex.validate_regex"),
+        patch.object(type(repo), "model_class", return_value=perm),
+        patch("mlflow_oidc_auth.repository._base._validate_permission"),
+        patch("mlflow_oidc_auth.repository._base.validate_regex"),
     ):
         result = repo.grant("test_regex", 1, "READ", "user")
         assert result is not None
@@ -55,15 +55,12 @@ def test_grant_integrity_error(repo, session):
     session.flush = MagicMock(side_effect=Exception("IntegrityError"))
     with (
         patch(
-            "mlflow_oidc_auth.repository.experiment_permission_regex.get_user",
+            "mlflow_oidc_auth.repository._base.get_user",
             return_value=user,
         ),
+        patch.object(type(repo), "model_class", return_value=MagicMock()),
         patch(
-            "mlflow_oidc_auth.db.models.SqlExperimentRegexPermission",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "mlflow_oidc_auth.repository.experiment_permission_regex.IntegrityError",
+            "mlflow_oidc_auth.repository._base.IntegrityError",
             Exception,
         ),
     ):
@@ -74,7 +71,7 @@ def test_grant_integrity_error(repo, session):
 def test_get(repo, session):
     row = MagicMock()
     row.to_mlflow_entity.return_value = "entity"
-    with patch.object(repo, "_get_experiment_regex_permission", return_value=row):
+    with patch.object(repo, "_get_regex_permission", return_value=row):
         assert repo.get("r", "user") == "entity"
 
 
@@ -91,7 +88,7 @@ def test_list_regex_for_user(repo, session):
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().order_by().all.return_value = [perm]
     with patch(
-        "mlflow_oidc_auth.repository.experiment_permission_regex.get_user",
+        "mlflow_oidc_auth.repository._base.get_user",
         return_value=user,
     ):
         assert repo.list_regex_for_user("user") == ["entity"]
@@ -100,7 +97,7 @@ def test_list_regex_for_user(repo, session):
 def test_update(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch.object(repo, "_get_experiment_regex_permission", return_value=perm):
+    with patch.object(repo, "_get_regex_permission", return_value=perm):
         session.flush = MagicMock()
         result = repo.update("r", 2, "EDIT", "user", 1)
         assert result == "entity"
@@ -111,7 +108,7 @@ def test_update(repo, session):
 
 def test_revoke(repo, session):
     perm = MagicMock()
-    with patch.object(repo, "_get_experiment_regex_permission", return_value=perm):
+    with patch.object(repo, "_get_regex_permission", return_value=perm):
         session.delete = MagicMock()
         session.commit = MagicMock()
         assert repo.revoke("r", "user") is None
@@ -119,31 +116,33 @@ def test_revoke(repo, session):
         session.commit.assert_called_once()
 
 
-def test__get_experiment_regex_permission_not_found(repo, session):
-    """Test _get_experiment_regex_permission when no permission is found"""
+def test__get_regex_permission_not_found(repo, session):
+    """Test _get_regex_permission when no permission is found"""
     session.query().filter().one.side_effect = NoResultFound()
 
     with pytest.raises(MlflowException) as exc:
-        repo._get_experiment_regex_permission(session, "test_regex", 1)
+        repo._get_regex_permission(session, "test_regex", 1)
 
     assert "Permission not found for user_id: test_regex, and id: 1" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
 
-def test__get_experiment_regex_permission_multiple_found(repo, session):
-    """Test _get_experiment_regex_permission when multiple permissions are found"""
+def test__get_regex_permission_multiple_found(repo, session):
+    """Test _get_regex_permission when multiple permissions are found"""
     session.query().filter().one.side_effect = MultipleResultsFound()
 
     with pytest.raises(MlflowException) as exc:
-        repo._get_experiment_regex_permission(session, "test_regex", 1)
+        repo._get_regex_permission(session, "test_regex", 1)
 
-    assert "Multiple Permissions found for user_id: test_regex, and id: 1" in str(exc.value)
+    assert "Multiple Permissions found for user_id: test_regex, and id: 1" in str(
+        exc.value
+    )
     assert exc.value.error_code == "INVALID_STATE"
 
 
-def test__get_experiment_regex_permission_database_error(repo, session):
-    """Test _get_experiment_regex_permission when database error occurs"""
+def test__get_regex_permission_database_error(repo, session):
+    """Test _get_regex_permission when database error occurs"""
     session.query().filter().one.side_effect = Exception("Database connection error")
 
     with pytest.raises(Exception, match="Database connection error"):
-        repo._get_experiment_regex_permission(session, "test_regex", 1)
+        repo._get_regex_permission(session, "test_regex", 1)

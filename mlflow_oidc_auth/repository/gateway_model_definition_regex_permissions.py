@@ -1,90 +1,50 @@
-from typing import Callable, List
+"""Gateway model definition regex permission repository.
 
-from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
-from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
-from sqlalchemy.orm import Session
+Parameter order differs from the base class (``id`` comes first in
+``get``, ``update`` and ``revoke``), so those methods are overridden.
+"""
+
+from typing import List
 
 from mlflow_oidc_auth.db.models import SqlGatewayModelDefinitionRegexPermission
 from mlflow_oidc_auth.entities import GatewayModelDefinitionRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
+from mlflow_oidc_auth.repository._base import BaseRegexPermissionRepository
 from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 
 
-class GatewayModelDefinitionPermissionRegexRepository:
-    def __init__(self, session_maker):
-        self._Session: Callable[[], Session] = session_maker
+class GatewayModelDefinitionPermissionRegexRepository(
+    BaseRegexPermissionRepository[
+        SqlGatewayModelDefinitionRegexPermission, GatewayModelDefinitionRegexPermission
+    ]
+):
+    model_class = SqlGatewayModelDefinitionRegexPermission
 
-    def _get_model_def_regex_permission(self, session: Session, id: int, user_id: int) -> SqlGatewayModelDefinitionRegexPermission:
-        try:
-            return (
-                session.query(SqlGatewayModelDefinitionRegexPermission)
-                .filter(
-                    SqlGatewayModelDefinitionRegexPermission.id == id,
-                    SqlGatewayModelDefinitionRegexPermission.user_id == user_id,
-                )
-                .one()
-            )
-        except NoResultFound:
-            raise MlflowException(f"Permission not found for user_id: {user_id} and id: {id}", RESOURCE_DOES_NOT_EXIST)
-        except MultipleResultsFound:
-            raise MlflowException(f"Multiple Permissions found for user_id: {user_id} and id: {id}", INVALID_STATE)
+    # -- Parameter-order overrides --------------------------------------------
 
-    def grant(self, regex: str, priority: int, permission: str, username: str) -> GatewayModelDefinitionRegexPermission:
-        validate_regex(regex)
-        _validate_permission(permission)
-        with self._Session() as session:
-            try:
-                user = get_user(session, username)
-                perm = SqlGatewayModelDefinitionRegexPermission(
-                    regex=regex,
-                    priority=priority,
-                    user_id=user.id,
-                    permission=permission,
-                )
-                session.add(perm)
-                session.flush()
-                return perm.to_mlflow_entity()
-            except IntegrityError as e:
-                raise MlflowException(
-                    f"Gateway model definition regex perm exists ({regex},{username}): {e}",
-                    RESOURCE_ALREADY_EXISTS,
-                )
-
-    def get(self, id: int, username: str) -> GatewayModelDefinitionRegexPermission:
+    def get(self, id: int, username: str) -> GatewayModelDefinitionRegexPermission:  # type: ignore[override]
         with self._Session() as session:
             user = get_user(session, username)
-            perm = self._get_model_def_regex_permission(session, id, user.id)
+            perm = self._get_regex_permission(session, user.id, id)
             return perm.to_mlflow_entity()
 
-    def list_regex_for_user(self, username: str) -> List[GatewayModelDefinitionRegexPermission]:
-        with self._Session() as session:
-            user = get_user(session, username)
-            perms = (
-                session.query(SqlGatewayModelDefinitionRegexPermission)
-                .filter(
-                    SqlGatewayModelDefinitionRegexPermission.user_id == user.id,
-                )
-                .order_by(SqlGatewayModelDefinitionRegexPermission.priority)
-                .all()
-            )
-            return [p.to_mlflow_entity() for p in perms]
-
-    def update(self, id: int, regex: str, priority: int, permission: str, username: str) -> GatewayModelDefinitionRegexPermission:
+    def update(
+        self, id: int, regex: str, priority: int, permission: str, username: str
+    ) -> GatewayModelDefinitionRegexPermission:  # type: ignore[override]
         validate_regex(regex)
         _validate_permission(permission)
         with self._Session() as session:
             user = get_user(session, username)
-            perm = self._get_model_def_regex_permission(session, id, user.id)
+            perm = self._get_regex_permission(session, user.id, id)
             perm.priority = priority
             perm.permission = permission
             session.commit()
             return perm.to_mlflow_entity()
 
-    def revoke(self, id: int, username: str) -> None:
+    def revoke(self, id: int, username: str) -> None:  # type: ignore[override]
         with self._Session() as session:
             user = get_user(session, username)
-            perm = self._get_model_def_regex_permission(session, id, user.id)
+            perm = self._get_regex_permission(session, user.id, id)
             session.delete(perm)
             session.commit()
             return None

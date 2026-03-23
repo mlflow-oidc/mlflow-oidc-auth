@@ -1,21 +1,39 @@
+"""Scorer permission repository.
+
+Uses a 2-part composite key (experiment_id + scorer_name) which prevents
+simple inheritance from BaseUserPermissionRepository.  We inherit for the
+constructor and session wiring but override every data method.
+"""
+
 from typing import Callable, List
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import (
+    INVALID_STATE,
+    RESOURCE_ALREADY_EXISTS,
+    RESOURCE_DOES_NOT_EXIST,
+)
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlScorerPermission, SqlUser
 from mlflow_oidc_auth.entities import ScorerPermission
 from mlflow_oidc_auth.permissions import _validate_permission
+from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 from mlflow_oidc_auth.repository.utils import get_user
 
 
-class ScorerPermissionRepository:
-    def __init__(self, session_maker):
-        self._Session: Callable[[], Session] = session_maker
+class ScorerPermissionRepository(
+    BaseUserPermissionRepository[SqlScorerPermission, ScorerPermission]
+):
+    model_class = SqlScorerPermission
+    resource_id_attr = "experiment_id"
 
-    def _get_permission(self, session: Session, experiment_id: str, scorer_name: str, username: str) -> SqlScorerPermission:
+    # -- 2-part key overrides ------------------------------------------------
+
+    def _get_permission(
+        self, session: Session, experiment_id: str, scorer_name: str, username: str
+    ) -> SqlScorerPermission:  # type: ignore[override]
         try:
             return (
                 session.query(SqlScorerPermission)
@@ -38,7 +56,9 @@ class ScorerPermissionRepository:
                 INVALID_STATE,
             ) from e
 
-    def grant_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:
+    def grant_permission(
+        self, experiment_id: str, scorer_name: str, username: str, permission: str
+    ) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
         with self._Session() as session:
             try:
@@ -58,18 +78,16 @@ class ScorerPermissionRepository:
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
-    def get_permission(self, experiment_id: str, scorer_name: str, username: str) -> ScorerPermission:
+    def get_permission(
+        self, experiment_id: str, scorer_name: str, username: str
+    ) -> ScorerPermission:  # type: ignore[override]
         with self._Session() as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
             return perm.to_mlflow_entity()
 
-    def list_permissions_for_user(self, username: str) -> List[ScorerPermission]:
-        with self._Session() as session:
-            user = get_user(session, username)
-            rows = session.query(SqlScorerPermission).filter(SqlScorerPermission.user_id == user.id).all()
-            return [r.to_mlflow_entity() for r in rows]
-
-    def update_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:
+    def update_permission(
+        self, experiment_id: str, scorer_name: str, username: str, permission: str
+    ) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
         with self._Session() as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
@@ -77,7 +95,9 @@ class ScorerPermissionRepository:
             session.flush()
             return perm.to_mlflow_entity()
 
-    def revoke_permission(self, experiment_id: str, scorer_name: str, username: str) -> None:
+    def revoke_permission(
+        self, experiment_id: str, scorer_name: str, username: str
+    ) -> None:  # type: ignore[override]
         with self._Session() as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
             session.delete(perm)
