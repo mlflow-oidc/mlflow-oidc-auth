@@ -53,6 +53,16 @@ def get_workspace_permission_cached(username: str, workspace: str) -> Permission
     return perm
 
 
+def invalidate_workspace_permission(username: str, workspace: str) -> None:
+    """Remove a specific user+workspace entry from cache (per D-13).
+
+    Called by workspace permission router after successful CUD operations.
+    Only invalidates user permission changes; group changes rely on TTL (per D-15).
+    """
+    cache = _get_cache()
+    cache.pop((username, workspace), None)
+
+
 def _lookup_workspace_permission(username: str, workspace: str) -> Permission | None:
     """Look up workspace permission from DB, with implicit default workspace access.
 

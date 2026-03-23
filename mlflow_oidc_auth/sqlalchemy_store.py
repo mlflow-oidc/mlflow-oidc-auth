@@ -1294,3 +1294,54 @@ class SqlAlchemyStore:
             return self.workspace_group_permission_repo.get_highest_for_user(
                 workspace, user.id
             )
+
+    # Workspace group permission CRUD (group-scoped)
+    def get_workspace_group_permission(
+        self, workspace: str, group_name: str
+    ) -> WorkspaceGroupPermission:
+        """Get a group's workspace permission by group name."""
+        from mlflow_oidc_auth.repository.utils import get_group
+
+        with self.ManagedSessionMaker() as session:
+            group = get_group(session, group_name)
+            return self.workspace_group_permission_repo.get(workspace, group.id)
+
+    def create_workspace_group_permission(
+        self, workspace: str, group_name: str, permission: str
+    ) -> WorkspaceGroupPermission:
+        """Create a workspace permission for a group by group name."""
+        from mlflow_oidc_auth.repository.utils import get_group
+
+        with self.ManagedSessionMaker() as session:
+            group = get_group(session, group_name)
+            return self.workspace_group_permission_repo.create(
+                workspace, group.id, permission
+            )
+
+    def update_workspace_group_permission(
+        self, workspace: str, group_name: str, permission: str
+    ) -> WorkspaceGroupPermission:
+        """Update a group's workspace permission by group name."""
+        from mlflow_oidc_auth.repository.utils import get_group
+
+        with self.ManagedSessionMaker() as session:
+            group = get_group(session, group_name)
+            return self.workspace_group_permission_repo.update(
+                workspace, group.id, permission
+            )
+
+    def delete_workspace_group_permission(
+        self, workspace: str, group_name: str
+    ) -> None:
+        """Delete a group's workspace permission by group name."""
+        from mlflow_oidc_auth.repository.utils import get_group
+
+        with self.ManagedSessionMaker() as session:
+            group = get_group(session, group_name)
+            self.workspace_group_permission_repo.delete(workspace, group.id)
+
+    def list_workspace_group_permissions(
+        self, workspace: str
+    ) -> list[WorkspaceGroupPermission]:
+        """List all group permissions in a workspace."""
+        return self.workspace_group_permission_repo.list_for_workspace(workspace)
