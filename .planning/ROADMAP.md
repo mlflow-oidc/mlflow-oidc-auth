@@ -77,11 +77,12 @@ Plans:
   1. Workspace list view shows all workspaces the current user has access to, with workspace detail view showing members (users + groups) and their permission levels
   2. Workspace switcher component in the admin UI navigation allows switching between workspace-scoped permission views
   3. Admin users can manually assign/remove users to/from workspaces via the UI — serves as fallback when OIDC provider doesn't send workspace claims
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — Backend config, types, API endpoints, service layer, hooks, sidebar navigation, route registration
+- [ ] 04-02-PLAN.md — Workspace list page, workspace detail page, member management CRUD with tests
 
 ## Progress
 
@@ -93,4 +94,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Refactoring & Workspace Foundation | 3/3 | Complete   | 2026-03-23 |
 | 2. Workspace Auth Enforcement | 3/3 | Complete | 2026-03-23 |
 | 3. Management API, OIDC & Entity Coverage | 2/2 | Complete | 2026-03-23 |
-| 4. Workspace Management UI | 0/1 | Not started | - |
+| 4. Workspace Management UI | 0/2 | Not started | - |
