@@ -35,7 +35,10 @@ def _get_ui_directory() -> tuple[Path, Path]:
 
 
 @ui_router.get("/config.json")
-async def serve_spa_config(base_path: str = Depends(get_base_path), authenticated: bool = Depends(is_authenticated)):
+async def serve_spa_config(
+    base_path: str = Depends(get_base_path),
+    authenticated: bool = Depends(is_authenticated),
+):
     return JSONResponse(
         content={
             "basePath": base_path,
@@ -43,6 +46,7 @@ async def serve_spa_config(base_path: str = Depends(get_base_path), authenticate
             "provider": config.OIDC_PROVIDER_DISPLAY_NAME,
             "authenticated": authenticated,
             "gen_ai_gateway_enabled": config.OIDC_GEN_AI_GATEWAY_ENABLED,
+            "workspaces_enabled": config.MLFLOW_ENABLE_WORKSPACES,
         }
     )
 
@@ -70,7 +74,9 @@ async def serve_spa(filename: str):
     ui_dir_path_str = str(ui_dir_path)
     requested_path_str = str(requested_path)
     is_within_ui_dir = (
-        requested_path_str == ui_dir_path_str or requested_path_str.startswith(ui_dir_path_str + "/") or requested_path_str.startswith(ui_dir_path_str + "\\")
+        requested_path_str == ui_dir_path_str
+        or requested_path_str.startswith(ui_dir_path_str + "/")
+        or requested_path_str.startswith(ui_dir_path_str + "\\")
     )
     if is_within_ui_dir and requested_path.is_file():
         return FileResponse(requested_path_str)

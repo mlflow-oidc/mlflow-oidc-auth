@@ -11,11 +11,13 @@ import {
   faLink,
   faKey,
   faHexagonNodesBolt,
+  faBuilding,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const getSidebarData = (
   isAdmin: boolean,
   genAiGatewayEnabled: boolean,
+  workspacesEnabled: boolean,
 ): NavLinkData[] => {
   const baseLinks: NavLinkData[] = [
     { label: "Users", href: "/users", isInternalLink: true, icon: faUser },
@@ -75,6 +77,18 @@ export const getSidebarData = (
       },
     ];
     sidebarContent = [...sidebarContent, ...aiLinks];
+  }
+
+  if (workspacesEnabled) {
+    sidebarContent = [
+      ...sidebarContent,
+      {
+        label: "Workspaces",
+        href: "/workspaces",
+        isInternalLink: true,
+        icon: faBuilding,
+      },
+    ];
   }
 
   if (isAdmin) {

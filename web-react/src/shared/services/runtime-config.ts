@@ -4,6 +4,7 @@ export type RuntimeConfig = {
   provider: string;
   authenticated: boolean;
   gen_ai_gateway_enabled: boolean;
+  workspaces_enabled: boolean;
 };
 
 let cachedConfig: RuntimeConfig | null = null;

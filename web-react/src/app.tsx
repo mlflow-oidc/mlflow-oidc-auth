@@ -50,6 +50,13 @@ const ServiceAccountPermissionPage = React.lazy(
   () => import("./features/service-accounts/service-account-permission-page"),
 );
 
+const WorkspacesPage = React.lazy(
+  () => import("./features/workspaces/workspaces-page"),
+);
+const WorkspaceDetailPage = React.lazy(
+  () => import("./features/workspaces/workspace-detail-page"),
+);
+
 const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
 const UsersPage = React.lazy(() => import("./features/users/users-page"));
@@ -291,6 +298,23 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <ServiceAccountPermissionPage type="ai-models" />
+          </ProtectedLayoutRoute>
+        }
+      />
+
+      <Route
+        path="/workspaces"
+        element={
+          <ProtectedLayoutRoute>
+            <WorkspacesPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/workspaces/:workspaceName"
+        element={
+          <ProtectedLayoutRoute>
+            <WorkspaceDetailPage />
           </ProtectedLayoutRoute>
         }
       />

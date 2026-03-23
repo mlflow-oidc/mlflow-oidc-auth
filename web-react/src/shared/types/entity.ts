@@ -151,3 +151,26 @@ export type GatewayModelListItem = {
   name: string;
   source: string;
 };
+
+// Workspace types
+export type WorkspaceListItem = {
+  name: string;
+  description: string;
+  default_artifact_root: string;
+};
+
+export type WorkspaceListResponse = {
+  workspaces: WorkspaceListItem[];
+};
+
+export type WorkspaceUserPermission = {
+  workspace: string;
+  username: string;
+  permission: PermissionLevel;
+};
+
+export type WorkspaceGroupPermission = {
+  workspace: string;
+  group_name: string;
+  permission: PermissionLevel;
+};
