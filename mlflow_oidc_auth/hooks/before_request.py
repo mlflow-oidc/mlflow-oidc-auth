@@ -79,6 +79,11 @@ from mlflow.protos.service_pb2 import (
     GetScorer,
     DeleteScorer,
     ListScorerVersions,
+    CreatePromptOptimizationJob,
+    GetPromptOptimizationJob,
+    SearchPromptOptimizationJobs,
+    DeletePromptOptimizationJob,
+    CancelPromptOptimizationJob,
 )
 
 from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
@@ -224,6 +229,12 @@ BEFORE_REQUEST_HANDLERS = {
     GetScorer: validate_can_read_scorer,
     DeleteScorer: validate_can_delete_scorer,
     ListScorerVersions: validate_can_read_scorer,
+    # Routes for prompt optimization jobs (experiment-scoped per D-11)
+    CreatePromptOptimizationJob: validate_can_update_experiment,
+    GetPromptOptimizationJob: validate_can_read_experiment,
+    SearchPromptOptimizationJobs: validate_can_read_experiment,
+    DeletePromptOptimizationJob: validate_can_delete_experiment,
+    CancelPromptOptimizationJob: validate_can_update_experiment,
     # Routes for gateway endpoints
     CreateGatewayEndpoint: validate_can_create_gateway,
     GetGatewayEndpoint: validate_can_read_gateway_endpoint,

@@ -139,6 +139,17 @@ class AppConfig:
             "WORKSPACE_CACHE_TTL_SECONDS", default=300
         )
 
+        # OIDC workspace detection settings
+        self.OIDC_WORKSPACE_CLAIM_NAME = config_manager.get(
+            "OIDC_WORKSPACE_CLAIM_NAME", "workspace"
+        )
+        self.OIDC_WORKSPACE_DETECTION_PLUGIN = config_manager.get(
+            "OIDC_WORKSPACE_DETECTION_PLUGIN"
+        )
+        self.OIDC_WORKSPACE_DEFAULT_PERMISSION = config_manager.get(
+            "OIDC_WORKSPACE_DEFAULT_PERMISSION", "NO_PERMISSIONS"
+        )
+
     def refresh(self) -> None:
         """Reload configuration from all providers.
 

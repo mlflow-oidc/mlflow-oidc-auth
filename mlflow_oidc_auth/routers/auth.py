@@ -64,7 +64,9 @@ async def _call_authorize_access_token(request: Request) -> Optional[dict[str, A
     return await _maybe_await(token_call)
 
 
-async def _authorize_access_token_with_retry(request: Request) -> Optional[dict[str, Any]]:
+async def _authorize_access_token_with_retry(
+    request: Request,
+) -> Optional[dict[str, Any]]:
     """Exchange code for tokens, retrying once after a JWKS refresh on any validation failure."""
 
     last_error: Optional[Exception] = None
@@ -74,14 +76,20 @@ async def _authorize_access_token_with_retry(request: Request) -> Optional[dict[
             return await _call_authorize_access_token(request)
         except BadSignatureError as exc:
             last_error = exc
-            logger.warning("OIDC token exchange attempt %d failed with bad signature: %s", attempt + 1, exc)
+            logger.warning(
+                "OIDC token exchange attempt %d failed with bad signature: %s",
+                attempt + 1,
+                exc,
+            )
             if attempt == 0:
                 await _refresh_oidc_jwks()
                 continue
             break
         except Exception as exc:
             last_error = exc
-            logger.warning("OIDC token exchange attempt %d failed: %s", attempt + 1, exc)
+            logger.warning(
+                "OIDC token exchange attempt %d failed: %s", attempt + 1, exc
+            )
             if attempt == 0:
                 await _refresh_oidc_jwks()
                 continue
@@ -92,7 +100,9 @@ async def _authorize_access_token_with_retry(request: Request) -> Optional[dict[
     return None
 
 
-def _build_ui_url(request: Request, path: str, query_params: Optional[dict] = None) -> str:
+def _build_ui_url(
+    request: Request, path: str, query_params: Optional[dict] = None
+) -> str:
     """
     Build a UI URL with the correct prefix and optional query parameters.
 
@@ -133,7 +143,10 @@ async def login(request: Request):
         # Check if OIDC is properly configured before proceeding
         if not is_oidc_configured():
             logger.error("OIDC is not properly configured")
-            raise HTTPException(status_code=500, detail="OIDC authentication not available - configuration error")
+            raise HTTPException(
+                status_code=500,
+                detail="OIDC authentication not available - configuration error",
+            )
 
         # Get session for storing OAuth state (using Starlette's built-in session)
         session = request.session
@@ -144,7 +157,11 @@ async def login(request: Request):
 
         # Get redirect URI (configured or dynamic). Use a safe fallback if dynamic calculation fails
         try:
-            redirect_url = get_configured_or_dynamic_redirect_uri(request=request, callback_path=CALLBACK, configured_uri=config.OIDC_REDIRECT_URI)
+            redirect_url = get_configured_or_dynamic_redirect_uri(
+                request=request,
+                callback_path=CALLBACK,
+                configured_uri=config.OIDC_REDIRECT_URI,
+            )
         except Exception as e:
             logger.warning(f"Failed to get dynamic redirect URI: {e}")
             # Fallback to base_url + callback when request.url or other internals are not available in tests
@@ -157,7 +174,9 @@ async def login(request: Request):
         try:
             if not hasattr(oauth.oidc, "authorize_redirect"):
                 logger.error("OIDC client authorize_redirect method not available")
-                raise HTTPException(status_code=500, detail="OIDC authentication not available")
+                raise HTTPException(
+                    status_code=500, detail="OIDC authentication not available"
+                )
 
             return await oauth.oidc.authorize_redirect(  # type: ignore
                 request,
@@ -245,7 +264,11 @@ async def callback(request: Request):
         # This handles the case where callback hits a replica that hasn't registered the client yet
         if not is_oidc_configured():
             logger.error("OIDC is not properly configured when processing callback")
-            auth_error_url = _build_ui_url(request, "/auth", {"error": ["OIDC authentication not available - configuration error"]})
+            auth_error_url = _build_ui_url(
+                request,
+                "/auth",
+                {"error": ["OIDC authentication not available - configuration error"]},
+            )
             return RedirectResponse(url=auth_error_url, status_code=302)
 
         # Get session (using Starlette's built-in session)
@@ -289,7 +312,9 @@ async def callback(request: Request):
         raise
     except Exception as e:
         logger.error(f"Unexpected error in OIDC callback: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error during authentication")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during authentication"
+        )
 
 
 @auth_router.get(AUTH_STATUS)
@@ -314,16 +339,22 @@ async def auth_status(request: Request):
             content={
                 "authenticated": is_authenticated,
                 "username": username,
-                "provider": config.OIDC_PROVIDER_DISPLAY_NAME if is_authenticated else None,
+                "provider": config.OIDC_PROVIDER_DISPLAY_NAME
+                if is_authenticated
+                else None,
             }
         )
 
     except Exception as e:
         logger.error(f"Error getting auth status: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get authentication status")
+        raise HTTPException(
+            status_code=500, detail="Failed to get authentication status"
+        )
 
 
-async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Optional[str], list[str]]:
+async def _process_oidc_callback_fastapi(
+    request: Request, session
+) -> tuple[Optional[str], list[str]]:
     """
     Process the OIDC callback logic using FastAPI-native implementation.
 
@@ -370,7 +401,9 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
     try:
         # Exchange authorization code for tokens
         if not hasattr(oauth.oidc, "authorize_access_token"):
-            errors.append("OIDC configuration error: OAuth client not properly initialized.")
+            errors.append(
+                "OIDC configuration error: OAuth client not properly initialized."
+            )
             return None, errors
 
         token_response = await _authorize_access_token_with_retry(request)
@@ -409,7 +442,9 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
 
             # Get user groups
             if config.OIDC_GROUP_DETECTION_PLUGIN:
-                user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(access_token)
+                user_groups = importlib.import_module(
+                    config.OIDC_GROUP_DETECTION_PLUGIN
+                ).get_user_groups(access_token)
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
 
@@ -417,17 +452,67 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
 
             # Check authorization
             # Determine admin and allowed groups
-            is_admin = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
-            if not is_admin and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+            is_admin = any(
+                group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME
+            )
+            if not is_admin and not any(
+                group in user_groups for group in config.OIDC_GROUP_NAME
+            ):
                 errors.append("User is not allowed to login")
                 return None, errors
 
             # Create/update user and groups using user_module so monkeypatched functions are used in tests
-            user_module.create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
+            user_module.create_user(
+                username=email.lower(), display_name=display_name, is_admin=is_admin
+            )
             user_module.populate_groups(group_names=user_groups)
             user_module.update_user(username=email.lower(), group_names=user_groups)
 
-            logger.info(f"User {email} successfully processed with groups: {user_groups}")
+            # Workspace detection (per D-07, D-08, WSOIDC-01/02/03)
+            # Layered approach: plugin first, JWT claim fallback, then auto-assign
+            if config.MLFLOW_ENABLE_WORKSPACES:
+                user_workspaces: list[str] = []
+                if config.OIDC_WORKSPACE_DETECTION_PLUGIN:
+                    try:
+                        user_workspaces = importlib.import_module(
+                            config.OIDC_WORKSPACE_DETECTION_PLUGIN
+                        ).get_user_workspaces(access_token)
+                    except Exception as ws_plugin_err:
+                        logger.warning(
+                            f"Workspace detection plugin error: {ws_plugin_err}"
+                        )
+                else:
+                    # JWT claim fallback
+                    claim_value = userinfo.get(config.OIDC_WORKSPACE_CLAIM_NAME, [])
+                    if isinstance(claim_value, str):
+                        user_workspaces = [claim_value]
+                    elif isinstance(claim_value, list):
+                        user_workspaces = [str(w) for w in claim_value]
+
+                # Auto-assign workspace memberships
+                from mlflow_oidc_auth.store import store as ws_store
+
+                for ws_name in user_workspaces:
+                    if not ws_name:
+                        continue
+                    try:
+                        ws_store.create_workspace_permission(
+                            ws_name,
+                            email.lower(),
+                            config.OIDC_WORKSPACE_DEFAULT_PERMISSION,
+                        )
+                        logger.info(
+                            f"Auto-assigned user {email} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}"
+                        )
+                    except Exception:
+                        # Permission already exists — not an error (idempotent)
+                        logger.debug(
+                            f"Workspace permission already exists for {email} in '{ws_name}'"
+                        )
+
+            logger.info(
+                f"User {email} successfully processed with groups: {user_groups}"
+            )
 
         except Exception as e:
             logger.error(f"User/group management error: {str(e)}")
@@ -437,6 +522,11 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         return email.lower(), []
 
     except Exception as e:
-        logger.error("OIDC token exchange error (%s.%s): %s", type(e).__module__, type(e).__name__, str(e))
+        logger.error(
+            "OIDC token exchange error (%s.%s): %s",
+            type(e).__module__,
+            type(e).__name__,
+            str(e),
+        )
         errors.append("Failed to process authentication response")
         return None, errors
