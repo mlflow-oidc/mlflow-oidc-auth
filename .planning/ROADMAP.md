@@ -51,7 +51,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — Workspace permission data layer (entities, standalone repos, ORM model updates, store methods, TTLCache)
 - [x] 02-02-PLAN.md — Workspace auth enforcement (resolve_permission fallback, validators, hook registration, creation gating, ListWorkspaces filtering)
-- [ ] 02-03-PLAN.md — Gap closure: fix over-inclusive creation gating paths filter
+- [x] 02-03-PLAN.md — Gap closure: fix over-inclusive creation gating paths filter
 
 ### Phase 3: Management API, OIDC & Entity Coverage
 **Goal**: Workspace permissions are manageable via API (user + group), OIDC login auto-assigns workspace membership, and new MLflow 3.10 entities are covered by auth handlers
