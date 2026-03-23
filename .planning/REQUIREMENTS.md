@@ -9,7 +9,7 @@
 ### Prerequisite Refactoring
 
 - [x] **REFAC-01**: Permission resolution refactored into generic `resolve_permission()` function to eliminate 8 copy-paste functions in `utils/permissions.py`
-- [ ] **REFAC-02**: Repository base class for permissions to reduce duplication across 28+ repository classes
+- [x] **REFAC-02**: Repository base class for permissions to reduce duplication across 28+ repository classes
 
 ### Workspace Foundation
 
@@ -70,7 +70,7 @@
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
 | REFAC-01 | Phase 1 | Complete |
-| REFAC-02 | Phase 1 | Pending |
+| REFAC-02 | Phase 1 | Complete |
 | WSFND-01 | Phase 1 | Pending |
 | WSFND-02 | Phase 1 | Pending |
 | WSFND-03 | Phase 1 | Pending |

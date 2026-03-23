@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Permission resolution refactoring (registry + resolve_permission)
-- [ ] 01-02-PLAN.md — Repository base class refactoring (4 generic base classes for 28 repos)
+- [x] 01-02-PLAN.md — Repository base class refactoring (4 generic base classes for 28 repos)
 - [ ] 01-03-PLAN.md — Workspace foundation plumbing (feature flag, AuthContext, middleware, migration, seeding)
 
 ### Phase 2: Workspace Auth Enforcement
@@ -90,7 +90,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Refactoring & Workspace Foundation | 0/3 | Not started | - |
+| 1. Refactoring & Workspace Foundation | 2/3 | In Progress|  |
 | 2. Workspace Auth Enforcement | 0/2 | Not started | - |
 | 3. Management API, OIDC & Entity Coverage | 0/3 | Not started | - |
 | 4. Workspace Management UI | 0/1 | Not started | - |
