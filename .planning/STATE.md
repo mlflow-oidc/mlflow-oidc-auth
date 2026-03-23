@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Completed 02-01-PLAN.md — workspace permission data layer
-last_updated: "2026-03-23T18:39:44.030Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 02-02-PLAN.md — workspace auth enforcement (phase 02 complete)
+last_updated: "2026-03-23T19:02:31.979Z"
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -50,6 +50,7 @@ Plan: 2 of 2
 | Phase 01 P02 | 25min | 2 tasks | 37 files |
 | Phase 01 P03 | 15min | 2 tasks | 18 files |
 | Phase 02 P01 | 45min | 2 tasks | 13 files |
+| Phase 02 P02 | 11min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Conditional workspace MANAGE wrapper in before_request_hook() for CreateExperiment/CreateRegisteredModel
 - [Phase 02]: Standalone workspace repos use get_user() from repository.utils for username resolution (not user_repo._get_user)
 - [Phase 02]: workspace_cache not exported from utils/__init__.py — callers import directly to avoid circular import issues
+- [Phase 02]: Creation gating uses lazy-built path set from get_endpoints() with if-handler-not-None filter
+- [Phase 02]: Workspace validators return True/False (matching existing convention), not Flask Response objects
+- [Phase 02]: Lazy imports patched at source module in tests — not at consuming module
 
 ### Pending Todos
 
@@ -88,6 +92,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-23T18:39:44.027Z
-Stopped at: Completed 02-01-PLAN.md — workspace permission data layer
+Last session: 2026-03-23T19:02:31.977Z
+Stopped at: Completed 02-02-PLAN.md — workspace auth enforcement (phase 02 complete)
 Resume file: None

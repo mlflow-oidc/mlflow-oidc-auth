@@ -13,7 +13,7 @@ This roadmap delivers multi-tenant workspace support to the MLflow OIDC Auth plu
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Refactoring & Workspace Foundation** - Eliminate permission resolution debt and establish workspace data layer (feature flag, DB migration, context propagation) (completed 2026-03-23)
-- [ ] **Phase 2: Workspace Auth Enforcement** - Workspace permission model and security boundary in the permission resolution chain
+- [x] **Phase 2: Workspace Auth Enforcement** - Workspace permission model and security boundary in the permission resolution chain (completed 2026-03-23)
 - [ ] **Phase 3: Management API, OIDC & Entity Coverage** - Workspace permission CRUD endpoints, OIDC claim mapping, and new entity auth handlers
 - [ ] **Phase 4: Workspace Management UI** - React workspace management feature module with list, detail, member management, and workspace switcher
 
@@ -50,7 +50,7 @@ Plans:
 
 Plans:
 - [x] 02-01-PLAN.md — Workspace permission data layer (entities, standalone repos, ORM model updates, store methods, TTLCache)
-- [ ] 02-02-PLAN.md — Workspace auth enforcement (resolve_permission fallback, validators, hook registration, creation gating, ListWorkspaces filtering)
+- [x] 02-02-PLAN.md — Workspace auth enforcement (resolve_permission fallback, validators, hook registration, creation gating, ListWorkspaces filtering)
 
 ### Phase 3: Management API, OIDC & Entity Coverage
 **Goal**: Workspace permissions are manageable via API (user + group), OIDC login auto-assigns workspace membership, and new MLflow 3.10 entities are covered by auth handlers
@@ -91,6 +91,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Refactoring & Workspace Foundation | 3/3 | Complete   | 2026-03-23 |
-| 2. Workspace Auth Enforcement | 1/2 | In Progress|  |
+| 2. Workspace Auth Enforcement | 2/2 | Complete   | 2026-03-23 |
 | 3. Management API, OIDC & Entity Coverage | 0/3 | Not started | - |
 | 4. Workspace Management UI | 0/1 | Not started | - |
