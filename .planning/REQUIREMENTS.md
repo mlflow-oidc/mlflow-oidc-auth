@@ -69,31 +69,32 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| REFAC-01 | — | Pending |
-| REFAC-02 | — | Pending |
-| WSFND-01 | — | Pending |
-| WSFND-02 | — | Pending |
-| WSFND-03 | — | Pending |
-| WSFND-04 | — | Pending |
-| WSFND-05 | — | Pending |
-| WSFND-06 | — | Pending |
-| WSAUTH-01 | — | Pending |
-| WSAUTH-02 | — | Pending |
-| WSAUTH-03 | — | Pending |
-| WSAUTH-04 | — | Pending |
-| WSAUTH-05 | — | Pending |
-| WSMGMT-01 | — | Pending |
-| WSMGMT-02 | — | Pending |
-| WSMGMT-03 | — | Pending |
-| WSMGMT-04 | — | Pending |
-| WSMGMT-05 | — | Pending |
-| WSMGMT-06 | — | Pending |
-| WSOIDC-01 | — | Pending |
-| WSOIDC-02 | — | Pending |
-| WSOIDC-03 | — | Pending |
-| ENTITY-01 | — | Pending |
-| ENTITY-02 | — | Pending |
+| REFAC-01 | Phase 1 | Pending |
+| REFAC-02 | Phase 1 | Pending |
+| WSFND-01 | Phase 1 | Pending |
+| WSFND-02 | Phase 1 | Pending |
+| WSFND-03 | Phase 1 | Pending |
+| WSFND-04 | Phase 1 | Pending |
+| WSFND-05 | Phase 1 | Pending |
+| WSFND-06 | Phase 1 | Pending |
+| WSAUTH-01 | Phase 2 | Pending |
+| WSAUTH-02 | Phase 2 | Pending |
+| WSAUTH-03 | Phase 2 | Pending |
+| WSAUTH-04 | Phase 2 | Pending |
+| WSAUTH-05 | Phase 2 | Pending |
+| WSMGMT-01 | Phase 3 | Pending |
+| WSMGMT-02 | Phase 3 | Pending |
+| WSMGMT-03 | Phase 3 | Pending |
+| WSMGMT-04 | Phase 4 | Pending |
+| WSMGMT-05 | Phase 4 | Pending |
+| WSMGMT-06 | Phase 4 | Pending |
+| WSOIDC-01 | Phase 3 | Pending |
+| WSOIDC-02 | Phase 3 | Pending |
+| WSOIDC-03 | Phase 3 | Pending |
+| ENTITY-01 | Phase 3 | Pending |
+| ENTITY-02 | Phase 3 | Pending |
 
 ---
 *Requirements defined: 2026-03-23*
 *24 v1 requirements | 5 v2 deferred | 6 out of scope*
+*Traceability updated: 2026-03-23 — all 24 v1 requirements mapped to phases*
