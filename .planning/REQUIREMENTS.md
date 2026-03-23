@@ -33,9 +33,9 @@
 - [ ] **WSMGMT-01**: FastAPI CRUD router for workspace-user permissions (list, create, update, delete per workspace)
 - [ ] **WSMGMT-02**: FastAPI CRUD router for workspace-group permissions (list, create, update, delete per workspace) — differentiator over upstream
 - [ ] **WSMGMT-03**: Workspace permission delegation — users with MANAGE on a workspace can grant/revoke permissions for other users within that workspace without requiring global admin
-- [ ] **WSMGMT-04**: React workspace management feature module with workspace list view, workspace detail view, and member management (users + groups)
-- [ ] **WSMGMT-05**: Workspace switcher component in admin UI navigation for workspace-scoped permission views
-- [ ] **WSMGMT-06**: Admin-managed workspace-to-user assignment UI as fallback when OIDC provider doesn't send workspace claims — manual workspace membership management
+- [x] **WSMGMT-04**: React workspace management feature module with workspace list view, workspace detail view, and member management (users + groups)
+- [x] **WSMGMT-05**: Workspace switcher component in admin UI navigation for workspace-scoped permission views
+- [x] **WSMGMT-06**: Admin-managed workspace-to-user assignment UI as fallback when OIDC provider doesn't send workspace claims — manual workspace membership management
 
 ### OIDC Workspace Integration
 
@@ -85,9 +85,9 @@
 | WSMGMT-01 | Phase 3 | Pending |
 | WSMGMT-02 | Phase 3 | Pending |
 | WSMGMT-03 | Phase 3 | Pending |
-| WSMGMT-04 | Phase 4 | Pending |
-| WSMGMT-05 | Phase 4 | Pending |
-| WSMGMT-06 | Phase 4 | Pending |
+| WSMGMT-04 | Phase 4 | Complete |
+| WSMGMT-05 | Phase 4 | Complete |
+| WSMGMT-06 | Phase 4 | Complete |
 | WSOIDC-01 | Phase 3 | Pending |
 | WSOIDC-02 | Phase 3 | Pending |
 | WSOIDC-03 | Phase 3 | Pending |

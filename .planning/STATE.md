@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Phase 3 complete — ready for Phase 4
-stopped_at: Phase 3 committed
-last_updated: "2026-03-23T21:30:00.000Z"
+status: All 4 phases complete — milestone finished
+stopped_at: Phase 4 committed — milestone delivered
+last_updated: "2026-03-23T22:00:00.000Z"
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
+  completed_phases: 4
+  total_plans: 10
+  completed_plans: 10
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Multi-tenant resource isolation — organizations share an MLflow instance while each tenant sees only their own resources
-**Current focus:** Phase 03 — management-api-oidc-entity-coverage (complete)
+**Current focus:** All phases complete — milestone delivered
 
 ## Current Position
 
-Phase: 3 (complete — ready for Phase 4)
-Plan: Both 03-01 and 03-02 committed
+Phase: 4 (complete — all plans executed)
+Plan: 04-01 and 04-02 complete
 
 ## Performance Metrics
 
@@ -54,6 +54,8 @@ Plan: Both 03-01 and 03-02 committed
 | Phase 02 P03 | 3min | 1 tasks | 2 files |
 | Phase 03 P01 | — | 2 tasks | 9 files |
 | Phase 03 P02 | — | 2 tasks | 5 files |
+| Phase 04 P01 | — | 2 tasks | 10 files |
+| Phase 04 P02 | — | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -90,6 +92,10 @@ Recent decisions affecting current work:
   - [Phase 03]: OIDC workspace detection: plugin-first, JWT claim fallback, auto-assign with configurable default permission (NO_PERMISSIONS)
   - [Phase 03]: 5 PromptOptimizationJob entries in BEFORE_REQUEST_HANDLERS with experiment-scoped validators
   - [Phase 03]: ENTITY-02 (GatewayBudgetPolicy) deferred — protos not in MLflow 3.10.1
+  - [Phase 04]: Workspace list page follows experiments-page.tsx pattern exactly (PageContainer/PageStatus/SearchInput/EntityListTable)
+  - [Phase 04]: WorkspaceMembersSection uses text input (not dropdown) for member name — workspace members are free-form
+  - [Phase 04]: CUD buttons always visible per D-14 — backend enforces authorization, UI shows toast on 403
+  - [Phase 04]: User CRUD body uses { username, permission }; Group CRUD body uses { group_name, permission }
 
 ### Pending Todos
 
@@ -103,5 +109,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-23
-Stopped at: Phase 3 complete — all committed, ready for Phase 4 planning
+Stopped at: All 4 phases complete — milestone delivered, all committed
 Resume file: .planning/ROADMAP.md

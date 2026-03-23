@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Refactoring & Workspace Foundation** - Eliminate permission resolution debt and establish workspace data layer (feature flag, DB migration, context propagation) (completed 2026-03-23)
 - [x] **Phase 2: Workspace Auth Enforcement** - Workspace permission model and security boundary in the permission resolution chain (completed 2026-03-23)
 - [x] **Phase 3: Management API, OIDC & Entity Coverage** - Workspace permission CRUD endpoints, OIDC claim mapping, and new entity auth handlers (completed 2026-03-23)
-- [ ] **Phase 4: Workspace Management UI** - React workspace management feature module with list, detail, member management, and workspace switcher
+- [x] **Phase 4: Workspace Management UI** - React workspace management feature module with list, detail, member management, and workspace switcher (completed 2026-03-23)
 
 ## Phase Details
 
@@ -81,8 +81,8 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 04-01-PLAN.md — Backend config, types, API endpoints, service layer, hooks, sidebar navigation, route registration
-- [ ] 04-02-PLAN.md — Workspace list page, workspace detail page, member management CRUD with tests
+- [x] 04-01-PLAN.md — Backend config, types, API endpoints, service layer, hooks, sidebar navigation, route registration
+- [x] 04-02-PLAN.md — Workspace list page, workspace detail page, member management CRUD with tests
 
 ## Progress
 
@@ -94,4 +94,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Refactoring & Workspace Foundation | 3/3 | Complete   | 2026-03-23 |
 | 2. Workspace Auth Enforcement | 3/3 | Complete | 2026-03-23 |
 | 3. Management API, OIDC & Entity Coverage | 2/2 | Complete | 2026-03-23 |
-| 4. Workspace Management UI | 0/2 | Not started | - |
+| 4. Workspace Management UI | 2/2 | Complete | 2026-03-23 |
