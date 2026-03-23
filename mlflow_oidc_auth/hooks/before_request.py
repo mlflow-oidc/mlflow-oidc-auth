@@ -86,6 +86,7 @@ from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 import mlflow_oidc_auth.responses as responses
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
     validate_can_delete_experiment,
@@ -278,9 +279,7 @@ UPLOAD_ARTIFACT = _get_ajax_path("/mlflow/upload-artifact")
 GET_MODEL_VERSION_ARTIFACT = _add_static_prefix("/model-versions/get-artifact")
 GET_TRACE_ARTIFACT = _get_ajax_path("/mlflow/get-trace-artifact")
 GET_METRIC_HISTORY_BULK = _get_ajax_path("/mlflow/metrics/get-history-bulk")
-GET_METRIC_HISTORY_BULK_INTERVAL = _get_ajax_path(
-    "/mlflow/metrics/get-history-bulk-interval"
-)
+GET_METRIC_HISTORY_BULK_INTERVAL = _get_ajax_path("/mlflow/metrics/get-history-bulk-interval")
 SEARCH_DATASETS = _get_ajax_path("/mlflow/experiments/search-datasets")
 CREATE_PROMPTLAB_RUN = _get_ajax_path("/mlflow/runs/create-promptlab-run")
 GATEWAY_PROXY = _get_ajax_path("/mlflow/gateway-proxy")
@@ -330,9 +329,7 @@ def _re_compile_path(path: str) -> re.Pattern:
 LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
     # Paths for logged models contains path parameters (e.g. /mlflow/logged-models/<model_id>)
     (_re_compile_path(http_path), method): handler
-    for http_path, handler, methods in get_endpoints(
-        get_logged_model_before_request_handler
-    )
+    for http_path, handler, methods in get_endpoints(get_logged_model_before_request_handler)
     for method in methods
 }
 
@@ -352,17 +349,41 @@ def get_workspace_before_request_handler(request_class):
 
 WORKSPACE_BEFORE_REQUEST_VALIDATORS = {
     (_re_compile_path(http_path), method): handler
-    for http_path, handler, methods in get_endpoints(
-        get_workspace_before_request_handler
-    )
+    for http_path, handler, methods in get_endpoints(get_workspace_before_request_handler)
     for method in methods
     if handler is not None
 }
 
 
-def _get_proxy_artifact_validator(
-    method: str, view_args: Optional[Dict[str, Any]]
-) -> Optional[Callable[[str], bool]]:
+# ---------------------------------------------------------------------------
+# Workspace creation gating (per WSAUTH-F / WSAUTH-03)
+# ---------------------------------------------------------------------------
+
+_WORKSPACE_GATED_CREATION_PATHS: set[tuple[str, str]] | None = None
+
+
+def _get_workspace_gated_creation_paths() -> set[tuple[str, str]]:
+    """Lazily build the set of (path, method) pairs for workspace-gated creation."""
+    global _WORKSPACE_GATED_CREATION_PATHS
+    if _WORKSPACE_GATED_CREATION_PATHS is None:
+        from mlflow.protos.service_pb2 import CreateExperiment
+        from mlflow.protos.model_registry_pb2 import CreateRegisteredModel
+
+        paths = set()
+        for http_path, handler, methods in get_endpoints(lambda rc: rc if rc in (CreateExperiment, CreateRegisteredModel) else None):
+            if handler is not None:
+                for method in methods:
+                    paths.add((http_path, method))
+        _WORKSPACE_GATED_CREATION_PATHS = paths
+    return _WORKSPACE_GATED_CREATION_PATHS
+
+
+def _is_workspace_gated_creation(path: str, method: str) -> bool:
+    """Check if a request path/method corresponds to a workspace-gated creation endpoint."""
+    return (path, method) in _get_workspace_gated_creation_paths()
+
+
+def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[str], bool]]:
     if view_args is None:
         return validate_can_read_experiment_artifact_proxy  # List
 
@@ -384,22 +405,14 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
     if "/mlflow/workspaces" in req.path:
         # Workspace routes use path parameters (e.g. /mlflow/workspaces/<workspace_name>)
         return next(
-            (
-                v
-                for (pat, method), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items()
-                if pat.fullmatch(req.path) and method == req.method
-            ),
+            (v for (pat, method), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
             None,
         )
     if "/mlflow/logged-models" in req.path:
         # logged model routes are not registered in the app
         # so we need to check them manually
         return next(
-            (
-                v
-                for (pat, method), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items()
-                if pat.fullmatch(req.path) and method == req.method
-            ),
+            (v for (pat, method), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
             None,
         )
     else:
@@ -417,21 +430,29 @@ def before_request_hook():
     if username is None:
         return responses.make_auth_required_response()
 
-    logger.debug(
-        f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}"
-    )
+    logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
     validator = _find_validator(request)
     _stash_gateway_context(validator)
     if is_admin:
         return
+    # Workspace creation gating (per WSAUTH-F / WSAUTH-03)
+    if config.MLFLOW_ENABLE_WORKSPACES and _is_workspace_gated_creation(request.path, request.method):
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            get_workspace_permission_cached,
+        )
+
+        workspace = get_request_workspace()
+        if workspace:
+            ws_perm = get_workspace_permission_cached(username, workspace)
+            if ws_perm is None or not ws_perm.can_manage:
+                return responses.make_forbidden_response()
     # authorization
     if validator:
         if not validator(username):
             return responses.make_forbidden_response()
     elif _is_proxy_artifact_path(request.path):
-        if validator := _get_proxy_artifact_validator(
-            request.method, request.view_args
-        ):
+        if validator := _get_proxy_artifact_validator(request.method, request.view_args):
             if not validator(username):
                 return responses.make_forbidden_response()
 

@@ -1,5 +1,10 @@
 from flask import Response, g, request
-from mlflow.protos.model_registry_pb2 import CreateRegisteredModel, DeleteRegisteredModel, RenameRegisteredModel, SearchRegisteredModels
+from mlflow.protos.model_registry_pb2 import (
+    CreateRegisteredModel,
+    DeleteRegisteredModel,
+    RenameRegisteredModel,
+    SearchRegisteredModels,
+)
 from mlflow.protos.service_pb2 import (
     CreateExperiment,
     CreateGatewayEndpoint,
@@ -12,21 +17,41 @@ from mlflow.protos.service_pb2 import (
     ListGatewayEndpoints,
     ListGatewayModelDefinitions,
     ListGatewaySecretInfos,
+    ListWorkspaces,
     RegisterScorer,
     SearchExperiments,
     SearchLoggedModels,
     UpdateGatewayEndpoint,
 )
-from mlflow.server.handlers import _get_model_registry_store, _get_request_message, _get_tracking_store, catch_mlflow_exception, get_endpoints
+from mlflow.server.handlers import (
+    _get_model_registry_store,
+    _get_request_message,
+    _get_tracking_store,
+    catch_mlflow_exception,
+    get_endpoints,
+)
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.utils.search_utils import SearchUtils
 
+import json
+
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
+from mlflow_oidc_auth.bridge.user import get_auth_context
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import can_read_experiment, can_read_registered_model, get_model_name
-from mlflow_oidc_auth.utils.permissions import can_read_gateway_endpoint, can_read_gateway_model_definition, can_read_gateway_secret
+from mlflow_oidc_auth.utils import (
+    can_read_experiment,
+    can_read_registered_model,
+    get_model_name,
+)
+from mlflow_oidc_auth.utils.permissions import (
+    can_read_gateway_endpoint,
+    can_read_gateway_model_definition,
+    can_read_gateway_secret,
+)
+from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -385,6 +410,23 @@ def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None
         get_logger().warning(f"Failed to cascade-delete permissions for gateway model definition '{name}'")
 
 
+def _filter_list_workspaces(response: Response) -> None:
+    """Filter ListWorkspaces response to only include workspaces user has permission for."""
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return
+    if response.status_code != 200:
+        return
+    auth_context = get_auth_context()
+    if auth_context.is_admin:
+        return
+    data = response.get_json(silent=True)
+    if not data or "workspaces" not in data:
+        return
+    filtered = [ws for ws in data["workspaces"] if get_workspace_permission_cached(auth_context.username, ws.get("name", "")) is not None]
+    data["workspaces"] = filtered
+    response.set_data(json.dumps(data))
+
+
 AFTER_REQUEST_PATH_HANDLERS = {
     CreateExperiment: _set_can_manage_experiment_permission,
     CreateRegisteredModel: _set_can_manage_registered_model_permission,
@@ -405,6 +447,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     ListGatewayEndpoints: _filter_list_gateway_endpoints,
     ListGatewaySecretInfos: _filter_list_gateway_secrets,
     ListGatewayModelDefinitions: _filter_list_gateway_model_definitions,
+    ListWorkspaces: _filter_list_workspaces,
 }
 
 _our_handlers = set(AFTER_REQUEST_PATH_HANDLERS.values())

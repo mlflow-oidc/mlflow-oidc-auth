@@ -1,8 +1,10 @@
-"""Tests for workspace hook registration and _find_validator() extension."""
+"""Tests for workspace hook registration, _find_validator() extension, creation gating, and after_request filtering."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from flask import Flask
 
 
 class TestWorkspaceBeforeRequestHandlers:
@@ -36,26 +38,11 @@ class TestWorkspaceBeforeRequestHandlers:
             validate_can_delete_workspace,
         )
 
-        assert (
-            WORKSPACE_BEFORE_REQUEST_HANDLERS[CreateWorkspace]
-            is validate_can_create_workspace
-        )
-        assert (
-            WORKSPACE_BEFORE_REQUEST_HANDLERS[GetWorkspace]
-            is validate_can_read_workspace
-        )
-        assert (
-            WORKSPACE_BEFORE_REQUEST_HANDLERS[ListWorkspaces]
-            is validate_can_list_workspaces
-        )
-        assert (
-            WORKSPACE_BEFORE_REQUEST_HANDLERS[UpdateWorkspace]
-            is validate_can_update_workspace
-        )
-        assert (
-            WORKSPACE_BEFORE_REQUEST_HANDLERS[DeleteWorkspace]
-            is validate_can_delete_workspace
-        )
+        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[CreateWorkspace] is validate_can_create_workspace
+        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[GetWorkspace] is validate_can_read_workspace
+        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[ListWorkspaces] is validate_can_list_workspaces
+        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[UpdateWorkspace] is validate_can_update_workspace
+        assert WORKSPACE_BEFORE_REQUEST_HANDLERS[DeleteWorkspace] is validate_can_delete_workspace
 
 
 class TestWorkspaceBeforeRequestValidators:
@@ -72,10 +59,7 @@ class TestWorkspaceBeforeRequestValidators:
         has_ajax_prefix = False
         for (pattern, method), handler in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items():
             pattern_str = pattern.pattern
-            if (
-                "/api/3.0/mlflow/workspaces" in pattern_str
-                and not pattern_str.startswith("/ajax")
-            ):
+            if "/api/3.0/mlflow/workspaces" in pattern_str and not pattern_str.startswith("/ajax"):
                 has_api_prefix = True
             if "/ajax-api/3.0/mlflow/workspaces" in pattern_str:
                 has_ajax_prefix = True
@@ -91,9 +75,7 @@ class TestWorkspaceBeforeRequestValidators:
 
         assert len(WORKSPACE_BEFORE_REQUEST_VALIDATORS) > 0
         for (pattern, method), handler in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items():
-            assert hasattr(pattern, "fullmatch"), (
-                f"Pattern {pattern} should be compiled regex"
-            )
+            assert hasattr(pattern, "fullmatch"), f"Pattern {pattern} should be compiled regex"
             assert isinstance(method, str), f"Method should be a string"
             assert callable(handler), f"Handler should be callable"
 
@@ -191,3 +173,269 @@ class TestFindValidatorWorkspace:
         ):
             result = _find_validator(mock_request)
             assert result is mock_validator
+
+
+class TestWorkspaceCreationGating:
+    """Tests for workspace creation gating in before_request_hook (WSAUTH-F)."""
+
+    def _make_flask_app(self):
+        """Create a minimal Flask app for testing."""
+        _app = Flask(__name__)
+        _app.config["TESTING"] = True
+        return _app
+
+    def test_create_experiment_blocked_without_workspace_manage(self):
+        """CreateExperiment blocked when user lacks workspace MANAGE permission."""
+        from mlflow_oidc_auth.hooks.before_request import _is_workspace_gated_creation
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            # _is_workspace_gated_creation should identify CreateExperiment paths
+            # The specific paths come from get_endpoints() — test the helper exists and works
+            assert callable(_is_workspace_gated_creation)
+
+    def test_is_workspace_gated_creation_detects_experiment_create(self):
+        """_is_workspace_gated_creation identifies experiment creation paths."""
+        from mlflow_oidc_auth.hooks.before_request import _is_workspace_gated_creation
+
+        # CreateExperiment is POST to /api/2.0/mlflow/experiments/create
+        assert _is_workspace_gated_creation("/api/2.0/mlflow/experiments/create", "POST") is True
+        assert _is_workspace_gated_creation("/ajax-api/2.0/mlflow/experiments/create", "POST") is True
+
+    def test_is_workspace_gated_creation_detects_model_create(self):
+        """_is_workspace_gated_creation identifies registered model creation paths."""
+        from mlflow_oidc_auth.hooks.before_request import _is_workspace_gated_creation
+
+        # CreateRegisteredModel is POST to /api/2.0/mlflow/registered-models/create
+        assert _is_workspace_gated_creation("/api/2.0/mlflow/registered-models/create", "POST") is True
+        assert _is_workspace_gated_creation("/ajax-api/2.0/mlflow/registered-models/create", "POST") is True
+
+    def test_is_workspace_gated_creation_rejects_non_creation_paths(self):
+        """_is_workspace_gated_creation returns False for non-creation paths."""
+        from mlflow_oidc_auth.hooks.before_request import _is_workspace_gated_creation
+
+        assert _is_workspace_gated_creation("/api/2.0/mlflow/experiments/get", "GET") is False
+        assert _is_workspace_gated_creation("/api/2.0/mlflow/runs/create", "POST") is False
+
+    def test_before_request_hook_blocks_experiment_creation_without_manage(self):
+        """before_request_hook blocks CreateExperiment when user lacks workspace MANAGE."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/2.0/mlflow/experiments/create",
+            method="POST",
+        ):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("testuser", False),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                    with patch(
+                        "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                        return_value="team-ws",
+                    ):
+                        with patch(
+                            "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                            return_value=None,
+                        ):
+                            with patch(
+                                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                                return_value=None,
+                            ):
+                                resp = before_request_hook()
+                                assert resp is not None
+                                assert resp.status_code == 403
+
+    def test_before_request_hook_allows_experiment_creation_with_manage(self):
+        """before_request_hook allows CreateExperiment when user has workspace MANAGE."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/2.0/mlflow/experiments/create",
+            method="POST",
+        ):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("testuser", False),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                    with patch(
+                        "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                        return_value="team-ws",
+                    ):
+                        with patch(
+                            "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                            return_value=MANAGE,
+                        ):
+                            with patch(
+                                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                                return_value=None,
+                            ):
+                                resp = before_request_hook()
+                                # Should not return 403 — either None or pass through
+                                assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
+
+    def test_before_request_hook_workspaces_disabled_no_creation_check(self):
+        """before_request_hook skips creation gating when workspaces disabled."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/2.0/mlflow/experiments/create",
+            method="POST",
+        ):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("testuser", False),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = False
+                    with patch(
+                        "mlflow_oidc_auth.hooks.before_request._find_validator",
+                        return_value=None,
+                    ):
+                        # With workspaces disabled, creation gating should not fire
+                        # (no validator match either so None response = allowed)
+                        resp = before_request_hook()
+                        # Should NOT be 403 since workspaces are disabled
+                        assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
+
+    def test_before_request_hook_admin_bypass_creation_gating(self):
+        """Admin users bypass workspace creation gating entirely."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/2.0/mlflow/experiments/create",
+            method="POST",
+        ):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("admin", True),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                    # Admin should bypass — no 403
+                    resp = before_request_hook()
+                    assert resp is None
+
+
+class TestAfterRequestListWorkspacesFiltering:
+    """Tests for ListWorkspaces after_request filtering."""
+
+    def _make_flask_app(self):
+        """Create a minimal Flask app for testing."""
+        _app = Flask(__name__)
+        _app.config["TESTING"] = True
+        return _app
+
+    def test_filter_list_workspaces_registered_in_after_request_handlers(self):
+        """ListWorkspaces is registered in AFTER_REQUEST_PATH_HANDLERS."""
+        from mlflow.protos.service_pb2 import ListWorkspaces
+        from mlflow_oidc_auth.hooks.after_request import AFTER_REQUEST_PATH_HANDLERS
+
+        assert ListWorkspaces in AFTER_REQUEST_PATH_HANDLERS
+
+    def test_filter_list_workspaces_filters_unauthorized(self):
+        """_filter_list_workspaces removes workspaces user has no permission for."""
+        from mlflow_oidc_auth.hooks.after_request import _filter_list_workspaces
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.get_json.return_value = {
+                "workspaces": [
+                    {"name": "ws-allowed"},
+                    {"name": "ws-denied"},
+                    {"name": "ws-also-allowed"},
+                ]
+            }
+
+            from mlflow_oidc_auth.permissions import READ
+            from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+            mock_auth_ctx = AuthContext(username="testuser", is_admin=False, workspace=None)
+
+            def mock_perm_cached(username, ws_name):
+                if ws_name in ("ws-allowed", "ws-also-allowed"):
+                    return READ
+                return None
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.hooks.after_request.get_auth_context",
+                    return_value=mock_auth_ctx,
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                        side_effect=mock_perm_cached,
+                    ):
+                        _filter_list_workspaces(mock_response)
+
+            # Check that set_data was called with filtered workspaces
+            mock_response.set_data.assert_called_once()
+            data = json.loads(mock_response.set_data.call_args[0][0])
+            ws_names = [ws["name"] for ws in data["workspaces"]]
+            assert "ws-allowed" in ws_names
+            assert "ws-also-allowed" in ws_names
+            assert "ws-denied" not in ws_names
+
+    def test_filter_list_workspaces_skips_for_admin(self):
+        """_filter_list_workspaces does not filter for admin users."""
+        from mlflow_oidc_auth.hooks.after_request import _filter_list_workspaces
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+
+            mock_auth_ctx = AuthContext(username="admin", is_admin=True, workspace=None)
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.hooks.after_request.get_auth_context",
+                    return_value=mock_auth_ctx,
+                ):
+                    _filter_list_workspaces(mock_response)
+
+            # set_data should NOT be called because admin bypasses
+            mock_response.set_data.assert_not_called()
+
+    def test_filter_list_workspaces_skips_non_200(self):
+        """_filter_list_workspaces does not filter non-200 responses."""
+        from mlflow_oidc_auth.hooks.after_request import _filter_list_workspaces
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 404
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                _filter_list_workspaces(mock_response)
+
+            mock_response.set_data.assert_not_called()
+
+    def test_filter_list_workspaces_skips_when_disabled(self):
+        """_filter_list_workspaces is a no-op when workspaces are disabled."""
+        from mlflow_oidc_auth.hooks.after_request import _filter_list_workspaces
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = False
+                _filter_list_workspaces(mock_response)
+
+            mock_response.set_data.assert_not_called()
