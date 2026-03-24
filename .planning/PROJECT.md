@@ -164,4 +164,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after v1.1 Phase 6 (Workspace CRUD Backend) complete*
+*Last updated: 2026-03-24 after v1.1 Phase 7 (Workspace-Scoped Search Filtering) complete*
