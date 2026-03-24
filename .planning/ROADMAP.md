@@ -80,7 +80,11 @@ Plans:
   3. Header dropdown shows accessible workspaces, selecting one sends `X-MLFLOW-WORKSPACE` header on all subsequent API requests
   4. Workspace selection persists across page refreshes, "All Workspaces" option removes scoping
   5. Picker includes search/filter for many-workspace deployments and keyboard shortcut for quick switching
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 08-01-PLAN.md — Workspace CRUD service layer + admin management modals (create/edit/delete)
+- [ ] 08-02-PLAN.md — Global workspace picker dropdown + HTTP header integration
+- [ ] 08-03-PLAN.md — Bulk permission assignment on workspace detail page
 **UI hint**: yes
 
 ## Progress
@@ -97,4 +101,4 @@ Phases execute in numeric order: 5 → 6 → 7 → 8
 | 5. Regex Workspace Permissions | v1.1 | 2/2 | Complete   | 2026-03-24 |
 | 6. Workspace CRUD Backend | v1.1 | 2/2 | Complete   | 2026-03-24 |
 | 7. Workspace-Scoped Search Filtering | v1.1 | 0/1 | Planned | - |
-| 8. Workspace Management UI & Global Picker | v1.1 | 0/0 | Not started | - |
+| 8. Workspace Management UI & Global Picker | v1.1 | 0/3 | Planned | - |
