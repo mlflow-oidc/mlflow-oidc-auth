@@ -164,4 +164,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after v1.1 Phase 7 (Workspace-Scoped Search Filtering) complete*
+*Last updated: 2026-03-24 after v1.1 Phase 8 (Workspace Management UI & Global Picker) complete — Milestone v1.1 Workspace Management COMPLETE*
