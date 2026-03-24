@@ -489,12 +489,44 @@ async def _process_oidc_callback_fastapi(
                     elif isinstance(claim_value, list):
                         user_workspaces = [str(w) for w in claim_value]
 
+                # Auto-create workspaces that don't exist yet (WSOIDC-04)
+                try:
+                    from mlflow.server.handlers import _get_workspace_store
+
+                    ws_mlflow_store = _get_workspace_store()
+                except Exception as ws_store_err:
+                    logger.warning(
+                        f"Cannot access MLflow workspace store for auto-create: {ws_store_err}"
+                    )
+                    ws_mlflow_store = None
+
                 # Auto-assign workspace memberships
                 from mlflow_oidc_auth.store import store as ws_store
 
                 for ws_name in user_workspaces:
                     if not ws_name:
                         continue
+
+                    # Auto-create workspace if it doesn't exist (WSOIDC-04)
+                    if ws_mlflow_store is not None:
+                        try:
+                            ws_mlflow_store.get_workspace(ws_name)
+                        except Exception:
+                            # Workspace doesn't exist — try to create it
+                            try:
+                                ws_mlflow_store.create_workspace(
+                                    name=ws_name, description=""
+                                )
+                                logger.info(
+                                    f"Auto-created workspace '{ws_name}' during OIDC login for user {email}"
+                                )
+                            except Exception as create_err:
+                                # Creation may fail if name is invalid or race condition
+                                logger.warning(
+                                    f"Failed to auto-create workspace '{ws_name}': {create_err}"
+                                )
+
+                    # Assign permission (existing logic)
                     try:
                         ws_store.create_workspace_permission(
                             ws_name,
