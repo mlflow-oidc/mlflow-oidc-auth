@@ -3,7 +3,14 @@
 These entities represent workspace-level permissions for users and groups.
 Unlike resource permissions (experiments, models), workspace permissions are
 tenant boundaries — they do NOT extend PermissionBase.
+
+Regex variants (WorkspaceRegexPermission, WorkspaceGroupRegexPermission) extend
+RegexPermissionBase for pattern-based workspace access rules.
 """
+
+from dataclasses import dataclass
+
+from mlflow_oidc_auth.entities._base import RegexPermissionBase
 
 
 class WorkspacePermission:
@@ -80,3 +87,69 @@ class WorkspaceGroupPermission:
             "permission": self._permission,
             "group_name": self._group_name,
         }
+
+
+@dataclass(init=False)
+class WorkspaceRegexPermission(RegexPermissionBase):
+    """User-level regex-based workspace permission entity."""
+
+    def __init__(self, id_, regex, priority, user_id=None, permission=None):
+        super().__init__(
+            id=id_,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            user_id=user_id,
+        )
+
+    def to_json(self) -> dict:
+        return super().to_json()
+
+    @classmethod
+    def from_json(cls, dictionary: dict) -> "WorkspaceRegexPermission":
+        user_id = dictionary.get("user_id")
+        if user_id is not None:
+            try:
+                user_id = int(user_id)
+            except (TypeError, ValueError):
+                raise ValueError("user_id must be an integer")
+        return cls(
+            id_=dictionary["id"],
+            regex=dictionary["regex"],
+            priority=dictionary["priority"],
+            user_id=user_id,
+            permission=dictionary.get("permission"),
+        )
+
+
+@dataclass(init=False)
+class WorkspaceGroupRegexPermission(RegexPermissionBase):
+    """Group-level regex-based workspace permission entity."""
+
+    def __init__(self, id_, regex, priority, group_id, permission):
+        super().__init__(
+            id=id_,
+            regex=regex,
+            priority=priority,
+            permission=permission,
+            group_id=group_id,
+        )
+
+    def to_json(self) -> dict:
+        return super().to_json()
+
+    @classmethod
+    def from_json(cls, dictionary: dict) -> "WorkspaceGroupRegexPermission":
+        group_id = dictionary.get("group_id")
+        if group_id is not None:
+            try:
+                group_id = int(group_id)
+            except (TypeError, ValueError):
+                raise ValueError("group_id must be an integer")
+        return cls(
+            id_=dictionary["id"],
+            regex=dictionary["regex"],
+            priority=dictionary["priority"],
+            group_id=group_id,
+            permission=dictionary["permission"],
+        )

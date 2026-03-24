@@ -37,7 +37,9 @@ from mlflow_oidc_auth.db.models.scorer import (
 )
 from mlflow_oidc_auth.db.models.workspace import (
     SqlWorkspaceGroupPermission,
+    SqlWorkspaceGroupRegexPermission,
     SqlWorkspacePermission,
+    SqlWorkspaceRegexPermission,
 )
 
 __all__ = [
@@ -70,4 +72,6 @@ __all__ = [
     "SqlGatewaySecretGroupRegexPermission",
     "SqlWorkspacePermission",
     "SqlWorkspaceGroupPermission",
+    "SqlWorkspaceRegexPermission",
+    "SqlWorkspaceGroupRegexPermission",
 ]
