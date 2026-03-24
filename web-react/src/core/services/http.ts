@@ -1,3 +1,5 @@
+import { getActiveWorkspace } from "../../shared/context/workspace-context";
+
 export type RequestOptions = Omit<RequestInit, "body"> & {
   params?: Record<string, string>;
   body?: string;
@@ -15,10 +17,17 @@ export async function http<T = unknown>(
   options: RequestOptions = {},
 ): Promise<T> {
   const { params, ...rest } = options;
+
+  const workspace = getActiveWorkspace();
+  const workspaceHeaders: Record<string, string> = workspace
+    ? { "X-MLFLOW-WORKSPACE": workspace }
+    : {};
+
   const res = await fetch(buildUrl(url, params), {
     ...rest,
     headers: {
       "Content-Type": "application/json",
+      ...workspaceHeaders,
       ...(rest.headers || {}),
     },
     credentials: "include",

@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http } from "./http";
 
+vi.mock("../../shared/context/workspace-context", () => ({
+  getActiveWorkspace: vi.fn(() => null),
+}));
+
+import { getActiveWorkspace } from "../../shared/context/workspace-context";
+
 globalThis.fetch = vi.fn<typeof fetch>();
 
 describe("http", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(getActiveWorkspace).mockReturnValue(null);
   });
 
   it("performs GET request and parses JSON", async () => {
@@ -55,5 +62,68 @@ describe("http", () => {
     } as Response);
 
     await expect(http("/test")).rejects.toThrow("HTTP 404: Not Found");
+  });
+
+  it("sends X-MLFLOW-WORKSPACE header when workspace is active", async () => {
+    vi.mocked(getActiveWorkspace).mockReturnValue("my-workspace");
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: () => Promise.resolve({}),
+      text: () => Promise.resolve("{}"),
+    } as Response);
+
+    await http("/test");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/test"),
+      expect.objectContaining({
+        headers: {
+          "Content-Type": "application/json",
+          "X-MLFLOW-WORKSPACE": "my-workspace",
+        },
+      }),
+    );
+  });
+
+  it("does not send X-MLFLOW-WORKSPACE header when workspace is null", async () => {
+    vi.mocked(getActiveWorkspace).mockReturnValue(null);
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: () => Promise.resolve({}),
+      text: () => Promise.resolve("{}"),
+    } as Response);
+
+    await http("/test");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/test"),
+      expect.objectContaining({
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+
+  it("includes credentials in all requests", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "text/plain" }),
+      text: () => Promise.resolve("ok"),
+    } as Response);
+
+    await http("/test");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        credentials: "include",
+      }),
+    );
   });
 });
