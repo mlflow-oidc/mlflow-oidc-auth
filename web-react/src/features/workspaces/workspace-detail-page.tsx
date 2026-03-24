@@ -2,12 +2,16 @@ import { useState } from "react";
 import { useParams } from "react-router";
 import { useWorkspaceUsers } from "../../core/hooks/use-workspace-users";
 import { useWorkspaceGroups } from "../../core/hooks/use-workspace-groups";
+import { useAllUsers } from "../../core/hooks/use-all-users";
+import { useAllServiceAccounts } from "../../core/hooks/use-all-accounts";
+import { useAllGroups } from "../../core/hooks/use-all-groups";
 import { useUser } from "../../core/hooks/use-user";
 import { request } from "../../core/services/api-utils";
 import { DYNAMIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
 import { useToast } from "../../shared/components/toast/use-toast";
 import { Button } from "../../shared/components/button";
 import PageContainer from "../../shared/components/page/page-container";
+import { GrantPermissionModal } from "../permissions/components/grant-permission-modal";
 import type { PermissionLevel } from "../../shared/types/entity";
 import WorkspaceMembersSection from "./components/workspace-members-section";
 import { BulkAssignModal } from "./components/bulk-assign-modal";
@@ -17,8 +21,15 @@ export default function WorkspaceDetailPage() {
   const { showToast } = useToast();
   const { currentUser } = useUser();
   const isAdmin = currentUser?.is_admin ?? false;
-  const [bulkAssignTarget, setBulkAssignTarget] = useState<"users" | "groups" | null>(null);
 
+  // Add modal state
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
+  const [isAddGroupModalOpen, setIsAddGroupModalOpen] = useState(false);
+  const [bulkAssignTarget, setBulkAssignTarget] = useState<"users" | "groups" | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch workspace members
   const {
     workspaceUsers,
     isLoading: isUsersLoading,
@@ -32,6 +43,19 @@ export default function WorkspaceDetailPage() {
     error: groupsError,
     refresh: refreshGroups,
   } = useWorkspaceGroups({ workspace: workspaceName });
+
+  // Fetch all available users/groups (same pattern as EntityPermissionsManager)
+  const { allUsers } = useAllUsers();
+  const { allServiceAccounts } = useAllServiceAccounts();
+  const { allGroups } = useAllGroups();
+
+  // Compute available options (filter out already-assigned)
+  const existingUsernames = new Set(workspaceUsers.map((wu) => wu.username));
+  const existingGroupNames = new Set(workspaceGroups.map((wg) => wg.group_name));
+
+  const availableUsers = (allUsers || []).filter((u) => !existingUsernames.has(u));
+  const availableAccounts = (allServiceAccounts || []).filter((u) => !existingUsernames.has(u));
+  const availableGroups = (allGroups || []).filter((g) => !existingGroupNames.has(g));
 
   if (!workspaceName) {
     return <div>Workspace name is required.</div>;
@@ -129,54 +153,143 @@ export default function WorkspaceDetailPage() {
 
   return (
     <PageContainer title={`Permissions for Workspace ${workspaceName}`}>
-      {isAdmin && (
-        <div className="flex justify-end mb-2">
+      {/* User section action buttons */}
+      <div className="flex items-center space-x-2 mb-2">
+        <Button
+          variant="secondary"
+          onClick={() => setIsAddUserModalOpen(true)}
+          disabled={availableUsers.length === 0}
+          title={availableUsers.length === 0 ? "All users already have permissions" : "Add user permission"}
+        >
+          + Add User
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => setIsAddAccountModalOpen(true)}
+          disabled={availableAccounts.length === 0}
+          title={availableAccounts.length === 0 ? "All service accounts already have permissions" : "Add service account permission"}
+        >
+          + Add Service Account
+        </Button>
+        {isAdmin && (
           <Button variant="secondary" onClick={() => setBulkAssignTarget("users")}>
             Bulk Assign Users
           </Button>
-        </div>
-      )}
+        )}
+      </div>
+
       <WorkspaceMembersSection
         title="Users"
         members={userMembers}
         isLoading={isUsersLoading}
         error={usersError}
-        onGrant={handleGrantUser}
         onUpdate={handleUpdateUser}
         onRemove={handleRemoveUser}
         onRefresh={refreshUsers}
         nameLabel="Username"
-        namePlaceholder="Enter username"
       />
 
-      {isAdmin && (
-        <div className="flex justify-end mb-2">
+      {/* Group section action buttons */}
+      <div className="flex items-center space-x-2 mb-2">
+        <Button
+          variant="secondary"
+          onClick={() => setIsAddGroupModalOpen(true)}
+          disabled={availableGroups.length === 0}
+          title={availableGroups.length === 0 ? "All groups already have permissions" : "Add group permission"}
+        >
+          + Add Group
+        </Button>
+        {isAdmin && (
           <Button variant="secondary" onClick={() => setBulkAssignTarget("groups")}>
             Bulk Assign Groups
           </Button>
-        </div>
-      )}
+        )}
+      </div>
+
       <WorkspaceMembersSection
         title="Groups"
         members={groupMembers}
         isLoading={isGroupsLoading}
         error={groupsError}
-        onGrant={handleGrantGroup}
         onUpdate={handleUpdateGroup}
         onRemove={handleRemoveGroup}
         onRefresh={refreshGroups}
         nameLabel="Group Name"
-        namePlaceholder="Enter group name"
       />
 
+      {/* Grant permission modals — same pattern as EntityPermissionsManager */}
+      {isAddUserModalOpen && (
+        <GrantPermissionModal
+          isOpen={isAddUserModalOpen}
+          onClose={() => setIsAddUserModalOpen(false)}
+          onSave={async (username, permission) => {
+            setIsSaving(true);
+            try {
+              const success = await handleGrantUser(username, permission);
+              if (success) setIsAddUserModalOpen(false);
+            } finally {
+              setIsSaving(false);
+            }
+          }}
+          title={`Grant user permissions for workspace ${workspaceName}`}
+          label="User"
+          options={availableUsers}
+          type="experiments"
+          isLoading={isSaving}
+        />
+      )}
+
+      {isAddAccountModalOpen && (
+        <GrantPermissionModal
+          isOpen={isAddAccountModalOpen}
+          onClose={() => setIsAddAccountModalOpen(false)}
+          onSave={async (username, permission) => {
+            setIsSaving(true);
+            try {
+              const success = await handleGrantUser(username, permission);
+              if (success) setIsAddAccountModalOpen(false);
+            } finally {
+              setIsSaving(false);
+            }
+          }}
+          title={`Grant service account permissions for workspace ${workspaceName}`}
+          label="Service Account"
+          options={availableAccounts}
+          type="experiments"
+          isLoading={isSaving}
+        />
+      )}
+
+      {isAddGroupModalOpen && (
+        <GrantPermissionModal
+          isOpen={isAddGroupModalOpen}
+          onClose={() => setIsAddGroupModalOpen(false)}
+          onSave={async (name, permission) => {
+            setIsSaving(true);
+            try {
+              const success = await handleGrantGroup(name, permission);
+              if (success) setIsAddGroupModalOpen(false);
+            } finally {
+              setIsSaving(false);
+            }
+          }}
+          title={`Grant group permissions for workspace ${workspaceName}`}
+          label="Group"
+          options={availableGroups}
+          type="experiments"
+          isLoading={isSaving}
+        />
+      )}
+
+      {/* Bulk assign modals — multi-select from available options */}
       <BulkAssignModal
         isOpen={bulkAssignTarget === "users"}
         onClose={() => setBulkAssignTarget(null)}
         onGrant={handleGrantUser}
         onSuccess={refreshUsers}
         title="Bulk Assign Users"
-        nameLabel="Usernames"
-        namePlaceholder="user1, user2, user3"
+        nameLabel="Users"
+        options={[...availableUsers, ...availableAccounts]}
       />
       <BulkAssignModal
         isOpen={bulkAssignTarget === "groups"}
@@ -184,8 +297,8 @@ export default function WorkspaceDetailPage() {
         onGrant={handleGrantGroup}
         onSuccess={refreshGroups}
         title="Bulk Assign Groups"
-        nameLabel="Group Names"
-        namePlaceholder="group1, group2, group3"
+        nameLabel="Groups"
+        options={availableGroups}
       />
     </PageContainer>
   );

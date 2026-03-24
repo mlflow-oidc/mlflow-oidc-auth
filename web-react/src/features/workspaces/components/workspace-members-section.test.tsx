@@ -52,12 +52,10 @@ const defaultProps = {
   members: [] as Array<{ name: string; permission: PermissionLevel }>,
   isLoading: false,
   error: null,
-  onGrant: vi.fn().mockResolvedValue(true),
   onUpdate: vi.fn().mockResolvedValue(undefined),
   onRemove: vi.fn().mockResolvedValue(undefined),
   onRefresh: vi.fn(),
   nameLabel: "Username",
-  namePlaceholder: "Enter username",
 };
 
 describe("WorkspaceMembersSection", () => {
@@ -94,12 +92,6 @@ describe("WorkspaceMembersSection", () => {
     );
 
     expect(screen.getByText("Users (2)")).toBeInTheDocument();
-  });
-
-  it("renders add button", () => {
-    render(<WorkspaceMembersSection {...defaultProps} />);
-
-    expect(screen.getByText("+ Add Users")).toBeInTheDocument();
   });
 
   it("renders loading state", () => {

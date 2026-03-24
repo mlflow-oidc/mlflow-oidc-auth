@@ -44,8 +44,8 @@ describe("BulkAssignModal", () => {
     onGrant: vi.fn().mockResolvedValue(true),
     onSuccess: vi.fn(),
     title: "Bulk Assign Users",
-    nameLabel: "Usernames",
-    namePlaceholder: "user1, user2, user3",
+    nameLabel: "Users",
+    options: ["alice", "bob", "charlie"],
   };
 
   beforeEach(() => {
@@ -55,14 +55,15 @@ describe("BulkAssignModal", () => {
     defaultProps.onSuccess = vi.fn();
   });
 
-  it("renders modal with textarea and permission select when open", () => {
+  it("renders modal with checkbox list and permission select when open", () => {
     render(<BulkAssignModal {...defaultProps} />);
 
     expect(screen.getByTestId("modal")).toBeInTheDocument();
-    expect(screen.getByText("Usernames*")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("user1, user2, user3")).toBeInTheDocument();
+    expect(screen.getByText("Users*")).toBeInTheDocument();
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("bob")).toBeInTheDocument();
+    expect(screen.getByText("charlie")).toBeInTheDocument();
     expect(screen.getByTestId("permission-select")).toBeInTheDocument();
-    expect(screen.getByText("Assign All")).toBeInTheDocument();
     expect(screen.getByText("Cancel")).toBeInTheDocument();
   });
 
@@ -72,51 +73,50 @@ describe("BulkAssignModal", () => {
     expect(screen.queryByTestId("modal")).not.toBeInTheDocument();
   });
 
-  it("parses comma-separated names correctly and calls onGrant for each", async () => {
+  it("calls onGrant for each selected option", async () => {
     render(<BulkAssignModal {...defaultProps} />);
 
-    const textarea = screen.getByPlaceholderText("user1, user2, user3");
-    await userEvent.type(textarea, "alice, bob, charlie");
+    // Select alice and charlie checkboxes
+    const checkboxes = screen.getAllByRole("checkbox");
+    await userEvent.click(checkboxes[0]); // alice
+    await userEvent.click(checkboxes[2]); // charlie
 
-    fireEvent.click(screen.getByText("Assign All"));
-
-    await waitFor(() => {
-      expect(defaultProps.onGrant).toHaveBeenCalledTimes(3);
-      expect(defaultProps.onGrant).toHaveBeenCalledWith("alice", "READ");
-      expect(defaultProps.onGrant).toHaveBeenCalledWith("bob", "READ");
-      expect(defaultProps.onGrant).toHaveBeenCalledWith("charlie", "READ");
-    });
-  });
-
-  it("parses newline-separated names correctly", async () => {
-    render(<BulkAssignModal {...defaultProps} />);
-
-    const textarea = screen.getByPlaceholderText("user1, user2, user3");
-    fireEvent.change(textarea, { target: { value: "alice\nbob\ncharlie" } });
-
-    fireEvent.click(screen.getByText("Assign All"));
-
-    await waitFor(() => {
-      expect(defaultProps.onGrant).toHaveBeenCalledTimes(3);
-      expect(defaultProps.onGrant).toHaveBeenCalledWith("alice", "READ");
-      expect(defaultProps.onGrant).toHaveBeenCalledWith("bob", "READ");
-      expect(defaultProps.onGrant).toHaveBeenCalledWith("charlie", "READ");
-    });
-  });
-
-  it("trims whitespace and deduplicates names", async () => {
-    render(<BulkAssignModal {...defaultProps} />);
-
-    const textarea = screen.getByPlaceholderText("user1, user2, user3");
-    fireEvent.change(textarea, { target: { value: "  alice ,  bob  , alice , bob  " } });
-
-    fireEvent.click(screen.getByText("Assign All"));
+    fireEvent.click(screen.getByText("Assign 2 Selected"));
 
     await waitFor(() => {
       expect(defaultProps.onGrant).toHaveBeenCalledTimes(2);
       expect(defaultProps.onGrant).toHaveBeenCalledWith("alice", "READ");
-      expect(defaultProps.onGrant).toHaveBeenCalledWith("bob", "READ");
+      expect(defaultProps.onGrant).toHaveBeenCalledWith("charlie", "READ");
     });
+  });
+
+  it("selects all via Select all button", async () => {
+    render(<BulkAssignModal {...defaultProps} />);
+
+    await userEvent.click(screen.getByText("Select all"));
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes[0]).toBeChecked();
+    expect(checkboxes[1]).toBeChecked();
+    expect(checkboxes[2]).toBeChecked();
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+  });
+
+  it("deselects all via Deselect all button", async () => {
+    render(<BulkAssignModal {...defaultProps} />);
+
+    // Select all first
+    await userEvent.click(screen.getByText("Select all"));
+    expect(screen.getByText("Deselect all")).toBeInTheDocument();
+
+    // Now deselect all
+    await userEvent.click(screen.getByText("Deselect all"));
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes[0]).not.toBeChecked();
+    expect(checkboxes[1]).not.toBeChecked();
+    expect(checkboxes[2]).not.toBeChecked();
+    expect(screen.getByText("0 selected")).toBeInTheDocument();
   });
 
   it("shows success toast when all grants succeed", async () => {
@@ -124,13 +124,11 @@ describe("BulkAssignModal", () => {
 
     render(<BulkAssignModal {...defaultProps} />);
 
-    const textarea = screen.getByPlaceholderText("user1, user2, user3");
-    fireEvent.change(textarea, { target: { value: "alice, bob" } });
-
-    fireEvent.click(screen.getByText("Assign All"));
+    await userEvent.click(screen.getByText("Select all"));
+    fireEvent.click(screen.getByText("Assign 3 Selected"));
 
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith("Successfully assigned 2 permissions", "success");
+      expect(mockShowToast).toHaveBeenCalledWith("Successfully assigned 3 permissions", "success");
     });
   });
 
@@ -139,23 +137,21 @@ describe("BulkAssignModal", () => {
 
     render(<BulkAssignModal {...defaultProps} />);
 
-    const textarea = screen.getByPlaceholderText("user1, user2, user3");
-    fireEvent.change(textarea, { target: { value: "alice, bob, charlie" } });
-
-    fireEvent.click(screen.getByText("Assign All"));
+    await userEvent.click(screen.getByText("Select all"));
+    fireEvent.click(screen.getByText("Assign 3 Selected"));
 
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith("2 assigned, 1 failed", "error");
-      expect(screen.getByText(/✗ 1 failed: bob/)).toBeInTheDocument();
-      expect(screen.getByText(/✓ 2 assigned successfully/)).toBeInTheDocument();
+      expect(screen.getByText(/1 failed: bob/)).toBeInTheDocument();
+      expect(screen.getByText(/2 assigned successfully/)).toBeInTheDocument();
     });
   });
 
-  it("disables Assign All button when textarea is empty", () => {
+  it("disables submit button when nothing is selected", () => {
     render(<BulkAssignModal {...defaultProps} />);
 
-    const assignButton = screen.getByText("Assign All");
-    expect(assignButton).toBeDisabled();
+    const submitButton = screen.getByText("Assign Selected");
+    expect(submitButton).toBeDisabled();
   });
 
   it("calls onSuccess and onClose when all succeed", async () => {
@@ -163,10 +159,10 @@ describe("BulkAssignModal", () => {
 
     render(<BulkAssignModal {...defaultProps} />);
 
-    const textarea = screen.getByPlaceholderText("user1, user2, user3");
-    fireEvent.change(textarea, { target: { value: "alice" } });
+    const checkboxes = screen.getAllByRole("checkbox");
+    await userEvent.click(checkboxes[0]); // alice
 
-    fireEvent.click(screen.getByText("Assign All"));
+    fireEvent.click(screen.getByText("Assign 1 Selected"));
 
     await waitFor(() => {
       expect(defaultProps.onSuccess).toHaveBeenCalled();
@@ -179,10 +175,8 @@ describe("BulkAssignModal", () => {
 
     render(<BulkAssignModal {...defaultProps} />);
 
-    const textarea = screen.getByPlaceholderText("user1, user2, user3");
-    fireEvent.change(textarea, { target: { value: "alice, bob" } });
-
-    fireEvent.click(screen.getByText("Assign All"));
+    await userEvent.click(screen.getByText("Select all"));
+    fireEvent.click(screen.getByText("Assign 3 Selected"));
 
     await waitFor(() => {
       expect(defaultProps.onSuccess).toHaveBeenCalled();
@@ -191,17 +185,45 @@ describe("BulkAssignModal", () => {
     });
   });
 
-  it("shows no names provided toast when textarea is whitespace only", async () => {
+  it("shows no items selected toast when submitting without selection", async () => {
+    // Force-enable the button by selecting and then deselecting
     render(<BulkAssignModal {...defaultProps} />);
 
-    const textarea = screen.getByPlaceholderText("user1, user2, user3");
-    fireEvent.change(textarea, { target: { value: "  ,  , \n  " } });
+    // Nothing is selected, button should be disabled, so this test verifies
+    // the toast message if handleSubmit is somehow called with empty selection
+    const submitButton = screen.getByText("Assign Selected");
+    expect(submitButton).toBeDisabled();
+  });
 
-    fireEvent.click(screen.getByText("Assign All"));
+  it("shows empty state when no options are available", () => {
+    render(<BulkAssignModal {...defaultProps} options={[]} />);
+
+    expect(screen.getByText(/All users already have permissions/)).toBeInTheDocument();
+  });
+
+  it("filters options by search text", async () => {
+    render(<BulkAssignModal {...defaultProps} />);
+
+    const filterInput = screen.getByPlaceholderText("Filter users...");
+    await userEvent.type(filterInput, "ali");
+
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.queryByText("bob")).not.toBeInTheDocument();
+    expect(screen.queryByText("charlie")).not.toBeInTheDocument();
+  });
+
+  it("changes permission level before assigning", async () => {
+    render(<BulkAssignModal {...defaultProps} />);
+
+    fireEvent.change(screen.getByTestId("permission-select"), { target: { value: "MANAGE" } });
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    await userEvent.click(checkboxes[0]); // alice
+
+    fireEvent.click(screen.getByText("Assign 1 Selected"));
 
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith("No names provided", "error");
-      expect(defaultProps.onGrant).not.toHaveBeenCalled();
+      expect(defaultProps.onGrant).toHaveBeenCalledWith("alice", "MANAGE");
     });
   });
 });

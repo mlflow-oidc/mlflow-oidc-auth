@@ -44,6 +44,18 @@ vi.mock("../../core/hooks/use-workspace-groups", () => ({
   useWorkspaceGroups: () => mockUseWorkspaceGroups(),
 }));
 
+vi.mock("../../core/hooks/use-all-users", () => ({
+  useAllUsers: () => ({ allUsers: ["alice", "bob", "newuser"], isLoading: false }),
+}));
+
+vi.mock("../../core/hooks/use-all-accounts", () => ({
+  useAllServiceAccounts: () => ({ allServiceAccounts: ["svc-build", "svc-deploy"], isLoading: false }),
+}));
+
+vi.mock("../../core/hooks/use-all-groups", () => ({
+  useAllGroups: () => ({ allGroups: ["admins", "viewers", "newgroup"], isLoading: false }),
+}));
+
 vi.mock("../../core/hooks/use-user", () => ({
   useUser: () => ({
     currentUser: {
@@ -115,8 +127,8 @@ vi.mock("../../shared/components/icon-button", () => ({
 }));
 
 vi.mock("../../shared/components/button", () => ({
-  Button: ({ children, onClick, disabled }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) => (
-    <button onClick={onClick} disabled={disabled}>
+  Button: ({ children, onClick, disabled, title }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; title?: string }) => (
+    <button onClick={onClick} disabled={disabled} title={title}>
       {children}
     </button>
   ),
@@ -125,6 +137,30 @@ vi.mock("../../shared/components/button", () => ({
 vi.mock("./components/bulk-assign-modal", () => ({
   BulkAssignModal: ({ isOpen, title }: { isOpen: boolean; title: string }) =>
     isOpen ? <div data-testid="bulk-assign-modal">{title}</div> : null,
+}));
+
+vi.mock("../permissions/components/grant-permission-modal", () => ({
+  GrantPermissionModal: ({
+    isOpen,
+    title,
+    onSave,
+    options,
+    label,
+  }: {
+    isOpen: boolean;
+    title: string;
+    onSave: (name: string, permission: string) => Promise<void>;
+    options: string[];
+    label: string;
+  }) =>
+    isOpen ? (
+      <div data-testid={`grant-modal-${label}`} title={title}>
+        <span data-testid="grant-modal-options">{options.join(",")}</span>
+        <button data-testid={`grant-save-${label}`} onClick={() => void onSave(options[0], "READ")}>
+          Save
+        </button>
+      </div>
+    ) : null,
 }));
 
 describe("WorkspaceDetailPage", () => {
@@ -225,57 +261,88 @@ describe("WorkspaceDetailPage", () => {
     expect(screen.getByText("No groups assigned.")).toBeInTheDocument();
   });
 
-  it("handles user grant permission", async () => {
+  it("renders add user, add service account, and add group buttons", () => {
+    render(<WorkspaceDetailPage />);
+
+    expect(screen.getByText("+ Add User")).toBeInTheDocument();
+    expect(screen.getByText("+ Add Service Account")).toBeInTheDocument();
+    expect(screen.getByText("+ Add Group")).toBeInTheDocument();
+  });
+
+  it("opens grant user modal on add user click", () => {
+    render(<WorkspaceDetailPage />);
+
+    fireEvent.click(screen.getByText("+ Add User"));
+
+    expect(screen.getByTestId("grant-modal-User")).toBeInTheDocument();
+  });
+
+  it("opens grant service account modal on add service account click", () => {
+    render(<WorkspaceDetailPage />);
+
+    fireEvent.click(screen.getByText("+ Add Service Account"));
+
+    expect(screen.getByTestId("grant-modal-Service Account")).toBeInTheDocument();
+  });
+
+  it("opens grant group modal on add group click", () => {
+    render(<WorkspaceDetailPage />);
+
+    fireEvent.click(screen.getByText("+ Add Group"));
+
+    expect(screen.getByTestId("grant-modal-Group")).toBeInTheDocument();
+  });
+
+  it("filters available users by excluding already-assigned members", () => {
+    mockUseWorkspaceUsers.mockReturnValue({
+      workspaceUsers: [{ workspace: "test-workspace", username: "alice", permission: "MANAGE" as PermissionLevel }],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<WorkspaceDetailPage />);
+
+    fireEvent.click(screen.getByText("+ Add User"));
+
+    // alice is already assigned, so only bob and newuser should be available
+    const options = screen.getByTestId("grant-modal-options");
+    expect(options.textContent).toBe("bob,newuser");
+  });
+
+  it("handles user grant permission via GrantPermissionModal", async () => {
     mockRequest.mockResolvedValue({});
 
     render(<WorkspaceDetailPage />);
 
-    // Click the add button for users
-    const addButtons = screen.getAllByText("+ Add Users");
-    fireEvent.click(addButtons[0]);
-
-    // Fill in the name
-    const nameInput = screen.getByPlaceholderText("Enter username");
-    fireEvent.change(nameInput, { target: { value: "newuser" } });
-
-    // Click save
-    const saveButtons = screen.getAllByText("Save");
-    fireEvent.click(saveButtons[0]);
+    fireEvent.click(screen.getByText("+ Add User"));
+    fireEvent.click(screen.getByTestId("grant-save-User"));
 
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith(
         "/api/3.0/mlflow/permissions/workspaces/test-workspace/users",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ username: "newuser", permission: "READ" }),
+          body: JSON.stringify({ username: "alice", permission: "READ" }),
         }),
       );
     });
   });
 
-  it("handles group grant permission", async () => {
+  it("handles group grant permission via GrantPermissionModal", async () => {
     mockRequest.mockResolvedValue({});
 
     render(<WorkspaceDetailPage />);
 
-    // Click the add button for groups
-    const addButtons = screen.getAllByText("+ Add Groups");
-    fireEvent.click(addButtons[0]);
-
-    // Fill in the name
-    const nameInput = screen.getByPlaceholderText("Enter group name");
-    fireEvent.change(nameInput, { target: { value: "newgroup" } });
-
-    // Click save
-    const saveButtons = screen.getAllByText("Save");
-    fireEvent.click(saveButtons[0]);
+    fireEvent.click(screen.getByText("+ Add Group"));
+    fireEvent.click(screen.getByTestId("grant-save-Group"));
 
     await waitFor(() => {
       expect(mockRequest).toHaveBeenCalledWith(
         "/api/3.0/mlflow/permissions/workspaces/test-workspace/groups",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ group_name: "newgroup", permission: "READ" }),
+          body: JSON.stringify({ group_name: "admins", permission: "READ" }),
         }),
       );
     });

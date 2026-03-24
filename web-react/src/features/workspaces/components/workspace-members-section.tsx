@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { faEdit, faTrash } from "@fortawesome/free-solid-svg-icons";
-import { Button } from "../../../shared/components/button";
 import { IconButton } from "../../../shared/components/icon-button";
 import { Modal } from "../../../shared/components/modal";
 import { PermissionLevelSelect } from "../../../shared/components/permission-level-select";
+import { Button } from "../../../shared/components/button";
 import PageStatus from "../../../shared/components/page/page-status";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import type { PermissionLevel } from "../../../shared/types/entity";
@@ -13,12 +13,10 @@ interface WorkspaceMembersSectionProps {
   members: Array<{ name: string; permission: PermissionLevel }>;
   isLoading: boolean;
   error: Error | null;
-  onGrant: (name: string, permission: PermissionLevel) => Promise<boolean>;
   onUpdate: (name: string, permission: PermissionLevel) => Promise<void>;
   onRemove: (name: string) => Promise<void>;
   onRefresh: () => void;
   nameLabel: string;
-  namePlaceholder: string;
 }
 
 export default function WorkspaceMembersSection({
@@ -26,35 +24,15 @@ export default function WorkspaceMembersSection({
   members,
   isLoading,
   error,
-  onGrant,
   onUpdate,
   onRemove,
   onRefresh,
   nameLabel,
-  namePlaceholder,
 }: WorkspaceMembersSectionProps) {
   const { showToast } = useToast();
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<{ name: string; permission: PermissionLevel } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newPermission, setNewPermission] = useState<PermissionLevel>("READ");
   const [editPermission, setEditPermission] = useState<PermissionLevel>("READ");
-
-  const handleAdd = async () => {
-    if (!newName.trim()) return;
-    setIsSaving(true);
-    try {
-      const success = await onGrant(newName.trim(), newPermission);
-      if (success) {
-        setIsAddModalOpen(false);
-        setNewName("");
-        setNewPermission("READ");
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const handleEditClick = (member: { name: string; permission: PermissionLevel }) => {
     setEditingMember(member);
@@ -86,9 +64,6 @@ export default function WorkspaceMembersSection({
         <h2 className="text-lg font-semibold text-ui-text dark:text-ui-text-dark">
           {title} ({members.length})
         </h2>
-        <Button variant="secondary" onClick={() => setIsAddModalOpen(true)}>
-          + Add {title}
-        </Button>
       </div>
 
       <PageStatus isLoading={isLoading} loadingText={`Loading ${title.toLowerCase()}...`} error={error} onRetry={onRefresh} />
@@ -123,36 +98,6 @@ export default function WorkspaceMembersSection({
             </table>
           )}
         </>
-      )}
-
-      {isAddModalOpen && (
-        <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title={`Add ${title}`}>
-          <div className="mb-4">
-            <label htmlFor="member-name" className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">
-              {nameLabel}*
-            </label>
-            <input
-              id="member-name"
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder={namePlaceholder}
-              className="w-full px-3 py-2 border rounded-md focus:outline-none text-ui-text dark:text-ui-text-dark bg-ui-bg dark:bg-ui-bg-dark border-ui-border dark:border-ui-border-dark focus:border-btn-primary dark:focus:border-btn-primary-dark transition duration-150 ease-in-out"
-              required
-            />
-          </div>
-
-          <PermissionLevelSelect id="add-permission-level" label="Permission" value={newPermission} onChange={(val) => setNewPermission(val)} required containerClassName="mb-4" />
-
-          <div className="flex justify-end space-x-3">
-            <Button onClick={() => setIsAddModalOpen(false)} variant="ghost" disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button onClick={() => void handleAdd()} variant="primary" disabled={isSaving || !newName.trim()}>
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </Modal>
       )}
 
       {editingMember && (
