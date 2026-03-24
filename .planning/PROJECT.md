@@ -60,10 +60,24 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 
 ### Active
 
-- [ ] ENTITY-02: GatewayBudgetPolicy before_request handlers — deferred from v1.0, protos not in MLflow 3.10.1
-- [ ] Regex workspace permissions — pattern-based workspace access rules
+- [ ] Workspace CRUD backend — FastAPI proxy to MLflow's workspace REST API (create, list, get, update, delete) with auth checks
+- [ ] Workspace management UI — admin page for creating, viewing, updating, and deleting workspaces
+- [ ] Global workspace picker — dropdown in UI header that scopes all admin pages to the selected workspace
 - [ ] Workspace-scoped search result filtering in after_request
-- [ ] Workspace switcher context — workspace-scoped views across all admin UI pages
+- [ ] Regex workspace permissions — pattern-based workspace access rules
+- [ ] ENTITY-02: GatewayBudgetPolicy before_request handlers — deferred from v1.0, protos not in MLflow 3.10.1
+
+## Current Milestone: v1.1 Workspace Management
+
+**Goal:** Add full workspace lifecycle management (CRUD) to the plugin — backend proxy to MLflow's workspace API, admin UI with global workspace picker, and workspace-scoped search filtering.
+
+**Target features:**
+- Workspace CRUD backend (proxy to MLflow `/api/3.0/mlflow/workspaces`)
+- Workspace management UI (create, list, get, update, delete)
+- Global workspace picker in UI header (scopes all admin pages)
+- Workspace-scoped search result filtering in after_request hooks
+- Regex workspace permissions (pattern-based workspace access)
+- ENTITY-02: GatewayBudgetPolicy before_request handlers (if protos available)
 
 ### Out of Scope
 
@@ -78,7 +92,7 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 
 ## Context
 
-**Current state (post-v1.0):** Workspace support is feature-complete for the v1.0 milestone. The plugin now supports multi-tenant workspace isolation with:
+**Current state (post-v1.0, starting v1.1):** Workspace support is feature-complete for the v1.0 milestone. The plugin now supports multi-tenant workspace isolation with:
 - 86 Python files modified, 34 TypeScript/TSX files added/modified
 - Net +4,857 lines Python, +1,513 lines TypeScript
 - 157 files changed across the milestone (44 commits)
@@ -104,6 +118,8 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 - **Tech stack**: Python/FastAPI/Flask/SQLAlchemy backend, React/TypeScript frontend — no new frameworks
 - **Plugin boundary**: Can only control auth/authz — cannot modify MLflow core behavior
 - **Upstream stability**: Workspace protobuf RPCs are `PUBLIC_UNDOCUMENTED` — monitor for breaking changes
+- **Workspace CRUD**: Plugin proxies to MLflow's `/api/3.0/mlflow/workspaces` API — cannot own workspace lifecycle directly
+- **MANAGE delegation**: Users with MANAGE permission on a workspace can update/delete it (not admin-only)
 
 ## Key Decisions
 
@@ -143,4 +159,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-23 after v1.0 milestone*
+*Last updated: 2026-03-24 after v1.1 milestone started*
