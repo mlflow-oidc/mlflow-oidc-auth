@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Workspace Management
-status: Ready to execute
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-24T17:14:03.811Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-24T17:27:44.239Z"
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -53,6 +53,8 @@ v1.1 roadmap decisions:
 - [Phase 05]: Source-order-driven permission resolution via PERMISSION_SOURCE_ORDER config (user, group, regex, group-regex)
 - [Phase 06-workspace-crud-backend]: Reused _extract_workspace_name_from_path from validators.workspace via lazy import in before_request instead of duplicating
 - [Phase 06-workspace-crud-backend]: Used status_code < 300 as success guard in after-request handlers for robustness
+- [Phase 06]: Path params named {workspace} to match dependency parameter names in check_workspace_*_permission
+- [Phase 06]: Feature-flag gated router: exported in __all__ but NOT in get_all_routers(), registered conditionally in app.py
 
 ### Pending Todos
 
@@ -68,6 +70,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24T17:14:03.808Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-03-24T17:27:44.236Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None

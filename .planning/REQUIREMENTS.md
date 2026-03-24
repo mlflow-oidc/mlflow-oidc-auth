@@ -15,8 +15,8 @@ Requirements for workspace management milestone. Each maps to roadmap phases.
 - [x] **WSCRUD-04**: User with MANAGE permission can update workspace description
 - [x] **WSCRUD-05**: User with MANAGE permission can delete a workspace (RESTRICT mode — workspace must be empty)
 - [x] **WSCRUD-06**: When a workspace is deleted, all associated permission rows (user and group) are cascade-deleted
-- [ ] **WSCRUD-07**: Workspace CRUD proxy validates workspace names client-side and handles MLflow validation errors gracefully
-- [ ] **WSCRUD-08**: Workspace CRUD endpoints are not registered when `MLFLOW_ENABLE_WORKSPACES=false`
+- [x] **WSCRUD-07**: Workspace CRUD proxy validates workspace names client-side and handles MLflow validation errors gracefully
+- [x] **WSCRUD-08**: Workspace CRUD endpoints are not registered when `MLFLOW_ENABLE_WORKSPACES=false`
 
 ### Regex Workspace Permissions
 
@@ -56,7 +56,7 @@ Requirements for workspace management milestone. Each maps to roadmap phases.
 
 ### OIDC Integration
 
-- [ ] **WSOIDC-04**: When OIDC login maps to a workspace that does not exist, the workspace is auto-created before assigning membership
+- [x] **WSOIDC-04**: When OIDC login maps to a workspace that does not exist, the workspace is auto-created before assigning membership
 
 ## v1.2 Requirements
 
@@ -102,9 +102,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WSCRUD-04 | Phase 6 | Complete |
 | WSCRUD-05 | Phase 6 | Complete |
 | WSCRUD-06 | Phase 6 | Complete |
-| WSCRUD-07 | Phase 6 | Pending |
-| WSCRUD-08 | Phase 6 | Pending |
-| WSOIDC-04 | Phase 6 | Pending |
+| WSCRUD-07 | Phase 6 | Complete |
+| WSCRUD-08 | Phase 6 | Complete |
+| WSOIDC-04 | Phase 6 | Complete |
 | WSSEC-01 | Phase 7 | Pending |
 | WSSEC-02 | Phase 7 | Pending |
 | WSSEC-03 | Phase 7 | Pending |
