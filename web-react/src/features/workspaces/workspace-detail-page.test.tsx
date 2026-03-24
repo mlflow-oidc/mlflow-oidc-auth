@@ -30,6 +30,8 @@ const mockRequest = vi.fn();
 
 let mockParams: Record<string, string> = { workspaceName: "test-workspace" };
 
+let mockIsAdmin = true;
+
 vi.mock("react-router", () => ({
   useParams: () => mockParams,
 }));
@@ -40,6 +42,23 @@ vi.mock("../../core/hooks/use-workspace-users", () => ({
 
 vi.mock("../../core/hooks/use-workspace-groups", () => ({
   useWorkspaceGroups: () => mockUseWorkspaceGroups(),
+}));
+
+vi.mock("../../core/hooks/use-user", () => ({
+  useUser: () => ({
+    currentUser: {
+      is_admin: mockIsAdmin,
+      username: "admin",
+      display_name: "Admin",
+      groups: [],
+      id: 1,
+      is_service_account: false,
+      password_expiration: null,
+    },
+    isLoading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
 }));
 
 vi.mock("../../shared/components/toast/use-toast", () => ({
@@ -103,10 +122,16 @@ vi.mock("../../shared/components/button", () => ({
   ),
 }));
 
+vi.mock("./components/bulk-assign-modal", () => ({
+  BulkAssignModal: ({ isOpen, title }: { isOpen: boolean; title: string }) =>
+    isOpen ? <div data-testid="bulk-assign-modal">{title}</div> : null,
+}));
+
 describe("WorkspaceDetailPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockParams = { workspaceName: "test-workspace" };
+    mockIsAdmin = true;
     mockRequest.mockResolvedValue({});
     mockUseWorkspaceUsers.mockReturnValue({
       workspaceUsers: [],
@@ -254,5 +279,44 @@ describe("WorkspaceDetailPage", () => {
         }),
       );
     });
+  });
+
+  it("renders Bulk Assign Users button when admin", () => {
+    mockIsAdmin = true;
+    render(<WorkspaceDetailPage />);
+    expect(screen.getByText("Bulk Assign Users")).toBeInTheDocument();
+  });
+
+  it("renders Bulk Assign Groups button when admin", () => {
+    mockIsAdmin = true;
+    render(<WorkspaceDetailPage />);
+    expect(screen.getByText("Bulk Assign Groups")).toBeInTheDocument();
+  });
+
+  it("does not render bulk assign buttons when not admin", () => {
+    mockIsAdmin = false;
+    render(<WorkspaceDetailPage />);
+    expect(screen.queryByText("Bulk Assign Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bulk Assign Groups")).not.toBeInTheDocument();
+  });
+
+  it("opens bulk assign users modal on click", () => {
+    mockIsAdmin = true;
+    render(<WorkspaceDetailPage />);
+
+    fireEvent.click(screen.getByText("Bulk Assign Users"));
+
+    expect(screen.getByTestId("bulk-assign-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("bulk-assign-modal")).toHaveTextContent("Bulk Assign Users");
+  });
+
+  it("opens bulk assign groups modal on click", () => {
+    mockIsAdmin = true;
+    render(<WorkspaceDetailPage />);
+
+    fireEvent.click(screen.getByText("Bulk Assign Groups"));
+
+    expect(screen.getByTestId("bulk-assign-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("bulk-assign-modal")).toHaveTextContent("Bulk Assign Groups");
   });
 });
