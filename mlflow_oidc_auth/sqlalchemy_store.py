@@ -21,7 +21,9 @@ from mlflow_oidc_auth.entities import (
     ScorerRegexPermission,
     User,
     WorkspaceGroupPermission,
+    WorkspaceGroupRegexPermission,
     WorkspacePermission,
+    WorkspaceRegexPermission,
 )
 from mlflow_oidc_auth.entities.gateway_endpoint import (
     GatewayEndpointGroupRegexPermission,
@@ -60,6 +62,12 @@ from mlflow_oidc_auth.repository import (
     UserRepository,
     WorkspacePermissionRepository,
     WorkspaceGroupPermissionRepository,
+)
+from mlflow_oidc_auth.repository.workspace_regex_permission import (
+    WorkspaceRegexPermissionRepository,
+)
+from mlflow_oidc_auth.repository.workspace_group_regex_permission import (
+    WorkspaceGroupRegexPermissionRepository,
 )
 
 
@@ -167,6 +175,12 @@ class SqlAlchemyStore:
         )
         self.workspace_group_permission_repo = WorkspaceGroupPermissionRepository(
             self.ManagedSessionMaker
+        )
+        self.workspace_regex_permission_repo = WorkspaceRegexPermissionRepository(
+            self.ManagedSessionMaker
+        )
+        self.workspace_group_regex_permission_repo = (
+            WorkspaceGroupRegexPermissionRepository(self.ManagedSessionMaker)
         )
 
     def ping(self) -> bool:
@@ -1345,3 +1359,87 @@ class SqlAlchemyStore:
     ) -> list[WorkspaceGroupPermission]:
         """List all group permissions in a workspace."""
         return self.workspace_group_permission_repo.list_for_workspace(workspace)
+
+    # -- Workspace regex permissions (user-scoped) --
+
+    def create_workspace_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str
+    ) -> WorkspaceRegexPermission:
+        """Create a user regex workspace permission."""
+        return self.workspace_regex_permission_repo.grant(
+            regex, priority, permission, username
+        )
+
+    def get_workspace_regex_permission(
+        self, username: str, id: int
+    ) -> WorkspaceRegexPermission:
+        """Get a user regex workspace permission."""
+        return self.workspace_regex_permission_repo.get(username, id)
+
+    def list_workspace_regex_permissions(
+        self, username: str
+    ) -> list[WorkspaceRegexPermission]:
+        """List all regex workspace permissions for a user, ordered by priority."""
+        return self.workspace_regex_permission_repo.list_regex_for_user(username)
+
+    def list_all_workspace_regex_permissions(self) -> list[WorkspaceRegexPermission]:
+        """List all regex workspace permissions (admin view)."""
+        return self.workspace_regex_permission_repo.list()
+
+    def update_workspace_regex_permission(
+        self, regex: str, priority: int, permission: str, username: str, id: int
+    ) -> WorkspaceRegexPermission:
+        """Update a user regex workspace permission."""
+        return self.workspace_regex_permission_repo.update(
+            regex, priority, permission, username, id
+        )
+
+    def delete_workspace_regex_permission(self, username: str, id: int) -> None:
+        """Delete a user regex workspace permission."""
+        self.workspace_regex_permission_repo.revoke(username, id)
+
+    # -- Workspace group regex permissions (group-scoped) --
+
+    def create_workspace_group_regex_permission(
+        self, group_name: str, regex: str, priority: int, permission: str
+    ) -> WorkspaceGroupRegexPermission:
+        """Create a group regex workspace permission."""
+        return self.workspace_group_regex_permission_repo.grant(
+            group_name, regex, priority, permission
+        )
+
+    def get_workspace_group_regex_permission(
+        self, group_name: str, id: int
+    ) -> WorkspaceGroupRegexPermission:
+        """Get a group regex workspace permission."""
+        return self.workspace_group_regex_permission_repo.get(group_name, id)
+
+    def list_workspace_group_regex_permissions(
+        self, group_name: str
+    ) -> list[WorkspaceGroupRegexPermission]:
+        """List all regex workspace permissions for a group."""
+        return self.workspace_group_regex_permission_repo.list_permissions_for_group(
+            group_name
+        )
+
+    def list_workspace_group_regex_permissions_for_groups_ids(
+        self, group_ids: list[int]
+    ) -> list[WorkspaceGroupRegexPermission]:
+        """List all regex workspace permissions for a list of group IDs."""
+        return (
+            self.workspace_group_regex_permission_repo.list_permissions_for_groups_ids(
+                group_ids
+            )
+        )
+
+    def update_workspace_group_regex_permission(
+        self, id: int, group_name: str, regex: str, priority: int, permission: str
+    ) -> WorkspaceGroupRegexPermission:
+        """Update a group regex workspace permission."""
+        return self.workspace_group_regex_permission_repo.update(
+            id, group_name, regex, priority, permission
+        )
+
+    def delete_workspace_group_regex_permission(self, group_name: str, id: int) -> None:
+        """Delete a group regex workspace permission."""
+        self.workspace_group_regex_permission_repo.revoke(group_name, id)
