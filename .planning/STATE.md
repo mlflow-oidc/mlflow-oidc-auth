@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: milestone
-status: All 4 phases complete — milestone finished
-stopped_at: Phase 4 committed — milestone delivered
-last_updated: "2026-03-23T22:00:00.000Z"
+milestone_name: Workspace Support
+status: "Milestone v1.0 shipped — archived"
+stopped_at: "Milestone completion workflow finished"
+last_updated: "2026-03-23T22:05:00.000Z"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -19,83 +19,36 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Multi-tenant resource isolation — organizations share an MLflow instance while each tenant sees only their own resources
-**Current focus:** All phases complete — milestone delivered
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 4 (complete — all plans executed)
-Plan: 04-01 and 04-02 complete
+Milestone v1.0 complete and archived. No active phase.
 
 ## Performance Metrics
 
-**Velocity:**
-
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
-
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
+| Phase | Plans | Duration | Tasks | Files |
+|-------|-------|----------|-------|-------|
+| Phase 01 P01 | 1 | 8min | 2 | 4 |
+| Phase 01 P02 | 1 | 25min | 2 | 37 |
+| Phase 01 P03 | 1 | 15min | 2 | 18 |
+| Phase 02 P01 | 1 | 45min | 2 | 13 |
+| Phase 02 P02 | 1 | 11min | 2 | 8 |
+| Phase 02 P03 | 1 | 3min | 1 | 2 |
+| Phase 03 P01 | 1 | — | 2 | 9 |
+| Phase 03 P02 | 1 | — | 2 | 5 |
+| Phase 04 P01 | 1 | — | 2 | 10 |
+| Phase 04 P02 | 1 | — | 2 | 6 |
 
-**Recent Trend:**
-
-- Last 5 plans: —
-- Trend: —
-
-*Updated after each plan completion*
-| Phase 01 P01 | 8min | 2 tasks | 4 files |
-| Phase 01 P02 | 25min | 2 tasks | 37 files |
-| Phase 01 P03 | 15min | 2 tasks | 18 files |
-| Phase 02 P01 | 45min | 2 tasks | 13 files |
-| Phase 02 P02 | 11min | 2 tasks | 8 files |
-| Phase 02 P03 | 3min | 1 tasks | 2 files |
-| Phase 03 P01 | — | 2 tasks | 9 files |
-| Phase 03 P02 | — | 2 tasks | 5 files |
-| Phase 04 P01 | — | 2 tasks | 10 files |
-| Phase 04 P02 | — | 2 tasks | 6 files |
+**Totals:** 10 plans, 19 tasks, 157 files modified, +16,817 net LOC
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- Research-first approach validated; all findings based on MLflow 3.10 source code analysis
-- Prerequisite refactoring mandatory — 8 copy-paste permission functions must be consolidated before adding workspace dimension
-- Coarse granularity: 4 phases consolidating research's 6-phase structure
-- [Phase 01]: Registry-driven permission resolution: all 7 resource types use PERMISSION_REGISTRY dict and resolve_permission() single entry point
-- [Phase 01]: Scorer 2-part key handled via **kwargs to resolve_permission(); prompt sources intentionally share registered_model store methods
-- [Phase 01]: Generic base repository pattern: subclasses set model_class + entity_class + resource_id_attr class attributes, inherit full CRUD (4 base classes for 28 repos)
-- [Phase 01]: Scorer 2-part key handled via method overrides in subclass rather than base class complexity; gateway rename()/wipe() kept as subclass-only methods
-- [Phase 01]: AuthContext is a frozen dataclass (not TypedDict) for immutability and attribute access
-- [Phase 01]: Single environ key (environ['mlflow_oidc_auth'] = AuthContext) replaces individual keys for cleaner bridge
-- [Phase 01]: Default workspace seeded at app startup (not in migration) — schema vs data separation
-- [Phase 02]: Workspace hooks via regex pattern matching (logged model pattern) — WORKSPACE_BEFORE_REQUEST_VALIDATORS
-- [Phase 02]: Standalone workspace permission repos (not extending base classes) — workspace is a tenant boundary, not a resource
-- [Phase 02]: Wrap resolve_permission() for workspace fallback — get_permission_from_store_or_default() unchanged
-- [Phase 02]: Code-level implicit default workspace access — no seeded rows, GRANT_DEFAULT_WORKSPACE_ACCESS controls runtime
-- [Phase 02]: Module-level TTLCache in utils/workspace_cache.py — key (username, workspace), TTL-based invalidation only
-- [Phase 02]: Conditional workspace MANAGE wrapper in before_request_hook() for CreateExperiment/CreateRegisteredModel
-- [Phase 02]: Standalone workspace repos use get_user() from repository.utils for username resolution (not user_repo._get_user)
-- [Phase 02]: workspace_cache not exported from utils/__init__.py — callers import directly to avoid circular import issues
-- [Phase 02]: Creation gating uses lazy-built path set from get_endpoints() with if-handler-not-None filter
-- [Phase 02]: Workspace validators return True/False (matching existing convention), not Flask Response objects
-- [Phase 02]: Lazy imports patched at source module in tests — not at consuming module
-  - [Phase 02]: Handler identity check (handler in (...)) for get_endpoints() filter — truthiness check passes non-protobuf Flask handlers
-  - [Phase 03]: Single workspace permissions router at /api/3.0/mlflow/permissions/workspaces with 8 CRUD endpoints (4 user, 4 group)
-  - [Phase 03]: check_workspace_manage_permission and check_workspace_read_permission FastAPI dependencies for authorization
-  - [Phase 03]: User permission CUD triggers targeted cache invalidation; group changes rely on TTL (per D-13/D-14/D-15)
-  - [Phase 03]: OIDC workspace detection: plugin-first, JWT claim fallback, auto-assign with configurable default permission (NO_PERMISSIONS)
-  - [Phase 03]: 5 PromptOptimizationJob entries in BEFORE_REQUEST_HANDLERS with experiment-scoped validators
-  - [Phase 03]: ENTITY-02 (GatewayBudgetPolicy) deferred — protos not in MLflow 3.10.1
-  - [Phase 04]: Workspace list page follows experiments-page.tsx pattern exactly (PageContainer/PageStatus/SearchInput/EntityListTable)
-  - [Phase 04]: WorkspaceMembersSection uses text input (not dropdown) for member name — workspace members are free-form
-  - [Phase 04]: CUD buttons always visible per D-14 — backend enforces authorization, UI shows toast on 403
-  - [Phase 04]: User CRUD body uses { username, permission }; Group CRUD body uses { group_name, permission }
+All decisions logged in PROJECT.md Key Decisions table (15 entries covering research, refactoring, auth enforcement, management API, and UI choices).
 
 ### Pending Todos
 
@@ -104,10 +57,11 @@ None.
 ### Blockers/Concerns
 
 - Upstream workspace API stability: MLflow workspace endpoints are `PUBLIC_UNDOCUMENTED` (API v3.0) — could change in minor releases
-- cachetools is transitive dependency only (via MLflow) — not pinned in pyproject.toml
+- `cachetools` is transitive dependency only (via MLflow) — not pinned in pyproject.toml
+- ENTITY-02 (GatewayBudgetPolicy) deferred — protos not present in MLflow 3.10.1
 
 ## Session Continuity
 
 Last session: 2026-03-23
-Stopped at: All 4 phases complete — milestone delivered, all committed
+Stopped at: Milestone v1.0 completed and archived
 Resume file: .planning/ROADMAP.md

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-An MLflow authentication and authorization plugin (mlflow-oidc-auth) that adds OIDC-based login, RBAC with users/groups, and per-resource permission management to MLflow tracking servers. The project is adding multi-tenant organization support, aligning with MLflow 3.10's new organization features, to enable resource isolation across teams or external organizations sharing a single MLflow instance.
+An MLflow authentication and authorization plugin (mlflow-oidc-auth) that adds OIDC-based login, RBAC with users/groups, per-resource permission management, and multi-tenant workspace isolation to MLflow tracking servers. Workspace support enables resource isolation across teams or external organizations sharing a single MLflow instance, with feature-flag-gated opt-in behavior and zero impact on existing deployments.
 
 ## Core Value
 
@@ -12,99 +12,118 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 
 ### Validated
 
-- ✓ OIDC authentication (login, logout, callback, session management) — existing
-- ✓ Multi-method auth (OIDC, Basic Auth, Bearer Token/JWT, session cookies) — existing
-- ✓ User management (create, update, list, admin roles) — existing
-- ✓ Group management (create, assign users, group-level permissions) — existing
-- ✓ Experiment permissions (user, group, regex, group-regex variants) — existing
-- ✓ Registered model permissions (user, group, regex, group-regex variants) — existing
-- ✓ Prompt permissions (user, group, regex, group-regex variants) — existing
-- ✓ Scorer permissions (user, group, regex, group-regex variants) — existing
-- ✓ Gateway endpoint permissions (user, group, regex, group-regex variants) — existing
-- ✓ Gateway secret permissions (user, group, regex, group-regex variants) — existing
-- ✓ Gateway model definition permissions (user, group, regex, group-regex variants) — existing
-- ✓ Configurable permission resolution order (user → group → regex → group-regex) — existing
-- ✓ Permission levels (READ, USE, EDIT, MANAGE, NO_PERMISSIONS) — existing
-- ✓ Admin bypass for all permission checks — existing
-- ✓ Auto-grant MANAGE on resource creation — existing
-- ✓ Search result filtering based on user permissions — existing
-- ✓ Cascade permission deletes on resource deletion — existing
-- ✓ GraphQL authorization middleware — existing
-- ✓ Pluggable config providers (AWS, Azure, Vault, K8s, env) — existing
-- ✓ React SPA admin UI for managing permissions, users, groups — existing
-- ✓ Alembic database migrations — existing
-- ✓ MLflow plugin integration (mlflow server --app-name oidc-auth) — existing
+- ✓ OIDC authentication (login, logout, callback, session management) — pre-existing
+- ✓ Multi-method auth (OIDC, Basic Auth, Bearer Token/JWT, session cookies) — pre-existing
+- ✓ User management (create, update, list, admin roles) — pre-existing
+- ✓ Group management (create, assign users, group-level permissions) — pre-existing
+- ✓ Experiment permissions (user, group, regex, group-regex variants) — pre-existing
+- ✓ Registered model permissions (user, group, regex, group-regex variants) — pre-existing
+- ✓ Prompt permissions (user, group, regex, group-regex variants) — pre-existing
+- ✓ Scorer permissions (user, group, regex, group-regex variants) — pre-existing
+- ✓ Gateway endpoint permissions (user, group, regex, group-regex variants) — pre-existing
+- ✓ Gateway secret permissions (user, group, regex, group-regex variants) — pre-existing
+- ✓ Gateway model definition permissions (user, group, regex, group-regex variants) — pre-existing
+- ✓ Configurable permission resolution order (user → group → regex → group-regex) — pre-existing
+- ✓ Permission levels (READ, USE, EDIT, MANAGE, NO_PERMISSIONS) — pre-existing
+- ✓ Admin bypass for all permission checks — pre-existing
+- ✓ Auto-grant MANAGE on resource creation — pre-existing
+- ✓ Search result filtering based on user permissions — pre-existing
+- ✓ Cascade permission deletes on resource deletion — pre-existing
+- ✓ GraphQL authorization middleware — pre-existing
+- ✓ Pluggable config providers (AWS, Azure, Vault, K8s, env) — pre-existing
+- ✓ React SPA admin UI for managing permissions, users, groups — pre-existing
+- ✓ Alembic database migrations — pre-existing
+- ✓ MLflow plugin integration (mlflow server --app-name oidc-auth) — pre-existing
+- ✓ REFAC-01: Permission resolution consolidated into registry-driven `resolve_permission()` — v1.0
+- ✓ REFAC-02: Generic repository base classes (4 bases for 28 repos) — v1.0
+- ✓ WSFND-01: Feature flag (`MLFLOW_ENABLE_WORKSPACES`) gates all workspace behavior — v1.0
+- ✓ WSFND-02: `X-MLFLOW-WORKSPACE` header propagated through middleware chain — v1.0
+- ✓ WSFND-03: Alembic migration adds workspace_permissions tables — v1.0
+- ✓ WSFND-04: Default workspace seeded at startup — v1.0
+- ✓ WSFND-05: `GRANT_DEFAULT_WORKSPACE_ACCESS` config option — v1.0
+- ✓ WSFND-06: AuthContext frozen dataclass replaces individual environ keys — v1.0
+- ✓ WSAUTH-01: before_request handlers for 5 workspace protobuf RPCs — v1.0
+- ✓ WSAUTH-02: Workspace permission data layer (entities, repos, ORM, store, TTLCache) — v1.0
+- ✓ WSAUTH-03: CreateExperiment/CreateRegisteredModel gated on workspace MANAGE — v1.0
+- ✓ WSAUTH-04: Permission resolution workspace fallback (resource → workspace → NO_PERMISSIONS) — v1.0
+- ✓ WSAUTH-05: TTLCache for workspace permission lookups — v1.0
+- ✓ WSMGMT-01: Workspace-user permission CRUD router — v1.0
+- ✓ WSMGMT-02: Workspace-group permission CRUD router — v1.0
+- ✓ WSMGMT-03: Workspace permission delegation (MANAGE grants sub-admin) — v1.0
+- ✓ WSMGMT-04: React workspace management feature module — v1.0
+- ✓ WSMGMT-05: Workspace navigation in admin UI sidebar — v1.0
+- ✓ WSMGMT-06: Admin-managed workspace-to-user assignment UI — v1.0
+- ✓ WSOIDC-01: Configurable OIDC workspace claim extraction — v1.0
+- ✓ WSOIDC-02: Workspace detection plugin hook — v1.0
+- ✓ WSOIDC-03: Auto-create workspace membership on OIDC login — v1.0
+- ✓ ENTITY-01: PromptOptimizationJob before_request handlers — v1.0
 
 ### Active
 
-- [ ] Implement workspace management API — CRUD endpoints, OIDC claim mapping, new entity auth handlers
-- [ ] Implement workspace management UI — React workspace module with list, detail, member management, workspace switcher
-
-### Validated in Phase 2: Workspace Auth Enforcement
-
-- ✓ WSAUTH-01: before_request handlers intercept all 5 workspace protobuf RPCs with correct access levels (admin for CUD, perm check for Get, filtered for List)
-- ✓ WSAUTH-02: Workspace permission data layer — entities, standalone repos, ORM models, store facade, TTLCache with configurable size/TTL
-- ✓ WSAUTH-03: CreateExperiment and CreateRegisteredModel gated on workspace MANAGE permission
-- ✓ WSAUTH-04: resolve_permission() workspace fallback — resource-level → workspace-level → NO_PERMISSIONS (hard deny)
-- ✓ WSAUTH-05: Cached workspace permission lookups with implicit default workspace MANAGE access
-
-### Validated in Phase 1: Refactoring & Workspace Foundation
-
-- ✓ REFAC-01: Permission resolution refactored into generic `resolve_permission()` with `PERMISSION_REGISTRY` — 7 resource types, single entry point
-- ✓ REFAC-02: Repository base classes — 4 generic bases (`BaseUserPermissionRepository`, `BaseGroupPermissionRepository`, `BaseRegexPermissionRepository`, `BaseGroupRegexPermissionRepository`) for 28 repos
-- ✓ WSFND-01: `MLFLOW_ENABLE_WORKSPACES` feature flag gates all workspace behavior, disabled by default
-- ✓ WSFND-02: `X-MLFLOW-WORKSPACE` header propagated through middleware chain (AuthMiddleware → ASGI scope → WSGI environ → Flask bridge)
-- ✓ WSFND-03: Alembic migration adds `workspace_permissions` and `workspace_group_permissions` tables with composite PKs
-- ⚠ WSFND-04: Default workspace seeding plumbing exists (function + call site), actual data insertion deferred to Phase 2
-- ✓ WSFND-05: `GRANT_DEFAULT_WORKSPACE_ACCESS` config option, defaults to true
-- ✓ WSFND-06: `AuthContext` frozen dataclass replaces individual environ keys; `get_auth_context()`, `get_request_workspace()` bridge functions
+- [ ] ENTITY-02: GatewayBudgetPolicy before_request handlers — deferred from v1.0, protos not in MLflow 3.10.1
+- [ ] Regex workspace permissions — pattern-based workspace access rules
+- [ ] Workspace-scoped search result filtering in after_request
+- [ ] Workspace switcher context — workspace-scoped views across all admin UI pages
 
 ### Out of Scope
 
-- Per-org billing or usage metering — not an auth concern
+- Per-workspace artifact store management — MLflow core responsibility, not auth plugin
+- Workspace CRUD (create/update/delete workspace entity) — workspace lifecycle managed by MLflow core; plugin only controls access
+- Per-workspace billing/metering — not an auth concern
+- Per-workspace OIDC provider configuration — single provider per deployment
+- Hard workspace boundary enforcement at DB level — enforced via hooks and result filtering
+- Workspace entity model definition — plugin doesn't own workspace lifecycle
+- Mobile app — web-first approach
 - Multi-cluster/multi-instance federation — single instance scope only
-- Org-specific MLflow configuration (e.g., artifact store per org) — MLflow core concern, not auth plugin
 
 ## Context
 
-**Upstream trigger:** MLflow 3.10 (https://github.com/mlflow/mlflow/releases/tag/v3.10.0) introduced Organization Support. The upstream MLflow auth module at https://github.com/mlflow/mlflow/tree/master/mlflow/server/auth needs investigation to understand what hooks, models, and APIs were added.
+**Current state (post-v1.0):** Workspace support is feature-complete for the v1.0 milestone. The plugin now supports multi-tenant workspace isolation with:
+- 86 Python files modified, 34 TypeScript/TSX files added/modified
+- Net +4,857 lines Python, +1,513 lines TypeScript
+- 157 files changed across the milestone (44 commits)
+- Full workspace permission chain: resource-level → workspace-level → NO_PERMISSIONS
+- TTLCache-backed cached lookups for workspace permissions
+- 8-endpoint CRUD API for workspace user+group permission management
+- OIDC workspace claim mapping with plugin/JWT/auto-assign detection
+- React admin UI with workspace list, detail, and member management pages
 
-**Existing architecture:** FastAPI wraps MLflow's Flask app via AuthAwareWSGIMiddleware. RBAC is enforced in Flask before_request hooks that map MLflow protobuf request classes to validator functions. Permission management is via FastAPI routers. The plugin has 7 resource types, each with 4 permission variants (user, group, regex, group-regex). Permission resolution is now consolidated into a single `resolve_permission()` function via `PERMISSION_REGISTRY`. All 28 repository classes extend generic base classes. Workspace plumbing (feature flag, AuthContext, middleware, DB tables) is in place.
+**Tech stack:** Python 3.12 / FastAPI / Flask / SQLAlchemy 2 backend, React 19 / TypeScript / Vite frontend. MLflow >=3.10.0 required for workspace protobuf RPCs.
 
-**Current state:** Phase 2 complete — workspace auth enforcement done. The permission resolution chain includes workspace-level fallback (resource → workspace → NO_PERMISSIONS). All 5 workspace protobuf RPCs are intercepted. CreateExperiment/CreateRegisteredModel are gated on workspace MANAGE. ListWorkspaces is filtered per user permissions. TTLCache provides cached workspace permission lookups. All behavior gated by MLFLOW_ENABLE_WORKSPACES feature flag. Ready for Phase 3: Management API, OIDC & Entity Coverage.
+**Known gaps:**
+- ENTITY-02 (GatewayBudgetPolicy) deferred — protos not present in MLflow 3.10.1
+- Upstream workspace API is `PUBLIC_UNDOCUMENTED` (v3.0) — could change in minor releases
+- `cachetools` is transitive dependency only (via MLflow) — not pinned in pyproject.toml
 
-**Production deployments:** The plugin has existing production deployments with established users, groups, and permissions. Backward compatibility is important but breaking changes are acceptable with a major version bump.
-
-**Research-first approach:** The exact scope of implementation depends on research findings. Key unknowns include what MLflow 3.10 actually exposes for orgs, what entities the current plugin doesn't intercept, and how orgs should integrate with the existing group/permission hierarchy.
-
-**Multi-tenancy model:** Flexible — must support both internal teams and external organizations depending on deployment scenario.
+**Production deployments:** Existing deployments upgrade seamlessly — `MLFLOW_ENABLE_WORKSPACES` defaults to false, all workspace behavior is gated behind this flag. Enabling workspaces adds workspace-level permission resolution on top of existing resource-level permissions.
 
 ## Constraints
 
 - **Compatibility**: Must target MLflow >=3.10.0 — org features require 3.10 baseline
-- **Production impact**: Existing deployments must have a clear migration path, even if major version bump
+- **Production impact**: Existing deployments unaffected when workspaces disabled (feature flag default)
 - **Tech stack**: Python/FastAPI/Flask/SQLAlchemy backend, React/TypeScript frontend — no new frameworks
 - **Plugin boundary**: Can only control auth/authz — cannot modify MLflow core behavior
-- **Research dependency**: Implementation scope gated on research findings about MLflow 3.10 internals
+- **Upstream stability**: Workspace protobuf RPCs are `PUBLIC_UNDOCUMENTED` — monitor for breaking changes
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Research-first approach before implementation | Too many unknowns about MLflow 3.10 org model | ✓ Completed — MLflow uses "Workspaces" |
-| Breaking changes OK with major version | Production deployments exist but org support is transformative enough to justify it | ✓ Confirmed — WSGI bridge now uses AuthContext |
-| Flexible tenancy model (internal + external) | Different deployments have different needs; don't lock into one model | ✓ Aligned — feature flag allows opt-in |
-| Deep dive upstream MLflow code + docs | Release notes alone won't reveal integration points for the auth plugin | ✓ Completed — 5 protobuf RPCs, X-MLFLOW-WORKSPACE header, workspace_permissions table identified |
-| REFAC-01: Registry-driven permission resolution | 8 copy-paste functions → single resolve_permission() | ✓ Implemented in Phase 1 |
-| REFAC-02: Generic repository base classes | 28 repos with duplicated CRUD → 4 generic bases | ✓ Implemented in Phase 1 |
-| WSFND-06: AuthContext replaces individual environ keys | Single frozen dataclass for auth state propagation | ✓ Implemented in Phase 1 |
-| WSFND-04: Default workspace seeding deferred to Phase 2 | Store methods needed for actual data insertion | ✓ Resolved — workspace store methods + implicit default workspace MANAGE via TTLCache |
-
-| WSAUTH-B: Standalone workspace repos (not extending base classes) | Workspace is a tenant boundary, not a resource — different access patterns | ✓ Implemented in Phase 2 |
-| WSAUTH-C: Wrap resolve_permission() for workspace fallback | get_permission_from_store_or_default() unchanged, workspace check only on fallback | ✓ Implemented in Phase 2 |
-| WSAUTH-D: Implicit default workspace MANAGE via TTLCache | GRANT_DEFAULT_WORKSPACE_ACCESS=True grants MANAGE on "default" workspace | ✓ Implemented in Phase 2 |
-| WSAUTH-E: Module-level TTLCache with lazy init | Avoids import-time config reads, configurable size/TTL | ✓ Implemented in Phase 2 |
-| WSAUTH-F: Conditional creation gating in before_request_hook() | CreateExperiment/CreateRegisteredModel require workspace MANAGE | ✓ Implemented in Phase 2 |
+| Research-first approach before implementation | Too many unknowns about MLflow 3.10 org model | ✓ Good — MLflow uses "Workspaces", 5 protobuf RPCs identified |
+| Breaking changes OK with major version | Production deployments exist but org support is transformative | ✓ Good — WSGI bridge uses AuthContext, clean migration path |
+| Flexible tenancy model (internal + external) | Different deployments have different needs | ✓ Good — feature flag allows opt-in |
+| REFAC-01: Registry-driven permission resolution | 8 copy-paste functions → single resolve_permission() | ✓ Good — enabled workspace fallback insertion |
+| REFAC-02: Generic repository base classes | 28 repos with duplicated CRUD → 4 generic bases | ✓ Good — reduced maintenance surface |
+| WSFND-06: AuthContext frozen dataclass | Single frozen dataclass for auth state propagation | ✓ Good — cleaner than multiple environ keys |
+| WSAUTH-B: Standalone workspace repos | Workspace is tenant boundary, not resource — different access patterns | ✓ Good — simpler than extending generic bases |
+| WSAUTH-C: Wrap resolve_permission() for workspace fallback | get_permission_from_store_or_default() unchanged | ✓ Good — minimal diff, backward compatible |
+| WSAUTH-D: Implicit default workspace MANAGE via TTLCache | No seeded rows needed for default workspace access | ✓ Good — cleaner than migration-seeded data |
+| WSAUTH-F: Conditional creation gating in before_request_hook() | CreateExperiment/CreateRegisteredModel require workspace MANAGE | ✓ Good — prevents unauthorized resource creation |
+| Phase 3: Single router for all workspace CRUD | 8 endpoints in one router vs split user/group routers | ✓ Good — follows existing pattern consistency |
+| Phase 3: OIDC workspace detection plugin-first | Mirrors OIDC_GROUP_DETECTION_PLUGIN pattern | ✓ Good — consistent with existing extension model |
+| Phase 3: ENTITY-02 deferred | GatewayBudgetPolicy protos not in MLflow 3.10.1 | — Pending — revisit when MLflow adds protos |
+| Phase 4: Text input for member names | Not dropdown — workspace members are free-form | ✓ Good — avoids loading all users/groups |
+| Phase 4: CUD buttons always visible | Backend enforces authorization, UI shows toast on 403 | ✓ Good — consistent UX, proper separation of concerns |
 
 ## Evolution
 
@@ -124,4 +143,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-23 after Phase 2 completion*
+*Last updated: 2026-03-23 after v1.0 milestone*
