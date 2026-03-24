@@ -66,7 +66,9 @@ Plans:
   2. User searching registered models and logged models sees only results from accessible workspaces
   3. Resources in the default workspace remain visible when `GRANT_DEFAULT_WORKSPACE_ACCESS` is true, and pre-workspace-era resources (no workspace) remain visible to authorized users
   4. Admin users bypass all workspace-scoped filtering and see all resources
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 07-01-PLAN.md — Workspace-scoped search filtering: _can_access_workspace helper + experiment/model/logged-model filter hooks + tests
 
 ### Phase 8: Workspace Management UI & Global Picker
 **Goal**: Admins can manage workspace lifecycle through the UI, and all users can scope their view to a specific workspace via a header dropdown
@@ -94,5 +96,5 @@ Phases execute in numeric order: 5 → 6 → 7 → 8
 | 4. Workspace Management UI | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 5. Regex Workspace Permissions | v1.1 | 2/2 | Complete   | 2026-03-24 |
 | 6. Workspace CRUD Backend | v1.1 | 2/2 | Complete   | 2026-03-24 |
-| 7. Workspace-Scoped Search Filtering | v1.1 | 0/0 | Not started | - |
+| 7. Workspace-Scoped Search Filtering | v1.1 | 0/1 | Planned | - |
 | 8. Workspace Management UI & Global Picker | v1.1 | 0/0 | Not started | - |
