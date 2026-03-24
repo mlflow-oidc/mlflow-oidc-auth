@@ -47,12 +47,12 @@ Requirements for workspace management milestone. Each maps to roadmap phases.
 
 ### Workspace UI — Global Picker
 
-- [ ] **WSPICK-01**: Header dropdown shows accessible workspaces when `workspacesEnabled` is true in runtime config
-- [ ] **WSPICK-02**: Selecting a workspace sends `X-MLFLOW-WORKSPACE` header on all subsequent API requests
-- [ ] **WSPICK-03**: Workspace selection persists across page refreshes via localStorage
-- [ ] **WSPICK-04**: "All Workspaces" option removes workspace scoping (no header sent)
-- [ ] **WSPICK-05**: Picker includes search/filter input for deployments with many workspaces
-- [ ] **WSPICK-06**: Keyboard shortcut enables quick workspace switching without mouse interaction
+- [x] **WSPICK-01**: Header dropdown shows accessible workspaces when `workspacesEnabled` is true in runtime config
+- [x] **WSPICK-02**: Selecting a workspace sends `X-MLFLOW-WORKSPACE` header on all subsequent API requests
+- [x] **WSPICK-03**: Workspace selection persists across page refreshes via localStorage
+- [x] **WSPICK-04**: "All Workspaces" option removes workspace scoping (no header sent)
+- [x] **WSPICK-05**: Picker includes search/filter input for deployments with many workspaces
+- [x] **WSPICK-06**: Keyboard shortcut enables quick workspace switching without mouse interaction
 
 ### OIDC Integration
 
@@ -116,12 +116,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WSUI-03 | Phase 8 | Pending |
 | WSUI-04 | Phase 8 | Pending |
 | WSUI-05 | Phase 8 | Pending |
-| WSPICK-01 | Phase 8 | Pending |
-| WSPICK-02 | Phase 8 | Pending |
-| WSPICK-03 | Phase 8 | Pending |
-| WSPICK-04 | Phase 8 | Pending |
-| WSPICK-05 | Phase 8 | Pending |
-| WSPICK-06 | Phase 8 | Pending |
+| WSPICK-01 | Phase 8 | Complete |
+| WSPICK-02 | Phase 8 | Complete |
+| WSPICK-03 | Phase 8 | Complete |
+| WSPICK-04 | Phase 8 | Complete |
+| WSPICK-05 | Phase 8 | Complete |
+| WSPICK-06 | Phase 8 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 33 total
