@@ -24,6 +24,7 @@ from mlflow_oidc_auth.middleware import (
     AuthAwareWSGIMiddleware,
     AuthMiddleware,
     ProxyHeadersMiddleware,
+    WorkspaceContextMiddleware,
 )
 from mlflow_oidc_auth.oauth import ensure_oidc_client_registered
 from mlflow_oidc_auth.routers import get_all_routers
@@ -133,6 +134,7 @@ def create_app() -> Any:
 
     oidc_app.add_middleware(ProxyHeadersMiddleware)
     oidc_app.add_middleware(AuthMiddleware)
+    oidc_app.add_middleware(WorkspaceContextMiddleware)
     oidc_app.add_middleware(StarletteSessionMiddleware, secret_key=config.SECRET_KEY)
 
     for router in get_all_routers():
