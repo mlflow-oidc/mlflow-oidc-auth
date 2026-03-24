@@ -68,7 +68,7 @@ Plans:
   4. Admin users bypass all workspace-scoped filtering and see all resources
 **Plans:** 1 plan
 Plans:
-- [ ] 07-01-PLAN.md — Workspace-scoped search filtering: _can_access_workspace helper + experiment/model/logged-model filter hooks + tests
+- [x] 07-01-PLAN.md — Workspace-scoped search filtering: _can_access_workspace helper + experiment/model/logged-model filter hooks + tests
 
 ### Phase 8: Workspace Management UI & Global Picker
 **Goal**: Admins can manage workspace lifecycle through the UI, and all users can scope their view to a specific workspace via a header dropdown

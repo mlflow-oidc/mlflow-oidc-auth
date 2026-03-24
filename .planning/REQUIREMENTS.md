@@ -30,12 +30,12 @@ Requirements for workspace management milestone. Each maps to roadmap phases.
 
 ### Workspace Security
 
-- [ ] **WSSEC-01**: After-request search filtering verifies each experiment's actual workspace against user's workspace permissions
-- [ ] **WSSEC-02**: After-request search filtering verifies each registered model's actual workspace against user's workspace permissions
-- [ ] **WSSEC-03**: After-request search filtering verifies each logged model's experiment workspace against user's workspace permissions
-- [ ] **WSSEC-04**: Default workspace resources remain visible when `GRANT_DEFAULT_WORKSPACE_ACCESS` is true
-- [ ] **WSSEC-05**: Pre-workspace-era resources (no workspace assignment) remain visible to authorized users
-- [ ] **WSSEC-06**: Admin users bypass all workspace-scoped filtering
+- [x] **WSSEC-01**: After-request search filtering verifies each experiment's actual workspace against user's workspace permissions
+- [x] **WSSEC-02**: After-request search filtering verifies each registered model's actual workspace against user's workspace permissions
+- [x] **WSSEC-03**: After-request search filtering verifies each logged model's experiment workspace against user's workspace permissions
+- [x] **WSSEC-04**: Default workspace resources remain visible when `GRANT_DEFAULT_WORKSPACE_ACCESS` is true
+- [x] **WSSEC-05**: Pre-workspace-era resources (no workspace assignment) remain visible to authorized users
+- [x] **WSSEC-06**: Admin users bypass all workspace-scoped filtering
 
 ### Workspace UI — Management
 
@@ -105,12 +105,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WSCRUD-07 | Phase 6 | Complete |
 | WSCRUD-08 | Phase 6 | Complete |
 | WSOIDC-04 | Phase 6 | Complete |
-| WSSEC-01 | Phase 7 | Pending |
-| WSSEC-02 | Phase 7 | Pending |
-| WSSEC-03 | Phase 7 | Pending |
-| WSSEC-04 | Phase 7 | Pending |
-| WSSEC-05 | Phase 7 | Pending |
-| WSSEC-06 | Phase 7 | Pending |
+| WSSEC-01 | Phase 7 | Complete |
+| WSSEC-02 | Phase 7 | Complete |
+| WSSEC-03 | Phase 7 | Complete |
+| WSSEC-04 | Phase 7 | Complete |
+| WSSEC-05 | Phase 7 | Complete |
+| WSSEC-06 | Phase 7 | Complete |
 | WSUI-01 | Phase 8 | Pending |
 | WSUI-02 | Phase 8 | Pending |
 | WSUI-03 | Phase 8 | Pending |
