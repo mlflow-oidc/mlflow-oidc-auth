@@ -127,3 +127,20 @@ class TestListForWorkspace:
         session.query().filter().all.return_value = [p1]
         result = repo.list_for_workspace("ws1")
         assert result == ["e1"]
+
+
+class TestDeleteAllForWorkspace:
+    """Test WorkspacePermissionRepository.delete_all_for_workspace()."""
+
+    def test_delete_all_returns_count_deleted(self, repo, session):
+        """delete_all_for_workspace() deletes all rows and returns count."""
+        session.query().filter().delete.return_value = 3
+        result = repo.delete_all_for_workspace("ws1")
+        assert result == 3
+        session.flush.assert_called_once()
+
+    def test_delete_all_returns_zero_when_none_exist(self, repo, session):
+        """delete_all_for_workspace() returns 0 when no permissions exist."""
+        session.query().filter().delete.return_value = 0
+        result = repo.delete_all_for_workspace("empty_ws")
+        assert result == 0

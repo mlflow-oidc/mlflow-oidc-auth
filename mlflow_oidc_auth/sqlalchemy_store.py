@@ -1360,6 +1360,23 @@ class SqlAlchemyStore:
         """List all group permissions in a workspace."""
         return self.workspace_group_permission_repo.list_for_workspace(workspace)
 
+    def wipe_workspace_permissions(self, workspace: str) -> int:
+        """Delete all user and group permissions for a workspace.
+
+        Used for cascade-delete when a workspace is removed.
+
+        Parameters:
+            workspace: The workspace name.
+
+        Returns:
+            Total number of permission rows deleted (user + group).
+        """
+        user_count = self.workspace_permission_repo.delete_all_for_workspace(workspace)
+        group_count = self.workspace_group_permission_repo.delete_all_for_workspace(
+            workspace
+        )
+        return user_count + group_count
+
     # -- Workspace regex permissions (user-scoped) --
 
     def create_workspace_regex_permission(

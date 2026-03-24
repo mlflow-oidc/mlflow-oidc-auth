@@ -155,3 +155,20 @@ class TestGetHighestForUser:
         with pytest.raises(MlflowException) as exc:
             repo.get_highest_for_user("ws1", 42)
         assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+class TestDeleteAllForWorkspace:
+    """Test WorkspaceGroupPermissionRepository.delete_all_for_workspace()."""
+
+    def test_delete_all_returns_count_deleted(self, repo, session):
+        """delete_all_for_workspace() deletes all rows and returns count."""
+        session.query().filter().delete.return_value = 2
+        result = repo.delete_all_for_workspace("ws1")
+        assert result == 2
+        session.flush.assert_called_once()
+
+    def test_delete_all_returns_zero_when_none_exist(self, repo, session):
+        """delete_all_for_workspace() returns 0 when no permissions exist."""
+        session.query().filter().delete.return_value = 0
+        result = repo.delete_all_for_workspace("empty_ws")
+        assert result == 0

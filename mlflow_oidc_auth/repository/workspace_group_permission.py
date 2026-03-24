@@ -180,6 +180,24 @@ class WorkspaceGroupPermissionRepository:
             )
             return [p.to_mlflow_entity() for p in perms]
 
+    def delete_all_for_workspace(self, workspace: str) -> int:
+        """Delete all group permissions for a workspace.
+
+        Parameters:
+            workspace: The workspace name.
+
+        Returns:
+            Number of permission rows deleted.
+        """
+        with self.ManagedSessionMaker() as session:
+            count = (
+                session.query(SqlWorkspaceGroupPermission)
+                .filter(SqlWorkspaceGroupPermission.workspace == workspace)
+                .delete()
+            )
+            session.flush()
+            return count
+
     def get_highest_for_user(
         self, workspace: str, user_id: int
     ) -> WorkspaceGroupPermission:

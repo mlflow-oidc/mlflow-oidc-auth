@@ -177,3 +177,21 @@ class WorkspacePermissionRepository:
                 .all()
             )
             return [p.to_mlflow_entity() for p in perms]
+
+    def delete_all_for_workspace(self, workspace: str) -> int:
+        """Delete all user permissions for a workspace.
+
+        Parameters:
+            workspace: The workspace name.
+
+        Returns:
+            Number of permission rows deleted.
+        """
+        with self.ManagedSessionMaker() as session:
+            count = (
+                session.query(SqlWorkspacePermission)
+                .filter(SqlWorkspacePermission.workspace == workspace)
+                .delete()
+            )
+            session.flush()
+            return count
