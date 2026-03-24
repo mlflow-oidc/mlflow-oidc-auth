@@ -96,6 +96,24 @@ def _get_after_request_handler(request_class):
     return AFTER_REQUEST_PATH_HANDLERS.get(request_class)
 
 
+def _can_access_workspace(username: str, workspace: str | None) -> bool:
+    """Check if a user can access a resource in the given workspace.
+
+    Returns True (allow) when:
+    - Workspaces are disabled (MLFLOW_ENABLE_WORKSPACES is False)
+    - Resource has no workspace assignment (pre-workspace-era, WSSEC-05)
+    - Resource is in "default" workspace and GRANT_DEFAULT_WORKSPACE_ACCESS is True (WSSEC-04)
+    - User has workspace permission via get_workspace_permission_cached (WSSEC-01/02/03)
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return True
+    if not workspace:
+        return True  # Pre-workspace-era resource (WSSEC-05)
+    if workspace == "default" and config.GRANT_DEFAULT_WORKSPACE_ACCESS:
+        return True  # Default workspace access (WSSEC-04)
+    return get_workspace_permission_cached(username, workspace) is not None
+
+
 def _filter_search_experiments(resp: Response):
     if get_fastapi_admin_status():
         return
@@ -110,6 +128,21 @@ def _filter_search_experiments(resp: Response):
     for e in list(response_message.experiments):
         if not can_read_experiment(e.experiment_id, username):
             response_message.experiments.remove(e)
+
+    # Filter by workspace permission (WSSEC-01)
+    if config.MLFLOW_ENABLE_WORKSPACES:
+        tracking_store = _get_tracking_store()
+        ws_map = {}
+        for e in list(response_message.experiments):
+            try:
+                ws_map[e.experiment_id] = tracking_store.get_experiment(
+                    e.experiment_id
+                ).workspace
+            except Exception:
+                ws_map[e.experiment_id] = None
+        for e in list(response_message.experiments):
+            if not _can_access_workspace(username, ws_map.get(e.experiment_id)):
+                response_message.experiments.remove(e)
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     tracking_store = _get_tracking_store()
@@ -135,6 +168,7 @@ def _filter_search_experiments(resp: Response):
             e.to_proto()
             for e in refetched
             if can_read_experiment(e.experiment_id, username)
+            and _can_access_workspace(username, e.workspace)
         ]
         response_message.experiments.extend(readable_proto)
 
