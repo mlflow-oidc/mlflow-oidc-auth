@@ -37,7 +37,10 @@
   2. Admin can create a group regex permission and group members matching the pattern gain workspace access
   3. Workspace permission cache returns correct permission level when regex and group-regex sources are part of the configured resolution order
   4. Modifying any regex permission immediately invalidates the full workspace cache (no stale access)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 05-01-PLAN.md — Data layer: DB models, entities, repositories, Alembic migration, store wiring
+- [ ] 05-02-PLAN.md — Router + cache: CRUD endpoints, workspace cache regex integration, feature-flag gating, cachetools pin
 
 ### Phase 6: Workspace CRUD Backend
 **Goal**: Users can create, list, view, update, and delete workspaces through the plugin's API with proper authorization and automatic permission management
