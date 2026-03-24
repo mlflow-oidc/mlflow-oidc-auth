@@ -46,19 +46,31 @@ def validate_can_read_workspace(username: str):
 
 
 def validate_can_update_workspace(username: str):
-    """Only admins can update workspaces."""
+    """Admins or users with MANAGE workspace permission can update workspaces."""
     auth_context = get_auth_context()
-    if not auth_context.is_admin:
+    if auth_context.is_admin:
+        return None
+    workspace_name = _extract_workspace_name_from_path()
+    if workspace_name is None:
         return responses.make_forbidden_response()
-    return None
+    perm = get_workspace_permission_cached(auth_context.username, workspace_name)
+    if perm is not None and perm.can_manage:
+        return None
+    return responses.make_forbidden_response()
 
 
 def validate_can_delete_workspace(username: str):
-    """Only admins can delete workspaces."""
+    """Admins or users with MANAGE workspace permission can delete workspaces."""
     auth_context = get_auth_context()
-    if not auth_context.is_admin:
+    if auth_context.is_admin:
+        return None
+    workspace_name = _extract_workspace_name_from_path()
+    if workspace_name is None:
         return responses.make_forbidden_response()
-    return None
+    perm = get_workspace_permission_cached(auth_context.username, workspace_name)
+    if perm is not None and perm.can_manage:
+        return None
+    return responses.make_forbidden_response()
 
 
 def validate_can_list_workspaces(username: str):

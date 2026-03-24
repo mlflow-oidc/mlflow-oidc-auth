@@ -425,7 +425,7 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
     """
     if "/mlflow/workspaces" in req.path:
         # Workspace routes use path parameters (e.g. /mlflow/workspaces/<workspace_name>)
-        return next(
+        validator = next(
             (
                 v
                 for (pat, method), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items()
@@ -433,6 +433,16 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
             ),
             None,
         )
+        # Stash workspace name for after-request cascade delete (like gateway pattern)
+        if validator is not None and req.method == "DELETE":
+            from mlflow_oidc_auth.validators.workspace import (
+                _extract_workspace_name_from_path,
+            )
+
+            ws_name = _extract_workspace_name_from_path()
+            if ws_name:
+                g._deleting_workspace_name = ws_name
+        return validator
     if "/mlflow/logged-models" in req.path:
         # logged model routes are not registered in the app
         # so we need to check them manually

@@ -550,3 +550,472 @@ class TestAfterRequestListWorkspacesFiltering:
                 _filter_list_workspaces(mock_response)
 
             mock_response.set_data.assert_not_called()
+
+
+class TestAutoGrantWorkspaceManagePermission:
+    """Tests for _auto_grant_workspace_manage_permission after-request handler (WSCRUD-01)."""
+
+    def _make_flask_app(self):
+        _app = Flask(__name__)
+        _app.config["TESTING"] = True
+        return _app
+
+    def test_auto_grant_on_successful_create(self):
+        """After successful CreateWorkspace (200), creator gets MANAGE permission."""
+        from mlflow_oidc_auth.hooks.after_request import (
+            _auto_grant_workspace_manage_permission,
+        )
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.get_json.return_value = {"workspace": {"name": "new-ws"}}
+
+            mock_auth_ctx = AuthContext(
+                username="creator", is_admin=True, workspace=None
+            )
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.hooks.after_request.get_auth_context",
+                    return_value=mock_auth_ctx,
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.hooks.after_request.store"
+                    ) as mock_store:
+                        with patch(
+                            "mlflow_oidc_auth.hooks.after_request.flush_workspace_cache"
+                        ) as mock_flush:
+                            _auto_grant_workspace_manage_permission(mock_response)
+                            mock_store.create_workspace_permission.assert_called_once_with(
+                                "new-ws", "creator", "MANAGE"
+                            )
+                            mock_flush.assert_called_once()
+
+    def test_auto_grant_flushes_workspace_cache(self):
+        """After successful CreateWorkspace, workspace cache is flushed."""
+        from mlflow_oidc_auth.hooks.after_request import (
+            _auto_grant_workspace_manage_permission,
+        )
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 201
+            mock_response.get_json.return_value = {"workspace": {"name": "ws2"}}
+
+            mock_auth_ctx = AuthContext(username="user1", is_admin=True, workspace=None)
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.hooks.after_request.get_auth_context",
+                    return_value=mock_auth_ctx,
+                ):
+                    with patch("mlflow_oidc_auth.hooks.after_request.store"):
+                        with patch(
+                            "mlflow_oidc_auth.hooks.after_request.flush_workspace_cache"
+                        ) as mock_flush:
+                            _auto_grant_workspace_manage_permission(mock_response)
+                            mock_flush.assert_called_once()
+
+    def test_no_auto_grant_on_failed_create(self):
+        """After failed CreateWorkspace (non-200), no permission is created."""
+        from mlflow_oidc_auth.hooks.after_request import (
+            _auto_grant_workspace_manage_permission,
+        )
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 400
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch("mlflow_oidc_auth.hooks.after_request.store") as mock_store:
+                    _auto_grant_workspace_manage_permission(mock_response)
+                    mock_store.create_workspace_permission.assert_not_called()
+
+    def test_no_auto_grant_when_workspaces_disabled(self):
+        """No permission created when workspaces are disabled."""
+        from mlflow_oidc_auth.hooks.after_request import (
+            _auto_grant_workspace_manage_permission,
+        )
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = False
+                with patch("mlflow_oidc_auth.hooks.after_request.store") as mock_store:
+                    _auto_grant_workspace_manage_permission(mock_response)
+                    mock_store.create_workspace_permission.assert_not_called()
+
+    def test_registered_in_after_request_handlers(self):
+        """CreateWorkspace is registered in AFTER_REQUEST_PATH_HANDLERS."""
+        from mlflow.protos.service_pb2 import CreateWorkspace
+        from mlflow_oidc_auth.hooks.after_request import (
+            AFTER_REQUEST_PATH_HANDLERS,
+            _auto_grant_workspace_manage_permission,
+        )
+
+        assert CreateWorkspace in AFTER_REQUEST_PATH_HANDLERS
+        assert (
+            AFTER_REQUEST_PATH_HANDLERS[CreateWorkspace]
+            is _auto_grant_workspace_manage_permission
+        )
+
+
+class TestCascadeDeleteWorkspacePermissions:
+    """Tests for _cascade_delete_workspace_permissions after-request handler (WSCRUD-06)."""
+
+    def _make_flask_app(self):
+        _app = Flask(__name__)
+        _app.config["TESTING"] = True
+        return _app
+
+    def test_cascade_delete_on_successful_delete(self):
+        """After successful DeleteWorkspace (204), wipe_workspace_permissions is called."""
+        from mlflow_oidc_auth.hooks.after_request import (
+            _cascade_delete_workspace_permissions,
+        )
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            from flask import g
+
+            g._deleting_workspace_name = "doomed-ws"
+            mock_response = MagicMock()
+            mock_response.status_code = 204
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch("mlflow_oidc_auth.hooks.after_request.store") as mock_store:
+                    mock_store.wipe_workspace_permissions.return_value = 5
+                    with patch(
+                        "mlflow_oidc_auth.hooks.after_request.flush_workspace_cache"
+                    ) as mock_flush:
+                        _cascade_delete_workspace_permissions(mock_response)
+                        mock_store.wipe_workspace_permissions.assert_called_once_with(
+                            "doomed-ws"
+                        )
+                        mock_flush.assert_called_once()
+
+    def test_cascade_delete_flushes_workspace_cache(self):
+        """After successful DeleteWorkspace, workspace cache is flushed."""
+        from mlflow_oidc_auth.hooks.after_request import (
+            _cascade_delete_workspace_permissions,
+        )
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            from flask import g
+
+            g._deleting_workspace_name = "ws-del"
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch("mlflow_oidc_auth.hooks.after_request.store") as mock_store:
+                    mock_store.wipe_workspace_permissions.return_value = 0
+                    with patch(
+                        "mlflow_oidc_auth.hooks.after_request.flush_workspace_cache"
+                    ) as mock_flush:
+                        _cascade_delete_workspace_permissions(mock_response)
+                        mock_flush.assert_called_once()
+
+    def test_no_cascade_on_failed_delete(self):
+        """After failed DeleteWorkspace (non-204), no wipe is called."""
+        from mlflow_oidc_auth.hooks.after_request import (
+            _cascade_delete_workspace_permissions,
+        )
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            from flask import g
+
+            g._deleting_workspace_name = "ws-fail"
+            mock_response = MagicMock()
+            mock_response.status_code = 404
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch("mlflow_oidc_auth.hooks.after_request.store") as mock_store:
+                    _cascade_delete_workspace_permissions(mock_response)
+                    mock_store.wipe_workspace_permissions.assert_not_called()
+
+    def test_no_cascade_when_no_workspace_stashed(self):
+        """No cascade when no workspace name was stashed in Flask g."""
+        from mlflow_oidc_auth.hooks.after_request import (
+            _cascade_delete_workspace_permissions,
+        )
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 204
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch("mlflow_oidc_auth.hooks.after_request.store") as mock_store:
+                    _cascade_delete_workspace_permissions(mock_response)
+                    mock_store.wipe_workspace_permissions.assert_not_called()
+
+    def test_registered_in_after_request_handlers(self):
+        """DeleteWorkspace is registered in AFTER_REQUEST_PATH_HANDLERS."""
+        from mlflow.protos.service_pb2 import DeleteWorkspace
+        from mlflow_oidc_auth.hooks.after_request import (
+            AFTER_REQUEST_PATH_HANDLERS,
+            _cascade_delete_workspace_permissions,
+        )
+
+        assert DeleteWorkspace in AFTER_REQUEST_PATH_HANDLERS
+        assert (
+            AFTER_REQUEST_PATH_HANDLERS[DeleteWorkspace]
+            is _cascade_delete_workspace_permissions
+        )
+
+
+class TestWorkspaceNameStashInBeforeRequest:
+    """Tests for workspace name stashing in _find_validator for DeleteWorkspace."""
+
+    def test_stashes_workspace_name_for_delete(self):
+        """Workspace name is stashed in Flask g._deleting_workspace_name for DELETE."""
+        from mlflow_oidc_auth.hooks.before_request import _find_validator
+
+        _app = Flask(__name__)
+        _app.config["TESTING"] = True
+        with _app.test_request_context(
+            "/api/3.0/mlflow/workspaces/target-ws",
+            method="DELETE",
+        ):
+            mock_request = MagicMock()
+            mock_request.path = "/api/3.0/mlflow/workspaces/target-ws"
+            mock_request.method = "DELETE"
+
+            mock_pattern = MagicMock()
+            mock_pattern.fullmatch.return_value = True
+            mock_validator = MagicMock()
+
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request.WORKSPACE_BEFORE_REQUEST_VALIDATORS",
+                {(mock_pattern, "DELETE"): mock_validator},
+            ):
+                from flask import g
+
+                result = _find_validator(mock_request)
+                assert result is mock_validator
+                assert g._deleting_workspace_name == "target-ws"
+
+    def test_no_stash_for_non_delete(self):
+        """No stash for GET requests on workspace paths."""
+        from mlflow_oidc_auth.hooks.before_request import _find_validator
+
+        _app = Flask(__name__)
+        _app.config["TESTING"] = True
+        with _app.test_request_context(
+            "/api/3.0/mlflow/workspaces/read-ws",
+            method="GET",
+        ):
+            mock_request = MagicMock()
+            mock_request.path = "/api/3.0/mlflow/workspaces/read-ws"
+            mock_request.method = "GET"
+
+            mock_pattern = MagicMock()
+            mock_pattern.fullmatch.return_value = True
+            mock_validator = MagicMock()
+
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request.WORKSPACE_BEFORE_REQUEST_VALIDATORS",
+                {(mock_pattern, "GET"): mock_validator},
+            ):
+                from flask import g
+
+                result = _find_validator(mock_request)
+                assert result is mock_validator
+                assert not hasattr(g, "_deleting_workspace_name")
+
+
+class TestValidateCanUpdateWorkspaceManage:
+    """Tests for validate_can_update_workspace with MANAGE delegation (WSCRUD-04)."""
+
+    def _make_flask_app(self):
+        _app = Flask(__name__)
+        _app.config["TESTING"] = True
+        return _app
+
+    def test_admin_allowed(self):
+        """Admin users can update workspaces."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_update_workspace
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+        _app = self._make_flask_app()
+        with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="PUT"):
+            mock_ctx = AuthContext(username="admin", is_admin=True, workspace=None)
+            with patch(
+                "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                return_value=mock_ctx,
+            ):
+                result = validate_can_update_workspace("admin")
+                assert result is None
+
+    def test_manage_permission_allowed(self):
+        """Users with MANAGE permission can update workspaces."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_update_workspace
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        _app = self._make_flask_app()
+        with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="PUT"):
+            mock_ctx = AuthContext(username="manager", is_admin=False, workspace=None)
+            with patch(
+                "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                return_value=mock_ctx,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
+                    return_value=MANAGE,
+                ):
+                    result = validate_can_update_workspace("manager")
+                    assert result is None
+
+    def test_no_manage_permission_denied(self):
+        """Users without MANAGE permission are denied."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_update_workspace
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+        from mlflow_oidc_auth.permissions import READ
+
+        _app = self._make_flask_app()
+        with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="PUT"):
+            mock_ctx = AuthContext(username="reader", is_admin=False, workspace=None)
+            with patch(
+                "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                return_value=mock_ctx,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
+                    return_value=READ,
+                ):
+                    result = validate_can_update_workspace("reader")
+                    assert result is not None
+                    assert result.status_code == 403
+
+    def test_no_permission_at_all_denied(self):
+        """Users with no workspace permission at all are denied."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_update_workspace
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+        _app = self._make_flask_app()
+        with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="PUT"):
+            mock_ctx = AuthContext(username="nobody", is_admin=False, workspace=None)
+            with patch(
+                "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                return_value=mock_ctx,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
+                    return_value=None,
+                ):
+                    result = validate_can_update_workspace("nobody")
+                    assert result is not None
+                    assert result.status_code == 403
+
+
+class TestValidateCanDeleteWorkspaceManage:
+    """Tests for validate_can_delete_workspace with MANAGE delegation (WSCRUD-05)."""
+
+    def _make_flask_app(self):
+        _app = Flask(__name__)
+        _app.config["TESTING"] = True
+        return _app
+
+    def test_admin_allowed(self):
+        """Admin users can delete workspaces."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_delete_workspace
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/3.0/mlflow/workspaces/ws1", method="DELETE"
+        ):
+            mock_ctx = AuthContext(username="admin", is_admin=True, workspace=None)
+            with patch(
+                "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                return_value=mock_ctx,
+            ):
+                result = validate_can_delete_workspace("admin")
+                assert result is None
+
+    def test_manage_permission_allowed(self):
+        """Users with MANAGE permission can delete workspaces."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_delete_workspace
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/3.0/mlflow/workspaces/ws1", method="DELETE"
+        ):
+            mock_ctx = AuthContext(username="manager", is_admin=False, workspace=None)
+            with patch(
+                "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                return_value=mock_ctx,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
+                    return_value=MANAGE,
+                ):
+                    result = validate_can_delete_workspace("manager")
+                    assert result is None
+
+    def test_no_manage_permission_denied(self):
+        """Users without MANAGE permission are denied."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_delete_workspace
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+        from mlflow_oidc_auth.permissions import EDIT
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/3.0/mlflow/workspaces/ws1", method="DELETE"
+        ):
+            mock_ctx = AuthContext(username="editor", is_admin=False, workspace=None)
+            with patch(
+                "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                return_value=mock_ctx,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
+                    return_value=EDIT,
+                ):
+                    result = validate_can_delete_workspace("editor")
+                    assert result is not None
+                    assert result.status_code == 403
+
+    def test_no_permission_at_all_denied(self):
+        """Users with no workspace permission at all are denied."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_delete_workspace
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/3.0/mlflow/workspaces/ws1", method="DELETE"
+        ):
+            mock_ctx = AuthContext(username="nobody", is_admin=False, workspace=None)
+            with patch(
+                "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                return_value=mock_ctx,
+            ):
+                with patch(
+                    "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
+                    return_value=None,
+                ):
+                    result = validate_can_delete_workspace("nobody")
+                    assert result is not None
+                    assert result.status_code == 403

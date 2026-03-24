@@ -10,10 +10,12 @@ from mlflow.protos.service_pb2 import (
     CreateGatewayEndpoint,
     CreateGatewayModelDefinition,
     CreateGatewaySecret,
+    CreateWorkspace,
     DeleteGatewayEndpoint,
     DeleteGatewayModelDefinition,
     DeleteGatewaySecret,
     DeleteScorer,
+    DeleteWorkspace,
     ListGatewayEndpoints,
     ListGatewayModelDefinitions,
     ListGatewaySecretInfos,
@@ -51,7 +53,10 @@ from mlflow_oidc_auth.utils.permissions import (
     can_read_gateway_model_definition,
     can_read_gateway_secret,
 )
-from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+from mlflow_oidc_auth.utils.workspace_cache import (
+    flush_workspace_cache,
+    get_workspace_permission_cached,
+)
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -108,7 +113,10 @@ def _filter_search_experiments(resp: Response):
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     tracking_store = _get_tracking_store()
-    while len(response_message.experiments) < request_message.max_results and response_message.next_page_token != "":
+    while (
+        len(response_message.experiments) < request_message.max_results
+        and response_message.next_page_token != ""
+    ):
         refetched = tracking_store.search_experiments(
             view_type=request_message.view_type,
             max_results=request_message.max_results,
@@ -123,10 +131,16 @@ def _filter_search_experiments(resp: Response):
             response_message.next_page_token = ""
             break
 
-        readable_proto = [e.to_proto() for e in refetched if can_read_experiment(e.experiment_id, username)]
+        readable_proto = [
+            e.to_proto()
+            for e in refetched
+            if can_read_experiment(e.experiment_id, username)
+        ]
         response_message.experiments.extend(readable_proto)
 
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+        start_offset = SearchUtils.parse_start_offset_from_page_token(
+            response_message.next_page_token
+        )
         final_offset = start_offset + len(refetched)
         response_message.next_page_token = SearchUtils.create_page_token(final_offset)
 
@@ -150,23 +164,34 @@ def _filter_search_registered_models(resp: Response):
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
-    while len(response_message.registered_models) < request_message.max_results and response_message.next_page_token != "":
+    while (
+        len(response_message.registered_models) < request_message.max_results
+        and response_message.next_page_token != ""
+    ):
         refetched = model_registry_store.search_registered_models(
             filter_string=request_message.filter,
             max_results=request_message.max_results,
             order_by=request_message.order_by,
             page_token=response_message.next_page_token,
         )
-        remaining = request_message.max_results - len(response_message.registered_models)
+        remaining = request_message.max_results - len(
+            response_message.registered_models
+        )
         refetched = refetched[:remaining]
         if len(refetched) == 0:
             response_message.next_page_token = ""
             break
 
-        readable_proto = [rm.to_proto() for rm in refetched if can_read_registered_model(rm.name, username)]
+        readable_proto = [
+            rm.to_proto()
+            for rm in refetched
+            if can_read_registered_model(rm.name, username)
+        ]
         response_message.registered_models.extend(readable_proto)
 
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+        start_offset = SearchUtils.parse_start_offset_from_page_token(
+            response_message.next_page_token
+        )
         final_offset = start_offset + len(refetched)
         response_message.next_page_token = SearchUtils.create_page_token(final_offset)
 
@@ -216,7 +241,9 @@ def _filter_search_logged_models(resp: Response) -> None:
     tracking_store = _get_tracking_store()
 
     while len(response_message.models) < max_results and next_page_token is not None:
-        batch = tracking_store.search_logged_models(max_results=max_results, page_token=next_page_token, **params)
+        batch = tracking_store.search_logged_models(
+            max_results=max_results, page_token=next_page_token, **params
+        )
         is_last_page = batch.token is None
         offset = Token.decode(next_page_token).offset if next_page_token else 0
         last_index = len(batch) - 1
@@ -227,10 +254,18 @@ def _filter_search_logged_models(resp: Response) -> None:
 
             response_message.models.append(model.to_proto())
             if len(response_message.models) >= max_results:
-                next_page_token = None if is_last_page and index == last_index else Token(offset=offset + index + 1, **params).encode()
+                next_page_token = (
+                    None
+                    if is_last_page and index == last_index
+                    else Token(offset=offset + index + 1, **params).encode()
+                )
                 break
         else:
-            next_page_token = None if is_last_page else Token(offset=offset + max_results, **params).encode()
+            next_page_token = (
+                None
+                if is_last_page
+                else Token(offset=offset + max_results, **params).encode()
+            )
 
     response_message.next_page_token = next_page_token or ""
     resp.data = message_to_json(response_message)
@@ -302,7 +337,9 @@ def _rename_gateway_endpoint_permission(resp: Response):
     try:
         store.rename_gateway_endpoint_permissions(old_name, new_name)
     except Exception:
-        get_logger().warning(f"Failed to rename gateway endpoint permissions from '{old_name}' to '{new_name}'")
+        get_logger().warning(
+            f"Failed to rename gateway endpoint permissions from '{old_name}' to '{new_name}'"
+        )
 
 
 def _set_can_manage_gateway_secret_permission(resp: Response):
@@ -336,7 +373,9 @@ def _filter_list_gateway_endpoints(resp: Response) -> None:
     for endpoint in list(response_message.endpoints):
         if not can_read_gateway_endpoint(endpoint.name, username):
             response_message.endpoints.remove(endpoint)
-            logger.debug(f"Filtered gateway endpoint '{endpoint.name}' for user '{username}'")
+            logger.debug(
+                f"Filtered gateway endpoint '{endpoint.name}' for user '{username}'"
+            )
 
     resp.data = message_to_json(response_message)
 
@@ -354,7 +393,9 @@ def _filter_list_gateway_secrets(resp: Response) -> None:
     for secret in list(response_message.secrets):
         if not can_read_gateway_secret(secret.secret_name, username):
             response_message.secrets.remove(secret)
-            logger.debug(f"Filtered gateway secret '{secret.secret_name}' for user '{username}'")
+            logger.debug(
+                f"Filtered gateway secret '{secret.secret_name}' for user '{username}'"
+            )
 
     resp.data = message_to_json(response_message)
 
@@ -372,7 +413,9 @@ def _filter_list_gateway_model_definitions(resp: Response) -> None:
     for model_def in list(response_message.model_definitions):
         if not can_read_gateway_model_definition(model_def.name, username):
             response_message.model_definitions.remove(model_def)
-            logger.debug(f"Filtered gateway model definition '{model_def.name}' for user '{username}'")
+            logger.debug(
+                f"Filtered gateway model definition '{model_def.name}' for user '{username}'"
+            )
 
     resp.data = message_to_json(response_message)
 
@@ -385,7 +428,9 @@ def _delete_gateway_endpoint_permissions_cascade(resp: Response) -> None:
     try:
         store.wipe_gateway_endpoint_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway endpoint '{name}'")
+        get_logger().warning(
+            f"Failed to cascade-delete permissions for gateway endpoint '{name}'"
+        )
 
 
 def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
@@ -396,7 +441,9 @@ def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
     try:
         store.wipe_gateway_secret_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway secret '{name}'")
+        get_logger().warning(
+            f"Failed to cascade-delete permissions for gateway secret '{name}'"
+        )
 
 
 def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None:
@@ -407,7 +454,62 @@ def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None
     try:
         store.wipe_gateway_model_definition_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway model definition '{name}'")
+        get_logger().warning(
+            f"Failed to cascade-delete permissions for gateway model definition '{name}'"
+        )
+
+
+def _auto_grant_workspace_manage_permission(resp: Response) -> None:
+    """Create MANAGE workspace permission for the workspace creator.
+
+    After a successful CreateWorkspace response, auto-grants MANAGE to the
+    requesting user and flushes the workspace permission cache.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return
+    if resp.status_code >= 300:
+        return
+    data = resp.get_json(silent=True)
+    if not data:
+        return
+    workspace_name = None
+    if isinstance(data.get("workspace"), dict):
+        workspace_name = data["workspace"].get("name")
+    if not workspace_name:
+        return
+    auth_context = get_auth_context()
+    try:
+        store.create_workspace_permission(
+            workspace_name, auth_context.username, MANAGE.name
+        )
+    except Exception:
+        get_logger().warning(
+            f"Failed to auto-grant MANAGE on workspace '{workspace_name}' for user '{auth_context.username}'"
+        )
+    flush_workspace_cache()
+
+
+def _cascade_delete_workspace_permissions(resp: Response) -> None:
+    """Delete all permissions for a workspace after it is deleted.
+
+    Reads the workspace name stashed by _find_validator in before_request.
+    After a successful DeleteWorkspace response, wipes all user and group
+    permissions for that workspace and flushes the cache.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return
+    if resp.status_code >= 300:
+        return
+    name = getattr(g, "_deleting_workspace_name", None)
+    if not name:
+        return
+    try:
+        store.wipe_workspace_permissions(name)
+    except Exception:
+        get_logger().warning(
+            f"Failed to cascade-delete permissions for workspace '{name}'"
+        )
+    flush_workspace_cache()
 
 
 def _filter_list_workspaces(response: Response) -> None:
@@ -422,7 +524,12 @@ def _filter_list_workspaces(response: Response) -> None:
     data = response.get_json(silent=True)
     if not data or "workspaces" not in data:
         return
-    filtered = [ws for ws in data["workspaces"] if get_workspace_permission_cached(auth_context.username, ws.get("name", "")) is not None]
+    filtered = [
+        ws
+        for ws in data["workspaces"]
+        if get_workspace_permission_cached(auth_context.username, ws.get("name", ""))
+        is not None
+    ]
     data["workspaces"] = filtered
     response.set_data(json.dumps(data))
 
@@ -448,6 +555,8 @@ AFTER_REQUEST_PATH_HANDLERS = {
     ListGatewaySecretInfos: _filter_list_gateway_secrets,
     ListGatewayModelDefinitions: _filter_list_gateway_model_definitions,
     ListWorkspaces: _filter_list_workspaces,
+    CreateWorkspace: _auto_grant_workspace_manage_permission,
+    DeleteWorkspace: _cascade_delete_workspace_permissions,
 }
 
 _our_handlers = set(AFTER_REQUEST_PATH_HANDLERS.values())
