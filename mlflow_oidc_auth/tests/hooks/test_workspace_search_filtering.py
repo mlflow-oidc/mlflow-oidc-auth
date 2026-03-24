@@ -621,9 +621,10 @@ class TestFilterSearchRegisteredModelsWorkspace:
             refetched_entities.append(rm)
 
         model_registry_store = MagicMock()
-        model_registry_store.search_registered_models.return_value = _FakePagedList(
-            refetched_entities, token=None
-        )
+        model_registry_store.search_registered_models.side_effect = [
+            _FakePagedList(refetched_entities, token=None),
+            _FakePagedList([], token=None),
+        ]
 
         with app.test_request_context():
             mock_response_message = MagicMock()

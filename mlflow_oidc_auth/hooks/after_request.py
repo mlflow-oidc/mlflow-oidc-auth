@@ -196,6 +196,21 @@ def _filter_search_registered_models(resp: Response):
         if not can_read_registered_model(rm.name, username):
             response_message.registered_models.remove(rm)
 
+    # Filter by workspace permission (WSSEC-02)
+    if config.MLFLOW_ENABLE_WORKSPACES:
+        model_registry_store_ws = _get_model_registry_store()
+        ws_map = {}
+        for rm in list(response_message.registered_models):
+            try:
+                ws_map[rm.name] = model_registry_store_ws.get_registered_model(
+                    rm.name
+                ).workspace
+            except Exception:
+                ws_map[rm.name] = None
+        for rm in list(response_message.registered_models):
+            if not _can_access_workspace(username, ws_map.get(rm.name)):
+                response_message.registered_models.remove(rm)
+
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
     while (
@@ -220,6 +235,7 @@ def _filter_search_registered_models(resp: Response):
             rm.to_proto()
             for rm in refetched
             if can_read_registered_model(rm.name, username)
+            and _can_access_workspace(username, rm.workspace)
         ]
         response_message.registered_models.extend(readable_proto)
 
@@ -249,6 +265,25 @@ def _filter_search_logged_models(resp: Response) -> None:
     for m in list(response_message.models):
         if not can_read_experiment(m.info.experiment_id, username):
             response_message.models.remove(m)
+
+    # Filter by workspace permission (WSSEC-03)
+    exp_ws_map: dict[str, str | None] = {}
+    if config.MLFLOW_ENABLE_WORKSPACES:
+        tracking_store_ws = _get_tracking_store()
+        for m in list(response_message.models):
+            exp_id = m.info.experiment_id
+            if exp_id not in exp_ws_map:
+                try:
+                    exp_ws_map[exp_id] = tracking_store_ws.get_experiment(
+                        exp_id
+                    ).workspace
+                except Exception:
+                    exp_ws_map[exp_id] = None
+        for m in list(response_message.models):
+            if not _can_access_workspace(
+                username, exp_ws_map.get(m.info.experiment_id)
+            ):
+                response_message.models.remove(m)
 
     from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
 
@@ -285,6 +320,19 @@ def _filter_search_logged_models(resp: Response) -> None:
         for index, model in enumerate(batch):
             if not can_read_experiment(model.experiment_id, username):
                 continue
+
+            # Workspace filtering for refetch path (WSSEC-03)
+            if config.MLFLOW_ENABLE_WORKSPACES:
+                exp_id = model.experiment_id
+                if exp_id not in exp_ws_map:
+                    try:
+                        exp_ws_map[exp_id] = tracking_store.get_experiment(
+                            exp_id
+                        ).workspace
+                    except Exception:
+                        exp_ws_map[exp_id] = None
+                if not _can_access_workspace(username, exp_ws_map.get(exp_id)):
+                    continue
 
             response_message.models.append(model.to_proto())
             if len(response_message.models) >= max_results:
