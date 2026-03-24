@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Workspace Management
-status: Ready to execute
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-24T16:27:53.453Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-24T16:42:51.332Z"
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -48,6 +48,9 @@ v1.1 roadmap decisions:
 - Coarse granularity: 4 phases (backend-first, frontend last)
 - [Phase 05]: Workspace regex entities extend RegexPermissionBase (unlike standalone workspace entities) for consistency with all other regex types
 - [Phase 05]: Used alias WorkspaceGroupRegexPermRepo in repository/__init__.py; direct module imports in sqlalchemy_store.py use the full name
+- [Phase 05]: Router is admin-only — regex permissions are infrastructure-level, not end-user self-service
+- [Phase 05]: Full cache flush on regex CUD (D-09) because regex changes affect any user+workspace combination
+- [Phase 05]: Source-order-driven permission resolution via PERMISSION_SOURCE_ORDER config (user, group, regex, group-regex)
 
 ### Pending Todos
 
@@ -63,6 +66,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24T16:27:53.450Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-03-24T16:42:51.329Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None

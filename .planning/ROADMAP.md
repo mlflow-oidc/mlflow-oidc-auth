@@ -21,7 +21,7 @@
 
 **Milestone Goal:** Add full workspace lifecycle management — CRUD proxy, regex permissions, workspace-scoped search filtering, admin UI with global picker.
 
-- [ ] **Phase 5: Regex Workspace Permissions** - Pattern-based workspace access rules with cache integration
+- [x] **Phase 5: Regex Workspace Permissions** - Pattern-based workspace access rules with cache integration (completed 2026-03-24)
 - [ ] **Phase 6: Workspace CRUD Backend** - FastAPI proxy to MLflow workspace API with permission cascade and OIDC auto-create
 - [ ] **Phase 7: Workspace-Scoped Search Filtering** - Security-critical after_request hooks preventing cross-tenant data leakage
 - [ ] **Phase 8: Workspace Management UI & Global Picker** - Admin CRUD forms, member counts, bulk ops, header dropdown with search and keyboard shortcut
@@ -37,10 +37,10 @@
   2. Admin can create a group regex permission and group members matching the pattern gain workspace access
   3. Workspace permission cache returns correct permission level when regex and group-regex sources are part of the configured resolution order
   4. Modifying any regex permission immediately invalidates the full workspace cache (no stale access)
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 05-01-PLAN.md — Data layer: DB models, entities, repositories, Alembic migration, store wiring
-- [ ] 05-02-PLAN.md — Router + cache: CRUD endpoints, workspace cache regex integration, feature-flag gating, cachetools pin
+- [x] 05-02-PLAN.md — Router + cache: CRUD endpoints, workspace cache regex integration, feature-flag gating, cachetools pin
 
 ### Phase 6: Workspace CRUD Backend
 **Goal**: Users can create, list, view, update, and delete workspaces through the plugin's API with proper authorization and automatic permission management
@@ -89,7 +89,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8
 | 2. Workspace Auth Enforcement | v1.0 | 3/3 | Complete | 2026-03-23 |
 | 3. Management API, OIDC & Entity Coverage | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 4. Workspace Management UI | v1.0 | 2/2 | Complete | 2026-03-23 |
-| 5. Regex Workspace Permissions | v1.1 | 0/0 | Not started | - |
+| 5. Regex Workspace Permissions | v1.1 | 2/2 | Complete   | 2026-03-24 |
 | 6. Workspace CRUD Backend | v1.1 | 0/0 | Not started | - |
 | 7. Workspace-Scoped Search Filtering | v1.1 | 0/0 | Not started | - |
 | 8. Workspace Management UI & Global Picker | v1.1 | 0/0 | Not started | - |

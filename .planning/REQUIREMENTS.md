@@ -24,8 +24,8 @@ Requirements for workspace management milestone. Each maps to roadmap phases.
 - [x] **WSREG-02**: Admin can list, update, and delete user regex workspace permissions
 - [x] **WSREG-03**: Admin can create group regex workspace permission (pattern + priority + permission level)
 - [x] **WSREG-04**: Admin can list, update, and delete group regex workspace permissions
-- [ ] **WSREG-05**: Workspace permission cache resolves regex and group-regex sources in configured resolution order
-- [ ] **WSREG-06**: Full workspace cache is flushed on any regex permission create/update/delete operation
+- [x] **WSREG-05**: Workspace permission cache resolves regex and group-regex sources in configured resolution order
+- [x] **WSREG-06**: Full workspace cache is flushed on any regex permission create/update/delete operation
 - [x] **WSREG-07**: Alembic migration adds `workspace_regex_permissions` and `workspace_group_regex_permissions` tables
 
 ### Workspace Security
@@ -93,8 +93,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WSREG-02 | Phase 5 | Complete |
 | WSREG-03 | Phase 5 | Complete |
 | WSREG-04 | Phase 5 | Complete |
-| WSREG-05 | Phase 5 | Pending |
-| WSREG-06 | Phase 5 | Pending |
+| WSREG-05 | Phase 5 | Complete |
+| WSREG-06 | Phase 5 | Complete |
 | WSREG-07 | Phase 5 | Complete |
 | WSCRUD-01 | Phase 6 | Pending |
 | WSCRUD-02 | Phase 6 | Pending |
