@@ -9,12 +9,12 @@ Requirements for workspace management milestone. Each maps to roadmap phases.
 
 ### Workspace Backend
 
-- [ ] **WSCRUD-01**: Admin can create a workspace via FastAPI proxy endpoint with auto-granted MANAGE permission
-- [ ] **WSCRUD-02**: Authenticated user can list workspaces (filtered to accessible workspaces for non-admins)
-- [ ] **WSCRUD-03**: User with workspace permission can get workspace details by name
-- [ ] **WSCRUD-04**: User with MANAGE permission can update workspace description
-- [ ] **WSCRUD-05**: User with MANAGE permission can delete a workspace (RESTRICT mode — workspace must be empty)
-- [ ] **WSCRUD-06**: When a workspace is deleted, all associated permission rows (user and group) are cascade-deleted
+- [x] **WSCRUD-01**: Admin can create a workspace via FastAPI proxy endpoint with auto-granted MANAGE permission
+- [x] **WSCRUD-02**: Authenticated user can list workspaces (filtered to accessible workspaces for non-admins)
+- [x] **WSCRUD-03**: User with workspace permission can get workspace details by name
+- [x] **WSCRUD-04**: User with MANAGE permission can update workspace description
+- [x] **WSCRUD-05**: User with MANAGE permission can delete a workspace (RESTRICT mode — workspace must be empty)
+- [x] **WSCRUD-06**: When a workspace is deleted, all associated permission rows (user and group) are cascade-deleted
 - [ ] **WSCRUD-07**: Workspace CRUD proxy validates workspace names client-side and handles MLflow validation errors gracefully
 - [ ] **WSCRUD-08**: Workspace CRUD endpoints are not registered when `MLFLOW_ENABLE_WORKSPACES=false`
 
@@ -96,12 +96,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WSREG-05 | Phase 5 | Complete |
 | WSREG-06 | Phase 5 | Complete |
 | WSREG-07 | Phase 5 | Complete |
-| WSCRUD-01 | Phase 6 | Pending |
-| WSCRUD-02 | Phase 6 | Pending |
-| WSCRUD-03 | Phase 6 | Pending |
-| WSCRUD-04 | Phase 6 | Pending |
-| WSCRUD-05 | Phase 6 | Pending |
-| WSCRUD-06 | Phase 6 | Pending |
+| WSCRUD-01 | Phase 6 | Complete |
+| WSCRUD-02 | Phase 6 | Complete |
+| WSCRUD-03 | Phase 6 | Complete |
+| WSCRUD-04 | Phase 6 | Complete |
+| WSCRUD-05 | Phase 6 | Complete |
+| WSCRUD-06 | Phase 6 | Complete |
 | WSCRUD-07 | Phase 6 | Pending |
 | WSCRUD-08 | Phase 6 | Pending |
 | WSOIDC-04 | Phase 6 | Pending |
