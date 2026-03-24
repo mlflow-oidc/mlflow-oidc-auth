@@ -82,8 +82,8 @@ class TestExtractWorkspaceNameFromPath:
 class TestValidateCanCreateWorkspace:
     """Tests for validate_can_create_workspace."""
 
-    def test_returns_forbidden_for_non_admin(self):
-        """Non-admin users get forbidden response."""
+    def test_returns_false_for_non_admin(self):
+        """Non-admin users are denied (returns False)."""
         from mlflow_oidc_auth.validators.workspace import validate_can_create_workspace
 
         ctx = _make_auth_context(is_admin=False)
@@ -93,10 +93,10 @@ class TestValidateCanCreateWorkspace:
                 return_value=ctx,
             ):
                 result = validate_can_create_workspace("testuser")
-                assert result is not None  # Forbidden response returned
+                assert result is False
 
-    def test_returns_none_for_admin(self):
-        """Admin users are allowed (returns None)."""
+    def test_returns_true_for_admin(self):
+        """Admin users are allowed (returns True)."""
         from mlflow_oidc_auth.validators.workspace import validate_can_create_workspace
 
         ctx = _make_auth_context(is_admin=True)
@@ -106,13 +106,13 @@ class TestValidateCanCreateWorkspace:
                 return_value=ctx,
             ):
                 result = validate_can_create_workspace("adminuser")
-                assert result is None
+                assert result is True
 
 
 class TestValidateCanReadWorkspace:
     """Tests for validate_can_read_workspace."""
 
-    def test_returns_none_for_admin(self):
+    def test_returns_true_for_admin(self):
         """Admin users bypass permission check."""
         from mlflow_oidc_auth.validators.workspace import validate_can_read_workspace
 
@@ -123,10 +123,10 @@ class TestValidateCanReadWorkspace:
                 return_value=ctx,
             ):
                 result = validate_can_read_workspace("adminuser")
-                assert result is None
+                assert result is True
 
-    def test_returns_forbidden_for_user_without_permission(self):
-        """Users without workspace permission get forbidden response."""
+    def test_returns_false_for_user_without_permission(self):
+        """Users without workspace permission are denied."""
         from mlflow_oidc_auth.validators.workspace import validate_can_read_workspace
 
         ctx = _make_auth_context(is_admin=False)
@@ -145,9 +145,9 @@ class TestValidateCanReadWorkspace:
                 ),
             ):
                 result = validate_can_read_workspace("testuser")
-                assert result is not None  # Forbidden response returned
+                assert result is False
 
-    def test_returns_none_for_user_with_permission(self):
+    def test_returns_true_for_user_with_permission(self):
         """Users with workspace permission are allowed."""
         from mlflow_oidc_auth.validators.workspace import validate_can_read_workspace
 
@@ -168,7 +168,7 @@ class TestValidateCanReadWorkspace:
                 ),
             ):
                 result = validate_can_read_workspace("testuser")
-                assert result is None
+                assert result is True
 
     def test_extracts_workspace_name_from_path(self):
         """Workspace name is extracted from Flask request path."""
@@ -209,14 +209,14 @@ class TestValidateCanReadWorkspace:
                 patch("mlflow_oidc_auth.validators.workspace.request", mock_request),
             ):
                 result = validate_can_read_workspace("testuser")
-                assert result is not None  # Forbidden
+                assert result is False
 
 
 class TestValidateCanUpdateWorkspace:
     """Tests for validate_can_update_workspace."""
 
-    def test_returns_forbidden_for_non_admin(self):
-        """Non-admin users get forbidden response."""
+    def test_returns_false_for_non_admin(self):
+        """Non-admin users are denied."""
         from mlflow_oidc_auth.validators.workspace import validate_can_update_workspace
 
         ctx = _make_auth_context(is_admin=False)
@@ -226,9 +226,9 @@ class TestValidateCanUpdateWorkspace:
                 return_value=ctx,
             ):
                 result = validate_can_update_workspace("testuser")
-                assert result is not None
+                assert result is False
 
-    def test_returns_none_for_admin(self):
+    def test_returns_true_for_admin(self):
         """Admin users are allowed."""
         from mlflow_oidc_auth.validators.workspace import validate_can_update_workspace
 
@@ -239,14 +239,14 @@ class TestValidateCanUpdateWorkspace:
                 return_value=ctx,
             ):
                 result = validate_can_update_workspace("adminuser")
-                assert result is None
+                assert result is True
 
 
 class TestValidateCanDeleteWorkspace:
     """Tests for validate_can_delete_workspace."""
 
-    def test_returns_forbidden_for_non_admin(self):
-        """Non-admin users get forbidden response."""
+    def test_returns_false_for_non_admin(self):
+        """Non-admin users are denied."""
         from mlflow_oidc_auth.validators.workspace import validate_can_delete_workspace
 
         ctx = _make_auth_context(is_admin=False)
@@ -256,9 +256,9 @@ class TestValidateCanDeleteWorkspace:
                 return_value=ctx,
             ):
                 result = validate_can_delete_workspace("testuser")
-                assert result is not None
+                assert result is False
 
-    def test_returns_none_for_admin(self):
+    def test_returns_true_for_admin(self):
         """Admin users are allowed."""
         from mlflow_oidc_auth.validators.workspace import validate_can_delete_workspace
 
@@ -269,15 +269,15 @@ class TestValidateCanDeleteWorkspace:
                 return_value=ctx,
             ):
                 result = validate_can_delete_workspace("adminuser")
-                assert result is None
+                assert result is True
 
 
 class TestValidateCanListWorkspaces:
     """Tests for validate_can_list_workspaces."""
 
-    def test_is_noop_returns_none(self):
-        """All authenticated users can list workspaces (returns None = allow)."""
+    def test_is_noop_returns_true(self):
+        """All authenticated users can list workspaces (returns True = allow)."""
         from mlflow_oidc_auth.validators.workspace import validate_can_list_workspaces
 
         result = validate_can_list_workspaces("anyuser")
-        assert result is None
+        assert result is True

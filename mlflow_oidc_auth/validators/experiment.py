@@ -5,7 +5,11 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission
-from mlflow_oidc_auth.utils import effective_experiment_permission, get_experiment_id, get_request_param
+from mlflow_oidc_auth.utils import (
+    effective_experiment_permission,
+    get_experiment_id,
+    get_request_param,
+)
 
 
 def _get_permission_from_experiment_id(username: str) -> Permission:
@@ -40,35 +44,35 @@ def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permissi
     return get_permission(config.DEFAULT_MLFLOW_PERMISSION)
 
 
-def validate_can_read_experiment(username: str):
+def validate_can_read_experiment(username: str) -> bool:
     return _get_permission_from_experiment_id(username).can_read
 
 
-def validate_can_read_experiment_by_name(username: str):
+def validate_can_read_experiment_by_name(username: str) -> bool:
     return _get_permission_from_experiment_name(username).can_read
 
 
-def validate_can_update_experiment(username: str):
+def validate_can_update_experiment(username: str) -> bool:
     return _get_permission_from_experiment_id(username).can_update
 
 
-def validate_can_delete_experiment(username: str):
+def validate_can_delete_experiment(username: str) -> bool:
     return _get_permission_from_experiment_id(username).can_delete
 
 
-def validate_can_manage_experiment(username: str):
+def validate_can_manage_experiment(username: str) -> bool:
     return _get_permission_from_experiment_id(username).can_manage
 
 
-def validate_can_read_experiment_artifact_proxy(username: str):
+def validate_can_read_experiment_artifact_proxy(username: str) -> bool:
     return _get_permission_from_experiment_id_artifact_proxy(username).can_read
 
 
-def validate_can_update_experiment_artifact_proxy(username: str):
+def validate_can_update_experiment_artifact_proxy(username: str) -> bool:
     return _get_permission_from_experiment_id_artifact_proxy(username).can_update
 
 
-def validate_can_delete_experiment_artifact_proxy(username: str):
+def validate_can_delete_experiment_artifact_proxy(username: str) -> bool:
     return _get_permission_from_experiment_id_artifact_proxy(username).can_delete
 
 
@@ -83,7 +87,9 @@ def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
         experiment_ids = request.args.getlist("experiment_ids")
 
     for experiment_id in experiment_ids:
-        if not effective_experiment_permission(experiment_id, username).permission.can_read:
+        if not effective_experiment_permission(
+            experiment_id, username
+        ).permission.can_read:
             return False
     return True
 
@@ -91,4 +97,6 @@ def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
 def validate_can_update_experiment_from_experiment_id(username: str) -> bool:
     """Validate UPDATE permission using an explicit experiment_id parameter."""
     experiment_id = get_request_param("experiment_id")
-    return effective_experiment_permission(experiment_id, username).permission.can_update
+    return effective_experiment_permission(
+        experiment_id, username
+    ).permission.can_update

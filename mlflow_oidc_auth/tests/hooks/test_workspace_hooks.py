@@ -864,7 +864,7 @@ class TestValidateCanUpdateWorkspaceManage:
                 return_value=mock_ctx,
             ):
                 result = validate_can_update_workspace("admin")
-                assert result is None
+                assert result is True
 
     def test_manage_permission_allowed(self):
         """Users with MANAGE permission can update workspaces."""
@@ -884,7 +884,7 @@ class TestValidateCanUpdateWorkspaceManage:
                     return_value=MANAGE,
                 ):
                     result = validate_can_update_workspace("manager")
-                    assert result is None
+                    assert result is True
 
     def test_no_manage_permission_denied(self):
         """Users without MANAGE permission are denied."""
@@ -904,8 +904,7 @@ class TestValidateCanUpdateWorkspaceManage:
                     return_value=READ,
                 ):
                     result = validate_can_update_workspace("reader")
-                    assert result is not None
-                    assert result.status_code == 403
+                    assert result is False
 
     def test_no_permission_at_all_denied(self):
         """Users with no workspace permission at all are denied."""
@@ -924,8 +923,7 @@ class TestValidateCanUpdateWorkspaceManage:
                     return_value=None,
                 ):
                     result = validate_can_update_workspace("nobody")
-                    assert result is not None
-                    assert result.status_code == 403
+                    assert result is False
 
 
 class TestValidateCanDeleteWorkspaceManage:
@@ -951,7 +949,7 @@ class TestValidateCanDeleteWorkspaceManage:
                 return_value=mock_ctx,
             ):
                 result = validate_can_delete_workspace("admin")
-                assert result is None
+                assert result is True
 
     def test_manage_permission_allowed(self):
         """Users with MANAGE permission can delete workspaces."""
@@ -973,7 +971,7 @@ class TestValidateCanDeleteWorkspaceManage:
                     return_value=MANAGE,
                 ):
                     result = validate_can_delete_workspace("manager")
-                    assert result is None
+                    assert result is True
 
     def test_no_manage_permission_denied(self):
         """Users without MANAGE permission are denied."""
@@ -995,8 +993,7 @@ class TestValidateCanDeleteWorkspaceManage:
                     return_value=EDIT,
                 ):
                     result = validate_can_delete_workspace("editor")
-                    assert result is not None
-                    assert result.status_code == 403
+                    assert result is False
 
     def test_no_permission_at_all_denied(self):
         """Users with no workspace permission at all are denied."""
@@ -1017,5 +1014,4 @@ class TestValidateCanDeleteWorkspaceManage:
                     return_value=None,
                 ):
                     result = validate_can_delete_workspace("nobody")
-                    assert result is not None
-                    assert result.status_code == 403
+                    assert result is False
