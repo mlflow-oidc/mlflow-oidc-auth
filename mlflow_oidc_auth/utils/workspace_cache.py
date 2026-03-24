@@ -63,6 +63,17 @@ def invalidate_workspace_permission(username: str, workspace: str) -> None:
     cache.pop((username, workspace), None)
 
 
+def flush_workspace_cache() -> None:
+    """Flush entire workspace permission cache (per D-09).
+
+    Called by workspace regex permission router after any CUD operation.
+    Full flush is necessary because regex changes can affect any user+workspace combo.
+    """
+    cache = _get_cache()
+    cache.clear()
+    logger.debug("Workspace permission cache fully flushed (regex CUD)")
+
+
 def _lookup_workspace_permission(username: str, workspace: str) -> Permission | None:
     """Look up workspace permission from DB, with implicit default workspace access.
 

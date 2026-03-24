@@ -64,6 +64,10 @@ from mlflow_oidc_auth.models.user import CreateAccessTokenRequest, CreateUserReq
 from mlflow_oidc_auth.models.workspace import (
     WorkspaceGroupPermissionRequest,
     WorkspaceGroupPermissionResponse,
+    WorkspaceGroupRegexPermissionRequest,
+    WorkspaceGroupRegexPermissionResponse,
+    WorkspaceRegexPermissionRequest,
+    WorkspaceRegexPermissionResponse,
     WorkspaceUserPermissionRequest,
     WorkspaceUserPermissionResponse,
 )
@@ -131,6 +135,10 @@ __all__ = [
     "WorkspaceGroupPermissionRequest",
     "WorkspaceUserPermissionResponse",
     "WorkspaceGroupPermissionResponse",
+    "WorkspaceRegexPermissionRequest",
+    "WorkspaceGroupRegexPermissionRequest",
+    "WorkspaceRegexPermissionResponse",
+    "WorkspaceGroupRegexPermissionResponse",
     "WebhookCreateRequest",
     "WebhookUpdateRequest",
     "WebhookTestRequest",

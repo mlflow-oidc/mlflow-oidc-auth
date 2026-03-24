@@ -35,7 +35,8 @@ dependencies = [
   "uvicorn>=0.41.0",
   "fastapi>=0.132.0",
   "asgiref>=3.11.1",
-  "httpx>=0.28.1"
+  "httpx>=0.28.1",
+  "cachetools>=5.5.0"
 ]
 
 [project.optional-dependencies]

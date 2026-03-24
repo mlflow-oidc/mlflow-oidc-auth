@@ -154,6 +154,12 @@ def create_app() -> Any:
     # Seed default workspace when workspaces are enabled (WSFND-04)
     if config.MLFLOW_ENABLE_WORKSPACES:
         _seed_default_workspace()
+        # Register workspace regex permissions router only when workspaces are enabled
+        from mlflow_oidc_auth.routers.workspace_regex_permissions import (
+            workspace_regex_permissions_router,
+        )
+
+        oidc_app.include_router(workspace_regex_permissions_router)
 
     # Mount Flask app at root with auth passing middleware
     oidc_app.mount("/", AuthAwareWSGIMiddleware(app))

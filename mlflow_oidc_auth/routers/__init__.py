@@ -35,6 +35,9 @@ from mlflow_oidc_auth.routers.user_permissions import user_permissions_router
 from mlflow_oidc_auth.routers.users import users_router
 from mlflow_oidc_auth.routers.webhook import webhook_router
 from mlflow_oidc_auth.routers.workspace_permissions import workspace_permissions_router
+from mlflow_oidc_auth.routers.workspace_regex_permissions import (
+    workspace_regex_permissions_router,
+)
 
 __all__ = [
     "auth_router",
@@ -53,6 +56,7 @@ __all__ = [
     "users_router",
     "webhook_router",
     "workspace_permissions_router",
+    "workspace_regex_permissions_router",
 ]
 
 

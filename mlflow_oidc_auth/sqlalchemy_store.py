@@ -1432,6 +1432,18 @@ class SqlAlchemyStore:
             )
         )
 
+    def list_all_workspace_group_regex_permissions(
+        self,
+    ) -> list[WorkspaceGroupRegexPermission]:
+        """List all group regex workspace permissions (admin view)."""
+        with self.ManagedSessionMaker() as session:
+            from mlflow_oidc_auth.db.models.workspace import (
+                SqlWorkspaceGroupRegexPermission,
+            )
+
+            rows = session.query(SqlWorkspaceGroupRegexPermission).all()
+            return [r.to_mlflow_entity() for r in rows]
+
     def update_workspace_group_regex_permission(
         self, id: int, group_name: str, regex: str, priority: int, permission: str
     ) -> WorkspaceGroupRegexPermission:

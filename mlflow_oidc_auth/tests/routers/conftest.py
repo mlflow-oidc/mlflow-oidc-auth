@@ -380,6 +380,10 @@ def _patch_router_stores(mock_store):
             "mlflow_oidc_auth.routers.workspace_permissions.store",
             mock_store,
         ),
+        patch(
+            "mlflow_oidc_auth.routers.workspace_regex_permissions.store",
+            mock_store,
+        ),
         # Patch filter_manageable_* functions at router level so integration tests work
         patch(
             "mlflow_oidc_auth.routers.experiment_permissions.filter_manageable_experiments",
