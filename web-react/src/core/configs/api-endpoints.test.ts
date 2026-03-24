@@ -8,6 +8,9 @@ describe("API Endpoints", () => {
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_ENDPOINTS).toBeDefined();
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_SECRETS).toBeDefined();
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_MODELS).toBeDefined();
+    expect(STATIC_API_ENDPOINTS.WORKSPACE_CRUD).toBe(
+      "/api/3.0/mlflow/workspaces/crud",
+    );
   });
 
   describe("Dynamic Endpoints", () => {
@@ -342,6 +345,18 @@ describe("API Endpoints", () => {
       expect(DYNAMIC_API_ENDPOINTS.TEST_WEBHOOK("wh1")).toBe(
         "/oidc/webhook/wh1/test",
       );
+    });
+
+    it("returns correct workspace CRUD detail URL", () => {
+      expect(DYNAMIC_API_ENDPOINTS.WORKSPACE_CRUD_DETAIL("my-workspace")).toBe(
+        "/api/3.0/mlflow/workspaces/crud/my-workspace",
+      );
+    });
+
+    it("encodes workspace name in CRUD detail URL", () => {
+      expect(
+        DYNAMIC_API_ENDPOINTS.WORKSPACE_CRUD_DETAIL("ws with spaces"),
+      ).toBe("/api/3.0/mlflow/workspaces/crud/ws%20with%20spaces");
     });
   });
 });

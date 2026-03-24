@@ -174,3 +174,22 @@ export type WorkspaceGroupPermission = {
   group_name: string;
   permission: PermissionLevel;
 };
+
+export type WorkspaceCrudCreateRequest = {
+  name: string;
+  description?: string;
+};
+
+export type WorkspaceCrudUpdateRequest = {
+  description: string;
+};
+
+export type WorkspaceCrudResponse = {
+  name: string;
+  description: string;
+};
+
+export type WorkspaceMemberCounts = {
+  users: number;
+  groups: number;
+};
