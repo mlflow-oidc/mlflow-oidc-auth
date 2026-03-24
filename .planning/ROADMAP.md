@@ -84,7 +84,7 @@ Plans:
 Plans:
 - [x] 08-01-PLAN.md — Workspace CRUD service layer + admin management modals (create/edit/delete)
 - [x] 08-02-PLAN.md — Global workspace picker dropdown + HTTP header integration
-- [ ] 08-03-PLAN.md — Bulk permission assignment on workspace detail page
+- [x] 08-03-PLAN.md — Bulk permission assignment on workspace detail page
 **UI hint**: yes
 
 ## Progress

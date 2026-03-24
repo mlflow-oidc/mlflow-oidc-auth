@@ -43,7 +43,7 @@ Requirements for workspace management milestone. Each maps to roadmap phases.
 - [ ] **WSUI-02**: Admin can edit workspace description via modal form
 - [ ] **WSUI-03**: Admin can delete a workspace via confirmation dialog with safety warning
 - [ ] **WSUI-04**: Workspace list page shows member count (users + groups with permissions) per workspace
-- [ ] **WSUI-05**: Admin can assign permissions to multiple users/groups at once via bulk operations
+- [x] **WSUI-05**: Admin can assign permissions to multiple users/groups at once via bulk operations
 
 ### Workspace UI — Global Picker
 
@@ -115,7 +115,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WSUI-02 | Phase 8 | Pending |
 | WSUI-03 | Phase 8 | Pending |
 | WSUI-04 | Phase 8 | Pending |
-| WSUI-05 | Phase 8 | Pending |
+| WSUI-05 | Phase 8 | Complete |
 | WSPICK-01 | Phase 8 | Complete |
 | WSPICK-02 | Phase 8 | Complete |
 | WSPICK-03 | Phase 8 | Complete |
