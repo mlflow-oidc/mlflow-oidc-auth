@@ -1,178 +1,160 @@
 # Project Research Summary
 
-**Project:** MLflow OIDC Auth — Organization/Workspace Support
-**Domain:** Multi-tenant authorization for ML experiment tracking
-**Researched:** 2026-03-23
+**Project:** MLflow OIDC Auth — v1.1 Workspace Management
+**Domain:** Multi-tenant workspace lifecycle, permission management, and scoped resource filtering for an MLflow auth plugin
+**Researched:** 2026-03-24
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This project adds multi-tenant workspace support to the MLflow OIDC Auth plugin, aligning with MLflow 3.10's new workspace feature. MLflow 3.10 introduced workspace-based resource isolation via protobuf RPCs (`CreateWorkspace`, `ListWorkspaces`, `GetWorkspace`, `UpdateWorkspace`, `DeleteWorkspace`), an `X-MLFLOW-WORKSPACE` HTTP header for context propagation, a `workspace_permissions` table, and a permission resolution chain that falls back from resource-level → workspace-level → `NO_PERMISSIONS` (importantly, `default_permission` is **ignored** when workspaces are enabled). The plugin currently has zero workspace support — no protobuf handler registration, no workspace context propagation, no workspace permission tables. The entire workspace feature is net-new.
+v1.1 completes the workspace story started in v1.0. The foundation is solid: feature flags, permission tables, TTLCache, before_request hooks, workspace-aware AuthContext, and basic admin UI all exist. What's missing is workspace CRUD management (create/update/delete through the plugin), a global workspace picker to scope the admin UI, workspace-aware search result filtering to prevent cross-tenant data leakage, and regex-based workspace permissions for bulk access rules. These five features close the gap between "workspace permissions exist" and "workspaces are fully manageable."
 
-The recommended approach is to build workspace support in layers: first refactor the existing permission resolution to eliminate copy-paste debt, then add the data foundation (feature flag, DB migration, workspace context in the middleware bridge), then the permission model (workspace-level permissions with user and group support as a fallback layer), then the management API and UI, and finally OIDC claim-to-workspace mapping. The existing stack (Python/FastAPI/Flask/SQLAlchemy/React) requires no new frameworks — only `cachetools` as a new dependency for TTL-based workspace permission caching (matching upstream MLflow's approach). The plugin's unique value over upstream is group-level workspace permissions, OIDC-driven workspace assignment, and a management UI — features upstream's basic-auth model doesn't provide.
+The recommended approach requires zero new libraries — the existing stack (FastAPI, Flask, SQLAlchemy, React 19, TailwindCSS) handles everything. The only dependency change is pinning `cachetools>=5.5.0` (already used transitively). The key architectural insight is that workspace CRUD doesn't need an HTTP proxy: MLflow's Flask app already serves workspace endpoints through the WSGI bridge, and the plugin's before_request/after_request hooks already intercept them. However, a FastAPI proxy router is still valuable for the admin UI because it gives pre/post-processing control (auto-granting MANAGE on create, cascading permission deletes). The regex workspace permission implementation follows a proven pattern used by 8+ existing resource types.
 
-The primary risks are: (1) cross-tenant data leakage through the existing permission fallback chain (current default is `MANAGE`, which would grant access to foreign-workspace resources), (2) the "null workspace" migration problem where existing permissions lose effectiveness, and (3) permission resolution complexity explosion given the existing 466-line `utils/permissions.py` with copy-paste patterns across 8 near-identical functions. Risk #1 is addressed by making the workspace boundary check a hard short-circuit before permission resolution. Risk #2 is addressed by a "default workspace" sentinel migration. Risk #3 strongly recommends a prerequisite refactoring phase before workspace implementation to create generic permission abstractions — without this, the workspace support will be unmaintainable.
+The primary risks are: (1) cross-workspace data leakage in search results if filtering checks the request's workspace header instead of each experiment's actual workspace — this is a security-critical correctness issue; (2) O(N×M) performance degradation in search filtering when many workspaces exist; (3) TTLCache invalidation gaps when regex permissions change, since regex rules affect an unpredictable set of cache entries. All three are well-understood and have clear mitigation strategies documented in the pitfalls research.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new frameworks or major libraries are needed. The existing stack handles everything. The only new dependency is `cachetools>=5.0` for `TTLCache`-based workspace permission caching, matching MLflow upstream's pattern (`workspace_cache_max_size=10000`, `workspace_cache_ttl_seconds=3600`). MLflow >=3.10.0 is required as the minimum version since that's when workspace protobuf RPCs were introduced.
+No new Python or JavaScript libraries needed. The existing stack covers all v1.1 requirements. The only change: pin `cachetools>=5.5.0` as a direct dependency (currently transitive-only via MLflow, already used in `workspace_cache.py`).
 
-**Core technologies:**
-- **MLflow >=3.10.0**: Provides workspace CRUD protobuf classes, `X-MLFLOW-WORKSPACE` header convention, and `workspace_context` ContextVar — all at API version 3.0 (`PUBLIC_UNDOCUMENTED` visibility)
-- **cachetools >=5.0**: TTLCache for workspace permission caching — matches upstream's caching strategy and avoids per-request DB queries for workspace resolution
-- **SQLAlchemy + Alembic (existing)**: New `workspace_permissions` table and optional `workspace` column on `registered_model_permissions` — follows existing patterns exactly
-- **authlib (existing)**: OIDC JWT claim extraction for configurable workspace claim mapping via `OIDC_WORKSPACE_CLAIM_NAME`
-- **FastAPI + React (existing)**: New workspace management router and workspace management UI feature module following established conventions
+**Core technologies (unchanged):**
+- **FastAPI** — New workspace CRUD proxy router + regex permission endpoints
+- **Flask/MLflow** — Handles workspace RPCs natively; plugin intercepts via hooks
+- **SQLAlchemy + Alembic** — Two new regex permission tables following existing patterns
+- **React 19 + TailwindCSS** — Global workspace picker, CRUD forms; no UI library additions
+- **cachetools TTLCache** — Workspace permission caching; extend with regex lookup sources
 
-**Critical version note:** Workspace protobuf endpoints use `/api/3.0/mlflow/workspaces/*` paths. The plugin's `BEFORE_REQUEST_HANDLERS` dict must be extended with these new protobuf classes.
+**Explicitly not adding:** `httpx` for proxy forwarding (Flask handles it), Headless UI/Radix (TailwindCSS sufficient), `zustand`/`jotai` (React Context sufficient), Redis (TTLCache sufficient).
 
 ### Expected Features
 
-**Must have (table stakes):**
-- **Feature flag** (`MLFLOW_ENABLE_WORKSPACES`) — opt-in; zero behavioral changes when disabled
-- **Workspace context propagation** — `X-MLFLOW-WORKSPACE` header flows through ASGI→WSGI bridge to Flask hooks
-- **Database migration** — `workspace_permissions` table with `(workspace, user_id, permission)` composite PK
-- **Workspace CRUD auth enforcement** — intercept 5 workspace protobuf handlers (admin-only for create/update/delete)
-- **Workspace-level user permissions** — READ/USE/EDIT/MANAGE per user per workspace, as fallback in resolution chain
-- **Resource creation gating** — `CreateExperiment`/`CreateRegisteredModel` require MANAGE on workspace (currently only after_request)
-- **Default workspace access** — `grant_default_workspace_access` config for existing deployment migration path
-- **Workspace permission management API** — CRUD endpoints for workspace-user and workspace-group permissions
+**Must have (table stakes — v1.1):**
+- **TS-01: Workspace CRUD backend** — FastAPI proxy to MLflow's workspace API with auth checks, auto-grant MANAGE on create, cascade permission delete on workspace removal
+- **TS-02: Workspace management UI** — Admin page for create/edit/delete workspaces with client-side name validation mirroring MLflow's `WorkspaceNameValidator`
+- **TS-03: Global workspace picker** — Header dropdown scoping all admin pages via `X-MLFLOW-WORKSPACE` header injection, persisted in localStorage
+- **TS-04: Workspace-scoped search filtering** — after_request hooks filter experiments/models by workspace membership, checking each resource's actual workspace (not just the request header)
+- **TS-05: Regex workspace permissions** — Pattern-based access rules (e.g., `team-.*` → READ) with user-regex and group-regex variants, integrated into TTLCache resolution chain
 
-**Should have (differentiators over upstream):**
-- **Group-level workspace permissions** — assign workspace access to groups, not just users (upstream is user-only)
-- **OIDC claims → workspace mapping** — auto-assign users to workspaces based on configurable JWT claim
-- **Workspace permission delegation** — users with MANAGE on a workspace can self-service member management
-- **Workspace management UI** — React feature module with list, detail, member management, workspace switcher
+**Should have (differentiators — defer to v1.2):**
+- Workspace member/resource counts in list view
+- Workspace permission bulk operations
+- Workspace picker search/filter for 100+ workspaces
+- Auto-create workspace from OIDC claim mapping
+- Workspace quick-switch keyboard shortcut
 
-**Defer (v2+):**
-- Regex workspace permissions — wait until group-level workspace permissions are proven
-- Prompt optimization job auth — handle after core workspace features
-- Gateway budget policy auth — handle alongside prompt optimization jobs
-- Workspace-scoped search result filtering — upstream tracking store already filters by workspace_id
-- Audit trail for workspace changes — logging infrastructure exists, low priority
+**Anti-features (explicitly not building):**
+- Workspace hierarchy/nesting (MLflow model is flat)
+- Cross-workspace resource moving (not supported by MLflow)
+- Per-workspace RBAC redefinitions
+- Direct workspace store access (always proxy through MLflow)
 
 ### Architecture Approach
 
-The architecture extends the existing middleware → bridge → hooks → validators → store chain with workspace context at each layer. Workspace context enters via `X-MLFLOW-WORKSPACE` header, gets added to `scope["mlflow_oidc_auth"]` alongside `username` and `is_admin`, flows through `AuthAwareWSGIMiddleware` (no code change needed — it copies the dict wholesale), and is accessible via a new `get_request_workspace()` bridge function. Permission resolution gains a new fallback layer: resource-level (user→group→regex→group-regex) → **workspace-level** → global default. All workspace code is gated behind an `ENABLE_WORKSPACES` feature flag.
+The architecture extends the existing dual-framework pattern: FastAPI handles new CRUD proxy and regex permission endpoints; Flask hooks handle search filtering and permission cascade. A new `WorkspaceContext` React context + module-level store bridges workspace selection to the HTTP client without requiring React Context in the non-React `http.ts` module.
 
-**Major components:**
-1. **Workspace utility module** (`utils/workspace.py`) — feature flag check, workspace extraction from request, `DEFAULT_WORKSPACE_NAME` constant
-2. **Bridge extension** (`bridge/user.py`) — `get_request_workspace()` function, following `get_request_username()` pattern
-3. **Workspace permission model** (`db/models/`, `entities/`, `repository/`) — `SqlWorkspacePermission` table, entity, repository; mirrors upstream schema
-4. **Workspace validators** (`validators/workspace.py`) — workspace access checks, MANAGE enforcement for resource creation
-5. **Permission resolution update** (`utils/permissions.py`) — workspace-level fallback between resource-level and global default
-6. **Workspace management router** (`routers/workspace.py`) — FastAPI CRUD for workspace permissions
-7. **Workspace management UI** (`web-react/src/features/workspaces/`) — React feature module following existing convention
+**Major components (new/modified):**
+1. **`routers/workspace.py`** (NEW) — Workspace CRUD proxy with FastAPI dependency-based auth (admin for create, MANAGE for update/delete)
+2. **`routers/workspace_permissions.py`** (MODIFY) — Add 8 regex/group-regex endpoints following existing pattern
+3. **`hooks/after_request.py`** (MODIFY) — Workspace-scoped search filtering checking each experiment's actual workspace
+4. **`utils/workspace_cache.py`** (MODIFY) — Extend TTLCache lookup with regex + group-regex sources, add `flush_workspace_cache()` for regex CUD
+5. **`repository/workspace_regex_permission.py`** (NEW) — Extends `BaseRegexPermissionRepository` (2 new repo files)
+6. **`workspace-provider.tsx` + `workspace-picker.tsx`** (NEW) — Frontend context + header dropdown + module-level store for `http.ts` header injection
 
 ### Critical Pitfalls
 
-1. **Cross-tenant data leakage via permission fallback** — Current default permission is `MANAGE`. With workspaces, the resolution chain must short-circuit with `NO_PERMISSIONS` when a resource's workspace doesn't match the user's workspace access. Workspace boundary is a hard deny, not a priority level.
-2. **Migration "null workspace" problem** — Adding workspace columns without assigning existing data to a "default" workspace sentinel breaks all existing permissions. Migration must seed default workspace and populate all existing records.
-3. **Permission resolution complexity explosion** — Existing `utils/permissions.py` has 8 near-identical functions. Adding workspace dimension without refactoring first creates 28+ code paths. **Prerequisite refactoring to a generic resolver is strongly recommended.**
-4. **OIDC provider org claim inconsistency** — No standard OIDC claim for organization exists. Must use configurable `OIDC_WORKSPACE_CLAIM_NAME` with optional detection plugin hook.
-5. **Bridge layer doesn't carry workspace context** — ASGI→WSGI bridge must be updated with typed context and fail-fast assertions before any workspace validators can function.
+1. **Cross-workspace data leakage in search filtering** — The after_request filter must check each experiment's *actual* workspace, not just the request's `X-MLFLOW-WORKSPACE` header. If a user searches without a workspace header, they could see experiments from workspaces they don't have access to. **Mitigation:** Resolve each experiment's workspace from the proto response and verify workspace permission for that specific workspace.
+
+2. **O(N×M) search filtering performance** — Post-fetch filtering with per-item permission checks becomes catastrophic when most results are filtered out by workspace. **Mitigation:** Filter by workspace FIRST (cheap string comparison), then apply permission checks. Batch workspace membership lookups. Cap re-fetch iterations at 5-10.
+
+3. **TTLCache invalidation gaps for regex permissions** — Regex changes affect an unpredictable set of cache entries. Selective invalidation is impractical. **Mitigation:** Flush the entire workspace cache on any regex permission CUD operation.
+
+4. **Permission escalation via MANAGE delegation** — Extending workspace update/delete from admin-only to MANAGE users introduces rename attacks and shared workspace disruption. **Mitigation:** Carefully scope what MANAGE allows; consider keeping workspace lifecycle operations admin-only while MANAGE controls only permission assignment.
+
+5. **Feature flag bypass** — Every new workspace code path must check `MLFLOW_ENABLE_WORKSPACES`. **Mitigation:** Gate at the router registration level (don't register workspace routers when flag is false) rather than per-endpoint checks.
 
 ## Implications for Roadmap
 
 Based on research, suggested phase structure:
 
-### Phase 0: Permission Resolution Refactoring
-**Rationale:** PITFALLS.md and CONCERNS.md both identify the existing 466-line `utils/permissions.py` with 8 copy-paste functions as the #1 maintainability risk. Adding workspace as a new dimension to the current structure would create 28+ code paths. This must come first.
-**Delivers:** Generic `resolve_permission(resource_type, resource_id, username, workspace)` function, repository base class for permissions, reduced duplication.
-**Addresses:** Pitfall #5 (complexity explosion)
-**Avoids:** Unmaintainable workspace code; inconsistent workspace handling across resource types
+### Phase 1: Regex Workspace Permissions (Backend Foundation)
 
-### Phase 1: Workspace Foundation
-**Rationale:** Everything depends on the workspace concept existing in the system. Additive-only — nothing breaks for existing deployments.
-**Delivers:** Feature flag, workspace config options, `workspace_permissions` DB table + Alembic migration, bridge extension, workspace utility module, default workspace seeding.
-**Addresses:** Feature flag, DB migration, default workspace access, workspace context propagation
-**Avoids:** Pitfall #3 (null workspace migration), Pitfall #7 (bridge missing context), Pitfall #10 (backward compatibility)
+**Rationale:** Pure additive backend change with zero impact on existing functionality. Follows proven pattern (8+ existing implementations). Completes the workspace permission resolution chain so all subsequent features benefit from full 4-source permission resolution.
+**Delivers:** 2 new DB tables, 2 new repositories extending base classes, workspace cache with regex/group-regex lookup, 8 new API endpoints on existing router, Alembic migration, `flush_workspace_cache()` function, `cachetools` pinned as direct dependency.
+**Addresses:** TS-05 (Regex workspace permissions)
+**Avoids:** P4 (TTLCache invalidation) — implement `flush_workspace_cache()` alongside regex CRUD. P10 (Resolution order) — decide on `PERMISSION_SOURCE_ORDER` integration now. P14 (cachetools pinning) — pin as direct dependency in this phase.
 
-### Phase 2: Workspace Permission Model & Auth Enforcement
-**Rationale:** Permission resolution is the security core. Cross-tenant leakage pitfall must be resolved here before building APIs on top.
-**Delivers:** Workspace permission entity/model/repository, workspace-level fallback in resolution chain, workspace access validators, before_request workspace validation, TTLCache for workspace permission lookups, workspace CRUD auth enforcement.
-**Addresses:** Workspace-level user permissions, resource creation gating, workspace CRUD auth enforcement
-**Avoids:** Pitfall #1 (cross-tenant leakage), Pitfall #2 (post-fetch filtering leaks), Pitfall #9 (admin bypass)
+### Phase 2: Workspace CRUD Backend + Permission Cascade
 
-### Phase 3: Workspace Management API & Group Permissions
-**Rationale:** With permission model in place, expose management APIs. Include group-level workspace permissions — our core differentiator.
-**Delivers:** Workspace permission CRUD router (user + group), workspace permission delegation, after_request workspace-scoped auto-grants.
-**Addresses:** Workspace permission management API, group-level workspace permissions, workspace permission delegation
-**Avoids:** Pitfall #8 (group-to-org relationship — groups remain independent, permissions are workspace-scoped)
+**Rationale:** Depends on Phase 1 for complete permission resolution (MANAGE delegation needs regex lookup). Creates the backend API surface for the admin UI. Workspace deletion cascade prevents orphaned permission records.
+**Delivers:** New FastAPI workspace CRUD proxy router (5 endpoints), after_request hook for permission cascade on delete, MANAGE delegation for update/delete validators, MLflow error code mapping.
+**Addresses:** TS-01 (Workspace CRUD backend)
+**Avoids:** P1 (Proxy error conflation) — parse MLflow error codes and map to HTTP statuses. P2 (Permission escalation) — define MANAGE scope before implementing. P6 (Name validation mismatch) — validate in proxy, handle MLflow errors gracefully. P9 (Orphaned permissions) — cascade delete in after_request. P12 (API instability) — abstract MLflow workspace API calls.
 
-### Phase 4: Workspace Management UI
-**Rationale:** Needs backend API (Phase 3) to function. High user-visibility but blocked by backend.
-**Delivers:** Workspace management React feature module, workspace context provider, workspace switcher in navigation, workspace-scoped permission views.
-**Addresses:** Workspace permission management UI, workspace selector
+### Phase 3: Workspace-Scoped Search Filtering
 
-### Phase 5: OIDC Workspace Integration
-**Rationale:** Optional enhancement after core workspace support is stable. Provider-dependent; needs iterative refinement.
-**Delivers:** Configurable `OIDC_WORKSPACE_CLAIM_NAME`, workspace detection plugin hook, auto-assignment during OIDC login/callback.
-**Addresses:** OIDC claims → workspace mapping (top differentiator)
-**Avoids:** Pitfall #4 (OIDC claim inconsistency) via configurable claim + plugin hook
+**Rationale:** Security-critical feature that prevents cross-workspace data leakage. Depends on Phase 1 (workspace cache with regex) for complete permission checks. Can be built in parallel with Phase 2 since it modifies different code paths (after_request filter functions vs. new router).
+**Delivers:** Modified `_filter_search_experiments()`, `_filter_search_registered_models()`, `_filter_search_logged_models()` with workspace membership checks.
+**Addresses:** TS-04 (Workspace-scoped search filtering)
+**Avoids:** P3 (Performance death spiral) — filter workspace FIRST, cap re-fetch iterations. P5 (Feature flag bypass) — check `MLFLOW_ENABLE_WORKSPACES` as first operation. P8 (Hook ordering) — workspace filter before permission filter in each function.
+
+### Phase 4: Workspace Management UI + Global Picker
+
+**Rationale:** Pure frontend phase that depends on all backend work being complete (CRUD proxy, search filtering, regex permissions). Both the management UI and the picker share workspace list data and React context infrastructure — building them together avoids duplicate component work.
+**Delivers:** `WorkspaceContext` + `WorkspaceProvider`, `WorkspacePicker` header dropdown, `http.ts` header injection via module-level workspace store, workspace CRUD forms (create/edit/delete), modified admin pages consuming workspace context.
+**Addresses:** TS-02 (Workspace management UI), TS-03 (Global workspace picker)
+**Avoids:** P7 (Stale context) — React Context + localStorage + validation on load. P11 (Admin vs non-admin lists) — picker naturally shows filtered workspace list. P13 (Header vs URL mismatch) — workspace detail pages ignore picker, picker affects list/search pages only.
 
 ### Phase Ordering Rationale
 
-- **Phase 0 before Phase 1:** Refactoring prevents complexity explosion. Both CONCERNS.md and PITFALLS.md identify this as blocking.
-- **Phase 1 before Phase 2:** Permission model and bridge must exist before validators can use them.
-- **Phase 2 before Phase 3:** Backend enforcement must work before exposing management APIs.
-- **Phase 3 before Phase 4:** Frontend needs backend API endpoints to function.
-- **Phase 5 last:** OIDC integration is most provider-dependent and only valuable once core workspace support is stable.
-- **Feature dependency chain enforced:** Feature Flag → Context Propagation → Permissions → API → UI → OIDC maps directly to phases 1→2→3→4→5.
+- **Backend-first:** All 3 backend phases can be individually tested, reviewed, and merged without frontend changes. This reduces integration risk.
+- **Regex before CRUD:** Counterintuitive but correct — the CRUD proxy's MANAGE delegation requires complete permission resolution (including regex) to avoid security gaps. Having the full permission chain ready means MANAGE authorization is correct from day one.
+- **Search filtering parallel-eligible with CRUD:** They touch different files (after_request filter functions vs. new router). Can be developed in parallel branches after Phase 1.
+- **Frontend last:** The frontend is a single coherent phase that ties everything together. It can be developed with mock data while backend phases are in progress, but final integration requires all backend work.
+- **Feature flag gating in Phase 1:** Router-level conditional registration ensures all new endpoints are invisible when workspaces are disabled.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 0:** Needs precise measurement of refactoring scope across 8 functions, 28+ repositories, and 2390+ line routers to design the generic abstraction correctly.
-- **Phase 2:** Complex permission resolution with workspace fallback — upstream MLflow's `_workspace_permission_for_experiment()` lambda patterns must be understood precisely. Integration with upstream `workspace_context` ContextVar needs verification.
-- **Phase 5:** OIDC claim formats vary by provider. Needs testing with at least 2 providers (e.g., Keycloak + Auth0) to validate the configurable claim approach.
+- **Phase 2 (Workspace CRUD):** How exactly to proxy requests to the mounted Flask app — `httpx.AsyncClient` vs. direct tracking store access vs. WSGI bridge passthrough. The STACK research found Flask handles it natively through hooks, but FEATURES research recommends a proxy for pre/post-processing control. This tension needs resolution during phase planning.
+- **Phase 3 (Search Filtering):** How upstream MLflow exposes experiment→workspace mapping in proto responses. Need to inspect the `Experiment` proto's `workspace` field availability in `SearchExperiments.Response`. If not available, a performance-critical batch lookup is needed.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1:** Additive DB migration + feature flag + bridge extension — well-documented, existing codebase conventions apply directly.
-- **Phase 3:** FastAPI CRUD router — follows existing `experiment_permissions_router`, `model_permissions_router` patterns exactly.
-- **Phase 4:** React feature module — follows existing `features/` convention with components, hooks, services.
+- **Phase 1 (Regex Permissions):** Exact pattern replicated from 8+ existing implementations. DB models, repos, entities, store methods, router endpoints, cache integration — all have direct templates in the codebase.
+- **Phase 4 (Frontend):** Standard React Context + component patterns. All infrastructure hooks (`useAllWorkspaces`, `WorkspaceListItem` types, `fetchAllWorkspaces` service) already exist.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All technologies verified from MLflow 3.10 source code. No new major dependencies. Workspace protobuf RPCs confirmed in `service.proto`. |
-| Features | HIGH | Comprehensive gap analysis between upstream MLflow 3.10 auth module and current plugin, verified from source code diff. |
-| Architecture | HIGH | Extends proven existing patterns (middleware → bridge → hooks → validators → store). Data model mirrors upstream MLflow 3.10 schema. |
-| Pitfalls | HIGH | Based on direct code analysis with specific file/line references and established multi-tenancy patterns. All 10 pitfalls grounded in concrete code. |
+| Stack | HIGH | Zero new dependencies. All verified against installed versions and existing usage patterns. |
+| Features | HIGH | All 5 features have clear scope, dependency chains, and implementation patterns verified from codebase. MLflow workspace API verified via runtime introspection. |
+| Architecture | HIGH | All patterns are extensions of existing codebase patterns (regex repos, after_request hooks, React Context). No novel architecture needed. |
+| Pitfalls | HIGH | All 14 pitfalls derived from direct codebase analysis of actual code paths. Prevention strategies reference specific functions and files. |
 
-**Overall confidence:** HIGH
-
-All research is based on direct source code analysis of both upstream MLflow 3.10 and the plugin codebase. No findings rely on blog posts, tutorials, or community hearsay.
+**Overall confidence:** HIGH — This is an enhancement to a well-understood codebase following established patterns. The v1.0 workspace foundation is solid and well-documented.
 
 ### Gaps to Address
 
-- **Upstream workspace API stability:** MLflow workspace endpoints are `PUBLIC_UNDOCUMENTED` (API v3.0). Could change in minor releases. Monitor upstream changelog during implementation.
-- **`workspace_context` ContextVar interaction:** Plugin may need to set MLflow's `workspace_context` ContextVar for upstream code paths. Needs verification during Phase 2.
-- **GraphQL workspace support:** Plugin monkey-patches MLflow's GraphQL auth middleware. Workspace context propagation through GraphQL path not verified in research.
-- **Performance at scale (100+ workspaces):** TTLCache strategy is sound but actual overhead needs measurement during Phase 2.
-- **Phase 0 refactoring scope:** Needs its own detailed analysis to determine the best generic abstraction pattern (factory, class hierarchy, or parameterized function).
+- **Experiment→workspace mapping in proto responses:** Need to verify that `SearchExperiments.Response` includes workspace info per experiment. If not, search filtering requires separate tracking store queries (significant performance impact). Resolve during Phase 3 planning.
+- **MANAGE delegation scope for workspace CRUD:** Research found tension between allowing MANAGE users to update/delete workspaces (FEATURES) and the security risks of doing so (PITFALLS). Need a clear policy decision: MANAGE = permission management only, or MANAGE = full workspace lifecycle? Resolve during Phase 2 planning.
+- **Workspace CRUD proxy implementation approach:** STACK research says Flask handles workspace RPCs natively (no proxy needed). FEATURES/ARCHITECTURE research recommends a FastAPI proxy for better control. The hybrid approach (FastAPI proxy as primary for admin UI, Flask passthrough for SDK clients) needs validation. Resolve during Phase 2 planning.
+- **MLflow workspace API stability:** The API is `PUBLIC_UNDOCUMENTED`. No breaking changes observed in 3.10.x, but the proxy should be designed as an abstraction layer. Monitor MLflow release notes.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- MLflow 3.10 source code: `service.proto`, `mlflow/server/auth/` module (entities.py, routes.py, sqlalchemy_store.py, db/models.py, __init__.py, config.py, permissions.py)
-- MLflow workspace utilities: `mlflow/utils/workspace_utils.py`, `mlflow/utils/workspace_context.py`
-- MLflow environment variables: `mlflow/environment_variables.py`
-- Current plugin codebase: `utils/permissions.py`, `hooks/before_request.py`, `hooks/after_request.py`, `middleware/`, `bridge/user.py`, `config.py`, `routers/`, `db/models/`
-- OpenID Connect Core 1.0 specification — standard claims verification, no org claim exists
+- Direct codebase analysis: `hooks/after_request.py`, `hooks/before_request.py`, `validators/workspace.py`, `utils/workspace_cache.py`, `utils/permissions.py`, `repository/_base.py`, `routers/workspace_permissions.py`, `db/models/workspace.py`, `config.py`, `app.py`, `middleware/auth_middleware.py`, `middleware/auth_aware_wsgi_middleware.py`, `bridge/user.py`, `dependencies.py`
+- Frontend codebase: `http.ts`, `workspace-service.ts`, `use-all-workspaces.ts`, `header.tsx`, `sidebar-data.ts`, `runtime-config.ts`, `api-endpoints.ts`, `entity.ts`
+- MLflow 3.10 runtime introspection: workspace protobuf RPCs (`CreateWorkspace`, `GetWorkspace`, `ListWorkspaces`, `UpdateWorkspace`, `DeleteWorkspace`), `WorkspaceNameValidator`, `WorkspaceDeletionMode`, endpoint registration via `get_endpoints()`
 
 ### Secondary (MEDIUM confidence)
-- OIDC provider documentation (Auth0 Organizations, Keycloak Organizations, Azure AD multi-tenant, Okta Organizations) — provider-specific claim formats
-- Multi-tenant authorization patterns (row-level security, org-scoped RBAC) — established industry patterns
+- MLflow workspace API stability assessment: `PUBLIC_UNDOCUMENTED` annotation observed in protobuf definitions — API contract not guaranteed across minor versions
 
-### Tertiary (needs validation)
-- MLflow workspace API stability — `PUBLIC_UNDOCUMENTED` visibility means potential breaking changes
-- GraphQL workspace context propagation — not verified, needs testing
-- `AuthAwareWSGIMiddleware` dict propagation behavior — inferred from code reading, needs integration test
+### Tertiary (LOW confidence)
+- Experiment→workspace mapping in search responses: Assumed available based on MLflow 3.10 `Experiment` entity having a `workspace` field — needs runtime verification with actual search responses
 
 ---
-*Research completed: 2026-03-23*
+*Research completed: 2026-03-24*
 *Ready for roadmap: yes*

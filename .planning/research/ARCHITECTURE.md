@@ -1,12 +1,12 @@
 # Architecture Research
 
-**Domain:** Multi-tenant organization/workspace support for an MLflow OIDC auth plugin
-**Researched:** 2026-03-23
+**Domain:** Workspace CRUD management, scoped search filtering, regex workspace permissions, and global workspace picker for mlflow-oidc-auth v1.1
+**Researched:** 2026-03-24
 **Confidence:** HIGH
 
 ## System Overview
 
-### Current Architecture (Before Workspaces)
+### Current State (Post-v1.0)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -14,46 +14,37 @@
 ├─────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
 │  │ ProxyHeaders │→ │AuthMiddleware│→ │  FastAPI Router Layer     │  │
-│  │  Middleware   │  │(Basic/Bearer │  │ (permissions, auth, UI,  │  │
-│  │              │  │ /Session)    │  │  users, groups, health)  │  │
+│  │  Middleware   │  │(Basic/Bearer │  │ (15 routers incl.        │  │
+│  │              │  │ /Session)    │  │  workspace_permissions)  │  │
+│  │              │  │ Sets:        │  │                          │  │
+│  │              │  │ AuthContext(  │  │ No workspace CRUD proxy  │  │
+│  │              │  │  username,   │  │ No regex workspace perms │  │
+│  │              │  │  is_admin,   │  │                          │  │
+│  │              │  │  workspace)  │  │                          │  │
 │  └──────────────┘  └──────┬───────┘  └──────────────────────────┘  │
-│                           │                                         │
-│          Sets: request.scope["mlflow_oidc_auth"]                    │
-│                 = {username, is_admin}                               │
 │                           │                                         │
 ├───────────────────────────┼─────────────────────────────────────────┤
 │               AuthAwareWSGIMiddleware                               │
-│          Copies scope["mlflow_oidc_auth"] → environ                 │
+│          Copies AuthContext → WSGI environ                          │
 ├───────────────────────────┼─────────────────────────────────────────┤
 │                     Flask (MLflow App)                               │
 │  ┌───────────────┐  ┌──────────────┐  ┌─────────────────────────┐  │
 │  │ before_request│→ │ MLflow Core  │→ │    after_request         │  │
-│  │  (validators) │  │ (experiments,│  │ (auto-grant, filter,     │  │
-│  │              │  │  runs, models)│  │  cascade deletes)        │  │
-│  └───────┬───────┘  └──────────────┘  └─────────────────────────┘  │
-│          │                                                          │
-│  ┌───────┴───────────────────────────────────────────────────────┐  │
-│  │  Bridge: get_request_username() → environ["mlflow_oidc_auth"] │  │
-│  └───────────────────────────────────────────────────────────────┘  │
+│  │ (workspace    │  │ (handles     │  │ (_filter_list_workspaces │  │
+│  │  CRUD valida- │  │  workspace   │  │  but NO experiment/     │  │
+│  │  tors: admin  │  │  RPCs nati-  │  │  model workspace-scope  │  │
+│  │  only CUD)    │  │  vely)       │  │  filtering)             │  │
+│  └───────────────┘  └──────────────┘  └─────────────────────────┘  │
 ├─────────────────────────────────────────────────────────────────────┤
-│                     Permission Resolution                            │
-│  Configurable order: [user, group, regex, group-regex]              │
-│  First match wins. Admin bypass.                                     │
+│  Permission Resolution: resource → workspace fallback → default     │
+│  Workspace cache: TTLCache (user + group, no regex)                 │
 ├─────────────────────────────────────────────────────────────────────┤
-│                     SqlAlchemyStore (Facade)                         │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
-│  │UserRepo  │  │GroupRepo │  │PermRepos │  │RegexPermRepos    │   │
-│  │          │  │          │  │(28 repos)│  │(group-regex, etc)│   │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘   │
-├─────────────────────────────────────────────────────────────────────┤
-│                     SQLAlchemy + Alembic                             │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │                    SQLite / PostgreSQL                        │   │
-│  └──────────────────────────────────────────────────────────────┘   │
+│  SqlAlchemyStore → Repos (standalone workspace repos, no regex)     │
+│  DB: workspace_permissions, workspace_group_permissions             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Target Architecture (With Workspace Support)
+### Target State (v1.1)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -61,73 +52,68 @@
 ├─────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
 │  │ ProxyHeaders │→ │AuthMiddleware│→ │  FastAPI Router Layer     │  │
-│  │  Middleware   │  │(Basic/Bearer │  │ + NEW: workspace_router  │  │
-│  │              │  │ /Session)    │  │   (workspace CRUD,       │  │
-│  │              │  │ +workspace   │  │    workspace permissions) │  │
-│  │              │  │  extraction  │  │                          │  │
+│  │  Middleware   │  │ (unchanged)  │  │ + NEW: workspace_router  │  │
+│  │              │  │              │  │   (CRUD proxy to MLflow) │  │
+│  │              │  │              │  │ + NEW: ws regex perm     │  │
+│  │              │  │              │  │   endpoints on existing  │  │
+│  │              │  │              │  │   workspace_permissions  │  │
 │  └──────────────┘  └──────┬───────┘  └──────────────────────────┘  │
 │                           │                                         │
-│          Sets: request.scope["mlflow_oidc_auth"]                    │
-│                 = {username, is_admin, workspace}                    │
-│                           │                    ▲                     │
-│                           │     X-MLFLOW-WORKSPACE header           │
-│                           │     or OIDC claim extraction             │
 ├───────────────────────────┼─────────────────────────────────────────┤
-│               AuthAwareWSGIMiddleware                               │
-│          Copies scope["mlflow_oidc_auth"] → environ                 │
-│          (now includes workspace)                                    │
+│               AuthAwareWSGIMiddleware (unchanged)                    │
 ├───────────────────────────┼─────────────────────────────────────────┤
 │                     Flask (MLflow App)                               │
 │  ┌───────────────┐  ┌──────────────┐  ┌─────────────────────────┐  │
 │  │ before_request│→ │ MLflow Core  │→ │    after_request         │  │
-│  │ +workspace    │  │ (experiments,│  │ +workspace auto-grant    │  │
-│  │  validation   │  │  runs, models)│  │ +workspace scoping      │  │
-│  └───────┬───────┘  └──────────────┘  └─────────────────────────┘  │
-│          │                                                          │
-│  ┌───────┴───────────────────────────────────────────────────────┐  │
-│  │  Bridge: get_request_username() + get_request_workspace()      │  │
-│  └───────────────────────────────────────────────────────────────┘  │
+│  │ MODIFIED:     │  │ (unchanged)  │  │ MODIFIED:                │  │
+│  │ update/delete │  │              │  │ _filter_search_*         │  │
+│  │ workspace now │  │              │  │ now also checks          │  │
+│  │ allows MANAGE │  │              │  │ workspace membership     │  │
+│  │ (not admin    │  │              │  │                          │  │
+│  │  only)        │  │              │  │                          │  │
+│  └───────────────┘  └──────────────┘  └─────────────────────────┘  │
 ├─────────────────────────────────────────────────────────────────────┤
-│                     Permission Resolution (UPDATED)                  │
-│  OLD: [user, group, regex, group-regex] → first match wins          │
-│  NEW: resource-level → workspace-level → default                     │
-│       within resource-level: [user, group, regex, group-regex]      │
-│       workspace adds a fallback layer before global default          │
+│  Permission Resolution: resource → workspace fallback → default     │
+│  Workspace cache: MODIFIED — adds regex + group-regex lookup        │
 ├─────────────────────────────────────────────────────────────────────┤
-│                     SqlAlchemyStore (Facade) — EXTENDED              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────────┐  │
-│  │UserRepo  │ │GroupRepo │ │PermRepos │ │NEW: WorkspaceRepo    │  │
-│  │          │ │          │ │(28 repos)│ │WorkspacePermRepo     │  │
-│  │          │ │          │ │+workspace│ │WorkspaceGroupRepo    │  │
-│  │          │ │          │ │ column   │ │                      │  │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────────┘  │
-├─────────────────────────────────────────────────────────────────────┤
-│                     SQLAlchemy + Alembic                             │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │          SQLite / PostgreSQL                                  │   │
-│  │  + workspaces table                                           │   │
-│  │  + workspace_permissions table                                │   │
-│  │  + workspace column on registered_model_permissions           │   │
-│  │  + workspace_groups table (optional: workspace-scoped groups) │   │
-│  └──────────────────────────────────────────────────────────────┘   │
+│  SqlAlchemyStore → Repos                                            │
+│  + NEW: WorkspaceRegexPermissionRepository                          │
+│  + NEW: WorkspaceGroupRegexPermissionRepository                     │
+│  DB: + workspace_regex_permissions                                  │
+│      + workspace_group_regex_permissions                             │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     React SPA (Frontend)                             │
+│  + NEW: WorkspaceContext + WorkspaceProvider                         │
+│  + NEW: WorkspacePicker in Header                                    │
+│  + MODIFIED: http.ts injects X-MLFLOW-WORKSPACE header              │
+│  + NEW: Workspace CRUD UI (create/update/delete forms)               │
+│  + MODIFIED: All admin pages consume workspace context                │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
-| Component | Current Responsibility | Workspace Change |
-|-----------|----------------------|------------------|
-| AuthMiddleware | Authenticate user, set username + is_admin | Extract workspace from `X-MLFLOW-WORKSPACE` header or OIDC claim; add to auth context |
-| AuthAwareWSGIMiddleware | Copy auth context from ASGI scope to WSGI environ | No code change needed — already copies entire `mlflow_oidc_auth` dict |
-| Bridge (user.py) | Expose `get_request_username()` and `is_admin()` | Add `get_request_workspace()` function |
-| before_request hooks | Map protobuf classes to validators, enforce RBAC | Add workspace validation for resource creation (MANAGE on workspace required) |
-| after_request hooks | Auto-grant MANAGE on create, filter search results | Scope auto-grants to workspace; filter by workspace membership |
-| Permission resolution | Ordered resolver: user → group → regex → group-regex | Add workspace-level fallback between resource-level and global default |
-| SqlAlchemyStore | Facade over 20+ repos | Add workspace CRUD, workspace permission CRUD, workspace-scoped queries |
-| Validators | Check user has required permission on resource | Accept workspace context; check workspace permission as fallback |
-| GraphQL middleware | Authorize GraphQL queries | Pass workspace context; filter by workspace |
-| FastAPI Routers | REST API for permission management | New workspace router; workspace parameter on existing permission endpoints |
-| React SPA | Admin UI for users, groups, permissions | New workspace management feature; workspace switcher; workspace-scoped views |
+| Component | Current State | v1.1 Change | Change Type |
+|-----------|--------------|-------------|-------------|
+| `routers/__init__.py` | 15 routers registered | Register `workspace_router` (16th) | MODIFY |
+| `routers/workspace.py` | Does not exist | New router proxying CRUD to MLflow upstream | NEW |
+| `routers/workspace_permissions.py` | 8 endpoints (user/group CRUD) | Add 8 regex/group-regex endpoints | MODIFY |
+| `validators/workspace.py` | Admin-only for update/delete | MANAGE delegation: admin OR workspace MANAGE | MODIFY |
+| `hooks/after_request.py` | `_filter_search_experiments` checks `can_read_experiment` only | Add workspace membership filter | MODIFY |
+| `utils/workspace_cache.py` | Lookup: implicit default → user → group | Add regex → group-regex sources | MODIFY |
+| `db/models/workspace.py` | `SqlWorkspacePermission`, `SqlWorkspaceGroupPermission` | Add `SqlWorkspaceRegexPermission`, `SqlWorkspaceGroupRegexPermission` | MODIFY |
+| `entities/workspace.py` | `WorkspacePermission`, `WorkspaceGroupPermission` | Add regex + group-regex entity classes | MODIFY |
+| `repository/` | Standalone workspace user/group repos | Add regex/group-regex repos extending base classes | NEW files |
+| `sqlalchemy_store.py` | Workspace user/group store methods | Add regex/group-regex methods, workspace CRUD proxying methods | MODIFY |
+| `dependencies.py` | `check_workspace_manage_permission`, `check_workspace_read_permission` | No change needed (existing deps sufficient) | UNCHANGED |
+| `middleware/auth_middleware.py` | Sets `AuthContext(username, is_admin, workspace)` | No change needed | UNCHANGED |
+| `bridge/user.py` | `get_request_workspace()` exists | No change needed | UNCHANGED |
+| Frontend `http.ts` | No workspace header injection | Inject `X-MLFLOW-WORKSPACE` from workspace context | MODIFY |
+| Frontend `header.tsx` | No workspace picker | Add `WorkspacePicker` component | MODIFY |
+| Frontend `user-provider.tsx` | UserContext only | WorkspaceProvider wraps app | NEW (context) |
+| Frontend `workspace-service.ts` | List + permission fetchers | Add CRUD methods (create, update, delete) | MODIFY |
 
 ## Recommended Project Structure
 
@@ -135,288 +121,516 @@
 
 ```
 mlflow_oidc_auth/
-├── bridge/
-│   └── user.py                          # MODIFY: add get_request_workspace()
-├── db/
-│   └── models/
-│       ├── workspace.py                 # NEW: SqlWorkspace model
-│       ├── workspace_permission.py      # NEW: SqlWorkspacePermission model
-│       └── registered_model_permission.py  # MODIFY: add workspace column
-├── entities/
-│   ├── workspace.py                     # NEW: Workspace entity dataclass
-│   └── workspace_permission.py          # NEW: WorkspacePermission entity
-├── models/
-│   └── workspace.py                     # NEW: Pydantic models for workspace API
-├── repository/
-│   ├── workspace.py                     # NEW: WorkspaceRepository
-│   └── workspace_permission.py          # NEW: WorkspacePermissionRepository
 ├── routers/
-│   └── workspace.py                     # NEW: workspace_router (CRUD + permissions)
+│   ├── workspace.py                     # NEW: workspace CRUD proxy router (5 endpoints)
+│   ├── workspace_permissions.py         # MODIFY: add regex + group-regex endpoints
+│   ├── _prefix.py                       # MODIFY: add WORKSPACE_ROUTER_PREFIX
+│   └── __init__.py                      # MODIFY: register workspace_router
 ├── validators/
-│   └── workspace.py                     # NEW: workspace access validators
+│   └── workspace.py                     # MODIFY: MANAGE delegation for update/delete
 ├── hooks/
-│   ├── before_request.py                # MODIFY: workspace-gated creation checks
-│   └── after_request.py                 # MODIFY: workspace-scoped auto-grants & filters
-├── middleware/
-│   └── auth_middleware.py               # MODIFY: extract workspace from header/claim
+│   └── after_request.py                 # MODIFY: workspace-scoped search filtering
 ├── utils/
-│   ├── permissions.py                   # MODIFY: workspace fallback in resolution chain
-│   └── workspace.py                     # NEW: workspace context utilities
-├── config.py                            # MODIFY: add ENABLE_WORKSPACES config flag
-└── sqlalchemy_store.py                  # MODIFY: add workspace-related store methods
+│   └── workspace_cache.py              # MODIFY: add regex/group-regex lookup
+├── db/
+│   ├── models/
+│   │   └── workspace.py                 # MODIFY: add SqlWorkspaceRegexPermission,
+│   │                                    #         SqlWorkspaceGroupRegexPermission
+│   └── migrations/
+│       └── versions/
+│           └── xxxx_add_workspace_regex_permissions.py  # NEW: Alembic migration
+├── entities/
+│   └── workspace.py                     # MODIFY: add regex + group-regex entities
+├── models/
+│   └── workspace.py                     # MODIFY: add Pydantic models for CRUD + regex
+├── repository/
+│   ├── workspace_regex_permission.py          # NEW: extends BaseRegexPermissionRepository
+│   └── workspace_group_regex_permission.py    # NEW: extends BaseGroupRegexPermissionRepository
+├── sqlalchemy_store.py                  # MODIFY: add workspace regex methods
+└── store.py                             # MODIFY: expose new store methods
 ```
 
 ### New/Modified Frontend Files
 
 ```
 web-react/src/
-├── features/
-│   └── workspaces/                      # NEW: workspace management feature
-│       ├── index.tsx
-│       ├── components/
-│       │   ├── workspace-list.tsx
-│       │   ├── workspace-detail.tsx
-│       │   ├── workspace-create.tsx
-│       │   └── workspace-members.tsx
-│       ├── hooks/
-│       │   └── use-workspaces.ts
-│       └── services/
-│           └── workspace-api.ts
 ├── core/
 │   ├── context/
-│   │   └── workspace-context.tsx        # NEW: active workspace state
-│   ├── components/
-│   │   └── workspace-switcher.tsx       # NEW: workspace selector in nav
+│   │   ├── workspace-provider.tsx       # NEW: WorkspaceContext + WorkspaceProvider
+│   │   └── use-workspace.ts             # NEW: useWorkspace hook
+│   ├── services/
+│   │   ├── http.ts                      # MODIFY: inject X-MLFLOW-WORKSPACE header
+│   │   └── workspace-service.ts         # MODIFY: add CRUD fetchers
 │   └── configs/
-│       └── api-endpoints.ts             # MODIFY: add workspace endpoints
-└── app.tsx                              # MODIFY: add workspace routes
+│       └── api-endpoints.ts             # MODIFY: add workspace CRUD endpoints
+├── shared/
+│   ├── components/
+│   │   ├── header.tsx                   # MODIFY: add WorkspacePicker
+│   │   └── workspace-picker.tsx         # NEW: dropdown component
+│   └── types/
+│       └── entity.ts                    # MODIFY: add workspace CRUD types
+├── features/
+│   └── workspaces/
+│       ├── workspaces-page.tsx          # MODIFY: add create/delete workspace actions
+│       ├── workspace-detail-page.tsx    # MODIFY: add update/delete workspace actions
+│       └── components/
+│           ├── workspace-create-form.tsx     # NEW
+│           ├── workspace-edit-form.tsx       # NEW
+│           └── workspace-delete-dialog.tsx   # NEW
+└── app.tsx                              # No change (routes already exist)
 ```
 
 ### Structure Rationale
 
-- **`bridge/user.py` extended (not new file):** Workspace context follows the same pattern as username — extracted from `environ["mlflow_oidc_auth"]`. One file, two concerns, minimal API surface.
-- **`db/models/workspace.py` + `workspace_permission.py` as separate files:** Follows existing convention of one model per file. Workspace and workspace permissions are distinct entities.
-- **`validators/workspace.py` new file:** Workspace access checks are conceptually separate from resource-level validators. Keeps single responsibility.
-- **`utils/workspace.py` new file:** Constants (`DEFAULT_WORKSPACE_NAME`), feature flag checks (`is_workspaces_enabled()`), workspace resolution logic. Reused across middleware, hooks, validators.
-- **Frontend `workspaces/` feature:** Follows existing feature-module convention (like `experiments/`, `groups/`). Self-contained with components, hooks, services.
-- **Frontend `workspace-context.tsx`:** Global state for active workspace. All API calls include workspace header when context is set.
+- **`routers/workspace.py` as separate new router (not merged into workspace_permissions.py):** Workspace CRUD proxy handles workspace *lifecycle* (create/list/get/update/delete workspace entities). Workspace permissions handles *access control*. Different concerns, different URL prefixes (`/api/3.0/mlflow/workspaces` vs `/api/3.0/mlflow/permissions/workspaces`). This also matches the split upstream MLflow has between workspace RPCs and workspace permission RPCs.
+- **Regex repos use base classes (unlike standalone workspace repos):** The existing standalone `WorkspacePermissionRepository` and `WorkspaceGroupPermissionRepository` were intentionally standalone because workspace is a tenant boundary, not a typical resource (decision WSAUTH-B). However, regex workspace permissions behave identically to regex permissions for any other resource type — they have `regex`, `priority`, `permission`, and `user_id`/`group_id` columns. Using `BaseRegexPermissionRepository` and `BaseGroupRegexPermissionRepository` avoids re-implementing the same grant/get/list/update/revoke logic.
+- **Frontend `workspace-provider.tsx` as separate context (not extending UserProvider):** Workspace selection is orthogonal to user identity. A user's workspace choice changes frequently during a session; their identity doesn't. Separate contexts mean workspace changes don't re-render components that only care about user identity.
+- **`http.ts` modification for header injection:** The `http()` function is the single point where all API calls flow through. Adding the workspace header here means every API call automatically includes workspace context. The alternative (each service adding the header) is error-prone and violates DRY.
 
 ## Architectural Patterns
 
-### Pattern 1: Feature-Gated Workspace Support
+### Pattern 1: FastAPI Proxy Router for Upstream Workspace CRUD
 
-**What:** All workspace behavior is gated behind an `ENABLE_WORKSPACES` config flag (env var `MLFLOW_OIDC_AUTH_ENABLE_WORKSPACES`). When disabled, the system behaves identically to today — zero behavioral changes for existing deployments.
+**What:** A new FastAPI router that intercepts workspace CRUD requests, performs auth checks, then forwards them to MLflow's Flask app via an internal HTTP call (or by letting the request fall through to Flask via the WSGI bridge).
 
-**When to use:** Always. This is the compatibility strategy.
+**When to use:** For all workspace lifecycle operations (create, list, get, update, delete) where the plugin needs to enforce authorization but doesn't own the data.
 
 **Trade-offs:**
-- Pro: Zero risk to existing deployments; gradual rollout possible; easy to disable if issues arise
-- Con: Every workspace code path needs `if workspaces_enabled` guards; slight code complexity increase
+- Pro: Plugin controls who can create/update/delete workspaces without duplicating upstream logic; clean separation of auth from lifecycle
+- Pro: Upstream MLflow handles actual workspace storage and validation
+- Con: Creates a request hop (FastAPI → internal HTTP → Flask); adds latency
+- Con: If upstream response format changes, proxy must adapt
 
-**Example:**
+**Recommended approach — passthrough with FastAPI dependency guards:**
+
 ```python
-# mlflow_oidc_auth/utils/workspace.py
-from mlflow_oidc_auth.config import app_config
+# mlflow_oidc_auth/routers/workspace.py
+from fastapi import APIRouter, Depends, Request, Response
+from mlflow_oidc_auth.dependencies import check_admin_permission, check_workspace_manage_permission
+from mlflow_oidc_auth.routers._prefix import WORKSPACE_ROUTER_PREFIX
 
-DEFAULT_WORKSPACE_NAME = "default"
-WORKSPACE_HEADER_NAME = "X-MLFLOW-WORKSPACE"
+workspace_router = APIRouter(prefix=WORKSPACE_ROUTER_PREFIX)
 
-def is_workspaces_enabled() -> bool:
-    return app_config.enable_workspaces
+@workspace_router.post("")
+async def create_workspace(
+    request: Request,
+    _=Depends(check_admin_permission),
+):
+    """Proxy workspace creation to MLflow upstream. Admin-only."""
+    # Forward the request body to MLflow's Flask app via httpx
+    # MLflow's Flask app at the same path handles the actual creation
+    ...
 
-def get_workspace_from_request(request) -> str:
-    """Extract workspace from request header, defaulting to 'default'."""
-    if not is_workspaces_enabled():
-        return DEFAULT_WORKSPACE_NAME
-    return request.headers.get(WORKSPACE_HEADER_NAME, DEFAULT_WORKSPACE_NAME)
+@workspace_router.put("/{workspace_name}")
+async def update_workspace(
+    workspace_name: str,
+    request: Request,
+    _=Depends(check_workspace_manage_permission),  # Admin OR MANAGE
+):
+    """Proxy workspace update. Admin or workspace MANAGE."""
+    ...
+
+@workspace_router.delete("/{workspace_name}")
+async def delete_workspace(
+    workspace_name: str,
+    request: Request,
+    _=Depends(check_workspace_manage_permission),  # Admin OR MANAGE
+):
+    """Proxy workspace deletion. Admin or workspace MANAGE."""
+    ...
 ```
 
-### Pattern 2: Workspace as Permission Fallback Layer
+**Why NOT let requests fall through to Flask:** Workspace CRUD requests currently pass through the Flask `before_request` hook which maps them to validators. This works for authorization but doesn't give us the ability to intercept the *response* (e.g., auto-grant MANAGE on workspace creation) cleanly. A FastAPI proxy router gives us pre- and post-processing control.
 
-**What:** Workspace permissions sit between resource-level permissions and the global default in the permission resolution chain. This matches upstream MLflow 3.10's approach exactly.
+**Alternative considered — before_request only:** Keep workspace CRUD flowing through Flask with `before_request` validators (already working). Problem: validators can only block/allow, they can't modify response or trigger side effects easily. The FastAPI router approach is more capable.
 
-**When to use:** For all resource permission checks when workspaces are enabled.
+**Recommended: Hybrid approach.** Keep the existing before_request validators as a safety net. Add FastAPI router as the primary entry point for workspace CRUD from the admin UI. The admin UI calls the FastAPI router directly; the MLflow SDK clients still hit Flask via passthrough.
+
+### Pattern 2: Workspace-Scoped Search Filtering via Experiment→Workspace Mapping
+
+**What:** Enhance `_filter_search_experiments()` and `_filter_search_registered_models()` in `after_request.py` to additionally filter results based on workspace membership, not just resource-level permissions.
+
+**When to use:** When workspaces are enabled and the user's request has workspace context.
 
 **Trade-offs:**
-- Pro: Aligns with upstream MLflow; workspace admins get blanket access without per-resource grants; reduces permission management overhead
-- Con: Adds a query to the resolution chain (mitigated by caching); more complex to reason about "what permission does user X have?"
+- Pro: Users only see resources belonging to workspaces they have access to
+- Pro: Builds on existing filtering infrastructure
+- Con: Requires knowing which workspace an experiment/model belongs to — this mapping lives in MLflow's workspace store, not our DB
+- Con: Additional latency per search result
 
-**Example:**
+**The key challenge: experiment→workspace mapping.** The plugin doesn't store which experiments belong to which workspaces. Upstream MLflow does. Two approaches:
+
+**Approach A — Filter on workspace permission only (simpler, recommended):**
+
+The existing `can_read_experiment()` already resolves through the workspace fallback chain. If a user has no resource-level permission and no workspace permission, `resolve_permission()` returns `NO_PERMISSIONS`. This means `can_read_experiment()` already returns `false` for experiments in workspaces the user can't access, **as long as the workspace context is correctly set in the request**.
+
+The real gap is: what if the user lists experiments without a workspace header (or with "default")? They could see experiments from other workspaces if those experiments have no explicit resource-level permissions that deny access.
+
+**Solution:** In `_filter_search_experiments()`, resolve each experiment's workspace (from upstream) and check that the user has permission for *that* workspace, not just the request's workspace header.
+
 ```python
-# Conceptual flow in utils/permissions.py
-def get_permission(username, resource_type, resource_id, workspace):
-    # 1. Try resource-level (existing: user → group → regex → group-regex)
-    resource_perm = get_resource_level_permission(username, resource_type, resource_id)
-    if resource_perm is not None:
-        return resource_perm
-
-    # 2. NEW: Try workspace-level (if workspaces enabled)
-    if is_workspaces_enabled() and workspace:
-        workspace_perm = get_workspace_permission(username, workspace)
-        if workspace_perm is not None:
-            return workspace_perm
-
-    # 3. Fall back to configured default
-    return get_default_permission()
+# Conceptual — in after_request.py _filter_search_experiments()
+def _filter_search_experiments(resp: Response):
+    if get_fastapi_admin_status():
+        return
+    # ... existing filtering ...
+    
+    if config.MLFLOW_ENABLE_WORKSPACES:
+        auth_context = get_auth_context()
+        for e in list(response_message.experiments):
+            exp_workspace = _get_experiment_workspace(e.experiment_id)
+            if exp_workspace and get_workspace_permission_cached(
+                auth_context.username, exp_workspace
+            ) is None:
+                response_message.experiments.remove(e)
 ```
 
-### Pattern 3: Upstream-Compatible Data Model
+**Approach B — Rely on existing permission resolution (do nothing extra):**
 
-**What:** Mirror MLflow 3.10's workspace data model in the plugin's own database, using the same entity names and column structures. This ensures the plugin can interoperate with upstream MLflow's workspace features if/when MLflow exposes workspace management APIs.
+If the permission resolution chain already returns `NO_PERMISSIONS` for resources in workspaces the user can't access, then `can_read_experiment()` handles it. **This is the case when workspace fallback returns `workspace-deny`.**
 
-**When to use:** For all new workspace-related DB schemas.
+Looking at the code: when `resolve_permission()` finds `result.kind == "fallback"` and workspaces are enabled, it checks workspace permission. If no workspace permission, it returns `PermissionResult(NO_PERMISSIONS, "workspace-deny")`. This means `can_read_experiment()` → `permission.can_read` → `False`.
 
-**Trade-offs:**
-- Pro: Future-proof; reduces impedance mismatch if upstream MLflow evolves; familiar to MLflow contributors
-- Con: May include columns/fields we don't immediately need; constrains our schema design choices
+**But there's a subtlety:** the workspace fallback uses `get_request_workspace()` (the *requester's* active workspace), not the experiment's actual workspace. If user is browsing "default" workspace but an experiment belongs to "team-alpha" with no explicit permissions, the fallback checks "default" workspace permission (which they have) and grants access — **data leakage**.
 
-**Key upstream models to mirror:**
+**Conclusion: Approach A is necessary.** We must check the experiment's *own* workspace, not just the request workspace.
 
-| Upstream MLflow Model | Plugin Equivalent | Notes |
-|----------------------|-------------------|-------|
-| `SqlWorkspacePermission` (workspace, user_id, permission) | `SqlWorkspacePermission` (workspace, user_id, permission) | Same composite PK |
-| `workspace` column on `SqlRegisteredModelPermission` | `workspace` column on plugin's model permission | Nullable, defaults to "default" |
-| `DEFAULT_WORKSPACE_NAME = "default"` | Same constant | All existing resources belong to "default" |
+**How to get experiment→workspace mapping:** MLflow upstream's `get_experiment()` response includes workspace info (the `workspace` field on the experiment proto). The `_filter_search_experiments()` function already has the experiment proto objects in hand — check if they have a workspace field.
 
-### Pattern 4: Header-Based Workspace Propagation (Not URL-Based)
+### Pattern 3: Regex Workspace Permissions via Base Repository Classes
 
-**What:** Workspace context travels via `X-MLFLOW-WORKSPACE` HTTP header, not URL path segments. This matches upstream MLflow 3.10's approach and avoids breaking the MLflow client SDK's URL structure.
+**What:** Add regex-based workspace permissions following the same 4-variant pattern used by all other resource types: user-regex and group-regex. Use the existing `BaseRegexPermissionRepository` and `BaseGroupRegexPermissionRepository` base classes.
 
-**When to use:** All API requests that need workspace scoping.
+**When to use:** When organizations want pattern-based workspace access (e.g., "grant READ to all workspaces matching `team-*`").
 
 **Trade-offs:**
-- Pro: No URL changes needed; MLflow client SDK remains compatible; middleware can inject header transparently
-- Con: Less visible in logs/URLs; requires all clients to set the header; easy to forget
+- Pro: Consistent with all other resource types; proven pattern
+- Pro: Base classes already handle grant/get/list/update/revoke — minimal new code
+- Pro: Enables bulk workspace provisioning via patterns
+- Con: Adds 2 new DB tables + migration
+- Con: Workspace cache must add regex/group-regex lookup
 
-**Why not URL-based:** MLflow's API URLs are defined by protobuf service definitions (e.g., `/api/2.0/mlflow/experiments/create`). The plugin cannot change these URLs without breaking MLflow client compatibility. Header-based scoping is the only viable approach.
+**Example — new repo using base class:**
+
+```python
+# mlflow_oidc_auth/repository/workspace_regex_permission.py
+from mlflow_oidc_auth.db.models.workspace import SqlWorkspaceRegexPermission
+from mlflow_oidc_auth.entities.workspace import WorkspaceRegexPermission
+from mlflow_oidc_auth.repository._base import BaseRegexPermissionRepository
+
+class WorkspaceRegexPermissionRepository(
+    BaseRegexPermissionRepository[SqlWorkspaceRegexPermission, WorkspaceRegexPermission]
+):
+    model_class = SqlWorkspaceRegexPermission
+```
+
+**Integration into workspace cache:**
+
+```python
+# In workspace_cache.py _lookup_workspace_permission()
+def _lookup_workspace_permission(username: str, workspace: str) -> Permission | None:
+    # 1. Implicit default workspace (existing)
+    if workspace == "default" and config.GRANT_DEFAULT_WORKSPACE_ACCESS:
+        return MANAGE
+
+    # 2. User-level direct (existing)
+    try:
+        perm = store.get_workspace_permission(workspace, username)
+        return get_permission(perm.permission)
+    except Exception:
+        pass
+
+    # 3. Group-level direct (existing)
+    try:
+        perm = store.get_user_groups_workspace_permission(workspace, username)
+        return get_permission(perm.permission)
+    except Exception:
+        pass
+
+    # 4. User-regex (NEW)
+    try:
+        regexes = store.list_workspace_regex_permissions(username)
+        perm = _match_regex_permission(regexes, workspace, "workspace")
+        return get_permission(perm)
+    except Exception:
+        pass
+
+    # 5. Group-regex (NEW)
+    try:
+        group_ids = store.get_groups_ids_for_user(username)
+        regexes = store.list_group_workspace_regex_permissions_for_groups_ids(group_ids)
+        perm = _match_regex_permission(regexes, workspace, "workspace")
+        return get_permission(perm)
+    except Exception:
+        pass
+
+    return None
+```
+
+### Pattern 4: Global Workspace Picker via React Context + HTTP Header Injection
+
+**What:** A `WorkspaceContext` that holds the user's currently selected workspace. A `WorkspacePicker` dropdown in the header. The `http()` utility automatically injects `X-MLFLOW-WORKSPACE` header based on context value.
+
+**When to use:** When workspaces are enabled (`workspacesEnabled` in RuntimeConfig).
+
+**Trade-offs:**
+- Pro: All API calls automatically scoped — no per-service modification needed
+- Pro: Workspace selection persists across page navigation
+- Con: Context change triggers re-renders of consuming components — must memoize carefully
+- Con: Need to handle workspace list loading at app startup
+
+**Implementation sketch:**
+
+```typescript
+// core/context/workspace-provider.tsx
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { fetchAllWorkspaces } from "../services/workspace-service";
+import { useRuntimeConfig } from "../context/use-runtime-config";
+
+interface WorkspaceContextValue {
+  activeWorkspace: string | null;
+  setActiveWorkspace: (ws: string) => void;
+  workspaces: string[];
+  isLoading: boolean;
+}
+
+const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
+
+export function WorkspaceProvider({ children }: { children: ReactNode }) {
+  const config = useRuntimeConfig();
+  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!config.workspacesEnabled) {
+      setIsLoading(false);
+      return;
+    }
+    fetchAllWorkspaces()
+      .then((resp) => {
+        const names = resp.workspaces.map((ws) => ws.name);
+        setWorkspaces(names);
+        setActiveWorkspace(names[0] ?? "default");
+      })
+      .finally(() => setIsLoading(false));
+  }, [config.workspacesEnabled]);
+
+  return (
+    <WorkspaceContext value={{
+      activeWorkspace,
+      setActiveWorkspace,
+      workspaces,
+      isLoading,
+    }}>
+      {children}
+    </WorkspaceContext>
+  );
+}
+
+export function useWorkspace() {
+  const ctx = useContext(WorkspaceContext);
+  if (!ctx) throw new Error("useWorkspace must be used within WorkspaceProvider");
+  return ctx;
+}
+```
+
+```typescript
+// core/services/http.ts — MODIFIED
+// Add workspace header injection
+import { getActiveWorkspace } from "../context/workspace-store";
+
+export async function http<T = unknown>(
+  url: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const { params, ...rest } = options;
+  const workspace = getActiveWorkspace(); // module-level getter
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(rest.headers || {}),
+  };
+  if (workspace) {
+    headers["X-MLFLOW-WORKSPACE"] = workspace;
+  }
+  const res = await fetch(buildUrl(url, params), {
+    ...rest,
+    headers,
+    credentials: "include",
+  });
+  // ... rest unchanged
+}
+```
+
+**Challenge with React Context + module-level http.ts:** The `http()` function is a plain module, not a React component — it can't use `useContext()`. Two solutions:
+
+1. **Module-level store (recommended):** A tiny module that holds the active workspace value, updated by `WorkspaceProvider` via a setter. `http.ts` reads from this module.
+2. **Pass header per-call:** Each service explicitly passes workspace. Violates DRY.
+
+```typescript
+// core/context/workspace-store.ts — module-level state (NOT React context)
+let _activeWorkspace: string | null = null;
+
+export function setActiveWorkspace(ws: string | null) {
+  _activeWorkspace = ws;
+}
+export function getActiveWorkspace(): string | null {
+  return _activeWorkspace;
+}
+```
+
+The `WorkspaceProvider` calls `setActiveWorkspace()` whenever the context value changes, keeping the module-level state in sync with React state.
 
 ## Data Flow
 
-### Request Flow (With Workspaces)
+### Workspace CRUD Request Flow (NEW)
 
 ```
-Client Request (with X-MLFLOW-WORKSPACE: "team-alpha")
+Admin UI: "Create Workspace"
     ↓
-ProxyHeadersMiddleware (no change)
+POST /api/3.0/mlflow/workspaces (to FastAPI)
     ↓
-AuthMiddleware
-    → Authenticate user (Basic/Bearer/Session) — existing
-    → Extract workspace from X-MLFLOW-WORKSPACE header — NEW
-    → Set scope["mlflow_oidc_auth"] = {username, is_admin, workspace} — MODIFIED
+workspace_router.create_workspace()
+    → Depends(check_admin_permission) ← FastAPI dependency
+    → Forward request body to MLflow Flask app
     ↓
-Route Match?
-    ├── FastAPI route → Router handles directly (workspace in request context)
-    └── MLflow route → AuthAwareWSGIMiddleware
-                           ↓
-                       Flask environ["mlflow_oidc_auth"] = {username, is_admin, workspace}
-                           ↓
-                       before_request hook
-                           → get_request_workspace() from environ — NEW
-                           → Validator checks:
-                              1. Is user admin? → bypass
-                              2. Resource-level permission? → allow/deny
-                              3. Workspace-level permission? → allow/deny — NEW
-                              4. Global default → allow/deny
-                           ↓
-                       MLflow processes request
-                           ↓
-                       after_request hook
-                           → Auto-grant includes workspace context — NEW
-                           → Search filter respects workspace boundaries — NEW
+MLflow Flask app processes workspace creation
+    ↓
+FastAPI router receives response
+    → Auto-grant MANAGE to creator (store.create_workspace_permission)
+    → Invalidate workspace cache if needed
+    → Return response to client
 ```
 
-### Permission Resolution Flow (Updated)
-
 ```
-validate_can_read_experiment(experiment_id)
+Admin UI: "Update Workspace"
     ↓
-username = get_request_username()
-workspace = get_request_workspace()  ← NEW
+PUT /api/3.0/mlflow/workspaces/{name} (to FastAPI)
     ↓
-┌─ Resource-Level Resolution (existing, unchanged) ─────────┐
-│  For resolver in configured_order [user, group, regex, …]: │
-│    permission = resolver.check(username, experiment_id)     │
-│    if permission found → return permission                  │
-└────────────────────────────────────────────────────────────┘
-    ↓ (no resource-level permission found)
-┌─ Workspace-Level Resolution (NEW) ────────────────────────┐
-│  if workspaces_enabled AND workspace != None:              │
-│    wp = store.get_workspace_permission(workspace, user_id) │
-│    if wp found → return wp.permission                      │
-└────────────────────────────────────────────────────────────┘
-    ↓ (no workspace-level permission found)
-┌─ Global Default ──────────────────────────────────────────┐
-│  return app_config.default_permission  (e.g., READ)        │
-└────────────────────────────────────────────────────────────┘
+workspace_router.update_workspace()
+    → Depends(check_workspace_manage_permission) ← Admin OR MANAGE
+    → Forward to MLflow Flask app
+    ↓
+Response back to client
 ```
 
-### Workspace Context Extraction Flow
+### Workspace-Scoped Search Filtering (MODIFIED)
 
 ```
-Request arrives
+MLflow SDK: SearchExperiments()
     ↓
-┌─ Source 1: X-MLFLOW-WORKSPACE header ─────────────┐
-│  Most common. Set by MLflow client SDK or manually. │
-│  Direct, explicit.                                   │
-└───────────────────────────────────────────────────────┘
-    ↓ (header not present)
-┌─ Source 2: OIDC claim mapping (optional) ─────────┐
-│  Map OIDC "org" or "workspace" claim to workspace. │
-│  Configured via MLFLOW_OIDC_AUTH_WORKSPACE_CLAIM.   │
-│  Useful for SSO-driven workspace assignment.        │
-└───────────────────────────────────────────────────────┘
-    ↓ (no claim or no mapping configured)
-┌─ Source 3: Default workspace ─────────────────────┐
-│  Fall back to "default" workspace.                  │
-│  All pre-existing resources live here.              │
-└───────────────────────────────────────────────────────┘
+Flask after_request_hook → _filter_search_experiments()
+    ↓
+For each experiment in response:
+    1. can_read_experiment(experiment_id, username)  ← EXISTING
+       → resolve_permission() → resource → workspace fallback → default
+    2. IF workspaces enabled:                        ← NEW
+       experiment_workspace = experiment.tags.get("workspace") or infer
+       user_has_workspace_access = get_workspace_permission_cached(
+           username, experiment_workspace
+       )
+       if not user_has_workspace_access:
+           remove experiment from response
+    ↓
+Filtered response back to client
+```
+
+### Regex Workspace Permission Resolution (MODIFIED)
+
+```
+get_workspace_permission_cached(username, workspace_name)
+    ↓
+Cache miss → _lookup_workspace_permission()
+    ↓
+1. Is "default" workspace + GRANT_DEFAULT_WORKSPACE_ACCESS?  ← EXISTING
+   → Return MANAGE
+    ↓
+2. User-level: store.get_workspace_permission()              ← EXISTING
+   → Found? Return permission
+    ↓
+3. Group-level: store.get_user_groups_workspace_permission() ← EXISTING
+   → Found? Return highest permission
+    ↓
+4. User-regex: store.list_workspace_regex_permissions()      ← NEW
+   → Any regex matches workspace_name? Return permission
+    ↓
+5. Group-regex: store.list_group_workspace_regex_permissions() ← NEW
+   → Any regex matches workspace_name? Return permission
+    ↓
+6. None found → Return None (no workspace access)
+```
+
+### Global Workspace Picker State Flow (NEW)
+
+```
+App loads → RuntimeConfig → workspacesEnabled?
+    ↓ YES
+WorkspaceProvider mounts
+    → fetchAllWorkspaces() (filtered by user permissions via after_request)
+    → setWorkspaces([...])
+    → setActiveWorkspace(first workspace or "default")
+    → setActiveWorkspace also calls workspace-store.setActiveWorkspace()
+    ↓
+Header renders WorkspacePicker
+    → Shows dropdown with workspace names
+    → On selection: setActiveWorkspace(newWorkspace)
+    → workspace-store synced, http.ts reads new value
+    ↓
+All subsequent API calls from admin UI
+    → http() reads getActiveWorkspace()
+    → Adds X-MLFLOW-WORKSPACE header to every request
+    ↓
+Backend receives request with workspace context
+    → Permission resolution uses workspace from header
+    → Search results filtered by workspace
+    → Admin pages show workspace-scoped data
 ```
 
 ### Key Data Flows
 
-1. **Workspace creation:** Admin calls `POST /api/2.0/mlflow/workspaces` → FastAPI workspace router → WorkspaceRepository.create() → DB insert. Creator gets MANAGE permission auto-granted.
-2. **Resource creation in workspace:** Client sets `X-MLFLOW-WORKSPACE: team-alpha` + `POST /api/2.0/mlflow/experiments/create` → before_request checks user has MANAGE on workspace "team-alpha" → MLflow creates experiment → after_request auto-grants MANAGE scoped to workspace.
-3. **Cross-workspace search filtering:** User lists experiments → after_request filter removes experiments from workspaces where user has NO_PERMISSIONS or no workspace access.
-4. **Workspace permission grant:** Admin calls workspace permissions API → WorkspacePermissionRepository.create() → User now has fallback permission level for all resources in that workspace.
+1. **Workspace CRUD:** Admin UI → FastAPI proxy router → auth check → forward to MLflow Flask → response → auto-grant MANAGE → return to UI
+2. **Search filtering:** MLflow returns all results → after_request checks both resource permissions AND workspace membership → removes unauthorized experiments/models
+3. **Regex workspace access:** User has no direct workspace permission → cache checks user-regex patterns → "team-.*" matches "team-alpha" → grants READ
+4. **Workspace picker:** User selects workspace in header → module-level store updated → all API calls include new workspace header → backend scopes all responses
 
 ## Scaling Considerations
 
 | Scale | Architecture Adjustments |
 |-------|--------------------------|
-| 1-10 workspaces | No special handling. "default" workspace covers single-tenant. All queries fast. |
-| 10-100 workspaces | Add DB indexes on workspace columns. Cache workspace memberships in memory (TTLCache, matching upstream pattern). |
-| 100+ workspaces | Consider read replicas for permission checks. Workspace permission cache becomes critical. May need workspace-partitioned permission tables. |
+| 1-10 workspaces | No special handling. TTLCache handles the few lookups. Regex workspace permissions are low-value (just use direct grants). |
+| 10-100 workspaces | Regex workspace permissions become valuable (pattern-match "team-*" instead of 50 individual grants). Cache benefits grow. Consider DB index on workspace_regex_permissions.regex column. |
+| 100+ workspaces | Workspace picker dropdown becomes unwieldy — needs search/filter UI. Regex permissions are essential for manageability. Experiment→workspace mapping lookups in after_request become a bottleneck — consider batch lookup or cache. |
 
 ### Scaling Priorities
 
-1. **First bottleneck — permission resolution queries:** Adding workspace as a fallback layer means one additional DB query per request when no resource-level permission matches. **Mitigation:** TTLCache on workspace permissions (upstream MLflow uses this exact strategy with `cachetools.TTLCache`). Cache key: `(workspace, user_id)`. TTL: 30-60 seconds.
-2. **Second bottleneck — search result filtering:** Filtering results by workspace membership requires knowing which workspaces a user belongs to. **Mitigation:** Cache user's workspace memberships at authentication time (in the auth context dict). Avoids per-result DB lookups.
+1. **First bottleneck — after_request experiment→workspace lookups:** In `_filter_search_experiments()`, if we need to check each experiment's workspace, that's N queries per search page. **Mitigation:** Batch lookup (get all experiment workspaces in one query) or cache experiment→workspace mapping. Upstream MLflow may expose a batch API for this.
+2. **Second bottleneck — workspace picker API call on app load:** `fetchAllWorkspaces()` with user filtering. With 100+ workspaces, the filtered list scan in `_filter_list_workspaces()` touches every workspace. **Mitigation:** DB-side filtering (query only workspaces where user has permission) instead of fetch-all-then-filter.
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Workspace as URL Path Segment
+### Anti-Pattern 1: Workspace CRUD Router That Duplicates MLflow's Workspace Store
 
-**What people do:** Add `/workspace/{workspace_id}/` prefix to all API URLs (e.g., `/api/2.0/mlflow/workspace/team-alpha/experiments/list`).
-**Why it's wrong:** MLflow client SDK generates URLs from protobuf definitions. Changing URL structure breaks all existing MLflow clients. The plugin cannot control client-side URL generation.
-**Do this instead:** Use `X-MLFLOW-WORKSPACE` header. Clients set it once; all subsequent calls are scoped. Transparent to MLflow client SDK.
+**What people do:** Create workspace entities in the plugin's own database, maintaining a parallel workspace store that duplicates MLflow's upstream `_get_workspace_store()`.
+**Why it's wrong:** Two sources of truth for workspace existence. If upstream MLflow adds or removes a workspace (e.g., via API, migration), the plugin's copy is stale. Creates sync nightmares.
+**Do this instead:** Plugin manages workspace *permissions* only. Workspace *existence* (create/list/get/update/delete) is proxied to upstream MLflow. The plugin's DB has `workspace_permissions`, `workspace_group_permissions`, etc. — but no `workspaces` table.
 
-### Anti-Pattern 2: Hard Workspace Isolation (No Cross-Workspace Access)
+### Anti-Pattern 2: Filtering Experiments by Request Workspace Header Only
 
-**What people do:** Treat workspaces as absolute security boundaries where resources can NEVER be accessed from another workspace context.
-**Why it's wrong:** Legitimate use cases exist: shared models, cross-team experiments, platform-wide scorers. Hard isolation forces resource duplication.
-**Do this instead:** Workspace-level permissions control default access. Resource-level permissions can explicitly grant cross-workspace access. Admin can mark specific resources as "shared" across workspaces.
+**What people do:** In `_filter_search_experiments()`, check workspace permission using only `get_request_workspace()` (the X-MLFLOW-WORKSPACE header value).
+**Why it's wrong:** If the user searches without a workspace header (or with "default"), they could see experiments from any workspace, as long as those experiments have no explicit deny permissions. The header represents the user's *requested* scope, not the experiment's *actual* workspace.
+**Do this instead:** For each experiment in results, determine the experiment's actual workspace (from its tags or upstream metadata) and check workspace permission for *that* workspace. This prevents cross-workspace data leakage.
 
-### Anti-Pattern 3: Duplicating Upstream MLflow's Workspace Store
+### Anti-Pattern 3: Workspace Picker That Re-renders the Entire App
 
-**What people do:** Create a separate parallel workspace store in the plugin that duplicates MLflow's `_get_workspace_store()` functionality.
-**Why it's wrong:** MLflow 3.10 has its own workspace store (`MLFLOW_WORKSPACE_STORE_URI`). Duplicating it creates two sources of truth for workspace→resource mappings.
-**Do this instead:** The plugin should manage workspace *permissions* (who can access which workspace) and *metadata* (workspace display names, OIDC claim mappings). Let upstream MLflow manage workspace→resource mappings. The plugin's job is authorization, not resource cataloging.
+**What people do:** Use React Context for workspace state and have every component consume it via `useContext`.
+**Why it's wrong:** Changing the workspace re-renders all consuming components simultaneously. With many admin pages and data tables, this causes a visible UI freeze.
+**Do this instead:** Use a module-level store for the workspace value (not React Context for the actual value). React Context provides the setter + workspace list. Individual pages react to workspace changes via their own data-fetching hooks, which trigger on workspace change. This decouples re-render scope.
 
-### Anti-Pattern 4: Workspace-Scoping All 28 Permission Tables
+### Anti-Pattern 4: Adding Regex Workspace Permissions Without Using Base Classes
 
-**What people do:** Add a `workspace` column to every single permission table (28 tables × 4 variants = 112 column additions).
-**Why it's wrong:** Most resource types (experiments, prompts, scorers) don't have workspace scoping in upstream MLflow. Only registered models have a `workspace` column upstream. Adding workspace to all tables is premature and creates massive migration complexity.
-**Do this instead:** Follow upstream MLflow's lead: add `workspace` column only to registered model permissions initially. Use workspace-level permissions as the general fallback mechanism. Expand per-resource workspace scoping later if upstream MLflow adds it.
+**What people do:** Implement `WorkspaceRegexPermissionRepository` from scratch with custom grant/get/list/update/revoke methods.
+**Why it's wrong:** Duplicates ~300 lines of proven code from `BaseRegexPermissionRepository`. Inconsistencies between workspace regex and other resource regex repos become maintenance burden.
+**Do this instead:** Extend `BaseRegexPermissionRepository[SqlWorkspaceRegexPermission, WorkspaceRegexPermission]`. Override nothing unless workspace-specific behavior is needed. The base class handles everything via `model_class` class attribute.
 
 ## Integration Points
 
@@ -424,132 +638,129 @@ Request arrives
 
 | Service | Integration Pattern | Notes |
 |---------|---------------------|-------|
-| OIDC Provider | Workspace claim extraction from ID token | Optional. Configure via `MLFLOW_OIDC_AUTH_WORKSPACE_CLAIM` env var. Maps OIDC claim (e.g., `org`, `groups`) to workspace name. |
-| MLflow Client SDK | `X-MLFLOW-WORKSPACE` header injection | Clients must be configured to send the header. Python SDK: set via `mlflow.set_workspace()` or env var `MLFLOW_WORKSPACE`. |
-| Upstream MLflow Auth | Workspace permission resolution | Plugin replaces upstream's `_get_permission_from_store_or_default` with its own enhanced version that adds group/regex/group-regex resolution. Must preserve upstream's workspace fallback behavior. |
-| MLflow Workspace Store | Resource→workspace mapping | Plugin does NOT manage this. Upstream MLflow maps resources to workspaces via `MLFLOW_WORKSPACE_STORE_URI`. Plugin queries this mapping for authorization decisions. |
+| MLflow Workspace API (`/api/3.0/mlflow/workspaces`) | FastAPI proxy router forwards CRUD requests | `PUBLIC_UNDOCUMENTED` API — monitor for breaking changes. Plugin adds auth layer on top. |
+| MLflow Experiment Store | Query experiment→workspace mapping in after_request | Needed for workspace-scoped search filtering. May need to use `_get_tracking_store().get_experiment()` or inspect experiment tags. |
+| MLflow Model Registry Store | Query model→workspace mapping in after_request | Same pattern as experiments. Check if `registered_model.tags` contains workspace info. |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| AuthMiddleware → Bridge | ASGI scope dict → WSGI environ dict | `workspace` field added to existing `mlflow_oidc_auth` dict. AuthAwareWSGIMiddleware copies dict wholesale — no code change needed on the bridge transport. |
-| Bridge → Validators | Python function call (`get_request_workspace()`) | New function in `bridge/user.py`. Same pattern as `get_request_username()`. |
-| Validators → Permission Resolution | Python function call | `get_permission_from_store_or_default()` gains optional `workspace` parameter. Backward-compatible: defaults to None (no workspace fallback). |
-| Permission Resolution → Store | Python function call | New store methods: `get_workspace_permission(workspace, user_id)`, `list_workspace_permissions(workspace)`, `create_workspace_permission(...)`, etc. |
-| FastAPI Routers → Store | Python function call | New workspace router calls store directly, same pattern as existing permission routers. |
-| Frontend → Backend | HTTP REST API | New endpoints under `/api/2.0/mlflow/workspaces/`. Workspace context sent via header on all requests. |
-
-## Migration Strategy
-
-### Database Migration Plan
-
-**Phase 1 — Additive only (no breaking changes):**
-
-```sql
--- New tables
-CREATE TABLE workspaces (
-    name VARCHAR(255) PRIMARY KEY,
-    display_name VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE workspace_permissions (
-    workspace VARCHAR(255) NOT NULL,
-    user_id INTEGER NOT NULL,
-    permission VARCHAR(255) NOT NULL,
-    PRIMARY KEY (workspace, user_id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
--- Seed default workspace
-INSERT INTO workspaces (name, display_name) VALUES ('default', 'Default Workspace');
-```
-
-**Phase 2 — Extend registered model permissions:**
-
-```sql
--- Add nullable workspace column (backward-compatible)
-ALTER TABLE registered_model_permissions
-    ADD COLUMN workspace VARCHAR(255) DEFAULT 'default';
-
--- Update unique constraint to include workspace
--- (requires migration: drop old constraint, add new one)
-```
-
-**Phase 3 — Optional: workspace-scoped groups:**
-
-```sql
--- Groups can optionally belong to a workspace
-ALTER TABLE groups ADD COLUMN workspace VARCHAR(255) DEFAULT NULL;
--- NULL = global group (backward-compatible)
--- Non-null = workspace-scoped group
-```
-
-### Existing Deployment Migration Path
-
-1. **Before upgrade:** All resources implicitly belong to "default" workspace. No workspace awareness.
-2. **After upgrade (workspaces disabled):** Feature flag off. Zero behavioral changes. Migration creates tables but they're unused.
-3. **After enabling workspaces:** All existing resources are in "default" workspace. All existing users have no workspace permissions (fall through to global default, preserving current behavior). Admins explicitly create new workspaces and assign permissions.
-4. **No data loss:** Existing permission tables unchanged. New tables are additive.
-
-## Alignment with Upstream MLflow 3.10
-
-### What Upstream MLflow 3.10 Provides
-
-| Feature | Status | Plugin Interaction |
-|---------|--------|-------------------|
-| `MLFLOW_ENABLE_WORKSPACES` env var | Upstream controls this | Plugin should respect it AND have its own flag |
-| `X-MLFLOW-WORKSPACE` header | Upstream reads this | Plugin extracts and validates before upstream sees it |
-| `WorkspacePermission` entity | Upstream defines it | Plugin uses its own enhanced version (adds group support) |
-| `SqlWorkspacePermission` table | Upstream owns this table | Plugin creates a parallel table in its own DB (different store URI) |
-| Workspace permission resolution | Upstream has basic user-level only | Plugin extends with group/regex/group-regex fallback |
-| Resource creation gating | Upstream checks MANAGE on workspace | Plugin does this in before_request hooks (intercepts before upstream) |
-| Workspace store (`MLFLOW_WORKSPACE_STORE_URI`) | Upstream manages resource→workspace mapping | Plugin does NOT duplicate — queries upstream's store for workspace membership |
-| `workspace_context` ContextVar | Upstream sets per-request | Plugin may need to also set this for upstream compatibility |
-
-### Plugin's Value-Add Over Upstream
-
-The plugin extends upstream's workspace model with capabilities upstream lacks:
-
-1. **Group-level workspace permissions:** Upstream only has user-level workspace permissions. Plugin adds group-level (assign entire groups to workspaces).
-2. **OIDC claim-based workspace assignment:** Upstream requires explicit header. Plugin can auto-derive workspace from OIDC identity provider claims.
-3. **Workspace management UI:** Upstream has no UI for workspace administration. Plugin's React SPA adds workspace CRUD, member management, permission visualization.
-4. **Regex-based workspace permissions:** Plugin's regex permission pattern could extend to workspace-level (e.g., grant READ to all workspaces matching `team-*`).
+| workspace_router → MLflow Flask | Internal HTTP (httpx) or WSGI bridge | FastAPI router proxies requests. Must preserve request headers including auth cookies. Use `httpx.AsyncClient` with `base_url` pointing to internal Flask app. |
+| after_request → workspace cache | Python function call | `get_workspace_permission_cached()` called per-experiment during search filtering. Hot path — cache is critical. |
+| workspace cache → regex repos | Python function call | New lookup steps for regex/group-regex. Same exception-based flow as direct lookups. |
+| WorkspaceProvider → workspace-store module | `setActiveWorkspace()` | Sync React state to module-level state so `http.ts` can read it without React Context. |
+| WorkspacePicker → WorkspaceProvider | `setActiveWorkspace()` via context | User selection updates both React context and module-level store. |
+| http.ts → workspace-store | `getActiveWorkspace()` | Every API call reads module-level workspace. No React dependency. |
+| workspace_permissions_router → store | Python function call | Existing pattern. New regex/group-regex endpoints follow exact same pattern as other resource regex permissions. |
 
 ## Build Order Implications
 
-Based on architecture analysis, the recommended build order is:
+Based on architecture analysis and dependency chains, the recommended build order within v1.1:
 
-### Phase 1: Foundation (Lowest Risk, Highest Dependency)
-**Build:** Feature flag, workspace config, workspace DB model + migration, bridge extension, workspace utility module.
-**Rationale:** Everything else depends on the workspace concept existing in the system. Additive changes only — nothing breaks.
+### Step 1: Regex Workspace Permissions (Backend Foundation)
 
-### Phase 2: Backend Core (Permission Model)
-**Build:** Workspace permission entity/model/repo, workspace permission resolution (fallback layer), workspace-level store methods.
-**Rationale:** Permission resolution is the core of the plugin. Getting this right before building APIs on top is critical.
+**Build:** DB models, Alembic migration, entity classes, repository classes (extending bases), store methods, router endpoints on `workspace_permissions_router`, workspace cache integration.
 
-### Phase 3: Backend API (Workspace Management)
-**Build:** Workspace CRUD router, workspace permission management router, before_request workspace validation, after_request workspace scoping.
-**Rationale:** Needs Phase 1 + 2. Enables testing of workspace behavior via API before building UI.
+**Rationale:** This is a pure backend additive change with zero impact on existing functionality. The new tables and repos follow established patterns exactly. Once merged, the permission resolution chain becomes complete (all 4 source types for workspaces). All subsequent steps benefit from having regex workspace permissions available.
 
-### Phase 4: Frontend (Workspace UI)
-**Build:** Workspace context/switcher, workspace management feature, workspace-scoped permission views.
-**Rationale:** Needs backend API (Phase 3) to function. Last in chain but high user-visibility.
+**Files touched:**
+- `db/models/workspace.py` (add 2 ORM models)
+- `db/migrations/versions/` (1 new migration)
+- `entities/workspace.py` (add 2 entity classes)
+- `models/workspace.py` (add Pydantic models for regex)
+- `repository/workspace_regex_permission.py` (NEW)
+- `repository/workspace_group_regex_permission.py` (NEW)
+- `sqlalchemy_store.py` (add regex workspace methods)
+- `store.py` (expose methods)
+- `utils/workspace_cache.py` (add regex/group-regex lookup)
+- `routers/workspace_permissions.py` (add 8 regex endpoints)
 
-### Phase 5: Advanced Features (OIDC Integration, Cross-Workspace)
-**Build:** OIDC claim→workspace mapping, shared resources across workspaces, workspace-scoped groups.
-**Rationale:** Optional enhancements after core workspace support is stable.
+### Step 2: Workspace Validators + MANAGE Delegation
+
+**Build:** Modify `validate_can_update_workspace()` and `validate_can_delete_workspace()` to check MANAGE permission (not admin-only).
+
+**Rationale:** Small, focused change. Required before the CRUD proxy router can allow non-admin workspace management. Depends on workspace cache (Step 1) being complete with regex lookup for full permission resolution.
+
+**Files touched:**
+- `validators/workspace.py` (modify 2 functions)
+
+### Step 3: Workspace CRUD Proxy Router
+
+**Build:** New `routers/workspace.py` with 5 endpoints (create, list, get, update, delete). Router prefix. Registration in `__init__.py`. Auto-grant MANAGE on creation.
+
+**Rationale:** Depends on Step 2 (MANAGE delegation) for update/delete auth. Creates the backend API surface that the frontend will consume. Can be tested via HTTP without frontend.
+
+**Files touched:**
+- `routers/workspace.py` (NEW)
+- `routers/_prefix.py` (add prefix constant)
+- `routers/__init__.py` (register router)
+
+### Step 4: Workspace-Scoped Search Filtering
+
+**Build:** Modify `_filter_search_experiments()`, `_filter_search_registered_models()`, and `_filter_search_logged_models()` to check experiment/model workspace membership.
+
+**Rationale:** Depends on workspace cache (Step 1) being complete. This is the security-critical change — without it, cross-workspace data leakage is possible. Needs investigation of how upstream MLflow exposes experiment→workspace mapping.
+
+**Files touched:**
+- `hooks/after_request.py` (modify 3 filter functions)
+
+**Research flag:** How does upstream MLflow expose experiment→workspace mapping in the proto response? Need to inspect experiment proto fields or tags. If not available in the search response, may need a separate batch lookup — significant performance concern.
+
+### Step 5: Global Workspace Picker (Frontend)
+
+**Build:** `WorkspaceProvider`, `workspace-store.ts`, `WorkspacePicker` component, `http.ts` header injection, workspace CRUD forms.
+
+**Rationale:** Depends on Steps 3 (CRUD proxy) and 4 (scoped filtering) for a complete backend. Pure frontend change once backend is ready. Can be developed in parallel with Steps 3-4 using mock data.
+
+**Files touched:**
+- `core/context/workspace-provider.tsx` (NEW)
+- `core/context/workspace-store.ts` (NEW)
+- `core/context/use-workspace.ts` (NEW)
+- `core/services/http.ts` (modify)
+- `core/services/workspace-service.ts` (modify)
+- `core/configs/api-endpoints.ts` (modify)
+- `shared/components/header.tsx` (modify)
+- `shared/components/workspace-picker.tsx` (NEW)
+- `shared/types/entity.ts` (modify)
+- `features/workspaces/workspaces-page.tsx` (modify)
+- `features/workspaces/workspace-detail-page.tsx` (modify)
+- `features/workspaces/components/workspace-create-form.tsx` (NEW)
+- `features/workspaces/components/workspace-edit-form.tsx` (NEW)
+- `features/workspaces/components/workspace-delete-dialog.tsx` (NEW)
+
+### Dependency Graph
+
+```
+Step 1: Regex Workspace Permissions
+    ↓
+Step 2: MANAGE Delegation (depends on Step 1 for full resolution)
+    ↓
+Step 3: CRUD Proxy Router (depends on Step 2 for update/delete auth)
+    │
+    ├── Step 4: Search Filtering (depends on Step 1, independent of Step 3)
+    │
+    └── Step 5: Frontend (depends on Steps 3 + 4 for complete backend)
+```
+
+Steps 3 and 4 can be built in parallel after Step 2.
+Step 5 can begin in parallel with Steps 3-4 using mock data, but final integration requires them.
 
 ## Sources
 
-- Upstream MLflow 3.10 source code: `mlflow/server/auth/` module (entities.py, routes.py, sqlalchemy_store.py, db/models.py, __init__.py)
-- Upstream MLflow workspace utilities: `mlflow/utils/workspace_utils.py`, `mlflow/utils/workspace_context.py`
-- Upstream MLflow environment variables: `mlflow/environment_variables.py` (MLFLOW_ENABLE_WORKSPACES, MLFLOW_WORKSPACE)
-- MLflow 3.10 release: https://github.com/mlflow/mlflow/releases/tag/v3.10.0
-- Existing plugin codebase analysis: `.planning/codebase/ARCHITECTURE.md`, `.planning/codebase/STRUCTURE.md`
-- Confidence: HIGH — based on direct source code analysis of both upstream MLflow and the plugin
+- Direct codebase analysis: all files listed in component responsibilities table
+- Existing v1.0 architecture research: `.planning/research/ARCHITECTURE.md` (previous version)
+- PROJECT.md constraints and decisions: `.planning/PROJECT.md`
+- MLflow 3.10 workspace protobuf RPCs: `CreateWorkspace`, `GetWorkspace`, `ListWorkspaces`, `UpdateWorkspace`, `DeleteWorkspace`
+- Repository base classes: `mlflow_oidc_auth/repository/_base.py` (4 generic bases)
+- Permission resolution: `mlflow_oidc_auth/utils/permissions.py` (PERMISSION_REGISTRY, resolve_permission)
+- Workspace cache: `mlflow_oidc_auth/utils/workspace_cache.py` (TTLCache, lookup order)
+- After-request hooks: `mlflow_oidc_auth/hooks/after_request.py` (search filtering patterns)
+- Frontend HTTP layer: `web-react/src/core/services/http.ts`
+- Frontend workspace service: `web-react/src/core/services/workspace-service.ts`
+- Frontend header component: `web-react/src/shared/components/header.tsx`
+- Confidence: HIGH — all recommendations based on direct source code analysis of existing codebase patterns
 
 ---
-*Architecture research for: Multi-tenant workspace support in mlflow-oidc-auth*
-*Researched: 2026-03-23*
+*Architecture research for: v1.1 workspace CRUD management, scoped search filtering, regex workspace permissions, and global workspace picker*
+*Researched: 2026-03-24*

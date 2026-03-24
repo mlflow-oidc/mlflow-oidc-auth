@@ -1,406 +1,516 @@
-# Pitfalls Research
+# Domain Pitfalls
 
-**Domain:** Multi-tenant organization support for MLflow OIDC auth plugin
-**Researched:** 2026-03-23
-**Confidence:** HIGH — based on direct codebase analysis, established multi-tenancy patterns, and known OIDC provider behavior
+**Domain:** Workspace CRUD management, search filtering, regex permissions, and global workspace picker for MLflow OIDC auth plugin
+**Researched:** 2026-03-24
+**Milestone:** v1.1 Workspace Management
+**Confidence:** HIGH — based on direct analysis of the live codebase (v1.0 post-merge), existing patterns, and known upstream API behavior
 
 ## Critical Pitfalls
 
-### Pitfall 1: Cross-Tenant Data Leakage via Permission Resolution Fallback
+Mistakes that cause data leakage, broken deployments, or require rewrites.
+
+### Pitfall 1: Proxy Error Conflation — MLflow 500s Surfaced as Auth Errors
 
 **What goes wrong:**
-The current permission resolution chain (`get_permission_from_store_or_default` in `utils/permissions.py:422-466`) falls back to `config.DEFAULT_MLFLOW_PERMISSION` when no explicit permission is found. Today the default is `MANAGE`. When orgs are added, a user in Org-A who has no explicit permission for an Org-B experiment would fall through all four resolution steps (user → group → regex → group-regex) and land on the **default permission** — which grants full access to a resource they should never see.
+The workspace CRUD proxy will forward requests to MLflow's `/api/3.0/mlflow/workspaces` REST API. When MLflow returns an error (workspace doesn't exist, name conflict, internal error), the proxy must distinguish between:
+- **MLflow auth errors** (which shouldn't happen — the proxy is a trusted internal caller)
+- **MLflow validation errors** (workspace name invalid, already exists)
+- **MLflow resource errors** (workspace not found, workspace has resources)
+- **MLflow internal errors** (tracking store failure, backend unavailable)
+
+If the proxy blindly wraps all MLflow errors as `500 Internal Server Error` or `403 Forbidden`, the admin UI cannot display actionable error messages. Worse: if MLflow returns a `401` (e.g., the internal request lacks proper auth), the proxy might redirect the user to login instead of showing the actual error.
 
 **Why it happens:**
-The current system assumes a flat namespace: if you have no explicit permission, you get the default. There's no concept of "this resource belongs to a different org, so you don't even get to the fallback." The fallback is a safety net for a single-tenant world; in multi-tenant, it becomes a data leak.
+MLflow's workspace API is `PUBLIC_UNDOCUMENTED` (v3.0). Error response format is not guaranteed stable. Developers might use a simple `httpx.post()` and `if not resp.ok: raise HTTPException(resp.status_code)` without parsing MLflow's error body. The existing pattern in the codebase (direct Flask hooks) never needed to proxy to MLflow — it intercepted requests, not forwarded them.
 
-**How to avoid:**
-- Add an **org boundary check as the first step** in permission resolution, before user/group/regex/group-regex. If the resource's org doesn't match the user's org, return `NO_PERMISSIONS` immediately — never reach the fallback.
-- Change the fallback behavior for multi-tenant mode: default should be `NO_PERMISSIONS` or configurable per-org.
-- The org check must be a hard deny, not just another link in the chain — it should short-circuit, not participate in priority ordering.
+**Consequences:**
+- Users see "Internal Server Error" when they try to create a workspace with a duplicate name
+- Admin UI shows generic error toast instead of "Workspace 'prod' already exists"
+- Delete fails silently or with cryptic error when workspace has resources
+- Difficult to diagnose whether the error is in the proxy or MLflow
 
-**Warning signs:**
-- Any permission resolution path that doesn't check org membership before checking resource permissions.
-- Tests that verify cross-org access and find that users can read/manage resources in other orgs when no explicit permission exists.
-- `DEFAULT_MLFLOW_PERMISSION = "MANAGE"` remaining as the global default after org support is added.
+**Prevention:**
+- Parse MLflow's error response body and extract the error message. MLflow uses protobuf-based error responses with `error_code` and `message` fields.
+- Map MLflow error codes to appropriate HTTP status codes in the proxy: `RESOURCE_ALREADY_EXISTS` → 409, `RESOURCE_DOES_NOT_EXIST` → 404, `INVALID_PARAMETER_VALUE` → 400.
+- Never surface raw MLflow error responses to clients — the proxy should normalize them into the plugin's standard error format.
+- Add a `try/except` around the proxy call that catches `httpx` transport errors separately from MLflow application errors.
+- The proxy must authenticate to MLflow as an internal trusted caller. Since the plugin IS the MLflow app (Flask is mounted inside FastAPI), the proxy can call MLflow's tracking store directly via `_get_tracking_store()` rather than making HTTP calls — evaluate this approach first as it avoids the proxy networking complexity entirely.
 
-**Phase to address:**
-Core org model/permission phase — this must be solved in the very first implementation phase, before any org-scoped resources exist. It's the foundational security invariant.
+**Detection:**
+- Error responses that say "Internal Server Error" when the user action was obviously wrong (duplicate name, etc.)
+- Error responses that include MLflow-internal stack traces
+- Network-level errors (connection refused) when MLflow's workspace API is unavailable
+
+**Phase to address:** Workspace CRUD backend phase — first thing to build, foundational for all CRUD operations.
 
 ---
 
-### Pitfall 2: Post-Fetch Search Filtering Leaks Cross-Org Metadata
+### Pitfall 2: Permission Escalation via MANAGE Workspace Delegation on Update/Delete
 
 **What goes wrong:**
-The `after_request.py` hooks (`_filter_search_experiments`, `_filter_search_registered_models`, `_filter_search_logged_models`) fetch ALL results from MLflow's tracking store first, then filter by permission. With org support, these functions would initially return cross-org resources in the unfiltered response. Even if filtering removes them before the client sees results, the **pagination math breaks**: `max_results` accounting is wrong because it counts org-foreign resources, and the re-fetch loop (lines 86-106 of `after_request.py`) uses MLflow's store which has no org awareness.
+Per the milestone spec, MANAGE permission holders (not just admins) can update and delete workspaces. The current `validate_can_update_workspace` and `validate_can_delete_workspace` in `validators/workspace.py` are admin-only:
 
-More critically, if the org boundary check is implemented only in the filter step (after MLflow returns data), there's a timing window where cross-org data exists in server memory. For sensitive ML models, even transient exposure is a concern.
+```python
+def validate_can_update_workspace(username: str):
+    """Only admins can update workspaces."""
+    auth_context = get_auth_context()
+    if not auth_context.is_admin:
+        return responses.make_forbidden_response()
+    return None
+```
+
+Changing these to allow MANAGE users introduces escalation risks:
+1. **Workspace rename attack**: A MANAGE user renames workspace "production" to "test", then creates a new workspace "production" they control. If any automation or hardcoded references point to "production", they now point to the attacker's workspace.
+2. **Workspace deletion of shared workspace**: A MANAGE user with access to a shared workspace deletes it, affecting all other users. The "only if workspace has no resources" check mitigates data loss but doesn't prevent disruption.
+3. **Self-granting via workspace permission + workspace MANAGE**: A user with MANAGE on workspace-A can grant themselves MANAGE on workspace-B via the workspace permission CRUD router (if the permission check only verifies MANAGE on the *source* workspace, not the *target*).
 
 **Why it happens:**
-MLflow's core tracking store has no permission/org-aware query interface. The plugin can only filter results post-fetch. This was acceptable for single-tenant (just hiding experiments you can't read), but in multi-tenant it means Org-B's experiment names, IDs, and metadata briefly exist in Org-A's request processing pipeline.
+MANAGE permission was designed for resource-level delegation (experiments, models). Workspace is a tenant boundary, not a resource — MANAGE on a workspace has higher blast radius than MANAGE on an experiment. The existing `check_workspace_manage_permission` dependency in `dependencies.py` correctly checks MANAGE on the specific workspace, but the validator in the Flask hooks layer uses a different code path.
 
-**How to avoid:**
-- Add org-scoping to the filter functions explicitly: check org membership **before** iterating individual permissions. Filter out org-foreign resources first, then apply permission checks on the remainder.
-- If MLflow 3.10 adds org-aware query parameters to the tracking store, use them to pre-filter at the query level.
-- Never rely solely on post-fetch filtering for org isolation. If MLflow's store returns cross-org data, the filter must be fail-safe (deny if org can't be determined).
+**Consequences:**
+- Privilege escalation: workspace MANAGE user disrupts other workspaces
+- Workspace hijacking via rename
+- Cascading permission issues if workspace name changes but permissions reference old name
 
-**Warning signs:**
-- Search result counts that don't add up (user sees fewer results than `max_results` despite more existing).
-- Performance degradation in search endpoints for orgs with few resources but sharing an instance with orgs that have many.
-- Pagination tokens that skip entries unpredictably.
+**Prevention:**
+- **Separate update/delete authorization from permission management.** MANAGE on a workspace should allow managing *permissions within* the workspace (already implemented), but update/delete of the workspace entity itself could require ADMIN or a dedicated `WORKSPACE_ADMIN` permission level.
+- If MANAGE is allowed for update/delete: validate that the workspace rename doesn't collide with existing names (MLflow likely does this, but the proxy should also check). Log all workspace mutations with the acting user.
+- For deletion: enforce the "no resources" check in the proxy layer, not just in MLflow. Double-check by querying experiments and models scoped to the workspace before forwarding the delete.
+- **Critical**: The workspace permission router (`workspace_permissions.py`) uses `check_workspace_manage_permission` which checks MANAGE on the `workspace` path parameter. This is correct for managing permissions *within* a workspace. But for workspace CRUD, the path parameter IS the workspace being modified — verify the check is against the correct workspace.
 
-**Phase to address:**
-Permission resolution update phase — immediately after the core org model. Must be implemented before the system is exposed to real multi-tenant traffic.
+**Detection:**
+- Audit logs showing non-admin users deleting or renaming workspaces
+- Workspace permission records that reference workspace names that no longer exist (orphaned after rename)
+- Multiple workspaces created by the same user in rapid succession (workspace squatting)
+
+**Phase to address:** Workspace CRUD backend phase — the authorization model for workspace CRUD must be decided before implementing the proxy.
 
 ---
 
-### Pitfall 3: Migration Breaks Existing Permissions — The "Null Org" Problem
+### Pitfall 3: Search Filtering Performance Death Spiral — O(N×M) Permission Checks
 
 **What goes wrong:**
-Existing deployments have users, groups, and permissions with no org association. Adding an `org_id` column to permission tables creates a migration dilemma: if `org_id` is `NOT NULL`, existing rows fail. If `org_id` is `NULL`, code that filters by org will miss all pre-existing permissions (SQL `WHERE org_id = X` doesn't match `NULL`). Users who had working permissions suddenly lose all access.
+The existing `_filter_search_experiments` and `_filter_search_registered_models` in `after_request.py` already have a performance concern: they iterate every result and call `can_read_experiment()` / `can_read_registered_model()` per item. Each `can_read_*` call triggers `resolve_permission()` which walks the 4-source chain (user → group → regex → group-regex), and with workspaces enabled, adds a workspace fallback lookup via `get_workspace_permission_cached()`.
+
+Adding workspace-scoped search filtering means:
+1. First, filter results to only include items belonging to the active workspace
+2. Then, apply permission filtering (existing behavior)
+3. Re-fetch to fill `max_results` (existing pagination repair loop)
+
+The re-fetch loop (lines 111-131 in `after_request.py`) calls `tracking_store.search_experiments()` repeatedly. Each iteration returns results from ALL workspaces (MLflow's store is not workspace-aware), which are then filtered again. If the active workspace has 10 experiments but there are 10,000 total, the loop fetches many pages to find 10 matching ones.
 
 **Why it happens:**
-This is the classic "adding a required dimension to existing data" problem. The migration must handle the transition state where some data has no org, but the system needs org-aware queries.
+MLflow's tracking store has no workspace-aware query parameter. The plugin can only filter post-fetch. The existing re-fetch loop was acceptable when filtering was just permission-based (most results are readable), but workspace filtering removes a much larger percentage of results (all other workspaces' resources).
 
-**How to avoid:**
-- Use a **sentinel "default org"** approach: the migration creates a default org and assigns all existing users, groups, and permissions to it. This preserves all existing access patterns.
-- The default org should be configurable per deployment (admin names it during upgrade).
-- Make org_id `NOT NULL` with a FK constraint after the migration populates all rows. Never leave it nullable in the final schema — nullable org_id invites bugs where new records are created without an org.
-- Migration must be idempotent (safe to re-run) and must not require downtime. Alembic already runs on startup (`create_app()`), so the migration runs before the app serves traffic.
+**Consequences:**
+- Search endpoints become slow (seconds to tens of seconds) for deployments with many workspaces
+- Each re-fetch iteration triggers N permission lookups for results that will be filtered out by workspace
+- Database connection pool exhaustion under concurrent search requests
+- Pagination breaks: users see empty pages or fewer results than expected
+- TTLCache for workspace permissions helps but doesn't eliminate the per-result permission check cost
 
-**Warning signs:**
-- `SELECT * FROM experiment_permissions WHERE org_id IS NULL` returns rows after migration — means some records weren't assigned.
-- Users report "permission denied" on resources they could access before the upgrade.
-- SQL queries that use `= :org_id` instead of `IS NOT DISTINCT FROM :org_id` for the transition period.
+**Prevention:**
+- **Filter by workspace FIRST, before permission checks.** The workspace filter is cheap (string comparison on experiment metadata or a mapping table lookup) while permission checks are expensive (4-source resolution chain + DB queries).
+- **Short-circuit the re-fetch loop** with a workspace-aware query if possible. If experiments have a workspace tag/attribute, add it to the filter string passed to MLflow's store. Check if MLflow 3.10 supports `workspace_id` in search requests.
+- **Cap the re-fetch iterations.** The current loop has no iteration limit — add a max of 5-10 re-fetch attempts to prevent infinite loops when most results are filtered out.
+- **Batch workspace membership checks.** Instead of checking `get_workspace_permission_cached()` per result, get the user's accessible workspaces once and filter results against that set.
+- Consider caching the workspace-to-experiment mapping in the plugin's DB to avoid scanning all experiments every search.
 
-**Phase to address:**
-Database migration phase — must be a dedicated, carefully designed migration with rollback capability. Should include a pre-migration validation script that operators can run to preview the impact.
+**Detection:**
+- Search endpoint latency >500ms in APM/monitoring
+- Re-fetch loop executing more than 3 iterations per search request (log a warning)
+- Users reporting slow experiment/model listing in the admin UI
+- Database query count per search request growing linearly with total experiment count
+
+**Phase to address:** Workspace-scoped search filtering phase — this is the core of this feature. Must be profiled with realistic data volumes (1000+ experiments across 10+ workspaces).
 
 ---
 
-### Pitfall 4: OIDC Provider Org Claim Inconsistency
+### Pitfall 4: TTLCache Invalidation Gaps for Regex Workspace Permissions
 
 **What goes wrong:**
-Different OIDC providers encode organization membership differently in their token claims. The code currently extracts groups via `userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])` (auth.py:414) or a plugin. For orgs, developers might assume a similar `org` or `organization` claim exists. It often doesn't — or it varies wildly:
-- **Keycloak**: Organizations are a recent feature (25+), exposed as custom claims configurable per realm. May appear in `organizations` claim or require custom mapper.
-- **Okta**: Orgs map to `org_id` in token, but only with Okta Organizations feature enabled (enterprise tier).
-- **Azure AD/Entra ID**: Tenant ID in `tid` claim; multi-tenant apps get it automatically but it's the Azure tenant, not a business org.
-- **Auth0**: Organizations send `org_id` and `org_name` claims, but only when the login prompt specifies the org.
-- **Google**: No org claim at all. Workspace domain is in `hd` claim.
-- **GitLab**: No native org claim; groups are the closest.
+The existing workspace permission cache (`workspace_cache.py`) uses `cachetools.TTLCache` with explicit invalidation for user permission CUD operations (`invalidate_workspace_permission(username, workspace)`). Group permission changes rely on TTL expiry only (per decision D-15). Adding regex workspace permissions creates three new invalidation gaps:
+
+1. **Regex permission CUD doesn't invalidate cache.** When an admin adds/modifies/removes a regex workspace permission like `prod-.*` → READ, users whose workspace names match the regex still have stale cache entries. The cache key is `(username, workspace)`, but the regex change affects an unpredictable set of workspace-user combinations.
+2. **Regex priority changes don't invalidate cache.** If regex `prod-.*` → READ (priority 1) is changed to `prod-.*` → MANAGE (priority 1), cached entries for all matching workspace-user pairs are stale.
+3. **Group-regex workspace permission changes compound the problem.** If a group-regex permission changes, the affected set is (all users in group) × (all workspaces matching regex).
+
+The `_lookup_workspace_permission` function in `workspace_cache.py` currently only checks user-level and group-level permissions:
+```python
+# User-level workspace permission
+try:
+    perm = store.get_workspace_permission(workspace, username)
+    return get_permission(perm.permission)
+except Exception:
+    pass
+# Group-level workspace permission (highest across user's groups)
+try:
+    perm = store.get_user_groups_workspace_permission(workspace, username)
+    return get_permission(perm.permission)
+except Exception:
+    pass
+```
+Regex workspace permissions must be added to this lookup chain, AND the cache invalidation strategy must account for them.
 
 **Why it happens:**
-There's no OIDC standard claim for "organization." It's entirely provider-specific. Developers test with one provider and assume it generalizes.
+Regex permissions create a many-to-many relationship between permission rules and cached entries. You can't predict which cache entries are affected by a regex change without scanning all cached keys against the new regex — which defeats the purpose of caching.
 
-**How to avoid:**
-- **Never hard-code a single claim path.** Use a configurable `OIDC_ORG_ATTRIBUTE` setting (similar to existing `OIDC_GROUPS_ATTRIBUTE`).
-- Support the **group detection plugin pattern** already in the codebase (`OIDC_GROUP_DETECTION_PLUGIN` in `config.py:87`) — add an equivalent `OIDC_ORG_DETECTION_PLUGIN` for providers that need custom logic to extract org membership.
-- Provide a **hybrid mode**: org can come from OIDC claims (automatic) OR be admin-assigned (manual). Some providers simply cannot provide org claims.
-- Document the claim shape expected: is it a string? A list? An object with `id` and `name`? Different providers return different shapes.
+**Consequences:**
+- Users retain old permissions for up to `WORKSPACE_CACHE_TTL_SECONDS` (default 300s = 5 minutes) after regex permission changes
+- In security-sensitive environments, 5 minutes of stale access control is unacceptable
+- Admins create regex permissions expecting immediate effect, file bug reports when they don't see changes
 
-**Warning signs:**
-- Org detection works with the developer's OIDC provider but fails in CI or when users test with a different provider.
-- Silently empty org claim (claim exists but is an empty string or empty list) — code must distinguish "no org claim configured" from "user has no org."
-- Token refresh losing the org claim (some providers only include org in ID token, not access token).
+**Prevention:**
+- **On regex permission CUD: flush the entire workspace permission cache.** Regex changes are infrequent (admin operations) and affect an unpredictable set of cache entries. A full cache flush is simpler and safer than selective invalidation. The `_cache` module-level variable can be reset to `None` to trigger re-creation.
+- **Add `flush_workspace_cache()` function** alongside existing `invalidate_workspace_permission()`. Call it from the regex workspace permission router.
+- **Document the cache behavior** in the admin UI: "Regex permission changes may take up to X seconds to take effect" (with the caveat that full flush makes it immediate).
+- **Integration test**: Change a regex workspace permission, immediately verify the affected user's effective permission has changed (not stale from cache).
+- Do NOT try to do smart selective invalidation by scanning cache keys against the regex — it's complex, error-prone, and the cache is small (max 1024 entries by default).
 
-**Phase to address:**
-OIDC integration phase — build alongside the org model, but plan for iterative provider support. Start with configurable claim + plugin hook; don't try to support every provider natively.
+**Detection:**
+- Admin creates regex permission, user still has old access level
+- `WORKSPACE_CACHE_TTL_SECONDS` is set very high (>600s) and regex permission changes appear to "not work"
+- Unit tests that mock the cache pass, but integration tests with real cache show stale data
+
+**Phase to address:** Regex workspace permissions phase — the cache invalidation strategy must be designed alongside the regex permission implementation.
 
 ---
 
-### Pitfall 5: Permission Resolution Complexity Explosion (8→40+ Functions)
+### Pitfall 5: Workspace Feature Flag Bypass — Inconsistent Gating
 
 **What goes wrong:**
-The current codebase already has ~8 nearly identical permission resolution functions in `utils/permissions.py` (466 lines), one per resource type. Each has 4 variants (user, group, regex, group-regex). Adding an org dimension would mean every function needs an org-scoped variant or an org parameter threaded through. With 7 resource types × 4 permission variants × org scoping = 28+ code paths, plus org-level permissions themselves (org-admin, org-member roles). The CONCERNS.md already identifies this as tech debt.
+The `MLFLOW_ENABLE_WORKSPACES` feature flag gates workspace behavior throughout the codebase. When adding new workspace features (CRUD proxy, search filtering, regex permissions, workspace picker), every new code path must check this flag. Inconsistencies lead to:
 
-Without refactoring first, adding org support means:
-- 7 new `_permission_*_sources_config` functions (or modifying all existing ones)
-- 7+ new org-specific permission check functions
-- All 26+ repository classes need org-aware variants
-- All permission routers (2390 + 2205 lines) need org endpoints
+1. **Workspace CRUD endpoints accessible when workspaces disabled.** If the proxy router is registered unconditionally in `get_all_routers()`, users can create/delete workspaces even when the feature is off.
+2. **Search filtering applied when workspaces disabled.** If the new `after_request` workspace filter doesn't check `config.MLFLOW_ENABLE_WORKSPACES`, it filters results based on a workspace header that was never meant to be sent.
+3. **Regex workspace permissions created when workspaces disabled.** If the regex permission router doesn't gate on the feature flag, permission records accumulate in the database with no effect — then cause unexpected behavior when workspaces are later enabled.
+4. **Frontend workspace picker visible when workspaces disabled.** The runtime config must signal to the frontend whether workspaces are enabled.
+
+The existing `_filter_list_workspaces` in `after_request.py` correctly checks:
+```python
+if not config.MLFLOW_ENABLE_WORKSPACES:
+    return
+```
+But this pattern must be applied consistently to every new code path.
 
 **Why it happens:**
-The current architecture uses copy-paste-modify rather than generic abstractions. Each new dimension multiplies the existing duplication.
+Feature flags require discipline. Every developer adding a new feature must remember to check the flag. The more code paths there are, the more likely one is missed.
 
-**How to avoid:**
-- **Refactor BEFORE adding org support.** Create a generic `resolve_permission(resource_type, resource_id, username, org_id)` function that all resource types use (the fix suggested in CONCERNS.md).
-- Build a generic repository base class for permissions, parameterized by resource type and org scope.
-- Use the router factory pattern suggested in CONCERNS.md before adding org-scoped endpoints.
-- If refactoring first isn't possible, at least add the org parameter to the existing resolution chain as a single injection point rather than duplicating all functions.
+**Consequences:**
+- Users accidentally interact with workspace features in a non-workspace deployment
+- Database accumulates workspace-related records that are confusing when workspaces are later enabled
+- Error messages reference workspaces in deployments that don't use them
+- Frontend shows workspace UI elements that don't work
 
-**Warning signs:**
-- PR adding org support touches more than 20 files with similar changes to each.
-- `utils/permissions.py` grows beyond 600 lines.
-- New bugs where org check was added to one resource type but missed in another.
-- Code review reveals inconsistent org handling between resource types.
+**Prevention:**
+- **Gate at the router level, not just the endpoint level.** Don't register workspace CRUD and regex permission routers at all when `config.MLFLOW_ENABLE_WORKSPACES` is False. This is a single check in `get_all_routers()` rather than N checks in N endpoints.
+- **The existing workspace permission router (`workspace_permissions.py`) should already be conditionally registered** — verify this is the case and follow the same pattern for new routers.
+- **Frontend runtime config must include `workspacesEnabled`** flag. The workspace picker component should check this before rendering.
+- **Add a decorator or middleware for workspace-required endpoints** that returns 404 (not 403) when workspaces are disabled — "endpoint not found" is more appropriate than "forbidden" for a feature that doesn't exist.
+- **Search filtering in after_request** must check the flag as the FIRST thing, before any workspace-related processing.
+- **Integration test**: With `MLFLOW_ENABLE_WORKSPACES=false`, verify all workspace-related endpoints return 404 and search filtering doesn't apply workspace scoping.
 
-**Phase to address:**
-**Must be a pre-requisite phase** before org implementation. The existing tech debt (identified in CONCERNS.md) should be addressed in a refactoring phase to create generic permission abstractions. Without this, org support is unmaintainable.
+**Detection:**
+- Workspace-related endpoints returning 200/201 when `MLFLOW_ENABLE_WORKSPACES=false`
+- Workspace permission records in database of a non-workspace deployment
+- Frontend showing workspace picker in a deployment where workspaces aren't enabled
+
+**Phase to address:** All phases — must be checked during every workspace feature addition. Best addressed with a router-level gate in the first phase.
 
 ---
 
-### Pitfall 6: MLflow Plugin Boundary Violations — Trying to Control What You Can't
+## Moderate Pitfalls
+
+Mistakes that cause confusion, regressions, or significant rework but not security issues.
+
+### Pitfall 6: Workspace Name Validation Mismatch Between Proxy and MLflow
 
 **What goes wrong:**
-The auth plugin intercepts MLflow's Flask endpoints via `before_request`/`after_request` hooks. It cannot control:
-- **MLflow's internal data storage** — experiments, models, runs are stored by MLflow's tracking store, which has no org concept. The plugin can only filter access, not partition storage.
-- **Artifact storage** — artifacts are stored in configured backends (S3, Azure Blob, etc.) that MLflow manages. The plugin can't enforce per-org artifact isolation at the storage level.
-- **MLflow UI** — the hack.py HTML injection is fragile and can't add org context/switching to MLflow's built-in UI.
-- **GraphQL queries** — the monkey-patch on `_get_graphql_auth_middleware` (a private API) limits what the plugin can do with GraphQL responses.
+The milestone specifies DNS-safe workspace naming rules. The proxy validates workspace names before forwarding to MLflow, but MLflow has its own validation. Three failure modes:
+1. **Proxy allows names MLflow rejects**: User gets past proxy validation, MLflow returns 400. Error message comes from MLflow, not the proxy — confusing UX.
+2. **Proxy rejects names MLflow allows**: Proxy is stricter than necessary. Legitimate workspace names are blocked.
+3. **Proxy doesn't validate at all**: MLflow's error messages for invalid names may be cryptic (protobuf error codes) or change between versions.
 
-Developers might try to implement org-level artifact isolation, per-org tracking stores, or deep MLflow UI integration, which are all outside the plugin's boundary.
+DNS-safe means: lowercase alphanumeric, hyphens allowed (not at start/end), max 63 chars, no dots. But MLflow may have different rules — it's `PUBLIC_UNDOCUMENTED`.
 
-**Why it happens:**
-The line between "auth plugin can control access" and "auth plugin can control data placement" is blurry. Org support in other products usually includes data isolation, not just access control. Developers assume the plugin can do both.
+**Prevention:**
+- Validate in the proxy with a documented regex (e.g., `^[a-z][a-z0-9-]{0,61}[a-z0-9]$`). Return a clear 400 error: "Workspace name must be DNS-safe: lowercase alphanumeric and hyphens, 2-63 characters."
+- Also handle MLflow validation errors gracefully — if MLflow rejects a name the proxy accepted, log a warning and return the MLflow error.
+- **Test with edge cases**: single character, 63 characters, 64 characters, leading/trailing hyphen, uppercase, unicode, empty string, reserved names ("default", "admin").
+- Decide whether "default" is a reserved name that can't be created/deleted/renamed.
 
-**How to avoid:**
-- **Document the plugin boundary explicitly** in design docs: the plugin controls WHO can access WHAT, not WHERE data lives.
-- Org support in this plugin = access control + visibility filtering. NOT storage partitioning.
-- Don't try to make experiments/models "belong to" orgs at the MLflow storage level — that's MLflow core's job. Instead, maintain an org-resource mapping table in the auth plugin's own database.
-- If MLflow 3.10 adds org-aware APIs, use them. If not, the plugin maintains its own mapping.
-- Artifact isolation is an infrastructure concern (separate S3 buckets per org) — document this as out of scope for the auth plugin.
-
-**Warning signs:**
-- Design doc mentions modifying MLflow's tracking store configuration per org.
-- Code tries to set different `MLFLOW_ARTIFACT_ROOT` per request/org.
-- Feature requests for "org-specific MLflow settings" landing on the auth plugin.
-
-**Phase to address:**
-Design/architecture phase — establish the boundary before implementation begins. The PROJECT.md already lists "Org-specific MLflow configuration" as out of scope, but this needs to be reiterated in the org design doc.
+**Phase to address:** Workspace CRUD backend phase.
 
 ---
 
-### Pitfall 7: Bridge Layer Doesn't Carry Org Context
+### Pitfall 7: Global Workspace Picker State Management — Stale Context After Navigation
 
 **What goes wrong:**
-The ASGI-to-WSGI bridge currently passes exactly two values: `username` and `is_admin` (via `mlflow_oidc_auth.username` and `mlflow_oidc_auth.is_admin` in WSGI environ). Adding org support requires the org context to flow from FastAPI auth middleware → ASGI scope → WSGI environ → Flask hooks → validators. If the bridge isn't updated, Flask-side validators have no org context to check against.
+The global workspace picker in the UI header scopes all admin pages to the selected workspace. This introduces global state that must be:
+1. Persisted across page navigations (React Router transitions)
+2. Persisted across page refreshes (browser storage)
+3. Synchronized with the `X-MLFLOW-WORKSPACE` header sent with API requests
+4. Invalidated when the user's workspace permissions change (e.g., removed from a workspace)
+5. Defaulted correctly on first load (user's primary workspace? "default"?)
 
-The bridge is identified as fragile in CONCERNS.md: "environ keys are modified, auth breaks silently." Adding a new key (`mlflow_oidc_auth.org_id`) touches `AuthMiddleware.dispatch()`, `AuthInjectingWSGIApp.__call__()`, and `bridge/user.py` — and there are no integration tests for the bridge.
+Common failures:
+- User selects workspace "prod", navigates to experiments page, page loads with "default" workspace because the context was lost.
+- User is removed from workspace "prod" by admin, but the picker still shows "prod" and all API calls fail with 403.
+- Two browser tabs with different workspace selections — which one wins?
+- The HTTP client (`http.ts`) doesn't include `X-MLFLOW-WORKSPACE` header, so API calls go to the "default" workspace regardless of picker selection.
 
 **Why it happens:**
-The bridge was designed for a simple (username, is_admin) tuple. Adding org context is a cross-cutting change that touches every layer.
+The current frontend has no global workspace state. The `http.ts` module is a simple fetch wrapper with no request interceptor pattern. Adding a global header requires modifying the HTTP layer to read from a React context or global store — something the current architecture doesn't support.
 
-**How to avoid:**
-- Use a **typed context object** instead of individual environ keys. Replace the dict `{"username": ..., "is_admin": ...}` with a dataclass/TypedDict that includes `org_id`, `org_role`, etc. This makes it harder to forget a field.
-- Add **assertions in the Flask bridge** that verify required context keys are present (fail-fast instead of silently missing org context).
-- Add integration tests for the bridge BEFORE making changes. The test should verify that all context fields flow correctly from FastAPI → Flask.
-- Use constants for environ key names (already suggested in CONCERNS.md but not implemented).
+**Prevention:**
+- **Use React Context for workspace state** with `localStorage` persistence. Create a `WorkspaceContext` that wraps the app and provides `{currentWorkspace, setCurrentWorkspace}`.
+- **Modify `http.ts` to accept custom headers** or create a workspace-aware wrapper that injects `X-MLFLOW-WORKSPACE` from the context. Since `http.ts` already accepts `headers` in options, the workspace hook can pass it: `http(url, { headers: { 'X-MLFLOW-WORKSPACE': currentWorkspace } })`.
+- **On workspace list load, validate the persisted selection** — if the persisted workspace is no longer in the user's accessible list, reset to "default" or the first accessible workspace.
+- **Don't use `localStorage` workspace key across users** — prefix with username or clear on logout.
+- **Show a loading state** while the workspace list is being fetched on first load, before allowing any admin page interactions.
 
-**Warning signs:**
-- Validators that check `get_request_org()` but it returns `None` silently.
-- Flask hooks that work for non-org requests but fail-open for org-scoped requests.
-- Intermittent 500 errors where org context is missing in some request paths but not others.
+**Detection:**
+- API calls missing `X-MLFLOW-WORKSPACE` header (check network tab)
+- Admin pages showing data from the wrong workspace after navigation
+- 403 errors after workspace picker selection change
+- Workspace picker showing workspaces the user no longer has access to
 
-**Phase to address:**
-Early implementation phase — bridge update must happen before any org-aware validators are written. This is a foundation change.
+**Phase to address:** Global workspace picker UI phase — this is a cross-cutting frontend architecture change.
 
 ---
 
-### Pitfall 8: Group-to-Org Relationship Design — Flat vs Nested
+### Pitfall 8: after_request Hook Ordering — Workspace Filter vs Permission Filter Conflict
 
 **What goes wrong:**
-There are three common designs, each with a trap:
+The existing `AFTER_REQUEST_PATH_HANDLERS` in `after_request.py` maps protobuf request classes to handler functions. Each handler runs independently via `after_request_hook`. Adding workspace-scoped search filtering means adding a new dimension to the existing `_filter_search_experiments` and `_filter_search_registered_models` functions (or adding new handlers).
 
-1. **Groups scoped to orgs** (each group belongs to one org): Breaks existing groups that span orgs. Existing groups have no org_id, so they become orphans or get arbitrarily assigned.
+Two approaches, both with pitfalls:
+1. **Modify existing filter functions** to add workspace filtering: The functions are already complex (40-50 lines each with pagination repair). Adding workspace filtering increases complexity and makes the function do two different kinds of filtering. Hard to test, hard to maintain.
+2. **Add separate workspace filter handlers**: The `AFTER_REQUEST_HANDLERS` dict maps each `(path, method)` to a single handler. You can't have two handlers for the same endpoint. So you'd need a composition pattern that doesn't exist.
 
-2. **Groups independent of orgs** (many-to-many): Creates confusion about what "group permission" means in an org context. A user in Group-X and Org-A with a group-level experiment permission — does that permission apply if the experiment is in Org-B? If yes, groups become a cross-org backdoor. If no, the group permission is silently ignored, confusing admins.
-
-3. **Groups nested under orgs** (org → groups → users hierarchy): Most intuitive, but incompatible with the current flat group model where groups are synced from OIDC claims. OIDC providers send group lists, not org→group hierarchies.
+The `_filter_list_workspaces` function (line 413-427) shows the correct pattern for workspace-specific filtering, but it operates on a different endpoint (ListWorkspaces), not on the search endpoints.
 
 **Why it happens:**
-Groups and orgs serve overlapping purposes (organizing users with shared permissions), so the relationship between them is genuinely ambiguous. The wrong choice leads to either data leakage (groups bypass org boundaries) or broken workflows (groups become org-scoped but existing cross-org groups break).
+The after_request hook architecture assumes one handler per endpoint. Workspace scoping is a cross-cutting concern that should apply to multiple search endpoints, but the current architecture doesn't support composing multiple handlers.
 
-**How to avoid:**
-- **Decision: Groups remain independent, but permissions are org-scoped.** A group can exist in multiple orgs, but a group's permissions for Org-A resources don't grant access to Org-B resources. The org boundary is enforced at the permission level, not the group level.
-- This means: `experiment_group_permissions` gets an `org_id` column, and permission resolution checks that the permission's org matches the resource's org.
-- Existing groups continue to work in the default org. No structural change to groups themselves.
-- Document clearly: "Groups are NOT security boundaries between orgs. Orgs are."
+**Prevention:**
+- **Modify existing filter functions** (option 1) but extract the workspace filtering into a reusable helper:
+  ```python
+  def _filter_by_workspace(items, workspace_extractor):
+      """Filter items to only include those in the active workspace."""
+      if not config.MLFLOW_ENABLE_WORKSPACES:
+          return items
+      workspace = get_request_workspace()
+      if not workspace:
+          return items
+      return [item for item in items if workspace_extractor(item) == workspace]
+  ```
+- Call the workspace filter BEFORE the permission filter in each function (workspace filtering is cheap, permission filtering is expensive).
+- **Do NOT create a generic "filter chain" abstraction** — it's overengineering for 3-4 search endpoints. Just add workspace filtering to each existing function.
+- **Test each modified function** with: workspaces disabled (no filtering), workspaces enabled with matching workspace, workspaces enabled with non-matching workspace, no workspace header (admin user).
 
-**Warning signs:**
-- Design doc describes groups as "belonging to" an org (creates migration problems).
-- A group admin in Org-A can grant permissions on Org-B resources via group membership.
-- Users in multiple orgs have different group memberships per org, but the system can't express this.
+**Detection:**
+- Search results include items from other workspaces
+- Search results are empty when they should contain items (over-filtering)
+- Permission filtering performance regression (workspace filtering not applied first)
 
-**Phase to address:**
-Design phase — this decision must be made before database schema design. It affects every permission table's schema.
+**Phase to address:** Workspace-scoped search filtering phase — must be implemented within the existing filter functions.
 
 ---
 
-### Pitfall 9: Admin Bypass Without Org Scoping
+### Pitfall 9: Workspace Deletion Cascade — Orphaned Permissions
 
 **What goes wrong:**
-The current admin check is a simple boolean: `is_admin = True` bypasses ALL permission checks (see `before_request.py:357-358`). With orgs, "admin" needs scoping:
-- **Global admin** (system-wide, can manage all orgs) — current behavior
-- **Org admin** (can manage their org but not others)
+When a workspace is deleted (via the proxy to MLflow), the plugin's own `workspace_permissions` and `workspace_group_permissions` tables still contain rows referencing the deleted workspace name. Additionally, any workspace regex permissions that matched the deleted workspace's name are now matching a non-existent workspace.
 
-If org-admin is implemented as the same `is_admin` flag, org-admins bypass all checks including cross-org boundaries. If it's a new concept, every admin check in the codebase must be updated to distinguish global-admin from org-admin.
+Unlike experiments and models, which have cascade delete handlers in `after_request.py`, there's no workspace deletion cascade in the current codebase. The `validate_can_delete_workspace` only checks admin status — it doesn't trigger any cleanup.
 
 **Why it happens:**
-The admin bypass is deeply embedded: it's checked in `before_request_hook` (line 357), all `_filter_search_*` functions (first line), and implicitly in any code path that calls `get_fastapi_admin_status()`. Adding a new admin tier requires touching every one of these.
+Workspace permission records use `workspace` (a string name) as part of their composite primary key, not a foreign key to a workspace table (because the plugin doesn't own the workspace entity — MLflow does). There's no ON DELETE CASCADE because there's no FK relationship.
 
-**How to avoid:**
-- Introduce an **`OrgRole` enum**: `GLOBAL_ADMIN`, `ORG_ADMIN`, `MEMBER`. Store it in the user-org relationship, not on the user.
-- Replace `is_admin` boolean checks with a function like `is_admin_for(org_id)` that checks both global admin and org-admin status.
-- The bridge must carry org role, not just boolean admin status.
-- **Global admin bypass stays unchanged** — it still skips all checks. Org-admin only bypasses checks for their own org's resources.
+**Consequences:**
+- `workspace_permissions` table accumulates orphaned rows over time
+- If a workspace with the same name is later recreated, old permission records "revive" — users who had permissions on the old workspace suddenly have permissions on the new one
+- Cache entries for the deleted workspace persist until TTL expires
+- `list_workspace_permissions()` returns permissions for non-existent workspaces
 
-**Warning signs:**
-- Org admin can access resources in another org.
-- Code still uses bare `is_admin` checks without org context.
-- `get_fastapi_admin_status()` returns a boolean and nothing else.
+**Prevention:**
+- **Add a workspace deletion cascade in the after_request hook** (or in the proxy router's delete endpoint): after successful deletion from MLflow, delete all rows from `workspace_permissions` and `workspace_group_permissions` where `workspace = deleted_name`.
+- **Also delete regex workspace permission records** that only match the deleted workspace (though this is harder to determine — regex rules may match multiple workspaces).
+- **Flush workspace cache on workspace deletion** — not just invalidate a single entry, since the deletion affects all users.
+- **Check for orphaned permissions** in a startup health check or admin endpoint.
+- **The "no resources" check before deletion** should be comprehensive: check experiments, models, prompts, scorers, etc. scoped to the workspace. This is potentially expensive — consider an async check or a dedicated endpoint.
 
-**Phase to address:**
-Org model phase — must be designed alongside the org entity. The admin model is core to the org security model.
+**Detection:**
+- `SELECT * FROM workspace_permissions WHERE workspace NOT IN (list of active workspaces)` returns rows
+- Users report having permissions on workspaces that don't exist
+- Permission management UI shows workspaces in the list that can't be navigated to
+
+**Phase to address:** Workspace CRUD backend phase — the deletion cascade must be implemented alongside the delete proxy.
 
 ---
 
-### Pitfall 10: Backward Compatibility — Deployments Without Orgs
+### Pitfall 10: Regex Workspace Permission Resolution Order — Where in the Chain?
 
 **What goes wrong:**
-Existing deployments have no orgs. After upgrading, the system must work identically to before for operators who don't want/need org support. Common failures:
-- Config options that are required but have no default → crash on startup.
-- API responses that now include `org_id: null` → break existing API clients parsing responses.
-- Permission management UI that now requires org selection → breaks workflow for single-org deployments.
-- OIDC callback that requires org claim → blocks login for providers without org claims.
+The current `_lookup_workspace_permission` checks: user-level → group-level → return None. Adding regex means deciding where regex fits in this chain and whether it follows `PERMISSION_SOURCE_ORDER` from config.
+
+The resource-level permission resolution uses `PERMISSION_SOURCE_ORDER` (default: `["user", "group", "regex", "group-regex"]`) via `get_permission_from_store_or_default()`. Workspace permissions currently bypass this mechanism — they use a hardcoded order in `_lookup_workspace_permission`. This inconsistency means:
+
+1. An admin configures `PERMISSION_SOURCE_ORDER = ["regex", "user", "group", "group-regex"]` expecting regex to take priority for workspace permissions too, but it doesn't.
+2. Regex workspace permissions are checked AFTER user-level permissions, so a user with explicit READ on a workspace can't be overridden by a regex rule granting MANAGE.
 
 **Why it happens:**
-Multi-tenant features are designed for multi-tenant use cases. Single-tenant deployments are an afterthought.
+Workspace permissions were implemented as standalone (per decision WSAUTH-B) with their own lookup chain, separate from the generic `resolve_permission()` function. Adding regex means either extending this standalone chain or integrating it with the generic resolution mechanism.
 
-**How to avoid:**
-- **Implicit default org**: deployments without explicit org config operate with a single implicit org. All existing data migrated to this default org. The system behaves identically — no new config, no new UI steps, no new API fields required.
-- Org features are opt-in: a feature flag or the presence of multiple orgs activates org-aware UI elements.
-- API backward compatibility: `org_id` is optional in API requests; if omitted, defaults to the user's org or the default org.
-- OIDC org claim is optional: if not configured, all users join the default org.
-- The admin UI shows org management only when multiple orgs exist.
+**Prevention:**
+- **Follow `PERMISSION_SOURCE_ORDER` for workspace permissions too.** Add "regex" and "group-regex" sources to `_lookup_workspace_permission` in the same order as configured. This ensures consistent behavior across resource and workspace permissions.
+- Alternatively, **if workspace permissions intentionally bypass `PERMISSION_SOURCE_ORDER`**, document this clearly and explain why (e.g., "workspace is a tenant boundary, not a resource — explicit user/group grants always take priority over regex patterns").
+- **Whichever approach is chosen, test these edge cases**:
+  - User has explicit READ, regex grants MANAGE → what wins?
+  - User has no explicit permission, group grants READ, regex grants MANAGE → what wins?
+  - User is in two groups with conflicting workspace permissions → highest wins (existing behavior)
 
-**Warning signs:**
-- Upgrade requires new mandatory environment variables.
-- Existing API scripts break after upgrade.
-- Users can't log in after upgrade because org claim isn't configured.
-- Default permission changes break existing access patterns.
+**Detection:**
+- Admin sets a regex workspace permission but it never takes effect because user-level permission always wins
+- Permission resolution for workspaces produces different results than expected based on `PERMISSION_SOURCE_ORDER` config
+- Inconsistent behavior between resource permissions (which follow the config order) and workspace permissions (which don't)
 
-**Phase to address:**
-All phases — backward compatibility is a constraint on every change, not a phase. But it should be validated in a dedicated testing/migration phase with a "upgrade without any new config" test scenario.
+**Phase to address:** Regex workspace permissions phase — the resolution order design must be decided before implementation.
 
 ---
 
-## Technical Debt Patterns
+## Minor Pitfalls
 
-Shortcuts that seem reasonable but create long-term problems.
+### Pitfall 11: Frontend Workspace Picker — Admin vs Non-Admin Workspace Lists
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Adding `org_id` as optional/nullable to existing tables instead of default org migration | Simpler migration, no data changes | Every query must handle NULL org, bugs where new records miss org_id | Never — always populate a default org |
-| Hardcoding org claim to a specific OIDC provider's format | Fast to implement for one provider | Breaks when users deploy with different providers, support burden | Only in a prototype/spike, never in released code |
-| Making org check a separate `if` in each validator instead of a generic interceptor | Works without refactoring | 30+ validators each need the same org check, inconsistency guaranteed | Never — invest in the generic pattern |
-| Skipping the bridge update and passing org via a Flask `g` variable set in before_request | Avoids touching the middleware stack | `g` isn't available in all contexts, breaks for GraphQL and non-standard paths | Never — the bridge is the correct place |
-| Copy-pasting permission resolution functions with org parameter | Fast to implement | Existing 466-line file becomes 900+ lines, maintenance nightmare | Only if refactoring is explicitly deferred to next milestone |
+**What goes wrong:**
+Admins see ALL workspaces (bypass filtering in `_filter_list_workspaces`). Non-admins see only workspaces they have permissions for. The workspace picker dropdown must handle both cases. If the picker calls the same `ListWorkspaces` API for both user types, the experience differs: admin sees 100 workspaces, non-admin sees 3.
 
-## Integration Gotchas
+For non-admins, the picker list may not include the workspace they're trying to access (e.g., they were just granted access but the picker list is cached). For admins, a long dropdown of 100+ workspaces is unwieldy.
 
-Common mistakes when connecting to external services.
+**Prevention:**
+- For admins: add search/filter to the workspace picker dropdown when >10 workspaces.
+- For non-admins: the picker list IS the user's accessible workspaces — if a workspace isn't in the list, they can't access it (by design).
+- Add a "refresh" action to the picker that re-fetches the workspace list.
+- Cache the workspace list in the frontend with a short TTL (30-60s), not indefinitely.
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| OIDC Provider (org claims) | Assuming `org_id` claim is always a string | Accept string, int, or object. Normalize on receipt. Store as string. |
-| OIDC Provider (group + org) | Assuming groups and orgs come in the same token | Some providers put groups in ID token and org in access token (or userinfo). Check all three. |
-| MLflow 3.10 org API | Assuming MLflow's org model matches what the plugin needs | MLflow may have a simpler org model (just namespacing). The auth plugin needs its own org-permission model that maps TO MLflow's model. |
-| MLflow tracking store | Trying to add `WHERE org_id = X` to MLflow's internal queries | MLflow's store is not org-aware. The plugin must filter post-query or maintain its own resource-to-org mapping. |
-| Database migrations (Alembic) | Running migration on production with large tables without batching | Alembic `op.add_column` with `NOT NULL` on a table with millions of rows locks the table. Use `batch_alter_table` or add nullable first, populate, then alter. |
-| GraphQL (monkey-patch) | Assuming org context is available in the GraphQL auth middleware | The GraphQL patch uses a private MLflow function. Org context must be available via the same bridge mechanism. Verify it works. |
+**Phase to address:** Global workspace picker UI phase.
 
-## Performance Traps
+---
 
-Patterns that work at small scale but fail as usage grows.
+### Pitfall 12: MLflow Workspace API Instability — PUBLIC_UNDOCUMENTED
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Org check as additional DB query per request | p50 latency doubles; DB connection pool exhaustion | Cache user-org membership (TTL 30-60s); include org_id in auth context from middleware | >100 concurrent users, or any deployment with no permission caching (current state) |
-| Post-fetch org filtering on search results | Pagination returns empty pages; users see "no experiments" when thousands exist in other orgs | Pre-filter by org where possible; adjust pagination math to account for filtered-out cross-org results | >1000 experiments across orgs, or orgs with very unequal resource counts |
-| Loading all orgs + org permissions on user profile | `/users/list` endpoint becomes 10x slower (already identified as eagerly loading all permissions) | Lazy load org data; separate endpoint for org details | >50 users with >5 orgs each |
-| Regex permission check across all orgs | `re.match()` on every regex permission for every org on every request | Scope regex permissions to org before pattern matching; only load regex patterns for the user's current org | >100 regex permission rules |
-| Org membership validation on every request via DB | No caching means every request triggers `SELECT ... FROM user_orgs WHERE user_id = X` | Embed org membership in JWT claims or session; validate against DB only on login/refresh | >50 rps |
+**What goes wrong:**
+The upstream workspace API (`/api/3.0/mlflow/workspaces`) is `PUBLIC_UNDOCUMENTED`. This means:
+- Response format may change in minor releases without notice
+- Endpoints may be renamed or removed
+- New required fields may be added to request bodies
+- Error codes may change
 
-## Security Mistakes
+The proxy hardcodes assumptions about the API shape.
 
-Domain-specific security issues beyond general web security.
+**Prevention:**
+- **Abstract the MLflow workspace API behind an interface.** Don't sprinkle `httpx.post('/api/3.0/mlflow/workspaces', json={...})` throughout the codebase — create a `MlflowWorkspaceClient` class that encapsulates all API calls.
+- **Pin the expected MLflow version range** in the compatibility notes.
+- **Add integration tests** that actually call MLflow's workspace API (not mocked) to detect breakage early.
+- **Use defensive parsing**: don't crash if the response has unexpected fields, just ignore them.
+- **Monitor MLflow release notes** for workspace API changes.
 
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Org boundary enforced only in UI, not API | API clients bypass org isolation entirely; data exfiltration via direct API calls | Enforce org boundary in Flask before_request hooks and FastAPI routers, not just frontend |
-| Org admin can promote to global admin | Privilege escalation: org admin creates a global admin account | Org admin role is strictly lower than global admin; only global admins can create global admins |
-| Resource IDs are globally unique (not org-scoped) | User guesses experiment ID from another org and accesses it via direct API call | Org check on every resource access, even when the user provides the resource ID directly |
-| Org switching without re-authentication | Session carries old org context after switching; stale permissions used | Clear permission cache on org switch; re-validate org membership from token/DB |
-| Default org has weaker isolation than named orgs | Attack: keep resources in "default" org to avoid isolation rules | Default org has identical isolation rules; it's just unnamed, not unprotected |
-| Gateway validators fail-open (existing bug) extended to org context | If gateway resource name can't be resolved AND org can't be determined, validator returns True | Fix existing fail-open bug (CONCERNS.md identifies this) BEFORE adding org support; ensure org check also fails closed |
+**Phase to address:** Workspace CRUD backend phase — design the proxy as an abstraction layer.
 
-## UX Pitfalls
+---
 
-Common user experience mistakes in this domain.
+### Pitfall 13: Workspace Picker Header State vs URL State Mismatch
 
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Requiring org selection on every action | Users in single-org deployments see meaningless "Select org" dropdown | Auto-select when user has one org; show selector only for multi-org users |
-| Showing all orgs a user belongs to with equal prominence | Users accidentally create resources in wrong org | Show current org prominently; require explicit switch with confirmation |
-| Hiding org context in permission management UI | Admin grants permission in wrong org | Show org name in permission table header; color-code per org |
-| Making org a required URL parameter | Breaks existing bookmarks and API scripts | Org is inferred from user's current context; explicit org parameter is optional override |
-| Org creation available to any admin | Org sprawl; hundreds of unused orgs | Restrict org creation to global admins; org admins can manage their org but not create new ones |
+**What goes wrong:**
+The workspace picker stores the selected workspace in React state/context. But admin pages may have workspace-specific URLs (e.g., `/workspaces/prod/users`). If the user navigates to a workspace detail page via URL bookmark but the picker shows a different workspace, the page content and the picker are out of sync.
+
+**Prevention:**
+- The workspace detail pages should NOT be affected by the global picker — they show the workspace from the URL parameter.
+- The global picker affects list/search pages (experiments, models) that don't have a workspace in the URL.
+- OR: the workspace picker and URL are always in sync — navigating to a workspace detail page updates the picker, and changing the picker navigates to the selected workspace's page.
+- Choose one pattern and be consistent.
+
+**Phase to address:** Global workspace picker UI phase.
+
+---
+
+### Pitfall 14: cachetools Not Pinned — Transitive Dependency Risk
+
+**What goes wrong:**
+The existing `.planning/PROJECT.md` already flags: "`cachetools` is transitive dependency only (via MLflow) — not pinned in pyproject.toml." The workspace permission cache uses `TTLCache` from cachetools. If a future MLflow version drops cachetools or changes the version, the plugin breaks at import time.
+
+**Prevention:**
+- Add `cachetools>=5,<7` as a direct dependency in `pyproject.toml`.
+- This is a one-line change but prevents a cryptic import error in production.
+
+**Phase to address:** Any phase — quick fix that should be done immediately.
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| Workspace CRUD proxy backend | Proxy error conflation (P1), permission escalation (P2), deletion cascade (P9), API instability (P12) | Parse MLflow errors, separate workspace MANAGE from workspace lifecycle MANAGE, add cascade delete, abstract the API client |
+| Workspace management admin UI | Name validation mismatch (P6), admin vs non-admin lists (P11) | Validate in proxy AND handle MLflow errors, adapt dropdown for different user roles |
+| Global workspace picker | State management (P7), header vs URL mismatch (P13) | React Context + localStorage, choose sync strategy and be consistent |
+| Workspace-scoped search filtering | Performance death spiral (P3), hook ordering (P8), feature flag bypass (P5) | Filter workspace FIRST, modify existing functions, gate on feature flag |
+| Regex workspace permissions | Cache invalidation gaps (P4), resolution order (P10), feature flag bypass (P5) | Flush entire cache on regex CUD, follow PERMISSION_SOURCE_ORDER, gate at router level |
 
 ## "Looks Done But Isn't" Checklist
 
-Things that appear complete but are missing critical pieces.
+Things that appear complete but are missing critical pieces for this milestone.
 
-- [ ] **Org-scoped permissions:** Often missing regex and group-regex variants — verify all 4 permission types (user, group, regex, group-regex) are org-scoped for ALL 7 resource types
-- [ ] **Search result filtering:** Often missing org filter for logged models, scorers, gateway endpoints/secrets/model definitions — verify _filter_search_* functions check org for all filterable resource types, not just experiments and models
-- [ ] **Permission cascade on resource delete:** Often missing org context in cascade delete — verify `_delete_can_manage_*_permission` and `_delete_*_permissions_cascade` functions scope to org when cleaning up
-- [ ] **Auto-grant MANAGE on create:** Often missing org assignment — verify `_set_can_manage_*_permission` functions include org_id when creating the auto-granted permission
-- [ ] **User deletion cleanup:** Already broken for gateway permissions (CONCERNS.md) — verify org-scoped permissions are also cleaned up when a user is removed from an org (not just deleted entirely)
-- [ ] **Rename propagation:** Often missing org context — verify `_rename_registered_model_permission` and `_rename_gateway_endpoint_permission` scope their updates to the correct org
-- [ ] **GraphQL auth middleware:** Often forgotten in org implementation — verify the GraphQL authorization middleware checks org boundaries
-- [ ] **Session contains org context:** Often missing — verify session stores current org and that org switch updates the session
-- [ ] **API backward compatibility:** Often breaking — verify all existing API endpoints work without `org_id` parameter (falls back to default org)
-- [ ] **Migration rollback:** Often untested — verify Alembic downgrade path works and restores pre-org schema cleanly
+- [ ] **Workspace CRUD proxy**: Often missing error response normalization — verify MLflow error codes are mapped to proper HTTP status codes and user-facing messages
+- [ ] **Delete workspace check**: Often missing comprehensive resource check — verify experiments, models, prompts, scorers, gateway resources are all checked before allowing deletion
+- [ ] **Search filtering**: Often missing workspace filter for logged models and scorers — verify `_filter_search_logged_models` also applies workspace scoping, not just experiments and models
+- [ ] **Regex workspace permissions**: Often missing cache flush — verify `flush_workspace_cache()` is called from regex permission CUD endpoints
+- [ ] **Regex workspace permissions in lookup chain**: Often missing integration with `_lookup_workspace_permission` — verify regex and group-regex are added as resolution steps
+- [ ] **Workspace picker header injection**: Often missing `X-MLFLOW-WORKSPACE` header — verify ALL HTTP client calls include the workspace header from the picker context
+- [ ] **Feature flag gating for new routers**: Often missing conditional registration — verify workspace CRUD and regex permission routers are not registered when `MLFLOW_ENABLE_WORKSPACES=false`
+- [ ] **Workspace rename permission cascade**: Often missing — verify that if workspace rename is supported, all `workspace_permissions` and `workspace_group_permissions` rows are updated with the new name
+- [ ] **GraphQL workspace filtering**: Often forgotten — verify that GraphQL queries also respect workspace scoping
+- [ ] **Frontend runtime config includes workspace flag**: Often missing — verify `config.json` endpoint returns `workspacesEnabled` so the frontend can hide/show workspace UI elements
 
 ## Recovery Strategies
 
-When pitfalls occur despite prevention, how to recover.
+When pitfalls occur despite prevention.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Cross-tenant data leakage via fallback permission | HIGH | Immediate: change DEFAULT_MLFLOW_PERMISSION to NO_PERMISSIONS. Audit logs to identify leaked data. Notify affected tenants. Long-term: add org boundary check. |
-| Broken permissions after migration (null org) | MEDIUM | Run a data repair script: `UPDATE experiment_permissions SET org_id = (SELECT id FROM orgs WHERE name = 'default') WHERE org_id IS NULL`. Restart app. |
-| OIDC provider doesn't send org claims | LOW | Configure `OIDC_ORG_DETECTION_PLUGIN` or switch to admin-managed org assignment. Users manually assigned to orgs. |
-| Permission complexity explosion (unmaintainable code) | HIGH | Stop. Refactor to generic permission resolution. This is a rewrite of utils/permissions.py — budget 1-2 weeks. Defer new org features until refactor lands. |
-| Bridge missing org context (silent failures) | MEDIUM | Add org to bridge immediately. Audit all validators for missing org checks. Add assertions that fail-fast if org is None in org-required contexts. |
-| Org admin accessing other org resources | HIGH | Revoke org-admin access. Audit API access logs. Add org-scoped admin check. Deploy fix before re-enabling org-admin. |
-| Backward compatibility break (existing deployments) | MEDIUM | Publish hotfix: add default org auto-creation on startup if no orgs exist. All config defaults allow org-free operation. Release as patch version. |
-
-## Pitfall-to-Phase Mapping
-
-How roadmap phases should address these pitfalls.
-
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| Cross-tenant data leakage via fallback | Phase 1: Core org model + permission resolution | Integration test: User in Org-A cannot access Org-B experiment, even with DEFAULT_MLFLOW_PERMISSION=MANAGE |
-| Post-fetch search filtering leaks | Phase 2: Permission resolution update | Integration test: Search results contain zero cross-org resources; pagination math is correct |
-| Migration breaks existing permissions | Phase 1: Database migration | Test: upgrade from pre-org schema with existing data; verify all permissions still work |
-| OIDC org claim inconsistency | Phase 2: OIDC integration | Test with at least 2 different OIDC providers (e.g., Keycloak + Auth0); test with no org claim configured |
-| Permission complexity explosion | **Phase 0: Prerequisite refactoring** | `utils/permissions.py` uses a single generic resolution function before org work starts |
-| Plugin boundary violations | Phase 1: Design doc | Design doc explicitly lists what is in-scope vs. out-of-scope for the auth plugin |
-| Bridge missing org context | Phase 1: Core implementation | Integration test: Flask validator can read org_id from bridge; fails-fast if missing |
-| Group-to-org relationship | Phase 1: Design decision | Design doc documents the chosen model with rationale; migration handles existing groups |
-| Admin bypass without org scoping | Phase 1: Core org model | Test: org admin can MANAGE own org resources, CANNOT access other org resources |
-| Backward compatibility | All phases | Test scenario: upgrade without any new config; run existing API scripts; verify identical behavior |
+| Proxy error conflation (users see 500s) | LOW | Add error mapping layer to proxy. Redeploy. No data loss. |
+| Permission escalation via MANAGE | MEDIUM | Audit workspace mutation logs. Revert unauthorized changes. Restrict MANAGE → admin-only for workspace CRUD. |
+| Search performance death spiral | MEDIUM | Add re-fetch iteration cap immediately. Profile and optimize. May need DB-side workspace mapping table. |
+| TTLCache stale after regex change | LOW | Add `flush_workspace_cache()` call. Reduce TTL as interim fix. |
+| Feature flag bypass | LOW | Add conditional router registration. Redeploy. Clean up any workspace records created in non-workspace deployments. |
+| Orphaned workspace permissions | LOW | Run cleanup query: `DELETE FROM workspace_permissions WHERE workspace NOT IN (active_workspaces)`. |
+| Workspace picker state lost on navigation | LOW | Add localStorage persistence. Verify React Context wraps all routes. |
+| MLflow API change breaks proxy | MEDIUM | Pin MLflow version. Update proxy to handle new API shape. Abstraction layer limits blast radius. |
 
 ## Sources
 
-- Direct codebase analysis: `utils/permissions.py`, `hooks/before_request.py`, `hooks/after_request.py`, `middleware/auth_middleware.py`, `middleware/auth_aware_wsgi_middleware.py`, `bridge/user.py`, `config.py`, `routers/auth.py`, `db/models/`, `validators/gateway.py`
-- `.planning/codebase/CONCERNS.md` — identified tech debt, known bugs (gateway fail-open, user deletion cleanup), security considerations
-- `.planning/codebase/ARCHITECTURE.md` — bridge layer design, middleware stack, plugin boundary
-- `.planning/PROJECT.md` — constraints, out-of-scope items, existing requirements
-- OIDC provider documentation: Auth0 Organizations, Keycloak Organizations, Azure AD multi-tenant, Okta Organizations (known behavior from provider docs)
-- Multi-tenant authorization patterns: row-level security, org-scoped RBAC, tenant isolation in shared-database architectures (established patterns, HIGH confidence)
+- Direct codebase analysis (v1.0 post-merge state):
+  - `hooks/after_request.py` — existing search filtering, workspace list filtering, cascade delete patterns
+  - `hooks/before_request.py` — workspace validators, creation gating, permission handler registration
+  - `validators/workspace.py` — current admin-only authorization for workspace CRUD
+  - `utils/workspace_cache.py` — TTLCache implementation, invalidation patterns, lookup chain
+  - `utils/permissions.py` — permission resolution registry, workspace fallback, can_* helpers
+  - `dependencies.py` — FastAPI dependency injection for workspace manage/read checks
+  - `middleware/auth_middleware.py` — AuthContext creation, workspace header extraction
+  - `bridge/user.py` — AuthContext retrieval in Flask context
+  - `repository/_base.py` — generic repository patterns (regex, group-regex base classes)
+  - `repository/workspace_permission.py` — standalone workspace permission CRUD
+  - `db/models/workspace.py` — ORM models, composite PK design
+  - `config.py` — feature flags, cache configuration
+  - `routers/workspace_permissions.py` — existing workspace permission CRUD endpoints
+  - `web-react/src/core/services/http.ts` — HTTP client, header handling
+  - `web-react/src/shared/components/header.tsx` — header component structure
+- `.planning/PROJECT.md` — milestone scope, constraints, known gaps (cachetools, PUBLIC_UNDOCUMENTED API)
+- Prior pitfalls research (v1.0) — pitfall continuity for cross-tenant filtering, feature flag gating
+- MLflow workspace API status: `PUBLIC_UNDOCUMENTED` per v3.0 protobuf annotations (MEDIUM confidence — based on code inspection, not official MLflow docs)
 
 ---
-*Pitfalls research for: Multi-tenant organization support for mlflow-oidc-auth*
-*Researched: 2026-03-23*
+*Pitfalls research for: v1.1 Workspace Management — CRUD proxy, search filtering, regex permissions, global workspace picker*
+*Researched: 2026-03-24*
