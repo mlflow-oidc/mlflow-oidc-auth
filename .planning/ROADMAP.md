@@ -82,7 +82,7 @@ Plans:
   5. Picker includes search/filter for many-workspace deployments and keyboard shortcut for quick switching
 **Plans:** 3 plans
 Plans:
-- [ ] 08-01-PLAN.md — Workspace CRUD service layer + admin management modals (create/edit/delete)
+- [x] 08-01-PLAN.md — Workspace CRUD service layer + admin management modals (create/edit/delete)
 - [ ] 08-02-PLAN.md — Global workspace picker dropdown + HTTP header integration
 - [ ] 08-03-PLAN.md — Bulk permission assignment on workspace detail page
 **UI hint**: yes
@@ -100,5 +100,5 @@ Phases execute in numeric order: 5 → 6 → 7 → 8
 | 4. Workspace Management UI | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 5. Regex Workspace Permissions | v1.1 | 2/2 | Complete   | 2026-03-24 |
 | 6. Workspace CRUD Backend | v1.1 | 2/2 | Complete   | 2026-03-24 |
-| 7. Workspace-Scoped Search Filtering | v1.1 | 0/1 | Planned | - |
-| 8. Workspace Management UI & Global Picker | v1.1 | 0/3 | Planned | - |
+| 7. Workspace-Scoped Search Filtering | v1.1 | 1/1 | Complete | 2026-03-24 |
+| 8. Workspace Management UI & Global Picker | v1.1 | 1/3 | In Progress | - |

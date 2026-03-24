@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Workspace Management
-status: Ready to plan
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-24T19:00:37.372Z"
+status: Executing Phase 08
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-24T20:10:09Z"
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 8
+  completed_plans: 6
 ---
 
 # Project State
@@ -19,20 +19,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Multi-tenant resource isolation — organizations share an MLflow instance while each tenant sees only their own resources
-**Current focus:** Phase 07 — workspace-scoped-search-filtering
+**Current focus:** Phase 08 — workspace-management-ui-global-picker
 
 ## Current Position
 
-Phase: 8
-Plan: Not started
+Phase: 08 (workspace-management-ui-global-picker) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0 (v1.1)
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 1 (v1.1)
+- Average duration: ~5min
+- Total execution time: ~5min
 
 *Updated after each plan completion*
 
@@ -56,6 +56,7 @@ v1.1 roadmap decisions:
 - [Phase 06]: Path params named {workspace} to match dependency parameter names in check_workspace_*_permission
 - [Phase 06]: Feature-flag gated router: exported in __all__ but NOT in get_all_routers(), registered conditionally in app.py
 - [Phase 07]: Proto experiments/models lack workspace field — re-fetch from tracking_store/model_registry_store; build ws_map dict for batch lookup
+- [Phase 08]: Workspace CRUD modals follow webhook modal pattern (Modal + useToast + local isSubmitting); DNS-safe validation (2-63 chars, lowercase alphanum + hyphens, "default" reserved)
 
 ### Pending Todos
 
@@ -71,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24T18:53:40.498Z
-Stopped at: Completed 07-01-PLAN.md
-Resume file: None
+Last session: 2026-03-24T20:10:09Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: .planning/phases/08-workspace-management-ui-global-picker/08-02-PLAN.md
