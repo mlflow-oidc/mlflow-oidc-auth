@@ -89,45 +89,45 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WSCRUD-01 | — | Pending |
-| WSCRUD-02 | — | Pending |
-| WSCRUD-03 | — | Pending |
-| WSCRUD-04 | — | Pending |
-| WSCRUD-05 | — | Pending |
-| WSCRUD-06 | — | Pending |
-| WSCRUD-07 | — | Pending |
-| WSCRUD-08 | — | Pending |
-| WSREG-01 | — | Pending |
-| WSREG-02 | — | Pending |
-| WSREG-03 | — | Pending |
-| WSREG-04 | — | Pending |
-| WSREG-05 | — | Pending |
-| WSREG-06 | — | Pending |
-| WSREG-07 | — | Pending |
-| WSSEC-01 | — | Pending |
-| WSSEC-02 | — | Pending |
-| WSSEC-03 | — | Pending |
-| WSSEC-04 | — | Pending |
-| WSSEC-05 | — | Pending |
-| WSSEC-06 | — | Pending |
-| WSUI-01 | — | Pending |
-| WSUI-02 | — | Pending |
-| WSUI-03 | — | Pending |
-| WSUI-04 | — | Pending |
-| WSUI-05 | — | Pending |
-| WSPICK-01 | — | Pending |
-| WSPICK-02 | — | Pending |
-| WSPICK-03 | — | Pending |
-| WSPICK-04 | — | Pending |
-| WSPICK-05 | — | Pending |
-| WSPICK-06 | — | Pending |
-| WSOIDC-04 | — | Pending |
+| WSREG-01 | Phase 5 | Pending |
+| WSREG-02 | Phase 5 | Pending |
+| WSREG-03 | Phase 5 | Pending |
+| WSREG-04 | Phase 5 | Pending |
+| WSREG-05 | Phase 5 | Pending |
+| WSREG-06 | Phase 5 | Pending |
+| WSREG-07 | Phase 5 | Pending |
+| WSCRUD-01 | Phase 6 | Pending |
+| WSCRUD-02 | Phase 6 | Pending |
+| WSCRUD-03 | Phase 6 | Pending |
+| WSCRUD-04 | Phase 6 | Pending |
+| WSCRUD-05 | Phase 6 | Pending |
+| WSCRUD-06 | Phase 6 | Pending |
+| WSCRUD-07 | Phase 6 | Pending |
+| WSCRUD-08 | Phase 6 | Pending |
+| WSOIDC-04 | Phase 6 | Pending |
+| WSSEC-01 | Phase 7 | Pending |
+| WSSEC-02 | Phase 7 | Pending |
+| WSSEC-03 | Phase 7 | Pending |
+| WSSEC-04 | Phase 7 | Pending |
+| WSSEC-05 | Phase 7 | Pending |
+| WSSEC-06 | Phase 7 | Pending |
+| WSUI-01 | Phase 8 | Pending |
+| WSUI-02 | Phase 8 | Pending |
+| WSUI-03 | Phase 8 | Pending |
+| WSUI-04 | Phase 8 | Pending |
+| WSUI-05 | Phase 8 | Pending |
+| WSPICK-01 | Phase 8 | Pending |
+| WSPICK-02 | Phase 8 | Pending |
+| WSPICK-03 | Phase 8 | Pending |
+| WSPICK-04 | Phase 8 | Pending |
+| WSPICK-05 | Phase 8 | Pending |
+| WSPICK-06 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 33 total
-- Mapped to phases: 0
-- Unmapped: 33 (pending roadmap creation)
+- Mapped to phases: 33
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-24*
-*Last updated: 2026-03-24 after initial definition*
+*Last updated: 2026-03-24 after roadmap creation (33/33 mapped)*
