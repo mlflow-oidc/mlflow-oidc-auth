@@ -52,7 +52,10 @@ Plans:
   3. User with MANAGE permission can update a workspace's description and delete it (if empty), while unprivileged users get 403
   4. Deleting a workspace cascade-deletes all associated user and group permission rows
   5. Workspace CRUD endpoints do not exist when `MLFLOW_ENABLE_WORKSPACES=false`
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 06-01-PLAN.md — After-request hooks (auto-grant MANAGE, cascade-delete), validator MANAGE delegation, store wipe method
+- [ ] 06-02-PLAN.md — FastAPI workspace CRUD router, OIDC auto-create workspace, feature-flag gating
 
 ### Phase 7: Workspace-Scoped Search Filtering
 **Goal**: Search results only contain resources from workspaces the user has permission to access, preventing cross-tenant data leakage
@@ -90,6 +93,6 @@ Phases execute in numeric order: 5 → 6 → 7 → 8
 | 3. Management API, OIDC & Entity Coverage | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 4. Workspace Management UI | v1.0 | 2/2 | Complete | 2026-03-23 |
 | 5. Regex Workspace Permissions | v1.1 | 2/2 | Complete   | 2026-03-24 |
-| 6. Workspace CRUD Backend | v1.1 | 0/0 | Not started | - |
+| 6. Workspace CRUD Backend | v1.1 | 0/2 | Planned | - |
 | 7. Workspace-Scoped Search Filtering | v1.1 | 0/0 | Not started | - |
 | 8. Workspace Management UI & Global Picker | v1.1 | 0/0 | Not started | - |
