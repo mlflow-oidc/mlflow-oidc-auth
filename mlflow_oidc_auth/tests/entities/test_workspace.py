@@ -5,6 +5,8 @@ import pytest
 from mlflow_oidc_auth.entities.workspace import (
     WorkspacePermission,
     WorkspaceGroupPermission,
+    WorkspaceRegexPermission,
+    WorkspaceGroupRegexPermission,
 )
 
 
@@ -82,3 +84,111 @@ class TestWorkspaceGroupPermission:
         perm = WorkspaceGroupPermission(workspace="ws1", group_id=1, permission="READ")
         result = perm.to_json()
         assert result["group_name"] is None
+
+
+class TestWorkspaceRegexPermission:
+    """Tests for WorkspaceRegexPermission entity."""
+
+    def test_construction(self):
+        """WorkspaceRegexPermission stores id, regex, priority, user_id, permission."""
+        perm = WorkspaceRegexPermission(
+            id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ"
+        )
+        assert perm.id == 1
+        assert perm.regex == "^ws-.*"
+        assert perm.priority == 10
+        assert perm.user_id == 42
+        assert perm.permission == "READ"
+
+    def test_to_json(self):
+        """to_json() returns dict with id, regex, priority, user_id, permission."""
+        perm = WorkspaceRegexPermission(
+            id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ"
+        )
+        result = perm.to_json()
+        assert result == {
+            "id": 1,
+            "regex": "^ws-.*",
+            "priority": 10,
+            "user_id": 42,
+            "permission": "READ",
+        }
+
+    def test_from_json_roundtrip(self):
+        """from_json(to_json()) roundtrips correctly."""
+        perm = WorkspaceRegexPermission(
+            id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ"
+        )
+        restored = WorkspaceRegexPermission.from_json(perm.to_json())
+        assert restored.id == perm.id
+        assert restored.regex == perm.regex
+        assert restored.priority == perm.priority
+        assert restored.user_id == perm.user_id
+        assert restored.permission == perm.permission
+
+    def test_from_json_with_string_user_id(self):
+        """from_json() converts string user_id to int."""
+        data = {
+            "id": 1,
+            "regex": "^ws-.*",
+            "priority": 10,
+            "user_id": "42",
+            "permission": "READ",
+        }
+        perm = WorkspaceRegexPermission.from_json(data)
+        assert perm.user_id == 42
+        assert isinstance(perm.user_id, int)
+
+
+class TestWorkspaceGroupRegexPermission:
+    """Tests for WorkspaceGroupRegexPermission entity."""
+
+    def test_construction(self):
+        """WorkspaceGroupRegexPermission stores id, regex, priority, group_id, permission."""
+        perm = WorkspaceGroupRegexPermission(
+            id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT"
+        )
+        assert perm.id == 1
+        assert perm.regex == "^ws-.*"
+        assert perm.priority == 5
+        assert perm.group_id == 10
+        assert perm.permission == "EDIT"
+
+    def test_to_json(self):
+        """to_json() returns dict with id, regex, priority, group_id, permission."""
+        perm = WorkspaceGroupRegexPermission(
+            id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT"
+        )
+        result = perm.to_json()
+        assert result == {
+            "id": 1,
+            "regex": "^ws-.*",
+            "priority": 5,
+            "group_id": 10,
+            "permission": "EDIT",
+        }
+
+    def test_from_json_roundtrip(self):
+        """from_json(to_json()) roundtrips correctly."""
+        perm = WorkspaceGroupRegexPermission(
+            id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT"
+        )
+        restored = WorkspaceGroupRegexPermission.from_json(perm.to_json())
+        assert restored.id == perm.id
+        assert restored.regex == perm.regex
+        assert restored.priority == perm.priority
+        assert restored.group_id == perm.group_id
+        assert restored.permission == perm.permission
+
+    def test_from_json_with_string_group_id(self):
+        """from_json() converts string group_id to int."""
+        data = {
+            "id": 1,
+            "regex": "^ws-.*",
+            "priority": 5,
+            "group_id": "10",
+            "permission": "EDIT",
+        }
+        perm = WorkspaceGroupRegexPermission.from_json(data)
+        assert perm.group_id == 10
+        assert isinstance(perm.group_id, int)
