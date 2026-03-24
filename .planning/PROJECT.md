@@ -57,6 +57,7 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 - ✓ WSOIDC-02: Workspace detection plugin hook — v1.0
 - ✓ WSOIDC-03: Auto-create workspace membership on OIDC login — v1.0
 - ✓ ENTITY-01: PromptOptimizationJob before_request handlers — v1.0
+- ✓ WSREG-01–07: Regex workspace permissions (user-regex and group-regex, cache integration, feature-flag gated) — v1.1 Phase 5
 
 ### Active
 
@@ -64,7 +65,7 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 - [ ] Workspace management UI — admin page for creating, viewing, updating, and deleting workspaces
 - [ ] Global workspace picker — dropdown in UI header that scopes all admin pages to the selected workspace
 - [ ] Workspace-scoped search result filtering in after_request
-- [ ] Regex workspace permissions — pattern-based workspace access rules
+- ~~Regex workspace permissions~~ → Validated (see below)
 - [ ] ENTITY-02: GatewayBudgetPolicy before_request handlers — deferred from v1.0, protos not in MLflow 3.10.1
 
 ## Current Milestone: v1.1 Workspace Management
@@ -92,7 +93,7 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 
 ## Context
 
-**Current state (post-v1.0, starting v1.1):** Workspace support is feature-complete for the v1.0 milestone. The plugin now supports multi-tenant workspace isolation with:
+**Current state (post-v1.0, v1.1 Phase 5 complete):** Workspace support includes all v1.0 features plus regex-based workspace access rules. Phase 5 added:
 - 86 Python files modified, 34 TypeScript/TSX files added/modified
 - Net +4,857 lines Python, +1,513 lines TypeScript
 - 157 files changed across the milestone (44 commits)
@@ -101,13 +102,17 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 - 8-endpoint CRUD API for workspace user+group permission management
 - OIDC workspace claim mapping with plugin/JWT/auto-assign detection
 - React admin UI with workspace list, detail, and member management pages
+- User-regex and group-regex workspace permissions (8 CRUD endpoints, admin-only)
+- Configurable permission source order (user → group → regex → group-regex) for workspace cache
+- Priority-aware regex matching with tie-break by most permissive
+- `cachetools>=5.5.0` pinned as direct dependency
 
 **Tech stack:** Python 3.12 / FastAPI / Flask / SQLAlchemy 2 backend, React 19 / TypeScript / Vite frontend. MLflow >=3.10.0 required for workspace protobuf RPCs.
 
 **Known gaps:**
 - ENTITY-02 (GatewayBudgetPolicy) deferred — protos not present in MLflow 3.10.1
 - Upstream workspace API is `PUBLIC_UNDOCUMENTED` (v3.0) — could change in minor releases
-- `cachetools` is transitive dependency only (via MLflow) — not pinned in pyproject.toml
+- ~~`cachetools` is transitive dependency only~~ — pinned as `cachetools>=5.5.0` in Phase 5
 
 **Production deployments:** Existing deployments upgrade seamlessly — `MLFLOW_ENABLE_WORKSPACES` defaults to false, all workspace behavior is gated behind this flag. Enabling workspaces adds workspace-level permission resolution on top of existing resource-level permissions.
 
@@ -159,4 +164,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after v1.1 milestone started*
+*Last updated: 2026-03-24 after v1.1 Phase 5 (Regex Workspace Permissions) complete*
