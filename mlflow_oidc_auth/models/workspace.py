@@ -1,10 +1,19 @@
 """Pydantic request/response models for workspace permission CRUD.
 
 These models support the workspace permissions router endpoints
-for managing user and group workspace-level permissions.
+for managing user and group workspace-level permissions,
+and the workspace CRUD router for workspace lifecycle management.
 """
 
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator
+
+# MLflow workspace name validation (matches WorkspaceNameValidator in mlflow.server.handlers)
+WORKSPACE_NAME_PATTERN = re.compile(r"^(?!.*--)[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+WORKSPACE_NAME_MIN_LENGTH = 2
+WORKSPACE_NAME_MAX_LENGTH = 63
+WORKSPACE_RESERVED_NAMES = {"workspaces", "api", "ajax-api", "static-files"}
 
 
 class WorkspaceUserPermissionRequest(BaseModel):
@@ -91,3 +100,49 @@ class WorkspaceGroupRegexPermissionResponse(BaseModel):
     priority: int = Field(..., description="Priority")
     permission: str = Field(..., description="Permission level")
     group_name: str = Field(..., description="Group name")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Workspace CRUD models (WSCRUD-07)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class WorkspaceCrudCreateRequest(BaseModel):
+    """Request model for creating a workspace (WSCRUD-07)."""
+
+    name: str = Field(
+        ...,
+        min_length=WORKSPACE_NAME_MIN_LENGTH,
+        max_length=WORKSPACE_NAME_MAX_LENGTH,
+        description="DNS-safe workspace name",
+    )
+    description: str = Field(
+        "", max_length=500, description="Optional workspace description"
+    )
+
+    @field_validator("name")
+    @classmethod
+    def validate_workspace_name(cls, v: str) -> str:
+        if not WORKSPACE_NAME_PATTERN.match(v):
+            raise ValueError(
+                "Workspace name must be DNS-safe: lowercase alphanumeric and hyphens, "
+                "no leading/trailing hyphens, no consecutive hyphens"
+            )
+        if v in WORKSPACE_RESERVED_NAMES:
+            raise ValueError(f"'{v}' is a reserved workspace name")
+        return v
+
+
+class WorkspaceCrudUpdateRequest(BaseModel):
+    """Request model for updating a workspace (WSCRUD-07)."""
+
+    description: str = Field(
+        ..., max_length=500, description="Updated workspace description"
+    )
+
+
+class WorkspaceCrudResponse(BaseModel):
+    """Response model for a workspace."""
+
+    name: str = Field(..., description="Workspace name")
+    description: str = Field("", description="Workspace description")

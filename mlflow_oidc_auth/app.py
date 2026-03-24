@@ -161,6 +161,11 @@ def create_app() -> Any:
 
         oidc_app.include_router(workspace_regex_permissions_router)
 
+        # Register workspace CRUD router only when workspaces are enabled (WSCRUD-08)
+        from mlflow_oidc_auth.routers.workspace_crud import workspace_crud_router
+
+        oidc_app.include_router(workspace_crud_router)
+
     # Mount Flask app at root with auth passing middleware
     oidc_app.mount("/", AuthAwareWSGIMiddleware(app))
 

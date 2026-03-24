@@ -27,3 +27,4 @@ WORKSPACE_PERMISSIONS_ROUTER_PREFIX = _get_rest_path(
 WORKSPACE_REGEX_PERMISSIONS_ROUTER_PREFIX = _get_rest_path(
     "/mlflow/permissions/workspaces/regex", version=3
 )
+WORKSPACE_CRUD_ROUTER_PREFIX = _get_rest_path("/mlflow/workspaces/crud", version=3)
