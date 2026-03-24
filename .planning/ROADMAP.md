@@ -39,7 +39,7 @@
   4. Modifying any regex permission immediately invalidates the full workspace cache (no stale access)
 **Plans:** 2 plans
 Plans:
-- [ ] 05-01-PLAN.md — Data layer: DB models, entities, repositories, Alembic migration, store wiring
+- [x] 05-01-PLAN.md — Data layer: DB models, entities, repositories, Alembic migration, store wiring
 - [ ] 05-02-PLAN.md — Router + cache: CRUD endpoints, workspace cache regex integration, feature-flag gating, cachetools pin
 
 ### Phase 6: Workspace CRUD Backend
