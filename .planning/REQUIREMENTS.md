@@ -30,23 +30,23 @@
 
 ### Workspace Management
 
-- [ ] **WSMGMT-01**: FastAPI CRUD router for workspace-user permissions (list, create, update, delete per workspace)
-- [ ] **WSMGMT-02**: FastAPI CRUD router for workspace-group permissions (list, create, update, delete per workspace) — differentiator over upstream
-- [ ] **WSMGMT-03**: Workspace permission delegation — users with MANAGE on a workspace can grant/revoke permissions for other users within that workspace without requiring global admin
+- [x] **WSMGMT-01**: FastAPI CRUD router for workspace-user permissions (list, create, update, delete per workspace)
+- [x] **WSMGMT-02**: FastAPI CRUD router for workspace-group permissions (list, create, update, delete per workspace) — differentiator over upstream
+- [x] **WSMGMT-03**: Workspace permission delegation — users with MANAGE on a workspace can grant/revoke permissions for other users within that workspace without requiring global admin
 - [x] **WSMGMT-04**: React workspace management feature module with workspace list view, workspace detail view, and member management (users + groups)
 - [x] **WSMGMT-05**: Workspace switcher component in admin UI navigation for workspace-scoped permission views
 - [x] **WSMGMT-06**: Admin-managed workspace-to-user assignment UI as fallback when OIDC provider doesn't send workspace claims — manual workspace membership management
 
 ### OIDC Workspace Integration
 
-- [ ] **WSOIDC-01**: Configurable `OIDC_WORKSPACE_CLAIM_NAME` environment variable for extracting workspace from OIDC JWT token claims during login/callback
-- [ ] **WSOIDC-02**: Workspace detection plugin hook (following existing `OIDC_GROUP_DETECTION_PLUGIN` pattern) for custom workspace resolution logic per deployment
-- [ ] **WSOIDC-03**: Auto-create workspace membership during OIDC login when workspace claim is present in token — assign user to workspace with configurable default permission level
+- [x] **WSOIDC-01**: Configurable `OIDC_WORKSPACE_CLAIM_NAME` environment variable for extracting workspace from OIDC JWT token claims during login/callback
+- [x] **WSOIDC-02**: Workspace detection plugin hook (following existing `OIDC_GROUP_DETECTION_PLUGIN` pattern) for custom workspace resolution logic per deployment
+- [x] **WSOIDC-03**: Auto-create workspace membership during OIDC login when workspace claim is present in token — assign user to workspace with configurable default permission level
 
 ### New Entity Coverage
 
-- [ ] **ENTITY-01**: before_request handlers for Prompt Optimization Job protobuf RPCs: `CreatePromptOptimizationJob`, `GetPromptOptimizationJob`, `SearchPromptOptimizationJobs`, `DeletePromptOptimizationJob`, `CancelPromptOptimizationJob`
-- [ ] **ENTITY-02**: before_request handlers for Gateway Budget Policy protobuf RPCs: `CreateGatewayBudgetPolicy`, `GetGatewayBudgetPolicy`, `ListGatewayBudgetPolicies`, `UpdateGatewayBudgetPolicy`, `DeleteGatewayBudgetPolicy`
+- [x] **ENTITY-01**: before_request handlers for Prompt Optimization Job protobuf RPCs: `CreatePromptOptimizationJob`, `GetPromptOptimizationJob`, `SearchPromptOptimizationJobs`, `DeletePromptOptimizationJob`, `CancelPromptOptimizationJob`
+- [ ] **ENTITY-02**: before_request handlers for Gateway Budget Policy protobuf RPCs: `CreateGatewayBudgetPolicy`, `GetGatewayBudgetPolicy`, `ListGatewayBudgetPolicies`, `UpdateGatewayBudgetPolicy`, `DeleteGatewayBudgetPolicy` — DEFERRED: protos not in MLflow 3.10.1
 
 ## v2 Requirements (Deferred)
 
@@ -82,17 +82,17 @@
 | WSAUTH-03 | Phase 2 | Complete |
 | WSAUTH-04 | Phase 2 | Complete |
 | WSAUTH-05 | Phase 2 | Complete |
-| WSMGMT-01 | Phase 3 | Pending |
-| WSMGMT-02 | Phase 3 | Pending |
-| WSMGMT-03 | Phase 3 | Pending |
+| WSMGMT-01 | Phase 3 | Complete |
+| WSMGMT-02 | Phase 3 | Complete |
+| WSMGMT-03 | Phase 3 | Complete |
 | WSMGMT-04 | Phase 4 | Complete |
 | WSMGMT-05 | Phase 4 | Complete |
 | WSMGMT-06 | Phase 4 | Complete |
-| WSOIDC-01 | Phase 3 | Pending |
-| WSOIDC-02 | Phase 3 | Pending |
-| WSOIDC-03 | Phase 3 | Pending |
-| ENTITY-01 | Phase 3 | Pending |
-| ENTITY-02 | Phase 3 | Pending |
+| WSOIDC-01 | Phase 3 | Complete |
+| WSOIDC-02 | Phase 3 | Complete |
+| WSOIDC-03 | Phase 3 | Complete |
+| ENTITY-01 | Phase 3 | Complete |
+| ENTITY-02 | Phase 3 | Deferred — protos not in MLflow 3.10.1 |
 
 ---
 *Requirements defined: 2026-03-23*
