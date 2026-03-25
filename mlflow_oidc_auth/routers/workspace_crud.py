@@ -9,6 +9,8 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from mlflow.server.handlers import _get_workspace_store
+from mlflow.store.workspace import Workspace
+from mlflow.store.workspace.abstract_store import WorkspaceDeletionMode
 
 from mlflow_oidc_auth.dependencies import (
     check_admin_permission,
@@ -54,8 +56,7 @@ async def create_workspace(
     try:
         ws_store = _get_workspace_store()
         workspace = ws_store.create_workspace(
-            name=body.name,
-            description=body.description,
+            Workspace(name=body.name, description=body.description),
         )
         logger.info(f"Workspace '{body.name}' created by admin '{username}'")
         return WorkspaceCrudResponse(
@@ -144,7 +145,9 @@ async def update_workspace(
     """Update a workspace description. Requires MANAGE permission (WSCRUD-04)."""
     try:
         ws_store = _get_workspace_store()
-        ws = ws_store.update_workspace(workspace, description=body.description)
+        ws = ws_store.update_workspace(
+            Workspace(name=workspace, description=body.description),
+        )
         logger.info(f"Workspace '{workspace}' updated")
         return WorkspaceCrudResponse(name=ws.name, description=ws.description or "")
     except Exception as e:
@@ -177,7 +180,7 @@ async def delete_workspace(
         )
     try:
         ws_store = _get_workspace_store()
-        ws_store.delete_workspace(workspace, mode="RESTRICT")
+        ws_store.delete_workspace(workspace, mode=WorkspaceDeletionMode.RESTRICT)
         logger.info(f"Workspace '{workspace}' deleted (RESTRICT mode)")
     except Exception as e:
         error_msg = str(e)

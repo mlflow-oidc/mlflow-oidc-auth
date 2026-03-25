@@ -514,8 +514,12 @@ async def _process_oidc_callback_fastapi(
                         except Exception:
                             # Workspace doesn't exist — try to create it
                             try:
+                                from mlflow.store.workspace import (
+                                    Workspace as MlflowWorkspace,
+                                )
+
                                 ws_mlflow_store.create_workspace(
-                                    name=ws_name, description=""
+                                    MlflowWorkspace(name=ws_name, description=""),
                                 )
                                 logger.info(
                                     f"Auto-created workspace '{ws_name}' during OIDC login for user {email}"

@@ -193,9 +193,12 @@ class TestCreateWorkspace:
 
         assert result.name == "new-ws"
         assert result.description == "A new workspace"
-        mock_get_ws_store.return_value.create_workspace.assert_called_once_with(
-            name="new-ws", description="A new workspace"
-        )
+        # Verify called with a Workspace object
+        call_args = mock_get_ws_store.return_value.create_workspace.call_args
+        assert call_args is not None
+        ws_arg = call_args[0][0]  # First positional argument
+        assert ws_arg.name == "new-ws"
+        assert ws_arg.description == "A new workspace"
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
@@ -397,9 +400,12 @@ class TestDeleteWorkspace:
 
         await delete_workspace(workspace="ws1", _="admin@example.com")
 
-        mock_get_ws_store.return_value.delete_workspace.assert_called_once_with(
-            "ws1", mode="RESTRICT"
-        )
+        mock_get_ws_store.return_value.delete_workspace.assert_called_once()
+        call_args = mock_get_ws_store.return_value.delete_workspace.call_args
+        assert call_args[0][0] == "ws1"
+        from mlflow.store.workspace.abstract_store import WorkspaceDeletionMode
+
+        assert call_args[1]["mode"] == WorkspaceDeletionMode.RESTRICT
 
     @pytest.mark.asyncio
     async def test_delete_default_workspace_returns_400(self):

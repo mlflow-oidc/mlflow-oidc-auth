@@ -90,10 +90,11 @@ class TestOidcWorkspaceAutoCreate:
         ):
             email, errors = await _process_oidc_callback_fastapi(request, session)
 
-        # Workspace was auto-created
-        mlflow_ws_store.create_workspace.assert_called_once_with(
-            name="new-ws", description=""
-        )
+        # Workspace was auto-created with a Workspace object
+        mlflow_ws_store.create_workspace.assert_called_once()
+        ws_arg = mlflow_ws_store.create_workspace.call_args[0][0]
+        assert ws_arg.name == "new-ws"
+        assert ws_arg.description == ""
         assert email == "user@example.com"
         assert errors == []
 
