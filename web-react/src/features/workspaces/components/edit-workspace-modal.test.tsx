@@ -11,7 +11,11 @@ describe("EditWorkspaceModal", () => {
   const mockShowToast = vi.fn();
   const mockOnClose = vi.fn();
   const mockOnSuccess = vi.fn();
-  const mockWorkspace = { name: "test-ws", description: "Original desc" };
+  const mockWorkspace = {
+    name: "test-ws",
+    description: "Original desc",
+    default_artifact_root: "s3://original-bucket",
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,6 +51,9 @@ describe("EditWorkspaceModal", () => {
     expect(screen.getByText("Edit Workspace")).toBeInTheDocument();
     expect(screen.getByDisplayValue("test-ws")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Original desc")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("s3://original-bucket"),
+    ).toBeInTheDocument();
   });
 
   it("has name field as read-only/disabled", () => {
@@ -71,6 +78,7 @@ describe("EditWorkspaceModal", () => {
     mockUpdateWorkspace.mockResolvedValue({
       name: "test-ws",
       description: "Updated desc",
+      default_artifact_root: "s3://original-bucket",
     });
 
     render(
@@ -89,6 +97,7 @@ describe("EditWorkspaceModal", () => {
     await waitFor(() => {
       expect(mockUpdateWorkspace).toHaveBeenCalledWith("test-ws", {
         description: "Updated desc",
+        default_artifact_root: "s3://original-bucket",
       });
       expect(mockShowToast).toHaveBeenCalledWith(
         "Workspace updated successfully",
@@ -96,6 +105,40 @@ describe("EditWorkspaceModal", () => {
       );
       expect(mockOnSuccess).toHaveBeenCalled();
       expect(mockOnClose).toHaveBeenCalled();
+    });
+  });
+
+  it("updates default_artifact_root on submit", async () => {
+    const mockUpdateWorkspace = vi.spyOn(
+      workspaceServiceModule,
+      "updateWorkspace",
+    );
+    mockUpdateWorkspace.mockResolvedValue({
+      name: "test-ws",
+      description: "Original desc",
+      default_artifact_root: "s3://new-bucket",
+    });
+
+    render(
+      <EditWorkspaceModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSuccess={mockOnSuccess}
+        workspace={mockWorkspace}
+      />,
+    );
+
+    const artifactInput = screen.getByDisplayValue("s3://original-bucket");
+    fireEvent.change(artifactInput, {
+      target: { value: "s3://new-bucket" },
+    });
+    fireEvent.submit(screen.getByRole("form"));
+
+    await waitFor(() => {
+      expect(mockUpdateWorkspace).toHaveBeenCalledWith("test-ws", {
+        description: "Original desc",
+        default_artifact_root: "s3://new-bucket",
+      });
     });
   });
 

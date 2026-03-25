@@ -32,6 +32,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
   const { showToast } = useToast();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [artifactRoot, setArtifactRoot] = useState("");
   const [nameError, setNameError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -46,6 +47,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
     e.preventDefault();
     const trimmedName = name.trim();
     const trimmedDescription = description.trim();
+    const trimmedArtifactRoot = artifactRoot.trim();
 
     const error = validateWorkspaceName(trimmedName);
     if (error) {
@@ -58,6 +60,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
       await createWorkspace({
         name: trimmedName,
         description: trimmedDescription || undefined,
+        default_artifact_root: trimmedArtifactRoot || undefined,
       });
       showToast("Workspace created successfully", "success");
       onSuccess();
@@ -90,6 +93,14 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Optional description"
+            containerClassName="mt-2"
+          />
+          <Input
+            id="workspace-artifact-root"
+            label="Default Artifact Root"
+            value={artifactRoot}
+            onChange={(e) => setArtifactRoot(e.target.value)}
+            placeholder="e.g. s3://team-artifacts"
             containerClassName="mt-2"
           />
           <div className="flex justify-end space-x-3 mt-6">

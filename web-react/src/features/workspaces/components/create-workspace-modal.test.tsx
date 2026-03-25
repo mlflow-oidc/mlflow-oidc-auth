@@ -94,6 +94,7 @@ describe("CreateWorkspaceModal", () => {
     expect(screen.getByText("Create Workspace")).toBeInTheDocument();
     expect(screen.getByLabelText("Name*")).toBeInTheDocument();
     expect(screen.getByLabelText("Description")).toBeInTheDocument();
+    expect(screen.getByLabelText("Default Artifact Root")).toBeInTheDocument();
   });
 
   it("validates name on input change", () => {
@@ -153,6 +154,7 @@ describe("CreateWorkspaceModal", () => {
     mockCreateWorkspace.mockResolvedValue({
       name: "test-ws",
       description: "",
+      default_artifact_root: null,
     });
 
     render(
@@ -172,6 +174,7 @@ describe("CreateWorkspaceModal", () => {
       expect(mockCreateWorkspace).toHaveBeenCalledWith({
         name: "test-ws",
         description: undefined,
+        default_artifact_root: undefined,
       });
       expect(mockShowToast).toHaveBeenCalledWith(
         "Workspace created successfully",
@@ -179,6 +182,45 @@ describe("CreateWorkspaceModal", () => {
       );
       expect(mockOnSuccess).toHaveBeenCalled();
       expect(mockOnClose).toHaveBeenCalled();
+    });
+  });
+
+  it("passes default_artifact_root when provided", async () => {
+    const mockCreateWorkspace = vi.spyOn(
+      workspaceServiceModule,
+      "createWorkspace",
+    );
+    mockCreateWorkspace.mockResolvedValue({
+      name: "test-ws",
+      description: "desc",
+      default_artifact_root: "s3://my-bucket",
+    });
+
+    render(
+      <CreateWorkspaceModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSuccess={mockOnSuccess}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Name*"), {
+      target: { value: "test-ws" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "desc" },
+    });
+    fireEvent.change(screen.getByLabelText("Default Artifact Root"), {
+      target: { value: "s3://my-bucket" },
+    });
+    fireEvent.submit(screen.getByRole("form"));
+
+    await waitFor(() => {
+      expect(mockCreateWorkspace).toHaveBeenCalledWith({
+        name: "test-ws",
+        description: "desc",
+        default_artifact_root: "s3://my-bucket",
+      });
     });
   });
 

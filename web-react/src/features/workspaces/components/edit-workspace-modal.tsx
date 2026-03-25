@@ -9,7 +9,11 @@ interface EditWorkspaceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  workspace: { name: string; description: string } | null;
+  workspace: {
+    name: string;
+    description: string;
+    default_artifact_root?: string | null;
+  } | null;
 }
 
 export const EditWorkspaceModal: React.FC<EditWorkspaceModalProps> = ({
@@ -20,11 +24,13 @@ export const EditWorkspaceModal: React.FC<EditWorkspaceModalProps> = ({
 }) => {
   const { showToast } = useToast();
   const [description, setDescription] = useState("");
+  const [artifactRoot, setArtifactRoot] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (workspace) {
       setDescription(workspace.description);
+      setArtifactRoot(workspace.default_artifact_root || "");
     }
   }, [workspace]);
 
@@ -36,6 +42,7 @@ export const EditWorkspaceModal: React.FC<EditWorkspaceModalProps> = ({
     try {
       await updateWorkspace(workspace.name, {
         description: description.trim(),
+        default_artifact_root: artifactRoot.trim() || undefined,
       });
       showToast("Workspace updated successfully", "success");
       onSuccess();
@@ -64,6 +71,14 @@ export const EditWorkspaceModal: React.FC<EditWorkspaceModalProps> = ({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Enter description"
+          containerClassName="mt-2"
+        />
+        <Input
+          id="workspace-artifact-root"
+          label="Default Artifact Root"
+          value={artifactRoot}
+          onChange={(e) => setArtifactRoot(e.target.value)}
+          placeholder="e.g. s3://team-artifacts"
           containerClassName="mt-2"
         />
         <div className="flex justify-end space-x-3 mt-6">

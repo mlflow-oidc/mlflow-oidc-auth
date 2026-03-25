@@ -37,6 +37,7 @@ export default function WorkspacesPage() {
   const [editWorkspace, setEditWorkspace] = useState<{
     name: string;
     description: string;
+    default_artifact_root?: string | null;
   } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     name: string;
@@ -77,6 +78,10 @@ export default function WorkspacesPage() {
       render: (item) => item.description || "—",
     },
     {
+      header: "Artifact Root",
+      render: (item) => item.default_artifact_root || "—",
+    },
+    {
       header: "Members",
       render: (item) => (
         <span className="text-sm text-ui-text dark:text-ui-text-dark">
@@ -103,6 +108,7 @@ export default function WorkspacesPage() {
                   setEditWorkspace({
                     name: workspace.name,
                     description: workspace.description,
+                    default_artifact_root: workspace.default_artifact_root,
                   })
                 }
               />

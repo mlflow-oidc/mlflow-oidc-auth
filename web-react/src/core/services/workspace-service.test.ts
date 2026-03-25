@@ -36,7 +36,11 @@ describe("workspace-service", () => {
 
   describe("createWorkspace", () => {
     it("calls request with correct endpoint and body", async () => {
-      const mockResponse = { name: "test-ws", description: "A test workspace" };
+      const mockResponse = {
+        name: "test-ws",
+        description: "A test workspace",
+        default_artifact_root: null,
+      };
       mockRequest.mockResolvedValue(mockResponse);
 
       const result = await createWorkspace({
@@ -58,7 +62,11 @@ describe("workspace-service", () => {
     });
 
     it("calls request without description when not provided", async () => {
-      mockRequest.mockResolvedValue({ name: "minimal-ws", description: "" });
+      mockRequest.mockResolvedValue({
+        name: "minimal-ws",
+        description: "",
+        default_artifact_root: null,
+      });
 
       await createWorkspace({ name: "minimal-ws" });
 
@@ -70,6 +78,30 @@ describe("workspace-service", () => {
         },
       );
     });
+
+    it("passes default_artifact_root when provided", async () => {
+      mockRequest.mockResolvedValue({
+        name: "test-ws",
+        description: "",
+        default_artifact_root: "s3://my-bucket",
+      });
+
+      await createWorkspace({
+        name: "test-ws",
+        default_artifact_root: "s3://my-bucket",
+      });
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        "/api/3.0/mlflow/workspaces/crud",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "test-ws",
+            default_artifact_root: "s3://my-bucket",
+          }),
+        },
+      );
+    });
   });
 
   describe("updateWorkspace", () => {
@@ -77,6 +109,7 @@ describe("workspace-service", () => {
       const mockResponse = {
         name: "test-ws",
         description: "Updated description",
+        default_artifact_root: null,
       };
       mockRequest.mockResolvedValue(mockResponse);
 
@@ -95,13 +128,41 @@ describe("workspace-service", () => {
     });
 
     it("encodes workspace name in URL", async () => {
-      mockRequest.mockResolvedValue({ name: "ws name", description: "" });
+      mockRequest.mockResolvedValue({
+        name: "ws name",
+        description: "",
+        default_artifact_root: null,
+      });
 
       await updateWorkspace("ws name", { description: "desc" });
 
       expect(mockRequest).toHaveBeenCalledWith(
         "/api/3.0/mlflow/workspaces/crud/ws%20name",
         expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+
+    it("passes default_artifact_root when provided", async () => {
+      mockRequest.mockResolvedValue({
+        name: "test-ws",
+        description: "desc",
+        default_artifact_root: "s3://new-bucket",
+      });
+
+      await updateWorkspace("test-ws", {
+        description: "desc",
+        default_artifact_root: "s3://new-bucket",
+      });
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        "/api/3.0/mlflow/workspaces/crud/test-ws",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            description: "desc",
+            default_artifact_root: "s3://new-bucket",
+          }),
+        },
       );
     });
   });

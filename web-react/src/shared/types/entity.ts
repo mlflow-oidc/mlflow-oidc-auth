@@ -178,15 +178,18 @@ export type WorkspaceGroupPermission = {
 export type WorkspaceCrudCreateRequest = {
   name: string;
   description?: string;
+  default_artifact_root?: string;
 };
 
 export type WorkspaceCrudUpdateRequest = {
   description: string;
+  default_artifact_root?: string;
 };
 
 export type WorkspaceCrudResponse = {
   name: string;
   description: string;
+  default_artifact_root: string | null;
 };
 
 export type WorkspaceMemberCounts = {
