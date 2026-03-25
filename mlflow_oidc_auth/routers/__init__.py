@@ -85,5 +85,4 @@ def get_all_routers() -> List[APIRouter]:
         user_permissions_router,
         users_router,
         webhook_router,
-        workspace_permissions_router,
     ]

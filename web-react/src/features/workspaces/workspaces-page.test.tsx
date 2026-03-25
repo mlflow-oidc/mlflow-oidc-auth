@@ -9,6 +9,23 @@ import type {
 } from "../../shared/types/entity";
 import type { Mock } from "vitest";
 
+const mockNavigate = vi.fn();
+
+vi.mock("react-router", () => ({
+  Navigate: (props: { to: string }) => {
+    mockNavigate(props.to);
+    return <div data-testid="navigate" data-to={props.to} />;
+  },
+}));
+
+const mockUseRuntimeConfig: Mock<
+  () => { workspaces_enabled: boolean }
+> = vi.fn();
+
+vi.mock("../../shared/context/use-runtime-config", () => ({
+  useRuntimeConfig: () => mockUseRuntimeConfig(),
+}));
+
 const mockUseAllWorkspaces: Mock<
   () => {
     allWorkspaces: WorkspaceListItem[] | null;
@@ -160,6 +177,7 @@ const defaultMemberCounts: Record<string, WorkspaceMemberCounts> = {
 describe("WorkspacesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: true });
     mockUseSearch.mockReturnValue({
       searchTerm: "",
       submittedTerm: "",
@@ -401,5 +419,12 @@ describe("WorkspacesPage", () => {
     expect(
       screen.queryByTestId("icon-btn-Delete workspace"),
     ).not.toBeInTheDocument();
+  });
+
+  it("redirects to home when workspaces are disabled", () => {
+    mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: false });
+
+    render(<WorkspacesPage />);
+    expect(screen.getByTestId("navigate")).toHaveAttribute("data-to", "/");
   });
 });

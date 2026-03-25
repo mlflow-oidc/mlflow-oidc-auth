@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import { useWorkspaceUsers } from "../../core/hooks/use-workspace-users";
 import { useWorkspaceGroups } from "../../core/hooks/use-workspace-groups";
 import { useAllUsers } from "../../core/hooks/use-all-users";
 import { useAllServiceAccounts } from "../../core/hooks/use-all-accounts";
 import { useAllGroups } from "../../core/hooks/use-all-groups";
 import { useUser } from "../../core/hooks/use-user";
+import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 import { request } from "../../core/services/api-utils";
 import { DYNAMIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
 import { useToast } from "../../shared/components/toast/use-toast";
@@ -17,6 +18,8 @@ import WorkspaceMembersSection from "./components/workspace-members-section";
 import { BulkAssignModal } from "./components/bulk-assign-modal";
 
 export default function WorkspaceDetailPage() {
+  const { workspaces_enabled } = useRuntimeConfig();
+  if (!workspaces_enabled) return <Navigate to="/" replace />;
   const { workspaceName } = useParams<{ workspaceName: string }>();
   const { showToast } = useToast();
   const { currentUser } = useUser();

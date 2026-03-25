@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { Navigate } from "react-router";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { useAllWorkspaces } from "../../core/hooks/use-all-workspaces";
 import { useSearch } from "../../core/hooks/use-search";
 import { useUser } from "../../core/hooks/use-user";
+import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 import { useToast } from "../../shared/components/toast/use-toast";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
@@ -19,6 +21,8 @@ import { EditWorkspaceModal } from "./components/edit-workspace-modal";
 import { DeleteWorkspaceModal } from "./components/delete-workspace-modal";
 
 export default function WorkspacesPage() {
+  const { workspaces_enabled } = useRuntimeConfig();
+  if (!workspaces_enabled) return <Navigate to="/" replace />;
   const {
     searchTerm,
     submittedTerm,

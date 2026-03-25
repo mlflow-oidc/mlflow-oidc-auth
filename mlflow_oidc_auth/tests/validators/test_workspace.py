@@ -10,6 +10,10 @@ from mlflow_oidc_auth.entities.auth_context import AuthContext
 _app = Flask(__name__)
 _app.secret_key = "test_secret_key"
 
+# Mock config with workspaces enabled — applied to all tests unless overridden
+_mock_config = MagicMock()
+_mock_config.MLFLOW_ENABLE_WORKSPACES = True
+
 
 def _make_auth_context(username="testuser", is_admin=False, workspace=None):
     return AuthContext(username=username, is_admin=is_admin, workspace=workspace)
@@ -79,6 +83,7 @@ class TestExtractWorkspaceNameFromPath:
             assert result is None
 
 
+@patch("mlflow_oidc_auth.validators.workspace.config", _mock_config)
 class TestValidateCanCreateWorkspace:
     """Tests for validate_can_create_workspace."""
 
@@ -108,7 +113,18 @@ class TestValidateCanCreateWorkspace:
                 result = validate_can_create_workspace("adminuser")
                 assert result is True
 
+    def test_returns_false_when_workspaces_disabled(self):
+        """Returns False when MLFLOW_ENABLE_WORKSPACES is disabled."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_create_workspace
 
+        disabled_config = MagicMock()
+        disabled_config.MLFLOW_ENABLE_WORKSPACES = False
+        with patch("mlflow_oidc_auth.validators.workspace.config", disabled_config):
+            result = validate_can_create_workspace("adminuser")
+            assert result is False
+
+
+@patch("mlflow_oidc_auth.validators.workspace.config", _mock_config)
 class TestValidateCanReadWorkspace:
     """Tests for validate_can_read_workspace."""
 
@@ -212,6 +228,7 @@ class TestValidateCanReadWorkspace:
                 assert result is False
 
 
+@patch("mlflow_oidc_auth.validators.workspace.config", _mock_config)
 class TestValidateCanUpdateWorkspace:
     """Tests for validate_can_update_workspace."""
 
@@ -242,6 +259,7 @@ class TestValidateCanUpdateWorkspace:
                 assert result is True
 
 
+@patch("mlflow_oidc_auth.validators.workspace.config", _mock_config)
 class TestValidateCanDeleteWorkspace:
     """Tests for validate_can_delete_workspace."""
 
@@ -272,6 +290,7 @@ class TestValidateCanDeleteWorkspace:
                 assert result is True
 
 
+@patch("mlflow_oidc_auth.validators.workspace.config", _mock_config)
 class TestValidateCanListWorkspaces:
     """Tests for validate_can_list_workspaces."""
 
@@ -281,3 +300,13 @@ class TestValidateCanListWorkspaces:
 
         result = validate_can_list_workspaces("anyuser")
         assert result is True
+
+    def test_returns_false_when_workspaces_disabled(self):
+        """Returns False when MLFLOW_ENABLE_WORKSPACES is disabled."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_list_workspaces
+
+        disabled_config = MagicMock()
+        disabled_config.MLFLOW_ENABLE_WORKSPACES = False
+        with patch("mlflow_oidc_auth.validators.workspace.config", disabled_config):
+            result = validate_can_list_workspaces("anyuser")
+            assert result is False

@@ -73,42 +73,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _seed_default_workspace() -> None:
-    """Seed the default workspace if it doesn't already exist.
+    """Seed the default workspace in MLflow's workspace store if it doesn't already exist.
 
     Called at app startup when MLFLOW_ENABLE_WORKSPACES is enabled.
-    Uses direct SQLAlchemy to check/insert since store methods for
-    workspaces don't exist yet (Phase 2).
+    Uses MLflow's native workspace store API to create the 'default' workspace.
     """
-    from sqlalchemy import create_engine, inspect
-    from sqlalchemy.orm import Session as SASession
-
-    from mlflow_oidc_auth.db.models.workspace import SqlWorkspacePermission
+    from mlflow.server.handlers import _get_workspace_store
+    from mlflow.store.workspace import Workspace
 
     DEFAULT_WORKSPACE = "default"
 
     try:
-        engine = create_engine(config.OIDC_USERS_DB_URI)
-        # Check if the workspace_permissions table exists (migration may not have run yet)
-        inspector = inspect(engine)
-        if "workspace_permissions" not in inspector.get_table_names():
-            logger.warning(
-                "workspace_permissions table not found — skipping default workspace seeding"
-            )
-            return
-
-        with SASession(engine) as session:
-            existing = (
-                session.query(SqlWorkspacePermission)
-                .filter_by(workspace=DEFAULT_WORKSPACE)
-                .first()
-            )
-            if existing is None:
-                logger.info(
-                    f"Default workspace '{DEFAULT_WORKSPACE}' ready for Phase 2 permission grants"
+        ws_store = _get_workspace_store()
+        # Check if default workspace already exists
+        try:
+            ws_store.get_workspace(DEFAULT_WORKSPACE)
+            logger.debug(f"Default workspace '{DEFAULT_WORKSPACE}' already exists")
+        except Exception:
+            # Workspace doesn't exist — create it
+            ws_store.create_workspace(
+                Workspace(
+                    name=DEFAULT_WORKSPACE,
+                    description="Default workspace",
                 )
-            else:
-                logger.debug(f"Default workspace '{DEFAULT_WORKSPACE}' already exists")
-        engine.dispose()
+            )
+            logger.info(f"Default workspace '{DEFAULT_WORKSPACE}' created")
     except Exception as e:
         logger.warning(f"Could not seed default workspace: {e}")
 
@@ -153,19 +142,20 @@ def create_app() -> Any:
     app.before_request(before_request_hook)
     app.after_request(after_request_hook)
 
-    # Seed default workspace when workspaces are enabled (WSFND-04)
+    # Seed default workspace and register workspace routers when workspaces are enabled (WSFND-04)
     if config.MLFLOW_ENABLE_WORKSPACES:
         _seed_default_workspace()
-        # Register workspace regex permissions router only when workspaces are enabled
+        # Register all workspace routers only when workspaces are enabled
+        from mlflow_oidc_auth.routers.workspace_permissions import (
+            workspace_permissions_router,
+        )
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             workspace_regex_permissions_router,
         )
-
-        oidc_app.include_router(workspace_regex_permissions_router)
-
-        # Register workspace CRUD router only when workspaces are enabled (WSCRUD-08)
         from mlflow_oidc_auth.routers.workspace_crud import workspace_crud_router
 
+        oidc_app.include_router(workspace_permissions_router)
+        oidc_app.include_router(workspace_regex_permissions_router)
         oidc_app.include_router(workspace_crud_router)
 
     # Mount Flask app at root with auth passing middleware

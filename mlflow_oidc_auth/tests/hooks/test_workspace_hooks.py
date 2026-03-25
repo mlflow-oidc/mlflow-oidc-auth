@@ -851,6 +851,11 @@ class TestValidateCanUpdateWorkspaceManage:
         _app.config["TESTING"] = True
         return _app
 
+    def _make_mock_config(self):
+        mock_cfg = MagicMock()
+        mock_cfg.MLFLOW_ENABLE_WORKSPACES = True
+        return mock_cfg
+
     def test_admin_allowed(self):
         """Admin users can update workspaces."""
         from mlflow_oidc_auth.validators.workspace import validate_can_update_workspace
@@ -859,9 +864,15 @@ class TestValidateCanUpdateWorkspaceManage:
         _app = self._make_flask_app()
         with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="PUT"):
             mock_ctx = AuthContext(username="admin", is_admin=True, workspace=None)
-            with patch(
-                "mlflow_oidc_auth.validators.workspace.get_auth_context",
-                return_value=mock_ctx,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=mock_ctx,
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.config",
+                    self._make_mock_config(),
+                ),
             ):
                 result = validate_can_update_workspace("admin")
                 assert result is True
@@ -875,9 +886,15 @@ class TestValidateCanUpdateWorkspaceManage:
         _app = self._make_flask_app()
         with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="PUT"):
             mock_ctx = AuthContext(username="manager", is_admin=False, workspace=None)
-            with patch(
-                "mlflow_oidc_auth.validators.workspace.get_auth_context",
-                return_value=mock_ctx,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=mock_ctx,
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.config",
+                    self._make_mock_config(),
+                ),
             ):
                 with patch(
                     "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
@@ -934,6 +951,11 @@ class TestValidateCanDeleteWorkspaceManage:
         _app.config["TESTING"] = True
         return _app
 
+    def _make_mock_config(self):
+        mock_cfg = MagicMock()
+        mock_cfg.MLFLOW_ENABLE_WORKSPACES = True
+        return mock_cfg
+
     def test_admin_allowed(self):
         """Admin users can delete workspaces."""
         from mlflow_oidc_auth.validators.workspace import validate_can_delete_workspace
@@ -944,9 +966,15 @@ class TestValidateCanDeleteWorkspaceManage:
             "/api/3.0/mlflow/workspaces/ws1", method="DELETE"
         ):
             mock_ctx = AuthContext(username="admin", is_admin=True, workspace=None)
-            with patch(
-                "mlflow_oidc_auth.validators.workspace.get_auth_context",
-                return_value=mock_ctx,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=mock_ctx,
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.config",
+                    self._make_mock_config(),
+                ),
             ):
                 result = validate_can_delete_workspace("admin")
                 assert result is True
@@ -962,9 +990,15 @@ class TestValidateCanDeleteWorkspaceManage:
             "/api/3.0/mlflow/workspaces/ws1", method="DELETE"
         ):
             mock_ctx = AuthContext(username="manager", is_admin=False, workspace=None)
-            with patch(
-                "mlflow_oidc_auth.validators.workspace.get_auth_context",
-                return_value=mock_ctx,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=mock_ctx,
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.config",
+                    self._make_mock_config(),
+                ),
             ):
                 with patch(
                     "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",

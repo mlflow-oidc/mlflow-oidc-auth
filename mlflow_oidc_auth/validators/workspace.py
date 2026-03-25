@@ -7,6 +7,7 @@ return True to allow the request, False to deny (403 Forbidden).
 from flask import request
 
 from mlflow_oidc_auth.bridge.user import get_auth_context
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
@@ -27,13 +28,17 @@ def _extract_workspace_name_from_path() -> str | None:
 
 
 def validate_can_create_workspace(username: str) -> bool:
-    """Only admins can create workspaces."""
+    """Only admins can create workspaces. Denied when workspaces are disabled."""
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return False
     auth_context = get_auth_context()
     return auth_context.is_admin
 
 
 def validate_can_read_workspace(username: str) -> bool:
-    """User must have any workspace permission to view workspace details."""
+    """User must have any workspace permission to view workspace details. Denied when workspaces are disabled."""
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return False
     auth_context = get_auth_context()
     if auth_context.is_admin:
         return True
@@ -45,7 +50,9 @@ def validate_can_read_workspace(username: str) -> bool:
 
 
 def validate_can_update_workspace(username: str) -> bool:
-    """Admins or users with MANAGE workspace permission can update workspaces."""
+    """Admins or users with MANAGE workspace permission can update workspaces. Denied when workspaces are disabled."""
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return False
     auth_context = get_auth_context()
     if auth_context.is_admin:
         return True
@@ -57,7 +64,9 @@ def validate_can_update_workspace(username: str) -> bool:
 
 
 def validate_can_delete_workspace(username: str) -> bool:
-    """Admins or users with MANAGE workspace permission can delete workspaces."""
+    """Admins or users with MANAGE workspace permission can delete workspaces. Denied when workspaces are disabled."""
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return False
     auth_context = get_auth_context()
     if auth_context.is_admin:
         return True
@@ -69,5 +78,7 @@ def validate_can_delete_workspace(username: str) -> bool:
 
 
 def validate_can_list_workspaces(username: str) -> bool:
-    """All authenticated users can list workspaces (filtered in after_request)."""
+    """All authenticated users can list workspaces (filtered in after_request). Denied when workspaces are disabled."""
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return False
     return True

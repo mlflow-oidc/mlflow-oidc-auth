@@ -6,6 +6,24 @@ import WorkspaceDetailPage from "./workspace-detail-page";
 import type { WorkspaceUserPermission, WorkspaceGroupPermission, PermissionLevel } from "../../shared/types/entity";
 import type { Mock } from "vitest";
 
+const mockNavigate = vi.fn();
+
+vi.mock("react-router", () => ({
+  useParams: () => mockParams,
+  Navigate: (props: { to: string }) => {
+    mockNavigate(props.to);
+    return <div data-testid="navigate" data-to={props.to} />;
+  },
+}));
+
+const mockUseRuntimeConfig: Mock<
+  () => { workspaces_enabled: boolean }
+> = vi.fn();
+
+vi.mock("../../shared/context/use-runtime-config", () => ({
+  useRuntimeConfig: () => mockUseRuntimeConfig(),
+}));
+
 const mockShowToast = vi.fn();
 
 const mockUseWorkspaceUsers: Mock<
@@ -31,10 +49,6 @@ const mockRequest = vi.fn();
 let mockParams: Record<string, string> = { workspaceName: "test-workspace" };
 
 let mockIsAdmin = true;
-
-vi.mock("react-router", () => ({
-  useParams: () => mockParams,
-}));
 
 vi.mock("../../core/hooks/use-workspace-users", () => ({
   useWorkspaceUsers: () => mockUseWorkspaceUsers(),
@@ -168,6 +182,7 @@ describe("WorkspaceDetailPage", () => {
     vi.clearAllMocks();
     mockParams = { workspaceName: "test-workspace" };
     mockIsAdmin = true;
+    mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: true });
     mockRequest.mockResolvedValue({});
     mockUseWorkspaceUsers.mockReturnValue({
       workspaceUsers: [],
@@ -385,5 +400,12 @@ describe("WorkspaceDetailPage", () => {
 
     expect(screen.getByTestId("bulk-assign-modal")).toBeInTheDocument();
     expect(screen.getByTestId("bulk-assign-modal")).toHaveTextContent("Bulk Assign Groups");
+  });
+
+  it("redirects to home when workspaces are disabled", () => {
+    mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: false });
+
+    render(<WorkspaceDetailPage />);
+    expect(screen.getByTestId("navigate")).toHaveAttribute("data-to", "/");
   });
 });
