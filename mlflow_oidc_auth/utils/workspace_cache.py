@@ -113,24 +113,27 @@ def _match_workspace_regex_permission(regexes, workspace: str) -> Permission | N
 def _resolve_user_direct(store, username: str, workspace: str) -> Permission | None:
     """Resolve user-direct workspace permission."""
     from mlflow.exceptions import MlflowException
-    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
     try:
         perm = store.get_workspace_permission(workspace, username)
         return get_permission(perm.permission)
     except MlflowException as e:
-        if e.error_code == RESOURCE_DOES_NOT_EXIST:
-            logger.debug(
-                f"No user-direct workspace permission for {username}@{workspace}"
-            )
+        if e.error_code == "RESOURCE_DOES_NOT_EXIST":
+            logger.debug("No user-direct workspace permission for %s@%s", username, workspace)
         else:
             logger.warning(
-                f"Unexpected error resolving user-direct workspace permission for {username}@{workspace}: {e}"
+                "Unexpected MlflowException resolving user-direct workspace permission for %s@%s: %s",
+                username,
+                workspace,
+                e,
             )
         return None
     except Exception as e:
         logger.warning(
-            f"Unexpected error resolving user-direct workspace permission for {username}@{workspace}: {e}"
+            "Unexpected error resolving user-direct workspace permission for %s@%s: %s",
+            username,
+            workspace,
+            e,
         )
         return None
 
@@ -138,24 +141,27 @@ def _resolve_user_direct(store, username: str, workspace: str) -> Permission | N
 def _resolve_group_direct(store, username: str, workspace: str) -> Permission | None:
     """Resolve group-direct workspace permission (highest across user's groups)."""
     from mlflow.exceptions import MlflowException
-    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
     try:
         perm = store.get_user_groups_workspace_permission(workspace, username)
         return get_permission(perm.permission)
     except MlflowException as e:
-        if e.error_code == RESOURCE_DOES_NOT_EXIST:
-            logger.debug(
-                f"No group-direct workspace permission for {username}@{workspace}"
-            )
+        if e.error_code == "RESOURCE_DOES_NOT_EXIST":
+            logger.debug("No group-direct workspace permission for %s@%s", username, workspace)
         else:
             logger.warning(
-                f"Unexpected error resolving group-direct workspace permission for {username}@{workspace}: {e}"
+                "Unexpected MlflowException resolving group-direct workspace permission for %s@%s: %s",
+                username,
+                workspace,
+                e,
             )
         return None
     except Exception as e:
         logger.warning(
-            f"Unexpected error resolving group-direct workspace permission for {username}@{workspace}: {e}"
+            "Unexpected error resolving group-direct workspace permission for %s@%s: %s",
+            username,
+            workspace,
+            e,
         )
         return None
 
@@ -172,7 +178,10 @@ def _resolve_user_regex(store, username: str, workspace: str) -> Permission | No
         return _match_workspace_regex_permission(regexes, workspace)
     except Exception as e:
         logger.warning(
-            f"Error resolving user-regex workspace permission for {username}@{workspace}: {e}"
+            "Error resolving user-regex workspace permission for %s@%s: %s",
+            username,
+            workspace,
+            e,
         )
         return None
 
@@ -193,7 +202,10 @@ def _resolve_group_regex(store, username: str, workspace: str) -> Permission | N
         return _match_workspace_regex_permission(regexes, workspace)
     except Exception as e:
         logger.warning(
-            f"Error resolving group-regex workspace permission for {username}@{workspace}: {e}"
+            "Error resolving group-regex workspace permission for %s@%s: %s",
+            username,
+            workspace,
+            e,
         )
         return None
 
@@ -214,7 +226,7 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
     """
     from mlflow_oidc_auth.store import store  # Lazy import to avoid circular dependency
 
-    logger.debug(f"Looking up workspace permission for {username}@{workspace}")
+    logger.debug("Looking up workspace permission for %s@%s", username, workspace)
 
     # Implicit access to default workspace at the configured permission level
     # Controlled by GRANT_DEFAULT_WORKSPACE_ACCESS (flag) + OIDC_WORKSPACE_DEFAULT_PERMISSION (level)
@@ -229,22 +241,28 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
         "group-regex": lambda: _resolve_group_regex(store, username, workspace),
     }
 
-    logger.debug(f"Source order: {config.PERMISSION_SOURCE_ORDER}")
+    logger.debug("Source order: %s", config.PERMISSION_SOURCE_ORDER)
 
     for source_name in config.PERMISSION_SOURCE_ORDER:
         resolver = source_resolvers.get(source_name)
         if resolver is None:
-            logger.warning(f"Invalid workspace permission source: {source_name}")
+            logger.warning("Invalid workspace permission source: %s", source_name)
             continue
         result = resolver()
         if result is not None:
             logger.debug(
-                f"Workspace permission found via source: {source_name} -> {result}"
+                "Workspace permission found via source '%s' for %s@%s: %s",
+                source_name,
+                username,
+                workspace,
+                result,
             )
             return result
-        logger.debug(f"Source '{source_name}' returned None for {username}@{workspace}")
+        logger.debug("Source '%s' returned None for %s@%s", source_name, username, workspace)
 
     logger.warning(
-        f"No workspace permission found for {username}@{workspace} after checking all sources"
+        "No workspace permission found for %s@%s after checking all sources",
+        username,
+        workspace,
     )
     return None
