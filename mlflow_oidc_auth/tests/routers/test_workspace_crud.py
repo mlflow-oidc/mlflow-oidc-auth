@@ -26,6 +26,7 @@ class TestWorkspaceCrudPydanticModels:
         req = WorkspaceCrudCreateRequest(name="my-workspace", description="A workspace")
         assert req.name == "my-workspace"
         assert req.description == "A workspace"
+        assert req.default_artifact_root is None
 
     def test_create_request_valid_name_numeric(self):
         """Purely numeric name is DNS-safe and accepted."""
@@ -91,12 +92,53 @@ class TestWorkspaceCrudPydanticModels:
         req = WorkspaceCrudCreateRequest(name="ws")
         assert req.description == ""
 
+    def test_create_request_with_artifact_root(self):
+        """Create request accepts optional default_artifact_root."""
+        from mlflow_oidc_auth.models.workspace import WorkspaceCrudCreateRequest
+
+        req = WorkspaceCrudCreateRequest(
+            name="my-ws",
+            description="desc",
+            default_artifact_root="s3://team-a-artifacts",
+        )
+        assert req.default_artifact_root == "s3://team-a-artifacts"
+
+    def test_create_request_rejects_too_long_artifact_root(self):
+        """Artifact root > 1024 characters is rejected."""
+        from mlflow_oidc_auth.models.workspace import WorkspaceCrudCreateRequest
+
+        with pytest.raises(ValidationError):
+            WorkspaceCrudCreateRequest(
+                name="my-ws", default_artifact_root="s3://" + "a" * 1020
+            )
+
     def test_update_request_valid(self):
         """Update request accepts valid description."""
         from mlflow_oidc_auth.models.workspace import WorkspaceCrudUpdateRequest
 
         req = WorkspaceCrudUpdateRequest(description="Updated desc")
         assert req.description == "Updated desc"
+        assert req.default_artifact_root is None
+
+    def test_update_request_with_artifact_root(self):
+        """Update request accepts optional default_artifact_root."""
+        from mlflow_oidc_auth.models.workspace import WorkspaceCrudUpdateRequest
+
+        req = WorkspaceCrudUpdateRequest(
+            description="Updated",
+            default_artifact_root="gs://my-bucket/artifacts",
+        )
+        assert req.default_artifact_root == "gs://my-bucket/artifacts"
+
+    def test_update_request_rejects_too_long_artifact_root(self):
+        """Artifact root > 1024 characters is rejected on update."""
+        from mlflow_oidc_auth.models.workspace import WorkspaceCrudUpdateRequest
+
+        with pytest.raises(ValidationError):
+            WorkspaceCrudUpdateRequest(
+                description="ok",
+                default_artifact_root="s3://" + "a" * 1020,
+            )
 
     def test_update_request_rejects_too_long_description(self):
         """Description > 500 characters is rejected."""
@@ -106,19 +148,25 @@ class TestWorkspaceCrudPydanticModels:
             WorkspaceCrudUpdateRequest(description="x" * 501)
 
     def test_response_model_fields(self):
-        """Response model has name and description fields."""
+        """Response model has name, description, and default_artifact_root fields."""
         from mlflow_oidc_auth.models.workspace import WorkspaceCrudResponse
 
-        resp = WorkspaceCrudResponse(name="ws1", description="desc")
+        resp = WorkspaceCrudResponse(
+            name="ws1",
+            description="desc",
+            default_artifact_root="s3://bucket",
+        )
         assert resp.name == "ws1"
         assert resp.description == "desc"
+        assert resp.default_artifact_root == "s3://bucket"
 
     def test_response_model_default_description(self):
-        """Response model description defaults to empty string."""
+        """Response model description defaults to empty string, artifact root to None."""
         from mlflow_oidc_auth.models.workspace import WorkspaceCrudResponse
 
         resp = WorkspaceCrudResponse(name="ws1")
         assert resp.description == ""
+        assert resp.default_artifact_root is None
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -186,6 +234,7 @@ class TestCreateWorkspace:
         mock_ws = MagicMock()
         mock_ws.name = "new-ws"
         mock_ws.description = "A new workspace"
+        mock_ws.default_artifact_root = None
         mock_get_ws_store.return_value.create_workspace.return_value = mock_ws
 
         body = WorkspaceCrudCreateRequest(name="new-ws", description="A new workspace")
@@ -193,12 +242,38 @@ class TestCreateWorkspace:
 
         assert result.name == "new-ws"
         assert result.description == "A new workspace"
+        assert result.default_artifact_root is None
         # Verify called with a Workspace object
         call_args = mock_get_ws_store.return_value.create_workspace.call_args
         assert call_args is not None
         ws_arg = call_args[0][0]  # First positional argument
         assert ws_arg.name == "new-ws"
         assert ws_arg.description == "A new workspace"
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
+    async def test_create_workspace_with_artifact_root(self, mock_get_ws_store):
+        """POST with default_artifact_root passes it through to the Workspace object."""
+        from mlflow_oidc_auth.routers.workspace_crud import create_workspace
+        from mlflow_oidc_auth.models.workspace import WorkspaceCrudCreateRequest
+
+        mock_ws = MagicMock()
+        mock_ws.name = "team-ws"
+        mock_ws.description = "Team workspace"
+        mock_ws.default_artifact_root = "s3://team-artifacts"
+        mock_get_ws_store.return_value.create_workspace.return_value = mock_ws
+
+        body = WorkspaceCrudCreateRequest(
+            name="team-ws",
+            description="Team workspace",
+            default_artifact_root="s3://team-artifacts",
+        )
+        result = await create_workspace(body=body, username="admin@example.com")
+
+        assert result.default_artifact_root == "s3://team-artifacts"
+        # Verify Workspace object has artifact root
+        ws_arg = mock_get_ws_store.return_value.create_workspace.call_args[0][0]
+        assert ws_arg.default_artifact_root == "s3://team-artifacts"
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
@@ -243,9 +318,11 @@ class TestListWorkspaces:
         ws1 = MagicMock()
         ws1.name = "ws1"
         ws1.description = "Workspace 1"
+        ws1.default_artifact_root = "s3://ws1-artifacts"
         ws2 = MagicMock()
         ws2.name = "ws2"
         ws2.description = "Workspace 2"
+        ws2.default_artifact_root = None
         mock_get_ws_store.return_value.list_workspaces.return_value = [ws1, ws2]
 
         mock_request = MagicMock()
@@ -253,7 +330,9 @@ class TestListWorkspaces:
 
         assert len(result) == 2
         assert result[0].name == "ws1"
+        assert result[0].default_artifact_root == "s3://ws1-artifacts"
         assert result[1].name == "ws2"
+        assert result[1].default_artifact_root is None
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.workspace_crud.get_workspace_permission_cached")
@@ -272,12 +351,15 @@ class TestListWorkspaces:
         ws1 = MagicMock()
         ws1.name = "ws1"
         ws1.description = "Workspace 1"
+        ws1.default_artifact_root = "s3://ws1"
         ws2 = MagicMock()
         ws2.name = "ws2"
         ws2.description = "Workspace 2"
+        ws2.default_artifact_root = None
         ws3 = MagicMock()
         ws3.name = "ws3"
         ws3.description = "Workspace 3"
+        ws3.default_artifact_root = "gs://ws3"
         mock_get_ws_store.return_value.list_workspaces.return_value = [ws1, ws2, ws3]
 
         # User has permission on ws1 and ws3, not ws2
@@ -313,12 +395,14 @@ class TestGetWorkspace:
         mock_ws = MagicMock()
         mock_ws.name = "ws1"
         mock_ws.description = "Workspace 1"
+        mock_ws.default_artifact_root = "s3://ws1-artifacts"
         mock_get_ws_store.return_value.get_workspace.return_value = mock_ws
 
         result = await get_workspace(workspace="ws1", _="user@example.com")
 
         assert result.name == "ws1"
         assert result.description == "Workspace 1"
+        assert result.default_artifact_root == "s3://ws1-artifacts"
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
@@ -354,6 +438,7 @@ class TestUpdateWorkspace:
         mock_ws = MagicMock()
         mock_ws.name = "ws1"
         mock_ws.description = "Updated description"
+        mock_ws.default_artifact_root = None
         mock_get_ws_store.return_value.update_workspace.return_value = mock_ws
 
         body = WorkspaceCrudUpdateRequest(description="Updated description")
@@ -363,6 +448,33 @@ class TestUpdateWorkspace:
 
         assert result.name == "ws1"
         assert result.description == "Updated description"
+        assert result.default_artifact_root is None
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
+    async def test_update_workspace_with_artifact_root(self, mock_get_ws_store):
+        """PATCH with default_artifact_root passes it through to the Workspace object."""
+        from mlflow_oidc_auth.routers.workspace_crud import update_workspace
+        from mlflow_oidc_auth.models.workspace import WorkspaceCrudUpdateRequest
+
+        mock_ws = MagicMock()
+        mock_ws.name = "ws1"
+        mock_ws.description = "Updated"
+        mock_ws.default_artifact_root = "s3://new-artifacts"
+        mock_get_ws_store.return_value.update_workspace.return_value = mock_ws
+
+        body = WorkspaceCrudUpdateRequest(
+            description="Updated",
+            default_artifact_root="s3://new-artifacts",
+        )
+        result = await update_workspace(
+            body=body, workspace="ws1", _="admin@example.com"
+        )
+
+        assert result.default_artifact_root == "s3://new-artifacts"
+        # Verify Workspace object has artifact root
+        ws_arg = mock_get_ws_store.return_value.update_workspace.call_args[0][0]
+        assert ws_arg.default_artifact_root == "s3://new-artifacts"
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")

@@ -56,12 +56,17 @@ async def create_workspace(
     try:
         ws_store = _get_workspace_store()
         workspace = ws_store.create_workspace(
-            Workspace(name=body.name, description=body.description),
+            Workspace(
+                name=body.name,
+                description=body.description,
+                default_artifact_root=body.default_artifact_root,
+            ),
         )
         logger.info(f"Workspace '{body.name}' created by admin '{username}'")
         return WorkspaceCrudResponse(
             name=workspace.name,
             description=workspace.description or "",
+            default_artifact_root=workspace.default_artifact_root,
         )
     except Exception as e:
         error_msg = str(e)
@@ -94,13 +99,21 @@ async def list_workspaces(
 
     if is_admin:
         return [
-            WorkspaceCrudResponse(name=ws.name, description=ws.description or "")
+            WorkspaceCrudResponse(
+                name=ws.name,
+                description=ws.description or "",
+                default_artifact_root=ws.default_artifact_root,
+            )
             for ws in all_workspaces
         ]
 
     # Filter by user permissions
     return [
-        WorkspaceCrudResponse(name=ws.name, description=ws.description or "")
+        WorkspaceCrudResponse(
+            name=ws.name,
+            description=ws.description or "",
+            default_artifact_root=ws.default_artifact_root,
+        )
         for ws in all_workspaces
         if get_workspace_permission_cached(username, ws.name) is not None
     ]
@@ -119,7 +132,11 @@ async def get_workspace(
     try:
         ws_store = _get_workspace_store()
         ws = ws_store.get_workspace(workspace)
-        return WorkspaceCrudResponse(name=ws.name, description=ws.description or "")
+        return WorkspaceCrudResponse(
+            name=ws.name,
+            description=ws.description or "",
+            default_artifact_root=ws.default_artifact_root,
+        )
     except Exception as e:
         if "not found" in str(e).lower() or "does not exist" in str(e).lower():
             raise HTTPException(
@@ -146,10 +163,18 @@ async def update_workspace(
     try:
         ws_store = _get_workspace_store()
         ws = ws_store.update_workspace(
-            Workspace(name=workspace, description=body.description),
+            Workspace(
+                name=workspace,
+                description=body.description,
+                default_artifact_root=body.default_artifact_root,
+            ),
         )
         logger.info(f"Workspace '{workspace}' updated")
-        return WorkspaceCrudResponse(name=ws.name, description=ws.description or "")
+        return WorkspaceCrudResponse(
+            name=ws.name,
+            description=ws.description or "",
+            default_artifact_root=ws.default_artifact_root,
+        )
     except Exception as e:
         if "not found" in str(e).lower() or "does not exist" in str(e).lower():
             raise HTTPException(

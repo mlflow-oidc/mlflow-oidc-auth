@@ -119,6 +119,11 @@ class WorkspaceCrudCreateRequest(BaseModel):
     description: str = Field(
         "", max_length=500, description="Optional workspace description"
     )
+    default_artifact_root: str | None = Field(
+        None,
+        max_length=1024,
+        description="Optional artifact storage root URI (e.g. s3://team-a-artifacts)",
+    )
 
     @field_validator("name")
     @classmethod
@@ -139,6 +144,11 @@ class WorkspaceCrudUpdateRequest(BaseModel):
     description: str = Field(
         ..., max_length=500, description="Updated workspace description"
     )
+    default_artifact_root: str | None = Field(
+        None,
+        max_length=1024,
+        description="Optional artifact storage root URI (e.g. s3://team-a-artifacts)",
+    )
 
 
 class WorkspaceCrudResponse(BaseModel):
@@ -146,3 +156,6 @@ class WorkspaceCrudResponse(BaseModel):
 
     name: str = Field(..., description="Workspace name")
     description: str = Field("", description="Workspace description")
+    default_artifact_root: str | None = Field(
+        None, description="Artifact storage root URI"
+    )
