@@ -64,6 +64,13 @@ export default function WorkspaceDetailPage() {
     return <div>Workspace name is required.</div>;
   }
 
+  // Derive canManage: admin OR user has direct MANAGE OR user's group has MANAGE
+  const userGroupNames = new Set((currentUser?.groups ?? []).map((g) => g.group_name));
+  const canManage =
+    isAdmin ||
+    workspaceUsers.some((wu) => wu.username === currentUser?.username && wu.permission === "MANAGE") ||
+    workspaceGroups.some((wg) => wg.group_name && userGroupNames.has(wg.group_name) && wg.permission === "MANAGE");
+
   const handleGrantUser = async (name: string, permission: PermissionLevel): Promise<boolean> => {
     try {
       await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_USERS(workspaceName), {
@@ -157,29 +164,31 @@ export default function WorkspaceDetailPage() {
   return (
     <PageContainer title={`Permissions for Workspace ${workspaceName}`}>
       {/* User section action buttons */}
-      <div className="flex items-center space-x-2 mb-2">
-        <Button
-          variant="secondary"
-          onClick={() => setIsAddUserModalOpen(true)}
-          disabled={availableUsers.length === 0}
-          title={availableUsers.length === 0 ? "All users already have permissions" : "Add user permission"}
-        >
-          + Add User
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => setIsAddAccountModalOpen(true)}
-          disabled={availableAccounts.length === 0}
-          title={availableAccounts.length === 0 ? "All service accounts already have permissions" : "Add service account permission"}
-        >
-          + Add Service Account
-        </Button>
-        {isAdmin && (
-          <Button variant="secondary" onClick={() => setBulkAssignTarget("users")}>
-            Bulk Assign Users
+      {canManage && (
+        <div className="flex items-center space-x-2 mb-2">
+          <Button
+            variant="secondary"
+            onClick={() => setIsAddUserModalOpen(true)}
+            disabled={availableUsers.length === 0}
+            title={availableUsers.length === 0 ? "All users already have permissions" : "Add user permission"}
+          >
+            + Add User
           </Button>
-        )}
-      </div>
+          <Button
+            variant="secondary"
+            onClick={() => setIsAddAccountModalOpen(true)}
+            disabled={availableAccounts.length === 0}
+            title={availableAccounts.length === 0 ? "All service accounts already have permissions" : "Add service account permission"}
+          >
+            + Add Service Account
+          </Button>
+          {isAdmin && (
+            <Button variant="secondary" onClick={() => setBulkAssignTarget("users")}>
+              Bulk Assign Users
+            </Button>
+          )}
+        </div>
+      )}
 
       <WorkspaceMembersSection
         title="Users"
@@ -190,24 +199,27 @@ export default function WorkspaceDetailPage() {
         onRemove={handleRemoveUser}
         onRefresh={refreshUsers}
         nameLabel="Username"
+        canManage={canManage}
       />
 
       {/* Group section action buttons */}
-      <div className="flex items-center space-x-2 mb-2">
-        <Button
-          variant="secondary"
-          onClick={() => setIsAddGroupModalOpen(true)}
-          disabled={availableGroups.length === 0}
-          title={availableGroups.length === 0 ? "All groups already have permissions" : "Add group permission"}
-        >
-          + Add Group
-        </Button>
-        {isAdmin && (
-          <Button variant="secondary" onClick={() => setBulkAssignTarget("groups")}>
-            Bulk Assign Groups
+      {canManage && (
+        <div className="flex items-center space-x-2 mb-2">
+          <Button
+            variant="secondary"
+            onClick={() => setIsAddGroupModalOpen(true)}
+            disabled={availableGroups.length === 0}
+            title={availableGroups.length === 0 ? "All groups already have permissions" : "Add group permission"}
+          >
+            + Add Group
           </Button>
-        )}
-      </div>
+          {isAdmin && (
+            <Button variant="secondary" onClick={() => setBulkAssignTarget("groups")}>
+              Bulk Assign Groups
+            </Button>
+          )}
+        </div>
+      )}
 
       <WorkspaceMembersSection
         title="Groups"
@@ -218,6 +230,7 @@ export default function WorkspaceDetailPage() {
         onRemove={handleRemoveGroup}
         onRefresh={refreshGroups}
         nameLabel="Group Name"
+        canManage={canManage}
       />
 
       {/* Grant permission modals — same pattern as EntityPermissionsManager */}

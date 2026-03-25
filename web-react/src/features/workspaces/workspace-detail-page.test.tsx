@@ -49,6 +49,7 @@ const mockRequest = vi.fn();
 let mockParams: Record<string, string> = { workspaceName: "test-workspace" };
 
 let mockIsAdmin = true;
+let mockUserGroups: Array<{ group_name: string }> = [];
 
 vi.mock("../../core/hooks/use-workspace-users", () => ({
   useWorkspaceUsers: () => mockUseWorkspaceUsers(),
@@ -76,7 +77,7 @@ vi.mock("../../core/hooks/use-user", () => ({
       is_admin: mockIsAdmin,
       username: "admin",
       display_name: "Admin",
-      groups: [],
+      groups: mockUserGroups,
       id: 1,
       is_service_account: false,
       password_expiration: null,
@@ -182,6 +183,7 @@ describe("WorkspaceDetailPage", () => {
     vi.clearAllMocks();
     mockParams = { workspaceName: "test-workspace" };
     mockIsAdmin = true;
+    mockUserGroups = [];
     mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: true });
     mockRequest.mockResolvedValue({});
     mockUseWorkspaceUsers.mockReturnValue({
@@ -407,5 +409,66 @@ describe("WorkspaceDetailPage", () => {
 
     render(<WorkspaceDetailPage />);
     expect(screen.getByTestId("navigate")).toHaveAttribute("data-to", "/");
+  });
+
+  it("hides add buttons when non-admin user has no MANAGE permission", () => {
+    mockIsAdmin = false;
+    mockUseWorkspaceUsers.mockReturnValue({
+      workspaceUsers: [
+        { workspace: "test-workspace", username: "admin", permission: "READ" as PermissionLevel },
+      ],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<WorkspaceDetailPage />);
+
+    expect(screen.queryByText("+ Add User")).not.toBeInTheDocument();
+    expect(screen.queryByText("+ Add Service Account")).not.toBeInTheDocument();
+    expect(screen.queryByText("+ Add Group")).not.toBeInTheDocument();
+  });
+
+  it("shows add buttons when non-admin user has MANAGE via direct user permission", () => {
+    mockIsAdmin = false;
+    mockUseWorkspaceUsers.mockReturnValue({
+      workspaceUsers: [
+        { workspace: "test-workspace", username: "admin", permission: "MANAGE" as PermissionLevel },
+      ],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<WorkspaceDetailPage />);
+
+    expect(screen.getByText("+ Add User")).toBeInTheDocument();
+    expect(screen.getByText("+ Add Service Account")).toBeInTheDocument();
+    expect(screen.getByText("+ Add Group")).toBeInTheDocument();
+  });
+
+  it("shows add buttons when non-admin user has MANAGE via group membership", () => {
+    mockIsAdmin = false;
+    mockUserGroups = [{ group_name: "team-alpha" }];
+
+    mockUseWorkspaceUsers.mockReturnValue({
+      workspaceUsers: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    mockUseWorkspaceGroups.mockReturnValue({
+      workspaceGroups: [
+        { workspace: "test-workspace", group_name: "team-alpha", permission: "MANAGE" as PermissionLevel },
+      ],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<WorkspaceDetailPage />);
+
+    expect(screen.getByText("+ Add User")).toBeInTheDocument();
+    expect(screen.getByText("+ Add Group")).toBeInTheDocument();
   });
 });

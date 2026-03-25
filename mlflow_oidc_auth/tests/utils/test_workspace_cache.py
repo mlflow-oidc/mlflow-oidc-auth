@@ -34,8 +34,10 @@ class TestGetWorkspacePermissionCached:
             result = get_workspace_permission_cached("user1", "ws1")
             assert result is None
 
-    def test_returns_manage_for_default_workspace_with_grant_enabled(self):
-        """get_workspace_permission_cached('user1', 'default') returns MANAGE when GRANT_DEFAULT_WORKSPACE_ACCESS is True."""
+    def test_returns_configured_permission_for_default_workspace_with_grant_enabled(
+        self,
+    ):
+        """get_workspace_permission_cached('user1', 'default') returns OIDC_WORKSPACE_DEFAULT_PERMISSION when GRANT_DEFAULT_WORKSPACE_ACCESS is True."""
         from mlflow_oidc_auth.utils.workspace_cache import (
             get_workspace_permission_cached,
         )
@@ -43,12 +45,30 @@ class TestGetWorkspacePermissionCached:
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
         mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
+        mock_config.OIDC_WORKSPACE_DEFAULT_PERMISSION = "READ"
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
 
         with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
             result = get_workspace_permission_cached("user1", "default")
-            assert result == MANAGE
+            assert result == READ
+
+    def test_default_workspace_permission_is_config_driven(self):
+        """get_workspace_permission_cached() returns whatever OIDC_WORKSPACE_DEFAULT_PERMISSION is set to, proving it is not hardcoded."""
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            get_workspace_permission_cached,
+        )
+
+        mock_config = MagicMock()
+        mock_config.MLFLOW_ENABLE_WORKSPACES = True
+        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
+        mock_config.OIDC_WORKSPACE_DEFAULT_PERMISSION = "EDIT"
+        mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
+        mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+
+        with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
+            result = get_workspace_permission_cached("user1", "default")
+            assert result == EDIT
 
     def test_default_workspace_no_implicit_manage_when_grant_disabled(self):
         """get_workspace_permission_cached('user1', 'default') does NOT return implicit MANAGE when GRANT_DEFAULT_WORKSPACE_ACCESS is False."""
@@ -237,16 +257,29 @@ class TestLookupWorkspacePermission:
             result = _lookup_workspace_permission("user1", "ws1")
             assert result is None
 
-    def test_implicit_manage_for_default_workspace(self):
-        """_lookup_workspace_permission() returns MANAGE for default workspace when GRANT_DEFAULT_WORKSPACE_ACCESS is True."""
+    def test_implicit_permission_for_default_workspace(self):
+        """_lookup_workspace_permission() returns OIDC_WORKSPACE_DEFAULT_PERMISSION for default workspace when GRANT_DEFAULT_WORKSPACE_ACCESS is True."""
         from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
         mock_config = MagicMock()
         mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
+        mock_config.OIDC_WORKSPACE_DEFAULT_PERMISSION = "READ"
 
         with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
             result = _lookup_workspace_permission("user1", "default")
-            assert result == MANAGE
+            assert result == READ
+
+    def test_implicit_permission_for_default_workspace_is_config_driven(self):
+        """_lookup_workspace_permission() returns whatever OIDC_WORKSPACE_DEFAULT_PERMISSION is set to, not a hardcoded value."""
+        from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
+
+        mock_config = MagicMock()
+        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
+        mock_config.OIDC_WORKSPACE_DEFAULT_PERMISSION = "USE"
+
+        with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
+            result = _lookup_workspace_permission("user1", "default")
+            assert result == USE
 
 
 class TestFlushWorkspaceCache:

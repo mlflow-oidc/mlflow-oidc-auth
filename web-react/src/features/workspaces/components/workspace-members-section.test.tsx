@@ -56,6 +56,7 @@ const defaultProps = {
   onRemove: vi.fn().mockResolvedValue(undefined),
   onRefresh: vi.fn(),
   nameLabel: "Username",
+  canManage: true,
 };
 
 describe("WorkspaceMembersSection", () => {
@@ -122,5 +123,52 @@ describe("WorkspaceMembersSection", () => {
 
     expect(editButtons).toHaveLength(2);
     expect(removeButtons).toHaveLength(2);
+  });
+
+  it("hides edit and remove buttons when canManage is false", () => {
+    render(
+      <WorkspaceMembersSection
+        {...defaultProps}
+        canManage={false}
+        members={[
+          { name: "alice", permission: "MANAGE" },
+          { name: "bob", permission: "READ" },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByTestId("icon-button-Edit permission")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("icon-button-Remove member")).not.toBeInTheDocument();
+  });
+
+  it("hides Actions column header when canManage is false", () => {
+    render(
+      <WorkspaceMembersSection
+        {...defaultProps}
+        canManage={false}
+        members={[
+          { name: "alice", permission: "MANAGE" },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText("Actions")).not.toBeInTheDocument();
+    // Name and permission are still visible
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("MANAGE")).toBeInTheDocument();
+  });
+
+  it("shows Actions column header when canManage is true", () => {
+    render(
+      <WorkspaceMembersSection
+        {...defaultProps}
+        canManage={true}
+        members={[
+          { name: "alice", permission: "MANAGE" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Actions")).toBeInTheDocument();
   });
 });

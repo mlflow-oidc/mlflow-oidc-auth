@@ -17,6 +17,7 @@ interface WorkspaceMembersSectionProps {
   onRemove: (name: string) => Promise<void>;
   onRefresh: () => void;
   nameLabel: string;
+  canManage: boolean;
 }
 
 export default function WorkspaceMembersSection({
@@ -28,6 +29,7 @@ export default function WorkspaceMembersSection({
   onRemove,
   onRefresh,
   nameLabel,
+  canManage,
 }: WorkspaceMembersSectionProps) {
   const { showToast } = useToast();
   const [editingMember, setEditingMember] = useState<{ name: string; permission: PermissionLevel } | null>(null);
@@ -78,7 +80,9 @@ export default function WorkspaceMembersSection({
                 <tr className="border-b border-ui-border dark:border-ui-border-dark">
                   <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">{nameLabel}</th>
                   <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">Permission</th>
-                  <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark w-24">Actions</th>
+                  {canManage && (
+                    <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark w-24">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -86,12 +90,14 @@ export default function WorkspaceMembersSection({
                   <tr key={member.name} className="border-b border-ui-border dark:border-ui-border-dark">
                     <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">{member.name}</td>
                     <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">{member.permission}</td>
-                    <td className="py-2 px-3">
-                      <div className="flex space-x-2">
-                        <IconButton icon={faEdit} title="Edit permission" onClick={() => handleEditClick(member)} />
-                        <IconButton icon={faTrash} title="Remove member" onClick={() => void handleRemove(member.name)} />
-                      </div>
-                    </td>
+                    {canManage && (
+                      <td className="py-2 px-3">
+                        <div className="flex space-x-2">
+                          <IconButton icon={faEdit} title="Edit permission" onClick={() => handleEditClick(member)} />
+                          <IconButton icon={faTrash} title="Remove member" onClick={() => void handleRemove(member.name)} />
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

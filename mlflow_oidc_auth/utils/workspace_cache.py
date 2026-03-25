@@ -176,9 +176,10 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
     """
     from mlflow_oidc_auth.store import store  # Lazy import to avoid circular dependency
 
-    # Implicit access to default workspace (per decision WSAUTH-D)
+    # Implicit access to default workspace at the configured permission level
+    # Controlled by GRANT_DEFAULT_WORKSPACE_ACCESS (flag) + OIDC_WORKSPACE_DEFAULT_PERMISSION (level)
     if workspace == "default" and config.GRANT_DEFAULT_WORKSPACE_ACCESS:
-        return MANAGE
+        return get_permission(config.OIDC_WORKSPACE_DEFAULT_PERMISSION)
 
     # Build source resolution functions keyed by source name
     source_resolvers = {
