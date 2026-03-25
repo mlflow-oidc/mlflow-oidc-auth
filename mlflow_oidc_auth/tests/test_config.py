@@ -319,7 +319,6 @@ class TestAppConfig(unittest.TestCase):
         """Test that workspace feature flags have correct default values."""
         config = AppConfig()
         self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
-        self.assertTrue(config.GRANT_DEFAULT_WORKSPACE_ACCESS)
 
     def test_workspace_feature_flags_override(self):
         """Test that workspace feature flags can be overridden via environment variables."""
@@ -327,23 +326,19 @@ class TestAppConfig(unittest.TestCase):
             os.environ,
             {
                 "MLFLOW_ENABLE_WORKSPACES": "true",
-                "GRANT_DEFAULT_WORKSPACE_ACCESS": "false",
             },
         ):
             config = AppConfig()
             self.assertTrue(config.MLFLOW_ENABLE_WORKSPACES)
-            self.assertFalse(config.GRANT_DEFAULT_WORKSPACE_ACCESS)
 
     def test_workspace_feature_flags_disabled_by_default(self):
-        """Test that workspaces are disabled by default and grant access is enabled."""
-        # Ensure neither env var is set
-        for var in ["MLFLOW_ENABLE_WORKSPACES", "GRANT_DEFAULT_WORKSPACE_ACCESS"]:
-            if var in os.environ:
-                del os.environ[var]
+        """Test that workspaces are disabled by default."""
+        # Ensure env var is not set
+        if "MLFLOW_ENABLE_WORKSPACES" in os.environ:
+            del os.environ["MLFLOW_ENABLE_WORKSPACES"]
 
         config = AppConfig()
         self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
-        self.assertTrue(config.GRANT_DEFAULT_WORKSPACE_ACCESS)
 
 
 if __name__ == "__main__":

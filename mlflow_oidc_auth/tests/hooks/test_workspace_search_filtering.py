@@ -55,54 +55,55 @@ class TestCanAccessWorkspace:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             assert _can_access_workspace("user1", "") is True
 
-    def test_returns_true_for_default_workspace_when_grant_enabled(self):
-        """_can_access_workspace returns True for 'default' workspace with GRANT_DEFAULT_WORKSPACE_ACCESS=True (WSSEC-04)."""
-        from mlflow_oidc_auth.hooks.after_request import _can_access_workspace
-
-        with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
-            mock_config.MLFLOW_ENABLE_WORKSPACES = True
-            mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
-            assert _can_access_workspace("user1", "default") is True
-
-    def test_returns_false_for_default_workspace_when_grant_disabled_no_perm(self):
-        """_can_access_workspace returns False for 'default' workspace when GRANT_DEFAULT_WORKSPACE_ACCESS=False and no permission."""
-        from mlflow_oidc_auth.hooks.after_request import _can_access_workspace
-
-        with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
-            mock_config.MLFLOW_ENABLE_WORKSPACES = True
-            mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
-            with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
-                return_value=None,
-            ):
-                assert _can_access_workspace("user1", "default") is False
-
-    def test_returns_true_when_user_has_workspace_permission(self):
-        """_can_access_workspace returns True when user has workspace permission."""
+    def test_returns_true_when_user_has_read_permission(self):
+        """_can_access_workspace returns True when user has at least READ permission."""
         from mlflow_oidc_auth.hooks.after_request import _can_access_workspace
         from mlflow_oidc_auth.permissions import READ
 
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
-            mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
             with patch(
                 "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
                 return_value=READ,
             ):
                 assert _can_access_workspace("user1", "team-alpha") is True
 
-    def test_returns_false_when_user_has_no_workspace_permission(self):
+    def test_returns_false_when_user_has_no_permission(self):
         """_can_access_workspace returns False when user has no workspace permission."""
         from mlflow_oidc_auth.hooks.after_request import _can_access_workspace
 
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
-            mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
             with patch(
                 "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
                 return_value=None,
             ):
                 assert _can_access_workspace("user1", "restricted-ws") is False
+
+    def test_returns_false_when_permission_is_no_permissions(self):
+        """_can_access_workspace returns False when user has NO_PERMISSIONS (can_read=False)."""
+        from mlflow_oidc_auth.hooks.after_request import _can_access_workspace
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+
+        with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            with patch(
+                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                return_value=NO_PERMISSIONS,
+            ):
+                assert _can_access_workspace("user1", "some-ws") is False
+
+    def test_default_workspace_treated_like_any_other(self):
+        """_can_access_workspace treats 'default' workspace the same as any other — no implicit grant."""
+        from mlflow_oidc_auth.hooks.after_request import _can_access_workspace
+
+        with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            with patch(
+                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                return_value=None,
+            ):
+                assert _can_access_workspace("user1", "default") is False
 
 
 # ---------------------------------------------------------------------------
@@ -1106,11 +1107,15 @@ class TestWorkspaceFilteringCrossCutting:
             assert _can_access_workspace("user1", None) is True
             assert _can_access_workspace("user1", "") is True
 
-    def test_default_workspace_resources_visible_when_grant_enabled(self):
-        """Default workspace resources visible when GRANT_DEFAULT_WORKSPACE_ACCESS=True (WSSEC-04)."""
+    def test_default_workspace_resources_visible_when_user_has_read_permission(self):
+        """Default workspace resources visible when user has readable permission — no special-casing (WSSEC-04)."""
         from mlflow_oidc_auth.hooks.after_request import _can_access_workspace
+        from mlflow_oidc_auth.permissions import READ
 
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
-            mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
-            assert _can_access_workspace("user1", "default") is True
+            with patch(
+                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                return_value=READ,
+            ):
+                assert _can_access_workspace("user1", "default") is True

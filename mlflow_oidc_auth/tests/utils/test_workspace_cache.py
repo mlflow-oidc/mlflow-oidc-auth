@@ -34,58 +34,16 @@ class TestGetWorkspacePermissionCached:
             result = get_workspace_permission_cached("user1", "ws1")
             assert result is None
 
-    def test_returns_configured_permission_for_default_workspace_with_grant_enabled(
-        self,
-    ):
-        """get_workspace_permission_cached('user1', 'default') returns OIDC_WORKSPACE_DEFAULT_PERMISSION when GRANT_DEFAULT_WORKSPACE_ACCESS is True."""
+    def test_default_workspace_resolved_via_normal_lookup(self):
+        """get_workspace_permission_cached('user1', 'default') uses normal lookup — no implicit grant."""
         from mlflow_oidc_auth.utils.workspace_cache import (
             get_workspace_permission_cached,
         )
 
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
-        mock_config.OIDC_WORKSPACE_DEFAULT_PERMISSION = "READ"
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
-
-        with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
-            result = get_workspace_permission_cached("user1", "default")
-            assert result == READ
-
-    def test_default_workspace_permission_is_config_driven(self):
-        """get_workspace_permission_cached() returns whatever OIDC_WORKSPACE_DEFAULT_PERMISSION is set to, proving it is not hardcoded."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            get_workspace_permission_cached,
-        )
-
-        mock_config = MagicMock()
-        mock_config.MLFLOW_ENABLE_WORKSPACES = True
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
-        mock_config.OIDC_WORKSPACE_DEFAULT_PERMISSION = "EDIT"
-        mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
-        mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
-
-        with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
-            result = get_workspace_permission_cached("user1", "default")
-            assert result == EDIT
-
-    def test_default_workspace_no_implicit_manage_when_grant_disabled(self):
-        """get_workspace_permission_cached('user1', 'default') does NOT return implicit MANAGE when GRANT_DEFAULT_WORKSPACE_ACCESS is False."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            get_workspace_permission_cached,
-        )
-
-        mock_config = MagicMock()
-        mock_config.MLFLOW_ENABLE_WORKSPACES = True
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
-        mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
-        mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
-
-        mock_store = MagicMock()
-        mock_perm = MagicMock()
-        mock_perm.permission = "READ"
-        mock_store.get_workspace_permission.return_value = mock_perm
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
@@ -96,6 +54,28 @@ class TestGetWorkspacePermissionCached:
             mock_lookup.return_value = READ
             result = get_workspace_permission_cached("user1", "default")
             assert result == READ
+            mock_lookup.assert_called_once_with("user1", "default")
+
+    def test_default_workspace_returns_none_when_no_permission(self):
+        """get_workspace_permission_cached('user1', 'default') returns None when user has no permission — no implicit grant."""
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            get_workspace_permission_cached,
+        )
+
+        mock_config = MagicMock()
+        mock_config.MLFLOW_ENABLE_WORKSPACES = True
+        mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
+        mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission"
+            ) as mock_lookup,
+        ):
+            mock_lookup.return_value = None
+            result = get_workspace_permission_cached("user1", "default")
+            assert result is None
             mock_lookup.assert_called_once_with("user1", "default")
 
     def test_calls_lookup_on_cache_miss(self):
@@ -190,7 +170,7 @@ class TestLookupWorkspacePermission:
         from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
         mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
+
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
@@ -211,7 +191,7 @@ class TestLookupWorkspacePermission:
         from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
         mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
+
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
@@ -237,7 +217,7 @@ class TestLookupWorkspacePermission:
         from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
         mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
+
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
@@ -256,30 +236,6 @@ class TestLookupWorkspacePermission:
         ):
             result = _lookup_workspace_permission("user1", "ws1")
             assert result is None
-
-    def test_implicit_permission_for_default_workspace(self):
-        """_lookup_workspace_permission() returns OIDC_WORKSPACE_DEFAULT_PERMISSION for default workspace when GRANT_DEFAULT_WORKSPACE_ACCESS is True."""
-        from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
-
-        mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
-        mock_config.OIDC_WORKSPACE_DEFAULT_PERMISSION = "READ"
-
-        with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
-            result = _lookup_workspace_permission("user1", "default")
-            assert result == READ
-
-    def test_implicit_permission_for_default_workspace_is_config_driven(self):
-        """_lookup_workspace_permission() returns whatever OIDC_WORKSPACE_DEFAULT_PERMISSION is set to, not a hardcoded value."""
-        from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
-
-        mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = True
-        mock_config.OIDC_WORKSPACE_DEFAULT_PERMISSION = "USE"
-
-        with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
-            result = _lookup_workspace_permission("user1", "default")
-            assert result == USE
 
 
 class TestFlushWorkspaceCache:
@@ -526,7 +482,7 @@ class TestLookupWithRegexSources:
         from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
         mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
+
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
@@ -554,7 +510,7 @@ class TestLookupWithRegexSources:
         from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
         mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
+
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
@@ -586,7 +542,7 @@ class TestLookupWithRegexSources:
         from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
         mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
+
         mock_config.PERMISSION_SOURCE_ORDER = ["regex", "user"]
 
         mock_store = MagicMock()
@@ -616,7 +572,7 @@ class TestLookupWithRegexSources:
         from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
         mock_config = MagicMock()
-        mock_config.GRANT_DEFAULT_WORKSPACE_ACCESS = False
+
         mock_config.PERMISSION_SOURCE_ORDER = ["invalid-source", "user"]
 
         mock_store = MagicMock()

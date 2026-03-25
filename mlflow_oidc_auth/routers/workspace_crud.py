@@ -107,7 +107,8 @@ async def list_workspaces(
             for ws in all_workspaces
         ]
 
-    # Filter by user permissions
+    # Filter by user permissions — only include workspaces where the user has at least READ access.
+    # A non-None permission with can_read=False (e.g. NO_PERMISSIONS) should still be excluded.
     return [
         WorkspaceCrudResponse(
             name=ws.name,
@@ -115,7 +116,8 @@ async def list_workspaces(
             default_artifact_root=ws.default_artifact_root,
         )
         for ws in all_workspaces
-        if get_workspace_permission_cached(username, ws.name) is not None
+        if (perm := get_workspace_permission_cached(username, ws.name)) is not None
+        and perm.can_read
     ]
 
 

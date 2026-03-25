@@ -127,9 +127,6 @@ class AppConfig:
         self.MLFLOW_ENABLE_WORKSPACES = config_manager.get_bool(
             "MLFLOW_ENABLE_WORKSPACES", default=False
         )
-        self.GRANT_DEFAULT_WORKSPACE_ACCESS = config_manager.get_bool(
-            "GRANT_DEFAULT_WORKSPACE_ACCESS", default=True
-        )
 
         # Workspace cache settings
         self.WORKSPACE_CACHE_MAX_SIZE = config_manager.get_int(

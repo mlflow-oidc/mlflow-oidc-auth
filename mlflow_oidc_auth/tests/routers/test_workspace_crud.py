@@ -342,8 +342,9 @@ class TestListWorkspaces:
     async def test_list_workspaces_nonadmin_sees_only_permitted(
         self, mock_get_ws_store, mock_get_username, mock_get_is_admin, mock_perm_cached
     ):
-        """Non-admin sees only workspaces they have permission on."""
+        """Non-admin sees only workspaces they have at least READ permission on."""
         from mlflow_oidc_auth.routers.workspace_crud import list_workspaces
+        from mlflow_oidc_auth.permissions import READ
 
         mock_get_username.return_value = "user@example.com"
         mock_get_is_admin.return_value = False
@@ -362,10 +363,10 @@ class TestListWorkspaces:
         ws3.default_artifact_root = "gs://ws3"
         mock_get_ws_store.return_value.list_workspaces.return_value = [ws1, ws2, ws3]
 
-        # User has permission on ws1 and ws3, not ws2
+        # User has READ permission on ws1 and ws3, no permission on ws2
         def _perm_side_effect(username, ws_name):
             if ws_name in ("ws1", "ws3"):
-                return MagicMock()  # non-None means has permission
+                return READ
             return None
 
         mock_perm_cached.side_effect = _perm_side_effect
@@ -376,6 +377,50 @@ class TestListWorkspaces:
         assert len(result) == 2
         assert result[0].name == "ws1"
         assert result[1].name == "ws3"
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.workspace_crud.get_workspace_permission_cached")
+    @patch("mlflow_oidc_auth.routers.workspace_crud.get_is_admin")
+    @patch("mlflow_oidc_auth.routers.workspace_crud.get_username")
+    @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
+    async def test_list_workspaces_nonadmin_excludes_no_permissions(
+        self, mock_get_ws_store, mock_get_username, mock_get_is_admin, mock_perm_cached
+    ):
+        """Non-admin does not see workspaces where their permission is NO_PERMISSIONS (can_read=False)."""
+        from mlflow_oidc_auth.routers.workspace_crud import list_workspaces
+        from mlflow_oidc_auth.permissions import READ, NO_PERMISSIONS
+
+        mock_get_username.return_value = "user@example.com"
+        mock_get_is_admin.return_value = False
+
+        ws_default = MagicMock()
+        ws_default.name = "default"
+        ws_default.description = "Default workspace"
+        ws_default.default_artifact_root = None
+        ws_readable = MagicMock()
+        ws_readable.name = "team-ws"
+        ws_readable.description = "Team workspace"
+        ws_readable.default_artifact_root = "s3://team"
+        mock_get_ws_store.return_value.list_workspaces.return_value = [
+            ws_default,
+            ws_readable,
+        ]
+
+        # "default" has NO_PERMISSIONS (implicit grant), "team-ws" has READ
+        def _perm_side_effect(username, ws_name):
+            if ws_name == "default":
+                return NO_PERMISSIONS
+            if ws_name == "team-ws":
+                return READ
+            return None
+
+        mock_perm_cached.side_effect = _perm_side_effect
+
+        mock_request = MagicMock()
+        result = await list_workspaces(request=mock_request)
+
+        assert len(result) == 1
+        assert result[0].name == "team-ws"
 
 
 # ──────────────────────────────────────────────────────────────────────────
