@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useWorkspace, WorkspaceContext } from "./use-workspace";
+import {
+  useWorkspace,
+  useSelectedWorkspace,
+  WorkspaceContext,
+} from "./use-workspace";
 import type { WorkspaceContextValue } from "./use-workspace";
 
 describe("useWorkspace", () => {
@@ -37,5 +41,36 @@ describe("useWorkspace", () => {
     );
     const { result } = renderHook(() => useWorkspace(), { wrapper });
     expect(result.current.selectedWorkspace).toBeNull();
+  });
+});
+
+describe("useSelectedWorkspace", () => {
+  it("returns null when used outside WorkspaceProvider", () => {
+    const { result } = renderHook(() => useSelectedWorkspace());
+    expect(result.current).toBeNull();
+  });
+
+  it("returns the selected workspace when inside provider", () => {
+    const mockValue: WorkspaceContextValue = {
+      selectedWorkspace: "my-workspace",
+      setSelectedWorkspace: vi.fn(),
+    };
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <WorkspaceContext value={mockValue}>{children}</WorkspaceContext>
+    );
+    const { result } = renderHook(() => useSelectedWorkspace(), { wrapper });
+    expect(result.current).toBe("my-workspace");
+  });
+
+  it("returns null when selectedWorkspace is null in provider", () => {
+    const mockValue: WorkspaceContextValue = {
+      selectedWorkspace: null,
+      setSelectedWorkspace: vi.fn(),
+    };
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <WorkspaceContext value={mockValue}>{children}</WorkspaceContext>
+    );
+    const { result } = renderHook(() => useSelectedWorkspace(), { wrapper });
+    expect(result.current).toBeNull();
   });
 });

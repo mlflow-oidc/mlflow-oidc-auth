@@ -16,3 +16,13 @@ export function useWorkspace(): WorkspaceContextValue {
   }
   return ctx;
 }
+
+/**
+ * Read the selected workspace without throwing when context is unavailable.
+ * Used by useApi to trigger re-fetch on workspace change without requiring
+ * every test to wrap with WorkspaceProvider.
+ */
+export function useSelectedWorkspace(): string | null {
+  const ctx = use(WorkspaceContext);
+  return ctx?.selectedWorkspace ?? null;
+}
