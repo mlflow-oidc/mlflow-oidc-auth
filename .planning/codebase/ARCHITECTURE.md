@@ -25,30 +25,30 @@
 - Used by: ASGI server (uvicorn via MLflow CLI)
 
 **Middleware Layer:**
-- Purpose: Authentication, proxy header handling, session management, WSGI bridging
+- Purpose: Authentication, proxy header handling, session management, WSGI bridging, workspace context
 - Location: `mlflow_oidc_auth/middleware/`
-- Contains: `AuthMiddleware`, `AuthAwareWSGIMiddleware`, `ProxyHeadersMiddleware`
+- Contains: `AuthMiddleware`, `AuthAwareWSGIMiddleware`, `ProxyHeadersMiddleware`, `WorkspaceContextMiddleware`
 - Depends on: Config, Store, Auth (JWT validation), Bridge
 - Used by: FastAPI app (applied in order during `create_app`)
 
 **Router Layer (FastAPI):**
-- Purpose: REST API endpoints for permissions, users, groups, auth flows, health, UI
+- Purpose: REST API endpoints for permissions, users, groups, auth flows, health, UI, workspaces
 - Location: `mlflow_oidc_auth/routers/`
-- Contains: 15 routers — auth, experiment_permissions, group_permissions, prompt_permissions, registered_model_permissions, scorers_permissions, gateway_endpoint_permissions, gateway_secret_permissions, gateway_model_definition_permissions, health, trash, ui, user_permissions, users, webhook
-- Depends on: Store, Config, Models (Pydantic), Utils
+- Contains: 18 routers — auth, experiment_permissions, group_permissions, prompt_permissions, registered_model_permissions, scorers_permissions, gateway_endpoint_permissions, gateway_secret_permissions, gateway_model_definition_permissions, health, trash, ui, user_permissions, users, webhook, workspace_crud, workspace_permissions, workspace_regex_permissions
+- Depends on: Store, Config, Models (Pydantic), Utils, Dependencies
 - Used by: FastAPI app (registered in `create_app`)
 
 **Hooks Layer (Flask before/after request):**
 - Purpose: RBAC enforcement on MLflow's native Flask endpoints
 - Location: `mlflow_oidc_auth/hooks/`
-- Contains: `before_request.py` (~428 lines) maps MLflow protobuf request classes to validator functions; `after_request.py` (~426 lines) handles post-request actions (auto-grant MANAGE on create, filter search results, cascade permission deletes)
+- Contains: `before_request.py` (~567 lines) maps MLflow protobuf request classes to validator functions; `after_request.py` (~663 lines) handles post-request actions (auto-grant MANAGE on create, filter search results, cascade permission deletes, workspace-level filtering)
 - Depends on: Validators, Store, Bridge, Config, Permissions
 - Used by: Flask app (registered as `before_request` and `after_request` hooks)
 
 **Validators Layer:**
 - Purpose: Per-resource permission checking logic
 - Location: `mlflow_oidc_auth/validators/`
-- Contains: Validator functions for experiments, registered models, prompts, scorers, gateway endpoints/secrets/model definitions
+- Contains: Validator functions for experiments, registered models, prompts, scorers, gateway endpoints/secrets/model definitions, workspaces
 - Depends on: Store, Bridge, Permissions, Utils
 - Used by: Hooks layer (before_request dispatches to validators)
 
@@ -70,21 +70,21 @@
 **Data Access Layer (Store):**
 - Purpose: All database operations for users, groups, permissions
 - Location: `mlflow_oidc_auth/sqlalchemy_store.py` (main), `mlflow_oidc_auth/store.py` (singleton)
-- Contains: `SqlAlchemyStore` class (~721 lines) delegates to 20+ repository classes
+- Contains: `SqlAlchemyStore` class (~1474 lines) delegates to 30+ repository classes
 - Depends on: Repository classes, DB models, Entities, SQLAlchemy, Alembic
 - Used by: Routers, Hooks, Validators, Middleware
 
 **Repository Layer:**
 - Purpose: Individual CRUD operations per entity type
 - Location: `mlflow_oidc_auth/repository/`
-- Contains: 20+ repository classes (UserRepository, GroupRepository, ExperimentPermissionRepository, RegisteredModelRegexPermissionRepository, etc.)
+- Contains: 30+ repository classes (UserRepository, GroupRepository, ExperimentPermissionRepository, RegisteredModelRegexPermissionRepository, WorkspacePermissionRepository, etc.)
 - Depends on: DB models, Entities, SQLAlchemy session
 - Used by: SqlAlchemyStore
 
 **Database Models Layer:**
 - Purpose: SQLAlchemy ORM table definitions
 - Location: `mlflow_oidc_auth/db/models/`
-- Contains: ORM models for all entities (users, groups, user_groups, experiment_permissions, registered_model_permissions, prompt_permissions, scorer_permissions, gateway_*_permissions, plus regex and group-regex variants of each)
+- Contains: ORM models for all entities (users, groups, user_groups, experiment_permissions, registered_model_permissions, prompt_permissions, scorer_permissions, gateway_*_permissions, workspace_permissions, plus regex and group-regex variants of each)
 - Depends on: SQLAlchemy declarative base
 - Used by: Repository classes, Alembic migrations
 
@@ -171,7 +171,7 @@
 - Purpose: Central data access facade — all DB operations go through this
 - Definition: `mlflow_oidc_auth/sqlalchemy_store.py`
 - Singleton: `mlflow_oidc_auth/store.py` (module-level `store` instance)
-- Pattern: Facade over 20+ repository classes, each handling one entity type
+- Pattern: Facade over 30+ repository classes, each handling one entity type
 
 **AppConfig:**
 - Purpose: Immutable application configuration

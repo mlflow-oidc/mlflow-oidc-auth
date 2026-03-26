@@ -63,34 +63,40 @@ mlflow-oidc-auth/
 │   │   │   ├── gateway_model_definition_permission.py
 │   │   │   ├── gateway_model_definition_group_permission.py
 │   │   │   ├── gateway_model_definition_regex_permission.py
-│   │   │   └── gateway_model_definition_group_regex_permission.py
+│   │   │   ├── gateway_model_definition_group_regex_permission.py
+│   │   │   ├── workspace_permission.py
+│   │   │   ├── workspace_group_permission.py
+│   │   │   ├── workspace_regex_permission.py
+│   │   │   └── workspace_group_regex_permission.py
 │   │   └── migrations/            # Alembic migrations
 │   │       ├── alembic.ini
 │   │       ├── env.py
 │   │       ├── script.py.mako
 │   │       └── versions/          # Migration scripts
 │   ├── entities/                   # Domain entity dataclasses
+│   │   ├── _base.py               # Base entity class
+│   │   ├── auth_context.py        # Auth context entity
 │   │   ├── user.py
 │   │   ├── group.py
-│   │   ├── user_group.py
-│   │   ├── experiment_permission.py
-│   │   ├── registered_model_permission.py
-│   │   ├── prompt_permission.py
-│   │   ├── scorer_permission.py
-│   │   ├── gateway_endpoint_permission.py
-│   │   ├── gateway_secret_permission.py
-│   │   └── gateway_model_definition_permission.py
+│   │   ├── experiment.py
+│   │   ├── registered_model.py
+│   │   ├── scorer.py
+│   │   ├── gateway_endpoint.py
+│   │   ├── gateway_secret.py
+│   │   ├── gateway_model_definition.py
+│   │   └── workspace.py           # Workspace permission entity
 │   ├── graphql/                    # GraphQL authorization
 │   │   └── middleware.py           # Authorization middleware for /graphql
 │   ├── hooks/                      # Flask before/after request hooks
 │   │   ├── __init__.py
-│   │   ├── before_request.py       # RBAC enforcement (~428 lines)
-│   │   └── after_request.py        # Post-request actions (~426 lines)
+│   │   ├── before_request.py       # RBAC enforcement (~567 lines)
+│   │   └── after_request.py        # Post-request actions (~663 lines)
 │   ├── middleware/                  # ASGI middleware
 │   │   ├── __init__.py
 │   │   ├── auth_middleware.py      # Authentication (Basic/Bearer/Session)
 │   │   ├── auth_aware_wsgi_middleware.py  # ASGI→WSGI bridge with auth context
-│   │   └── proxy_headers_middleware.py    # X-Forwarded-* header handling
+│   │   ├── proxy_headers_middleware.py    # X-Forwarded-* header handling
+│   │   └── workspace_context_middleware.py # Workspace context propagation
 │   ├── models/                     # Pydantic request/response models
 │   │   ├── experiment_permission.py
 │   │   ├── registered_model_permission.py
@@ -101,7 +107,8 @@ mlflow-oidc-auth/
 │   │   ├── gateway_model_definition_permission.py
 │   │   ├── group.py
 │   │   ├── user.py
-│   │   └── auth.py
+│   │   ├── auth.py
+│   │   └── workspace.py           # Workspace Pydantic models
 │   ├── repository/                 # Data access repositories
 │   │   ├── user.py
 │   │   ├── group.py
@@ -133,7 +140,11 @@ mlflow-oidc-auth/
 │   │   ├── gateway_model_definition_permission.py
 │   │   ├── gateway_model_definition_group_permission.py
 │   │   ├── gateway_model_definition_regex_permission.py
-│   │   └── gateway_model_definition_group_regex_permission.py
+│   │   ├── gateway_model_definition_group_regex_permission.py
+│   │   ├── workspace_permission.py
+│   │   ├── workspace_group_permission.py
+│   │   ├── workspace_regex_permission.py
+│   │   └── workspace_group_regex_permission.py
 │   ├── routers/                    # FastAPI route handlers
 │   │   ├── __init__.py             # Router registration list
 │   │   ├── _prefix.py             # URL prefix constants
@@ -151,20 +162,27 @@ mlflow-oidc-auth/
 │   │   ├── ui.py                  # SPA serving & config endpoint
 │   │   ├── user_permissions.py
 │   │   ├── users.py
-│   │   └── webhook.py
+│   │   ├── webhook.py
+│   │   ├── workspace_crud.py      # Workspace CRUD endpoints
+│   │   ├── workspace_permissions.py        # Workspace permission management
+│   │   └── workspace_regex_permissions.py  # Workspace regex permission management
 │   ├── utils/                      # Utility modules
 │   │   ├── permissions.py         # Permission resolution helpers
+│   │   ├── batch_permissions.py   # Batch permission operations
 │   │   ├── data_fetching.py       # Data fetch utilities
-│   │   ├── request_helpers.py     # Request parsing helpers
-│   │   └── uri.py                 # URI manipulation
+│   │   ├── request_helpers.py     # Request parsing helpers (Flask)
+│   │   ├── request_helpers_fastapi.py # Request parsing helpers (FastAPI)
+│   │   ├── uri.py                 # URI manipulation
+│   │   └── workspace_cache.py     # Workspace permission cache (TTL-based)
 │   └── validators/                 # Permission validator functions
 │       ├── experiment.py
 │       ├── registered_model.py
-│       ├── prompt.py
-│       ├── scorer.py
-│       ├── gateway_endpoint.py
-│       ├── gateway_secret.py
-│       └── gateway_model_definition.py
+│       ├── run.py
+│       ├── scorers.py
+│       ├── stuff.py
+│       ├── trace.py
+│       ├── gateway.py
+│       └── workspace.py           # Workspace permission validators
 ├── web-react/                      # Frontend React SPA
 │   ├── package.json
 │   ├── tsconfig.json
@@ -202,7 +220,8 @@ mlflow-oidc-auth/
 │       │   ├── permissions/        # Permission views
 │       │   ├── forbidden/          # 403 page
 │       │   ├── not-found/          # 404 page
-│       │   └── user/               # User profile/settings
+│       │   ├── user/               # User profile/settings
+│       │   └── workspaces/         # Workspace management UI
 │       └── shared/                 # Shared components and utilities
 │           ├── components/         # Reusable UI components
 │           ├── context/            # Shared React contexts
@@ -238,16 +257,16 @@ mlflow-oidc-auth/
 **`mlflow_oidc_auth/hooks/`:**
 - Purpose: Flask before/after request hooks that enforce RBAC on MLflow's native API
 - Contains: `before_request.py` (permission checks), `after_request.py` (auto-grant, filtering, cascading)
-- Key files: `before_request.py` (~428 lines, maps protobuf classes to validators)
+- Key files: `before_request.py` (~567 lines, maps protobuf classes to validators)
 
 **`mlflow_oidc_auth/middleware/`:**
 - Purpose: ASGI middleware stack for authentication, proxy handling, WSGI bridging
-- Contains: `auth_middleware.py`, `auth_aware_wsgi_middleware.py`, `proxy_headers_middleware.py`
-- Key files: `auth_middleware.py` (multi-method auth), `auth_aware_wsgi_middleware.py` (ASGI↔WSGI bridge)
+- Contains: `auth_middleware.py`, `auth_aware_wsgi_middleware.py`, `proxy_headers_middleware.py`, `workspace_context_middleware.py`
+- Key files: `auth_middleware.py` (multi-method auth), `auth_aware_wsgi_middleware.py` (ASGI↔WSGI bridge), `workspace_context_middleware.py` (workspace context propagation)
 
 **`mlflow_oidc_auth/validators/`:**
 - Purpose: Per-resource permission validation logic
-- Contains: One validator module per resource type (experiment, registered_model, prompt, scorer, gateway_*)
+- Contains: One validator module per resource type (experiment, registered_model, scorers, run, trace, stuff, gateway, workspace)
 - Key files: `experiment.py`, `registered_model.py`
 
 **`mlflow_oidc_auth/db/models/`:**
@@ -267,7 +286,7 @@ mlflow-oidc-auth/
 
 **`mlflow_oidc_auth/repository/`:**
 - Purpose: CRUD data access classes, one per entity type
-- Contains: 28+ repository files (4 variants per resource type)
+- Contains: 34+ repository files (4 variants per resource type)
 - Key files: `user.py`, `group.py`, `experiment_permission.py`
 
 **`mlflow_oidc_auth/models/`:**
@@ -302,7 +321,7 @@ mlflow-oidc-auth/
 
 **`web-react/src/features/`:**
 - Purpose: Feature-based modules — each feature is self-contained with components, hooks, services
-- Contains: 14 feature directories
+- Contains: 15 feature directories
 - Key files: Each feature typically has `index.tsx`, `components/`, and feature-specific hooks
 
 **`web-react/src/shared/`:**
@@ -328,9 +347,9 @@ mlflow-oidc-auth/
 - `mlflow_oidc_auth/db/migrations/alembic.ini`: Alembic migration config
 
 **Core Logic:**
-- `mlflow_oidc_auth/sqlalchemy_store.py`: All database operations (~721 lines)
-- `mlflow_oidc_auth/hooks/before_request.py`: RBAC enforcement (~428 lines)
-- `mlflow_oidc_auth/hooks/after_request.py`: Post-request actions (~426 lines)
+- `mlflow_oidc_auth/sqlalchemy_store.py`: All database operations (~1474 lines)
+- `mlflow_oidc_auth/hooks/before_request.py`: RBAC enforcement (~567 lines)
+- `mlflow_oidc_auth/hooks/after_request.py`: Post-request actions (~663 lines)
 - `mlflow_oidc_auth/middleware/auth_middleware.py`: Multi-method authentication
 - `mlflow_oidc_auth/middleware/auth_aware_wsgi_middleware.py`: ASGI↔WSGI bridge
 - `mlflow_oidc_auth/permissions.py`: Permission model

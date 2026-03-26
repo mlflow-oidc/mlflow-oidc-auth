@@ -2,43 +2,57 @@
 
 ## Permission Levels
 
-The system defines four permission levels with a hierarchical priority system:
+The system defines five permission levels with a hierarchical priority system:
 
 ### 1. READ Permission
 - **Priority**: 1 (lowest hierarchy level)
 - **Capabilities**:
   - `can_read: true`
+  - `can_use: false`
   - `can_update: false`
   - `can_delete: false`
   - `can_manage: false`
 - **Description**: Allows read-only access to resources
 
-### 2. EDIT Permission
-- **Priority**: 2 (medium hierarchy level)
+### 2. USE Permission
+- **Priority**: 2
 - **Capabilities**:
   - `can_read: true`
+  - `can_use: true`
+  - `can_update: false`
+  - `can_delete: false`
+  - `can_manage: false`
+- **Description**: Allows reading and using resources (e.g., invoking gateway endpoints)
+
+### 3. EDIT Permission
+- **Priority**: 3
+- **Capabilities**:
+  - `can_read: true`
+  - `can_use: true`
   - `can_update: true`
   - `can_delete: false`
   - `can_manage: false`
-- **Description**: Allows reading and updating resources
+- **Description**: Allows reading, using, and updating resources
 
-### 3. MANAGE Permission
-- **Priority**: 3 (highest hierarchy level)
+### 4. MANAGE Permission
+- **Priority**: 4 (highest hierarchy level)
 - **Capabilities**:
   - `can_read: true`
+  - `can_use: true`
   - `can_update: true`
   - `can_delete: true`
   - `can_manage: true`
 - **Description**: Full control over resources
 
-### 4. NO_PERMISSIONS
-- **Priority**: 100 (special case - no access)
+### 5. NO_PERMISSIONS
+- **Priority**: 100 (special case — explicit denial)
 - **Capabilities**:
   - `can_read: false`
+  - `can_use: false`
   - `can_update: false`
   - `can_delete: false`
   - `can_manage: false`
-- **Description**: No access to resources
+- **Description**: Explicit denial of access. This is a valid permission object (not the same as having no permission record at all). When assigned, the user is actively denied access to the resource regardless of other permission sources.
 
 ## Permission Source Order
 
@@ -68,7 +82,7 @@ DEFAULT_MLFLOW_PERMISSION=MANAGE
 ### Default Values
 - **Default**: `MANAGE`
 - **Effect**: Users have full access to all resources unless explicitly restricted
-- **Alternatives**: Can be set to `READ`, `EDIT`, or `NO_PERMISSIONS`
+- **Alternatives**: Can be set to `READ`, `USE`, `EDIT`, or `NO_PERMISSIONS`
 
 
 ### Resolution Steps
@@ -85,16 +99,20 @@ DEFAULT_MLFLOW_PERMISSION=MANAGE
 ```python
 # Users belong to groups with different permissions
 Group A: experiment_123 -> READ (priority 1)
-Group B: experiment_123 -> MANAGE (priority 3)
+Group B: experiment_123 -> MANAGE (priority 4)
 
 # Result: MANAGE permission (higher hierarchy level wins)
 ```
 
 ## Regex Permission System
 
-## Gateway Permissions
+Regex permissions allow pattern-based access control using Python regular expressions. Instead of assigning permissions to individual resources, you can define regex patterns that match resource names and assign a permission level to each pattern.
 
-Gateways are now a first-class resource in the permission system. Permission sources (user, group, regex, group-regex) are evaluated in the same order as other resources. Use the same permission levels (READ, EDIT, MANAGE) to control gateway discovery and proxy operations. The plugin exposes APIs under `/mlflow/permissions/gateways` for administering gateway permissions.
+Regex permissions come in two variants:
+- **User regex permissions**: Assigned directly to a user
+- **Group regex permissions**: Assigned to a group (inherited by all group members)
+
+Both are evaluated as part of the `PERMISSION_SOURCE_ORDER` chain (via the `regex` and `group-regex` source types).
 
 ### Pattern Syntax
 The system uses Python regular expression syntax:
@@ -119,6 +137,54 @@ Priority 3: ".*" -> READ
 # For experiment "dev-ml-model":
 # 1. Check "^prod-.*" -> No match
 # 2. Check "^dev-.*" -> Match! -> MANAGE permission
+```
+
+## Gateway Permissions
+
+Gateways are now a first-class resource in the permission system. Permission sources (user, group, regex, group-regex) are evaluated in the same order as other resources. Use the same permission levels (READ, USE, EDIT, MANAGE) to control gateway discovery and proxy operations. The plugin exposes APIs under `/mlflow/permissions/gateways` for administering gateway permissions.
+
+## Workspace Permissions
+
+Workspaces provide multi-tenant resource isolation and are gated by the `MLFLOW_ENABLE_WORKSPACES` feature flag (default `False`). When enabled, all workspace access requires explicit permission grants — there are no implicit grants for any workspace, including the "default" workspace.
+
+### How Workspace Permissions Work
+
+Workspace permissions use the same `Permission` levels as resource permissions (READ, USE, EDIT, MANAGE, NO_PERMISSIONS) and the same resolution chain configured via `PERMISSION_SOURCE_ORDER`.
+
+| Permission       | Workspace Access                                          |
+|------------------|-----------------------------------------------------------|
+| `READ`           | Can view workspace and its resources in search/list results |
+| `USE`            | Can use workspace resources                                |
+| `EDIT`           | Can modify workspace resources                             |
+| `MANAGE`         | Full control: create experiments/models in the workspace, manage workspace permissions |
+| `NO_PERMISSIONS` | Explicit denial — workspace is hidden from all results     |
+
+### Enforcement Points
+
+1. **Workspace API endpoints**: `GetWorkspace`, `UpdateWorkspace`, `DeleteWorkspace`, `CreateWorkspace`, `ListWorkspaces` are gated by workspace-level permission checks
+2. **Resource creation gating**: `CreateExperiment` and `CreateRegisteredModel` require `MANAGE` permission on the target workspace
+3. **Search/list filtering**: Results from `SearchExperiments`, `SearchRegisteredModels`, `SearchLoggedModels`, and `ListWorkspaces` are filtered to only include resources in workspaces the user can read
+4. **Permission management API**: Workspace permission CRUD endpoints require `MANAGE` on the workspace
+
+### Key Difference: `NO_PERMISSIONS` vs No Record
+
+- **`NO_PERMISSIONS` assigned**: The user is explicitly denied — `can_read` is `False`. The workspace is hidden from all results.
+- **No permission record**: No explicit permission exists for the user/workspace pair. The workspace is also inaccessible (there is no implicit default grant for workspaces).
+
+Admin users bypass all workspace permission checks.
+
+### Configuration
+
+```bash
+# Enable workspace support (default: false)
+MLFLOW_ENABLE_WORKSPACES=true
+
+# Permission auto-assigned to new users during OIDC login (default: NO_PERMISSIONS)
+OIDC_WORKSPACE_DEFAULT_PERMISSION=NO_PERMISSIONS
+
+# Workspace permission cache settings
+WORKSPACE_CACHE_MAX_SIZE=1024
+WORKSPACE_CACHE_TTL_SECONDS=300
 ```
 
 ## Configuration
@@ -168,7 +234,7 @@ Resource: experiment_456
 Sources:
 - user: No permission found
 - group: dev-team has MANAGE, qa-team has READ
-Result: MANAGE permission (MANAGE hierarchy level 3 beats READ hierarchy level 1)
+Result: MANAGE permission (MANAGE hierarchy level 4 beats READ hierarchy level 1)
 ```
 
 ### Example 3: Regex Pattern Matching

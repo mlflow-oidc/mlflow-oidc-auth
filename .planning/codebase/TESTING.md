@@ -122,7 +122,10 @@ mlflow_oidc_auth/tests/
 │   └── test_graphql_patch.py      # Tests for GraphQL patches
 ├── hooks/
 │   ├── test_after_request.py      # Tests for Flask after-request hooks
-│   └── test_before_request.py     # Tests for Flask before-request hooks
+│   ├── test_before_request.py     # Tests for Flask before-request hooks
+│   ├── test_prompt_optimization_job.py  # Tests for prompt optimization job hooks
+│   ├── test_workspace_hooks.py    # Tests for workspace permission hooks
+│   └── test_workspace_search_filtering.py  # Tests for workspace search/list filtering
 ├── middleware/
 │   ├── conftest.py                # Middleware test fixtures
 │   ├── test_auth_middleware.py     # Tests for auth middleware
@@ -186,7 +189,9 @@ mlflow_oidc_auth/tests/
 │   ├── test_registered_model.py
 │   ├── test_run.py
 │   ├── test_run_validator.py
-│   └── test_stuff.py
+│   ├── test_stuff.py
+│   ├── test_validator_contract.py  # Contract tests for all validators
+│   └── test_workspace.py          # Tests for workspace permission validators
 ├── session/
 │   └── __init__.py
 └── integration/
@@ -206,7 +211,7 @@ mlflow_oidc_auth/tests/
     └── test_token_scorer_seeding.py
 ```
 
-**Total:** ~107 Python test files (including integration)
+**Total:** ~112 Python test files (including integration)
 
 ### React Tests
 
@@ -648,6 +653,7 @@ Additional CI checks:
 6. **GraphQL** - Only 2 test files (`test_graphql_middleware.py`, `test_graphql_patch.py`) for the GraphQL authorization middleware
 7. **`mlflow_oidc_auth/oauth.py`** - Only `test_oauth.py` exists; OIDC flows are complex and hard to fully test in unit tests
 8. **Integration tests are excluded from CI by default** - Only run via `tox -e integration` (requires running server), not in the standard `unit-tests.yml` workflow
+9. **Workspace router tests** - `workspace_crud.py`, `workspace_permissions.py`, and `workspace_regex_permissions.py` routers do not yet have dedicated router-level tests (workspace logic is tested via hook and validator tests)
 
 ---
 

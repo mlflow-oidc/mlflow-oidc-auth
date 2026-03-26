@@ -4,8 +4,8 @@
 
 ## Tech Debt
 
-**God Object: `sqlalchemy_store.py` (721 lines)**
-- Issue: Single class with 100+ thin wrapper methods delegating to 26+ repository files. Acts as an unnecessary indirection layer between routers and repositories.
+**God Object: `sqlalchemy_store.py` (1474 lines)**
+- Issue: Single class with 150+ thin wrapper methods delegating to 34+ repository files. Acts as an unnecessary indirection layer between routers and repositories.
 - Files: `mlflow_oidc_auth/sqlalchemy_store.py`
 - Impact: Every new entity type requires adding multiple pass-through methods here. Increases maintenance burden and makes the codebase harder to navigate.
 - Fix approach: Have routers depend on repositories directly (or use a thin service layer per domain). Gradually remove `SqlAlchemyStore` methods as repositories are injected via FastAPI dependencies.
@@ -121,10 +121,11 @@
 
 ## Performance Bottlenecks
 
-**No Permission Caching**
+**No Permission Caching (Resource Permissions)**
 - Problem: Every incoming request triggers a multi-step permission resolution chain: direct user permission → group permission → regex user permission → regex group permission. Each step involves a database query.
 - Files: `mlflow_oidc_auth/utils/permissions.py` (all `_get_permission_for_*` functions)
 - Cause: No caching layer between the permission check and the database. Permissions are resolved from scratch on every request.
+- Note: Workspace permissions DO have TTL-based caching via `mlflow_oidc_auth/utils/workspace_cache.py`, but resource-level permissions (experiments, models, etc.) do not.
 - Improvement path: Add a short-lived cache (e.g., 30-60 seconds) for permission lookups keyed by `(username, resource_type, resource_name)`. Invalidate on permission write operations.
 
 **Post-Fetch Search Result Filtering**
@@ -154,7 +155,7 @@
 - Test coverage: No tests for this file.
 
 **Flask Before/After Request Hooks**
-- Files: `mlflow_oidc_auth/hooks/before_request.py` (428 lines), `mlflow_oidc_auth/hooks/after_request.py` (426 lines)
+- Files: `mlflow_oidc_auth/hooks/before_request.py` (567 lines), `mlflow_oidc_auth/hooks/after_request.py` (663 lines)
 - Why fragile: These hooks match request paths using string patterns to determine which validator to call. Any change to MLflow's REST API paths requires updating the route matching logic.
 - Safe modification: Add integration tests that verify route patterns match actual MLflow endpoints for the supported version range.
 - Test coverage: Route matching patterns are not tested.
@@ -207,23 +208,23 @@
 - Problem: Permission changes (grant, revoke, modify) are not logged to an audit trail. Admin actions have no accountability record.
 - Blocks: Compliance requirements, incident investigation, permission change tracking.
 
-**No Health Check Endpoint**
-- Problem: No dedicated health check or readiness endpoint for container orchestration (Kubernetes liveness/readiness probes).
-- Blocks: Proper container health monitoring and graceful degradation in orchestrated environments.
+**~~No Health Check Endpoint~~ (RESOLVED)**
+- Health check endpoints exist at `/health` (basic), `/health/ready` (readiness), `/health/live` (liveness), and `/health/startup` (startup probe).
+- Implementation: `mlflow_oidc_auth/routers/health.py`
 
 ## Test Coverage Gaps
 
-**No Test Suite Detected**
-- What's not tested: The entire Python backend has no visible test directory or test files. No `tests/` directory, no `*_test.py` or `test_*.py` files found in the project root or `mlflow_oidc_auth/` directory.
-- Files: Entire `mlflow_oidc_auth/` directory
-- Risk: Any code change could introduce regressions with no automated detection. Security-critical code (auth middleware, permission validators, JWKS validation) has zero test coverage.
-- Priority: **High** — This is the single most impactful concern. The codebase handles authentication and authorization for MLflow, and has no automated tests.
+**Comprehensive Test Suite Exists**
+- The Python backend has 2563+ tests across ~110 test files in `mlflow_oidc_auth/tests/`. Test types include unit tests, repository tests, router tests, middleware tests, hook tests, validator tests, and integration tests (Playwright-based).
+- Files: `mlflow_oidc_auth/tests/` (entire directory)
+- Coverage: Tracked via `coverage.py` and reported to SonarCloud.
 
-**Frontend Tests Missing**
-- What's not tested: No test files found in `web-react/src/`. `package.json` has no test script configured.
-- Files: `web-react/src/` (entire directory)
-- Risk: UI permission management features have no automated verification.
-- Priority: Medium — Frontend is primarily CRUD forms; backend validation is more critical.
+**Frontend Tests Exist**
+- The React frontend has 815+ tests across ~116 test files, co-located with source files. Uses Vitest with Testing Library.
+- Files: `web-react/src/` (`.test.tsx` / `.test.ts` files)
+- Coverage: Enforced at 80% thresholds (statements, branches, functions, lines).
+
+**Areas with Remaining Gaps:**
 
 ---
 

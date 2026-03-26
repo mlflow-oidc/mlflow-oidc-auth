@@ -87,7 +87,7 @@
 - **Connection:** `OIDC_USERS_DB_URI` environment variable
 - **Client:** SQLAlchemy 2.x ORM (`mlflow_oidc_auth/sqlalchemy_store.py`)
 - **Migrations:** Alembic (`mlflow_oidc_auth/db/migrations/`)
-- **Tables:** Users, Groups, UserGroups, ExperimentPermissions, RegisteredModelPermissions, ScorerPermissions, GatewayEndpointPermissions, GatewaySecretPermissions, GatewayModelDefinitionPermissions (plus regex/group variants for each)
+- **Tables:** Users, Groups, UserGroups, ExperimentPermissions, RegisteredModelPermissions, ScorerPermissions, GatewayEndpointPermissions, GatewaySecretPermissions, GatewayModelDefinitionPermissions, WorkspacePermissions (plus regex/group/group-regex variants for each)
 
 ### File Storage
 
@@ -99,6 +99,7 @@
 - Cookie-based sessions via Starlette `SessionMiddleware` (no server-side cache required)
 - Redis available for development/testing (`scripts/docker-compose.yaml`)
 - Config providers cache secrets in-memory with configurable TTL
+- Workspace permissions use TTL-based in-memory caching (`mlflow_oidc_auth/utils/workspace_cache.py`) with configurable max size and TTL. Resource-level permissions (experiments, models, etc.) are not cached.
 
 ## Cloud Provider Integrations
 
@@ -207,6 +208,12 @@
 - `/api/2.0/mlflow/permissions/gateways/*` - Gateway endpoint/secret/model permissions
 - `/api/3.0/mlflow/permissions/scorers/*` - Scorer permission CRUD
 - `/api/2.0/mlflow/users/*` - User management
+
+### Workspace Routes (`mlflow_oidc_auth/routers/workspace_*.py`)
+- `/api/2.0/mlflow/permissions/workspaces/*` - Workspace CRUD (create, list, get, update, delete)
+- `/api/2.0/mlflow/permissions/workspaces/{name}/permissions/*` - Workspace user/group permission management
+- `/api/2.0/mlflow/permissions/workspaces/{name}/regex-permissions/*` - Workspace regex/group-regex permission management
+- Only active when `MLFLOW_ENABLE_WORKSPACES=true`
 
 ### Admin Routes
 - `/oidc/webhook/*` - Webhook CRUD (admin-only, `mlflow_oidc_auth/routers/webhook.py`)

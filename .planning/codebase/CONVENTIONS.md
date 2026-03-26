@@ -346,6 +346,16 @@ if (!res.ok) {
 - `middleware/` - FastAPI and ASGI middleware
 - `config.py` - Configuration management via `AppConfig` singleton
 - `config_providers/` - Pluggable configuration source providers
+- `utils/workspace_cache.py` - TTL-based workspace permission cache
+
+**Workspace Permission Check Pattern:**
+- Workspace enforcement points must always check `perm is not None and perm.can_read` (or `perm.can_manage`), never just `perm is not None`. This is because `NO_PERMISSIONS` is a valid permission object with `can_read=False`.
+- Example:
+  ```python
+  perm = get_workspace_permission_cached(username, workspace_name)
+  if perm is not None and perm.can_read:
+      # user has access
+  ```
 
 ---
 
