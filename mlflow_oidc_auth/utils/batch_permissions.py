@@ -22,7 +22,7 @@ from mlflow_oidc_auth.entities import (
 )
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import get_permission
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, get_permission
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -81,15 +81,23 @@ def build_user_permission_context(username: str) -> UserPermissionContext:
 
     # Fetch all experiment permissions for user (single query)
     user_exp_perms = store.list_experiment_permissions(username)
-    user_experiment_permissions = {p.experiment_id: p.permission for p in user_exp_perms}
+    user_experiment_permissions = {
+        p.experiment_id: p.permission for p in user_exp_perms
+    }
 
     # Fetch all experiment permissions from user's groups (single query)
     group_exp_perms = store.list_user_groups_experiment_permissions(username)
-    group_experiment_permissions = {p.experiment_id: p.permission for p in group_exp_perms}
+    group_experiment_permissions = {
+        p.experiment_id: p.permission for p in group_exp_perms
+    }
 
     # Fetch experiment regex permissions (single query each)
     experiment_regex_permissions = store.list_experiment_regex_permissions(username)
-    group_experiment_regex_permissions = store.list_group_experiment_regex_permissions_for_groups_ids(group_ids) if group_ids else []
+    group_experiment_regex_permissions = (
+        store.list_group_experiment_regex_permissions_for_groups_ids(group_ids)
+        if group_ids
+        else []
+    )
 
     # Fetch all registered model permissions for user (single query)
     user_model_perms = store.list_registered_model_permissions(username)
@@ -101,11 +109,19 @@ def build_user_permission_context(username: str) -> UserPermissionContext:
 
     # Fetch model regex permissions (single query each)
     model_regex_permissions = store.list_registered_model_regex_permissions(username)
-    group_model_regex_permissions = store.list_group_registered_model_regex_permissions_for_groups_ids(group_ids) if group_ids else []
+    group_model_regex_permissions = (
+        store.list_group_registered_model_regex_permissions_for_groups_ids(group_ids)
+        if group_ids
+        else []
+    )
 
     # Fetch prompt regex permissions (prompts use model permissions but have separate regex)
     prompt_regex_permissions = store.list_prompt_regex_permissions(username)
-    group_prompt_regex_permissions = store.list_group_prompt_regex_permissions_for_groups_ids(group_ids) if group_ids else []
+    group_prompt_regex_permissions = (
+        store.list_group_prompt_regex_permissions_for_groups_ids(group_ids)
+        if group_ids
+        else []
+    )
 
     return UserPermissionContext(
         username=username,
@@ -157,7 +173,52 @@ def _resolve_permission_from_context(
 
     # Fallback to default
     logger.debug("Batch permission using default")
-    return PermissionResult(get_permission(config.DEFAULT_MLFLOW_PERMISSION), "fallback")
+    return PermissionResult(
+        get_permission(config.DEFAULT_MLFLOW_PERMISSION), "fallback"
+    )
+
+
+def _apply_workspace_fallback(
+    result: PermissionResult, username: str
+) -> PermissionResult:
+    """Apply workspace-level permission fallback when no resource-level permission exists.
+
+    When workspaces are enabled and the resource-level resolution returned "fallback"
+    (i.e., no user/group/regex/group-regex permission was found), this function checks
+    whether the user has a workspace-level permission grant for the active workspace.
+
+    This mirrors the workspace fallback logic in ``permissions.resolve_permission()``
+    (WSAUTH-C/WSAUTH-04) but is designed for batch resolution in FastAPI route context
+    where the workspace is available via MLflow's ContextVar (set by WorkspaceContextMiddleware).
+
+    Parameters:
+        result: The PermissionResult from resource-level resolution.
+        username: The username to check workspace permission for.
+
+    Returns:
+        Original result if no workspace fallback applies, otherwise a workspace-derived result.
+    """
+    if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
+        return result
+
+    from mlflow.utils.workspace_context import (
+        get_request_workspace as mlflow_get_request_workspace,
+    )
+
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    workspace = mlflow_get_request_workspace()
+    if workspace:
+        ws_perm = get_workspace_permission_cached(username, workspace)
+        if ws_perm is not None:
+            logger.debug(
+                f"Batch permission workspace fallback: {ws_perm} for {username}@{workspace}"
+            )
+            return PermissionResult(ws_perm, "workspace")
+        logger.debug(f"Batch permission workspace-deny for {username}@{workspace}")
+        return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+
+    return result
 
 
 def _find_regex_permission(regexes: List, name: str) -> Optional[str]:
@@ -199,19 +260,26 @@ def resolve_experiment_permission_from_context(
     # Look up permissions from context (no DB queries)
     user_direct = ctx.user_experiment_permissions.get(experiment_id)
     group_direct = ctx.group_experiment_permissions.get(experiment_id)
-    user_regex = _find_regex_permission(ctx.experiment_regex_permissions, experiment_name)
-    group_regex = _find_regex_permission(ctx.group_experiment_regex_permissions, experiment_name)
+    user_regex = _find_regex_permission(
+        ctx.experiment_regex_permissions, experiment_name
+    )
+    group_regex = _find_regex_permission(
+        ctx.group_experiment_regex_permissions, experiment_name
+    )
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    return _apply_workspace_fallback(result, ctx.username)
 
 
-def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name: str) -> PermissionResult:
+def resolve_model_permission_from_context(
+    ctx: UserPermissionContext, model_name: str
+) -> PermissionResult:
     """Resolve registered model permission using pre-fetched context (no DB queries).
 
     Parameters:
@@ -226,16 +294,19 @@ def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name
     user_regex = _find_regex_permission(ctx.model_regex_permissions, model_name)
     group_regex = _find_regex_permission(ctx.group_model_regex_permissions, model_name)
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    return _apply_workspace_fallback(result, ctx.username)
 
 
-def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_name: str) -> PermissionResult:
+def resolve_prompt_permission_from_context(
+    ctx: UserPermissionContext, prompt_name: str
+) -> PermissionResult:
     """Resolve prompt permission using pre-fetched context (no DB queries).
 
     Prompts use the same direct permissions as models but have separate regex patterns.
@@ -252,15 +323,18 @@ def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_na
     group_direct = ctx.group_model_permissions.get(prompt_name)
     # But use prompt-specific regex patterns
     user_regex = _find_regex_permission(ctx.prompt_regex_permissions, prompt_name)
-    group_regex = _find_regex_permission(ctx.group_prompt_regex_permissions, prompt_name)
+    group_regex = _find_regex_permission(
+        ctx.group_prompt_regex_permissions, prompt_name
+    )
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    return _apply_workspace_fallback(result, ctx.username)
 
 
 def batch_resolve_experiment_permissions(
@@ -280,7 +354,12 @@ def batch_resolve_experiment_permissions(
         Dict mapping experiment_id to PermissionResult.
     """
     ctx = build_user_permission_context(username)
-    return {exp.experiment_id: resolve_experiment_permission_from_context(ctx, exp.experiment_id, exp.name) for exp in experiments}
+    return {
+        exp.experiment_id: resolve_experiment_permission_from_context(
+            ctx, exp.experiment_id, exp.name
+        )
+        for exp in experiments
+    }
 
 
 def batch_resolve_model_permissions(
@@ -300,7 +379,10 @@ def batch_resolve_model_permissions(
         Dict mapping model_name to PermissionResult.
     """
     ctx = build_user_permission_context(username)
-    return {model.name: resolve_model_permission_from_context(ctx, model.name) for model in models}
+    return {
+        model.name: resolve_model_permission_from_context(ctx, model.name)
+        for model in models
+    }
 
 
 def batch_resolve_prompt_permissions(
@@ -320,7 +402,10 @@ def batch_resolve_prompt_permissions(
         Dict mapping prompt_name to PermissionResult.
     """
     ctx = build_user_permission_context(username)
-    return {prompt.name: resolve_prompt_permission_from_context(ctx, prompt.name) for prompt in prompts}
+    return {
+        prompt.name: resolve_prompt_permission_from_context(ctx, prompt.name)
+        for prompt in prompts
+    }
 
 
 def filter_manageable_experiments(username: str, experiments: List) -> List:
@@ -336,7 +421,11 @@ def filter_manageable_experiments(username: str, experiments: List) -> List:
         List of experiments the user can manage.
     """
     permissions = batch_resolve_experiment_permissions(username, experiments)
-    return [exp for exp in experiments if permissions[exp.experiment_id].permission.can_manage]
+    return [
+        exp
+        for exp in experiments
+        if permissions[exp.experiment_id].permission.can_manage
+    ]
 
 
 def filter_manageable_models(username: str, models: List) -> List:
@@ -368,7 +457,9 @@ def filter_manageable_prompts(username: str, prompts: List) -> List:
         List of prompts the user can manage.
     """
     permissions = batch_resolve_prompt_permissions(username, prompts)
-    return [prompt for prompt in prompts if permissions[prompt.name].permission.can_manage]
+    return [
+        prompt for prompt in prompts if permissions[prompt.name].permission.can_manage
+    ]
 
 
 def filter_manageable_gateway_endpoints(username: str, endpoints: List) -> List:
@@ -396,7 +487,9 @@ def filter_manageable_gateway_endpoints(username: str, endpoints: List) -> List:
                 manageable.append(endpoint)
         except Exception as e:
             # Treat errors (missing resource etc.) as not manageable
-            logger.debug(f"Error checking gateway endpoint permission for {endpoint_name}: {e}")
+            logger.debug(
+                f"Error checking gateway endpoint permission for {endpoint_name}: {e}"
+            )
             continue
 
     return manageable
@@ -417,7 +510,9 @@ def filter_manageable_gateway_secrets(username: str, secrets: List) -> List:
     manageable = []
     for secret in secrets:
         # MLflow GatewaySecretInfo uses 'secret_name'; fall back to 'name'/'key' for compatibility
-        secret_name = secret.get("secret_name") or secret.get("name") or secret.get("key", "")
+        secret_name = (
+            secret.get("secret_name") or secret.get("name") or secret.get("key", "")
+        )
         if not secret_name:
             continue
         try:
@@ -451,7 +546,9 @@ def filter_manageable_gateway_model_definitions(username: str, models: List) -> 
             if can_manage_gateway_model_definition(model_name, username):
                 manageable.append(model)
         except Exception as e:
-            logger.debug(f"Error checking gateway model definition permission for {model_name}: {e}")
+            logger.debug(
+                f"Error checking gateway model definition permission for {model_name}: {e}"
+            )
             continue
 
     return manageable

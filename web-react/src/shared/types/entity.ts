@@ -20,7 +20,7 @@ export type PermissionLevel =
   | "MANAGE"
   | "NO_PERMISSIONS";
 
-export type PermissionKind = "user" | "group" | "fallback" | "service-account";
+export type PermissionKind = "user" | "group" | "regex" | "group-regex" | "fallback" | "workspace" | "workspace-deny" | "service-account";
 
 export type PermissionType =
   | "experiments"
