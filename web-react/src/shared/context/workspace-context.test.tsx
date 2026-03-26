@@ -132,4 +132,27 @@ describe("WorkspaceProvider", () => {
       expect(getActiveWorkspace()).toBe("changed-workspace");
     });
   });
+
+  it("updates module-level state synchronously before child effects run", () => {
+    // This test verifies the fix for the bug where child effects
+    // (e.g. useApi re-fetch) would read stale workspace values because
+    // React runs child effects before parent effects.
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+
+    // After calling setSelectedWorkspace, getActiveWorkspace must
+    // return the new value immediately — not after effects flush.
+    act(() => {
+      result.current.setSelectedWorkspace("sync-workspace");
+      expect(getActiveWorkspace()).toBe("sync-workspace");
+    });
+  });
+
+  it("initializes module-level state from localStorage during first render", () => {
+    localStorageStore["mlflow-oidc-workspace"] = "eager-workspace";
+
+    // After the first render (inside act), getActiveWorkspace should
+    // already have the stored value — set eagerly in useState initializer.
+    renderHook(() => useWorkspace(), { wrapper });
+    expect(getActiveWorkspace()).toBe("eager-workspace");
+  });
 });
