@@ -36,7 +36,7 @@ def validate_can_create_workspace(username: str) -> bool:
 
 
 def validate_can_read_workspace(username: str) -> bool:
-    """User must have any workspace permission to view workspace details. Denied when workspaces are disabled."""
+    """User must have at least READ workspace permission to view workspace details. Denied when workspaces are disabled."""
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return False
     auth_context = get_auth_context()
@@ -46,7 +46,7 @@ def validate_can_read_workspace(username: str) -> bool:
     if workspace_name is None:
         return False
     perm = get_workspace_permission_cached(auth_context.username, workspace_name)
-    return perm is not None
+    return perm is not None and perm.can_read
 
 
 def validate_can_update_workspace(username: str) -> bool:

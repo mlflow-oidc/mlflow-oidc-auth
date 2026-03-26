@@ -607,8 +607,13 @@ def _filter_list_workspaces(response: Response) -> None:
     filtered = [
         ws
         for ws in data["workspaces"]
-        if get_workspace_permission_cached(auth_context.username, ws.get("name", ""))
+        if (
+            perm := get_workspace_permission_cached(
+                auth_context.username, ws.get("name", "")
+            )
+        )
         is not None
+        and perm.can_read
     ]
     data["workspaces"] = filtered
     response.set_data(json.dumps(data))

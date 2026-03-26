@@ -498,6 +498,54 @@ class TestAfterRequestListWorkspacesFiltering:
             assert "ws-also-allowed" in ws_names
             assert "ws-denied" not in ws_names
 
+    def test_filter_list_workspaces_filters_no_permissions(self):
+        """_filter_list_workspaces removes workspaces where user has NO_PERMISSIONS (can_read=False)."""
+        from mlflow_oidc_auth.hooks.after_request import _filter_list_workspaces
+        from mlflow_oidc_auth.permissions import READ, NO_PERMISSIONS
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+        _app = self._make_flask_app()
+        with _app.test_request_context():
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.get_json.return_value = {
+                "workspaces": [
+                    {"name": "ws-allowed"},
+                    {"name": "ws-no-perms"},
+                    {"name": "ws-denied"},
+                ]
+            }
+
+            mock_auth_ctx = AuthContext(
+                username="testuser", is_admin=False, workspace=None
+            )
+
+            def mock_perm_cached(username, ws_name):
+                if ws_name == "ws-allowed":
+                    return READ
+                if ws_name == "ws-no-perms":
+                    return NO_PERMISSIONS  # has permission object but can_read=False
+                return None  # ws-denied: no permission at all
+
+            with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.hooks.after_request.get_auth_context",
+                    return_value=mock_auth_ctx,
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                        side_effect=mock_perm_cached,
+                    ):
+                        _filter_list_workspaces(mock_response)
+
+            mock_response.set_data.assert_called_once()
+            data = json.loads(mock_response.set_data.call_args[0][0])
+            ws_names = [ws["name"] for ws in data["workspaces"]]
+            assert "ws-allowed" in ws_names
+            assert "ws-no-perms" not in ws_names  # NO_PERMISSIONS should be filtered
+            assert "ws-denied" not in ws_names  # None should be filtered
+
     def test_filter_list_workspaces_skips_for_admin(self):
         """_filter_list_workspaces does not filter for admin users."""
         from mlflow_oidc_auth.hooks.after_request import _filter_list_workspaces

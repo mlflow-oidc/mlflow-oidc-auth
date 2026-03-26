@@ -164,13 +164,13 @@ class TestValidateCanReadWorkspace:
                 assert result is False
 
     def test_returns_true_for_user_with_permission(self):
-        """Users with workspace permission are allowed."""
+        """Users with readable workspace permission are allowed."""
         from mlflow_oidc_auth.validators.workspace import validate_can_read_workspace
+        from mlflow_oidc_auth.permissions import READ
 
         ctx = _make_auth_context(is_admin=False)
         mock_request = MagicMock()
         mock_request.path = "/api/3.0/mlflow/workspaces/my-ws"
-        mock_perm = MagicMock()  # Any non-None permission
         with _app.test_request_context():
             with (
                 patch(
@@ -180,20 +180,20 @@ class TestValidateCanReadWorkspace:
                 patch("mlflow_oidc_auth.validators.workspace.request", mock_request),
                 patch(
                     "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
-                    return_value=mock_perm,
+                    return_value=READ,
                 ),
             ):
                 result = validate_can_read_workspace("testuser")
                 assert result is True
 
-    def test_extracts_workspace_name_from_path(self):
-        """Workspace name is extracted from Flask request path."""
+    def test_returns_false_for_user_with_no_permissions(self):
+        """Users with NO_PERMISSIONS (can_read=False) are denied even though permission is not None."""
         from mlflow_oidc_auth.validators.workspace import validate_can_read_workspace
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 
-        ctx = _make_auth_context(username="alice", is_admin=False)
+        ctx = _make_auth_context(is_admin=False)
         mock_request = MagicMock()
-        mock_request.path = "/api/3.0/mlflow/workspaces/team-alpha"
-        mock_perm = MagicMock()
+        mock_request.path = "/api/3.0/mlflow/workspaces/my-ws"
         with _app.test_request_context():
             with (
                 patch(
@@ -203,7 +203,30 @@ class TestValidateCanReadWorkspace:
                 patch("mlflow_oidc_auth.validators.workspace.request", mock_request),
                 patch(
                     "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
-                    return_value=mock_perm,
+                    return_value=NO_PERMISSIONS,
+                ),
+            ):
+                result = validate_can_read_workspace("testuser")
+                assert result is False
+
+    def test_extracts_workspace_name_from_path(self):
+        """Workspace name is extracted from Flask request path."""
+        from mlflow_oidc_auth.validators.workspace import validate_can_read_workspace
+        from mlflow_oidc_auth.permissions import READ
+
+        ctx = _make_auth_context(username="alice", is_admin=False)
+        mock_request = MagicMock()
+        mock_request.path = "/api/3.0/mlflow/workspaces/team-alpha"
+        with _app.test_request_context():
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=ctx,
+                ),
+                patch("mlflow_oidc_auth.validators.workspace.request", mock_request),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
+                    return_value=READ,
                 ) as mock_cache,
             ):
                 validate_can_read_workspace("alice")

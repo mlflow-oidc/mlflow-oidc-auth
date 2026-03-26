@@ -263,6 +263,95 @@
 - `mlflow_oidc_auth/hack.py` injects navigation links into MLflow's built-in UI HTML
 - Adds "Sign In" / "Sign Out" and permission management links to MLflow's navbar
 
+## Workspace Permission Enforcement
+
+Workspaces provide multi-tenant resource isolation, gated by the `MLFLOW_ENABLE_WORKSPACES` feature flag (default `False`). When enabled, all workspace access requires explicit permission grants — there are no implicit grants for any workspace, including the "default" workspace.
+
+### Permission Model
+
+Workspace permissions use the same `Permission` dataclass as resource permissions:
+
+| Permission       | Priority | `can_read` | `can_manage` | Meaning                            |
+|------------------|----------|------------|--------------|-------------------------------------|
+| `READ`           | 1        | `True`     | `False`      | Can view workspace and its resources|
+| `USE`            | 2        | `True`     | `False`      | Can use workspace resources         |
+| `EDIT`           | 3        | `True`     | `False`      | Can modify workspace resources      |
+| `MANAGE`         | 4        | `True`     | `True`       | Full control including permission grants |
+| `NO_PERMISSIONS` | 100      | `False`    | `False`      | Explicit denial — not `None`        |
+
+**Critical distinction:** `NO_PERMISSIONS` is a valid permission object (not `None`) with `can_read=False`. All enforcement points must check `perm.can_read` or `perm.can_manage`, not just `perm is not None`.
+
+### Enforcement Layers
+
+There are 5 enforcement layers, each serving a different purpose:
+
+**Layer 1 — WorkspaceContextMiddleware** (`middleware/workspace_context_middleware.py`)
+- Purpose: Sets MLflow's workspace `ContextVar` from `X-MLFLOW-WORKSPACE` request header
+- Auth checks: **None** — only context propagation
+- Applies to: All requests when `MLFLOW_ENABLE_WORKSPACES=True`
+
+**Layer 2 — Before-request validators** (`hooks/before_request.py` + `validators/workspace.py`)
+- Purpose: Authorize access to workspace RPC endpoints (`GetWorkspace`, `UpdateWorkspace`, `DeleteWorkspace`, `ListWorkspaces`, `CreateWorkspace`)
+- Key function: `validate_can_read_workspace()` checks `perm is not None and perm.can_read`; `validate_can_manage_workspace()` checks `perm is not None and perm.can_manage`
+- Workspace name extracted from Flask `request.path` (e.g., `/api/3.0/mlflow/workspaces/<name>`)
+- Admin bypass: Admins skip all workspace permission checks
+
+**Layer 3 — Before-request workspace creation gating** (`hooks/before_request.py` lines 479-492)
+- Purpose: Prevent resource creation (`CreateExperiment`, `CreateRegisteredModel`) in workspaces the user cannot manage
+- Check: `get_workspace_permission_cached(username, workspace_name)` → `ws_perm.can_manage`
+- Only fires when `MLFLOW_ENABLE_WORKSPACES=True` and a workspace context is set
+
+**Layer 4 — After-request filtering** (`hooks/after_request.py`)
+- Purpose: Filter search/list results to only include resources in workspaces the user can access
+- Key function: `_can_access_workspace(username, workspace_name)` → `perm is not None and perm.can_read`
+- Filters applied to:
+  - `SearchExperiments` — removes experiments in inaccessible workspaces
+  - `SearchRegisteredModels` — removes models in inaccessible workspaces
+  - `SearchLoggedModels` — removes logged models in inaccessible workspaces
+  - `ListWorkspaces` — `_filter_list_workspaces()` removes workspaces where user has no `can_read` permission
+- Admin bypass: Admins see all results unfiltered
+
+**Layer 5 — FastAPI route dependencies** (`dependencies.py`)
+- Purpose: Protect workspace CRUD and permission management API routes
+- `check_workspace_manage_permission` — requires `perm.can_manage` (used for create/update/delete permissions)
+- `check_workspace_read_permission` — requires `perm.can_read` (used for listing workspace permissions)
+- Applied via FastAPI `Depends()` on workspace router endpoints
+
+### Permission Resolution Flow
+
+Workspace permissions are resolved through a cached, configurable resolution chain:
+
+1. **Cache lookup** (`utils/workspace_cache.py`): TTL-based cache keyed by `(username, workspace_name)`
+2. **Resolution order** (configured via `PERMISSION_SOURCE_ORDER`, default `["user", "group", "regex", "group-regex"]`):
+   - `user` — Direct user→workspace permission in `SqlWorkspacePermission`
+   - `group` — User's groups → workspace permission in `SqlWorkspaceGroupPermission` (highest priority wins)
+   - `regex` — User's regex patterns matched against workspace name in `SqlWorkspaceRegexPermission`
+   - `group-regex` — User's groups' regex patterns in `SqlWorkspaceGroupRegexPermission`
+3. **First match wins**: Resolution stops at the first source that returns a permission
+4. **No match**: Returns `None` (treated as "no access" at all enforcement points)
+
+### Cache Invalidation Strategy
+
+- **User permission CUD**: Targeted invalidation — only the affected `(username, workspace_name)` entry
+- **Group permission CUD**: Targeted invalidation of all users in the affected group
+- **Regex permission CUD**: Full cache flush — regex changes can affect any user/workspace pair
+- **Group membership changes**: Targeted invalidation of affected user entries
+- **TTL expiry**: Configurable via `OIDC_WORKSPACE_CACHE_TTL` (default 300 seconds)
+
+### OIDC Auto-Assign
+
+When a user logs in via OIDC (`auth.py`), the system can auto-assign workspace permissions using `OIDC_WORKSPACE_DEFAULT_PERMISSION` (default `"NO_PERMISSIONS"`). This controls what permission level new users receive for workspaces during the OIDC callback flow. Setting this to `"NO_PERMISSIONS"` means new users get no workspace access until explicitly granted by an admin.
+
+### Configuration Variables
+
+| Variable                          | Default            | Purpose                                                |
+|-----------------------------------|--------------------|--------------------------------------------------------|
+| `MLFLOW_ENABLE_WORKSPACES`        | `False`            | Master feature flag for workspace support              |
+| `OIDC_WORKSPACE_DEFAULT_PERMISSION` | `"NO_PERMISSIONS"` | Permission level auto-assigned during OIDC login       |
+| `PERMISSION_SOURCE_ORDER`         | `["user", "group", "regex", "group-regex"]` | Resolution chain order |
+| `OIDC_WORKSPACE_CACHE_TTL`        | `300`              | Cache TTL in seconds                                   |
+| `OIDC_WORKSPACE_CACHE_MAXSIZE`    | `1024`             | Maximum cache entries                                  |
+
 ---
 
-*Architecture analysis: 2026-03-23*
+*Architecture analysis: 2026-03-23 (workspace permissions: 2026-03-26)*
