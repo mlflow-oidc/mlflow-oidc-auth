@@ -3,6 +3,7 @@ from mlflow.protos.model_registry_pb2 import (
     CreateRegisteredModel,
     DeleteRegisteredModel,
     RenameRegisteredModel,
+    SearchModelVersions,
     SearchRegisteredModels,
 )
 from mlflow.protos.service_pb2 import (
@@ -212,6 +213,61 @@ def _filter_search_registered_models(resp: Response):
 
         readable_proto = [rm.to_proto() for rm in refetched if can_read_registered_model(rm.name, username) and _can_access_workspace(username, rm.workspace)]
         response_message.registered_models.extend(readable_proto)
+
+        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+        final_offset = start_offset + len(refetched)
+        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+
+    resp.data = message_to_json(response_message)
+
+
+def _filter_search_model_versions(resp: Response):
+    """Filter out model versions belonging to registered models the user cannot read."""
+    if get_fastapi_admin_status():
+        return
+
+    response_message = SearchModelVersions.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    request_message = _get_request_message(SearchModelVersions())
+
+    username = get_fastapi_username()
+
+    # Filter out unreadable model versions from the current response page.
+    for mv in list(response_message.model_versions):
+        if not can_read_registered_model(mv.name, username):
+            response_message.model_versions.remove(mv)
+
+    # Filter by workspace permission (WSSEC-02 — model versions inherit workspace from their model)
+    if config.MLFLOW_ENABLE_WORKSPACES:
+        model_registry_store_ws = _get_model_registry_store()
+        ws_map: dict[str, str | None] = {}
+        for mv in list(response_message.model_versions):
+            if mv.name not in ws_map:
+                try:
+                    ws_map[mv.name] = model_registry_store_ws.get_registered_model(mv.name).workspace
+                except Exception:
+                    ws_map[mv.name] = None
+            if not _can_access_workspace(username, ws_map.get(mv.name)):
+                response_message.model_versions.remove(mv)
+
+    # Re-fetch to fill max_results, preserving MLflow pagination semantics.
+    model_registry_store = _get_model_registry_store()
+    while len(response_message.model_versions) < request_message.max_results and response_message.next_page_token != "":
+        refetched = model_registry_store.search_model_versions(
+            filter_string=request_message.filter,
+            max_results=request_message.max_results,
+            order_by=request_message.order_by,
+            page_token=response_message.next_page_token,
+        )
+        remaining = request_message.max_results - len(response_message.model_versions)
+        refetched = refetched[:remaining]
+        if len(refetched) == 0:
+            response_message.next_page_token = ""
+            break
+
+        for mv in refetched:
+            if can_read_registered_model(mv.name, username) and _can_access_workspace(username, getattr(mv, "workspace", None)):
+                response_message.model_versions.append(mv.to_proto())
 
         start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
         final_offset = start_offset + len(refetched)
@@ -556,6 +612,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     SearchExperiments: _filter_search_experiments,
     SearchLoggedModels: _filter_search_logged_models,
     SearchRegisteredModels: _filter_search_registered_models,
+    SearchModelVersions: _filter_search_model_versions,
     RenameRegisteredModel: _rename_registered_model_permission,
     RegisterScorer: _set_can_manage_scorer_permission,
     DeleteScorer: _delete_scorer_permissions_cascade,

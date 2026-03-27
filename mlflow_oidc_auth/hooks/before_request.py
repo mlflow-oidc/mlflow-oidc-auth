@@ -89,6 +89,25 @@ from mlflow.protos.service_pb2 import (
 from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
 from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
+# Forward-compatible imports for Gateway Budget Policy protos.
+# These protos may not exist in the installed MLflow version; when they
+# become available they will be automatically picked up as admin-only handlers.
+_BUDGET_POLICY_PROTOS: list = []
+try:
+    from mlflow.protos.service_pb2 import (
+        CreateGatewayBudgetPolicy,
+        UpdateGatewayBudgetPolicy,
+        DeleteGatewayBudgetPolicy,
+    )
+
+    _BUDGET_POLICY_PROTOS = [
+        CreateGatewayBudgetPolicy,
+        UpdateGatewayBudgetPolicy,
+        DeleteGatewayBudgetPolicy,
+    ]
+except ImportError:
+    pass
+
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 import mlflow_oidc_auth.responses as responses
 from mlflow_oidc_auth.config import config
@@ -164,6 +183,15 @@ def _is_unprotected_route(path: str) -> bool:
             "/openapi.json",
         )
     )
+
+
+def _deny_non_admin(_username: str) -> bool:
+    """Sentinel validator that always denies non-admin users.
+
+    Admin users are short-circuited before validators run in before_request_hook,
+    so this function is only called for non-admin users and must always return False.
+    """
+    return False
 
 
 def _get_auth_context() -> tuple[Optional[str], bool]:
@@ -262,6 +290,11 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteGatewayEndpointTag: validate_can_update_gateway_endpoint,
 }
 
+# Gateway Budget Policy protos are admin-only.  They are conditionally
+# available (forward-compat), so we add them after the dict is defined.
+for _bp in _BUDGET_POLICY_PROTOS:
+    BEFORE_REQUEST_HANDLERS[_bp] = _deny_non_admin
+
 # `mlflow.server.handlers.get_endpoints()` also includes non-protobuf endpoints like `/graphql`
 # and Gateway discovery routes, whose handlers are *not* our auth validators. We must not treat
 # those as validators (they don't accept `username`), otherwise the hook will crash at runtime.
@@ -294,6 +327,12 @@ GET_METRIC_HISTORY_BULK_INTERVAL = _get_ajax_path("/mlflow/metrics/get-history-b
 SEARCH_DATASETS = _get_ajax_path("/mlflow/experiments/search-datasets")
 CREATE_PROMPTLAB_RUN = _get_ajax_path("/mlflow/runs/create-promptlab-run")
 GATEWAY_PROXY = _get_ajax_path("/mlflow/gateway-proxy")
+INVOKE_SCORER = _get_ajax_path("/mlflow/invocations/scorer")
+GATEWAY_SUPPORTED_PROVIDERS = _get_ajax_path("/mlflow/gateway/supported-providers")
+GATEWAY_SUPPORTED_MODELS = _get_ajax_path("/mlflow/gateway/supported-models")
+GATEWAY_PROVIDER_CONFIG = _get_ajax_path("/mlflow/gateway/provider-config")
+GATEWAY_SECRETS_CONFIG = _get_ajax_path("/mlflow/gateway/secrets-config")
+
 
 # Flask routes (no proto mapping)
 BEFORE_REQUEST_VALIDATORS.update(
@@ -311,6 +350,15 @@ BEFORE_REQUEST_VALIDATORS.update(
         (CREATE_PROMPTLAB_RUN, "POST"): validate_can_create_promptlab_run,
         (GATEWAY_PROXY, "GET"): validate_gateway_proxy,
         (GATEWAY_PROXY, "POST"): validate_gateway_proxy,
+        # Scorer invocation uses the same gateway proxy permission check
+        (INVOKE_SCORER, "GET"): validate_gateway_proxy,
+        (INVOKE_SCORER, "POST"): validate_gateway_proxy,
+        # Gateway discovery routes use the same gateway proxy permission check
+        (GATEWAY_SUPPORTED_PROVIDERS, "GET"): validate_gateway_proxy,
+        (GATEWAY_SUPPORTED_MODELS, "GET"): validate_gateway_proxy,
+        # Gateway configuration routes are admin-only
+        (GATEWAY_PROVIDER_CONFIG, "GET"): _deny_non_admin,
+        (GATEWAY_SECRETS_CONFIG, "GET"): _deny_non_admin,
     }
 )
 

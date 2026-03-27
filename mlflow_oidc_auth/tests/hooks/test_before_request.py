@@ -8,6 +8,7 @@ from mlflow_oidc_auth.hooks.before_request import (
     _get_proxy_artifact_validator,
     _re_compile_path,
     _stash_gateway_context,
+    _deny_non_admin,
     BEFORE_REQUEST_VALIDATORS,
     LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS,
 )
@@ -516,7 +517,9 @@ class TestStashGatewayContext:
 
     def test_stash_update_endpoint_old_name(self):
         """Stashes old endpoint name on update via endpoint_id resolution."""
-        from mlflow_oidc_auth.validators.gateway import validate_can_update_gateway_endpoint
+        from mlflow_oidc_auth.validators.gateway import (
+            validate_can_update_gateway_endpoint,
+        )
 
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/endpoints/update",
@@ -535,7 +538,9 @@ class TestStashGatewayContext:
 
     def test_stash_delete_endpoint_name(self):
         """Stashes endpoint name on delete via endpoint_id resolution."""
-        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_endpoint
+        from mlflow_oidc_auth.validators.gateway import (
+            validate_can_delete_gateway_endpoint,
+        )
 
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/endpoints/delete",
@@ -554,7 +559,9 @@ class TestStashGatewayContext:
 
     def test_stash_delete_secret_name_from_field(self):
         """Stashes secret name on delete when secret_name is provided directly."""
-        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_secret
+        from mlflow_oidc_auth.validators.gateway import (
+            validate_can_delete_gateway_secret,
+        )
 
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/secrets/delete",
@@ -569,7 +576,9 @@ class TestStashGatewayContext:
 
     def test_stash_delete_secret_name_from_id(self):
         """Stashes secret name on delete via secret_id resolution."""
-        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_secret
+        from mlflow_oidc_auth.validators.gateway import (
+            validate_can_delete_gateway_secret,
+        )
 
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/secrets/delete",
@@ -588,7 +597,9 @@ class TestStashGatewayContext:
 
     def test_stash_delete_model_definition_name_from_field(self):
         """Stashes model definition name on delete when name is provided directly."""
-        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_model_definition
+        from mlflow_oidc_auth.validators.gateway import (
+            validate_can_delete_gateway_model_definition,
+        )
 
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/delete",
@@ -603,7 +614,9 @@ class TestStashGatewayContext:
 
     def test_stash_delete_model_definition_name_from_id(self):
         """Stashes model definition name on delete via model_definition_id resolution."""
-        from mlflow_oidc_auth.validators.gateway import validate_can_delete_gateway_model_definition
+        from mlflow_oidc_auth.validators.gateway import (
+            validate_can_delete_gateway_model_definition,
+        )
 
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/delete",
@@ -631,3 +644,156 @@ class TestStashGatewayContext:
             assert not hasattr(g, "_deleting_gateway_endpoint_name")
             assert not hasattr(g, "_deleting_gateway_secret_name")
             assert not hasattr(g, "_deleting_gateway_model_definition_name")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Missing security controls tests
+# ---------------------------------------------------------------------------
+
+
+class TestDenyNonAdmin:
+    """Tests for _deny_non_admin sentinel validator."""
+
+    def test_deny_non_admin_always_returns_false(self):
+        """_deny_non_admin must always return False for any username."""
+        assert _deny_non_admin("test_user") is False
+        assert _deny_non_admin("admin_user") is False
+        assert _deny_non_admin("") is False
+
+
+class TestNewFlaskRouteValidators:
+    """Tests for newly added Flask route validators (Phase 2 security controls)."""
+
+    def test_invoke_scorer_get_uses_gateway_proxy_validator(self):
+        """INVOKE_SCORER GET route should use validate_gateway_proxy."""
+        from mlflow_oidc_auth.hooks.before_request import INVOKE_SCORER
+        from mlflow_oidc_auth.validators import validate_gateway_proxy
+
+        assert (INVOKE_SCORER, "GET") in BEFORE_REQUEST_VALIDATORS
+        assert BEFORE_REQUEST_VALIDATORS[(INVOKE_SCORER, "GET")] is validate_gateway_proxy
+
+    def test_invoke_scorer_post_uses_gateway_proxy_validator(self):
+        """INVOKE_SCORER POST route should use validate_gateway_proxy."""
+        from mlflow_oidc_auth.hooks.before_request import INVOKE_SCORER
+        from mlflow_oidc_auth.validators import validate_gateway_proxy
+
+        assert (INVOKE_SCORER, "POST") in BEFORE_REQUEST_VALIDATORS
+        assert BEFORE_REQUEST_VALIDATORS[(INVOKE_SCORER, "POST")] is validate_gateway_proxy
+
+    def test_gateway_supported_providers_uses_gateway_proxy_validator(self):
+        """GATEWAY_SUPPORTED_PROVIDERS GET route should use validate_gateway_proxy."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_SUPPORTED_PROVIDERS
+        from mlflow_oidc_auth.validators import validate_gateway_proxy
+
+        assert (GATEWAY_SUPPORTED_PROVIDERS, "GET") in BEFORE_REQUEST_VALIDATORS
+        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_SUPPORTED_PROVIDERS, "GET")] is validate_gateway_proxy
+
+    def test_gateway_supported_models_uses_gateway_proxy_validator(self):
+        """GATEWAY_SUPPORTED_MODELS GET route should use validate_gateway_proxy."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_SUPPORTED_MODELS
+        from mlflow_oidc_auth.validators import validate_gateway_proxy
+
+        assert (GATEWAY_SUPPORTED_MODELS, "GET") in BEFORE_REQUEST_VALIDATORS
+        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_SUPPORTED_MODELS, "GET")] is validate_gateway_proxy
+
+    def test_gateway_provider_config_is_admin_only(self):
+        """GATEWAY_PROVIDER_CONFIG GET route should use _deny_non_admin (admin-only)."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_PROVIDER_CONFIG
+
+        assert (GATEWAY_PROVIDER_CONFIG, "GET") in BEFORE_REQUEST_VALIDATORS
+        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_PROVIDER_CONFIG, "GET")] is _deny_non_admin
+
+    def test_gateway_secrets_config_is_admin_only(self):
+        """GATEWAY_SECRETS_CONFIG GET route should use _deny_non_admin (admin-only)."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_SECRETS_CONFIG
+
+        assert (GATEWAY_SECRETS_CONFIG, "GET") in BEFORE_REQUEST_VALIDATORS
+        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_SECRETS_CONFIG, "GET")] is _deny_non_admin
+
+    def test_admin_only_routes_deny_non_admin_users(self, client, mock_bridge):
+        """Admin-only routes should return 403 for non-admin users."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_PROVIDER_CONFIG
+
+        with app.test_request_context(path=GATEWAY_PROVIDER_CONFIG, method="GET"):
+            with (
+                patch(
+                    "mlflow_oidc_auth.hooks.before_request._find_validator",
+                    return_value=_deny_non_admin,
+                ),
+                patch(
+                    "mlflow_oidc_auth.hooks.before_request.responses.make_forbidden_response",
+                    return_value=Response("Forbidden", status=403),
+                ) as mock_forbidden,
+            ):
+                response = before_request_hook()
+                assert response.status_code == 403  # type: ignore
+                mock_forbidden.assert_called_once()
+
+    def test_admin_users_bypass_admin_only_routes(self, client, mock_bridge):
+        """Admin users should bypass _deny_non_admin validators."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_PROVIDER_CONFIG
+
+        with app.test_request_context(path=GATEWAY_PROVIDER_CONFIG, method="GET"):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status",
+                return_value=True,
+            ):
+                response = before_request_hook()
+                assert response is None  # Admin bypasses all validators
+
+
+class TestRoutePathConstants:
+    """Tests that new route path constants are correctly defined."""
+
+    def test_invoke_scorer_path(self):
+        """INVOKE_SCORER should point to the scorer invocation endpoint."""
+        from mlflow_oidc_auth.hooks.before_request import INVOKE_SCORER
+
+        assert "/mlflow/invocations/scorer" in INVOKE_SCORER
+
+    def test_gateway_supported_providers_path(self):
+        """GATEWAY_SUPPORTED_PROVIDERS should point to the supported providers endpoint."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_SUPPORTED_PROVIDERS
+
+        assert "/mlflow/gateway/supported-providers" in GATEWAY_SUPPORTED_PROVIDERS
+
+    def test_gateway_supported_models_path(self):
+        """GATEWAY_SUPPORTED_MODELS should point to the supported models endpoint."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_SUPPORTED_MODELS
+
+        assert "/mlflow/gateway/supported-models" in GATEWAY_SUPPORTED_MODELS
+
+    def test_gateway_provider_config_path(self):
+        """GATEWAY_PROVIDER_CONFIG should point to the provider config endpoint."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_PROVIDER_CONFIG
+
+        assert "/mlflow/gateway/provider-config" in GATEWAY_PROVIDER_CONFIG
+
+    def test_gateway_secrets_config_path(self):
+        """GATEWAY_SECRETS_CONFIG should point to the secrets config endpoint."""
+        from mlflow_oidc_auth.hooks.before_request import GATEWAY_SECRETS_CONFIG
+
+        assert "/mlflow/gateway/secrets-config" in GATEWAY_SECRETS_CONFIG
+
+
+class TestBudgetPolicyForwardCompat:
+    """Tests for Gateway Budget Policy forward-compatible imports."""
+
+    def test_budget_policy_protos_list_exists(self):
+        """_BUDGET_POLICY_PROTOS should be a list (possibly empty if protos unavailable)."""
+        from mlflow_oidc_auth.hooks.before_request import _BUDGET_POLICY_PROTOS
+
+        assert isinstance(_BUDGET_POLICY_PROTOS, list)
+
+    def test_budget_policy_handlers_registered_if_protos_available(self):
+        """If budget policy protos exist, they should be in BEFORE_REQUEST_HANDLERS."""
+        from mlflow_oidc_auth.hooks.before_request import (
+            _BUDGET_POLICY_PROTOS,
+            BEFORE_REQUEST_HANDLERS,
+        )
+
+        for proto in _BUDGET_POLICY_PROTOS:
+            assert proto in BEFORE_REQUEST_HANDLERS
+            # The handler should deny non-admins (always return False)
+            handler = BEFORE_REQUEST_HANDLERS[proto]
+            assert handler("any_user") is False
