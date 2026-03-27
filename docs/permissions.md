@@ -90,8 +90,9 @@ DEFAULT_MLFLOW_PERMISSION=MANAGE
 1. **Iterate through sources** in `PERMISSION_SOURCE_ORDER`
 2. **Query each source** for the specific resource and user
 3. **Return first found permission** with source information
-4. **Apply default permission** if no explicit permission exists
-5. **Log permission source** for debugging and audit trails
+4. **Workspace fallback** (when `MLFLOW_ENABLE_WORKSPACES=true`): If no explicit resource permission exists, use the user's workspace permission as the baseline (see [Workspace Permissions as Resource Fallback](#workspace-permissions-as-resource-fallback))
+5. **Apply default permission** if no explicit permission exists and workspaces are disabled
+6. **Log permission source** for debugging and audit trails
 
 
 ### Example Priority Resolution
@@ -158,6 +159,63 @@ Workspace permissions use the same `Permission` levels as resource permissions (
 | `EDIT`           | Can modify workspace resources                             |
 | `MANAGE`         | Full control: create experiments/models in the workspace, manage workspace permissions |
 | `NO_PERMISSIONS` | Explicit denial — workspace is hidden from all results     |
+
+### Workspace Permissions as Resource Fallback
+
+Workspace permissions serve a dual role:
+
+1. **Workspace-level access control** — they gate access to workspace API endpoints (create, list, update, delete workspaces) and filter which workspaces appear in search results.
+
+2. **Resource-level fallback** — when a user accesses a resource (experiment, model, prompt) inside a workspace and **no explicit resource-level permission** is found (no user, group, regex, or group-regex permission for that specific resource), the system falls back to the user's workspace permission as the baseline access level.
+
+#### Resource Permission Resolution with Workspaces
+
+When workspaces are enabled, the full resolution chain for a resource is:
+
+```
+1. Resource-level sources (PERMISSION_SOURCE_ORDER):
+   user → group → regex → group-regex
+2. If no resource-level permission found → workspace permission fallback
+3. If no workspace permission found → NO_PERMISSIONS (denied)
+```
+
+Note that when workspaces are enabled and a resource has no explicit permission, the system does **not** fall back to `DEFAULT_MLFLOW_PERMISSION`. Instead, it uses the workspace permission. This ensures that workspace boundaries are enforced — a user cannot access resources in a workspace they have no permission for, even if `DEFAULT_MLFLOW_PERMISSION` is set to `MANAGE`.
+
+#### Example: Workspace Fallback in Action
+
+```
+User: alice
+Workspace: team-alpha (alice has EDIT workspace permission)
+Resource: experiment_789 (in team-alpha workspace)
+
+Resolution:
+- user permission for experiment_789: Not found
+- group permission for experiment_789: Not found
+- regex match for experiment_789: Not found
+- group-regex match for experiment_789: Not found
+- Workspace fallback: alice has EDIT on team-alpha → EDIT
+Result: EDIT permission (from workspace fallback)
+```
+
+```
+User: alice
+Workspace: team-beta (alice has no workspace permission)
+Resource: experiment_999 (in team-beta workspace)
+
+Resolution:
+- user permission for experiment_999: Not found
+- group permission for experiment_999: Not found
+- regex match for experiment_999: Not found
+- group-regex match for experiment_999: Not found
+- Workspace fallback: alice has no permission on team-beta → NO_PERMISSIONS
+Result: Access denied
+```
+
+#### Important Implications
+
+- Granting a user `MANAGE` on a workspace means they can manage **all resources** in that workspace that don't have more specific permissions — not just the workspace itself.
+- To restrict access to specific resources within a workspace, assign explicit resource-level permissions. Resource-level permissions always take priority over the workspace fallback.
+- The workspace fallback only applies when `MLFLOW_ENABLE_WORKSPACES=true`. When workspaces are disabled, the system uses `DEFAULT_MLFLOW_PERMISSION` as the fallback.
 
 ### Enforcement Points
 
@@ -248,14 +306,29 @@ Sources:
 Result: NO_PERMISSIONS from regex source
 ```
 
-### Example 4: Fallback to Default
+### Example 4: Fallback to Default (Workspaces Disabled)
 ```
 User: diana
 Resource: new-experiment
+Workspaces: disabled
 Sources:
 - user: No permission found
 - group: No permission found
 - regex: No matching patterns
 - group-regex: No matching patterns
 Result: MANAGE permission from fallback (DEFAULT_MLFLOW_PERMISSION)
+```
+
+### Example 5: Workspace Fallback (Workspaces Enabled)
+```
+User: diana
+Resource: new-experiment (in workspace "data-team")
+Workspaces: enabled (diana has READ on "data-team")
+Sources:
+- user: No permission found
+- group: No permission found
+- regex: No matching patterns
+- group-regex: No matching patterns
+- workspace fallback: diana has READ on "data-team"
+Result: READ permission from workspace fallback
 ```

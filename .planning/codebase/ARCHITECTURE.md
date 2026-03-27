@@ -150,8 +150,10 @@
 2. Resolution order (configurable): `["user", "group", "regex", "group-regex"]`
 3. For each resolver in order: check if a matching permission exists
 4. First match wins (highest priority in configured order)
-5. Permission levels: `READ` < `USE` < `EDIT` < `MANAGE` < `NO_PERMISSIONS`
-6. Admin users bypass all permission checks
+5. **Workspace fallback** (when `MLFLOW_ENABLE_WORKSPACES=True`): If no resource-level permission found, fall back to the user's workspace permission. This means a workspace permission acts as the baseline access level for all resources within that workspace.
+6. **Default fallback** (when workspaces disabled): Fall back to `DEFAULT_MLFLOW_PERMISSION`
+7. Permission levels: `READ` < `USE` < `EDIT` < `MANAGE` < `NO_PERMISSIONS`
+8. Admin users bypass all permission checks
 
 **State Management (Frontend):**
 - React Context for global state (auth status, config)
@@ -329,6 +331,22 @@ Workspace permissions are resolved through a cached, configurable resolution cha
    - `group-regex` — User's groups' regex patterns in `SqlWorkspaceGroupRegexPermission`
 3. **First match wins**: Resolution stops at the first source that returns a permission
 4. **No match**: Returns `None` (treated as "no access" at all enforcement points)
+
+### Workspace as Resource-Level Fallback
+
+Workspace permissions also serve as the **fallback for resource-level permission resolution**. When a user accesses a resource (experiment, model, prompt) inside a workspace and no explicit resource-level permission is found (no user, group, regex, or group-regex permission for that specific resource), the system falls back to the user's workspace permission as the baseline access level.
+
+Full resource permission resolution chain when workspaces are enabled:
+
+```
+resource-level sources (PERMISSION_SOURCE_ORDER) → workspace permission → NO_PERMISSIONS
+```
+
+This is implemented in:
+- **Per-request resolver**: `utils/permissions.py` `resolve_permission()` (lines 207-227) — handles individual permission checks during Flask before_request hooks
+- **Batch resolver**: `utils/batch_permissions.py` `_apply_workspace_fallback()` — handles bulk permission listing in FastAPI permission management API
+
+**Key implication**: Granting `MANAGE` on a workspace gives the user `MANAGE` on all resources in that workspace that don't have more specific permissions. Resource-level permissions always take priority over the workspace fallback.
 
 ### Cache Invalidation Strategy
 
