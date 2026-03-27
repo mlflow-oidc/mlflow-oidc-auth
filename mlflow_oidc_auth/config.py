@@ -69,7 +69,15 @@ class AppConfig:
         )
 
         # Security settings (secrets - may come from Secrets Manager/Key Vault)
-        self.SECRET_KEY = config_manager.get("SECRET_KEY") or secrets.token_hex(16)
+        _secret_key = config_manager.get("SECRET_KEY")
+        if not _secret_key:
+            logger.warning(
+                "SECRET_KEY is not configured — using a random key. "
+                "Sessions will not survive restarts and will be invalid across replicas. "
+                "Set the SECRET_KEY environment variable for production deployments."
+            )
+            _secret_key = secrets.token_hex(16)
+        self.SECRET_KEY = _secret_key
         self.OIDC_CLIENT_SECRET = config_manager.get("OIDC_CLIENT_SECRET")
 
         # Database settings (sensitive)
