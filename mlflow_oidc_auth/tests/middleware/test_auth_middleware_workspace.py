@@ -22,9 +22,7 @@ class TestWorkspaceHeaderExtraction:
         return AuthMiddleware(test_fastapi_app)
 
     @pytest.mark.asyncio
-    async def test_workspace_header_ignored_when_disabled(
-        self, auth_middleware, create_mock_request, mock_store
-    ):
+    async def test_workspace_header_ignored_when_disabled(self, auth_middleware, create_mock_request, mock_store):
         """When MLFLOW_ENABLE_WORKSPACES=False, workspace header is ignored even if present."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = False
@@ -42,9 +40,7 @@ class TestWorkspaceHeaderExtraction:
 
         with (
             patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config),
-            patch(
-                "mlflow_oidc_auth.middleware.auth_middleware.validate_token"
-            ) as mock_validate,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token") as mock_validate,
             patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
         ):
             mock_validate.return_value = {
@@ -60,9 +56,7 @@ class TestWorkspaceHeaderExtraction:
             assert auth_context.workspace is None
 
     @pytest.mark.asyncio
-    async def test_workspace_header_extracted_when_enabled(
-        self, auth_middleware, create_mock_request, mock_store
-    ):
+    async def test_workspace_header_extracted_when_enabled(self, auth_middleware, create_mock_request, mock_store):
         """When MLFLOW_ENABLE_WORKSPACES=True, X-MLFLOW-WORKSPACE header is extracted."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
@@ -80,9 +74,7 @@ class TestWorkspaceHeaderExtraction:
 
         with (
             patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config),
-            patch(
-                "mlflow_oidc_auth.middleware.auth_middleware.validate_token"
-            ) as mock_validate,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token") as mock_validate,
             patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
         ):
             mock_validate.return_value = {
@@ -97,9 +89,7 @@ class TestWorkspaceHeaderExtraction:
             assert auth_context.workspace == "my-workspace"
 
     @pytest.mark.asyncio
-    async def test_workspace_header_none_when_enabled_no_header(
-        self, auth_middleware, create_mock_request, mock_store
-    ):
+    async def test_workspace_header_none_when_enabled_no_header(self, auth_middleware, create_mock_request, mock_store):
         """When MLFLOW_ENABLE_WORKSPACES=True but no header, workspace is None."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
@@ -114,9 +104,7 @@ class TestWorkspaceHeaderExtraction:
 
         with (
             patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config),
-            patch(
-                "mlflow_oidc_auth.middleware.auth_middleware.validate_token"
-            ) as mock_validate,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token") as mock_validate,
             patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
         ):
             mock_validate.return_value = {
@@ -131,9 +119,7 @@ class TestWorkspaceHeaderExtraction:
             assert auth_context.workspace is None
 
     @pytest.mark.asyncio
-    async def test_auth_context_always_has_username_and_admin(
-        self, auth_middleware, create_mock_request, mock_store
-    ):
+    async def test_auth_context_always_has_username_and_admin(self, auth_middleware, create_mock_request, mock_store):
         """Regardless of workspace flag, AuthContext always has username and is_admin."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = False
@@ -148,9 +134,7 @@ class TestWorkspaceHeaderExtraction:
 
         with (
             patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config),
-            patch(
-                "mlflow_oidc_auth.middleware.auth_middleware.validate_token"
-            ) as mock_validate,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.validate_token") as mock_validate,
             patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
         ):
             mock_validate.return_value = {

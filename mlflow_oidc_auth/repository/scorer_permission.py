@@ -23,17 +23,13 @@ from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 from mlflow_oidc_auth.repository.utils import get_user
 
 
-class ScorerPermissionRepository(
-    BaseUserPermissionRepository[SqlScorerPermission, ScorerPermission]
-):
+class ScorerPermissionRepository(BaseUserPermissionRepository[SqlScorerPermission, ScorerPermission]):
     model_class = SqlScorerPermission
     resource_id_attr = "experiment_id"
 
     # -- 2-part key overrides ------------------------------------------------
 
-    def _get_permission(
-        self, session: Session, experiment_id: str, scorer_name: str, username: str
-    ) -> SqlScorerPermission:  # type: ignore[override]
+    def _get_permission(self, session: Session, experiment_id: str, scorer_name: str, username: str) -> SqlScorerPermission:  # type: ignore[override]
         try:
             return (
                 session.query(SqlScorerPermission)
@@ -56,9 +52,7 @@ class ScorerPermissionRepository(
                 INVALID_STATE,
             ) from e
 
-    def grant_permission(
-        self, experiment_id: str, scorer_name: str, username: str, permission: str
-    ) -> ScorerPermission:  # type: ignore[override]
+    def grant_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
         with self._Session() as session:
             try:
@@ -78,16 +72,12 @@ class ScorerPermissionRepository(
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
-    def get_permission(
-        self, experiment_id: str, scorer_name: str, username: str
-    ) -> ScorerPermission:  # type: ignore[override]
+    def get_permission(self, experiment_id: str, scorer_name: str, username: str) -> ScorerPermission:  # type: ignore[override]
         with self._Session() as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
             return perm.to_mlflow_entity()
 
-    def update_permission(
-        self, experiment_id: str, scorer_name: str, username: str, permission: str
-    ) -> ScorerPermission:  # type: ignore[override]
+    def update_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
         with self._Session() as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
@@ -95,9 +85,7 @@ class ScorerPermissionRepository(
             session.flush()
             return perm.to_mlflow_entity()
 
-    def revoke_permission(
-        self, experiment_id: str, scorer_name: str, username: str
-    ) -> None:  # type: ignore[override]
+    def revoke_permission(self, experiment_id: str, scorer_name: str, username: str) -> None:  # type: ignore[override]
         with self._Session() as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
             session.delete(perm)

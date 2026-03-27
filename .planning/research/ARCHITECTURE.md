@@ -274,7 +274,7 @@ def _filter_search_experiments(resp: Response):
     if get_fastapi_admin_status():
         return
     # ... existing filtering ...
-    
+
     if config.MLFLOW_ENABLE_WORKSPACES:
         auth_context = get_auth_context()
         for e in list(response_message.experiments):

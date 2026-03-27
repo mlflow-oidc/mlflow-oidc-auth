@@ -107,9 +107,7 @@ class TestBuildScorerSources:
         config = _build_scorer_sources("exp-1", "alice", scorer_name="scorer-1")
         result = config["user"]()
         assert result == "READ"
-        mock_store.get_scorer_permission.assert_called_once_with(
-            "exp-1", "scorer-1", "alice"
-        )
+        mock_store.get_scorer_permission.assert_called_once_with("exp-1", "scorer-1", "alice")
 
     @patch(f"{_MOD}.store")
     def test_group_source_calls_store(self, mock_store: MagicMock) -> None:
@@ -118,9 +116,7 @@ class TestBuildScorerSources:
         config = _build_scorer_sources("exp-1", "alice", scorer_name="scorer-1")
         result = config["group"]()
         assert result == "EDIT"
-        mock_store.get_user_groups_scorer_permission.assert_called_once_with(
-            "exp-1", "scorer-1", "alice"
-        )
+        mock_store.get_user_groups_scorer_permission.assert_called_once_with("exp-1", "scorer-1", "alice")
 
 
 # ---------------------------------------------------------------------------

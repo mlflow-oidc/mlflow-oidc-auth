@@ -109,7 +109,7 @@ web-react/src/
 export default function WorkspacesPage() {
   const { searchTerm, submittedTerm, handleInputChange, handleSearchSubmit, handleClearSearch } = useSearch();
   const { allWorkspaces, isLoading, error, refresh } = useAllWorkspaces();
-  
+
   const filteredWorkspaces = (allWorkspaces || []).filter(ws =>
     ws.name.toLowerCase().includes(submittedTerm.toLowerCase())
   );

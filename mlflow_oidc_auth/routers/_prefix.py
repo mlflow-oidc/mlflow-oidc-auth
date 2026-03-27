@@ -10,9 +10,7 @@ to ensure consistency and easy maintenance of URL structures.
 EXPERIMENT_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/experiments")
 GROUP_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/groups")
 PROMPT_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/prompts")
-REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX = _get_rest_path(
-    "/mlflow/permissions/registered-models"
-)
+REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/registered-models")
 GATEWAY_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/gateways")
 USER_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/users")
 SCORERS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/scorers", version=3)
@@ -21,10 +19,6 @@ HEALTH_CHECK_ROUTER_PREFIX = "/health"
 UI_ROUTER_PREFIX = "/oidc/ui"
 TRASH_ROUTER_PREFIX = "/oidc/trash"
 WEBHOOK_ROUTER_PREFIX = "/oidc/webhook"
-WORKSPACE_PERMISSIONS_ROUTER_PREFIX = _get_rest_path(
-    "/mlflow/permissions/workspaces", version=3
-)
-WORKSPACE_REGEX_PERMISSIONS_ROUTER_PREFIX = _get_rest_path(
-    "/mlflow/permissions/workspaces/regex", version=3
-)
+WORKSPACE_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/workspaces", version=3)
+WORKSPACE_REGEX_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/workspaces/regex", version=3)
 WORKSPACE_CRUD_ROUTER_PREFIX = _get_rest_path("/mlflow/workspaces/crud", version=3)

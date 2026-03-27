@@ -22,18 +22,12 @@ from mlflow_oidc_auth.repository._base import BaseRegexPermissionRepository
 from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 
 
-class RegisteredModelPermissionRegexRepository(
-    BaseRegexPermissionRepository[
-        SqlRegisteredModelRegexPermission, RegisteredModelRegexPermission
-    ]
-):
+class RegisteredModelPermissionRegexRepository(BaseRegexPermissionRepository[SqlRegisteredModelRegexPermission, RegisteredModelRegexPermission]):
     model_class = SqlRegisteredModelRegexPermission
 
     # -- All overridden because of extra prompt parameter ---------------------
 
-    def _get_registered_model_regex_permission(
-        self, session: Session, id: int, user_id: int, prompt: bool = False
-    ) -> SqlRegisteredModelRegexPermission:
+    def _get_registered_model_regex_permission(self, session: Session, id: int, user_id: int, prompt: bool = False) -> SqlRegisteredModelRegexPermission:
         try:
             return (
                 session.query(SqlRegisteredModelRegexPermission)
@@ -84,19 +78,13 @@ class RegisteredModelPermissionRegexRepository(
                     RESOURCE_ALREADY_EXISTS,
                 )
 
-    def get(
-        self, id: int, username: str, prompt: bool = False
-    ) -> RegisteredModelRegexPermission:  # type: ignore[override]
+    def get(self, id: int, username: str, prompt: bool = False) -> RegisteredModelRegexPermission:  # type: ignore[override]
         with self._Session() as session:
             user = get_user(session, username)
-            perm = self._get_registered_model_regex_permission(
-                session, id, user.id, prompt=prompt
-            )
+            perm = self._get_registered_model_regex_permission(session, id, user.id, prompt=prompt)
             return perm.to_mlflow_entity()
 
-    def list_regex_for_user(
-        self, username: str, prompt: bool = False
-    ) -> List[RegisteredModelRegexPermission]:  # type: ignore[override]
+    def list_regex_for_user(self, username: str, prompt: bool = False) -> List[RegisteredModelRegexPermission]:  # type: ignore[override]
         with self._Session() as session:
             user = get_user(session, username)
             perms = (
@@ -123,9 +111,7 @@ class RegisteredModelPermissionRegexRepository(
         _validate_permission(permission)
         with self._Session() as session:
             user = get_user(session, username)
-            perm = self._get_registered_model_regex_permission(
-                session, id, user.id, prompt=prompt
-            )
+            perm = self._get_registered_model_regex_permission(session, id, user.id, prompt=prompt)
             perm.priority = priority
             perm.permission = permission
             session.commit()
@@ -134,9 +120,7 @@ class RegisteredModelPermissionRegexRepository(
     def revoke(self, id: int, username: str, prompt: bool = False) -> None:  # type: ignore[override]
         with self._Session() as session:
             user = get_user(session, username)
-            perm = self._get_registered_model_regex_permission(
-                session, id, user.id, prompt=prompt
-            )
+            perm = self._get_registered_model_regex_permission(session, id, user.id, prompt=prompt)
             session.delete(perm)
             session.commit()
             return None

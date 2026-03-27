@@ -113,9 +113,7 @@ class TestAppConfig(unittest.TestCase):
         # Test default values
         self.assertEqual(config.DEFAULT_MLFLOW_PERMISSION, "MANAGE")
         self.assertIsNotNone(config.SECRET_KEY)
-        self.assertEqual(
-            len(config.SECRET_KEY), 32
-        )  # secrets.token_hex(16) produces 32 chars
+        self.assertEqual(len(config.SECRET_KEY), 32)  # secrets.token_hex(16) produces 32 chars
         self.assertEqual(config.OIDC_USERS_DB_URI, "sqlite:///auth.db")
         self.assertEqual(config.OIDC_GROUP_NAME, ["mlflow"])
         self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, ["mlflow-admin"])
@@ -129,9 +127,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertIsNone(config.OIDC_CLIENT_SECRET)
         self.assertFalse(config.AUTOMATIC_LOGIN_REDIRECT)
         self.assertEqual(config.OIDC_ALEMBIC_VERSION_TABLE, "alembic_version")
-        self.assertEqual(
-            config.PERMISSION_SOURCE_ORDER, ["user", "group", "regex", "group-regex"]
-        )
+        self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["user", "group", "regex", "group-regex"])
         self.assertTrue(config.EXTEND_MLFLOW_MENU)
         self.assertTrue(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
 
@@ -163,9 +159,7 @@ class TestAppConfig(unittest.TestCase):
 
             self.assertEqual(config.DEFAULT_MLFLOW_PERMISSION, "READ")
             self.assertEqual(config.SECRET_KEY, "custom-secret-key")
-            self.assertEqual(
-                config.OIDC_USERS_DB_URI, "postgresql://user:pass@localhost/db"
-            )
+            self.assertEqual(config.OIDC_USERS_DB_URI, "postgresql://user:pass@localhost/db")
             self.assertEqual(config.OIDC_GROUP_NAME, ["group1", "group2", "group3"])
             self.assertEqual(config.OIDC_ADMIN_GROUP_NAME, ["admin-group"])
             self.assertEqual(config.OIDC_PROVIDER_DISPLAY_NAME, "Custom OIDC Login")
@@ -176,15 +170,11 @@ class TestAppConfig(unittest.TestCase):
             self.assertEqual(config.OIDC_GROUPS_ATTRIBUTE, "custom_groups")
             self.assertEqual(config.OIDC_SCOPE, "openid,email,profile,groups")
             self.assertEqual(config.OIDC_GROUP_DETECTION_PLUGIN, "custom_plugin")
-            self.assertEqual(
-                config.OIDC_REDIRECT_URI, "https://app.example.com/callback"
-            )
+            self.assertEqual(config.OIDC_REDIRECT_URI, "https://app.example.com/callback")
             self.assertEqual(config.OIDC_CLIENT_ID, "test-client-id")
             self.assertEqual(config.OIDC_CLIENT_SECRET, "test-client-secret")
             self.assertTrue(config.AUTOMATIC_LOGIN_REDIRECT)
-            self.assertEqual(
-                config.OIDC_ALEMBIC_VERSION_TABLE, "custom_alembic_version"
-            )
+            self.assertEqual(config.OIDC_ALEMBIC_VERSION_TABLE, "custom_alembic_version")
             self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["group", "user", "regex"])
             self.assertFalse(config.EXTEND_MLFLOW_MENU)
             self.assertFalse(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
@@ -277,13 +267,9 @@ class TestAppConfig(unittest.TestCase):
         self.assertGreaterEqual(len(config.SECRET_KEY), 32)
 
         # Test with custom SECRET_KEY
-        with patch.dict(
-            os.environ, {"SECRET_KEY": "custom-secret-key-with-sufficient-length"}
-        ):
+        with patch.dict(os.environ, {"SECRET_KEY": "custom-secret-key-with-sufficient-length"}):
             config = AppConfig()
-            self.assertEqual(
-                config.SECRET_KEY, "custom-secret-key-with-sufficient-length"
-            )
+            self.assertEqual(config.SECRET_KEY, "custom-secret-key-with-sufficient-length")
 
         # Test OIDC security settings
         with patch.dict(

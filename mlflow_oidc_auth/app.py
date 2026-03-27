@@ -114,9 +114,7 @@ def create_app() -> Any:
         version=VERSION,
         docs_url="/docs" if getattr(config, "ENABLE_API_DOCS", True) else None,
         redoc_url="/redoc" if getattr(config, "ENABLE_API_DOCS", True) else None,
-        openapi_url="/openapi.json"
-        if getattr(config, "ENABLE_API_DOCS", True)
-        else None,
+        openapi_url="/openapi.json" if getattr(config, "ENABLE_API_DOCS", True) else None,
         lifespan=lifespan,
     )
     register_exception_handlers(oidc_app)

@@ -21,11 +21,7 @@ class TestGetAuthContext:
     def test_get_auth_context_success(self):
         """Test successful retrieval of AuthContext from Flask environ"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="test_user@example.com", is_admin=False
-            )
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="test_user@example.com", is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             result = get_auth_context()
@@ -37,11 +33,7 @@ class TestGetAuthContext:
     def test_get_auth_context_with_workspace(self):
         """Test retrieval of AuthContext with workspace set"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="test@example.com", is_admin=True, workspace="my-ws"
-            )
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="test@example.com", is_admin=True, workspace="my-ws")}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             result = get_auth_context()
@@ -59,9 +51,7 @@ class TestGetAuthContext:
     def test_get_auth_context_not_auth_context_type(self):
         """Test when environ has wrong type (e.g. dict instead of AuthContext)"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": {"username": "user", "is_admin": False}
-        }
+        mock_request.environ = {"mlflow_oidc_auth": {"username": "user", "is_admin": False}}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             with pytest.raises(Exception, match="Could not retrieve AuthContext"):
@@ -88,11 +78,7 @@ class TestGetFastAPIUsername:
     def test_get_fastapi_username_success(self):
         """Test successful retrieval of username from Flask environ"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="test_user@example.com", is_admin=False
-            )
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="test_user@example.com", is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             result = get_fastapi_username()
@@ -110,9 +96,7 @@ class TestGetFastAPIUsername:
     def test_get_fastapi_username_empty_username(self):
         """Test when username is empty string in AuthContext"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(username="", is_admin=False)
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="", is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             with pytest.raises(Exception, match="Could not retrieve FastAPI username"):
@@ -157,9 +141,7 @@ class TestGetFastAPIAdminStatus:
     def test_get_fastapi_admin_status_true(self):
         """Test successful retrieval of admin status when user is admin"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(username="admin@example.com", is_admin=True)
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="admin@example.com", is_admin=True)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             result = get_fastapi_admin_status()
@@ -168,9 +150,7 @@ class TestGetFastAPIAdminStatus:
     def test_get_fastapi_admin_status_false(self):
         """Test successful retrieval of admin status when user is not admin"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(username="user@example.com", is_admin=False)
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="user@example.com", is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             result = get_fastapi_admin_status()
@@ -224,11 +204,7 @@ class TestGetRequestWorkspace:
     def test_get_request_workspace_present(self):
         """Test workspace retrieval when workspace is set in AuthContext"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="user@example.com", is_admin=False, workspace="my-workspace"
-            )
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="user@example.com", is_admin=False, workspace="my-workspace")}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             result = get_request_workspace()
@@ -237,9 +213,7 @@ class TestGetRequestWorkspace:
     def test_get_request_workspace_none(self):
         """Test workspace retrieval when workspace is None in AuthContext"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(username="user@example.com", is_admin=False)
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="user@example.com", is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             result = get_request_workspace()
@@ -268,9 +242,7 @@ class TestBridgeIntegration:
         """Test complete user data transformation through bridge"""
         mock_request = Mock()
         mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="admin@example.com", is_admin=True
-            ),
+            "mlflow_oidc_auth": AuthContext(username="admin@example.com", is_admin=True),
         }
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
@@ -284,9 +256,7 @@ class TestBridgeIntegration:
         """Test complete user data transformation including workspace"""
         mock_request = Mock()
         mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="user@example.com", is_admin=False, workspace="prod-ws"
-            ),
+            "mlflow_oidc_auth": AuthContext(username="user@example.com", is_admin=False, workspace="prod-ws"),
         }
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
@@ -320,9 +290,7 @@ class TestBridgeIntegration:
         """Test bridge performance with multiple rapid calls"""
         mock_request = Mock()
         mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="perf_user@example.com", is_admin=True
-            ),
+            "mlflow_oidc_auth": AuthContext(username="perf_user@example.com", is_admin=True),
         }
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
@@ -341,11 +309,7 @@ class TestBridgeIntegration:
     def test_bridge_reliability_with_environ_changes(self):
         """Test bridge reliability when environ changes between calls"""
         mock_request1 = Mock()
-        mock_request1.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="user1@example.com", is_admin=False
-            )
-        }
+        mock_request1.environ = {"mlflow_oidc_auth": AuthContext(username="user1@example.com", is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request1)}):
             username1 = get_fastapi_username()
@@ -353,11 +317,7 @@ class TestBridgeIntegration:
 
         # Change environ
         mock_request2 = Mock()
-        mock_request2.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="user2@example.com", is_admin=False
-            )
-        }
+        mock_request2.environ = {"mlflow_oidc_auth": AuthContext(username="user2@example.com", is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request2)}):
             username2 = get_fastapi_username()
@@ -374,9 +334,7 @@ class TestBridgeErrorHandling:
         """Test bridge behavior with unicode characters in username"""
         unicode_username = "üser@éxample.com"
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(username=unicode_username, is_admin=False)
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username=unicode_username, is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             username = get_fastapi_username()
@@ -386,9 +344,7 @@ class TestBridgeErrorHandling:
         """Test bridge behavior with very long username"""
         long_username = "a" * 1000 + "@example.com"
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(username=long_username, is_admin=False)
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username=long_username, is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             username = get_fastapi_username()
@@ -399,9 +355,7 @@ class TestBridgeErrorHandling:
         """Test bridge integration with external systems (simulated)"""
         mock_request = Mock()
         mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="external_user@corp.com", is_admin=True
-            ),
+            "mlflow_oidc_auth": AuthContext(username="external_user@corp.com", is_admin=True),
             "external_system_id": "ext_12345",
             "external_roles": ["admin", "user"],
         }
@@ -419,9 +373,7 @@ class TestBridgeErrorHandling:
         """Test that bridge functions log appropriately"""
         mock_request = Mock()
         mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="log_user@example.com", is_admin=True
-            ),
+            "mlflow_oidc_auth": AuthContext(username="log_user@example.com", is_admin=True),
         }
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
@@ -434,9 +386,7 @@ class TestBridgeErrorHandling:
 
             # Verify log messages contain expected content
             log_calls = [call.args[0] for call in mock_logger.debug.call_args_list]
-            assert any(
-                "Retrieved AuthContext from Flask environ" in msg for msg in log_calls
-            )
+            assert any("Retrieved AuthContext from Flask environ" in msg for msg in log_calls)
 
 
 class TestBridgeDataValidation:
@@ -445,11 +395,7 @@ class TestBridgeDataValidation:
     def test_bridge_username_whitespace_handling(self):
         """Test bridge behavior with whitespace in username"""
         mock_request = Mock()
-        mock_request.environ = {
-            "mlflow_oidc_auth": AuthContext(
-                username="  user@example.com  ", is_admin=False
-            )
-        }
+        mock_request.environ = {"mlflow_oidc_auth": AuthContext(username="  user@example.com  ", is_admin=False)}
 
         with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
             username = get_fastapi_username()

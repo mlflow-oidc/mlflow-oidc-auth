@@ -80,9 +80,7 @@ class TestGetGroupPermission:
         result = repo._get_group_permission(session, "res-1", "devs")
         assert result == perm
 
-    def test_not_found(
-        self, session_maker, session, repo_cls, field, list_groups_method
-    ):
+    def test_not_found(self, session_maker, session, repo_cls, field, list_groups_method):
         """Test NoResultFound raises MlflowException."""
         repo = repo_cls(session_maker)
         session.query().join().filter().one.side_effect = NoResultFound()
@@ -90,9 +88,7 @@ class TestGetGroupPermission:
             repo._get_group_permission(session, "res-1", "devs")
         assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
-    def test_multiple_found(
-        self, session_maker, session, repo_cls, field, list_groups_method
-    ):
+    def test_multiple_found(self, session_maker, session, repo_cls, field, list_groups_method):
         """Test MultipleResultsFound raises MlflowException."""
         repo = repo_cls(session_maker)
         session.query().join().filter().one.side_effect = MultipleResultsFound()
@@ -126,9 +122,7 @@ class TestGrantGroupPermission:
         session.add.assert_called_once_with(perm)
         session.flush.assert_called_once()
 
-    def test_integrity_error(
-        self, session_maker, session, repo_cls, field, list_groups_method
-    ):
+    def test_integrity_error(self, session_maker, session, repo_cls, field, list_groups_method):
         """Test IntegrityError raises RESOURCE_ALREADY_EXISTS."""
         repo = repo_cls(session_maker)
         group = MagicMock(id=10)
@@ -170,9 +164,7 @@ class TestGetGroupPermissionForUser:
 class TestListPermissionsForGroup:
     """Tests for list_permissions_for_group."""
 
-    def test_returns_entities(
-        self, session_maker, session, repo_cls, field, list_groups_method
-    ):
+    def test_returns_entities(self, session_maker, session, repo_cls, field, list_groups_method):
         """Test list returns mapped entities."""
         repo = repo_cls(session_maker)
         group = MagicMock(id=10)
@@ -248,9 +240,7 @@ class TestRevokeGroupPermission:
 class TestListGroupsForResource:
     """Tests for the list_groups_for_<resource> method."""
 
-    def test_returns_tuples(
-        self, session_maker, session, repo_cls, field, list_groups_method
-    ):
+    def test_returns_tuples(self, session_maker, session, repo_cls, field, list_groups_method):
         """Test that list_groups_for_* returns (group_name, permission) tuples."""
         repo = repo_cls(session_maker)
         session.query().join().filter().all.return_value = [

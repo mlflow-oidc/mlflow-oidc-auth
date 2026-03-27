@@ -123,9 +123,7 @@ async def create_workspace_group_permission(
 ) -> WorkspaceGroupPermissionResponse:
     """Grant a group permission on a workspace."""
     _validate_permission(body.permission)
-    perm = store.create_workspace_group_permission(
-        workspace, body.group_name, body.permission
-    )
+    perm = store.create_workspace_group_permission(workspace, body.group_name, body.permission)
     # Group changes rely on TTL-based cache expiry per D-15
     return WorkspaceGroupPermissionResponse(
         workspace=perm.workspace,
@@ -169,9 +167,7 @@ async def update_workspace_group_permission(
 ) -> WorkspaceGroupPermissionResponse:
     """Update a group's permission on a workspace."""
     _validate_permission(body.permission)
-    perm = store.update_workspace_group_permission(
-        workspace, group_name, body.permission
-    )
+    perm = store.update_workspace_group_permission(workspace, group_name, body.permission)
     return WorkspaceGroupPermissionResponse(
         workspace=perm.workspace,
         group_name=group_name,

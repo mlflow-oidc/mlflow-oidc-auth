@@ -5,9 +5,7 @@ from mlflow_oidc_auth.entities import ExperimentPermission
 from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 
 
-class ExperimentPermissionRepository(
-    BaseUserPermissionRepository[SqlExperimentPermission, ExperimentPermission]
-):
+class ExperimentPermissionRepository(BaseUserPermissionRepository[SqlExperimentPermission, ExperimentPermission]):
     model_class = SqlExperimentPermission
     resource_id_attr = "experiment_id"
 

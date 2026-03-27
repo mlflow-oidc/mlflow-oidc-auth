@@ -13,16 +13,12 @@ from mlflow_oidc_auth.repository._base import BaseRegexPermissionRepository
 from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 
 
-class ScorerPermissionRegexRepository(
-    BaseRegexPermissionRepository[SqlScorerRegexPermission, ScorerRegexPermission]
-):
+class ScorerPermissionRegexRepository(BaseRegexPermissionRepository[SqlScorerRegexPermission, ScorerRegexPermission]):
     model_class = SqlScorerRegexPermission
 
     # -- Parameter-order overrides --------------------------------------------
 
-    def update(
-        self, id: int, regex: str, priority: int, permission: str, username: str
-    ) -> ScorerRegexPermission:  # type: ignore[override]
+    def update(self, id: int, regex: str, priority: int, permission: str, username: str) -> ScorerRegexPermission:  # type: ignore[override]
         validate_regex(regex)
         _validate_permission(permission)
         with self._Session() as session:

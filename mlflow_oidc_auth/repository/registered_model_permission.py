@@ -10,19 +10,13 @@ from mlflow_oidc_auth.entities import RegisteredModelPermission
 from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 
 
-class RegisteredModelPermissionRepository(
-    BaseUserPermissionRepository[
-        SqlRegisteredModelPermission, RegisteredModelPermission
-    ]
-):
+class RegisteredModelPermissionRepository(BaseUserPermissionRepository[SqlRegisteredModelPermission, RegisteredModelPermission]):
     model_class = SqlRegisteredModelPermission
     resource_id_attr = "name"
 
     # --- Aliases preserving backward-compatible method names -----------------
 
-    def create(
-        self, name: str, username: str, permission: str
-    ) -> RegisteredModelPermission:
+    def create(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
         return self.grant_permission(name, username, permission)
 
     def get(self, name: str, username: str) -> RegisteredModelPermission:
@@ -31,9 +25,7 @@ class RegisteredModelPermissionRepository(
     def list_for_user(self, username: str) -> List[RegisteredModelPermission]:
         return self.list_permissions_for_user(username)
 
-    def update(
-        self, name: str, username: str, permission: str
-    ) -> RegisteredModelPermission:
+    def update(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
         return self.update_permission(name, username, permission)
 
     def delete(self, name: str, username: str) -> None:
@@ -43,11 +35,7 @@ class RegisteredModelPermissionRepository(
 
     def rename(self, old_name: str, new_name: str) -> None:
         with self._Session() as session:
-            perms = (
-                session.query(self.model_class)
-                .filter(self.model_class.name == old_name)
-                .all()
-            )
+            perms = session.query(self.model_class).filter(self.model_class.name == old_name).all()
             if not perms:
                 raise MlflowException(
                     f"No registered model permissions found for name: {old_name}",

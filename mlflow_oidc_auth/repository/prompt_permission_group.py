@@ -20,19 +20,13 @@ from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
 from mlflow_oidc_auth.repository.utils import get_group
 
 
-class PromptPermissionGroupRepository(
-    BaseGroupPermissionRepository[
-        SqlRegisteredModelGroupPermission, RegisteredModelPermission
-    ]
-):
+class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegisteredModelGroupPermission, RegisteredModelPermission]):
     model_class = SqlRegisteredModelGroupPermission
     resource_id_attr = "name"
 
     # -- private helper: prompt=True filter -----------------------------------
 
-    def _get_prompt_group_permission(
-        self, session: Session, name: str, group_id: int
-    ) -> SqlRegisteredModelGroupPermission:
+    def _get_prompt_group_permission(self, session: Session, name: str, group_id: int) -> SqlRegisteredModelGroupPermission:
         """
         Get the prompt permission for a given prompt and group ID.
         :param session: SQLAlchemy session
@@ -63,22 +57,16 @@ class PromptPermissionGroupRepository(
 
     # -- public CRUD (custom names, prompt=True) ------------------------------
 
-    def grant_prompt_permission_to_group(
-        self, group_name: str, name: str, permission: str
-    ) -> RegisteredModelPermission:
+    def grant_prompt_permission_to_group(self, group_name: str, name: str, permission: str) -> RegisteredModelPermission:
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = SqlRegisteredModelGroupPermission(
-                name=name, group_id=group.id, permission=permission, prompt=True
-            )
+            perm = SqlRegisteredModelGroupPermission(name=name, group_id=group.id, permission=permission, prompt=True)
             session.add(perm)
             session.flush()
             return perm.to_mlflow_entity()
 
-    def list_prompt_permissions_for_group(
-        self, group_name: str
-    ) -> List[RegisteredModelPermission]:
+    def list_prompt_permissions_for_group(self, group_name: str) -> List[RegisteredModelPermission]:
         with self._Session() as session:
             group = get_group(session, group_name)
             perms = (
@@ -98,9 +86,7 @@ class PromptPermissionGroupRepository(
         """
         with self._Session() as session:
             rows = (
-                session.query(
-                    SqlGroup.group_name, SqlRegisteredModelGroupPermission.permission
-                )
+                session.query(SqlGroup.group_name, SqlRegisteredModelGroupPermission.permission)
                 .join(
                     SqlRegisteredModelGroupPermission,
                     SqlRegisteredModelGroupPermission.group_id == SqlGroup.id,
@@ -109,13 +95,9 @@ class PromptPermissionGroupRepository(
                 .filter(SqlRegisteredModelGroupPermission.prompt == True)
                 .all()
             )
-            return [
-                (str(group_name), str(permission)) for group_name, permission in rows
-            ]
+            return [(str(group_name), str(permission)) for group_name, permission in rows]
 
-    def update_prompt_permission_for_group(
-        self, group_name: str, name: str, permission: str
-    ):
+    def update_prompt_permission_for_group(self, group_name: str, name: str, permission: str):
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)

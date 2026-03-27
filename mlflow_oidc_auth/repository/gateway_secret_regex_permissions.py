@@ -13,11 +13,7 @@ from mlflow_oidc_auth.repository._base import BaseRegexPermissionRepository
 from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 
 
-class GatewaySecretPermissionRegexRepository(
-    BaseRegexPermissionRepository[
-        SqlGatewaySecretRegexPermission, GatewaySecretRegexPermission
-    ]
-):
+class GatewaySecretPermissionRegexRepository(BaseRegexPermissionRepository[SqlGatewaySecretRegexPermission, GatewaySecretRegexPermission]):
     model_class = SqlGatewaySecretRegexPermission
 
     # -- Parameter-order overrides --------------------------------------------
@@ -28,9 +24,7 @@ class GatewaySecretPermissionRegexRepository(
             perm = self._get_regex_permission(session, user.id, id)
             return perm.to_mlflow_entity()
 
-    def update(
-        self, id: int, regex: str, priority: int, permission: str, username: str
-    ) -> GatewaySecretRegexPermission:  # type: ignore[override]
+    def update(self, id: int, regex: str, priority: int, permission: str, username: str) -> GatewaySecretRegexPermission:  # type: ignore[override]
         validate_regex(regex)
         _validate_permission(permission)
         with self._Session() as session:

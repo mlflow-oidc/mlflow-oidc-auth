@@ -25,9 +25,7 @@ class TestWorkspaceContextMiddleware:
         return WorkspaceContextMiddleware(test_fastapi_app)
 
     @pytest.mark.asyncio
-    async def test_passthrough_when_workspaces_disabled(
-        self, middleware, create_mock_request
-    ):
+    async def test_passthrough_when_workspaces_disabled(self, middleware, create_mock_request):
         """When MLFLOW_ENABLE_WORKSPACES=False, middleware is a transparent pass-through."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = False
@@ -54,9 +52,7 @@ class TestWorkspaceContextMiddleware:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_sets_workspace_context_from_header(
-        self, middleware, create_mock_request
-    ):
+    async def test_sets_workspace_context_from_header(self, middleware, create_mock_request):
         """When workspace header is provided, set_server_request_workspace is called with resolved workspace."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
@@ -80,12 +76,8 @@ class TestWorkspaceContextMiddleware:
             mock_config,
         ):
             with (
-                patch(
-                    "mlflow.utils.workspace_context.set_server_request_workspace"
-                ) as mock_set,
-                patch(
-                    "mlflow.utils.workspace_context.clear_server_request_workspace"
-                ) as mock_clear,
+                patch("mlflow.utils.workspace_context.set_server_request_workspace") as mock_set,
+                patch("mlflow.utils.workspace_context.clear_server_request_workspace") as mock_clear,
                 patch(
                     "mlflow.server.workspace_helpers.resolve_workspace_for_request_if_enabled",
                     return_value=mock_workspace,
@@ -99,9 +91,7 @@ class TestWorkspaceContextMiddleware:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_sets_none_when_no_workspace_header(
-        self, middleware, create_mock_request
-    ):
+    async def test_sets_none_when_no_workspace_header(self, middleware, create_mock_request):
         """When no workspace header, resolver returns None and set_server_request_workspace(None) is called."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
@@ -118,12 +108,8 @@ class TestWorkspaceContextMiddleware:
             mock_config,
         ):
             with (
-                patch(
-                    "mlflow.utils.workspace_context.set_server_request_workspace"
-                ) as mock_set,
-                patch(
-                    "mlflow.utils.workspace_context.clear_server_request_workspace"
-                ) as mock_clear,
+                patch("mlflow.utils.workspace_context.set_server_request_workspace") as mock_set,
+                patch("mlflow.utils.workspace_context.clear_server_request_workspace") as mock_clear,
                 patch(
                     "mlflow.server.workspace_helpers.resolve_workspace_for_request_if_enabled",
                     return_value=None,
@@ -137,9 +123,7 @@ class TestWorkspaceContextMiddleware:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_clears_workspace_context_on_exception(
-        self, middleware, create_mock_request
-    ):
+    async def test_clears_workspace_context_on_exception(self, middleware, create_mock_request):
         """ContextVar is cleared even if the downstream handler raises an exception."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
@@ -160,12 +144,8 @@ class TestWorkspaceContextMiddleware:
             mock_config,
         ):
             with (
-                patch(
-                    "mlflow.utils.workspace_context.set_server_request_workspace"
-                ) as mock_set,
-                patch(
-                    "mlflow.utils.workspace_context.clear_server_request_workspace"
-                ) as mock_clear,
+                patch("mlflow.utils.workspace_context.set_server_request_workspace") as mock_set,
+                patch("mlflow.utils.workspace_context.clear_server_request_workspace") as mock_clear,
                 patch(
                     "mlflow.server.workspace_helpers.resolve_workspace_for_request_if_enabled",
                     return_value=mock_workspace,
@@ -178,9 +158,7 @@ class TestWorkspaceContextMiddleware:
                 mock_clear.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_returns_error_on_workspace_resolution_failure(
-        self, middleware, create_mock_request
-    ):
+    async def test_returns_error_on_workspace_resolution_failure(self, middleware, create_mock_request):
         """When resolve_workspace_for_request_if_enabled raises MlflowException, returns JSON error."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
@@ -214,9 +192,7 @@ class TestWorkspaceContextMiddleware:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_server_info_path_skips_workspace_resolution(
-        self, middleware, create_mock_request
-    ):
+    async def test_server_info_path_skips_workspace_resolution(self, middleware, create_mock_request):
         """The /mlflow/server-info path should skip workspace resolution (MLflow behavior)."""
         mock_config = MagicMock()
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
@@ -234,12 +210,8 @@ class TestWorkspaceContextMiddleware:
             mock_config,
         ):
             with (
-                patch(
-                    "mlflow.utils.workspace_context.set_server_request_workspace"
-                ) as mock_set,
-                patch(
-                    "mlflow.utils.workspace_context.clear_server_request_workspace"
-                ) as mock_clear,
+                patch("mlflow.utils.workspace_context.set_server_request_workspace") as mock_set,
+                patch("mlflow.utils.workspace_context.clear_server_request_workspace") as mock_clear,
                 patch(
                     "mlflow.server.workspace_helpers.resolve_workspace_for_request_if_enabled",
                     return_value=None,

@@ -116,8 +116,7 @@ async def list_workspaces(
             default_artifact_root=ws.default_artifact_root,
         )
         for ws in all_workspaces
-        if (perm := get_workspace_permission_cached(username, ws.name)) is not None
-        and perm.can_read
+        if (perm := get_workspace_permission_cached(username, ws.name)) is not None and perm.can_read
     ]
 
 
@@ -216,11 +215,7 @@ async def delete_workspace(
                 status_code=404,
                 detail=f"Workspace '{workspace}' not found",
             )
-        if (
-            "has resources" in error_msg.lower()
-            or "restrict" in error_msg.lower()
-            or "not empty" in error_msg.lower()
-        ):
+        if "has resources" in error_msg.lower() or "restrict" in error_msg.lower() or "not empty" in error_msg.lower():
             raise HTTPException(
                 status_code=409,
                 detail=f"Workspace '{workspace}' is not empty. Remove all resources before deleting.",

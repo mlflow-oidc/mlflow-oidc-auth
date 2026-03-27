@@ -51,9 +51,7 @@ class WorkspacePermissionRepository:
                     RESOURCE_DOES_NOT_EXIST,
                 )
 
-    def create(
-        self, workspace: str, user_id: int, permission: str
-    ) -> WorkspacePermission:
+    def create(self, workspace: str, user_id: int, permission: str) -> WorkspacePermission:
         """Create a workspace permission for a user.
 
         Parameters:
@@ -69,9 +67,7 @@ class WorkspacePermissionRepository:
         """
         with self.ManagedSessionMaker() as session:
             try:
-                perm = SqlWorkspacePermission(
-                    workspace=workspace, user_id=user_id, permission=permission
-                )
+                perm = SqlWorkspacePermission(workspace=workspace, user_id=user_id, permission=permission)
                 session.add(perm)
                 session.flush()
                 return perm.to_mlflow_entity()
@@ -81,9 +77,7 @@ class WorkspacePermissionRepository:
                     RESOURCE_ALREADY_EXISTS,
                 )
 
-    def update(
-        self, workspace: str, user_id: int, permission: str
-    ) -> WorkspacePermission:
+    def update(self, workspace: str, user_id: int, permission: str) -> WorkspacePermission:
         """Update a user's workspace permission.
 
         Parameters:
@@ -154,11 +148,7 @@ class WorkspacePermissionRepository:
             List of WorkspacePermission entities.
         """
         with self.ManagedSessionMaker() as session:
-            perms = (
-                session.query(SqlWorkspacePermission)
-                .filter(SqlWorkspacePermission.user_id == user_id)
-                .all()
-            )
+            perms = session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.user_id == user_id).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def list_for_workspace(self, workspace: str) -> list[WorkspacePermission]:
@@ -171,11 +161,7 @@ class WorkspacePermissionRepository:
             List of WorkspacePermission entities.
         """
         with self.ManagedSessionMaker() as session:
-            perms = (
-                session.query(SqlWorkspacePermission)
-                .filter(SqlWorkspacePermission.workspace == workspace)
-                .all()
-            )
+            perms = session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.workspace == workspace).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def delete_all_for_workspace(self, workspace: str) -> int:
@@ -188,10 +174,6 @@ class WorkspacePermissionRepository:
             Number of permission rows deleted.
         """
         with self.ManagedSessionMaker() as session:
-            count = (
-                session.query(SqlWorkspacePermission)
-                .filter(SqlWorkspacePermission.workspace == workspace)
-                .delete()
-            )
+            count = session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.workspace == workspace).delete()
             session.flush()
             return count

@@ -109,9 +109,7 @@ def test__get_permission_multiple_found(repo, session):
 
 def test__get_permission_database_error(repo, session):
     """Test _get_permission when database error occurs"""
-    session.query().join().filter().one.side_effect = Exception(
-        "Database connection error"
-    )
+    session.query().join().filter().one.side_effect = Exception("Database connection error")
 
     with pytest.raises(Exception, match="Database connection error"):
         repo._get_permission(session, "exp1", "user1")

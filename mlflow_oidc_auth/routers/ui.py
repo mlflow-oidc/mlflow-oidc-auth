@@ -74,9 +74,7 @@ async def serve_spa(filename: str):
     ui_dir_path_str = str(ui_dir_path)
     requested_path_str = str(requested_path)
     is_within_ui_dir = (
-        requested_path_str == ui_dir_path_str
-        or requested_path_str.startswith(ui_dir_path_str + "/")
-        or requested_path_str.startswith(ui_dir_path_str + "\\")
+        requested_path_str == ui_dir_path_str or requested_path_str.startswith(ui_dir_path_str + "/") or requested_path_str.startswith(ui_dir_path_str + "\\")
     )
     if is_within_ui_dir and requested_path.is_file():
         return FileResponse(requested_path_str)

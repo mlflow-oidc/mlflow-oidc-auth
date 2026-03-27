@@ -50,8 +50,6 @@ def validate_can_read_metric_history_bulk_interval(username: str) -> bool:
     for run_id in run_ids:
         run = _get_tracking_store().get_run(run_id)
         experiment_id = run.info.experiment_id
-        if not effective_experiment_permission(
-            experiment_id, username
-        ).permission.can_read:
+        if not effective_experiment_permission(experiment_id, username).permission.can_read:
             return False
     return True

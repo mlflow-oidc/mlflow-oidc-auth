@@ -50,9 +50,7 @@ def test__get_group_permission_or_none_group_not_found(repo, session):
     """Test _get_group_permission_or_none when group is not found - covers lines 20-22"""
     session.query().filter().one_or_none.return_value = None
 
-    result = repo._get_group_permission_or_none(
-        session, "test_model", "nonexistent_group"
-    )
+    result = repo._get_group_permission_or_none(session, "test_model", "nonexistent_group")
     assert result is None
 
 
@@ -209,8 +207,5 @@ def test_rename_no_permissions_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo.rename("nonexistent_model", "new_model")
 
-    assert (
-        "No registered model group permissions found for name: nonexistent_model"
-        in str(exc.value)
-    )
+    assert "No registered model group permissions found for name: nonexistent_model" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"

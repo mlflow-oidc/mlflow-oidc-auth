@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -24,15 +23,9 @@ def _make_config(**overrides):
     """Build a mock config object with defaults for workspace detection tests."""
     cfg = MagicMock()
     cfg.MLFLOW_ENABLE_WORKSPACES = overrides.get("MLFLOW_ENABLE_WORKSPACES", True)
-    cfg.OIDC_WORKSPACE_DETECTION_PLUGIN = overrides.get(
-        "OIDC_WORKSPACE_DETECTION_PLUGIN", None
-    )
-    cfg.OIDC_WORKSPACE_CLAIM_NAME = overrides.get(
-        "OIDC_WORKSPACE_CLAIM_NAME", "workspace"
-    )
-    cfg.OIDC_WORKSPACE_DEFAULT_PERMISSION = overrides.get(
-        "OIDC_WORKSPACE_DEFAULT_PERMISSION", "NO_PERMISSIONS"
-    )
+    cfg.OIDC_WORKSPACE_DETECTION_PLUGIN = overrides.get("OIDC_WORKSPACE_DETECTION_PLUGIN", None)
+    cfg.OIDC_WORKSPACE_CLAIM_NAME = overrides.get("OIDC_WORKSPACE_CLAIM_NAME", "workspace")
+    cfg.OIDC_WORKSPACE_DEFAULT_PERMISSION = overrides.get("OIDC_WORKSPACE_DEFAULT_PERMISSION", "NO_PERMISSIONS")
     cfg.OIDC_GROUP_DETECTION_PLUGIN = overrides.get("OIDC_GROUP_DETECTION_PLUGIN", None)
     cfg.OIDC_GROUPS_ATTRIBUTE = overrides.get("OIDC_GROUPS_ATTRIBUTE", "groups")
     cfg.OIDC_GROUP_NAME = overrides.get("OIDC_GROUP_NAME", ["mlflow"])
@@ -107,13 +100,9 @@ def _run_workspace_detection(
                     email.lower(),
                     config.OIDC_WORKSPACE_DEFAULT_PERMISSION,
                 )
-                logger.info(
-                    f"Auto-assigned user {email} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}"
-                )
+                logger.info(f"Auto-assigned user {email} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}")
             except Exception:
-                logger.debug(
-                    f"Workspace permission already exists for {email} in '{ws_name}'"
-                )
+                logger.debug(f"Workspace permission already exists for {email} in '{ws_name}'")
 
     return mock_store, mock_logger
 
@@ -156,12 +145,8 @@ class TestWorkspaceDetectionPlugin:
 
         plugin_mod.get_user_workspaces.assert_called_once_with("my-token")
         assert mock_store.create_workspace_permission.call_count == 2
-        mock_store.create_workspace_permission.assert_any_call(
-            "ws-alpha", "alice@example.com", "NO_PERMISSIONS"
-        )
-        mock_store.create_workspace_permission.assert_any_call(
-            "ws-beta", "alice@example.com", "NO_PERMISSIONS"
-        )
+        mock_store.create_workspace_permission.assert_any_call("ws-alpha", "alice@example.com", "NO_PERMISSIONS")
+        mock_store.create_workspace_permission.assert_any_call("ws-beta", "alice@example.com", "NO_PERMISSIONS")
 
     def test_plugin_error_logged_as_warning(self):
         """Plugin errors are logged as warnings and don't prevent login."""
@@ -190,9 +175,7 @@ class TestWorkspaceDetectionJWTClaim:
             },
         )
 
-        mock_store.create_workspace_permission.assert_called_once_with(
-            "single-ws", "bob@example.com", "NO_PERMISSIONS"
-        )
+        mock_store.create_workspace_permission.assert_called_once_with("single-ws", "bob@example.com", "NO_PERMISSIONS")
 
     def test_list_claim_used_as_is(self):
         """A list claim value is used directly."""
@@ -206,12 +189,8 @@ class TestWorkspaceDetectionJWTClaim:
         )
 
         assert mock_store.create_workspace_permission.call_count == 2
-        mock_store.create_workspace_permission.assert_any_call(
-            "ws-1", "carol@example.com", "NO_PERMISSIONS"
-        )
-        mock_store.create_workspace_permission.assert_any_call(
-            "ws-2", "carol@example.com", "NO_PERMISSIONS"
-        )
+        mock_store.create_workspace_permission.assert_any_call("ws-1", "carol@example.com", "NO_PERMISSIONS")
+        mock_store.create_workspace_permission.assert_any_call("ws-2", "carol@example.com", "NO_PERMISSIONS")
 
     def test_custom_claim_name(self):
         """Uses configured OIDC_WORKSPACE_CLAIM_NAME to extract claim."""
@@ -225,9 +204,7 @@ class TestWorkspaceDetectionJWTClaim:
             },
         )
 
-        mock_store.create_workspace_permission.assert_called_once_with(
-            "my-org", "dave@example.com", "NO_PERMISSIONS"
-        )
+        mock_store.create_workspace_permission.assert_called_once_with("my-org", "dave@example.com", "NO_PERMISSIONS")
 
     def test_missing_claim_results_in_no_workspaces(self):
         """When the configured claim is absent, no workspace assignments are made."""
@@ -266,9 +243,7 @@ class TestWorkspaceAutoAssign:
             },
         )
 
-        mock_store.create_workspace_permission.assert_called_once_with(
-            "ws-x", "grace@example.com", "READ"
-        )
+        mock_store.create_workspace_permission.assert_called_once_with("ws-x", "grace@example.com", "READ")
 
     def test_existing_permission_silently_ignored(self):
         """Duplicate workspace permission (re-login) is silently ignored."""
@@ -299,9 +274,7 @@ class TestWorkspaceAutoAssign:
             },
         )
 
-        mock_store.create_workspace_permission.assert_called_once_with(
-            "valid-ws", "ivan@example.com", "NO_PERMISSIONS"
-        )
+        mock_store.create_workspace_permission.assert_called_once_with("valid-ws", "ivan@example.com", "NO_PERMISSIONS")
 
 
 class TestConfigEntries:

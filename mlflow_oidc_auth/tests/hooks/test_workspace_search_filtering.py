@@ -138,9 +138,7 @@ class TestFilterSearchExperimentsWorkspace:
         exp_inaccessible.experiment_id = "exp_2"
         exp_inaccessible.workspace = "denied-ws"
 
-        tracking_store.get_experiment.side_effect = lambda eid: (
-            exp_accessible if eid == "exp_1" else exp_inaccessible
-        )
+        tracking_store.get_experiment.side_effect = lambda eid: (exp_accessible if eid == "exp_1" else exp_inaccessible)
 
         with app.test_request_context():
             # Proto experiments (from initial page)
@@ -221,9 +219,7 @@ class TestFilterSearchExperimentsWorkspace:
         exp2.experiment_id = "exp_2"
         exp2.workspace = "allowed-ws"
 
-        tracking_store.get_experiment.side_effect = lambda eid: (
-            exp1 if eid == "exp_1" else exp2
-        )
+        tracking_store.get_experiment.side_effect = lambda eid: (exp1 if eid == "exp_1" else exp2)
 
         with app.test_request_context():
             proto_exp1 = MagicMock()
@@ -470,9 +466,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
         model_denied = MagicMock()
         model_denied.workspace = "denied-ws"
 
-        model_registry_store.get_registered_model.side_effect = lambda name: (
-            model_allowed if name == "model-ok" else model_denied
-        )
+        model_registry_store.get_registered_model.side_effect = lambda name: (model_allowed if name == "model-ok" else model_denied)
 
         with app.test_request_context():
             rm1 = MagicMock()
@@ -786,12 +780,8 @@ class TestFilterSearchLoggedModelsWorkspace:
         exp_denied.workspace = "denied-ws"
 
         tracking_store = MagicMock()
-        tracking_store.get_experiment.side_effect = lambda eid: (
-            exp_allowed if eid == "exp_1" else exp_denied
-        )
-        tracking_store.search_logged_models.return_value = _FakePagedList(
-            [], token=None
-        )
+        tracking_store.get_experiment.side_effect = lambda eid: (exp_allowed if eid == "exp_1" else exp_denied)
+        tracking_store.search_logged_models.return_value = _FakePagedList([], token=None)
 
         with app.test_request_context():
             m1 = MagicMock()
@@ -865,9 +855,7 @@ class TestFilterSearchLoggedModelsWorkspace:
         exp_entity.workspace = "allowed-ws"
         tracking_store = MagicMock()
         tracking_store.get_experiment.return_value = exp_entity
-        tracking_store.search_logged_models.return_value = _FakePagedList(
-            [], token=None
-        )
+        tracking_store.search_logged_models.return_value = _FakePagedList([], token=None)
 
         with app.test_request_context():
             m1 = MagicMock()
@@ -945,12 +933,8 @@ class TestFilterSearchLoggedModelsWorkspace:
         exp_denied.workspace = "denied-ws"
 
         tracking_store = MagicMock()
-        tracking_store.get_experiment.side_effect = lambda eid: (
-            exp_allowed if eid == "exp_1" else exp_denied
-        )
-        tracking_store.search_logged_models.return_value = _FakePagedList(
-            batch_models, token=None
-        )
+        tracking_store.get_experiment.side_effect = lambda eid: (exp_allowed if eid == "exp_1" else exp_denied)
+        tracking_store.search_logged_models.return_value = _FakePagedList(batch_models, token=None)
 
         mock_token_class = MagicMock()
         mock_token_class.decode.return_value = MagicMock(offset=0)
@@ -1040,9 +1024,7 @@ class TestFilterSearchLoggedModelsWorkspace:
         mock_request_message.max_results = 1000
 
         tracking_store = MagicMock()
-        tracking_store.search_logged_models.return_value = _FakePagedList(
-            [], token=None
-        )
+        tracking_store.search_logged_models.return_value = _FakePagedList([], token=None)
 
         with app.test_request_context():
             m = MagicMock()

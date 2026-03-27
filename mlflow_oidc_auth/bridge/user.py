@@ -26,9 +26,7 @@ def get_auth_context() -> AuthContext:
         if hasattr(request, "environ"):
             auth_context = request.environ.get("mlflow_oidc_auth")
             if isinstance(auth_context, AuthContext):
-                logger.debug(
-                    f"Retrieved AuthContext from Flask environ: {auth_context.username}"
-                )
+                logger.debug(f"Retrieved AuthContext from Flask environ: {auth_context.username}")
                 return auth_context
     except Exception as e:
         logger.debug(f"Could not access AuthContext from Flask request: {e}")

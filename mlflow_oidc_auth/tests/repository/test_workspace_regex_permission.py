@@ -12,14 +12,8 @@ class TestWorkspaceRegexPermissionRepository:
 
     def test_model_class_is_sql_workspace_regex_permission(self):
         """model_class is SqlWorkspaceRegexPermission."""
-        assert (
-            WorkspaceRegexPermissionRepository.model_class
-            is SqlWorkspaceRegexPermission
-        )
+        assert WorkspaceRegexPermissionRepository.model_class is SqlWorkspaceRegexPermission
 
     def test_backward_compat_alias_exists(self):
         """_get_workspace_regex_permission alias equals base _get_regex_permission."""
-        assert (
-            WorkspaceRegexPermissionRepository._get_workspace_regex_permission
-            is BaseRegexPermissionRepository._get_regex_permission
-        )
+        assert WorkspaceRegexPermissionRepository._get_workspace_regex_permission is BaseRegexPermissionRepository._get_regex_permission

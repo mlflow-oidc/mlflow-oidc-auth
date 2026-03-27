@@ -21,9 +21,7 @@ from mlflow_oidc_auth.repository.utils import get_group
 
 
 class RegisteredModelGroupRegexPermissionRepository(
-    BaseGroupRegexPermissionRepository[
-        SqlRegisteredModelGroupRegexPermission, RegisteredModelGroupRegexPermission
-    ]
+    BaseGroupRegexPermissionRepository[SqlRegisteredModelGroupRegexPermission, RegisteredModelGroupRegexPermission]
 ):
     model_class = SqlRegisteredModelGroupRegexPermission
 
@@ -81,19 +79,13 @@ class RegisteredModelGroupRegexPermissionRepository(
             session.flush()
             return perm.to_mlflow_entity()
 
-    def get(
-        self, id: int, group_name: str, prompt: bool = False
-    ) -> RegisteredModelGroupRegexPermission:  # type: ignore[override]
+    def get(self, id: int, group_name: str, prompt: bool = False) -> RegisteredModelGroupRegexPermission:  # type: ignore[override]
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_registered_model_group_regex_permission(
-                session, id, group.id, prompt=prompt
-            )
+            perm = self._get_registered_model_group_regex_permission(session, id, group.id, prompt=prompt)
             return perm.to_mlflow_entity()
 
-    def list_permissions_for_group(
-        self, group_name: str, prompt: bool = False
-    ) -> List[RegisteredModelGroupRegexPermission]:  # type: ignore[override]
+    def list_permissions_for_group(self, group_name: str, prompt: bool = False) -> List[RegisteredModelGroupRegexPermission]:  # type: ignore[override]
         with self._Session() as session:
             group = get_group(session, group_name)
             permissions = (
@@ -107,17 +99,13 @@ class RegisteredModelGroupRegexPermissionRepository(
             )
             return [p.to_mlflow_entity() for p in permissions]
 
-    def list_permissions_for_groups(
-        self, group_names: List[str], prompt: bool = False
-    ) -> List[RegisteredModelGroupRegexPermission]:
+    def list_permissions_for_groups(self, group_names: List[str], prompt: bool = False) -> List[RegisteredModelGroupRegexPermission]:
         with self._Session() as session:
             groups = [get_group(session, name) for name in group_names]
             permissions = (
                 session.query(SqlRegisteredModelGroupRegexPermission)
                 .filter(
-                    SqlRegisteredModelGroupRegexPermission.group_id.in_(
-                        [g.id for g in groups]
-                    ),
+                    SqlRegisteredModelGroupRegexPermission.group_id.in_([g.id for g in groups]),
                     SqlRegisteredModelGroupRegexPermission.prompt == prompt,
                 )
                 .order_by(SqlRegisteredModelGroupRegexPermission.priority)
@@ -152,9 +140,7 @@ class RegisteredModelGroupRegexPermissionRepository(
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_registered_model_group_regex_permission(
-                session, id, group.id, prompt=prompt
-            )
+            perm = self._get_registered_model_group_regex_permission(session, id, group.id, prompt=prompt)
             perm.permission = permission
             perm.priority = priority
             perm.prompt = prompt
@@ -165,8 +151,6 @@ class RegisteredModelGroupRegexPermissionRepository(
     def revoke(self, id: int, group_name: str, prompt: bool = False) -> None:  # type: ignore[override]
         with self._Session() as session:
             group = get_group(session, group_name)
-            perm = self._get_registered_model_group_regex_permission(
-                session, id, group.id, prompt=prompt
-            )
+            perm = self._get_registered_model_group_regex_permission(session, id, group.id, prompt=prompt)
             session.delete(perm)
             session.flush()

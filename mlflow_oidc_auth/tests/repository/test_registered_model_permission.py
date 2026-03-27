@@ -131,9 +131,7 @@ def test_rename_no_permissions_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo.rename("nonexistent_model", "new_model")
 
-    assert "No registered model permissions found for name: nonexistent_model" in str(
-        exc.value
-    )
+    assert "No registered model permissions found for name: nonexistent_model" in str(exc.value)
     assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
 
@@ -159,9 +157,7 @@ def test__get_permission_multiple_found(repo, session):
 
 def test__get_permission_database_error(repo, session):
     """Test _get_permission when database error occurs"""
-    session.query().join().filter().one.side_effect = Exception(
-        "Database connection error"
-    )
+    session.query().join().filter().one.side_effect = Exception("Database connection error")
 
     with pytest.raises(Exception, match="Database connection error"):
         repo._get_permission(session, "test_model", "user1")

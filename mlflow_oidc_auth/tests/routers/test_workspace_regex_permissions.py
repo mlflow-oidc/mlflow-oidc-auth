@@ -17,10 +17,7 @@ class TestRouterConfiguration:
             workspace_regex_permissions_router,
         )
 
-        assert (
-            workspace_regex_permissions_router.prefix
-            == "/api/3.0/mlflow/permissions/workspaces/regex"
-        )
+        assert workspace_regex_permissions_router.prefix == "/api/3.0/mlflow/permissions/workspaces/regex"
 
     def test_router_tags(self):
         """Test that the router has expected tags."""
@@ -55,9 +52,7 @@ class TestCreateUserRegexPermission:
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.flush_workspace_cache")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions._validate_permission")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.store")
-    async def test_create_calls_store_and_flushes_cache(
-        self, mock_store, mock_validate, mock_flush
-    ):
+    async def test_create_calls_store_and_flushes_cache(self, mock_store, mock_validate, mock_flush):
         """Test that POST /user calls store.create_workspace_regex_permission and flushes cache."""
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             create_user_regex_permission,
@@ -80,9 +75,7 @@ class TestCreateUserRegexPermission:
         result = await create_user_regex_permission(body=body, _="admin@example.com")
 
         mock_validate.assert_called_once_with("MANAGE")
-        mock_store.create_workspace_regex_permission.assert_called_once_with(
-            "^prod-.*", 10, "MANAGE", "user1@example.com"
-        )
+        mock_store.create_workspace_regex_permission.assert_called_once_with("^prod-.*", 10, "MANAGE", "user1@example.com")
         mock_flush.assert_called_once()
         assert result.id == 1
         assert result.regex == "^prod-.*"
@@ -123,9 +116,7 @@ class TestUpdateUserRegexPermission:
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.flush_workspace_cache")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions._validate_permission")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.store")
-    async def test_update_calls_store_and_flushes_cache(
-        self, mock_store, mock_validate, mock_flush
-    ):
+    async def test_update_calls_store_and_flushes_cache(self, mock_store, mock_validate, mock_flush):
         """Test that PATCH /user/{id} calls store.update_workspace_regex_permission and flushes cache."""
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             update_user_regex_permission,
@@ -145,14 +136,10 @@ class TestUpdateUserRegexPermission:
             permission="READ",
             username="user1@example.com",
         )
-        result = await update_user_regex_permission(
-            body=body, permission_id=5, _="admin@example.com"
-        )
+        result = await update_user_regex_permission(body=body, permission_id=5, _="admin@example.com")
 
         mock_validate.assert_called_once_with("READ")
-        mock_store.update_workspace_regex_permission.assert_called_once_with(
-            "^staging-.*", 20, "READ", "user1@example.com", 5
-        )
+        mock_store.update_workspace_regex_permission.assert_called_once_with("^staging-.*", 20, "READ", "user1@example.com", 5)
         mock_flush.assert_called_once()
         assert result.id == 5
 
@@ -169,13 +156,9 @@ class TestDeleteUserRegexPermission:
             delete_user_regex_permission,
         )
 
-        await delete_user_regex_permission(
-            permission_id=5, username="user1@example.com", _="admin@example.com"
-        )
+        await delete_user_regex_permission(permission_id=5, username="user1@example.com", _="admin@example.com")
 
-        mock_store.delete_workspace_regex_permission.assert_called_once_with(
-            "user1@example.com", 5
-        )
+        mock_store.delete_workspace_regex_permission.assert_called_once_with("user1@example.com", 5)
         mock_flush.assert_called_once()
 
 
@@ -186,9 +169,7 @@ class TestCreateGroupRegexPermission:
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.flush_workspace_cache")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions._validate_permission")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.store")
-    async def test_create_calls_store_and_flushes_cache(
-        self, mock_store, mock_validate, mock_flush
-    ):
+    async def test_create_calls_store_and_flushes_cache(self, mock_store, mock_validate, mock_flush):
         """Test that POST /group calls store.create_workspace_group_regex_permission and flushes cache."""
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             create_group_regex_permission,
@@ -204,15 +185,11 @@ class TestCreateGroupRegexPermission:
         mock_perm.permission = "EDIT"
         mock_store.create_workspace_group_regex_permission.return_value = mock_perm
 
-        body = WorkspaceGroupRegexPermissionRequest(
-            regex="^team-.*", priority=5, permission="EDIT", group_name="devs"
-        )
+        body = WorkspaceGroupRegexPermissionRequest(regex="^team-.*", priority=5, permission="EDIT", group_name="devs")
         result = await create_group_regex_permission(body=body, _="admin@example.com")
 
         mock_validate.assert_called_once_with("EDIT")
-        mock_store.create_workspace_group_regex_permission.assert_called_once_with(
-            "devs", "^team-.*", 5, "EDIT"
-        )
+        mock_store.create_workspace_group_regex_permission.assert_called_once_with("devs", "^team-.*", 5, "EDIT")
         mock_flush.assert_called_once()
         assert result.id == 2
         assert result.group_name == "devs"
@@ -250,9 +227,7 @@ class TestUpdateGroupRegexPermission:
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.flush_workspace_cache")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions._validate_permission")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.store")
-    async def test_update_calls_store_and_flushes_cache(
-        self, mock_store, mock_validate, mock_flush
-    ):
+    async def test_update_calls_store_and_flushes_cache(self, mock_store, mock_validate, mock_flush):
         """Test that PATCH /group/{id} calls store.update_workspace_group_regex_permission and flushes cache."""
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             update_group_regex_permission,
@@ -268,17 +243,11 @@ class TestUpdateGroupRegexPermission:
         mock_perm.permission = "READ"
         mock_store.update_workspace_group_regex_permission.return_value = mock_perm
 
-        body = WorkspaceGroupRegexPermissionRequest(
-            regex="^staging-.*", priority=15, permission="READ", group_name="viewers"
-        )
-        result = await update_group_regex_permission(
-            body=body, permission_id=3, _="admin@example.com"
-        )
+        body = WorkspaceGroupRegexPermissionRequest(regex="^staging-.*", priority=15, permission="READ", group_name="viewers")
+        result = await update_group_regex_permission(body=body, permission_id=3, _="admin@example.com")
 
         mock_validate.assert_called_once_with("READ")
-        mock_store.update_workspace_group_regex_permission.assert_called_once_with(
-            3, "viewers", "^staging-.*", 15, "READ"
-        )
+        mock_store.update_workspace_group_regex_permission.assert_called_once_with(3, "viewers", "^staging-.*", 15, "READ")
         mock_flush.assert_called_once()
         assert result.id == 3
 
@@ -295,13 +264,9 @@ class TestDeleteGroupRegexPermission:
             delete_group_regex_permission,
         )
 
-        await delete_group_regex_permission(
-            permission_id=3, group_name="viewers", _="admin@example.com"
-        )
+        await delete_group_regex_permission(permission_id=3, group_name="viewers", _="admin@example.com")
 
-        mock_store.delete_workspace_group_regex_permission.assert_called_once_with(
-            "viewers", 3
-        )
+        mock_store.delete_workspace_group_regex_permission.assert_called_once_with("viewers", 3)
         mock_flush.assert_called_once()
 
 
@@ -312,9 +277,7 @@ class TestCacheFlushBehavior:
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.flush_workspace_cache")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions._validate_permission")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.store")
-    async def test_user_create_flushes_cache(
-        self, mock_store, mock_validate, mock_flush
-    ):
+    async def test_user_create_flushes_cache(self, mock_store, mock_validate, mock_flush):
         """User regex create must flush cache."""
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             create_user_regex_permission,
@@ -328,9 +291,7 @@ class TestCacheFlushBehavior:
         mock_perm.permission = "READ"
         mock_store.create_workspace_regex_permission.return_value = mock_perm
 
-        body = WorkspaceRegexPermissionRequest(
-            regex=".*", priority=1, permission="READ", username="u"
-        )
+        body = WorkspaceRegexPermissionRequest(regex=".*", priority=1, permission="READ", username="u")
         await create_user_regex_permission(body=body, _="admin")
         mock_flush.assert_called_once()
 
@@ -338,9 +299,7 @@ class TestCacheFlushBehavior:
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.flush_workspace_cache")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions._validate_permission")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.store")
-    async def test_user_update_flushes_cache(
-        self, mock_store, mock_validate, mock_flush
-    ):
+    async def test_user_update_flushes_cache(self, mock_store, mock_validate, mock_flush):
         """User regex update must flush cache."""
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             update_user_regex_permission,
@@ -354,9 +313,7 @@ class TestCacheFlushBehavior:
         mock_perm.permission = "READ"
         mock_store.update_workspace_regex_permission.return_value = mock_perm
 
-        body = WorkspaceRegexPermissionRequest(
-            regex=".*", priority=1, permission="READ", username="u"
-        )
+        body = WorkspaceRegexPermissionRequest(regex=".*", priority=1, permission="READ", username="u")
         await update_user_regex_permission(body=body, permission_id=1, _="admin")
         mock_flush.assert_called_once()
 
@@ -376,9 +333,7 @@ class TestCacheFlushBehavior:
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.flush_workspace_cache")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions._validate_permission")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.store")
-    async def test_group_create_flushes_cache(
-        self, mock_store, mock_validate, mock_flush
-    ):
+    async def test_group_create_flushes_cache(self, mock_store, mock_validate, mock_flush):
         """Group regex create must flush cache."""
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             create_group_regex_permission,
@@ -394,9 +349,7 @@ class TestCacheFlushBehavior:
         mock_perm.permission = "READ"
         mock_store.create_workspace_group_regex_permission.return_value = mock_perm
 
-        body = WorkspaceGroupRegexPermissionRequest(
-            regex=".*", priority=1, permission="READ", group_name="g"
-        )
+        body = WorkspaceGroupRegexPermissionRequest(regex=".*", priority=1, permission="READ", group_name="g")
         await create_group_regex_permission(body=body, _="admin")
         mock_flush.assert_called_once()
 
@@ -404,9 +357,7 @@ class TestCacheFlushBehavior:
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.flush_workspace_cache")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions._validate_permission")
     @patch("mlflow_oidc_auth.routers.workspace_regex_permissions.store")
-    async def test_group_update_flushes_cache(
-        self, mock_store, mock_validate, mock_flush
-    ):
+    async def test_group_update_flushes_cache(self, mock_store, mock_validate, mock_flush):
         """Group regex update must flush cache."""
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             update_group_regex_permission,
@@ -422,9 +373,7 @@ class TestCacheFlushBehavior:
         mock_perm.permission = "READ"
         mock_store.update_workspace_group_regex_permission.return_value = mock_perm
 
-        body = WorkspaceGroupRegexPermissionRequest(
-            regex=".*", priority=1, permission="READ", group_name="g"
-        )
+        body = WorkspaceGroupRegexPermissionRequest(regex=".*", priority=1, permission="READ", group_name="g")
         await update_group_regex_permission(body=body, permission_id=1, _="admin")
         mock_flush.assert_called_once()
 

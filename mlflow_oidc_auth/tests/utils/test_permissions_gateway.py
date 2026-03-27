@@ -151,9 +151,7 @@ class TestEffectiveGatewayEndpointPermission:
     """Tests for effective_gateway_endpoint_permission and can_* wrappers."""
 
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_effective_delegates_to_store_or_default(
-        self, mock_resolver: MagicMock
-    ) -> None:
+    def test_effective_delegates_to_store_or_default(self, mock_resolver: MagicMock) -> None:
         """Should delegate to get_permission_from_store_or_default."""
         mock_result = MagicMock()
         mock_resolver.return_value = mock_result
@@ -198,9 +196,7 @@ class TestEffectiveGatewaySecretPermission:
     """Tests for effective_gateway_secret_permission and can_* wrappers."""
 
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_effective_delegates_to_store_or_default(
-        self, mock_resolver: MagicMock
-    ) -> None:
+    def test_effective_delegates_to_store_or_default(self, mock_resolver: MagicMock) -> None:
         """Should delegate to get_permission_from_store_or_default."""
         mock_result = MagicMock()
         mock_resolver.return_value = mock_result
@@ -242,9 +238,7 @@ class TestEffectiveGatewayModelDefinitionPermission:
     """Tests for effective_gateway_model_definition_permission and can_* wrappers."""
 
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_effective_delegates_to_store_or_default(
-        self, mock_resolver: MagicMock
-    ) -> None:
+    def test_effective_delegates_to_store_or_default(self, mock_resolver: MagicMock) -> None:
         """Should delegate to get_permission_from_store_or_default."""
         mock_result = MagicMock()
         mock_resolver.return_value = mock_result
@@ -254,33 +248,25 @@ class TestEffectiveGatewayModelDefinitionPermission:
         assert result is mock_result
         mock_resolver.assert_called_once()
 
-    @patch(
-        "mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission"
-    )
+    @patch("mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission")
     def test_can_read(self, mock_eff: MagicMock) -> None:
         """can_read_gateway_model_definition should check can_read."""
         mock_eff.return_value.permission.can_read = True
         assert can_read_gateway_model_definition("m-1", "alice") is True
 
-    @patch(
-        "mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission"
-    )
+    @patch("mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission")
     def test_can_use(self, mock_eff: MagicMock) -> None:
         """can_use_gateway_model_definition should check can_use."""
         mock_eff.return_value.permission.can_use = True
         assert can_use_gateway_model_definition("m-1", "alice") is True
 
-    @patch(
-        "mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission"
-    )
+    @patch("mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission")
     def test_can_update(self, mock_eff: MagicMock) -> None:
         """can_update_gateway_model_definition should check can_update."""
         mock_eff.return_value.permission.can_update = True
         assert can_update_gateway_model_definition("m-1", "alice") is True
 
-    @patch(
-        "mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission"
-    )
+    @patch("mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission")
     def test_can_manage(self, mock_eff: MagicMock) -> None:
         """can_manage_gateway_model_definition should check can_manage."""
         mock_eff.return_value.permission.can_manage = True

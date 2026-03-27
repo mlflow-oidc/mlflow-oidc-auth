@@ -61,9 +61,7 @@ class SqlWorkspaceRegexPermission(Base):
     priority: Mapped[int] = mapped_column(Integer(), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
-    __table_args__ = (
-        UniqueConstraint("regex", "user_id", name="unique_workspace_user_regex"),
-    )
+    __table_args__ = (UniqueConstraint("regex", "user_id", name="unique_workspace_user_regex"),)
 
     def to_mlflow_entity(self) -> WorkspaceRegexPermission:
         return WorkspaceRegexPermission(
@@ -84,9 +82,7 @@ class SqlWorkspaceGroupRegexPermission(Base):
     priority: Mapped[int] = mapped_column(Integer(), nullable=False)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
-    __table_args__ = (
-        UniqueConstraint("regex", "group_id", name="unique_workspace_group_regex"),
-    )
+    __table_args__ = (UniqueConstraint("regex", "group_id", name="unique_workspace_group_regex"),)
 
     def to_mlflow_entity(self) -> WorkspaceGroupRegexPermission:
         return WorkspaceGroupRegexPermission(

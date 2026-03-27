@@ -63,13 +63,9 @@ class TestValidatorReturnTypeAnnotation:
     def test_return_annotation_is_bool(self, qualified_name, fn):
         """Validator {qualified_name} must have -> bool annotation."""
         hints = inspect.get_annotations(fn, eval_str=True)
-        assert "return" in hints, (
-            f"{qualified_name} is missing a return type annotation. "
-            f"All validators must declare -> bool."
-        )
+        assert "return" in hints, f"{qualified_name} is missing a return type annotation. " f"All validators must declare -> bool."
         assert hints["return"] is bool, (
-            f"{qualified_name} has return annotation {hints['return']!r}, expected bool. "
-            f"Validators must return True (allowed) or False (denied)."
+            f"{qualified_name} has return annotation {hints['return']!r}, expected bool. " f"Validators must return True (allowed) or False (denied)."
         )
 
 
@@ -85,13 +81,9 @@ class TestValidatorSignature:
         """Validator {qualified_name} must accept (username: str) as its only param."""
         sig = inspect.signature(fn)
         params = list(sig.parameters.values())
-        assert len(params) >= 1, (
-            f"{qualified_name} has no parameters; expected at least (username: str)."
-        )
+        assert len(params) >= 1, f"{qualified_name} has no parameters; expected at least (username: str)."
         first = params[0]
-        assert first.name == "username", (
-            f"{qualified_name} first parameter is '{first.name}', expected 'username'."
-        )
+        assert first.name == "username", f"{qualified_name} first parameter is '{first.name}', expected 'username'."
 
 
 class TestValidatorDiscovery:
@@ -99,7 +91,4 @@ class TestValidatorDiscovery:
 
     def test_minimum_validator_count(self):
         """Should discover at least 50 validate_can_* functions."""
-        assert len(_VALIDATORS) >= 50, (
-            f"Only found {len(_VALIDATORS)} validators; expected >= 50. "
-            f"Discovery may be broken."
-        )
+        assert len(_VALIDATORS) >= 50, f"Only found {len(_VALIDATORS)} validators; expected >= 50. " f"Discovery may be broken."

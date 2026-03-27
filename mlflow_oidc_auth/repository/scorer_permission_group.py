@@ -18,22 +18,14 @@ from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
 from mlflow_oidc_auth.repository.utils import get_group
 
 
-class ScorerPermissionGroupRepository(
-    BaseGroupPermissionRepository[SqlScorerGroupPermission, ScorerPermission]
-):
+class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGroupPermission, ScorerPermission]):
     model_class = SqlScorerGroupPermission
     resource_id_attr = "experiment_id"
 
     # -- private helpers (2-part key) -----------------------------------------
 
-    def _get_scorer_group_permission(
-        self, session: Session, experiment_id: str, scorer_name: str, group_name: str
-    ) -> Optional[SqlScorerGroupPermission]:
-        group = (
-            session.query(SqlGroup)
-            .filter(SqlGroup.group_name == group_name)
-            .one_or_none()
-        )
+    def _get_scorer_group_permission(self, session: Session, experiment_id: str, scorer_name: str, group_name: str) -> Optional[SqlScorerGroupPermission]:
+        group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one_or_none()
         if group is None:
             return None
         return (
@@ -48,9 +40,7 @@ class ScorerPermissionGroupRepository(
 
     # -- public CRUD (all custom due to 2-part key) ---------------------------
 
-    def grant_group_permission(
-        self, group_name: str, experiment_id: str, scorer_name: str, permission: str
-    ) -> ScorerPermission:  # type: ignore[override]
+    def grant_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)
@@ -64,9 +54,7 @@ class ScorerPermissionGroupRepository(
             session.flush()
             return perm.to_mlflow_entity()
 
-    def list_groups_for_scorer(
-        self, experiment_id: str, scorer_name: str
-    ) -> List[tuple[str, str]]:
+    def list_groups_for_scorer(self, experiment_id: str, scorer_name: str) -> List[tuple[str, str]]:
         """List groups that have explicit permissions for a scorer.
 
         Returns pairs of (group_name, permission).
@@ -82,20 +70,14 @@ class ScorerPermissionGroupRepository(
                 .filter(SqlScorerGroupPermission.scorer_name == scorer_name)
                 .all()
             )
-            return [
-                (str(group_name), str(permission)) for group_name, permission in rows
-            ]
+            return [(str(group_name), str(permission)) for group_name, permission in rows]
 
-    def get_group_permission_for_user_scorer(
-        self, experiment_id: str, scorer_name: str, username: str
-    ) -> ScorerPermission:
+    def get_group_permission_for_user_scorer(self, experiment_id: str, scorer_name: str, username: str) -> ScorerPermission:
         with self._Session() as session:
             user_groups = self._list_user_groups(username)
             best: Optional[SqlScorerGroupPermission] = None
             for group_name in user_groups:
-                perm = self._get_scorer_group_permission(
-                    session, experiment_id, scorer_name, group_name
-                )
+                perm = self._get_scorer_group_permission(session, experiment_id, scorer_name, group_name)
                 if perm is None:
                     continue
                 if best is None:
@@ -115,9 +97,7 @@ class ScorerPermissionGroupRepository(
                 RESOURCE_DOES_NOT_EXIST,
             )
 
-    def update_group_permission(
-        self, group_name: str, experiment_id: str, scorer_name: str, permission: str
-    ) -> ScorerPermission:  # type: ignore[override]
+    def update_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
         with self._Session() as session:
             group = get_group(session, group_name)
@@ -134,9 +114,7 @@ class ScorerPermissionGroupRepository(
             session.flush()
             return perm.to_mlflow_entity()
 
-    def revoke_group_permission(
-        self, group_name: str, experiment_id: str, scorer_name: str
-    ) -> None:  # type: ignore[override]
+    def revoke_group_permission(self, group_name: str, experiment_id: str, scorer_name: str) -> None:  # type: ignore[override]
         with self._Session() as session:
             group = get_group(session, group_name)
             perm = (

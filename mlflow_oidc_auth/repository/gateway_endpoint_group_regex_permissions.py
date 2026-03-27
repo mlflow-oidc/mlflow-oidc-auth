@@ -6,8 +6,6 @@ from mlflow_oidc_auth.repository._base import BaseGroupRegexPermissionRepository
 
 
 class GatewayEndpointPermissionGroupRegexRepository(
-    BaseGroupRegexPermissionRepository[
-        SqlGatewayEndpointGroupRegexPermission, GatewayEndpointGroupRegexPermission
-    ]
+    BaseGroupRegexPermissionRepository[SqlGatewayEndpointGroupRegexPermission, GatewayEndpointGroupRegexPermission]
 ):
     model_class = SqlGatewayEndpointGroupRegexPermission

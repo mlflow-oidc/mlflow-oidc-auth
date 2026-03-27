@@ -121,9 +121,7 @@ async def check_registered_model_manage_permission(
     None
     """
     if not is_admin and not can_manage_registered_model(name, current_username):
-        raise HTTPException(
-            status_code=403, detail=f"Insufficient permissions to manage {name}"
-        )
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage {name}")
 
     return None
 
@@ -140,9 +138,7 @@ async def check_prompt_manage_permission(
     """
 
     if not is_admin and not can_manage_registered_model(prompt_name, current_username):
-        raise HTTPException(
-            status_code=403, detail=f"Insufficient permissions to manage {prompt_name}"
-        )
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage {prompt_name}")
 
     return None
 
@@ -179,9 +175,7 @@ async def check_gateway_secret_manage_permission(
     from mlflow_oidc_auth.utils.permissions import can_manage_gateway_secret
 
     if not is_admin and not can_manage_gateway_secret(name, current_username):
-        raise HTTPException(
-            status_code=403, detail=f"Insufficient permissions to manage secret {name}"
-        )
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage secret {name}")
 
     return None
 
@@ -218,12 +212,8 @@ async def check_scorer_manage_permission(
     - POST/PATCH/DELETE: parameters in JSON body (with query fallback)
     """
 
-    experiment_id = request.query_params.get(
-        "experiment_id"
-    ) or request.path_params.get("experiment_id")
-    scorer_name = request.query_params.get("scorer_name") or request.path_params.get(
-        "scorer_name"
-    )
+    experiment_id = request.query_params.get("experiment_id") or request.path_params.get("experiment_id")
+    scorer_name = request.query_params.get("scorer_name") or request.path_params.get("scorer_name")
 
     if request.method in {"POST", "PATCH", "DELETE"}:
         try:
@@ -241,9 +231,7 @@ async def check_scorer_manage_permission(
             detail="Missing required parameters: experiment_id and scorer_name",
         )
 
-    if not is_admin and not can_manage_scorer(
-        str(experiment_id), str(scorer_name), str(current_username)
-    ):
+    if not is_admin and not can_manage_scorer(str(experiment_id), str(scorer_name), str(current_username)):
         raise HTTPException(
             status_code=403,
             detail=f"Insufficient permissions to manage scorer {scorer_name}",

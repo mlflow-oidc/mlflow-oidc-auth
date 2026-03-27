@@ -20,20 +20,14 @@ class WorkspaceUserPermissionRequest(BaseModel):
     """Request model for creating/updating a user workspace permission."""
 
     username: str = Field(..., description="Username to grant workspace permission to")
-    permission: str = Field(
-        ..., description="Permission level (READ, USE, EDIT, MANAGE)"
-    )
+    permission: str = Field(..., description="Permission level (READ, USE, EDIT, MANAGE)")
 
 
 class WorkspaceGroupPermissionRequest(BaseModel):
     """Request model for creating/updating a group workspace permission."""
 
-    group_name: str = Field(
-        ..., description="Group name to grant workspace permission to"
-    )
-    permission: str = Field(
-        ..., description="Permission level (READ, USE, EDIT, MANAGE)"
-    )
+    group_name: str = Field(..., description="Group name to grant workspace permission to")
+    permission: str = Field(..., description="Permission level (READ, USE, EDIT, MANAGE)")
 
 
 class WorkspaceUserPermissionResponse(BaseModel):
@@ -56,30 +50,18 @@ class WorkspaceRegexPermissionRequest(BaseModel):
     """Request model for creating/updating a user regex workspace permission."""
 
     regex: str = Field(..., description="Regex pattern to match workspace names")
-    priority: int = Field(
-        ..., description="Priority (lower number = higher priority, per D-07)"
-    )
-    permission: str = Field(
-        ..., description="Permission level (READ, USE, EDIT, MANAGE)"
-    )
-    username: str = Field(
-        ..., description="Username to grant regex workspace permission to"
-    )
+    priority: int = Field(..., description="Priority (lower number = higher priority, per D-07)")
+    permission: str = Field(..., description="Permission level (READ, USE, EDIT, MANAGE)")
+    username: str = Field(..., description="Username to grant regex workspace permission to")
 
 
 class WorkspaceGroupRegexPermissionRequest(BaseModel):
     """Request model for creating/updating a group regex workspace permission."""
 
     regex: str = Field(..., description="Regex pattern to match workspace names")
-    priority: int = Field(
-        ..., description="Priority (lower number = higher priority, per D-07)"
-    )
-    permission: str = Field(
-        ..., description="Permission level (READ, USE, EDIT, MANAGE)"
-    )
-    group_name: str = Field(
-        ..., description="Group name to grant regex workspace permission to"
-    )
+    priority: int = Field(..., description="Priority (lower number = higher priority, per D-07)")
+    permission: str = Field(..., description="Permission level (READ, USE, EDIT, MANAGE)")
+    group_name: str = Field(..., description="Group name to grant regex workspace permission to")
 
 
 class WorkspaceRegexPermissionResponse(BaseModel):
@@ -116,9 +98,7 @@ class WorkspaceCrudCreateRequest(BaseModel):
         max_length=WORKSPACE_NAME_MAX_LENGTH,
         description="DNS-safe workspace name",
     )
-    description: str = Field(
-        "", max_length=500, description="Optional workspace description"
-    )
+    description: str = Field("", max_length=500, description="Optional workspace description")
     default_artifact_root: str | None = Field(
         None,
         max_length=1024,
@@ -129,10 +109,7 @@ class WorkspaceCrudCreateRequest(BaseModel):
     @classmethod
     def validate_workspace_name(cls, v: str) -> str:
         if not WORKSPACE_NAME_PATTERN.match(v):
-            raise ValueError(
-                "Workspace name must be DNS-safe: lowercase alphanumeric and hyphens, "
-                "no leading/trailing hyphens, no consecutive hyphens"
-            )
+            raise ValueError("Workspace name must be DNS-safe: lowercase alphanumeric and hyphens, " "no leading/trailing hyphens, no consecutive hyphens")
         if v in WORKSPACE_RESERVED_NAMES:
             raise ValueError(f"'{v}' is a reserved workspace name")
         return v
@@ -141,9 +118,7 @@ class WorkspaceCrudCreateRequest(BaseModel):
 class WorkspaceCrudUpdateRequest(BaseModel):
     """Request model for updating a workspace (WSCRUD-07)."""
 
-    description: str = Field(
-        ..., max_length=500, description="Updated workspace description"
-    )
+    description: str = Field(..., max_length=500, description="Updated workspace description")
     default_artifact_root: str | None = Field(
         None,
         max_length=1024,
@@ -156,6 +131,4 @@ class WorkspaceCrudResponse(BaseModel):
 
     name: str = Field(..., description="Workspace name")
     description: str = Field("", description="Workspace description")
-    default_artifact_root: str | None = Field(
-        None, description="Artifact storage root URI"
-    )
+    default_artifact_root: str | None = Field(None, description="Artifact storage root URI")

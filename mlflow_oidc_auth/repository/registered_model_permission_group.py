@@ -19,11 +19,7 @@ from mlflow_oidc_auth.repository import GroupRepository
 from mlflow_oidc_auth.repository.utils import get_group, get_user, list_user_groups
 
 
-class RegisteredModelPermissionGroupRepository(
-    BaseGroupPermissionRepository[
-        SqlRegisteredModelGroupPermission, RegisteredModelPermission
-    ]
-):
+class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegisteredModelGroupPermission, RegisteredModelPermission]):
     model_class = SqlRegisteredModelGroupPermission
     resource_id_attr = "name"
 
@@ -49,11 +45,7 @@ class RegisteredModelPermissionGroupRepository(
 
     def rename(self, old_name: str, new_name: str):
         with self._Session() as session:
-            perms = (
-                session.query(self.model_class)
-                .filter(self.model_class.name == old_name)
-                .all()
-            )
+            perms = session.query(self.model_class).filter(self.model_class.name == old_name).all()
             if not perms:
                 raise MlflowException(
                     f"No registered model group permissions found for name: {old_name}",
@@ -78,9 +70,7 @@ class RegisteredModelPermissionGroupRepository(
                 .filter(self.model_class.prompt == False)
                 .all()
             )
-            return [
-                (str(group_name), str(permission)) for group_name, permission in rows
-            ]
+            return [(str(group_name), str(permission)) for group_name, permission in rows]
 
     # -- get_for_user uses GroupRepository ------------------------------------
 
@@ -96,9 +86,7 @@ class RegisteredModelPermissionGroupRepository(
                     user_perms = perms
                     continue
                 try:
-                    if compare_permissions(
-                        str(user_perms.permission), str(perms.permission)
-                    ):
+                    if compare_permissions(str(user_perms.permission), str(perms.permission)):
                         user_perms = perms
                 except AttributeError:
                     user_perms = perms
@@ -122,11 +110,5 @@ class RegisteredModelPermissionGroupRepository(
         with self._Session() as session:
             user = get_user(session, username=username)
             user_groups = list_user_groups(session, user)
-            perms = (
-                session.query(self.model_class)
-                .filter(
-                    self.model_class.group_id.in_([ug.group_id for ug in user_groups])
-                )
-                .all()
-            )
+            perms = session.query(self.model_class).filter(self.model_class.group_id.in_([ug.group_id for ug in user_groups])).all()
             return [p.to_mlflow_entity() for p in perms]

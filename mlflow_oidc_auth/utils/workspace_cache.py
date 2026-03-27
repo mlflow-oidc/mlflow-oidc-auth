@@ -119,9 +119,7 @@ def _resolve_user_direct(store, username: str, workspace: str) -> Permission | N
         return get_permission(perm.permission)
     except MlflowException as e:
         if e.error_code == "RESOURCE_DOES_NOT_EXIST":
-            logger.debug(
-                "No user-direct workspace permission for %s@%s", username, workspace
-            )
+            logger.debug("No user-direct workspace permission for %s@%s", username, workspace)
         else:
             logger.warning(
                 "Unexpected MlflowException resolving user-direct workspace permission for %s@%s: %s",
@@ -149,9 +147,7 @@ def _resolve_group_direct(store, username: str, workspace: str) -> Permission | 
         return get_permission(perm.permission)
     except MlflowException as e:
         if e.error_code == "RESOURCE_DOES_NOT_EXIST":
-            logger.debug(
-                "No group-direct workspace permission for %s@%s", username, workspace
-            )
+            logger.debug("No group-direct workspace permission for %s@%s", username, workspace)
         else:
             logger.warning(
                 "Unexpected MlflowException resolving group-direct workspace permission for %s@%s: %s",
@@ -257,9 +253,7 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
                 result,
             )
             return result
-        logger.debug(
-            "Source '%s' returned None for %s@%s", source_name, username, workspace
-        )
+        logger.debug("Source '%s' returned None for %s@%s", source_name, username, workspace)
 
     logger.warning(
         "No workspace permission found for %s@%s after checking all sources",

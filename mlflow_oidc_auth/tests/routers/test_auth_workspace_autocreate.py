@@ -36,18 +36,14 @@ class TestOidcWorkspaceAutoCreate:
         config_mock.OIDC_ADMIN_GROUP_NAME = ["admin-group"]
         config_mock.OIDC_GROUP_NAME = ["user-group"]
         config_mock.OIDC_REDIRECT_URI = "http://localhost:8000/callback"
-        config_mock.OIDC_DISCOVERY_URL = (
-            "https://provider.com/.well-known/openid_configuration"
-        )
+        config_mock.OIDC_DISCOVERY_URL = "https://provider.com/.well-known/openid_configuration"
         return config_mock
 
     @pytest.mark.asyncio
     @patch("mlflow.server.handlers._get_workspace_store")
     @patch("mlflow_oidc_auth.routers.auth.oauth")
     @patch("mlflow_oidc_auth.routers.auth.config")
-    async def test_auto_creates_nonexistent_workspace(
-        self, mock_config_obj, mock_oauth, mock_get_ws_store
-    ):
+    async def test_auto_creates_nonexistent_workspace(self, mock_config_obj, mock_oauth, mock_get_ws_store):
         """When OIDC callback detects a workspace that doesn't exist, it auto-creates it."""
         from mlflow_oidc_auth.routers.auth import _process_oidc_callback_fastapi
 
@@ -74,9 +70,7 @@ class TestOidcWorkspaceAutoCreate:
 
         # Mock MLflow workspace store — workspace doesn't exist
         mlflow_ws_store = MagicMock()
-        mlflow_ws_store.get_workspace.side_effect = Exception(
-            "Workspace 'new-ws' not found"
-        )
+        mlflow_ws_store.get_workspace.side_effect = Exception("Workspace 'new-ws' not found")
         mlflow_ws_store.create_workspace.return_value = MagicMock(name="new-ws")
         mock_get_ws_store.return_value = mlflow_ws_store
 
@@ -102,9 +96,7 @@ class TestOidcWorkspaceAutoCreate:
     @patch("mlflow.server.handlers._get_workspace_store")
     @patch("mlflow_oidc_auth.routers.auth.oauth")
     @patch("mlflow_oidc_auth.routers.auth.config")
-    async def test_does_not_create_existing_workspace(
-        self, mock_config_obj, mock_oauth, mock_get_ws_store
-    ):
+    async def test_does_not_create_existing_workspace(self, mock_config_obj, mock_oauth, mock_get_ws_store):
         """When OIDC callback detects a workspace that already exists, no creation is attempted."""
         from mlflow_oidc_auth.routers.auth import _process_oidc_callback_fastapi
 
@@ -150,9 +142,7 @@ class TestOidcWorkspaceAutoCreate:
     @patch("mlflow.server.handlers._get_workspace_store")
     @patch("mlflow_oidc_auth.routers.auth.oauth")
     @patch("mlflow_oidc_auth.routers.auth.config")
-    async def test_auto_create_failure_does_not_block_login(
-        self, mock_config_obj, mock_oauth, mock_get_ws_store
-    ):
+    async def test_auto_create_failure_does_not_block_login(self, mock_config_obj, mock_oauth, mock_get_ws_store):
         """When workspace auto-creation fails, login continues successfully."""
         from mlflow_oidc_auth.routers.auth import _process_oidc_callback_fastapi
 
@@ -177,9 +167,7 @@ class TestOidcWorkspaceAutoCreate:
         # Mock MLflow workspace store — workspace doesn't exist and creation fails
         mlflow_ws_store = MagicMock()
         mlflow_ws_store.get_workspace.side_effect = Exception("not found")
-        mlflow_ws_store.create_workspace.side_effect = Exception(
-            "Invalid workspace name"
-        )
+        mlflow_ws_store.create_workspace.side_effect = Exception("Invalid workspace name")
         mock_get_ws_store.return_value = mlflow_ws_store
 
         request, session = self._make_request_and_session()
@@ -199,9 +187,7 @@ class TestOidcWorkspaceAutoCreate:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.auth.oauth")
     @patch("mlflow_oidc_auth.routers.auth.config")
-    async def test_no_auto_create_when_workspaces_disabled(
-        self, mock_config_obj, mock_oauth
-    ):
+    async def test_no_auto_create_when_workspaces_disabled(self, mock_config_obj, mock_oauth):
         """When MLFLOW_ENABLE_WORKSPACES is false, no workspace auto-creation happens."""
         from mlflow_oidc_auth.routers.auth import _process_oidc_callback_fastapi
 

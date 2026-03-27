@@ -53,9 +53,7 @@ class WorkspaceGroupPermissionRepository:
                     RESOURCE_DOES_NOT_EXIST,
                 )
 
-    def create(
-        self, workspace: str, group_id: int, permission: str
-    ) -> WorkspaceGroupPermission:
+    def create(self, workspace: str, group_id: int, permission: str) -> WorkspaceGroupPermission:
         """Create a workspace permission for a group.
 
         Parameters:
@@ -71,9 +69,7 @@ class WorkspaceGroupPermissionRepository:
         """
         with self.ManagedSessionMaker() as session:
             try:
-                perm = SqlWorkspaceGroupPermission(
-                    workspace=workspace, group_id=group_id, permission=permission
-                )
+                perm = SqlWorkspaceGroupPermission(workspace=workspace, group_id=group_id, permission=permission)
                 session.add(perm)
                 session.flush()
                 return perm.to_mlflow_entity()
@@ -83,9 +79,7 @@ class WorkspaceGroupPermissionRepository:
                     RESOURCE_ALREADY_EXISTS,
                 )
 
-    def update(
-        self, workspace: str, group_id: int, permission: str
-    ) -> WorkspaceGroupPermission:
+    def update(self, workspace: str, group_id: int, permission: str) -> WorkspaceGroupPermission:
         """Update a group's workspace permission.
 
         Parameters:
@@ -156,11 +150,7 @@ class WorkspaceGroupPermissionRepository:
             List of WorkspaceGroupPermission entities.
         """
         with self.ManagedSessionMaker() as session:
-            perms = (
-                session.query(SqlWorkspaceGroupPermission)
-                .filter(SqlWorkspaceGroupPermission.group_id == group_id)
-                .all()
-            )
+            perms = session.query(SqlWorkspaceGroupPermission).filter(SqlWorkspaceGroupPermission.group_id == group_id).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def list_for_workspace(self, workspace: str) -> list[WorkspaceGroupPermission]:
@@ -173,11 +163,7 @@ class WorkspaceGroupPermissionRepository:
             List of WorkspaceGroupPermission entities.
         """
         with self.ManagedSessionMaker() as session:
-            perms = (
-                session.query(SqlWorkspaceGroupPermission)
-                .filter(SqlWorkspaceGroupPermission.workspace == workspace)
-                .all()
-            )
+            perms = session.query(SqlWorkspaceGroupPermission).filter(SqlWorkspaceGroupPermission.workspace == workspace).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def delete_all_for_workspace(self, workspace: str) -> int:
@@ -190,17 +176,11 @@ class WorkspaceGroupPermissionRepository:
             Number of permission rows deleted.
         """
         with self.ManagedSessionMaker() as session:
-            count = (
-                session.query(SqlWorkspaceGroupPermission)
-                .filter(SqlWorkspaceGroupPermission.workspace == workspace)
-                .delete()
-            )
+            count = session.query(SqlWorkspaceGroupPermission).filter(SqlWorkspaceGroupPermission.workspace == workspace).delete()
             session.flush()
             return count
 
-    def get_highest_for_user(
-        self, workspace: str, user_id: int
-    ) -> WorkspaceGroupPermission:
+    def get_highest_for_user(self, workspace: str, user_id: int) -> WorkspaceGroupPermission:
         """Get the highest-priority workspace permission across all groups the user belongs to.
 
         Joins user_groups table to find all groups for the user, then returns the

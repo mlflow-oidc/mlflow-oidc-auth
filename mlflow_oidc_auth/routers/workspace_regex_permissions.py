@@ -55,9 +55,7 @@ async def create_user_regex_permission(
 ) -> WorkspaceRegexPermissionResponse:
     """Create a user regex workspace permission. Requires admin privileges."""
     _validate_permission(body.permission)
-    perm = store.create_workspace_regex_permission(
-        body.regex, body.priority, body.permission, body.username
-    )
+    perm = store.create_workspace_regex_permission(body.regex, body.priority, body.permission, body.username)
     flush_workspace_cache()
     return WorkspaceRegexPermissionResponse(
         id=perm.id,
@@ -102,9 +100,7 @@ async def update_user_regex_permission(
 ) -> WorkspaceRegexPermissionResponse:
     """Update a user regex workspace permission. Requires admin privileges."""
     _validate_permission(body.permission)
-    perm = store.update_workspace_regex_permission(
-        body.regex, body.priority, body.permission, body.username, permission_id
-    )
+    perm = store.update_workspace_regex_permission(body.regex, body.priority, body.permission, body.username, permission_id)
     flush_workspace_cache()
     return WorkspaceRegexPermissionResponse(
         id=perm.id,
@@ -142,9 +138,7 @@ async def create_group_regex_permission(
 ) -> WorkspaceGroupRegexPermissionResponse:
     """Create a group regex workspace permission. Requires admin privileges."""
     _validate_permission(body.permission)
-    perm = store.create_workspace_group_regex_permission(
-        body.group_name, body.regex, body.priority, body.permission
-    )
+    perm = store.create_workspace_group_regex_permission(body.group_name, body.regex, body.priority, body.permission)
     flush_workspace_cache()
     return WorkspaceGroupRegexPermissionResponse(
         id=perm.id,
@@ -189,9 +183,7 @@ async def update_group_regex_permission(
 ) -> WorkspaceGroupRegexPermissionResponse:
     """Update a group regex workspace permission. Requires admin privileges."""
     _validate_permission(body.permission)
-    perm = store.update_workspace_group_regex_permission(
-        permission_id, body.group_name, body.regex, body.priority, body.permission
-    )
+    perm = store.update_workspace_group_regex_permission(permission_id, body.group_name, body.regex, body.priority, body.permission)
     flush_workspace_cache()
     return WorkspaceGroupRegexPermissionResponse(
         id=perm.id,

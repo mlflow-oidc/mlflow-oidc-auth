@@ -22,12 +22,8 @@ def upgrade() -> None:
         sa.Column("workspace", sa.String(length=255), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("permission", sa.String(length=255), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], name="fk_workspace_perm_user_id"
-        ),
-        sa.PrimaryKeyConstraint(
-            "workspace", "user_id", name="pk_workspace_permissions"
-        ),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="fk_workspace_perm_user_id"),
+        sa.PrimaryKeyConstraint("workspace", "user_id", name="pk_workspace_permissions"),
     )
 
     op.create_table(
@@ -35,12 +31,8 @@ def upgrade() -> None:
         sa.Column("workspace", sa.String(length=255), nullable=False),
         sa.Column("group_id", sa.Integer(), nullable=False),
         sa.Column("permission", sa.String(length=255), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["group_id"], ["groups.id"], name="fk_workspace_group_perm_group_id"
-        ),
-        sa.PrimaryKeyConstraint(
-            "workspace", "group_id", name="pk_workspace_group_permissions"
-        ),
+        sa.ForeignKeyConstraint(["group_id"], ["groups.id"], name="fk_workspace_group_perm_group_id"),
+        sa.PrimaryKeyConstraint("workspace", "group_id", name="pk_workspace_group_permissions"),
     )
 
 

@@ -224,9 +224,7 @@ def test__get_group_regex_permission_multiple_found(repo, session):
     with pytest.raises(MlflowException) as exc:
         repo._get_group_regex_permission(session, "test_regex", 1)
 
-    assert "Multiple Permissions found for group_id: 1 and id: test_regex" in str(
-        exc.value
-    )
+    assert "Multiple Permissions found for group_id: 1 and id: test_regex" in str(exc.value)
     assert exc.value.error_code == "INVALID_STATE"
 
 

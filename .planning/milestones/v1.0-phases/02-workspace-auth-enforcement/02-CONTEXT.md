@@ -187,7 +187,7 @@ def resolve_permission(resource_type, resource_id, username, **kwargs) -> Permis
     builder = PERMISSION_REGISTRY[resource_type]
     sources_config = builder(resource_id, username, **kwargs)
     result = get_permission_from_store_or_default(sources_config)
-    
+
     # Workspace fallback when no resource-level permission found
     if result.type == "fallback" and config.MLFLOW_ENABLE_WORKSPACES:
         workspace = get_request_workspace()
@@ -196,7 +196,7 @@ def resolve_permission(resource_type, resource_id, username, **kwargs) -> Permis
             if ws_perm:
                 return PermissionResult(ws_perm, "workspace")
             return PermissionResult(get_permission("NO_PERMISSIONS"), "workspace-deny")
-    
+
     return result
 ```
 
@@ -235,21 +235,21 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
     # Implicit access to default workspace
     if workspace == "default" and config.GRANT_DEFAULT_WORKSPACE_ACCESS:
         return MANAGE  # or configurable level
-    
+
     # Explicit user permission
     try:
         perm = store.get_workspace_permission(workspace, username)
         return get_permission(perm.permission)
     except MlflowException:
         pass
-    
+
     # Group-level workspace permission (highest across user's groups)
     try:
         perm = store.get_user_groups_workspace_permission(workspace, username)
         return get_permission(perm.permission)
     except MlflowException:
         pass
-    
+
     return None
 ```
 

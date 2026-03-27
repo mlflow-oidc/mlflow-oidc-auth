@@ -16,9 +16,7 @@ from mlflow_oidc_auth.entities._base import RegexPermissionBase
 class WorkspacePermission:
     """User-level workspace permission entity."""
 
-    def __init__(
-        self, workspace: str, user_id: int, permission: str, username: str | None = None
-    ):
+    def __init__(self, workspace: str, user_id: int, permission: str, username: str | None = None):
         self._workspace = workspace
         self._user_id = user_id
         self._permission = permission

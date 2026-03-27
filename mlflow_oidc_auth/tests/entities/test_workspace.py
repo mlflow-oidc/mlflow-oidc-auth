@@ -15,9 +15,7 @@ class TestWorkspacePermission:
 
     def test_construction_with_all_fields(self):
         """WorkspacePermission stores workspace, user_id, permission, username."""
-        perm = WorkspacePermission(
-            workspace="ws1", user_id=42, permission="MANAGE", username="alice"
-        )
+        perm = WorkspacePermission(workspace="ws1", user_id=42, permission="MANAGE", username="alice")
         assert perm.workspace == "ws1"
         assert perm.user_id == 42
         assert perm.permission == "MANAGE"
@@ -30,9 +28,7 @@ class TestWorkspacePermission:
 
     def test_to_json(self):
         """to_json() returns dict with workspace, user_id, permission, username keys."""
-        perm = WorkspacePermission(
-            workspace="ws1", user_id=42, permission="MANAGE", username="alice"
-        )
+        perm = WorkspacePermission(workspace="ws1", user_id=42, permission="MANAGE", username="alice")
         result = perm.to_json()
         assert result == {
             "workspace": "ws1",
@@ -53,9 +49,7 @@ class TestWorkspaceGroupPermission:
 
     def test_construction_with_all_fields(self):
         """WorkspaceGroupPermission stores workspace, group_id, permission, group_name."""
-        perm = WorkspaceGroupPermission(
-            workspace="ws1", group_id=10, permission="EDIT", group_name="ml-team"
-        )
+        perm = WorkspaceGroupPermission(workspace="ws1", group_id=10, permission="EDIT", group_name="ml-team")
         assert perm.workspace == "ws1"
         assert perm.group_id == 10
         assert perm.permission == "EDIT"
@@ -68,9 +62,7 @@ class TestWorkspaceGroupPermission:
 
     def test_to_json(self):
         """to_json() returns dict with workspace, group_id, permission, group_name keys."""
-        perm = WorkspaceGroupPermission(
-            workspace="ws1", group_id=10, permission="EDIT", group_name="ml-team"
-        )
+        perm = WorkspaceGroupPermission(workspace="ws1", group_id=10, permission="EDIT", group_name="ml-team")
         result = perm.to_json()
         assert result == {
             "workspace": "ws1",
@@ -91,9 +83,7 @@ class TestWorkspaceRegexPermission:
 
     def test_construction(self):
         """WorkspaceRegexPermission stores id, regex, priority, user_id, permission."""
-        perm = WorkspaceRegexPermission(
-            id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ"
-        )
+        perm = WorkspaceRegexPermission(id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ")
         assert perm.id == 1
         assert perm.regex == "^ws-.*"
         assert perm.priority == 10
@@ -102,9 +92,7 @@ class TestWorkspaceRegexPermission:
 
     def test_to_json(self):
         """to_json() returns dict with id, regex, priority, user_id, permission."""
-        perm = WorkspaceRegexPermission(
-            id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ"
-        )
+        perm = WorkspaceRegexPermission(id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ")
         result = perm.to_json()
         assert result == {
             "id": 1,
@@ -116,9 +104,7 @@ class TestWorkspaceRegexPermission:
 
     def test_from_json_roundtrip(self):
         """from_json(to_json()) roundtrips correctly."""
-        perm = WorkspaceRegexPermission(
-            id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ"
-        )
+        perm = WorkspaceRegexPermission(id_=1, regex="^ws-.*", priority=10, user_id=42, permission="READ")
         restored = WorkspaceRegexPermission.from_json(perm.to_json())
         assert restored.id == perm.id
         assert restored.regex == perm.regex
@@ -145,9 +131,7 @@ class TestWorkspaceGroupRegexPermission:
 
     def test_construction(self):
         """WorkspaceGroupRegexPermission stores id, regex, priority, group_id, permission."""
-        perm = WorkspaceGroupRegexPermission(
-            id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT"
-        )
+        perm = WorkspaceGroupRegexPermission(id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT")
         assert perm.id == 1
         assert perm.regex == "^ws-.*"
         assert perm.priority == 5
@@ -156,9 +140,7 @@ class TestWorkspaceGroupRegexPermission:
 
     def test_to_json(self):
         """to_json() returns dict with id, regex, priority, group_id, permission."""
-        perm = WorkspaceGroupRegexPermission(
-            id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT"
-        )
+        perm = WorkspaceGroupRegexPermission(id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT")
         result = perm.to_json()
         assert result == {
             "id": 1,
@@ -170,9 +152,7 @@ class TestWorkspaceGroupRegexPermission:
 
     def test_from_json_roundtrip(self):
         """from_json(to_json()) roundtrips correctly."""
-        perm = WorkspaceGroupRegexPermission(
-            id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT"
-        )
+        perm = WorkspaceGroupRegexPermission(id_=1, regex="^ws-.*", priority=5, group_id=10, permission="EDIT")
         restored = WorkspaceGroupRegexPermission.from_json(perm.to_json())
         assert restored.id == perm.id
         assert restored.regex == perm.regex
