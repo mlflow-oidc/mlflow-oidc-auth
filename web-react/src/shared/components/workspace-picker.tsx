@@ -14,18 +14,12 @@ export function WorkspacePicker() {
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  if (!config.workspaces_enabled) return null;
-
-  const isMac =
-    typeof navigator !== "undefined" &&
-    /Mac|iPhone|iPad/.test(navigator.userAgent);
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
   const filteredWorkspaces = useMemo(() => {
     if (!allWorkspaces) return [];
     if (!filter) return allWorkspaces;
-    return allWorkspaces.filter((ws) =>
-      ws.name.toLowerCase().includes(filter.toLowerCase()),
-    );
+    return allWorkspaces.filter((ws) => ws.name.toLowerCase().includes(filter.toLowerCase()));
   }, [allWorkspaces, filter]);
 
   const handleSelect = useCallback(
@@ -47,10 +41,7 @@ export function WorkspacePicker() {
   // Click outside to close
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
         setFilter("");
       }
@@ -79,6 +70,8 @@ export function WorkspacePicker() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
+
+  if (!config.workspaces_enabled) return null;
 
   const displayName = selectedWorkspace ?? "All Workspaces";
 
@@ -119,8 +112,15 @@ export function WorkspacePicker() {
           <div role="listbox">
             <div
               role="option"
+              tabIndex={0}
               aria-selected={!selectedWorkspace}
               onClick={() => handleSelect(null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleSelect(null);
+                }
+              }}
               className={`px-3 py-2 text-sm cursor-pointer hover:bg-bg-primary-hover dark:hover:bg-bg-primary-hover-dark text-text-primary dark:text-text-primary-dark ${!selectedWorkspace ? "font-semibold" : ""}`}
             >
               All Workspaces {!selectedWorkspace && "✓"}
@@ -129,8 +129,15 @@ export function WorkspacePicker() {
               <div
                 key={ws.name}
                 role="option"
+                tabIndex={0}
                 aria-selected={selectedWorkspace === ws.name}
                 onClick={() => handleSelect(ws.name)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSelect(ws.name);
+                  }
+                }}
                 className={`px-3 py-2 text-sm cursor-pointer hover:bg-bg-primary-hover dark:hover:bg-bg-primary-hover-dark text-text-primary dark:text-text-primary-dark ${selectedWorkspace === ws.name ? "font-semibold" : ""}`}
               >
                 {ws.name} {selectedWorkspace === ws.name && "✓"}

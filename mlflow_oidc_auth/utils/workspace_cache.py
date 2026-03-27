@@ -17,6 +17,11 @@ logger = get_logger()
 _cache: TTLCache | None = None
 
 
+def _sanitize(value: str) -> str:
+    """Strip control characters from a value before logging to prevent log injection."""
+    return value.replace("\n", "").replace("\r", "").replace("\t", "")
+
+
 def _get_cache() -> TTLCache:
     """Get or create the workspace permission cache (lazy init)."""
     global _cache
@@ -119,20 +124,24 @@ def _resolve_user_direct(store, username: str, workspace: str) -> Permission | N
         return get_permission(perm.permission)
     except MlflowException as e:
         if e.error_code == "RESOURCE_DOES_NOT_EXIST":
-            logger.debug("No user-direct workspace permission for %s@%s", username, workspace)
+            logger.debug(
+                "No user-direct workspace permission for %s@%s",
+                _sanitize(username),
+                _sanitize(workspace),
+            )
         else:
             logger.warning(
                 "Unexpected MlflowException resolving user-direct workspace permission for %s@%s: %s",
-                username,
-                workspace,
+                _sanitize(username),
+                _sanitize(workspace),
                 e,
             )
         return None
     except Exception as e:
         logger.warning(
             "Unexpected error resolving user-direct workspace permission for %s@%s: %s",
-            username,
-            workspace,
+            _sanitize(username),
+            _sanitize(workspace),
             e,
         )
         return None
@@ -147,20 +156,24 @@ def _resolve_group_direct(store, username: str, workspace: str) -> Permission | 
         return get_permission(perm.permission)
     except MlflowException as e:
         if e.error_code == "RESOURCE_DOES_NOT_EXIST":
-            logger.debug("No group-direct workspace permission for %s@%s", username, workspace)
+            logger.debug(
+                "No group-direct workspace permission for %s@%s",
+                _sanitize(username),
+                _sanitize(workspace),
+            )
         else:
             logger.warning(
                 "Unexpected MlflowException resolving group-direct workspace permission for %s@%s: %s",
-                username,
-                workspace,
+                _sanitize(username),
+                _sanitize(workspace),
                 e,
             )
         return None
     except Exception as e:
         logger.warning(
             "Unexpected error resolving group-direct workspace permission for %s@%s: %s",
-            username,
-            workspace,
+            _sanitize(username),
+            _sanitize(workspace),
             e,
         )
         return None
@@ -179,8 +192,8 @@ def _resolve_user_regex(store, username: str, workspace: str) -> Permission | No
     except Exception as e:
         logger.warning(
             "Error resolving user-regex workspace permission for %s@%s: %s",
-            username,
-            workspace,
+            _sanitize(username),
+            _sanitize(workspace),
             e,
         )
         return None
@@ -203,8 +216,8 @@ def _resolve_group_regex(store, username: str, workspace: str) -> Permission | N
     except Exception as e:
         logger.warning(
             "Error resolving group-regex workspace permission for %s@%s: %s",
-            username,
-            workspace,
+            _sanitize(username),
+            _sanitize(workspace),
             e,
         )
         return None
@@ -226,7 +239,11 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
     """
     from mlflow_oidc_auth.store import store  # Lazy import to avoid circular dependency
 
-    logger.debug("Looking up workspace permission for %s@%s", username, workspace)
+    logger.debug(
+        "Looking up workspace permission for %s@%s",
+        _sanitize(username),
+        _sanitize(workspace),
+    )
 
     # Build source resolution functions keyed by source name
     source_resolvers = {
@@ -248,16 +265,21 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
             logger.debug(
                 "Workspace permission found via source '%s' for %s@%s: %s",
                 source_name,
-                username,
-                workspace,
+                _sanitize(username),
+                _sanitize(workspace),
                 result,
             )
             return result
-        logger.debug("Source '%s' returned None for %s@%s", source_name, username, workspace)
+        logger.debug(
+            "Source '%s' returned None for %s@%s",
+            source_name,
+            _sanitize(username),
+            _sanitize(workspace),
+        )
 
     logger.warning(
         "No workspace permission found for %s@%s after checking all sources",
-        username,
-        workspace,
+        _sanitize(username),
+        _sanitize(workspace),
     )
     return None

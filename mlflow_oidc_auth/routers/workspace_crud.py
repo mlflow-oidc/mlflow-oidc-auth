@@ -62,7 +62,7 @@ async def create_workspace(
                 default_artifact_root=body.default_artifact_root,
             ),
         )
-        logger.info(f"Workspace '{body.name}' created by admin '{username}'")
+        logger.info("Workspace created by admin")
         return WorkspaceCrudResponse(
             name=workspace.name,
             description=workspace.description or "",
@@ -75,7 +75,7 @@ async def create_workspace(
                 status_code=409,
                 detail=f"Workspace '{body.name}' already exists",
             )
-        logger.error(f"Failed to create workspace '{body.name}': {e}")
+        logger.error("Failed to create workspace: %s", e)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create workspace: {error_msg}",
@@ -170,7 +170,7 @@ async def update_workspace(
                 default_artifact_root=body.default_artifact_root,
             ),
         )
-        logger.info(f"Workspace '{workspace}' updated")
+        logger.info("Workspace updated")
         return WorkspaceCrudResponse(
             name=ws.name,
             description=ws.description or "",
@@ -207,7 +207,7 @@ async def delete_workspace(
     try:
         ws_store = _get_workspace_store()
         ws_store.delete_workspace(workspace, mode=WorkspaceDeletionMode.RESTRICT)
-        logger.info(f"Workspace '{workspace}' deleted (RESTRICT mode)")
+        logger.info("Workspace deleted (RESTRICT mode)")
     except Exception as e:
         error_msg = str(e)
         if "not found" in error_msg.lower() or "does not exist" in error_msg.lower():

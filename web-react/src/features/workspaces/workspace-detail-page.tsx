@@ -19,7 +19,6 @@ import { BulkAssignModal } from "./components/bulk-assign-modal";
 
 export default function WorkspaceDetailPage() {
   const { workspaces_enabled } = useRuntimeConfig();
-  if (!workspaces_enabled) return <Navigate to="/" replace />;
   const { workspaceName } = useParams<{ workspaceName: string }>();
   const { showToast } = useToast();
   const { currentUser } = useUser();
@@ -52,6 +51,11 @@ export default function WorkspaceDetailPage() {
   const { allServiceAccounts } = useAllServiceAccounts();
   const { allGroups } = useAllGroups();
 
+  if (!workspaces_enabled) return <Navigate to="/" replace />;
+  if (!workspaceName) {
+    return <div>Workspace name is required.</div>;
+  }
+
   // Compute available options (filter out already-assigned)
   const existingUsernames = new Set(workspaceUsers.map((wu) => wu.username));
   const existingGroupNames = new Set(workspaceGroups.map((wg) => wg.group_name));
@@ -59,10 +63,6 @@ export default function WorkspaceDetailPage() {
   const availableUsers = (allUsers || []).filter((u) => !existingUsernames.has(u));
   const availableAccounts = (allServiceAccounts || []).filter((u) => !existingUsernames.has(u));
   const availableGroups = (allGroups || []).filter((g) => !existingGroupNames.has(g));
-
-  if (!workspaceName) {
-    return <div>Workspace name is required.</div>;
-  }
 
   // Derive canManage: admin OR user has direct MANAGE OR user's group has MANAGE
   const userGroupNames = new Set((currentUser?.groups ?? []).map((g) => g.group_name));

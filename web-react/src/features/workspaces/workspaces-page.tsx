@@ -22,7 +22,6 @@ import { DeleteWorkspaceModal } from "./components/delete-workspace-modal";
 
 export default function WorkspacesPage() {
   const { workspaces_enabled } = useRuntimeConfig();
-  if (!workspaces_enabled) return <Navigate to="/" replace />;
   const {
     searchTerm,
     submittedTerm,
@@ -30,8 +29,7 @@ export default function WorkspacesPage() {
     handleSearchSubmit,
     handleClearSearch,
   } = useSearch();
-  const { allWorkspaces, memberCounts, isLoading, error, refresh } =
-    useAllWorkspaces();
+  const { allWorkspaces, memberCounts, isLoading, error, refresh } = useAllWorkspaces();
   const { currentUser } = useUser();
   const { showToast } = useToast();
 
@@ -48,6 +46,8 @@ export default function WorkspacesPage() {
     description: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  if (!workspaces_enabled) return <Navigate to="/" replace />;
 
   const workspacesList = allWorkspaces || [];
 
