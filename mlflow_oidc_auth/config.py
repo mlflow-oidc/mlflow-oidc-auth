@@ -150,6 +150,9 @@ class AppConfig:
             "WORKSPACE_CACHE_TTL_SECONDS", default=300
         )
 
+        # Proxy trust settings
+        self.TRUSTED_PROXIES = config_manager.get_list("TRUSTED_PROXIES", default=[])
+
         # OIDC workspace detection settings
         self.OIDC_WORKSPACE_CLAIM_NAME = config_manager.get(
             "OIDC_WORKSPACE_CLAIM_NAME", "workspace"
