@@ -5,6 +5,11 @@ This module provides registry-driven permission resolution for all 7 resource ty
 The PERMISSION_REGISTRY maps resource types to builder functions that create
 source configurations, and resolve_permission() is the single entry point.
 
+A TTL-based cache is used to avoid repeated DB lookups on every request.
+Cache entries are keyed by (resource_type, resource_id, username) and expire
+after PERMISSION_CACHE_TTL_SECONDS (default 30). Explicit invalidation is
+available via invalidate_permission_cache() and flush_permission_cache().
+
 Existing public functions (effective_*, can_*) are thin wrappers around
 resolve_permission() and remain backward-compatible.
 """
@@ -12,6 +17,7 @@ resolve_permission() and remain backward-compatible.
 import re
 from typing import Callable, Dict
 
+from cachetools import TTLCache
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server.handlers import _get_tracking_store
@@ -23,6 +29,49 @@ from mlflow_oidc_auth.permissions import NO_PERMISSIONS, get_permission
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
+
+# ---------------------------------------------------------------------------
+# Permission cache (lazy init to avoid import-time config reads)
+# ---------------------------------------------------------------------------
+
+_PERMISSION_CACHE_MAX_SIZE = 2048
+_PERMISSION_CACHE_DEFAULT_TTL = 30
+
+_permission_cache: TTLCache | None = None
+
+
+def _get_permission_cache() -> TTLCache:
+    """Get or create the permission resolution cache (lazy init)."""
+    global _permission_cache
+    if _permission_cache is None:
+        ttl = getattr(
+            config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL
+        )
+        _permission_cache = TTLCache(maxsize=_PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+    return _permission_cache
+
+
+def invalidate_permission_cache(
+    resource_type: str, resource_id: str, username: str
+) -> None:
+    """Remove a specific permission entry from cache.
+
+    Call after permission CUD operations for a specific user+resource.
+    """
+    cache = _get_permission_cache()
+    cache.pop((resource_type, resource_id, username), None)
+
+
+def flush_permission_cache() -> None:
+    """Flush entire permission cache.
+
+    Call after bulk operations (e.g., regex permission changes) that
+    may affect many user+resource combos.
+    """
+    cache = _get_permission_cache()
+    cache.clear()
+    logger.debug("Permission cache fully flushed")
+
 
 # Resource type constants
 EXPERIMENT = "experiment"
@@ -43,7 +92,9 @@ def _match_regex_permission(regexes, name: str, label: str) -> str:
     """Generic regex matcher for any resource type. Replaces 8 near-identical functions."""
     for regex in regexes:
         if re.match(regex.regex, name):
-            logger.debug(f"Regex permission found for {label} {name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
+            logger.debug(
+                f"Regex permission found for {label} {name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}"
+            )
             return regex.permission
     raise MlflowException(f"{label} {name}", error_code=RESOURCE_DOES_NOT_EXIST)
 
@@ -68,38 +119,61 @@ def _get_experiment_group_permission_from_regex(regexes, experiment_id: str) -> 
 # ---------------------------------------------------------------------------
 
 
-def _build_experiment_sources(experiment_id: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
+def _build_experiment_sources(
+    experiment_id: str, username: str, **kwargs
+) -> Dict[str, Callable[[], str]]:
     return {
-        "user": lambda experiment_id=experiment_id, user=username: store.get_experiment_permission(experiment_id, user).permission,
-        "group": lambda experiment_id=experiment_id, user=username: store.get_user_groups_experiment_permission(experiment_id, user).permission,
-        "regex": lambda experiment_id=experiment_id, user=username: _get_experiment_permission_from_regex(
+        "user": lambda experiment_id=experiment_id,
+        user=username: store.get_experiment_permission(experiment_id, user).permission,
+        "group": lambda experiment_id=experiment_id,
+        user=username: store.get_user_groups_experiment_permission(
+            experiment_id, user
+        ).permission,
+        "regex": lambda experiment_id=experiment_id,
+        user=username: _get_experiment_permission_from_regex(
             store.list_experiment_regex_permissions(user), experiment_id
         ),
-        "group-regex": lambda experiment_id=experiment_id, user=username: _get_experiment_group_permission_from_regex(
-            store.list_group_experiment_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+        "group-regex": lambda experiment_id=experiment_id,
+        user=username: _get_experiment_group_permission_from_regex(
+            store.list_group_experiment_regex_permissions_for_groups_ids(
+                store.get_groups_ids_for_user(user)
+            ),
             experiment_id,
         ),
     }
 
 
-def _build_registered_model_sources(model_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
+def _build_registered_model_sources(
+    model_name: str, username: str, **kwargs
+) -> Dict[str, Callable[[], str]]:
     return {
-        "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
-        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(model_name, user).permission,
+        "user": lambda model_name=model_name,
+        user=username: store.get_registered_model_permission(
+            model_name, user
+        ).permission,
+        "group": lambda model_name=model_name,
+        user=username: store.get_user_groups_registered_model_permission(
+            model_name, user
+        ).permission,
         "regex": lambda model_name=model_name, user=username: _match_regex_permission(
             store.list_registered_model_regex_permissions(user),
             model_name,
             "model name",
         ),
-        "group-regex": lambda model_name=model_name, user=username: _match_regex_permission(
-            store.list_group_registered_model_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+        "group-regex": lambda model_name=model_name,
+        user=username: _match_regex_permission(
+            store.list_group_registered_model_regex_permissions_for_groups_ids(
+                store.get_groups_ids_for_user(user)
+            ),
             model_name,
             "model name",
         ),
     }
 
 
-def _build_prompt_sources(model_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
+def _build_prompt_sources(
+    model_name: str, username: str, **kwargs
+) -> Dict[str, Callable[[], str]]:
     """Build prompt permission sources.
 
     CRITICAL: user/group sources map to store.get_registered_model_permission and
@@ -108,80 +182,138 @@ def _build_prompt_sources(model_name: str, username: str, **kwargs) -> Dict[str,
     from the original implementation.
     """
     return {
-        "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
-        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(model_name, user).permission,
-        "regex": lambda model_name=model_name, user=username: _match_regex_permission(store.list_prompt_regex_permissions(user), model_name, "model name"),
-        "group-regex": lambda model_name=model_name, user=username: _match_regex_permission(
-            store.list_group_prompt_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+        "user": lambda model_name=model_name,
+        user=username: store.get_registered_model_permission(
+            model_name, user
+        ).permission,
+        "group": lambda model_name=model_name,
+        user=username: store.get_user_groups_registered_model_permission(
+            model_name, user
+        ).permission,
+        "regex": lambda model_name=model_name, user=username: _match_regex_permission(
+            store.list_prompt_regex_permissions(user), model_name, "model name"
+        ),
+        "group-regex": lambda model_name=model_name,
+        user=username: _match_regex_permission(
+            store.list_group_prompt_regex_permissions_for_groups_ids(
+                store.get_groups_ids_for_user(user)
+            ),
             model_name,
             "model name",
         ),
     }
 
 
-def _build_scorer_sources(experiment_id: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
+def _build_scorer_sources(
+    experiment_id: str, username: str, **kwargs
+) -> Dict[str, Callable[[], str]]:
     scorer_name = kwargs["scorer_name"]
     return {
-        "user": lambda experiment_id=experiment_id, scorer_name=scorer_name, user=username: store.get_scorer_permission(
+        "user": lambda experiment_id=experiment_id,
+        scorer_name=scorer_name,
+        user=username: store.get_scorer_permission(
             experiment_id, scorer_name, user
         ).permission,
-        "group": lambda experiment_id=experiment_id, scorer_name=scorer_name, user=username: store.get_user_groups_scorer_permission(
+        "group": lambda experiment_id=experiment_id,
+        scorer_name=scorer_name,
+        user=username: store.get_user_groups_scorer_permission(
             experiment_id, scorer_name, user
         ).permission,
-        "regex": lambda scorer_name=scorer_name, user=username: _match_regex_permission(store.list_scorer_regex_permissions(user), scorer_name, "scorer name"),
-        "group-regex": lambda scorer_name=scorer_name, user=username: _match_regex_permission(
-            store.list_group_scorer_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+        "regex": lambda scorer_name=scorer_name, user=username: _match_regex_permission(
+            store.list_scorer_regex_permissions(user), scorer_name, "scorer name"
+        ),
+        "group-regex": lambda scorer_name=scorer_name,
+        user=username: _match_regex_permission(
+            store.list_group_scorer_regex_permissions_for_groups_ids(
+                store.get_groups_ids_for_user(user)
+            ),
             scorer_name,
             "scorer name",
         ),
     }
 
 
-def _build_gateway_endpoint_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
+def _build_gateway_endpoint_sources(
+    gateway_name: str, username: str, **kwargs
+) -> Dict[str, Callable[[], str]]:
     return {
-        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_endpoint_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_endpoint_permission(gateway_name, user).permission,
-        "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
+        "user": lambda gateway_name=gateway_name,
+        user=username: store.get_gateway_endpoint_permission(
+            gateway_name, user
+        ).permission,
+        "group": lambda gateway_name=gateway_name,
+        user=username: store.get_user_groups_gateway_endpoint_permission(
+            gateway_name, user
+        ).permission,
+        "regex": lambda gateway_name=gateway_name,
+        user=username: _match_regex_permission(
             store.list_gateway_endpoint_regex_permissions(user),
             gateway_name,
             "gateway name",
         ),
-        "group-regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_group_gateway_endpoint_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+        "group-regex": lambda gateway_name=gateway_name,
+        user=username: _match_regex_permission(
+            store.list_group_gateway_endpoint_regex_permissions_for_groups_ids(
+                store.get_groups_ids_for_user(user)
+            ),
             gateway_name,
             "gateway name",
         ),
     }
 
 
-def _build_gateway_secret_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
+def _build_gateway_secret_sources(
+    gateway_name: str, username: str, **kwargs
+) -> Dict[str, Callable[[], str]]:
     return {
-        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_secret_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_secret_permission(gateway_name, user).permission,
-        "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
+        "user": lambda gateway_name=gateway_name,
+        user=username: store.get_gateway_secret_permission(
+            gateway_name, user
+        ).permission,
+        "group": lambda gateway_name=gateway_name,
+        user=username: store.get_user_groups_gateway_secret_permission(
+            gateway_name, user
+        ).permission,
+        "regex": lambda gateway_name=gateway_name,
+        user=username: _match_regex_permission(
             store.list_gateway_secret_regex_permissions(user),
             gateway_name,
             "gateway name",
         ),
-        "group-regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_group_gateway_secret_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+        "group-regex": lambda gateway_name=gateway_name,
+        user=username: _match_regex_permission(
+            store.list_group_gateway_secret_regex_permissions_for_groups_ids(
+                store.get_groups_ids_for_user(user)
+            ),
             gateway_name,
             "gateway name",
         ),
     }
 
 
-def _build_gateway_model_definition_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
+def _build_gateway_model_definition_sources(
+    gateway_name: str, username: str, **kwargs
+) -> Dict[str, Callable[[], str]]:
     return {
-        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_model_definition_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_model_definition_permission(gateway_name, user).permission,
-        "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
+        "user": lambda gateway_name=gateway_name,
+        user=username: store.get_gateway_model_definition_permission(
+            gateway_name, user
+        ).permission,
+        "group": lambda gateway_name=gateway_name,
+        user=username: store.get_user_groups_gateway_model_definition_permission(
+            gateway_name, user
+        ).permission,
+        "regex": lambda gateway_name=gateway_name,
+        user=username: _match_regex_permission(
             store.list_gateway_model_definition_regex_permissions(user),
             gateway_name,
             "gateway name",
         ),
-        "group-regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_group_gateway_model_definition_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+        "group-regex": lambda gateway_name=gateway_name,
+        user=username: _match_regex_permission(
+            store.list_group_gateway_model_definition_regex_permissions_for_groups_ids(
+                store.get_groups_ids_for_user(user)
+            ),
             gateway_name,
             "gateway name",
         ),
@@ -204,8 +336,21 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
 }
 
 
-def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs) -> PermissionResult:
-    """Single entry point for all permission resolution. Per D-01 (REFAC-01)."""
+def resolve_permission(
+    resource_type: str, resource_id: str, username: str, **kwargs
+) -> PermissionResult:
+    """Single entry point for all permission resolution. Per D-01 (REFAC-01).
+
+    Results are cached with a short TTL to avoid repeated DB lookups on
+    every request. The cache key is (resource_type, resource_id, username).
+    """
+    cache = _get_permission_cache()
+    cache_key = (resource_type, resource_id, username)
+
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     builder = PERMISSION_REGISTRY[resource_type]
     sources_config = builder(resource_id, username, **kwargs)
     result = get_permission_from_store_or_default(sources_config)
@@ -221,9 +366,11 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
         if workspace:
             ws_perm = get_workspace_permission_cached(username, workspace)
             if ws_perm is not None:
-                return PermissionResult(ws_perm, "workspace")
-            return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+                result = PermissionResult(ws_perm, "workspace")
+            else:
+                result = PermissionResult(NO_PERMISSIONS, "workspace-deny")
 
+    cache[cache_key] = result
     return result
 
 
@@ -241,7 +388,9 @@ def effective_experiment_permission(experiment_id: str, user: str) -> Permission
     return resolve_permission(EXPERIMENT, experiment_id, user)
 
 
-def effective_registered_model_permission(model_name: str, user: str) -> PermissionResult:
+def effective_registered_model_permission(
+    model_name: str, user: str
+) -> PermissionResult:
     """
     Attempts to get permission from store based on configured sources,
     and returns default permission if no record is found.
@@ -259,7 +408,9 @@ def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult
     return resolve_permission(PROMPT, prompt_name, user)
 
 
-def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str) -> PermissionResult:
+def effective_scorer_permission(
+    experiment_id: str, scorer_name: str, user: str
+) -> PermissionResult:
     """Resolve effective permission for a scorer.
 
     This mirrors the behavior of `effective_experiment_permission` / `effective_registered_model_permission`
@@ -268,7 +419,9 @@ def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str)
     return resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
 
 
-def effective_gateway_endpoint_permission(gateway_name: str, user: str) -> PermissionResult:
+def effective_gateway_endpoint_permission(
+    gateway_name: str, user: str
+) -> PermissionResult:
     """
     Attempts to get permission from store based on configured sources,
     and returns default permission if no record is found.
@@ -277,7 +430,9 @@ def effective_gateway_endpoint_permission(gateway_name: str, user: str) -> Permi
     return resolve_permission(GATEWAY_ENDPOINT, gateway_name, user)
 
 
-def effective_gateway_secret_permission(gateway_name: str, user: str) -> PermissionResult:
+def effective_gateway_secret_permission(
+    gateway_name: str, user: str
+) -> PermissionResult:
     """
     Attempts to get permission from store based on configured sources,
     and returns default permission if no record is found.
@@ -286,7 +441,9 @@ def effective_gateway_secret_permission(gateway_name: str, user: str) -> Permiss
     return resolve_permission(GATEWAY_SECRET, gateway_name, user)
 
 
-def effective_gateway_model_definition_permission(gateway_name: str, user: str) -> PermissionResult:
+def effective_gateway_model_definition_permission(
+    gateway_name: str, user: str
+) -> PermissionResult:
     """
     Attempts to get permission from store based on configured sources,
     and returns default permission if no record is found.
@@ -326,7 +483,9 @@ def can_manage_scorer(experiment_id: str, scorer_name: str, user: str) -> bool:
     Scorers are scoped to an experiment. This uses the effective scorer permission
     resolution (user/group/regex/fallback) and checks the MANAGE bit.
     """
-    permission = effective_scorer_permission(experiment_id, scorer_name, user).permission
+    permission = effective_scorer_permission(
+        experiment_id, scorer_name, user
+    ).permission
     return permission.can_manage
 
 
@@ -371,22 +530,30 @@ def can_manage_gateway_secret(gateway_name: str, user: str) -> bool:
 
 
 def can_read_gateway_model_definition(gateway_name: str, user: str) -> bool:
-    permission = effective_gateway_model_definition_permission(gateway_name, user).permission
+    permission = effective_gateway_model_definition_permission(
+        gateway_name, user
+    ).permission
     return permission.can_read
 
 
 def can_use_gateway_model_definition(gateway_name: str, user: str) -> bool:
-    permission = effective_gateway_model_definition_permission(gateway_name, user).permission
+    permission = effective_gateway_model_definition_permission(
+        gateway_name, user
+    ).permission
     return permission.can_use
 
 
 def can_update_gateway_model_definition(gateway_name: str, user: str) -> bool:
-    permission = effective_gateway_model_definition_permission(gateway_name, user).permission
+    permission = effective_gateway_model_definition_permission(
+        gateway_name, user
+    ).permission
     return permission.can_update
 
 
 def can_manage_gateway_model_definition(gateway_name: str, user: str) -> bool:
-    permission = effective_gateway_model_definition_permission(gateway_name, user).permission
+    permission = effective_gateway_model_definition_permission(
+        gateway_name, user
+    ).permission
     return permission.can_manage
 
 

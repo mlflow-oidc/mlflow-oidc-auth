@@ -105,6 +105,11 @@ class AppConfig:
             "OIDC_JWKS_CACHE_TTL_SECONDS", default=300
         )
 
+        # Permission cache settings
+        self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int(
+            "PERMISSION_CACHE_TTL_SECONDS", default=30
+        )
+
         # Group settings
         self.OIDC_GROUP_NAME = config_manager.get_list(
             "OIDC_GROUP_NAME", default=["mlflow"]
