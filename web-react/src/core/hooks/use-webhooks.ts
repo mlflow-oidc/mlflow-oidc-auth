@@ -1,42 +1,36 @@
-import { useState, useEffect, useCallback } from "react";
-import { listWebhooks } from "../services/webhook-service";
+import { useState, useCallback } from "react";
+import {
+  listWebhooks,
+  type WebhookListResponse,
+} from "../services/webhook-service";
 import type { Webhook, WebhookStatus } from "../../shared/types/entity";
+import { useApi } from "./use-api";
 
 export function useWebhooks() {
-  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const {
+    data: response,
+    isLoading,
+    error,
+    refetch,
+  } = useApi<WebhookListResponse>(listWebhooks);
 
-  const fetchWebhooks = useCallback(async (isBackground = false) => {
-    if (!isBackground) {
-      setIsLoading(true);
-    }
-    setError(null);
-    try {
-      const response = await listWebhooks();
-      setWebhooks(response.webhooks);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      if (!isBackground) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
+  const [localOverrides, setLocalOverrides] = useState<
+    Map<string, Partial<Webhook>>
+  >(new Map());
 
-  useEffect(() => {
-    void fetchWebhooks();
-  }, [fetchWebhooks]);
+  const webhooks = (response?.webhooks ?? []).map((w) => {
+    const overrides = localOverrides.get(w.webhook_id);
+    return overrides ? { ...w, ...overrides } : w;
+  });
 
   const refresh = useCallback(() => {
-    void fetchWebhooks(true);
-  }, [fetchWebhooks]);
+    setLocalOverrides(new Map());
+    refetch();
+  }, [refetch]);
 
   const updateLocalWebhook = useCallback(
     (id: string, status: WebhookStatus) => {
-      setWebhooks((prev) =>
-        prev.map((w) => (w.webhook_id === id ? { ...w, status } : w)),
-      );
+      setLocalOverrides((prev) => new Map(prev).set(id, { status }));
     },
     [],
   );
