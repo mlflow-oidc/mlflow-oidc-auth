@@ -40,9 +40,7 @@ class TestListDeletedExperimentsEndpoint:
         result = await list_deleted_experiments(admin_username="admin@example.com")
 
         # Verify call
-        mock_fetch_all_experiments.assert_called_once_with(
-            view_type=ViewType.DELETED_ONLY
-        )
+        mock_fetch_all_experiments.assert_called_once_with(view_type=ViewType.DELETED_ONLY)
 
         # Verify response
         assert result.status_code == 200
@@ -65,9 +63,7 @@ class TestListDeletedExperimentsEndpoint:
         result = await list_deleted_experiments(admin_username="admin@example.com")
 
         # Verify call
-        mock_fetch_all_experiments.assert_called_once_with(
-            view_type=ViewType.DELETED_ONLY
-        )
+        mock_fetch_all_experiments.assert_called_once_with(view_type=ViewType.DELETED_ONLY)
 
         # Verify response
         assert result.status_code == 200
@@ -95,9 +91,7 @@ class TestListDeletedExperimentsEndpoint:
     def test_list_deleted_experiments_integration_admin(self, admin_client: TestClient):
         """Test the endpoint through FastAPI test client as admin."""
         # Mock the fetch function
-        with patch(
-            "mlflow_oidc_auth.routers.trash.fetch_all_experiments"
-        ) as mock_fetch:
+        with patch("mlflow_oidc_auth.routers.trash.fetch_all_experiments") as mock_fetch:
             mock_experiment = MagicMock()
             mock_experiment.experiment_id = "123"
             mock_experiment.name = "Deleted Experiment"
@@ -156,9 +150,7 @@ class TestListDeletedRunsEndpoint:
         backend_store.get_run.side_effect = [run_deleted, run_active]
         mock_get_store.return_value = backend_store
 
-        result = await list_deleted_runs(
-            admin_username="admin@example.com", experiment_ids=None, older_than=None
-        )
+        result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
 
         backend_store._get_deleted_runs.assert_called_once()
         assert result.status_code == 200
@@ -179,9 +171,7 @@ class TestListDeletedRunsEndpoint:
 
     @pytest.mark.asyncio
     async def test_list_deleted_runs_invalid_older_than(self):
-        result = await list_deleted_runs(
-            admin_username="admin@example.com", experiment_ids=None, older_than="bad"
-        )
+        result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than="bad")
         assert result.status_code == 400
 
     def test_list_deleted_runs_integration_admin(self, admin_client: TestClient):
@@ -232,9 +222,7 @@ class TestRestoreExperimentEndpoint:
         backend_store.get_experiment.side_effect = [deleted, restored]
         mock_get_store.return_value = backend_store
 
-        result = await restore_experiment(
-            experiment_id="123", admin_username="admin@example.com"
-        )
+        result = await restore_experiment(experiment_id="123", admin_username="admin@example.com")
         backend_store.restore_experiment.assert_called_once_with("123")
         assert result.status_code == 200
 
@@ -247,9 +235,7 @@ class TestRestoreExperimentEndpoint:
         backend_store.get_experiment.return_value = active
         mock_get_store.return_value = backend_store
 
-        result = await restore_experiment(
-            experiment_id="123", admin_username="admin@example.com"
-        )
+        result = await restore_experiment(experiment_id="123", admin_username="admin@example.com")
         assert result.status_code == 400
 
     @pytest.mark.asyncio
@@ -259,9 +245,7 @@ class TestRestoreExperimentEndpoint:
         backend_store.get_experiment.side_effect = Exception("not found")
         mock_get_store.return_value = backend_store
 
-        result = await restore_experiment(
-            experiment_id="missing", admin_username="admin@example.com"
-        )
+        result = await restore_experiment(experiment_id="missing", admin_username="admin@example.com")
         assert result.status_code == 404
 
 
@@ -321,9 +305,7 @@ class TestAdditionalTrashBehaviour:
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.fetch_all_experiments")
-    async def test_list_deleted_experiments_handles_none_tags(
-        self, mock_fetch_all_experiments
-    ):
+    async def test_list_deleted_experiments_handles_none_tags(self, mock_fetch_all_experiments):
         mock_deleted_experiment = MagicMock()
         mock_deleted_experiment.experiment_id = "321"
         mock_deleted_experiment.name = "Deleted No Tags"
@@ -345,9 +327,7 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.fetch_all_experiments")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_list_deleted_runs_fallback_and_empty(
-        self, mock_get_store, mock_fetch_all_experiments
-    ):
+    async def test_list_deleted_runs_fallback_and_empty(self, mock_get_store, mock_fetch_all_experiments):
         # Backend lacks _get_deleted_runs and search_runs raises -> fallback yields empty runs
         backend_store = MagicMock()
         if hasattr(backend_store, "_get_deleted_runs"):
@@ -360,9 +340,7 @@ class TestAdditionalTrashBehaviour:
         exp.experiment_id = "exp-1"
         mock_fetch_all_experiments.return_value = [exp]
 
-        result = await list_deleted_runs(
-            admin_username="admin@example.com", experiment_ids=None, older_than=None
-        )
+        result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
         assert result.status_code == 200
         import json
 
@@ -377,9 +355,7 @@ class TestAdditionalTrashBehaviour:
         backend_store.get_run.side_effect = Exception("unfetchable")
         mock_get_store.return_value = backend_store
 
-        result = await list_deleted_runs(
-            admin_username="admin@example.com", experiment_ids=None, older_than=None
-        )
+        result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
         assert result.status_code == 200
         import json
 
@@ -395,17 +371,12 @@ class TestAdditionalTrashBehaviour:
             delattr(backend_store, "_hard_delete_run")
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(
-            admin_username="admin@example.com", older_than=None
-        )
+        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None)
         assert result.status_code == 400
         import json
 
         payload = json.loads(result.body)
-        assert (
-            "Backend store does not support permanent deletion of runs"
-            in payload["error"]
-        )
+        assert "Backend store does not support permanent deletion of runs" in payload["error"]
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash._get_store")
@@ -456,9 +427,7 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_delete_runs_and_experiments_happy_path(
-        self, mock_get_store, mock_get_artifact_repo
-    ):
+    async def test_cleanup_delete_runs_and_experiments_happy_path(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
         backend_store._hard_delete_experiment = MagicMock()
@@ -507,9 +476,7 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_run_not_deleted_and_hard_delete_experiment_failure(
-        self, mock_get_store
-    ):
+    async def test_cleanup_run_not_deleted_and_hard_delete_experiment_failure(self, mock_get_store):
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
 
@@ -541,9 +508,7 @@ class TestAdditionalTrashBehaviour:
         # run should not be deleted and should appear in failed_runs
         assert any(f["run_id"] == "run-2" for f in payload.get("failed_runs", []))
         # experiment deletion should have failed
-        assert any(
-            f["experiment_id"] == "e2" for f in payload.get("failed_experiments", [])
-        )
+        assert any(f["experiment_id"] == "e2" for f in payload.get("failed_experiments", []))
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash._get_store")
@@ -572,9 +537,7 @@ class TestAdditionalTrashBehaviour:
         backend_store.get_run.side_effect = [run1, run2]
         mock_get_store.return_value = backend_store
 
-        result = await list_deleted_runs(
-            admin_username="admin@example.com", experiment_ids="exp-1", older_than=None
-        )
+        result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids="exp-1", older_than=None)
         assert result.status_code == 200
         import json
 
@@ -601,9 +564,7 @@ class TestAdditionalTrashBehaviour:
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as excinfo:
-            await list_deleted_runs(
-                admin_username="admin@example.com", experiment_ids=None, older_than=None
-            )
+            await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
 
         assert excinfo.value.status_code == 500
         assert excinfo.value.detail == "Failed to retrieve deleted runs"
@@ -611,9 +572,7 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_fetch_experiments_and_runs(
-        self, mock_get_store, mock_get_artifact_repo
-    ):
+    async def test_cleanup_fetch_experiments_and_runs(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
         backend_store._hard_delete_experiment = MagicMock()
@@ -715,9 +674,7 @@ class TestAdditionalTrashBehaviour:
         if hasattr(backend_store, "_get_deleted_runs"):
             delattr(backend_store, "_get_deleted_runs")
         # fetch_all_experiments used when experiment_ids not provided
-        with patch(
-            "mlflow_oidc_auth.routers.trash.fetch_all_experiments"
-        ) as mock_fetch_all_experiments:
+        with patch("mlflow_oidc_auth.routers.trash.fetch_all_experiments") as mock_fetch_all_experiments:
             exp = MagicMock()
             exp.experiment_id = "exp-1"
             mock_fetch_all_experiments.return_value = [exp]
@@ -725,9 +682,7 @@ class TestAdditionalTrashBehaviour:
             backend_store.get_run.side_effect = [run1, run2]
             mock_get_store.return_value = backend_store
 
-            result = await list_deleted_runs(
-                admin_username="admin@example.com", experiment_ids=None, older_than=None
-            )
+            result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
             assert result.status_code == 200
             import json
 
@@ -802,9 +757,7 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_fetch_experiments_pages_and_runs(
-        self, mock_get_store, mock_get_artifact_repo
-    ):
+    async def test_cleanup_fetch_experiments_pages_and_runs(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
         backend_store._hard_delete_experiment = MagicMock()
@@ -919,9 +872,7 @@ class TestAdditionalTrashBehaviour:
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_list_deleted_runs_json_serialization_error_raises_http_exception(
-        self, mock_get_store
-    ):
+    async def test_list_deleted_runs_json_serialization_error_raises_http_exception(self, mock_get_store):
         backend_store = MagicMock()
         backend_store._get_deleted_runs.return_value = ["r1"]
 
@@ -941,9 +892,7 @@ class TestAdditionalTrashBehaviour:
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as excinfo:
-            await list_deleted_runs(
-                admin_username="admin@example.com", experiment_ids=None, older_than=None
-            )
+            await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
 
         assert excinfo.value.status_code == 500
         assert excinfo.value.detail == "Failed to retrieve deleted runs"
@@ -951,9 +900,7 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_artifact_delete_exception_is_handled(
-        self, mock_get_store, mock_get_artifact_repo
-    ):
+    async def test_cleanup_artifact_delete_exception_is_handled(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
         backend_store._hard_delete_experiment = MagicMock()
@@ -987,9 +934,7 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_hard_delete_run_failure_records_failed_run(
-        self, mock_get_store, mock_get_artifact_repo
-    ):
+    async def test_cleanup_hard_delete_run_failure_records_failed_run(self, mock_get_store, mock_get_artifact_repo):
         backend_store = MagicMock()
         # hard delete run will fail
         backend_store._hard_delete_run.side_effect = Exception("boom-delete")
@@ -1018,10 +963,7 @@ class TestAdditionalTrashBehaviour:
         import json
 
         payload = json.loads(result.body)
-        assert any(
-            f["run_id"] == "r1" and "boom-delete" in f["error"]
-            for f in payload.get("failed_runs", [])
-        )
+        assert any(f["run_id"] == "r1" and "boom-delete" in f["error"] for f in payload.get("failed_runs", []))
 
     def test_parse_time_delta_more_cases(self):
         from mlflow.exceptions import MlflowException
@@ -1029,9 +971,7 @@ class TestAdditionalTrashBehaviour:
         from mlflow_oidc_auth.routers.trash import _parse_time_delta
 
         assert _parse_time_delta("1.5h") == int(1.5 * 3600 * 1000)
-        assert _parse_time_delta("2d8h5m20s") == int(
-            (2 * 24 * 3600 + 8 * 3600 + 5 * 60 + 20) * 1000
-        )
+        assert _parse_time_delta("2d8h5m20s") == int((2 * 24 * 3600 + 8 * 3600 + 5 * 60 + 20) * 1000)
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash._get_store")
@@ -1062,15 +1002,11 @@ class TestAdditionalTrashBehaviour:
             assert payload["deleted_runs"] == []
             assert payload["deleted_experiments"] == []
             # Ensure we warned about experiments not supported
-            assert any(
-                "does not allow hard-deleting experiments" in str(x.message) for x in w
-            )
+            assert any("does not allow hard-deleting experiments" in str(x.message) for x in w)
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_top_level_exception_raises_http_exception(
-        self, mock_get_store
-    ):
+    async def test_cleanup_top_level_exception_raises_http_exception(self, mock_get_store):
         mock_get_store.side_effect = Exception("boom")
         from fastapi import HTTPException
 
@@ -1102,9 +1038,7 @@ class TestAdditionalTrashBehaviour:
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as excinfo:
-            await restore_experiment(
-                experiment_id="999", admin_username="admin@example.com"
-            )
+            await restore_experiment(experiment_id="999", admin_username="admin@example.com")
 
         assert excinfo.value.status_code == 500
         assert excinfo.value.detail == "Failed to restore experiment"
