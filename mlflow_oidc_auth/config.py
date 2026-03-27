@@ -92,6 +92,11 @@ class AppConfig:
         )
         self.OIDC_AUDIENCE = config_manager.get("OIDC_AUDIENCE")
 
+        # JWKS caching settings
+        self.OIDC_JWKS_CACHE_TTL_SECONDS = config_manager.get_int(
+            "OIDC_JWKS_CACHE_TTL_SECONDS", default=300
+        )
+
         # Group settings
         self.OIDC_GROUP_NAME = config_manager.get_list(
             "OIDC_GROUP_NAME", default=["mlflow"]
