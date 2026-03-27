@@ -32,9 +32,17 @@ from mlflow.store.db.db_types import DATABASE_ENGINES
 from mlflow.tracking._model_registry.registry import ModelRegistryStoreRegistry
 from mlflow.webhooks.delivery import test_webhook
 
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.models import WebhookCreateRequest, WebhookListResponse, WebhookResponse, WebhookTestRequest, WebhookTestResponse, WebhookUpdateRequest
+from mlflow_oidc_auth.models import (
+    WebhookCreateRequest,
+    WebhookListResponse,
+    WebhookResponse,
+    WebhookTestRequest,
+    WebhookTestResponse,
+    WebhookUpdateRequest,
+)
 
 from ._prefix import WEBHOOK_ROUTER_PREFIX
 
@@ -47,6 +55,12 @@ class ModelRegistryStoreRegistryWrapper(ModelRegistryStoreRegistry):
 
     This is needed because the default ModelRegistryStoreRegistry doesn't register
     any database schemes, leading to UnsupportedModelRegistryStoreURIException.
+
+    When ``MLFLOW_ENABLE_WORKSPACES`` is enabled, the wrapper uses MLflow's
+    ``WorkspaceAwareSqlAlchemyStore`` instead of the plain ``SqlAlchemyStore``.
+    The workspace-aware variant skips the ``_initialize_store_state()`` check
+    that rejects databases containing models outside the default workspace,
+    and adds workspace filtering to all queries.
     """
 
     def __init__(self):
@@ -69,7 +83,19 @@ class ModelRegistryStoreRegistryWrapper(ModelRegistryStoreRegistry):
 
     @classmethod
     def _get_sqlalchemy_store(cls, store_uri):
-        """Get SQLAlchemy-based model registry store."""
+        """Get SQLAlchemy-based model registry store.
+
+        Uses ``WorkspaceAwareSqlAlchemyStore`` when workspaces are enabled so
+        that the store does not reject databases with models in non-default
+        workspaces and properly scopes queries to the active workspace.
+        """
+        if config.MLFLOW_ENABLE_WORKSPACES:
+            from mlflow.store.model_registry.sqlalchemy_workspace_store import (
+                WorkspaceAwareSqlAlchemyStore,
+            )
+
+            return WorkspaceAwareSqlAlchemyStore(store_uri)
+
         from mlflow.store.model_registry.sqlalchemy_store import SqlAlchemyStore
 
         return SqlAlchemyStore(store_uri)
@@ -98,7 +124,10 @@ def _get_model_registry_store():
         return _model_registry_store_registry.get_store()
     except Exception as e:
         logger.error(f"Failed to get model registry store: {e}")
-        raise HTTPException(status_code=503, detail="Webhook service temporarily unavailable. Ensure MLflow is properly configured with SQL backend.")
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook service temporarily unavailable. Ensure MLflow is properly configured with SQL backend.",
+        )
 
 
 # Create the router
@@ -168,7 +197,11 @@ def create_webhook(
             raise HTTPException(status_code=400, detail=f"Invalid event type: {event}")
 
     # Convert status string to WebhookStatus enum
-    status = WebhookStatus(webhook_data.status) if webhook_data.status else WebhookStatus.ACTIVE
+    status = (
+        WebhookStatus(webhook_data.status)
+        if webhook_data.status
+        else WebhookStatus.ACTIVE
+    )
 
     # Create webhook using MLflow store
     webhook = store.create_webhook(
@@ -180,7 +213,9 @@ def create_webhook(
         status=status,
     )
 
-    logger.info(f"Webhook {webhook.webhook_id} created successfully by {admin_username}")
+    logger.info(
+        f"Webhook {webhook.webhook_id} created successfully by {admin_username}"
+    )
     return _webhook_to_response(webhook)
 
 
@@ -191,7 +226,9 @@ def create_webhook(
     description="List all webhooks with pagination support. Only admin users can view webhooks.",
 )
 def list_webhooks(
-    max_results: Optional[int] = Query(None, description="Maximum number of webhooks to return", ge=1, le=1000),
+    max_results: Optional[int] = Query(
+        None, description="Maximum number of webhooks to return", ge=1, le=1000
+    ),
     page_token: Optional[str] = Query(None, description="Token for pagination"),
     admin_username: str = Depends(check_admin_permission),
 ) -> WebhookListResponse:
@@ -226,7 +263,11 @@ def list_webhooks(
     except Exception as e:
         # Detect decryption failure (invalid/mismatched encryption key)
         cause = getattr(e, "__cause__", None) or getattr(e, "__context__", None)
-        if isinstance(cause, InvalidToken) or "InvalidToken" in repr(e) or "Signature did not match" in repr(e):
+        if (
+            isinstance(cause, InvalidToken)
+            or "InvalidToken" in repr(e)
+            or "Signature did not match" in repr(e)
+        ):
             logger.error(
                 "Failed to list webhooks: webhook secret decryption failed (InvalidToken). "
                 "This usually means MLFLOW_WEBHOOK_SECRET_ENCRYPTION_KEY is missing or changed since the webhooks were created.",
@@ -242,7 +283,9 @@ def list_webhooks(
         # Generic fallback
         logger.error(f"Failed to list webhooks: {e}", exc_info=True)
         # Return service unavailable to avoid internal 500s leaking implementation details
-        raise HTTPException(status_code=503, detail="Webhook service temporarily unavailable.")
+        raise HTTPException(
+            status_code=503, detail="Webhook service temporarily unavailable."
+        )
 
     # Preserve token before materializing/consuming the paged result
     next_page_token = getattr(webhooks_page, "token", None)
@@ -337,7 +380,9 @@ def update_webhook(
                 webhook_events.append(WebhookEvent.from_str(event))  # type: ignore
             except Exception as e:
                 logger.error(f"Invalid event type: {event}, error: {e}")
-                raise HTTPException(status_code=400, detail=f"Invalid event type: {event}")
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid event type: {event}"
+                )
 
     # Convert status string to WebhookStatus enum if provided
     status = None
@@ -438,12 +483,16 @@ def test_webhook_endpoint(
             event = WebhookEvent.from_str(test_data.event_type)  # type: ignore
         except Exception as e:
             logger.error(f"Invalid event type: {test_data.event_type}, error: {e}")
-            raise HTTPException(status_code=400, detail=f"Invalid event type: {test_data.event_type}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid event type: {test_data.event_type}"
+            )
 
     # Test webhook using MLflow's test function
     test_result = test_webhook(webhook=webhook, event=event)
 
-    logger.info(f"Webhook {webhook_id} test completed for {admin_username}: success={test_result.success}")
+    logger.info(
+        f"Webhook {webhook_id} test completed for {admin_username}: success={test_result.success}"
+    )
 
     return WebhookTestResponse(
         success=test_result.success,
