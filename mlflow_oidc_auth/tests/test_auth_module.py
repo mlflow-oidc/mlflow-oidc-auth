@@ -3,7 +3,16 @@ import requests
 from authlib.jose.errors import BadSignatureError
 
 from mlflow_oidc_auth import auth
+from mlflow_oidc_auth.auth import _jwks_cache
 from mlflow_oidc_auth.config import config
+
+
+@pytest.fixture(autouse=True)
+def clear_jwks_cache():
+    """Clear the JWKS cache before each test to prevent cross-test contamination."""
+    _jwks_cache.clear()
+    yield
+    _jwks_cache.clear()
 
 
 class DummyResponse:
@@ -73,11 +82,13 @@ class Payload:
 
 
 def test_validate_token_success(monkeypatch):
-    monkeypatch.setattr(auth, "_get_oidc_jwks", lambda: {"keys": []})
+    monkeypatch.setattr(
+        auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []}
+    )
 
     payload = Payload()
 
-    def fake_decode(token, jwks):
+    def fake_decode(token, jwks, claims_options=None):
         assert jwks == {"keys": []}
         return payload
 
@@ -89,12 +100,14 @@ def test_validate_token_success(monkeypatch):
 
 
 def test_validate_token_bad_signature_retries(monkeypatch):
-    monkeypatch.setattr(auth, "_get_oidc_jwks", lambda: {"keys": []})
+    monkeypatch.setattr(
+        auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []}
+    )
 
     payload = Payload()
     calls = {"count": 0}
 
-    def fake_decode(token, jwks):
+    def fake_decode(token, jwks, claims_options=None):
         calls["count"] += 1
         if calls["count"] == 1:
             raise BadSignatureError("bad sig")
@@ -109,9 +122,11 @@ def test_validate_token_bad_signature_retries(monkeypatch):
 
 
 def test_validate_token_other_exception_propagates(monkeypatch):
-    monkeypatch.setattr(auth, "_get_oidc_jwks", lambda: {"keys": []})
+    monkeypatch.setattr(
+        auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []}
+    )
 
-    def fake_decode(token, jwks):
+    def fake_decode(token, jwks, claims_options=None):
         raise ValueError("boom")
 
     monkeypatch.setattr(auth.jwt, "decode", fake_decode)

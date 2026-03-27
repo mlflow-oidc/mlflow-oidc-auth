@@ -16,11 +16,10 @@
 - Impact: Adding a new resource type requires copying ~300 lines of boilerplate in each file. Bug fixes must be applied in multiple places.
 - Fix approach: Extract a generic permission CRUD factory that generates endpoints for a given resource type. Example: `create_permission_routes(resource_name, repository, schema)`.
 
-**Duplicated Permission Resolution Logic**
-- Issue: `utils/permissions.py` contains ~8 nearly identical functions for checking permissions across different resource types (experiments, models, scorers, gateway endpoints, gateway secrets, gateway model definitions). Each follows the same pattern: check user permission → check group permission → check regex permission → check group regex permission.
-- Files: `mlflow_oidc_auth/utils/permissions.py` (466 lines)
-- Impact: Logic changes (e.g., adding a new permission source) must be replicated across all ~8 functions. High risk of inconsistency.
-- Fix approach: Create a generic `resolve_permission(resource_type, resource_name, username)` function parameterized by resource type, with resource-specific repository methods passed as callbacks.
+**~~Duplicated Permission Resolution Logic~~ (RESOLVED)**
+- `utils/permissions.py` previously contained ~8 nearly identical functions for checking permissions across different resource types. Each followed the same pattern: check user permission → check group permission → check regex permission → check group regex permission.
+- Fix: Refactored to use a registry-driven `resolve_permission()` function with `PERMISSION_REGISTRY` that parameterizes permission resolution by resource type.
+- Files: `mlflow_oidc_auth/utils/permissions.py`
 
 **Repository Explosion**
 - Issue: 26+ repository files in `mlflow_oidc_auth/repository/` follow near-identical patterns (get, list, create, update, delete with SQLAlchemy sessions). Most are under 100 lines with trivial logic.
@@ -63,17 +62,30 @@
 
 ## Known Bugs
 
-**User Deletion Missing Gateway Permission Cleanup**
-- Symptoms: When a user is deleted, their gateway endpoint permissions, gateway secret permissions, and gateway model definition permissions are NOT cleaned up, leaving orphaned records in the database.
-- Files: `mlflow_oidc_auth/repository/user.py:143-163`
-- Trigger: Delete a user who has gateway-related permissions assigned.
-- Workaround: Manually clean up gateway permission tables after user deletion. Or rely on foreign key cascades if configured (not verified).
+**~~User Deletion Missing Gateway Permission Cleanup~~ (RESOLVED)**
+- When a user was deleted, their gateway endpoint/secret/model definition permissions and workspace permissions (both direct and regex) were NOT cleaned up, leaving orphaned records.
+- Fix: Added cascade deletes for `SqlGatewayEndpointPermission`, `SqlGatewayEndpointRegexPermission`, `SqlGatewaySecretPermission`, `SqlGatewaySecretRegexPermission`, `SqlGatewayModelDefinitionPermission`, `SqlGatewayModelDefinitionRegexPermission`, `SqlWorkspacePermission`, `SqlWorkspaceRegexPermission`.
+- Files: `mlflow_oidc_auth/repository/user.py`
 
-**Gateway Validators Return True on Resolution Failure**
-- Symptoms: When a gateway resource name cannot be resolved, the validator returns `True` (allow access) instead of denying access. This is a fail-open pattern.
-- Files: `mlflow_oidc_auth/validators/gateway.py:129-131`, `mlflow_oidc_auth/validators/gateway.py:137-138`, `mlflow_oidc_auth/validators/gateway.py:149-150`
-- Trigger: Send a request with a gateway resource name that doesn't match any known endpoint/secret/model_definition.
-- Workaround: None — this is a logic error that should be fixed to fail-closed (return `False`).
+**~~Gateway Validators Return True on Resolution Failure~~ (RESOLVED)**
+- When a gateway resource name could not be resolved, validators returned `True` (allow access) instead of denying access — a fail-open pattern.
+- Fix: Changed three model definition validators to return `False` (fail-closed) when the resource name cannot be resolved.
+- Files: `mlflow_oidc_auth/validators/gateway.py`
+
+**~~Log Injection in Workspace Logging~~ (RESOLVED)**
+- Workspace CRUD router used f-string interpolation with user-controlled data (`body.name`, `workspace`, `username`) in logger calls, enabling log injection attacks. Workspace cache module passed unsanitized `username`/`workspace` to `%s` format params.
+- Fix: Removed user-controlled data from `workspace_crud.py` log messages entirely. Added `_sanitize()` helper to `workspace_cache.py` stripping `\n`, `\r`, `\t` from all user-controlled log parameters.
+- Files: `mlflow_oidc_auth/routers/workspace_crud.py`, `mlflow_oidc_auth/utils/workspace_cache.py`
+
+**~~React Hooks Called After Early Returns~~ (RESOLVED)**
+- Three workspace UI components had hooks called after conditional `return` statements (`if (!workspaces_enabled) return <Navigate />`), violating React Rules of Hooks and causing unpredictable behavior.
+- Fix: Moved all hook calls above early returns in all three components.
+- Files: `web-react/src/features/workspaces/workspace-detail-page.tsx`, `web-react/src/features/workspaces/workspaces-page.tsx`, `web-react/src/shared/components/workspace-picker.tsx`
+
+**~~Workspace Picker Missing Keyboard Accessibility~~ (RESOLVED)**
+- `<div role="option">` elements in workspace picker had click handlers but no keyboard event handlers or `tabIndex`, making them inaccessible to keyboard-only users.
+- Fix: Added `tabIndex={0}` and `onKeyDown` handlers (Enter/Space) to all option elements.
+- Files: `web-react/src/shared/components/workspace-picker.tsx`
 
 **~~Webhook UI Not Refreshing on Workspace Change~~ (RESOLVED)**
 - The `useWebhooks` hook used a manual `useCallback`/`useEffect` pattern instead of the shared `useApi` hook. This meant webhook data was fetched once on mount but never refetched when the active workspace changed, causing stale webhook data from the previous workspace to remain visible.
@@ -97,56 +109,47 @@
 
 ## Security Considerations
 
-**No JWKS/Discovery Caching**
-- Risk: Every bearer token validation triggers 2 HTTP requests to the OIDC provider (discovery document + JWKS endpoint). If the OIDC provider is slow or unavailable, all authenticated requests fail or hang. A comment in the code intentionally avoids caching.
-- Files: `mlflow_oidc_auth/auth.py`
-- Current mitigation: None — requests are made on every validation.
-- Recommendations: Implement JWKS caching with a TTL (e.g., 5 minutes). Use `PyJWKClient` with caching enabled, or cache the discovery document separately. This also reduces latency per request.
+**~~No JWKS/Discovery Caching~~ (RESOLVED)**
+- Every bearer token validation previously triggered 2 HTTP requests to the OIDC provider (discovery document + JWKS endpoint).
+- Fix: Added TTL-based caching for JWKS and discovery responses using `cachetools.TTLCache` with configurable TTL via `OIDC_JWKS_CACHE_TTL_SECONDS` (default 300s). Thread-safe via `threading.Lock`. On `BadSignatureError`, cache is force-refreshed to handle key rotation.
+- Files: `mlflow_oidc_auth/auth.py`, `mlflow_oidc_auth/config.py`
 
-**Session Secret Key Fallback**
-- Risk: If `SECRET_KEY` is not configured, `config.py` falls back to `secrets.token_hex(16)` which generates a random key at startup. In multi-replica deployments, each replica gets a different key, causing session invalidation when requests are load-balanced across replicas.
-- Files: `mlflow_oidc_auth/config.py:68`, `mlflow_oidc_auth/app.py:87`
-- Current mitigation: None — relies on operators configuring the key.
-- Recommendations: Log a WARNING when the fallback is used. Consider failing hard in production if SECRET_KEY is not set.
+**~~Session Secret Key Fallback~~ (RESOLVED)**
+- If `SECRET_KEY` was not configured, a random key was generated at startup with no warning, causing session invalidation across replicas.
+- Fix: Added `WARNING` log message on startup when the fallback random key is used, alerting operators to configure `SECRET_KEY` for multi-replica deployments.
+- Files: `mlflow_oidc_auth/config.py`
 
-**User-Supplied Regex Patterns (ReDoS Risk)**
-- Risk: Permission regex patterns are stored in the database and evaluated with `re.match()` on every permission check. A malicious admin could store a catastrophic backtracking regex (e.g., `(a+)+$`) causing denial of service.
-- Files: `mlflow_oidc_auth/utils/permissions.py` (multiple functions using `re.match`)
-- Current mitigation: None — regex is used as-is from the database.
-- Recommendations: Validate regex complexity on write (reject patterns with nested quantifiers). Consider using `google-re2` for guaranteed linear-time matching. Add a timeout to regex evaluation.
+**~~User-Supplied Regex Patterns (ReDoS Risk)~~ (RESOLVED)**
+- Permission regex patterns stored in the database were evaluated with `re.match()` without complexity validation, allowing catastrophic backtracking patterns.
+- Fix: Added ReDoS validation to `validate_regex()` in `repository/utils.py` — rejects patterns with nested quantifiers and limits pattern length to 1024 chars. All regex permission repositories inherit from base classes that already call `validate_regex()` on write paths.
+- Files: `mlflow_oidc_auth/repository/utils.py`
 
-**No JWT Audience Validation**
-- Risk: Bearer token validation extracts the username from `email` or `preferred_username` claims but does not validate the `aud` (audience) claim. A token issued for a different application by the same OIDC provider would be accepted.
-- Files: `mlflow_oidc_auth/middleware/auth_middleware.py:92`, `mlflow_oidc_auth/auth.py`
-- Current mitigation: None.
-- Recommendations: Configure an expected audience and validate the `aud` claim during token verification.
+**~~No JWT Audience Validation~~ (RESOLVED)**
+- Bearer token validation did not validate the `aud` (audience) claim, accepting tokens issued for different applications by the same OIDC provider.
+- Fix: Added `OIDC_AUDIENCE` configuration option. When set, audience is validated via `authlib.jose.jwt.decode()` `claims_options` with `payload.validate()`. When not set, audience validation is skipped (backward compatible).
+- Files: `mlflow_oidc_auth/auth.py`, `mlflow_oidc_auth/config.py`
 
-**Unconditional Proxy Header Trust**
-- Risk: `ProxyHeadersMiddleware` trusts all `X-Forwarded-For`, `X-Forwarded-Proto` headers unconditionally. An attacker who can reach the server directly (bypassing the reverse proxy) can spoof their IP address and protocol.
-- Files: `mlflow_oidc_auth/middleware/proxy_headers_middleware.py`
-- Current mitigation: None — no trusted proxy allowlist.
-- Recommendations: Configure a trusted proxy CIDR range. Only process `X-Forwarded-*` headers from requests originating from trusted proxies.
+**~~Unconditional Proxy Header Trust~~ (RESOLVED)**
+- `ProxyHeadersMiddleware` trusted all `X-Forwarded-For`, `X-Forwarded-Proto` headers unconditionally, allowing IP spoofing.
+- Fix: Added `TRUSTED_PROXIES` configuration option accepting CIDR ranges. Only processes `X-Forwarded-*` headers from requests originating from trusted proxies. When not configured, all proxies are trusted (backward compatible).
+- Files: `mlflow_oidc_auth/middleware/proxy_headers_middleware.py`, `mlflow_oidc_auth/config.py`
 
-**Basic Auth Credentials Logged at Debug Level**
-- Risk: When basic authentication is used, the username (and potentially password context) is logged at debug level. If debug logging is enabled in production, credentials appear in log files.
-- Files: `mlflow_oidc_auth/middleware/auth_middleware.py:70`
-- Current mitigation: Only at DEBUG level, which should not be enabled in production.
-- Recommendations: Never log credentials at any level. Log authentication events without credential details.
+**~~Basic Auth Credentials Logged at Debug Level~~ (RESOLVED)**
+- Authentication error exception messages could contain credential context and were logged at error/debug level using f-strings.
+- Fix: Replaced all exception detail logging in auth methods with `type(e).__name__` only (logs exception class, not message). Removed user-controlled data from error return values in session auth methods.
+- Files: `mlflow_oidc_auth/middleware/auth_middleware.py`
 
-**Gateway Validators Fail Open**
-- Risk: When a gateway resource name cannot be resolved, validators return `True` (allow access). This means unrecognized resources are accessible to everyone.
-- Files: `mlflow_oidc_auth/validators/gateway.py:129-131`, `mlflow_oidc_auth/validators/gateway.py:137-138`, `mlflow_oidc_auth/validators/gateway.py:149-150`
-- Current mitigation: None.
-- Recommendations: Change fail-open to fail-closed: return `False` when a resource cannot be resolved. Log the resolution failure for debugging.
+**~~Gateway Validators Fail Open~~ (RESOLVED)**
+- When a gateway resource name could not be resolved, validators returned `True` (allow access).
+- Fix: Changed to fail-closed — return `False` when a resource cannot be resolved.
+- Files: `mlflow_oidc_auth/validators/gateway.py`
 
 ## Performance Bottlenecks
 
-**No Permission Caching (Resource Permissions)**
-- Problem: Every incoming request triggers a multi-step permission resolution chain: direct user permission → group permission → regex user permission → regex group permission. Each step involves a database query.
-- Files: `mlflow_oidc_auth/utils/permissions.py` (all `_get_permission_for_*` functions)
-- Cause: No caching layer between the permission check and the database. Permissions are resolved from scratch on every request.
-- Note: Workspace permissions DO have TTL-based caching via `mlflow_oidc_auth/utils/workspace_cache.py`, but resource-level permissions (experiments, models, etc.) do not.
-- Improvement path: Add a short-lived cache (e.g., 30-60 seconds) for permission lookups keyed by `(username, resource_type, resource_name)`. Invalidate on permission write operations.
+**~~No Permission Caching (Resource Permissions)~~ (RESOLVED)**
+- Every incoming request previously triggered a multi-step permission resolution chain with database queries at each step and no caching.
+- Fix: Added TTL-based caching at the `resolve_permission()` level using `cachetools.TTLCache`, configurable via `PERMISSION_CACHE_TTL_SECONDS` (default 30s). Cache is keyed by `(username, resource_type, resource_name)`. `invalidate_permission_cache()` and `flush_permission_cache()` functions provided for write-path invalidation.
+- Files: `mlflow_oidc_auth/utils/permissions.py`, `mlflow_oidc_auth/config.py`
 
 **Post-Fetch Search Result Filtering**
 - Problem: `after_request.py` filters search results for experiments and registered models AFTER fetching them from MLflow. It iterates through results and re-fetches individually to check permissions, turning an O(1) search into O(n) permission checks.
@@ -154,11 +157,10 @@
 - Cause: MLflow's search API doesn't support permission-aware queries, so filtering must happen post-fetch.
 - Improvement path: Cache user permissions for the duration of the request to avoid repeated DB lookups. Consider pre-computing a user's accessible resource set for large deployments.
 
-**JWKS Fetched on Every Token Validation**
-- Problem: Two HTTP round-trips per bearer token validation (discovery + JWKS). Adds latency to every API request using bearer tokens.
-- Files: `mlflow_oidc_auth/auth.py`
-- Cause: Intentional design choice to avoid caching (per code comments).
-- Improvement path: Cache JWKS with a TTL. The JWKS endpoint already provides cache control headers that can be respected.
+**~~JWKS Fetched on Every Token Validation~~ (RESOLVED)**
+- Two HTTP round-trips per bearer token validation (discovery + JWKS) added latency to every API request using bearer tokens.
+- Fix: Implemented TTL-based caching with force-refresh on `BadSignatureError` for key rotation handling. See JWKS/Discovery Caching entry in Security Considerations.
+- Files: `mlflow_oidc_auth/auth.py`, `mlflow_oidc_auth/config.py`
 
 **Eager Permission Loading on User List**
 - Problem: The `list_users` endpoint calls `to_mlflow_entity()` for each user, which eagerly loads all permission relationships (experiment permissions, model permissions, etc.).
@@ -248,4 +250,4 @@
 
 ---
 
-*Concerns audit: 2026-03-23 (bug fix history updated: 2026-03-27)*
+*Concerns audit: 2026-03-23 (bug fix history updated: 2026-03-27, SonarCloud fixes added: 2026-03-27, top-10 concerns resolved: 2026-03-27)*
