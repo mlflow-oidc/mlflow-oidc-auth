@@ -57,7 +57,9 @@ def test_engine(temp_db):
 @pytest.fixture
 def test_session(test_engine):
     """Create a test database session."""
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+    TestingSessionLocal = sessionmaker(
+        autocommit=False, autoflush=False, bind=test_engine
+    )
     session = TestingSessionLocal()
     try:
         yield session
@@ -116,6 +118,11 @@ def mock_store():
     store_mock.authenticate_user.return_value = True
 
     store_mock.list_users.return_value = [admin_user, regular_user, service_user]
+    store_mock.list_usernames.return_value = [
+        "admin@example.com",
+        "user@example.com",
+        "service@example.com",
+    ]
     store_mock.create_user.return_value = True
     store_mock.update_user.return_value = None
     store_mock.delete_user.return_value = None
@@ -238,7 +245,11 @@ def mock_oauth():
     oauth_mock = MagicMock()
     oidc_mock = MagicMock()
     # Use AsyncMock for async methods so tests can assert calls and awaited behavior
-    oidc_mock.authorize_redirect = AsyncMock(return_value=MagicMock(status_code=302, headers={"Location": "https://provider.com/auth"}))
+    oidc_mock.authorize_redirect = AsyncMock(
+        return_value=MagicMock(
+            status_code=302, headers={"Location": "https://provider.com/auth"}
+        )
+    )
     oidc_mock.authorize_access_token = AsyncMock(
         return_value={
             "access_token": "mock_access_token",
@@ -267,7 +278,9 @@ def mock_user_management(monkeypatch):
 
     # Patch the mlflow_oidc_auth.user functions to use these mocks
     monkeypatch.setattr("mlflow_oidc_auth.user.create_user", mocks["create_user"])
-    monkeypatch.setattr("mlflow_oidc_auth.user.populate_groups", mocks["populate_groups"])
+    monkeypatch.setattr(
+        "mlflow_oidc_auth.user.populate_groups", mocks["populate_groups"]
+    )
     monkeypatch.setattr("mlflow_oidc_auth.user.update_user", mocks["update_user"])
 
     return mocks
@@ -279,7 +292,9 @@ def mock_config():
     config_mock = MagicMock()
     config_mock.OIDC_PROVIDER_DISPLAY_NAME = "Test Provider"
     config_mock.OIDC_REDIRECT_URI = "http://localhost:8000/callback"
-    config_mock.OIDC_DISCOVERY_URL = "https://provider.com/.well-known/openid_configuration"
+    config_mock.OIDC_DISCOVERY_URL = (
+        "https://provider.com/.well-known/openid_configuration"
+    )
     config_mock.OIDC_GROUP_DETECTION_PLUGIN = None
     config_mock.OIDC_GROUPS_ATTRIBUTE = "groups"
     config_mock.OIDC_ADMIN_GROUP_NAME = ["admin-group"]
@@ -350,14 +365,18 @@ def _patch_router_stores(mock_store):
         patch("mlflow_oidc_auth.store.store", mock_store),
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
         patch("mlflow_oidc_auth.utils.batch_permissions.store", mock_store),
-        patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store),
+        patch(
+            "mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store
+        ),
         patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.users.store", mock_store),
         patch("mlflow_oidc_auth.routers.experiment_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.scorers_permissions.store", mock_store),
-        patch("mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store),
+        patch(
+            "mlflow_oidc_auth.routers.gateway_endpoint_permissions.store", mock_store
+        ),
         patch("mlflow_oidc_auth.routers.gateway_secret_permissions.store", mock_store),
         patch(
             "mlflow_oidc_auth.routers.gateway_model_definition_permissions.store",
@@ -425,7 +444,9 @@ def admin_session():
 
 
 @pytest.fixture
-def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_permissions):
+def test_app(
+    mock_store, mock_oauth, mock_config, mock_tracking_store, mock_permissions
+):
     """Create a test FastAPI application with all routers."""
     # Build test app using the production factory so mounts/middleware match prod
 
@@ -479,7 +500,9 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
             "mlflow_oidc_auth.dependencies.can_manage_experiment",
             _deleg_can_manage_experiment,
         ),
-        patch("mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer),
+        patch(
+            "mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer
+        ),
         patch(
             "mlflow_oidc_auth.dependencies.can_manage_registered_model",
             _deleg_can_manage_registered_model,
@@ -527,7 +550,9 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
 
         app = FastAPI()
         app.add_middleware(AuthMiddleware)
-        app.add_middleware(StarletteSessionMiddleware, secret_key=mock_config.SECRET_KEY)
+        app.add_middleware(
+            StarletteSessionMiddleware, secret_key=mock_config.SECRET_KEY
+        )
 
         for router in get_all_routers():
             app.include_router(router)
@@ -550,7 +575,9 @@ def authenticated_client(test_app, authenticated_session):
     import base64
 
     client = TestClient(test_app)
-    client.headers["Authorization"] = "Basic " + base64.b64encode(b"user@example.com:password").decode()
+    client.headers["Authorization"] = (
+        "Basic " + base64.b64encode(b"user@example.com:password").decode()
+    )
     return TestClientWrapper(client)
 
 
@@ -560,12 +587,16 @@ def admin_client(test_app_admin):
     import base64
 
     client = TestClient(test_app_admin)
-    client.headers["Authorization"] = "Basic " + base64.b64encode(b"admin@example.com:password").decode()
+    client.headers["Authorization"] = (
+        "Basic " + base64.b64encode(b"admin@example.com:password").decode()
+    )
     return TestClientWrapper(client)
 
 
 @pytest.fixture
-def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, admin_permissions):
+def test_app_admin(
+    mock_store, mock_oauth, mock_config, mock_tracking_store, admin_permissions
+):
     """Create a test FastAPI application with all routers for admin tests."""
 
     # Ensure middleware submodule exists on package for patch resolution
@@ -630,7 +661,9 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
             "mlflow_oidc_auth.dependencies.can_manage_registered_model",
             _deleg_can_manage_registered_model,
         ),
-        patch("mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer),
+        patch(
+            "mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer
+        ),
         # Patch request helper module-level store
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
         patch(
@@ -668,7 +701,9 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
 
         app = FastAPI()
         app.add_middleware(AuthMiddleware)
-        app.add_middleware(StarletteSessionMiddleware, secret_key=mock_config.SECRET_KEY)
+        app.add_middleware(
+            StarletteSessionMiddleware, secret_key=mock_config.SECRET_KEY
+        )
 
         for router in get_all_routers():
             app.include_router(router)
@@ -697,8 +732,12 @@ def mock_request_with_session():
 def sample_experiment_permissions():
     """Sample experiment permission data for testing."""
     return [
-        ExperimentPermissionEntity(experiment_id="123", permission=Permission.MANAGE.name, user_id=1),
-        ExperimentPermissionEntity(experiment_id="456", permission=Permission.READ.name, user_id=1),
+        ExperimentPermissionEntity(
+            experiment_id="123", permission=Permission.MANAGE.name, user_id=1
+        ),
+        ExperimentPermissionEntity(
+            experiment_id="456", permission=Permission.READ.name, user_id=1
+        ),
     ]
 
 

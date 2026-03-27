@@ -133,6 +133,21 @@ class UserRepository:
                 q = q.filter(SqlUser.is_service_account == is_service_account)
             return [u.to_mlflow_entity() for u in q.all()]
 
+    def list_usernames(self, is_service_account: bool = False) -> List[str]:
+        """Return only usernames without loading any relationships.
+
+        This is much cheaper than ``list()`` because it avoids loading
+        experiment/model/scorer/gateway permission collections and groups
+        for every user row.
+        """
+        with self._Session() as session:
+            rows = (
+                session.query(SqlUser.username)
+                .filter(SqlUser.is_service_account == is_service_account)
+                .all()
+            )
+            return [r[0] for r in rows]
+
     def update(
         self,
         username: str,

@@ -572,7 +572,11 @@ def can_manage_gateway_model_definition(gateway_name: str, user: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-# TODO: check if str can be replaced by Permission in function signature
+# Note: PERMISSION_SOURCES_CONFIG callables return `str` (permission names like
+# "READ", "MANAGE") rather than `Permission` objects. This is by design — the
+# store and repository layers persist and return string permission names.
+# Converting to `Permission` via `get_permission()` happens once in this
+# function, keeping the builder functions simple and store-agnostic.
 def get_permission_from_store_or_default(
     PERMISSION_SOURCES_CONFIG: Dict[str, Callable[[], str]],
 ) -> PermissionResult:

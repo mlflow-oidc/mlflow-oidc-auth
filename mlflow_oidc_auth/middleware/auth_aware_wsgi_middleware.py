@@ -10,7 +10,7 @@ from asgiref.wsgi import WsgiToAsgi as WSGIMiddleware
 from starlette.types import Receive, Scope, Send
 import asyncio
 
-from mlflow_oidc_auth.entities.auth_context import AuthContext
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
@@ -32,13 +32,13 @@ class AuthInjectingWSGIApp:
         """WSGI app callable that injects auth info before calling Flask app."""
 
         # Extract AuthContext from ASGI scope (set by AuthMiddleware)
-        auth_context = self.scope.get("mlflow_oidc_auth")
+        auth_context = self.scope.get(AUTH_CONTEXT_KEY)
         if isinstance(auth_context, AuthContext):
             logger.debug(
                 f"Injecting AuthContext into WSGI environ: username={auth_context.username}, is_admin={auth_context.is_admin}, workspace={auth_context.workspace}"
             )
             # Inject AuthContext as a single object — bridge functions read from this
-            environ["mlflow_oidc_auth"] = auth_context
+            environ[AUTH_CONTEXT_KEY] = auth_context
 
         # Call the Flask app with enhanced environ
         return self.flask_app(environ, start_response)

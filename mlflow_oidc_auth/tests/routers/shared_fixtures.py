@@ -81,6 +81,11 @@ def mock_store():
     store_mock.authenticate_user.return_value = True
 
     store_mock.list_users.return_value = [admin_user, regular_user, service_user]
+    store_mock.list_usernames.return_value = [
+        "admin@example.com",
+        "user@example.com",
+        "service@example.com",
+    ]
     store_mock.create_user.return_value = True
     store_mock.update_user.return_value = None
     store_mock.delete_user.return_value = None
@@ -151,7 +156,11 @@ class TestClientWrapper:
 def mock_oauth():
     oauth_mock = MagicMock()
     oidc_mock = MagicMock()
-    oidc_mock.authorize_redirect = AsyncMock(return_value=MagicMock(status_code=302, headers={"Location": "https://provider.com/auth"}))
+    oidc_mock.authorize_redirect = AsyncMock(
+        return_value=MagicMock(
+            status_code=302, headers={"Location": "https://provider.com/auth"}
+        )
+    )
     oidc_mock.authorize_access_token = AsyncMock(
         return_value={
             "access_token": "mock_access_token",
@@ -207,7 +216,9 @@ def _patch_router_stores(mock_store):
     patches = [
         patch("mlflow_oidc_auth.store.store", mock_store),
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
-        patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store),
+        patch(
+            "mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store
+        ),
         patch("mlflow_oidc_auth.routers.users.store", mock_store),
         patch("mlflow_oidc_auth.routers.experiment_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store),

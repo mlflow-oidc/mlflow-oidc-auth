@@ -41,14 +41,19 @@ class TestHackIndex:
         mock_app.static_folder = "/fake/static/folder"
 
         with patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}):
-            with patch("mlflow_oidc_auth.hack.os.path.exists", return_value=False) as mock_exists:
+            with patch(
+                "mlflow_oidc_auth.hack.os.path.exists", return_value=False
+            ) as mock_exists:
                 # Call the function
                 result = index()
 
                 # Verify response
                 assert isinstance(result, Response)
                 assert result.mimetype == "text/plain"
-                assert result.get_data(as_text=True) == "Unable to display MLflow UI - landing page not found"
+                assert (
+                    result.get_data(as_text=True)
+                    == "Unable to display MLflow UI - landing page not found"
+                )
 
                 # Verify os.path.exists was called with correct path
                 mock_exists.assert_called_once_with("/fake/static/folder/index.html")
@@ -94,7 +99,9 @@ class TestHackIndex:
                     result = index()
 
                     # Verify the result
-                    expected_html = original_html.replace("</body>", f"{menu_html}\n</body>")
+                    expected_html = original_html.replace(
+                        "</body>", f"{menu_html}\n</body>"
+                    )
                     assert result == expected_html
 
                     # Verify file operations
@@ -176,7 +183,9 @@ class TestHackIndex:
 
                     # Verify the result - should replace only the first occurrence
                     # The actual implementation replaces all occurrences, not just the first
-                    expected_html = original_html.replace("</body>", f"{menu_html}\n</body>")
+                    expected_html = original_html.replace(
+                        "</body>", f"{menu_html}\n</body>"
+                    )
                     assert result == expected_html
 
     def test_index_file_read_error_index_html(self):
@@ -477,7 +486,9 @@ class TestHackModuleSecurity:
                         elif file_path.endswith("hack/menu.html"):
                             return mock_open(read_data=menu_html).return_value
                         else:
-                            raise FileNotFoundError(f"Unexpected file path: {file_path}")
+                            raise FileNotFoundError(
+                                f"Unexpected file path: {file_path}"
+                            )
 
                     mock_file_open.side_effect = side_effect
 
@@ -589,7 +600,9 @@ class TestHackModuleEdgeCases:
                     # Verify that only the first </body> is replaced
                     body_count = result.count("</body>")
                     original_body_count = original_html.count("</body>")
-                    assert body_count == original_body_count  # Same number of </body> tags
+                    assert (
+                        body_count == original_body_count
+                    )  # Same number of </body> tags
 
     def test_index_whitespace_handling(self):
         """Test handling of whitespace in HTML content."""
@@ -751,7 +764,9 @@ class TestHackModuleErrorHandling:
                 side_effect=OSError("Permission denied to check file existence"),
             ):
                 # Call the function and expect exception
-                with pytest.raises(OSError, match="Permission denied to check file existence"):
+                with pytest.raises(
+                    OSError, match="Permission denied to check file existence"
+                ):
                     index()
 
     def test_index_os_path_join_exception(self):
@@ -852,7 +867,9 @@ class TestHackModulePerformance:
         menu_html = "<script>Menu</script>"
 
         with patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}):
-            with patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True) as mock_exists:
+            with patch(
+                "mlflow_oidc_auth.hack.os.path.exists", return_value=True
+            ) as mock_exists:
                 with patch("builtins.open", mock_open()) as mock_file_open:
 
                     def side_effect(file_path, mode="r"):
@@ -869,8 +886,12 @@ class TestHackModulePerformance:
                     result = index()
 
                     # Verify minimal file operations
-                    assert mock_file_open.call_count == 2  # Only index.html and menu.html
-                    assert mock_exists.call_count == 1  # Only one existence check
+                    assert (
+                        mock_file_open.call_count == 2
+                    )  # Only index.html and menu.html
+                    assert (
+                        mock_exists.call_count == 2
+                    )  # index.html and menu.html existence checks
 
                     # Verify correct result
                     assert menu_html in result

@@ -30,7 +30,11 @@ _EXPERIMENT_ID_PATTERN = re.compile(r"^(\d+)/")
 
 
 def _get_experiment_id_from_view_args():
-    # TODO: check it with get_request_param("artifact_path") to replace
+    # The artifact proxy routes encode experiment_id as the first path segment
+    # of the artifact_path (e.g. "123/artifacts/model.pkl").  This cannot be
+    # replaced with get_request_param("artifact_path") because we need to
+    # *parse* the experiment_id out of the composite path value, not just read
+    # the parameter verbatim.
     view_args = request.view_args
     if view_args is not None and (artifact_path := view_args.get("artifact_path")):
         if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
@@ -87,7 +91,9 @@ def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
         experiment_ids = request.args.getlist("experiment_ids")
 
     for experiment_id in experiment_ids:
-        if not effective_experiment_permission(experiment_id, username).permission.can_read:
+        if not effective_experiment_permission(
+            experiment_id, username
+        ).permission.can_read:
             return False
     return True
 
@@ -95,4 +101,6 @@ def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
 def validate_can_update_experiment_from_experiment_id(username: str) -> bool:
     """Validate UPDATE permission using an explicit experiment_id parameter."""
     experiment_id = get_request_param("experiment_id")
-    return effective_experiment_permission(experiment_id, username).permission.can_update
+    return effective_experiment_permission(
+        experiment_id, username
+    ).permission.can_update

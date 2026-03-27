@@ -7,6 +7,11 @@ with a single frozen dataclass that carries all auth state through the ASGI → 
 
 from dataclasses import dataclass
 
+#: Key used to store/retrieve AuthContext in both ASGI scope and WSGI environ.
+#: AuthMiddleware sets scope[AUTH_CONTEXT_KEY], AuthAwareWSGIMiddleware copies it
+#: to environ[AUTH_CONTEXT_KEY], and bridge functions read from environ[AUTH_CONTEXT_KEY].
+AUTH_CONTEXT_KEY = "mlflow_oidc_auth"
+
 
 @dataclass(frozen=True)
 class AuthContext:

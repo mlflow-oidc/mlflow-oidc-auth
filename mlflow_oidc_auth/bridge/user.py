@@ -5,7 +5,7 @@ Provides functions to retrieve authentication context from Flask's WSGI environ,
 where it was injected by AuthAwareWSGIMiddleware from FastAPI's ASGI scope.
 """
 
-from mlflow_oidc_auth.entities.auth_context import AuthContext
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
@@ -24,9 +24,11 @@ def get_auth_context() -> AuthContext:
         from flask import request
 
         if hasattr(request, "environ"):
-            auth_context = request.environ.get("mlflow_oidc_auth")
+            auth_context = request.environ.get(AUTH_CONTEXT_KEY)
             if isinstance(auth_context, AuthContext):
-                logger.debug(f"Retrieved AuthContext from Flask environ: {auth_context.username}")
+                logger.debug(
+                    f"Retrieved AuthContext from Flask environ: {auth_context.username}"
+                )
                 return auth_context
     except Exception as e:
         logger.debug(f"Could not access AuthContext from Flask request: {e}")

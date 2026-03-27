@@ -1,4 +1,4 @@
-from mlflow_oidc_auth.entities.auth_context import AuthContext
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.entities.experiment import (
     ExperimentPermission,
     ExperimentGroupRegexPermission,
@@ -39,6 +39,7 @@ from mlflow_oidc_auth.entities.workspace import (
 )
 
 __all__ = [
+    "AUTH_CONTEXT_KEY",
     "AuthContext",
     "ExperimentPermission",
     "ExperimentGroupRegexPermission",

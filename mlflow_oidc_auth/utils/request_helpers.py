@@ -47,7 +47,8 @@ def get_url_param(param: str) -> str:
     view_args = request.view_args
     if not view_args or param not in view_args:
         raise MlflowException(
-            f"Missing value for required URL parameter '{param}'. " "The parameter should be part of the URL path.",
+            f"Missing value for required URL parameter '{param}'. "
+            "The parameter should be part of the URL path.",
             INVALID_PARAMETER_VALUE,
         )
     return view_args[param]
@@ -100,7 +101,8 @@ def get_request_param(param: str) -> str:
         if param == "run_id":
             return get_request_param("run_uuid")
         raise MlflowException(
-            f"Missing value for required parameter '{param}'. " "See the API docs for more information about request parameters.",
+            f"Missing value for required parameter '{param}'. "
+            "See the API docs for more information about request parameters.",
             INVALID_PARAMETER_VALUE,
         )
 
@@ -108,7 +110,8 @@ def get_request_param(param: str) -> str:
     # Check for empty values
     if not value or (isinstance(value, str) and not value.strip()):
         raise MlflowException(
-            f"Empty value for required parameter '{param}'. " "See the API docs for more information about request parameters.",
+            f"Empty value for required parameter '{param}'. "
+            "See the API docs for more information about request parameters.",
             INVALID_PARAMETER_VALUE,
         )
 
@@ -144,74 +147,70 @@ def get_optional_request_param(param: str) -> str | None:
     return args[param]
 
 
+def _extract_param_from_all_sources(param: str) -> str | None:
+    """Extract a parameter value from view_args, query args, and JSON body.
+
+    Searches in the following order:
+    1. URL path parameters (view_args)
+    2. Query string parameters (request.args)
+    3. JSON request body (request.json / request.get_json)
+
+    Args:
+        param: The parameter name to extract.
+
+    Returns:
+        The parameter value if found, None otherwise.
+    """
+    # Fastest: check view_args first
+    if request.view_args and param in request.view_args:
+        return request.view_args[param]
+    # Next: check args (GET)
+    if request.args and param in request.args:
+        return request.args[param]
+    # Last: check json (POST, PATCH, DELETE) — try request.json first (for mocking compatibility)
+    try:
+        if hasattr(request, "json") and request.json and param in request.json:
+            return request.json[param]
+    except Exception:
+        pass
+    # Fallback to get_json method
+    try:
+        json_data = request.get_json(silent=True)
+        if json_data and param in json_data:
+            return json_data[param]
+    except Exception:
+        pass
+    return None
+
+
 def get_experiment_id() -> str:
     """
     Helper function to get the experiment ID from the request.
     Checks view_args, query args, and JSON data in that order.
     Raises an exception if the experiment ID is not found.
     """
-    # Fastest: check view_args first
-    if request.view_args:
-        if "experiment_id" in request.view_args:
-            return request.view_args["experiment_id"]
-        elif "experiment_name" in request.view_args:
-            return _experiment_id_from_name(request.view_args["experiment_name"])
-    # Next: check args (GET)
-    if request.args:
-        if "experiment_id" in request.args:
-            return request.args["experiment_id"]
-        elif "experiment_name" in request.args:
-            return _experiment_id_from_name(request.args["experiment_name"])
-    # Last: check json (POST, PATCH, DELETE) - try request.json first (for mocking compatibility)
-    try:
-        if hasattr(request, "json") and request.json:
-            if "experiment_id" in request.json:
-                return request.json["experiment_id"]
-            elif "experiment_name" in request.json:
-                return _experiment_id_from_name(request.json["experiment_name"])
-    except Exception:
-        pass
-    # Fallback to get_json method
-    try:
-        json_data = request.get_json(silent=True)
-        if json_data:
-            if "experiment_id" in json_data:
-                return json_data["experiment_id"]
-            elif "experiment_name" in json_data:
-                return _experiment_id_from_name(json_data["experiment_name"])
-    except Exception:
-        # If JSON parsing fails, just continue to the error
-        pass
+    experiment_id = _extract_param_from_all_sources("experiment_id")
+    if experiment_id is not None:
+        return experiment_id
+
+    experiment_name = _extract_param_from_all_sources("experiment_name")
+    if experiment_name is not None:
+        return _experiment_id_from_name(experiment_name)
+
     raise MlflowException(
         "Either 'experiment_id' or 'experiment_name' must be provided in the request data.",
         INVALID_PARAMETER_VALUE,
     )
 
 
-# TODO: refactor to avoid code duplication
 def get_model_id() -> str:
     """
     Helper function to get the model ID from the request.
     Raises an exception if the model ID is not found.
     """
-    if request.view_args and "model_id" in request.view_args:
-        return request.view_args["model_id"]
-    if request.args and "model_id" in request.args:
-        return request.args["model_id"]
-    # Check for JSON content - try request.json first (for mocking compatibility)
-    try:
-        if hasattr(request, "json") and request.json and "model_id" in request.json:
-            return request.json["model_id"]
-    except Exception:
-        pass
-    # Fallback to get_json method
-    try:
-        json_data = request.get_json(silent=True)
-        if json_data and "model_id" in json_data:
-            return json_data["model_id"]
-    except Exception:
-        # If JSON parsing fails, just continue to the error
-        pass
+    model_id = _extract_param_from_all_sources("model_id")
+    if model_id is not None:
+        return model_id
     raise MlflowException(
         "Model ID must be provided in the request data.",
         INVALID_PARAMETER_VALUE,
@@ -223,24 +222,9 @@ def get_model_name() -> str:
     Helper function to get the model name from the request.
     Raises an exception if the model name is not found.
     """
-    if request.view_args and "name" in request.view_args:
-        return request.view_args["name"]
-    if request.args and "name" in request.args:
-        return request.args["name"]
-    # Check for JSON content - try request.json first (for mocking compatibility)
-    try:
-        if hasattr(request, "json") and request.json and "name" in request.json:
-            return request.json["name"]
-    except Exception:
-        pass
-    # Fallback to get_json method
-    try:
-        json_data = request.get_json(silent=True)
-        if json_data and "name" in json_data:
-            return json_data["name"]
-    except Exception:
-        # If JSON parsing fails, just continue to the error
-        pass
+    name = _extract_param_from_all_sources("name")
+    if name is not None:
+        return name
     raise MlflowException(
         "Model name must be provided in the request data.",
         INVALID_PARAMETER_VALUE,

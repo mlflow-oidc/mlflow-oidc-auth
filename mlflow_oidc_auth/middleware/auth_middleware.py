@@ -15,7 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.entities.auth_context import AuthContext
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
@@ -244,7 +244,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if config.MLFLOW_ENABLE_WORKSPACES:
                 workspace = request.headers.get("x-mlflow-workspace")
 
-            request.scope["mlflow_oidc_auth"] = AuthContext(
+            request.scope[AUTH_CONTEXT_KEY] = AuthContext(
                 username=username,
                 is_admin=request.state.is_admin,
                 workspace=workspace,

@@ -60,6 +60,75 @@ from mlflow_oidc_auth.utils.workspace_cache import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Request-scoped permission cache
+# ---------------------------------------------------------------------------
+# During search-result filtering, the same permission may be checked many times
+# (e.g. multiple model versions from the same registered model, or re-fetch
+# loops). The global permission cache (30s TTL) already deduplicates DB
+# lookups across requests, but a request-scoped dict avoids even the cache
+# hash/lookup overhead for repeated checks within a single filter pass.
+# ---------------------------------------------------------------------------
+
+
+def _get_request_permission_cache() -> dict:
+    """Return a dict scoped to the current Flask request via ``flask.g``.
+
+    Each filter function uses this to memoize ``can_read_*`` results for the
+    duration of a single after-request handler invocation.
+    """
+    cache = getattr(g, "_after_request_perm_cache", None)
+    if cache is None:
+        cache = {}
+        g._after_request_perm_cache = cache
+    return cache
+
+
+def _cached_can_read_experiment(experiment_id: str, username: str) -> bool:
+    """can_read_experiment with request-scoped memoization."""
+    cache = _get_request_permission_cache()
+    key = ("exp", experiment_id, username)
+    if key not in cache:
+        cache[key] = can_read_experiment(experiment_id, username)
+    return cache[key]
+
+
+def _cached_can_read_registered_model(model_name: str, username: str) -> bool:
+    """can_read_registered_model with request-scoped memoization."""
+    cache = _get_request_permission_cache()
+    key = ("rm", model_name, username)
+    if key not in cache:
+        cache[key] = can_read_registered_model(model_name, username)
+    return cache[key]
+
+
+def _cached_can_read_gateway_endpoint(name: str, username: str) -> bool:
+    """can_read_gateway_endpoint with request-scoped memoization."""
+    cache = _get_request_permission_cache()
+    key = ("gw_ep", name, username)
+    if key not in cache:
+        cache[key] = can_read_gateway_endpoint(name, username)
+    return cache[key]
+
+
+def _cached_can_read_gateway_secret(name: str, username: str) -> bool:
+    """can_read_gateway_secret with request-scoped memoization."""
+    cache = _get_request_permission_cache()
+    key = ("gw_secret", name, username)
+    if key not in cache:
+        cache[key] = can_read_gateway_secret(name, username)
+    return cache[key]
+
+
+def _cached_can_read_gateway_model_definition(name: str, username: str) -> bool:
+    """can_read_gateway_model_definition with request-scoped memoization."""
+    cache = _get_request_permission_cache()
+    key = ("gw_md", name, username)
+    if key not in cache:
+        cache[key] = can_read_gateway_model_definition(name, username)
+    return cache[key]
+
+
 def _set_can_manage_experiment_permission(resp: Response):
     response_message = CreateExperiment.Response()  # type: ignore
     parse_dict(resp.json, response_message)
@@ -125,7 +194,7 @@ def _filter_search_experiments(resp: Response):
 
     # Filter out unreadable experiments from the current response page.
     for e in list(response_message.experiments):
-        if not can_read_experiment(e.experiment_id, username):
+        if not _cached_can_read_experiment(e.experiment_id, username):
             response_message.experiments.remove(e)
 
     # Filter by workspace permission (WSSEC-01)
@@ -134,7 +203,9 @@ def _filter_search_experiments(resp: Response):
         ws_map = {}
         for e in list(response_message.experiments):
             try:
-                ws_map[e.experiment_id] = tracking_store.get_experiment(e.experiment_id).workspace
+                ws_map[e.experiment_id] = tracking_store.get_experiment(
+                    e.experiment_id
+                ).workspace
             except Exception:
                 ws_map[e.experiment_id] = None
         for e in list(response_message.experiments):
@@ -143,7 +214,10 @@ def _filter_search_experiments(resp: Response):
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     tracking_store = _get_tracking_store()
-    while len(response_message.experiments) < request_message.max_results and response_message.next_page_token != "":
+    while (
+        len(response_message.experiments) < request_message.max_results
+        and response_message.next_page_token != ""
+    ):
         refetched = tracking_store.search_experiments(
             view_type=request_message.view_type,
             max_results=request_message.max_results,
@@ -158,10 +232,17 @@ def _filter_search_experiments(resp: Response):
             response_message.next_page_token = ""
             break
 
-        readable_proto = [e.to_proto() for e in refetched if can_read_experiment(e.experiment_id, username) and _can_access_workspace(username, e.workspace)]
+        readable_proto = [
+            e.to_proto()
+            for e in refetched
+            if _cached_can_read_experiment(e.experiment_id, username)
+            and _can_access_workspace(username, e.workspace)
+        ]
         response_message.experiments.extend(readable_proto)
 
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+        start_offset = SearchUtils.parse_start_offset_from_page_token(
+            response_message.next_page_token
+        )
         final_offset = start_offset + len(refetched)
         response_message.next_page_token = SearchUtils.create_page_token(final_offset)
 
@@ -180,7 +261,7 @@ def _filter_search_registered_models(resp: Response):
 
     # Filter out unreadable models from the current response page.
     for rm in list(response_message.registered_models):
-        if not can_read_registered_model(rm.name, username):
+        if not _cached_can_read_registered_model(rm.name, username):
             response_message.registered_models.remove(rm)
 
     # Filter by workspace permission (WSSEC-02)
@@ -189,7 +270,9 @@ def _filter_search_registered_models(resp: Response):
         ws_map = {}
         for rm in list(response_message.registered_models):
             try:
-                ws_map[rm.name] = model_registry_store_ws.get_registered_model(rm.name).workspace
+                ws_map[rm.name] = model_registry_store_ws.get_registered_model(
+                    rm.name
+                ).workspace
             except Exception:
                 ws_map[rm.name] = None
         for rm in list(response_message.registered_models):
@@ -198,23 +281,35 @@ def _filter_search_registered_models(resp: Response):
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
-    while len(response_message.registered_models) < request_message.max_results and response_message.next_page_token != "":
+    while (
+        len(response_message.registered_models) < request_message.max_results
+        and response_message.next_page_token != ""
+    ):
         refetched = model_registry_store.search_registered_models(
             filter_string=request_message.filter,
             max_results=request_message.max_results,
             order_by=request_message.order_by,
             page_token=response_message.next_page_token,
         )
-        remaining = request_message.max_results - len(response_message.registered_models)
+        remaining = request_message.max_results - len(
+            response_message.registered_models
+        )
         refetched = refetched[:remaining]
         if len(refetched) == 0:
             response_message.next_page_token = ""
             break
 
-        readable_proto = [rm.to_proto() for rm in refetched if can_read_registered_model(rm.name, username) and _can_access_workspace(username, rm.workspace)]
+        readable_proto = [
+            rm.to_proto()
+            for rm in refetched
+            if _cached_can_read_registered_model(rm.name, username)
+            and _can_access_workspace(username, rm.workspace)
+        ]
         response_message.registered_models.extend(readable_proto)
 
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+        start_offset = SearchUtils.parse_start_offset_from_page_token(
+            response_message.next_page_token
+        )
         final_offset = start_offset + len(refetched)
         response_message.next_page_token = SearchUtils.create_page_token(final_offset)
 
@@ -234,7 +329,7 @@ def _filter_search_model_versions(resp: Response):
 
     # Filter out unreadable model versions from the current response page.
     for mv in list(response_message.model_versions):
-        if not can_read_registered_model(mv.name, username):
+        if not _cached_can_read_registered_model(mv.name, username):
             response_message.model_versions.remove(mv)
 
     # Filter by workspace permission (WSSEC-02 — model versions inherit workspace from their model)
@@ -244,7 +339,9 @@ def _filter_search_model_versions(resp: Response):
         for mv in list(response_message.model_versions):
             if mv.name not in ws_map:
                 try:
-                    ws_map[mv.name] = model_registry_store_ws.get_registered_model(mv.name).workspace
+                    ws_map[mv.name] = model_registry_store_ws.get_registered_model(
+                        mv.name
+                    ).workspace
                 except Exception:
                     ws_map[mv.name] = None
             if not _can_access_workspace(username, ws_map.get(mv.name)):
@@ -252,7 +349,10 @@ def _filter_search_model_versions(resp: Response):
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
-    while len(response_message.model_versions) < request_message.max_results and response_message.next_page_token != "":
+    while (
+        len(response_message.model_versions) < request_message.max_results
+        and response_message.next_page_token != ""
+    ):
         refetched = model_registry_store.search_model_versions(
             filter_string=request_message.filter,
             max_results=request_message.max_results,
@@ -266,10 +366,14 @@ def _filter_search_model_versions(resp: Response):
             break
 
         for mv in refetched:
-            if can_read_registered_model(mv.name, username) and _can_access_workspace(username, getattr(mv, "workspace", None)):
+            if _cached_can_read_registered_model(
+                mv.name, username
+            ) and _can_access_workspace(username, getattr(mv, "workspace", None)):
                 response_message.model_versions.append(mv.to_proto())
 
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
+        start_offset = SearchUtils.parse_start_offset_from_page_token(
+            response_message.next_page_token
+        )
         final_offset = start_offset + len(refetched)
         response_message.next_page_token = SearchUtils.create_page_token(final_offset)
 
@@ -291,7 +395,7 @@ def _filter_search_logged_models(resp: Response) -> None:
 
     # Remove unreadable models from the current response page.
     for m in list(response_message.models):
-        if not can_read_experiment(m.info.experiment_id, username):
+        if not _cached_can_read_experiment(m.info.experiment_id, username):
             response_message.models.remove(m)
 
     # Filter by workspace permission (WSSEC-03)
@@ -302,11 +406,15 @@ def _filter_search_logged_models(resp: Response) -> None:
             exp_id = m.info.experiment_id
             if exp_id not in exp_ws_map:
                 try:
-                    exp_ws_map[exp_id] = tracking_store_ws.get_experiment(exp_id).workspace
+                    exp_ws_map[exp_id] = tracking_store_ws.get_experiment(
+                        exp_id
+                    ).workspace
                 except Exception:
                     exp_ws_map[exp_id] = None
         for m in list(response_message.models):
-            if not _can_access_workspace(username, exp_ws_map.get(m.info.experiment_id)):
+            if not _can_access_workspace(
+                username, exp_ws_map.get(m.info.experiment_id)
+            ):
                 response_message.models.remove(m)
 
     from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
@@ -334,13 +442,15 @@ def _filter_search_logged_models(resp: Response) -> None:
     tracking_store = _get_tracking_store()
 
     while len(response_message.models) < max_results and next_page_token is not None:
-        batch = tracking_store.search_logged_models(max_results=max_results, page_token=next_page_token, **params)
+        batch = tracking_store.search_logged_models(
+            max_results=max_results, page_token=next_page_token, **params
+        )
         is_last_page = batch.token is None
         offset = Token.decode(next_page_token).offset if next_page_token else 0
         last_index = len(batch) - 1
 
         for index, model in enumerate(batch):
-            if not can_read_experiment(model.experiment_id, username):
+            if not _cached_can_read_experiment(model.experiment_id, username):
                 continue
 
             # Workspace filtering for refetch path (WSSEC-03)
@@ -348,7 +458,9 @@ def _filter_search_logged_models(resp: Response) -> None:
                 exp_id = model.experiment_id
                 if exp_id not in exp_ws_map:
                     try:
-                        exp_ws_map[exp_id] = tracking_store.get_experiment(exp_id).workspace
+                        exp_ws_map[exp_id] = tracking_store.get_experiment(
+                            exp_id
+                        ).workspace
                     except Exception:
                         exp_ws_map[exp_id] = None
                 if not _can_access_workspace(username, exp_ws_map.get(exp_id)):
@@ -356,10 +468,18 @@ def _filter_search_logged_models(resp: Response) -> None:
 
             response_message.models.append(model.to_proto())
             if len(response_message.models) >= max_results:
-                next_page_token = None if is_last_page and index == last_index else Token(offset=offset + index + 1, **params).encode()
+                next_page_token = (
+                    None
+                    if is_last_page and index == last_index
+                    else Token(offset=offset + index + 1, **params).encode()
+                )
                 break
         else:
-            next_page_token = None if is_last_page else Token(offset=offset + max_results, **params).encode()
+            next_page_token = (
+                None
+                if is_last_page
+                else Token(offset=offset + max_results, **params).encode()
+            )
 
     response_message.next_page_token = next_page_token or ""
     resp.data = message_to_json(response_message)
@@ -431,7 +551,9 @@ def _rename_gateway_endpoint_permission(resp: Response):
     try:
         store.rename_gateway_endpoint_permissions(old_name, new_name)
     except Exception:
-        get_logger().warning(f"Failed to rename gateway endpoint permissions from '{old_name}' to '{new_name}'")
+        get_logger().warning(
+            f"Failed to rename gateway endpoint permissions from '{old_name}' to '{new_name}'"
+        )
 
 
 def _set_can_manage_gateway_secret_permission(resp: Response):
@@ -463,9 +585,11 @@ def _filter_list_gateway_endpoints(resp: Response) -> None:
     logger = get_logger()
 
     for endpoint in list(response_message.endpoints):
-        if not can_read_gateway_endpoint(endpoint.name, username):
+        if not _cached_can_read_gateway_endpoint(endpoint.name, username):
             response_message.endpoints.remove(endpoint)
-            logger.debug(f"Filtered gateway endpoint '{endpoint.name}' for user '{username}'")
+            logger.debug(
+                f"Filtered gateway endpoint '{endpoint.name}' for user '{username}'"
+            )
 
     resp.data = message_to_json(response_message)
 
@@ -481,9 +605,11 @@ def _filter_list_gateway_secrets(resp: Response) -> None:
     logger = get_logger()
 
     for secret in list(response_message.secrets):
-        if not can_read_gateway_secret(secret.secret_name, username):
+        if not _cached_can_read_gateway_secret(secret.secret_name, username):
             response_message.secrets.remove(secret)
-            logger.debug(f"Filtered gateway secret '{secret.secret_name}' for user '{username}'")
+            logger.debug(
+                f"Filtered gateway secret '{secret.secret_name}' for user '{username}'"
+            )
 
     resp.data = message_to_json(response_message)
 
@@ -499,9 +625,11 @@ def _filter_list_gateway_model_definitions(resp: Response) -> None:
     logger = get_logger()
 
     for model_def in list(response_message.model_definitions):
-        if not can_read_gateway_model_definition(model_def.name, username):
+        if not _cached_can_read_gateway_model_definition(model_def.name, username):
             response_message.model_definitions.remove(model_def)
-            logger.debug(f"Filtered gateway model definition '{model_def.name}' for user '{username}'")
+            logger.debug(
+                f"Filtered gateway model definition '{model_def.name}' for user '{username}'"
+            )
 
     resp.data = message_to_json(response_message)
 
@@ -514,7 +642,9 @@ def _delete_gateway_endpoint_permissions_cascade(resp: Response) -> None:
     try:
         store.wipe_gateway_endpoint_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway endpoint '{name}'")
+        get_logger().warning(
+            f"Failed to cascade-delete permissions for gateway endpoint '{name}'"
+        )
 
 
 def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
@@ -525,7 +655,9 @@ def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
     try:
         store.wipe_gateway_secret_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway secret '{name}'")
+        get_logger().warning(
+            f"Failed to cascade-delete permissions for gateway secret '{name}'"
+        )
 
 
 def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None:
@@ -536,7 +668,9 @@ def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None
     try:
         store.wipe_gateway_model_definition_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway model definition '{name}'")
+        get_logger().warning(
+            f"Failed to cascade-delete permissions for gateway model definition '{name}'"
+        )
 
 
 def _auto_grant_workspace_manage_permission(resp: Response) -> None:
@@ -559,9 +693,13 @@ def _auto_grant_workspace_manage_permission(resp: Response) -> None:
         return
     auth_context = get_auth_context()
     try:
-        store.create_workspace_permission(workspace_name, auth_context.username, MANAGE.name)
+        store.create_workspace_permission(
+            workspace_name, auth_context.username, MANAGE.name
+        )
     except Exception:
-        get_logger().warning(f"Failed to auto-grant MANAGE on workspace '{workspace_name}' for user '{auth_context.username}'")
+        get_logger().warning(
+            f"Failed to auto-grant MANAGE on workspace '{workspace_name}' for user '{auth_context.username}'"
+        )
     flush_workspace_cache()
 
 
@@ -582,7 +720,9 @@ def _cascade_delete_workspace_permissions(resp: Response) -> None:
     try:
         store.wipe_workspace_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for workspace '{name}'")
+        get_logger().warning(
+            f"Failed to cascade-delete permissions for workspace '{name}'"
+        )
     flush_workspace_cache()
 
 
@@ -599,7 +739,15 @@ def _filter_list_workspaces(response: Response) -> None:
     if not data or "workspaces" not in data:
         return
     filtered = [
-        ws for ws in data["workspaces"] if (perm := get_workspace_permission_cached(auth_context.username, ws.get("name", ""))) is not None and perm.can_read
+        ws
+        for ws in data["workspaces"]
+        if (
+            perm := get_workspace_permission_cached(
+                auth_context.username, ws.get("name", "")
+            )
+        )
+        is not None
+        and perm.can_read
     ]
     data["workspaces"] = filtered
     response.set_data(json.dumps(data))

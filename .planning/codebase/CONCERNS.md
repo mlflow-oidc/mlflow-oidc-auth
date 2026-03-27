@@ -27,23 +27,20 @@
 - Impact: Each new permission type spawns 2-4 new repository files. File count grows linearly with resource types.
 - Fix approach: Consider a generic repository base class parameterized by model type, or consolidate related repositories (e.g., all gateway repositories into one).
 
-**Duplicated Request Helper Logic**
-- Issue: `get_model_id()` and `get_experiment_id()` have duplicated parameter extraction logic. A TODO comment at line 191 acknowledges this.
-- Files: `mlflow_oidc_auth/utils/request_helpers.py:191-218`
-- Impact: Minor — isolated duplication. But the TODO indicates recognized debt.
-- Fix approach: Extract shared parameter resolution into a helper function as the TODO suggests.
+**~~Duplicated Request Helper Logic~~ (RESOLVED)**
+- `get_model_id()`, `get_experiment_id()`, and `get_model_name()` had duplicated parameter extraction logic.
+- Fix: Extracted shared `_extract_param_from_all_sources(param)` function that searches `view_args → args → json` in order. Refactored all three functions to use it.
+- Files: `mlflow_oidc_auth/utils/request_helpers.py`
 
-**HTML Injection Hack**
-- Issue: `hack.py` reads `menu.html` and injects it into MLflow's `index.html` via string replacement (`</head>` → `{menu_html}</head>`). The filename itself signals recognized tech debt.
+**~~HTML Injection Hack~~ (RESOLVED — hardened)**
+- `hack.py` reads `menu.html` and injects it into MLflow's `index.html` via string replacement. Still fragile by nature, but now hardened.
+- Fix: Added `_BODY_CLOSE_TAG` constant, validation that `</body>` marker exists in target HTML, validation that `menu.html` file exists before reading, and descriptive warning logs on failure. Extraction no longer silently fails.
 - Files: `mlflow_oidc_auth/hack.py`
-- Impact: Fragile — breaks if MLflow changes its HTML structure. No sanitization of injected content.
-- Fix approach: Investigate MLflow plugin hooks or middleware-based injection. If string replacement must stay, add validation that the target marker exists.
 
-**Global Module-Level Store Instantiation**
-- Issue: `store.py` creates the database store instance at import time (lines 4-5), meaning the DB connection is established as a side effect of importing the module.
+**~~Global Module-Level Store Instantiation~~ (RESOLVED)**
+- `store.py` previously created the database store instance at import time, establishing DB connections as a side effect.
+- Fix: Replaced with `_LazyStore` proxy class using `threading.Lock` for thread-safe double-checked locking. Store creation and `init_db()` are deferred until first attribute access.
 - Files: `mlflow_oidc_auth/store.py`
-- Impact: Makes testing harder (can't mock before import), creates implicit initialization ordering, and prevents lazy connection setup.
-- Fix approach: Use a factory function or FastAPI dependency injection to create the store instance lazily.
 
 **Dual Framework Architecture**
 - Issue: The application runs both FastAPI and Flask simultaneously, with a complex bridge layer to pass authentication context from FastAPI middleware to Flask request handlers via WSGI environ variables.
@@ -51,14 +48,12 @@
 - Impact: Two separate request lifecycles, two sets of middleware, two error handling strategies. New developers must understand both frameworks and their interaction.
 - Fix approach: This is architectural and likely intentional (MLflow uses Flask internally). Document the boundary clearly. Long-term, advocate for MLflow to expose extension points that don't require WSGI wrapping.
 
-**TODO/FIXME Comments**
-- Issue: Active TODO comments indicating incomplete work.
-- Files:
-  - `mlflow_oidc_auth/validators/experiment.py:29` — TODO about experiment validation
-  - `mlflow_oidc_auth/utils/request_helpers.py:191` — TODO about deduplicating get_model_id/get_experiment_id
-  - `mlflow_oidc_auth/utils/permissions.py:421` — TODO about permission logic
-- Impact: Minor individually, but indicate areas where shortcuts were taken.
-- Fix approach: Triage and address each TODO. Convert to GitHub issues for tracking.
+**~~TODO/FIXME Comments~~ (RESOLVED)**
+- Three active TODO comments triaged and addressed:
+  - `validators/experiment.py:29` — TODO about replacing `_get_experiment_id_from_view_args` was NOT actionable (function parses experiment_id from composite artifact paths). Replaced with explanatory comment.
+  - `utils/request_helpers.py:191` — TODO about deduplication fixed by extracting `_extract_param_from_all_sources()`.
+  - `utils/permissions.py:421` — TODO about replacing `str` with `Permission` was NOT actionable (store returns string permission names by design). Replaced with design rationale comment.
+- Files: `mlflow_oidc_auth/validators/experiment.py`, `mlflow_oidc_auth/utils/request_helpers.py`, `mlflow_oidc_auth/utils/permissions.py`
 
 ## Known Bugs
 
@@ -151,30 +146,27 @@
 - Fix: Added TTL-based caching at the `resolve_permission()` level using `cachetools.TTLCache`, configurable via `PERMISSION_CACHE_TTL_SECONDS` (default 30s). Cache is keyed by `(username, resource_type, resource_name)`. `invalidate_permission_cache()` and `flush_permission_cache()` functions provided for write-path invalidation.
 - Files: `mlflow_oidc_auth/utils/permissions.py`, `mlflow_oidc_auth/config.py`
 
-**Post-Fetch Search Result Filtering**
-- Problem: `after_request.py` filters search results for experiments and registered models AFTER fetching them from MLflow. It iterates through results and re-fetches individually to check permissions, turning an O(1) search into O(n) permission checks.
-- Files: `mlflow_oidc_auth/hooks/after_request.py` (`_filter_search_experiments`, `_filter_search_registered_models`)
-- Cause: MLflow's search API doesn't support permission-aware queries, so filtering must happen post-fetch.
-- Improvement path: Cache user permissions for the duration of the request to avoid repeated DB lookups. Consider pre-computing a user's accessible resource set for large deployments.
+**~~Post-Fetch Search Result Filtering~~ (RESOLVED — mitigated)**
+- `after_request.py` filters search results post-fetch, turning O(1) search into O(n) permission checks. The fundamental post-fetch pattern cannot be changed (MLflow limitation), but repeated DB lookups within a single request are now eliminated.
+- Fix: Added request-scoped permission cache using `flask.g`, with 5 `_cached_can_read_*` wrapper functions that memoize permission checks for the duration of each request.
+- Files: `mlflow_oidc_auth/hooks/after_request.py`
 
 **~~JWKS Fetched on Every Token Validation~~ (RESOLVED)**
 - Two HTTP round-trips per bearer token validation (discovery + JWKS) added latency to every API request using bearer tokens.
 - Fix: Implemented TTL-based caching with force-refresh on `BadSignatureError` for key rotation handling. See JWKS/Discovery Caching entry in Security Considerations.
 - Files: `mlflow_oidc_auth/auth.py`, `mlflow_oidc_auth/config.py`
 
-**Eager Permission Loading on User List**
-- Problem: The `list_users` endpoint calls `to_mlflow_entity()` for each user, which eagerly loads all permission relationships (experiment permissions, model permissions, etc.).
-- Files: `mlflow_oidc_auth/routers/users.py:119`
-- Cause: The entity conversion loads all relationships regardless of whether they're needed.
-- Improvement path: Add a lightweight user listing that doesn't load permissions. Use lazy loading or separate endpoints for permission details.
+**~~Eager Permission Loading on User List~~ (RESOLVED)**
+- The `list_users` endpoint eagerly loaded all 6 permission relationship collections per user even though the UI only needed usernames.
+- Fix: Added `list_usernames()` method to `UserRepository` using a single-column query. Updated `users.py` router to call `store.list_usernames()` instead of `store.list_users()`.
+- Files: `mlflow_oidc_auth/repository/user.py`, `mlflow_oidc_auth/sqlalchemy_store.py`, `mlflow_oidc_auth/routers/users.py`
 
 ## Fragile Areas
 
-**MLflow HTML Injection (`hack.py`)**
+**~~MLflow HTML Injection (`hack.py`)~~ (HARDENED)**
 - Files: `mlflow_oidc_auth/hack.py`
-- Why fragile: Relies on MLflow's `index.html` containing a `</head>` tag in the expected position. Any change to MLflow's HTML structure breaks the injection.
-- Safe modification: Test against the target MLflow version's HTML output before changing the injection logic.
-- Test coverage: No tests for this file.
+- Still fragile by nature, but now validates that the `</body>` marker exists in target HTML and that `menu.html` exists before injection. Logs warnings on failure instead of silently failing.
+- Test coverage: `test_hack.py` covers injection success, missing files, and operation counts.
 
 **Flask Before/After Request Hooks**
 - Files: `mlflow_oidc_auth/hooks/before_request.py` (567 lines), `mlflow_oidc_auth/hooks/after_request.py` (663 lines)
@@ -182,17 +174,15 @@
 - Safe modification: Add integration tests that verify route patterns match actual MLflow endpoints for the supported version range.
 - Test coverage: Route matching patterns are not tested.
 
-**WSGI-to-ASGI Bridge**
+**~~WSGI-to-ASGI Bridge~~ (HARDENED)**
 - Files: `mlflow_oidc_auth/middleware/auth_aware_wsgi_middleware.py`, `mlflow_oidc_auth/bridge/user.py`
-- Why fragile: Auth context is passed from FastAPI to Flask via WSGI environ variables (`mlflow_oidc_auth.username`, `mlflow_oidc_auth.is_admin`). If the middleware execution order changes or environ keys are modified, auth breaks silently.
-- Safe modification: Use constants for environ keys. Add assertions in the Flask bridge that expected environ keys exist.
-- Test coverage: No integration tests for the bridge.
+- Auth context environ key now uses `AUTH_CONTEXT_KEY` constant from `mlflow_oidc_auth/entities/auth_context.py` instead of string literals. Reduces risk of typo-driven silent auth failures.
+- Test coverage: No integration tests for the bridge (unchanged).
 
-**GraphQL Monkey-Patching**
+**~~GraphQL Monkey-Patching~~ (HARDENED)**
 - Files: `mlflow_oidc_auth/graphql/patch.py`
-- Why fragile: Patches `mlflow.server.handlers._get_graphql_auth_middleware` — a private MLflow function. Private APIs can change without notice between MLflow versions.
-- Safe modification: Pin MLflow version tightly and test the patch after every MLflow upgrade.
-- Test coverage: No tests for the GraphQL patch.
+- Still patches `mlflow.server.handlers._get_graphql_auth_middleware` (private API), but now has `hasattr()` guard with warning log before patching, callable check on original hook, `_HANDLERS_ATTR`/`_AUTH_ATTR` constants for patched attribute names, and uses `setattr()` for consistency.
+- Test coverage: `test_graphql_patch.py` covers install, idempotency, missing attribute warning, and uninstall/restore.
 
 ## Scaling Limits
 
@@ -201,10 +191,10 @@
 - Limit: SQLite does not support concurrent writes. Under moderate load with multiple replicas, write contention causes `database is locked` errors.
 - Scaling path: Configure PostgreSQL or MySQL via the `OIDC_AUTH_DATABASE_URI` environment variable. The codebase uses SQLAlchemy, so switching databases requires only a connection string change.
 
-**No Connection Pooling Configuration**
-- Current capacity: Default SQLAlchemy connection pool settings.
-- Limit: Under high concurrency, the default pool may be exhausted.
-- Scaling path: Expose SQLAlchemy pool configuration (pool_size, max_overflow, pool_timeout) via environment variables.
+**~~No Connection Pooling Configuration~~ (RESOLVED)**
+- Default SQLAlchemy connection pool settings were hardcoded with no way to tune them.
+- Fix: Added `OIDC_DB_POOL_SIZE`, `OIDC_DB_POOL_MAX_OVERFLOW`, `OIDC_DB_POOL_RECYCLE_SECONDS` config options via `AppConfig`. Replaced `create_sqlalchemy_engine_with_retry` with a custom `_create_engine()` static method on `SqlAlchemyStore` that applies pool settings for non-SQLite databases. Default of 0 means "use SQLAlchemy defaults" (backward compatible).
+- Files: `mlflow_oidc_auth/config.py`, `mlflow_oidc_auth/sqlalchemy_store.py`
 
 ## Dependencies at Risk
 
@@ -214,11 +204,10 @@
 - Impact: MLflow upgrades require extensive testing of all hook/bridge/patch code.
 - Migration plan: Track MLflow changelogs proactively. Maintain an integration test suite that runs against each supported MLflow version. Advocate upstream for stable plugin APIs.
 
-**Frontend `react-router` in devDependencies**
-- Risk: `react-router` is listed in `devDependencies` instead of `dependencies` in `web-react/package.json:47`. This works during development but would fail in production if the build process doesn't install devDependencies.
+**~~Frontend `react-router` in devDependencies~~ (RESOLVED)**
+- `react-router` was listed in `devDependencies` instead of `dependencies` in `web-react/package.json`.
+- Fix: Moved to `dependencies`.
 - Files: `web-react/package.json`
-- Impact: Build failures in CI/CD environments that only install production dependencies.
-- Migration plan: Move `react-router` to `dependencies`.
 
 ## Missing Critical Features
 
@@ -250,4 +239,4 @@
 
 ---
 
-*Concerns audit: 2026-03-23 (bug fix history updated: 2026-03-27, SonarCloud fixes added: 2026-03-27, top-10 concerns resolved: 2026-03-27)*
+*Concerns audit: 2026-03-23 (bug fix history updated: 2026-03-27, SonarCloud fixes added: 2026-03-27, top-10 concerns resolved: 2026-03-27, batch-2 concerns resolved: 2026-03-27)*

@@ -166,6 +166,17 @@ class AppConfig:
             "CACHE_KEY_PREFIX", "mlflow_oidc_auth:"
         )
 
+        # Database connection pool settings (auth DB only — separate from MLflow tracking store)
+        # These are passed to SQLAlchemy's create_engine().  A value of 0 / None
+        # means "use SQLAlchemy defaults".  SQLite ignores pool_size/max_overflow.
+        self.DB_POOL_SIZE = config_manager.get_int("OIDC_DB_POOL_SIZE", default=0)
+        self.DB_POOL_MAX_OVERFLOW = config_manager.get_int(
+            "OIDC_DB_POOL_MAX_OVERFLOW", default=0
+        )
+        self.DB_POOL_RECYCLE_SECONDS = config_manager.get_int(
+            "OIDC_DB_POOL_RECYCLE_SECONDS", default=0
+        )
+
         # OIDC workspace detection settings
         self.OIDC_WORKSPACE_CLAIM_NAME = config_manager.get(
             "OIDC_WORKSPACE_CLAIM_NAME", "workspace"

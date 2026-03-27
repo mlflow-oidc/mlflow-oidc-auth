@@ -2,9 +2,10 @@ import functools
 from datetime import datetime
 from typing import List, Optional
 
+import sqlalchemy
 from mlflow.store.db.utils import (
     _get_managed_session_maker,
-    create_sqlalchemy_engine_with_retry,
+    _make_parent_dirs_if_sqlite,
 )
 from mlflow.utils.uri import extract_db_type_from_uri
 from sqlalchemy.orm import sessionmaker
@@ -76,7 +77,7 @@ class SqlAlchemyStore:
     def init_db(self, db_uri):
         self.db_uri = db_uri
         self.db_type = extract_db_type_from_uri(db_uri)
-        self.engine = create_sqlalchemy_engine_with_retry(db_uri)
+        self.engine = self._create_engine(db_uri)
         dbutils.migrate_if_needed(self.engine, "head")
         SessionMaker = sessionmaker(bind=self.engine)
         self.ManagedSessionMaker = _get_managed_session_maker(
@@ -183,6 +184,65 @@ class SqlAlchemyStore:
         self.workspace_group_regex_permission_repo = (
             WorkspaceGroupRegexPermissionRepository(self.ManagedSessionMaker)
         )
+
+    @staticmethod
+    def _create_engine(db_uri):
+        """Create a SQLAlchemy engine with connection pool configuration.
+
+        Uses OIDC_DB_POOL_SIZE, OIDC_DB_POOL_MAX_OVERFLOW, and
+        OIDC_DB_POOL_RECYCLE_SECONDS from AppConfig. When a setting is 0
+        (default), SQLAlchemy's built-in defaults are used.  SQLite ignores
+        pool_size and max_overflow.
+
+        Includes retry logic matching MLflow's create_sqlalchemy_engine_with_retry.
+        """
+        import time
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.logger import get_logger
+
+        _logger = get_logger()
+        _make_parent_dirs_if_sqlite(db_uri)
+
+        kwargs = {"pool_pre_ping": True}
+        if not db_uri.startswith("sqlite"):
+            pool_size = getattr(config, "DB_POOL_SIZE", 0)
+            max_overflow = getattr(config, "DB_POOL_MAX_OVERFLOW", 0)
+            pool_recycle = getattr(config, "DB_POOL_RECYCLE_SECONDS", 0)
+            if pool_size:
+                kwargs["pool_size"] = pool_size
+            if max_overflow:
+                kwargs["max_overflow"] = max_overflow
+            if pool_recycle:
+                kwargs["pool_recycle"] = pool_recycle
+            if pool_size or max_overflow or pool_recycle:
+                _logger.info(
+                    "Auth DB engine pool options: pool_size=%s, max_overflow=%s, pool_recycle=%s",
+                    pool_size or "default",
+                    max_overflow or "default",
+                    pool_recycle or "default",
+                )
+
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            engine = sqlalchemy.create_engine(db_uri, **kwargs)
+            try:
+                sqlalchemy.inspect(engine)
+                return engine
+            except Exception as exc:
+                if attempt < max_retries:
+                    sleep_duration = 0.1 * ((2**attempt) - 1)
+                    _logger.warning(
+                        "Auth DB engine creation failed (attempt %d/%d): %s. "
+                        "Retrying in %.1fs",
+                        attempt,
+                        max_retries,
+                        exc,
+                        sleep_duration,
+                    )
+                    time.sleep(sleep_duration)
+                else:
+                    raise
 
     def ping(self) -> bool:
         """Lightweight database connectivity check for health probes.
@@ -405,6 +465,10 @@ class SqlAlchemyStore:
         self, is_service_account: bool = False, all: bool = False
     ) -> List[User]:
         return self.user_repo.list(is_service_account, all)
+
+    def list_usernames(self, is_service_account: bool = False) -> List[str]:
+        """Return only usernames without loading permission relationships."""
+        return self.user_repo.list_usernames(is_service_account)
 
     def update_user(
         self,
