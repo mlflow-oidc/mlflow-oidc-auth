@@ -25,6 +25,7 @@ from mlflow_oidc_auth.middleware import (
     AuthMiddleware,
     ProxyHeadersMiddleware,
     WorkspaceContextMiddleware,
+    add_fastapi_permission_middleware,
 )
 from mlflow_oidc_auth.oauth import ensure_oidc_client_registered
 from mlflow_oidc_auth.routers import get_all_routers
@@ -102,6 +103,58 @@ def _seed_default_workspace() -> None:
         logger.warning(f"Could not seed default workspace: {e}")
 
 
+def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
+    """Include MLflow's FastAPI-native routers in our application.
+
+    These routers serve endpoints that are NOT handled by Flask and must be
+    registered directly on the FastAPI app.  They are included BEFORE the
+    Flask WSGI mount so FastAPI routes take precedence.
+
+    Each router is imported and included individually with graceful fallback
+    so the plugin continues to work if a particular MLflow module is missing
+    (e.g. older MLflow versions without the assistant or job API).
+    """
+    # OTel trace ingestion: /v1/traces
+    try:
+        from mlflow.server.otel_api import otel_router
+
+        oidc_app.include_router(otel_router)
+        logger.info("Included MLflow OTel router (/v1/traces)")
+    except ImportError:
+        logger.debug("mlflow.server.otel_api not available — OTel endpoints disabled")
+
+    # Job API: /ajax-api/3.0/jobs/*
+    try:
+        from mlflow.server.job_api import job_api_router
+
+        oidc_app.include_router(job_api_router)
+        logger.info("Included MLflow Job API router (/ajax-api/3.0/jobs)")
+    except ImportError:
+        logger.debug("mlflow.server.job_api not available — Job API endpoints disabled")
+
+    # AI Gateway invocations: /gateway/*
+    try:
+        from mlflow.server.gateway_api import gateway_router
+
+        oidc_app.include_router(gateway_router)
+        logger.info("Included MLflow Gateway router (/gateway)")
+    except ImportError:
+        logger.debug(
+            "mlflow.server.gateway_api not available — Gateway endpoints disabled"
+        )
+
+    # AI Assistant: /ajax-api/3.0/mlflow/assistant/*
+    try:
+        from mlflow.server.assistant.api import assistant_router
+
+        oidc_app.include_router(assistant_router)
+        logger.info("Included MLflow Assistant router (/ajax-api/3.0/mlflow/assistant)")
+    except ImportError:
+        logger.debug(
+            "mlflow.server.assistant.api not available — Assistant endpoints disabled"
+        )
+
+
 def create_app() -> Any:
     """Create a FastAPI application with OIDC integration.
 
@@ -114,7 +167,9 @@ def create_app() -> Any:
         version=VERSION,
         docs_url="/docs" if getattr(config, "ENABLE_API_DOCS", True) else None,
         redoc_url="/redoc" if getattr(config, "ENABLE_API_DOCS", True) else None,
-        openapi_url="/openapi.json" if getattr(config, "ENABLE_API_DOCS", True) else None,
+        openapi_url="/openapi.json"
+        if getattr(config, "ENABLE_API_DOCS", True)
+        else None,
         lifespan=lifespan,
     )
     register_exception_handlers(oidc_app)
@@ -155,6 +210,25 @@ def create_app() -> Any:
         oidc_app.include_router(workspace_permissions_router)
         oidc_app.include_router(workspace_regex_permissions_router)
         oidc_app.include_router(workspace_crud_router)
+
+    # ---------------------------------------------------------------------------
+    # Include MLflow's FastAPI-native routers (GAP-ARCH-01 fix)
+    #
+    # These routers serve endpoints that bypass Flask entirely:
+    #   - otel_router:      /v1/traces — OpenTelemetry trace ingestion
+    #   - gateway_router:   /gateway/* — AI Gateway invocations
+    #   - assistant_router: /ajax-api/3.0/mlflow/assistant/* — AI assistant
+    #   - job_api_router:   /ajax-api/3.0/jobs/* — Job API
+    #
+    # They MUST be included BEFORE the Flask WSGI mount so FastAPI routes
+    # take precedence over the catch-all Flask mount.
+    # ---------------------------------------------------------------------------
+    _include_mlflow_fastapi_routers(oidc_app)
+
+    # Add permission middleware for the FastAPI-native routes.
+    # This runs AFTER AuthMiddleware (which sets request.state.username/is_admin)
+    # and enforces per-route authorization on gateway/otel/assistant/job routes.
+    add_fastapi_permission_middleware(oidc_app)
 
     # Mount Flask app at root with auth passing middleware
     oidc_app.mount("/", AuthAwareWSGIMiddleware(app))
