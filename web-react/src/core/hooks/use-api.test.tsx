@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { renderHook, waitFor, act } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { useApi } from "./use-api";
 import * as useAuthModule from "./use-auth";
 import * as useWorkspaceModule from "../../shared/context/use-workspace";
