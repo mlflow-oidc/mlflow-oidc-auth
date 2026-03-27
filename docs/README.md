@@ -10,7 +10,7 @@ This plugin allows you to use OIDC for user management in MLflow, enabling singl
 - User-level access control
 - Group-based access control
 - Permissions management based on regular expressions (allows or denies access to specific MLflow resources based on regular expressions and assigns permissions to users or groups)
-- Workspace support for multi-tenant resource isolation (requires MLflow >=3.10)
+- Workspace support for multi-tenant resource isolation, including workspace-scoped webhooks and trash (requires MLflow >=3.10)
 - Support for session, JWT, and basic authentication methods
 - Compatible with mlflow-client (basic auth)
 

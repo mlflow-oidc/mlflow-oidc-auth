@@ -217,12 +217,33 @@ Result: Access denied
 - To restrict access to specific resources within a workspace, assign explicit resource-level permissions. Resource-level permissions always take priority over the workspace fallback.
 - The workspace fallback only applies when `MLFLOW_ENABLE_WORKSPACES=true`. When workspaces are disabled, the system uses `DEFAULT_MLFLOW_PERMISSION` as the fallback.
 
+### Workspace-Scoped Resources
+
+When workspaces are enabled, the following resources are automatically scoped to the active workspace. Users only see and interact with data belonging to their currently selected workspace:
+
+| Resource | Scoping Mechanism |
+|----------|-------------------|
+| Experiments | MLflow's workspace-aware tracking store filters by workspace |
+| Runs | Scoped via their parent experiment's workspace |
+| Registered Models | MLflow's workspace-aware model registry filters by workspace |
+| Model Versions | Scoped via their parent registered model's workspace |
+| Webhooks | MLflow's workspace-aware model registry treats webhooks as workspace-isolated |
+| Deleted Experiments (Trash) | Trash operations use the workspace-aware tracking store — deleted experiments and runs are only visible within the workspace they belong to |
+| Registered Model Tags, Aliases | Scoped via their parent registered model's workspace |
+
+This means:
+- **Trash**: When a user views deleted experiments or runs, they only see items from the active workspace. Restore and hard-delete operations also respect workspace boundaries.
+- **Webhooks**: Webhook creation stamps the active workspace. Listing webhooks only returns those in the active workspace. Each workspace has its own independent set of webhooks.
+- **Switching workspaces** in the UI automatically refreshes all data views (experiments, models, webhooks, trash) to show only the new workspace's resources.
+
 ### Enforcement Points
 
 1. **Workspace API endpoints**: `GetWorkspace`, `UpdateWorkspace`, `DeleteWorkspace`, `CreateWorkspace`, `ListWorkspaces` are gated by workspace-level permission checks
 2. **Resource creation gating**: `CreateExperiment` and `CreateRegisteredModel` require `MANAGE` permission on the target workspace
 3. **Search/list filtering**: Results from `SearchExperiments`, `SearchRegisteredModels`, `SearchLoggedModels`, and `ListWorkspaces` are filtered to only include resources in workspaces the user can read
 4. **Permission management API**: Workspace permission CRUD endpoints require `MANAGE` on the workspace
+5. **Trash operations**: Deleted experiments and runs are filtered by workspace — users can only restore or permanently delete items from their active workspace
+6. **Webhooks**: Webhook CRUD operations are scoped to the active workspace via MLflow's workspace-aware model registry store
 
 ### Key Difference: `NO_PERMISSIONS` vs No Record
 
