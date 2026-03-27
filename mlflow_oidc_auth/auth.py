@@ -37,18 +37,35 @@ def _get_oidc_jwks() -> dict:
         raise
 
 
+def _get_claims_options() -> dict | None:
+    """Build JWT claims validation options.
+
+    Returns:
+        A claims_options dict for authlib jwt.decode if audience validation
+        is configured, otherwise None.
+    """
+    if config.OIDC_AUDIENCE:
+        return {"aud": {"essential": True, "value": config.OIDC_AUDIENCE}}
+    return None
+
+
 def validate_token(token: str):
-    """Validate JWT token using OIDC JWKS."""
+    """Validate JWT token using OIDC JWKS.
+
+    When OIDC_AUDIENCE is configured, the ``aud`` claim is validated
+    against the expected audience value during ``payload.validate()``.
+    """
+    claims_options = _get_claims_options()
     try:
         jwks = _get_oidc_jwks()
-        payload = jwt.decode(token, jwks)
+        payload = jwt.decode(token, jwks, claims_options=claims_options)
         payload.validate()
         return payload
     except BadSignatureError as e:
         logger.error("Token validation failed with bad signature: %s", str(e))
         # Refresh JWKS and retry once. This is expected when keys rotate.
         jwks = _get_oidc_jwks()
-        payload = jwt.decode(token, jwks)
+        payload = jwt.decode(token, jwks, claims_options=claims_options)
         payload.validate()
         return payload
     except Exception as e:
