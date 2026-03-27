@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { http } from "./http";
+import { http, extractErrorMessage } from "./http";
 
 vi.mock("../../shared/context/workspace-context", () => ({
   getActiveWorkspace: vi.fn(() => null),
@@ -125,5 +125,37 @@ describe("http", () => {
         credentials: "include",
       }),
     );
+  });
+});
+
+describe("extractErrorMessage", () => {
+  it("extracts message from JSON error body", () => {
+    const error = new Error(
+      'HTTP 400: {"error_code":"INVALID_STATE","message":"Pattern exceeds maximum length","details":null}',
+    );
+    expect(extractErrorMessage(error, "fallback")).toBe(
+      "Pattern exceeds maximum length",
+    );
+  });
+
+  it("returns raw text when body is not JSON", () => {
+    const error = new Error("HTTP 500: Internal Server Error");
+    expect(extractErrorMessage(error, "fallback")).toBe(
+      "Internal Server Error",
+    );
+  });
+
+  it("returns fallback for non-Error objects", () => {
+    expect(extractErrorMessage("string error", "fallback")).toBe("fallback");
+  });
+
+  it("returns fallback when error message does not match HTTP pattern", () => {
+    const error = new Error("Network failure");
+    expect(extractErrorMessage(error, "fallback")).toBe("fallback");
+  });
+
+  it("returns fallback when JSON body has no message field", () => {
+    const error = new Error('HTTP 400: {"error_code":"INVALID_STATE"}');
+    expect(extractErrorMessage(error, "fallback")).toBe("fallback");
   });
 });

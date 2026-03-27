@@ -12,6 +12,33 @@ const buildUrl = (url: string, params?: Record<string, string>) => {
   return u.toString();
 };
 
+/**
+ * Extract a user-friendly error message from an HTTP error.
+ * Falls back to the provided default message if parsing fails.
+ */
+export function extractErrorMessage(
+  error: unknown,
+  fallback: string,
+): string {
+  if (error instanceof Error) {
+    // Error format from http(): "HTTP 400: {json body}"
+    const match = error.message.match(/^HTTP \d+: (.+)$/s);
+    if (match) {
+      try {
+        const body = JSON.parse(match[1]) as {
+          message?: string;
+          error_code?: string;
+        };
+        if (body.message) return body.message;
+      } catch {
+        // Response body was not JSON — use the raw text after "HTTP NNN: "
+        return match[1];
+      }
+    }
+  }
+  return fallback;
+}
+
 export async function http<T = unknown>(
   url: string,
   options: RequestOptions = {},
