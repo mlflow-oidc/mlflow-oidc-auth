@@ -1,20 +1,23 @@
 """Workspace permission cache for hot-path lookups.
 
-Uses cachetools.TTLCache with lazy initialization to avoid import-time config reads.
+Uses the pluggable CacheBackend (local TTLCache by default, Redis for
+multi-replica) with lazy initialization to avoid import-time config reads.
 Only active when MLFLOW_ENABLE_WORKSPACES is True.
 """
 
 import re
 
-from cachetools import TTLCache
-
+from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import MANAGE, Permission, get_permission
 
 logger = get_logger()
 
-_cache: TTLCache | None = None
+_cache: CacheBackend | None = None
+
+_WORKSPACE_CACHE_DEFAULT_MAX_SIZE = 1024
+_WORKSPACE_CACHE_DEFAULT_TTL = 300
 
 
 def _sanitize(value: str) -> str:
@@ -22,14 +25,22 @@ def _sanitize(value: str) -> str:
     return value.replace("\n", "").replace("\r", "").replace("\t", "")
 
 
-def _get_cache() -> TTLCache:
+def _make_cache_key(username: str, workspace: str) -> str:
+    """Build a string cache key for workspace permission lookups."""
+    return f"{username}:{workspace}"
+
+
+def _get_cache() -> CacheBackend:
     """Get or create the workspace permission cache (lazy init)."""
     global _cache
     if _cache is None:
-        _cache = TTLCache(
-            maxsize=config.WORKSPACE_CACHE_MAX_SIZE,
-            ttl=config.WORKSPACE_CACHE_TTL_SECONDS,
+        maxsize = getattr(
+            config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE
         )
+        ttl = getattr(
+            config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL
+        )
+        _cache = get_cache_backend("workspace", maxsize=maxsize, ttl=ttl)
     return _cache
 
 
@@ -50,13 +61,14 @@ def get_workspace_permission_cached(username: str, workspace: str) -> Permission
         return None
 
     cache = _get_cache()
-    key = (username, workspace)
-    if key in cache:
-        return cache[key]
+    key = _make_cache_key(username, workspace)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
 
     perm = _lookup_workspace_permission(username, workspace)
     if perm is not None:
-        cache[key] = perm  # Only cache non-None to avoid caching denials
+        cache.set(key, perm)  # Only cache non-None to avoid caching denials
     return perm
 
 
@@ -67,7 +79,7 @@ def invalidate_workspace_permission(username: str, workspace: str) -> None:
     Only invalidates user permission changes; group changes rely on TTL (per D-15).
     """
     cache = _get_cache()
-    cache.pop((username, workspace), None)
+    cache.delete(_make_cache_key(username, workspace))
 
 
 def flush_workspace_cache() -> None:

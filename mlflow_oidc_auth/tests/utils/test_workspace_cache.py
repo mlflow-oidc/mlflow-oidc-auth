@@ -47,7 +47,9 @@ class TestGetWorkspacePermissionCached:
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission"
+            ) as mock_lookup,
         ):
             mock_lookup.return_value = READ
             result = get_workspace_permission_cached("user1", "default")
@@ -67,7 +69,9 @@ class TestGetWorkspacePermissionCached:
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission"
+            ) as mock_lookup,
         ):
             mock_lookup.return_value = None
             result = get_workspace_permission_cached("user1", "default")
@@ -87,7 +91,9 @@ class TestGetWorkspacePermissionCached:
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission"
+            ) as mock_lookup,
         ):
             mock_lookup.return_value = READ
             result = get_workspace_permission_cached("user1", "ws1")
@@ -107,7 +113,9 @@ class TestGetWorkspacePermissionCached:
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission"
+            ) as mock_lookup,
         ):
             mock_lookup.return_value = MANAGE
             # First call — cache miss
@@ -131,7 +139,9 @@ class TestGetWorkspacePermissionCached:
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission"
+            ) as mock_lookup,
         ):
             mock_lookup.return_value = None
             # First call — returns None, should not cache
@@ -185,7 +195,9 @@ class TestLookupWorkspacePermission:
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
-        mock_store.get_workspace_permission.side_effect = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
+        mock_store.get_workspace_permission.side_effect = MlflowException(
+            "Not found", RESOURCE_DOES_NOT_EXIST
+        )
         mock_group_perm = MagicMock()
         mock_group_perm.permission = "READ"
         mock_store.get_user_groups_workspace_permission.return_value = mock_group_perm
@@ -196,7 +208,9 @@ class TestLookupWorkspacePermission:
         ):
             result = _lookup_workspace_permission("user1", "ws1")
             assert result == READ
-            mock_store.get_user_groups_workspace_permission.assert_called_once_with("ws1", "user1")
+            mock_store.get_user_groups_workspace_permission.assert_called_once_with(
+                "ws1", "user1"
+            )
 
     def test_returns_none_when_no_permission(self):
         """_lookup_workspace_permission() returns None when no user or group permission exists."""
@@ -207,8 +221,12 @@ class TestLookupWorkspacePermission:
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
-        mock_store.get_workspace_permission.side_effect = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
-        mock_store.get_user_groups_workspace_permission.side_effect = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
+        mock_store.get_workspace_permission.side_effect = MlflowException(
+            "Not found", RESOURCE_DOES_NOT_EXIST
+        )
+        mock_store.get_user_groups_workspace_permission.side_effect = MlflowException(
+            "Not found", RESOURCE_DOES_NOT_EXIST
+        )
         mock_store.list_workspace_regex_permissions.return_value = []
         mock_store.get_groups_ids_for_user.return_value = []
 
@@ -242,15 +260,18 @@ class TestFlushWorkspaceCache:
         mock_config = MagicMock()
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.CACHE_BACKEND = "local"
 
         with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
             cache = _get_cache()
-            cache[("user1", "ws1")] = MANAGE
-            cache[("user2", "ws2")] = READ
-            assert len(cache) == 2
+            cache.set("user1:ws1", MANAGE)
+            cache.set("user2:ws2", READ)
+            assert cache.get("user1:ws1") == MANAGE
+            assert cache.get("user2:ws2") == READ
 
             flush_workspace_cache()
-            assert len(cache) == 0
+            assert cache.get("user1:ws1") is None
+            assert cache.get("user2:ws2") is None
 
     def test_flush_on_empty_cache(self):
         """flush_workspace_cache() succeeds even on empty cache."""
@@ -259,6 +280,7 @@ class TestFlushWorkspaceCache:
         mock_config = MagicMock()
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.CACHE_BACKEND = "local"
 
         with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
             flush_workspace_cache()  # Should not raise
@@ -398,12 +420,16 @@ class TestResolveGroupRegex:
         regex_perm.regex = "^team-.*"
         regex_perm.priority = 5
         regex_perm.permission = "EDIT"
-        mock_store.list_workspace_group_regex_permissions_for_groups_ids.return_value = [regex_perm]
+        mock_store.list_workspace_group_regex_permissions_for_groups_ids.return_value = [
+            regex_perm
+        ]
 
         result = _resolve_group_regex(mock_store, "user1", "team-workspace")
         assert result == EDIT
         mock_store.get_groups_ids_for_user.assert_called_once_with("user1")
-        mock_store.list_workspace_group_regex_permissions_for_groups_ids.assert_called_once_with([1, 2])
+        mock_store.list_workspace_group_regex_permissions_for_groups_ids.assert_called_once_with(
+            [1, 2]
+        )
 
     def test_returns_none_when_user_has_no_groups(self):
         """Returns None when user has no groups."""
@@ -425,7 +451,9 @@ class TestResolveGroupRegex:
         regex_perm.regex = "^staging-.*"
         regex_perm.priority = 10
         regex_perm.permission = "READ"
-        mock_store.list_workspace_group_regex_permissions_for_groups_ids.return_value = [regex_perm]
+        mock_store.list_workspace_group_regex_permissions_for_groups_ids.return_value = [
+            regex_perm
+        ]
 
         result = _resolve_group_regex(mock_store, "user1", "prod-workspace")
         assert result is None
@@ -462,8 +490,12 @@ class TestLookupWithRegexSources:
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
-        mock_store.get_workspace_permission.side_effect = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
-        mock_store.get_user_groups_workspace_permission.side_effect = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
+        mock_store.get_workspace_permission.side_effect = MlflowException(
+            "Not found", RESOURCE_DOES_NOT_EXIST
+        )
+        mock_store.get_user_groups_workspace_permission.side_effect = MlflowException(
+            "Not found", RESOURCE_DOES_NOT_EXIST
+        )
         regex_perm = MagicMock()
         regex_perm.regex = "^prod-.*"
         regex_perm.priority = 10
@@ -486,15 +518,21 @@ class TestLookupWithRegexSources:
         mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
 
         mock_store = MagicMock()
-        mock_store.get_workspace_permission.side_effect = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
-        mock_store.get_user_groups_workspace_permission.side_effect = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
+        mock_store.get_workspace_permission.side_effect = MlflowException(
+            "Not found", RESOURCE_DOES_NOT_EXIST
+        )
+        mock_store.get_user_groups_workspace_permission.side_effect = MlflowException(
+            "Not found", RESOURCE_DOES_NOT_EXIST
+        )
         mock_store.list_workspace_regex_permissions.return_value = []
         mock_store.get_groups_ids_for_user.return_value = [1]
         group_regex_perm = MagicMock()
         group_regex_perm.regex = "^team-.*"
         group_regex_perm.priority = 5
         group_regex_perm.permission = "USE"
-        mock_store.list_workspace_group_regex_permissions_for_groups_ids.return_value = [group_regex_perm]
+        mock_store.list_workspace_group_regex_permissions_for_groups_ids.return_value = [
+            group_regex_perm
+        ]
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),

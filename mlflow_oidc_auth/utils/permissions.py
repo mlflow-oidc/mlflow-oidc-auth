@@ -5,10 +5,13 @@ This module provides registry-driven permission resolution for all 7 resource ty
 The PERMISSION_REGISTRY maps resource types to builder functions that create
 source configurations, and resolve_permission() is the single entry point.
 
-A TTL-based cache is used to avoid repeated DB lookups on every request.
-Cache entries are keyed by (resource_type, resource_id, username) and expire
-after PERMISSION_CACHE_TTL_SECONDS (default 30). Explicit invalidation is
-available via invalidate_permission_cache() and flush_permission_cache().
+A pluggable cache backend is used to avoid repeated DB lookups on every request.
+Cache entries are keyed by ``resource_type:resource_id:username`` and expire
+after PERMISSION_CACHE_TTL_SECONDS (default 30). The backend is selected via
+``CACHE_BACKEND`` config (``"local"`` or ``"redis"``).
+
+Explicit invalidation is available via invalidate_permission_cache() and
+flush_permission_cache().
 
 Existing public functions (effective_*, can_*) are thin wrappers around
 resolve_permission() and remain backward-compatible.
@@ -17,11 +20,11 @@ resolve_permission() and remain backward-compatible.
 import re
 from typing import Callable, Dict
 
-from cachetools import TTLCache
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server.handlers import _get_tracking_store
 
+from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
@@ -37,18 +40,25 @@ logger = get_logger()
 _PERMISSION_CACHE_MAX_SIZE = 2048
 _PERMISSION_CACHE_DEFAULT_TTL = 30
 
-_permission_cache: TTLCache | None = None
+_permission_cache: CacheBackend | None = None
 
 
-def _get_permission_cache() -> TTLCache:
+def _get_permission_cache() -> CacheBackend:
     """Get or create the permission resolution cache (lazy init)."""
     global _permission_cache
     if _permission_cache is None:
         ttl = getattr(
             config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL
         )
-        _permission_cache = TTLCache(maxsize=_PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+        _permission_cache = get_cache_backend(
+            "permissions", maxsize=_PERMISSION_CACHE_MAX_SIZE, ttl=ttl
+        )
     return _permission_cache
+
+
+def _make_cache_key(resource_type: str, resource_id: str, username: str) -> str:
+    """Build a string cache key from the permission lookup tuple."""
+    return f"{resource_type}:{resource_id}:{username}"
 
 
 def invalidate_permission_cache(
@@ -59,7 +69,7 @@ def invalidate_permission_cache(
     Call after permission CUD operations for a specific user+resource.
     """
     cache = _get_permission_cache()
-    cache.pop((resource_type, resource_id, username), None)
+    cache.delete(_make_cache_key(resource_type, resource_id, username))
 
 
 def flush_permission_cache() -> None:
@@ -342,10 +352,10 @@ def resolve_permission(
     """Single entry point for all permission resolution. Per D-01 (REFAC-01).
 
     Results are cached with a short TTL to avoid repeated DB lookups on
-    every request. The cache key is (resource_type, resource_id, username).
+    every request. The cache key is ``resource_type:resource_id:username``.
     """
     cache = _get_permission_cache()
-    cache_key = (resource_type, resource_id, username)
+    cache_key = _make_cache_key(resource_type, resource_id, username)
 
     cached = cache.get(cache_key)
     if cached is not None:
@@ -370,7 +380,7 @@ def resolve_permission(
             else:
                 result = PermissionResult(NO_PERMISSIONS, "workspace-deny")
 
-    cache[cache_key] = result
+    cache.set(cache_key, result)
     return result
 
 

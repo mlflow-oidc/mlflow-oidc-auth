@@ -70,6 +70,10 @@ cloud = [
   "azure-keyvault-secrets>=4.10.0",
   "hvac>=2.4.0",
 ]
+# Redis cache backend
+cache = [
+  "redis>=5.0.0,<6",
+]
 
 [[project.maintainers]]
 name = "Alexander Kharkevich"

@@ -158,6 +158,14 @@ class AppConfig:
         # Proxy trust settings
         self.TRUSTED_PROXIES = config_manager.get_list("TRUSTED_PROXIES", default=[])
 
+        # Cache backend settings
+        # "local" (default, in-process TTLCache) or "redis" (shared across replicas)
+        self.CACHE_BACKEND = config_manager.get("CACHE_BACKEND", "local")
+        self.CACHE_REDIS_URL = config_manager.get("CACHE_REDIS_URL")
+        self.CACHE_KEY_PREFIX = config_manager.get(
+            "CACHE_KEY_PREFIX", "mlflow_oidc_auth:"
+        )
+
         # OIDC workspace detection settings
         self.OIDC_WORKSPACE_CLAIM_NAME = config_manager.get(
             "OIDC_WORKSPACE_CLAIM_NAME", "workspace"
