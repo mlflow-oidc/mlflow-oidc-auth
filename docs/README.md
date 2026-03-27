@@ -16,6 +16,11 @@ An authentication and authorization plugin for [MLflow](https://mlflow.org/) tha
 - **Trash management** — View, restore, and permanently delete experiments and runs from the admin UI
 - **Admin UI** — React-based management interface for permissions, users, groups, webhooks, and trash
 - **Pluggable configuration** — Load secrets from AWS Secrets Manager, Azure Key Vault, HashiCorp Vault, Kubernetes Secrets, or environment variables
+- **Pluggable cache backend** — In-process TTL cache (default) or shared Redis for multi-replica permission invalidation
+- **JWT audience validation** — Optional `aud` claim enforcement to prevent token confusion attacks
+- **Trusted proxy validation** — CIDR-based validation of `X-Forwarded-*` headers for secure reverse proxy deployments
+- **ReDoS protection** — Regex pattern validation with length limits and nested quantifier detection
+- **Permission caching** — TTL-based caching of permission resolution results with automatic invalidation on writes
 - **GraphQL authorization** — Permission enforcement on MLflow's GraphQL API
 - **Health probes** — Kubernetes-compatible liveness, readiness, and startup health check endpoints
 - **MLflow UI integration** — Injects sign-in/sign-out links and permission management navigation into the built-in MLflow UI

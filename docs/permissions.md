@@ -28,6 +28,7 @@ The permission system covers these MLflow resource types:
 | Registered Models | Per model name | Includes model versions |
 | Prompts | Per prompt name | Uses the model permission infrastructure |
 | Scorers | Per experiment + scorer name | Compound key |
+| Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions |
 | Gateway Endpoints | Per endpoint name | AI Gateway routes |
 | Gateway Secrets | Per secret name | AI Gateway secrets |
 | Gateway Model Definitions | Per model definition name | AI Gateway model configs |
@@ -98,6 +99,16 @@ For experiment "dev-ml-model":
   Result: MANAGE permission
 ```
 
+### Regex Safety (ReDoS Protection)
+
+Regex patterns are validated on creation/update to prevent Regular Expression Denial of Service (ReDoS) attacks:
+
+- **Maximum pattern length**: 1024 characters. Patterns exceeding this limit are rejected
+- **Nested quantifier detection**: Patterns containing nested quantifiers (e.g., `(a+)+`, `(a*)*b`, `(a{2,}){3,}`) are rejected because they can cause catastrophic backtracking
+- **Validation errors**: When a pattern is rejected, the server returns an HTTP 400 response with a descriptive error message (e.g., "Pattern exceeds maximum length of 1024 characters" or "Potentially unsafe regex pattern detected: nested quantifiers")
+
+These limits are hardcoded and cannot be configured via environment variables.
+
 ## Auto-Grant on Resource Creation
 
 When a user creates a resource, the plugin automatically grants them `MANAGE` permission on it. This applies to:
@@ -116,6 +127,7 @@ For non-admin users, search and list results are filtered to only include resour
 
 - `SearchExperiments` — removes experiments the user cannot read
 - `SearchRegisteredModels` — removes models the user cannot read
+- `SearchModelVersions` — removes model versions whose parent model is unreadable
 - `SearchLoggedModels` — removes logged models whose parent experiment is unreadable
 - `ListGatewayEndpoints` — removes unreadable gateway endpoints
 - `ListGatewaySecretInfos` — removes unreadable gateway secrets

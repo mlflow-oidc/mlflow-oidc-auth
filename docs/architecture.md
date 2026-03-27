@@ -45,8 +45,9 @@ Request → ProxyHeaders → Auth → WorkspaceContext → Session → Route Han
 
 | Middleware | Purpose |
 |-----------|---------|
-| **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and client IP |
-| **AuthMiddleware** | Authenticates the user via basic auth, JWT bearer token, or session cookie. Sets `request.state.username`, `request.state.is_admin`, and `request.scope["mlflow_oidc_auth"]` |
+| **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and client IP. When `TRUSTED_PROXIES` is configured, only applies headers from requests originating within the trusted CIDR ranges |
+| **AuthMiddleware** | Authenticates the user via basic auth, JWT bearer token, or session cookie. Sets `request.state.username`, `request.state.is_admin`, and `request.scope["mlflow_oidc_auth"]`. When `OIDC_AUDIENCE` is configured, JWT `aud` claim is validated |
+| **FastAPIPermissionMiddleware** | Enforces RBAC on MLflow's native FastAPI routers (gateway invocations, chat completions, embeddings). Extracts the gateway endpoint name from the URL path and checks USE permission before forwarding |
 | **WorkspaceContextMiddleware** | When workspaces are enabled, reads the `X-MLFLOW-WORKSPACE` header and sets MLflow's workspace ContextVar so tracking store operations run in the correct workspace |
 | **SessionMiddleware** | Starlette's built-in cookie-based session. Decodes/encodes the signed session cookie |
 
@@ -77,7 +78,7 @@ Authenticates against the plugin's user database. Used by MLflow CLI/SDK (`mlflo
 Authorization: Bearer <jwt_token>
 ```
 
-Validates the JWT against the OIDC provider's JWKS endpoint. Extracts `email` or `preferred_username` from claims. Handles key rotation by retrying with a fresh JWKS on signature failure.
+Validates the JWT against the OIDC provider's JWKS endpoint. Extracts `email` or `preferred_username` from claims. Handles key rotation by retrying with a fresh JWKS on signature failure. When `OIDC_AUDIENCE` is configured, the `aud` claim is validated to prevent token confusion attacks.
 
 ### 3. Session Cookie (Fallback)
 
@@ -179,6 +180,24 @@ Routers / Hooks / Validators
 - **ORM Models**: SQLAlchemy models prefixed with `Sql` (e.g., `SqlUser`, `SqlExperimentPermission`). Table definitions with `Mapped[T]` type annotations.
 - **Entities**: Plain Python classes representing domain objects, decoupled from the ORM.
 - **Alembic**: Manages schema migrations automatically on startup.
+
+## Caching
+
+Two independent caching layers reduce database load and external HTTP calls:
+
+### JWKS Cache
+
+The OIDC provider's signing keys (JWKS) are fetched once and cached in-process for `OIDC_JWKS_CACHE_TTL_SECONDS` (default: 300). On JWT signature failure, the cache is bypassed and a fresh JWKS is fetched (handles key rotation). This cache is always local (in-process) because JWKS data is identical across replicas.
+
+### Permission Cache
+
+Permission resolution results (the computed permission for a user + resource pair) are cached with a TTL of `PERMISSION_CACHE_TTL_SECONDS` (default: 30). The cache is automatically invalidated whenever permissions are created, updated, or deleted through the `SqlAlchemyStore`.
+
+The cache backend is configurable via `CACHE_BACKEND`:
+- **`local`** (default): In-process TTL cache. Suitable for single-replica deployments.
+- **`redis`**: Shared Redis instance. Required for multi-replica deployments where permission changes must propagate immediately across all replicas. Requires `CACHE_REDIS_URL` to be set. Install with `pip install "mlflow-oidc-auth[cache]"`.
+
+The workspace permission cache uses the same backend and has separate configuration (`WORKSPACE_CACHE_TTL_SECONDS`, `WORKSPACE_CACHE_MAX_SIZE`).
 
 ## Configuration System
 

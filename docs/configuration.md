@@ -13,6 +13,7 @@ The application is configured through environment variables, `.env` files, or pl
 | `OIDC_CLIENT_SECRET` | String | *Required* | Client secret for your OIDC application |
 | `OIDC_REDIRECT_URI` | String | Auto-detected | Redirect URI for the OIDC callback (`/callback`). If not set, calculated dynamically from proxy headers, which works correctly behind reverse proxies |
 | `OIDC_SCOPE` | String | `openid,email,profile` | Comma-separated list of OIDC scopes to request |
+| `OIDC_AUDIENCE` | String | None | Expected JWT `aud` claim value (e.g., your client ID or API identifier). When set, bearer tokens are rejected if the `aud` claim doesn't match. Recommended for production to prevent token confusion attacks |
 | `OIDC_PROVIDER_DISPLAY_NAME` | String | `Login with OIDC` | Display name shown on the login page button |
 | `OIDC_GROUPS_ATTRIBUTE` | String | `groups` | Attribute name in the ID token that contains the user's group memberships |
 
@@ -42,7 +43,8 @@ The application is configured through environment variables, `.env` files, or pl
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `SECRET_KEY` | String | Auto-generated | Secret key used to sign session cookies. **All replicas must share the same value** in multi-instance deployments. If not set, a random key is generated on startup (sessions will not survive restarts or work across replicas) |
+| `SECRET_KEY` | String | Auto-generated | Secret key used to sign session cookies. **All replicas must share the same value** in multi-instance deployments. If not set, a random key is generated on startup and a warning is logged — sessions will not survive restarts or work across replicas |
+| `TRUSTED_PROXIES` | String (CSV) | Empty (trust all) | Comma-separated list of trusted proxy IP addresses or CIDR ranges (e.g., `10.0.0.0/8,172.16.0.0/12`). When configured, `X-Forwarded-*` headers from untrusted sources are ignored. When empty, all proxy headers are trusted for backward compatibility |
 | `AUTOMATIC_LOGIN_REDIRECT` | Boolean | `false` | When `true`, unauthenticated browser requests are automatically redirected to the OIDC login page instead of showing the login UI |
 
 ### UI Behavior
@@ -58,6 +60,20 @@ The application is configured through environment variables, `.env` files, or pl
 |----------|------|---------|-------------|
 | `OIDC_GEN_AI_GATEWAY_ENABLED` | Boolean | `true` | Enable AI Gateway permission management in the admin UI and API. Disable if you don't use MLflow AI Gateway |
 | `MLFLOW_ENABLE_WORKSPACES` | Boolean | `false` | Enable workspace (multi-tenant) support. Requires MLflow >=3.10. See [Workspaces](workspaces) |
+
+### Caching
+
+The plugin uses TTL caches to avoid repeated database lookups on every request. Two independent caches exist: one for OIDC/JWT key material and one for permission resolution results.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `OIDC_JWKS_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for the JWKS key set cache. The OIDC provider's signing keys are fetched once and cached for this duration. This is always a local in-process cache (not affected by `CACHE_BACKEND`) because JWKS data is identical across replicas |
+| `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
+| `CACHE_BACKEND` | String | `local` | Cache backend for permission and workspace caches. Options: `local` (in-process TTL cache) or `redis` (shared Redis instance). Use `redis` for multi-replica deployments where permission changes must propagate immediately across all replicas |
+| `CACHE_REDIS_URL` | String | None | Redis connection URL. Required when `CACHE_BACKEND=redis`. Example: `redis://localhost:6379/0` or `redis://:password@redis-host:6379/1` |
+| `CACHE_KEY_PREFIX` | String | `mlflow_oidc_auth:` | Key prefix for Redis cache entries. Useful when sharing a Redis instance with other applications |
+
+> **Note:** Permission caches are automatically invalidated when permissions are created, updated, or deleted through the plugin's API. The TTL acts as a safety net, not the primary invalidation mechanism.
 
 ### Workspace Settings
 
@@ -163,4 +179,27 @@ PERMISSION_SOURCE_ORDER=group,user,group-regex,regex
 
 # Read-only by default
 DEFAULT_MLFLOW_PERMISSION=READ
+```
+
+### Multi-Replica with Redis Cache
+
+```bash
+# Shared cache backend for permission invalidation across replicas
+CACHE_BACKEND=redis
+CACHE_REDIS_URL=redis://redis-host:6379/0
+
+# Short permission cache TTL for faster propagation
+PERMISSION_CACHE_TTL_SECONDS=30
+
+# JWKS cache (always local, 5 min default is fine)
+OIDC_JWKS_CACHE_TTL_SECONDS=300
+
+# JWT audience validation (recommended for production)
+OIDC_AUDIENCE=my-mlflow-client-id
+
+# Trusted proxy CIDR (if behind a load balancer)
+TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12
+
+# All replicas must share the same secret key
+SECRET_KEY=your-random-64-char-hex-string
 ```
