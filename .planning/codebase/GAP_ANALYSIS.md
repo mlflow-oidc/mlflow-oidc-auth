@@ -17,33 +17,11 @@ Our plugin (`mlflow-oidc-auth`) has **strong security coverage** for Flask/proto
 
 ## 1. Architecture Gaps
 
-### GAP-ARCH-01: FastAPI-native routes not authenticated (CRITICAL)
+### GAP-ARCH-01: FastAPI-native routes not authenticated — RESOLVED ✅
 
-**What upstream does:**
-MLflow 3.10 uses `create_fastapi_app()` (from `mlflow/server/fastapi_app.py`) which registers **four FastAPI routers BEFORE the Flask WSGI mount**:
-- `otel_router` — OpenTelemetry trace ingestion (`/v1/traces`)
-- `gateway_router` — AI Gateway invocation routes (`/gateway/{endpoint}/mlflow/invocations`, `/gateway/openai/v1/chat/completions`, etc.)
-- `assistant_router` — AI assistant endpoints (`/ajax-api/3.0/mlflow/assistant/*`)
-- `job_api_router` — Job API endpoints (`/ajax-api/3.0/jobs/*`)
+> **Resolved in commit `d74a5bf`** — Phase 1 implementation.
 
-Upstream then calls `add_fastapi_permission_middleware(fastapi_app)` which adds HTTP middleware that:
-1. Finds a validator via `_find_fastapi_validator(path)`
-2. Authenticates via Basic Auth (`_authenticate_fastapi_request`)
-3. Allows admins full access
-4. Runs async validators for gateway/otel/jobs/assistant routes
-
-**What our plugin does:**
-Our `create_app()` (in `mlflow_oidc_auth/app.py`) creates its own FastAPI app and mounts the **plain** `mlflow.server.app` Flask app via `AuthAwareWSGIMiddleware`. It never calls `create_fastapi_app()`, so:
-- The 4 FastAPI-native routers **are never registered**
-- Gateway invocations, OTel trace ingestion, assistant, and job API endpoints **do not exist**
-- Even if MLflow registered them on the Flask side as fallback routes, they would go through our Flask `before_request_hook`, which has `validate_gateway_proxy` for the `/ajax-api/2.0/mlflow/gateway-proxy` path but NOT for the direct FastAPI gateway routes
-
-**Impact:** Users cannot use AI Gateway invocations, OTel trace ingestion, assistant features, or Job API when running with the OIDC auth plugin. This is the bug reported in [Discussion #231](https://github.com/mlflow-oidc/mlflow-oidc-auth/discussions/231).
-
-**Remediation options:**
-1. **Option A (Recommended):** Call `create_fastapi_app(flask_app)` from upstream, then add our FastAPI middleware on top — effectively wrapping MLflow's FastAPI app with our OIDC auth
-2. **Option B:** Register the 4 upstream routers ourselves and add our own permission middleware for them
-3. **Option C:** Add `add_fastapi_permission_middleware()` equivalent to our FastAPI app + manually register the routers
+**Resolution:** Implemented Option B — our `create_app()` now calls `_include_mlflow_fastapi_routers()` which dynamically imports and registers the 4 upstream FastAPI routers (`otel_router`, `gateway_router`, `assistant_router`, `job_api_router`) with try/except per-router for forward compatibility. Added `FastAPIPermissionMiddleware` in `mlflow_oidc_auth/middleware/fastapi_permission_middleware.py` (238 lines) that provides OIDC-aware permission enforcement for all FastAPI-native routes. 45 tests added.
 
 ### GAP-ARCH-02: Upstream uses `_MLFLOW_SGI_NAME` gating (MEDIUM)
 
@@ -165,13 +143,15 @@ We always return a FastAPI app. This is fine — our plugin is designed for ASGI
 | SetLoggedModelTags | `validate_can_update_logged_model` | `validate_can_update_logged_model` | MATCH |
 | LogLoggedModelParamsRequest | `validate_can_update_logged_model` | `validate_can_update_logged_model` | MATCH |
 
-### 2b. Missing protobuf handlers
+### 2b. Missing protobuf handlers — RESOLVED ✅
+
+> **Resolved in commit `02adb99`** — Phase 2 implementation. Forward-compatible `try/except ImportError` wrapper handles protos that may not exist yet in current MLflow.
 
 | Proto Class | Upstream Validator | Our Status | Severity |
 |---|---|---|---|
-| CreateGatewayBudgetPolicy | `sender_is_admin` | **MISSING** | HIGH |
-| UpdateGatewayBudgetPolicy | `sender_is_admin` | **MISSING** | HIGH |
-| DeleteGatewayBudgetPolicy | `sender_is_admin` | **MISSING** | HIGH |
+| CreateGatewayBudgetPolicy | `sender_is_admin` | `_deny_non_admin` (admin-only) | RESOLVED |
+| UpdateGatewayBudgetPolicy | `sender_is_admin` | `_deny_non_admin` (admin-only) | RESOLVED |
+| DeleteGatewayBudgetPolicy | `sender_is_admin` | `_deny_non_admin` (admin-only) | RESOLVED |
 
 ### 2c. Flask route handlers
 
@@ -186,39 +166,41 @@ We always return a FastAPI app. This is fine — our plugin is designed for ASGI
 | SEARCH_DATASETS | `validate_can_search_datasets` | `validate_can_search_datasets` | MATCH |
 | CREATE_PROMPTLAB_RUN | `validate_can_create_promptlab_run` | `validate_can_create_promptlab_run` | MATCH |
 | GATEWAY_PROXY (GET/POST) | `validate_gateway_proxy` | `validate_gateway_proxy` | MATCH |
-| INVOKE_SCORER | `validate_gateway_proxy` | **MISSING** | MEDIUM |
-| GATEWAY_SUPPORTED_PROVIDERS | `validate_gateway_proxy` | **MISSING** | LOW |
-| GATEWAY_SUPPORTED_MODELS | `validate_gateway_proxy` | **MISSING** | LOW |
-| GATEWAY_PROVIDER_CONFIG | `sender_is_admin` | **MISSING** | MEDIUM |
-| GATEWAY_SECRETS_CONFIG | `sender_is_admin` | **MISSING** | MEDIUM |
+| INVOKE_SCORER | `validate_gateway_proxy` | `validate_gateway_proxy` | RESOLVED ✅ (`02adb99`) |
+| GATEWAY_SUPPORTED_PROVIDERS | `validate_gateway_proxy` | `validate_gateway_proxy` | RESOLVED ✅ (`02adb99`) |
+| GATEWAY_SUPPORTED_MODELS | `validate_gateway_proxy` | `validate_gateway_proxy` | RESOLVED ✅ (`02adb99`) |
+| GATEWAY_PROVIDER_CONFIG | `sender_is_admin` | `_deny_non_admin` (admin-only) | RESOLVED ✅ (`02adb99`) |
+| GATEWAY_SECRETS_CONFIG | `sender_is_admin` | `_deny_non_admin` (admin-only) | RESOLVED ✅ (`02adb99`) |
 
-### 2d. Webhook handlers
+### 2d. Webhook handlers — NO GAP (verified)
+
+> **Verified during Phase 2 analysis.** Our plugin handles ALL webhook CRUD (create, get, list, update, delete, test) via the FastAPI router in `mlflow_oidc_auth/routers/webhook.py` with `Depends(check_admin_permission)` dependency injection. No Flask-level hooks needed — the FastAPI dependency already enforces admin-only access.
 
 | Proto Class | Upstream Validator | Our Status | Severity |
 |---|---|---|---|
-| CreateWebhook | `sender_is_admin` | **MISSING** | MEDIUM |
-| GetWebhook | `sender_is_admin` | **MISSING** | MEDIUM |
-| ListWebhooks | `sender_is_admin` | **MISSING** | MEDIUM |
-| UpdateWebhook | `sender_is_admin` | **MISSING** | MEDIUM |
-| DeleteWebhook | `sender_is_admin` | **MISSING** | MEDIUM |
-| TestWebhook | `sender_is_admin` | **MISSING** | MEDIUM |
+| CreateWebhook | `sender_is_admin` | Handled via FastAPI `check_admin_permission` | NO GAP |
+| GetWebhook | `sender_is_admin` | Handled via FastAPI `check_admin_permission` | NO GAP |
+| ListWebhooks | `sender_is_admin` | Handled via FastAPI `check_admin_permission` | NO GAP |
+| UpdateWebhook | `sender_is_admin` | Handled via FastAPI `check_admin_permission` | NO GAP |
+| DeleteWebhook | `sender_is_admin` | Handled via FastAPI `check_admin_permission` | NO GAP |
+| TestWebhook | `sender_is_admin` | Handled via FastAPI `check_admin_permission` | NO GAP |
 
-> NOTE: Our plugin has a separate webhook router in `mlflow_oidc_auth/routers/webhook.py` that may handle these via FastAPI dependency injection rather than Flask hooks. This needs verification.
+### 2e. FastAPI-native route validators (NEW in 3.10) — RESOLVED ✅
 
-### 2e. FastAPI-native route validators (NEW in 3.10)
+> **Resolved in commit `d74a5bf`** — Phase 1 implementation. All FastAPI-native routes are now registered and protected by `FastAPIPermissionMiddleware`.
 
 | Route Pattern | Upstream Validator | Our Status | Severity |
 |---|---|---|---|
-| `/gateway/{endpoint}/mlflow/invocations` | `_get_gateway_validator` (USE permission) | **MISSING** (route doesn't exist) | CRITICAL |
-| `/gateway/openai/v1/chat/completions` | `_get_gateway_validator` (USE permission) | **MISSING** | CRITICAL |
-| `/gateway/openai/v1/embeddings` | `_get_gateway_validator` (USE permission) | **MISSING** | CRITICAL |
-| `/gateway/openai/v1/responses` | `_get_gateway_validator` (USE permission) | **MISSING** | CRITICAL |
-| `/gateway/anthropic/v1/messages` | `_get_gateway_validator` (USE permission) | **MISSING** | CRITICAL |
-| `/gateway/gemini/v1beta/models/*/generateContent` | `_get_gateway_validator` (USE permission) | **MISSING** | CRITICAL |
-| `/gateway/gemini/v1beta/models/*/streamGenerateContent` | `_get_gateway_validator` (USE permission) | **MISSING** | CRITICAL |
-| `/v1/traces` | `_get_otel_validator` (experiment update permission) | **MISSING** | CRITICAL |
-| `/ajax-api/3.0/jobs/*` | `_get_require_authentication_validator` | **MISSING** | HIGH |
-| `/ajax-api/3.0/mlflow/assistant/*` | `_get_require_authentication_validator` | **MISSING** | HIGH |
+| `/gateway/{endpoint}/mlflow/invocations` | `_get_gateway_validator` (USE permission) | `FastAPIPermissionMiddleware` gateway validator | RESOLVED |
+| `/gateway/openai/v1/chat/completions` | `_get_gateway_validator` (USE permission) | `FastAPIPermissionMiddleware` gateway validator | RESOLVED |
+| `/gateway/openai/v1/embeddings` | `_get_gateway_validator` (USE permission) | `FastAPIPermissionMiddleware` gateway validator | RESOLVED |
+| `/gateway/openai/v1/responses` | `_get_gateway_validator` (USE permission) | `FastAPIPermissionMiddleware` gateway validator | RESOLVED |
+| `/gateway/anthropic/v1/messages` | `_get_gateway_validator` (USE permission) | `FastAPIPermissionMiddleware` gateway validator | RESOLVED |
+| `/gateway/gemini/v1beta/models/*/generateContent` | `_get_gateway_validator` (USE permission) | `FastAPIPermissionMiddleware` gateway validator | RESOLVED |
+| `/gateway/gemini/v1beta/models/*/streamGenerateContent` | `_get_gateway_validator` (USE permission) | `FastAPIPermissionMiddleware` gateway validator | RESOLVED |
+| `/v1/traces` | `_get_otel_validator` (experiment update permission) | `FastAPIPermissionMiddleware` otel validator | RESOLVED |
+| `/ajax-api/3.0/jobs/*` | `_get_require_authentication_validator` | `FastAPIPermissionMiddleware` auth-required | RESOLVED |
+| `/ajax-api/3.0/mlflow/assistant/*` | `_get_require_authentication_validator` | `FastAPIPermissionMiddleware` auth-required | RESOLVED |
 
 ---
 
@@ -256,11 +238,13 @@ We always return a FastAPI app. This is fine — our plugin is designed for ASGI
 | ListGatewaySecretInfos | filter by permission | We filter; upstream doesn't |
 | ListGatewayModelDefinitions | filter by permission | We filter; upstream doesn't |
 
-### 3c. After-request handler we're missing
+### 3c. After-request handler we're missing — RESOLVED ✅
+
+> **Resolved in commit `02adb99`** — Phase 2 implementation. Added `_filter_search_model_versions()` with pagination re-fetch and workspace filtering.
 
 | Proto Class | Upstream Handler | Our Status | Severity |
 |---|---|---|---|
-| SearchModelVersions | filter unreadable model versions | **MISSING** | MEDIUM |
+| SearchModelVersions | filter unreadable model versions | `_filter_search_model_versions` | RESOLVED |
 
 ---
 
@@ -280,14 +264,9 @@ We always return a FastAPI app. This is fine — our plugin is designed for ASGI
 
 **Impact:** Our validators require the experiment_id to be directly available in the request. The upstream validators first resolve the job ID to an experiment ID. If the request only contains a job ID (not an experiment ID), our validators may fail. **This needs verification** — check what parameters the proto messages actually carry.
 
-### GAP-SEC-02: Gateway Budget Policies (HIGH)
+### GAP-SEC-02: Gateway Budget Policies — RESOLVED ✅
 
-**Upstream** has 3 budget policy handlers, all gated to `sender_is_admin`:
-- `CreateGatewayBudgetPolicy`
-- `UpdateGatewayBudgetPolicy`
-- `DeleteGatewayBudgetPolicy`
-
-**Our plugin** doesn't import or handle these protos at all. If MLflow 3.10 ships with budget policy functionality, these endpoints are **unprotected** in our plugin — any authenticated user can create/modify/delete budget policies.
+> **Resolved in commit `02adb99`** — Added forward-compatible `try/except ImportError` handler. Budget policy protos are mapped to `_deny_non_admin` (admin-only). When MLflow ships the protos in a future version, they'll be automatically picked up.
 
 ### GAP-SEC-03: Internal Gateway Auth Token (LOW)
 
@@ -319,21 +298,16 @@ Our plugin provides several features upstream does NOT have:
 
 ## 6. Recommended Remediation Priority
 
-### Phase 1: Critical — Fix GAP-ARCH-01 (FastAPI-native routes)
-1. Integrate with `create_fastapi_app()` to register otel, gateway, assistant, job routers
-2. Add OIDC-aware FastAPI permission middleware for these routes (equivalent to upstream's `add_fastapi_permission_middleware`)
-3. This unblocks AI Gateway, OTel ingestion, assistant, and job features
+### Phase 1: Critical — Fix GAP-ARCH-01 (FastAPI-native routes) — COMPLETE ✅
+> Resolved in commit `d74a5bf`. Registered upstream FastAPI routers with OIDC-aware permission middleware.
 
-### Phase 2: High — Add missing security controls
-1. Add Gateway Budget Policy handlers (`CreateGatewayBudgetPolicy`, `UpdateGatewayBudgetPolicy`, `DeleteGatewayBudgetPolicy`) → admin-only
-2. Add `INVOKE_SCORER` Flask route validator
-3. Add `GATEWAY_PROVIDER_CONFIG` and `GATEWAY_SECRETS_CONFIG` admin-only validators
-4. Add `SearchModelVersions` after-request filter
+### Phase 2: High — Add missing security controls — COMPLETE ✅
+> Resolved in commit `02adb99`. Added budget policy handlers, Flask route validators, SearchModelVersions filter, and verified webhook handling.
 
-### Phase 3: Medium — Behavioral parity
+### Phase 3: Medium — Behavioral parity (REMAINING)
 1. Verify and fix Prompt Optimization Job validators (GAP-SEC-01)
-2. Add Webhook before-request handlers (or verify our router handles these)
-3. Add `GATEWAY_SUPPORTED_PROVIDERS` and `GATEWAY_SUPPORTED_MODELS` validators
+2. ~~Add Webhook before-request handlers~~ — Verified: handled via FastAPI router
+3. ~~Add `GATEWAY_SUPPORTED_PROVIDERS` and `GATEWAY_SUPPORTED_MODELS` validators~~ — Done in Phase 2
 4. Add internal gateway auth token support (GAP-SEC-03) for MLflow job subprocesses
 
 ---
