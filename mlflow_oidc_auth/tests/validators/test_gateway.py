@@ -284,14 +284,14 @@ class TestGatewayModelDefinitionValidators:
                 assert validate_can_read_gateway_model_definition("user1") is True
 
     def test_read_gateway_model_definition_no_name_fallback(self):
-        """Test READ when only ID is available (no name) — allows through per design."""
+        """Test READ when only ID is available (no name) — denies access per fail-closed policy."""
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/get",
             method="GET",
             query_string={"model_definition_id": "some-id"},
         ):
-            # Should return True (fallback) since name can't be extracted
-            assert validate_can_read_gateway_model_definition("user1") is True
+            # Should return False (fail-closed) since name can't be extracted
+            assert validate_can_read_gateway_model_definition("user1") is False
 
     def test_update_gateway_model_definition_with_name(self):
         """Test UPDATE when name is available and user has permission."""
@@ -350,14 +350,14 @@ class TestGatewayModelDefinitionValidators:
                 assert validate_can_delete_gateway_model_definition("user1") is False
 
     def test_delete_gateway_model_definition_no_name_fallback(self):
-        """Test DELETE returns True when no name can be resolved (ID-only)."""
+        """Test DELETE returns False when no name can be resolved (ID-only, fail-closed)."""
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/delete",
             method="POST",
             json={"model_definition_id": "some-id"},
             content_type="application/json",
         ):
-            assert validate_can_delete_gateway_model_definition("user1") is True
+            assert validate_can_delete_gateway_model_definition("user1") is False
 
     def test_read_model_definition_fallback_to_id(self):
         """Test READ falls back to resolving model_definition_id via tracking store."""

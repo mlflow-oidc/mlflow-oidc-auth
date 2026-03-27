@@ -122,12 +122,14 @@ def validate_can_read_gateway_model_definition(username: str) -> bool:
 
     ``GetGatewayModelDefinition`` only provides ``model_definition_id``,
     so we fall back to ID resolution via the tracking store. If
-    resolution fails, we allow through and rely on list filtering.
+    resolution fails, we deny access (fail-closed).
     """
     name = _get_gateway_model_definition_name()
     if not name:
-        # ID-only request — cannot resolve name; allow and rely on list filtering
-        return True
+        _logger.warning(
+            "Cannot resolve gateway model definition name — denying access (fail-closed)"
+        )
+        return False
     return can_read_gateway_model_definition(name, username)
 
 
@@ -135,7 +137,10 @@ def validate_can_update_gateway_model_definition(username: str) -> bool:
     """Validate UPDATE permission on a gateway model definition."""
     name = _get_gateway_model_definition_name()
     if not name:
-        return True
+        _logger.warning(
+            "Cannot resolve gateway model definition name — denying access (fail-closed)"
+        )
+        return False
     return can_update_gateway_model_definition(name, username)
 
 
@@ -147,7 +152,10 @@ def validate_can_delete_gateway_model_definition(username: str) -> bool:
     """
     name = _get_gateway_model_definition_name()
     if not name:
-        return True
+        _logger.warning(
+            "Cannot resolve gateway model definition name — denying access (fail-closed)"
+        )
+        return False
     return can_manage_gateway_model_definition(name, username)
 
 
@@ -164,7 +172,9 @@ def _resolve_endpoint_name_from_id(endpoint_id: str) -> str | None:
         endpoint = _get_tracking_store().get_gateway_endpoint(endpoint_id=endpoint_id)
         return endpoint.name
     except Exception:
-        _logger.debug(f"Could not resolve gateway endpoint name from id '{endpoint_id}'")
+        _logger.debug(
+            f"Could not resolve gateway endpoint name from id '{endpoint_id}'"
+        )
         return None
 
 
@@ -185,10 +195,14 @@ def _resolve_model_definition_name_from_id(model_definition_id: str) -> str | No
     try:
         from mlflow.server.handlers import _get_tracking_store
 
-        model_def = _get_tracking_store().get_gateway_model_definition(model_definition_id=model_definition_id)
+        model_def = _get_tracking_store().get_gateway_model_definition(
+            model_definition_id=model_definition_id
+        )
         return model_def.name
     except Exception:
-        _logger.debug(f"Could not resolve gateway model definition name from id '{model_definition_id}'")
+        _logger.debug(
+            f"Could not resolve gateway model definition name from id '{model_definition_id}'"
+        )
         return None
 
 
