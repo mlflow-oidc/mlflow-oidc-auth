@@ -17,6 +17,7 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_ALREADY_EXISTS,
     RESOURCE_DOES_NOT_EXIST,
     INVALID_PARAMETER_VALUE,
+    INVALID_STATE,
     PERMISSION_DENIED,
     UNAUTHENTICATED,
 )
@@ -44,7 +45,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
             register_exception_handlers(self.app)
 
             # Verify that exception_handler was called with MlflowException
-            mock_exception_handler.assert_called_once_with(mlflow.exceptions.MlflowException)
+            mock_exception_handler.assert_called_once_with(
+                mlflow.exceptions.MlflowException
+            )
 
     def test_register_exception_handlers_with_valid_app(self):
         """Test that register_exception_handlers works with a valid FastAPI app."""
@@ -64,7 +67,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
         register_exception_handlers(self.app)
 
         # Create a mock MLflow exception
-        exc = mlflow.exceptions.MlflowException("Resource already exists", RESOURCE_ALREADY_EXISTS)
+        exc = mlflow.exceptions.MlflowException(
+            "Resource already exists", RESOURCE_ALREADY_EXISTS
+        )
 
         # Get the registered handler
         handlers = self.app.exception_handlers
@@ -88,7 +93,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
 
         register_exception_handlers(self.app)
 
-        exc = mlflow.exceptions.MlflowException("Resource not found", RESOURCE_DOES_NOT_EXIST)
+        exc = mlflow.exceptions.MlflowException(
+            "Resource not found", RESOURCE_DOES_NOT_EXIST
+        )
 
         handlers = self.app.exception_handlers
         handler = handlers.get(mlflow.exceptions.MlflowException)
@@ -108,7 +115,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
 
         register_exception_handlers(self.app)
 
-        exc = mlflow.exceptions.MlflowException("Invalid parameter", INVALID_PARAMETER_VALUE)
+        exc = mlflow.exceptions.MlflowException(
+            "Invalid parameter", INVALID_PARAMETER_VALUE
+        )
 
         handlers = self.app.exception_handlers
         handler = handlers.get(mlflow.exceptions.MlflowException)
@@ -150,7 +159,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
 
         register_exception_handlers(self.app)
 
-        exc = mlflow.exceptions.MlflowException("Unauthenticated access", UNAUTHENTICATED)
+        exc = mlflow.exceptions.MlflowException(
+            "Unauthenticated access", UNAUTHENTICATED
+        )
 
         handlers = self.app.exception_handlers
         handler = handlers.get(mlflow.exceptions.MlflowException)
@@ -183,6 +194,26 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
         response_content = response.body.decode("utf-8")
         self.assertIn("PERMISSION_DENIED", response_content)
         self.assertIn("Permission denied", response_content)
+
+    def test_handle_mlflow_exception_invalid_state(self):
+        """Test handling of INVALID_STATE MLflow exception."""
+        import asyncio
+
+        register_exception_handlers(self.app)
+
+        exc = mlflow.exceptions.MlflowException("Invalid state", INVALID_STATE)
+
+        handlers = self.app.exception_handlers
+        handler = handlers.get(mlflow.exceptions.MlflowException)
+
+        response = asyncio.run(handler(self.mock_request, exc))
+
+        self.assertIsInstance(response, JSONResponse)
+        self.assertEqual(response.status_code, 400)  # Bad request
+
+        response_content = response.body.decode("utf-8")
+        self.assertIn("INVALID_STATE", response_content)
+        self.assertIn("Invalid state", response_content)
 
     def test_handle_mlflow_exception_unknown_error_code(self):
         """Test handling of unknown MLflow exception error codes (default to 500)."""
@@ -233,7 +264,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
 
         register_exception_handlers(self.app)
 
-        exc = mlflow.exceptions.MlflowException("Error message", RESOURCE_DOES_NOT_EXIST)
+        exc = mlflow.exceptions.MlflowException(
+            "Error message", RESOURCE_DOES_NOT_EXIST
+        )
         # Add a message attribute to test the getattr(exc, "message", None) part
         exc.message = "Detailed error message"
 
@@ -256,7 +289,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
 
         register_exception_handlers(self.app)
 
-        exc = mlflow.exceptions.MlflowException("Error message", RESOURCE_DOES_NOT_EXIST)
+        exc = mlflow.exceptions.MlflowException(
+            "Error message", RESOURCE_DOES_NOT_EXIST
+        )
         # Ensure no message attribute exists
         if hasattr(exc, "message"):
             delattr(exc, "message")
@@ -346,6 +381,7 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
             (RESOURCE_ALREADY_EXISTS, "RESOURCE_ALREADY_EXISTS", 409),
             (RESOURCE_DOES_NOT_EXIST, "RESOURCE_DOES_NOT_EXIST", 404),
             (INVALID_PARAMETER_VALUE, "INVALID_PARAMETER_VALUE", 400),
+            (INVALID_STATE, "INVALID_STATE", 400),
             (PERMISSION_DENIED, "PERMISSION_DENIED", 403),
         ]
 
@@ -355,7 +391,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
         # Test each mapping
         for error_constant, error_code_str, expected_status in error_code_mappings:
             with self.subTest(error_code=error_code_str):
-                exc = mlflow.exceptions.MlflowException(f"Test {error_code_str}", error_constant)
+                exc = mlflow.exceptions.MlflowException(
+                    f"Test {error_code_str}", error_constant
+                )
 
                 # Since we can't easily call the async handler in a sync test,
                 # we'll verify the mapping logic by checking the handler exists
@@ -396,7 +434,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
 
         # Test with very long error message
         long_message = "A" * 1000
-        exc_long = mlflow.exceptions.MlflowException(long_message, INVALID_PARAMETER_VALUE)
+        exc_long = mlflow.exceptions.MlflowException(
+            long_message, INVALID_PARAMETER_VALUE
+        )
         self.assertEqual(str(exc_long), long_message)
 
     def test_concurrent_exception_handling(self):
@@ -410,7 +450,9 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
 
         def handle_exception():
             try:
-                exc = mlflow.exceptions.MlflowException("Concurrent test", RESOURCE_DOES_NOT_EXIST)
+                exc = mlflow.exceptions.MlflowException(
+                    "Concurrent test", RESOURCE_DOES_NOT_EXIST
+                )
                 # Just verify the exception can be created and has expected properties
                 results.append(exc.error_code)
             except Exception as e:
@@ -464,6 +506,7 @@ class TestExceptionModuleIntegration(unittest.TestCase):
             (RESOURCE_ALREADY_EXISTS, "RESOURCE_ALREADY_EXISTS", "Resource exists"),
             (RESOURCE_DOES_NOT_EXIST, "RESOURCE_DOES_NOT_EXIST", "Resource missing"),
             (INVALID_PARAMETER_VALUE, "INVALID_PARAMETER_VALUE", "Invalid param"),
+            (INVALID_STATE, "INVALID_STATE", "Invalid state"),
             (UNAUTHENTICATED, "UNAUTHENTICATED", "Not authorized"),
             (PERMISSION_DENIED, "PERMISSION_DENIED", "Access denied"),
         ]
