@@ -354,7 +354,26 @@ This is implemented in:
 - **Group permission CUD**: Targeted invalidation of all users in the affected group
 - **Regex permission CUD**: Full cache flush — regex changes can affect any user/workspace pair
 - **Group membership changes**: Targeted invalidation of affected user entries
-- **TTL expiry**: Configurable via `OIDC_WORKSPACE_CACHE_TTL` (default 300 seconds)
+- **TTL expiry**: Configurable via `WORKSPACE_CACHE_TTL_SECONDS` (default 300 seconds)
+
+### Workspace Scoping of Admin Features (Trash & Webhooks)
+
+When workspaces are enabled, admin-only features (trash, webhooks) are automatically workspace-scoped through MLflow's `WorkspaceAwareSqlAlchemyStore`:
+
+**Trash (deleted experiments/runs):**
+- Backend: `mlflow_oidc_auth/routers/trash.py` uses `_get_store()` and `_get_tracking_store()`, both of which resolve to `WorkspaceAwareSqlAlchemyStore` when workspaces are enabled.
+- The workspace-aware store's `_get_query()` filters `SqlExperiment` by `workspace == active_workspace` and `SqlRun` by joining to `SqlExperiment` with the same filter.
+- All trash operations (list, restore, hard-delete) are workspace-scoped via this mechanism.
+- Frontend: `useDeletedExperiments` / `useDeletedRuns` use `useApi`, which has `selectedWorkspace` in its effect deps — auto-refetches on workspace change.
+- No custom workspace logic needed in the trash router — MLflow's store handles it transparently.
+
+**Webhooks:**
+- Backend: `mlflow_oidc_auth/routers/webhook.py` uses `ModelRegistryStoreRegistryWrapper` which conditionally creates `WorkspaceAwareSqlAlchemyStore` when `config.MLFLOW_ENABLE_WORKSPACES` is true.
+- `SqlWebhook` is in MLflow's `_WORKSPACE_ISOLATED_MODELS`, so `_get_query(session, SqlWebhook)` filters by `model.workspace == workspace`.
+- All webhook CRUD operations (list, create, get, update, delete) are workspace-scoped.
+- Frontend: `useWebhooks` uses `useApi`, which has `selectedWorkspace` in its effect deps — auto-refetches on workspace change.
+
+**Middleware dependency:** Both features rely on `WorkspaceContextMiddleware` (registered in `app.py`) to set the workspace ContextVar from the `X-MLFLOW-WORKSPACE` request header before the router handles the request.
 
 ### OIDC Auto-Assign
 
@@ -367,9 +386,9 @@ When a user logs in via OIDC (`auth.py`), the system can auto-assign workspace p
 | `MLFLOW_ENABLE_WORKSPACES`        | `False`            | Master feature flag for workspace support              |
 | `OIDC_WORKSPACE_DEFAULT_PERMISSION` | `"NO_PERMISSIONS"` | Permission level auto-assigned during OIDC login       |
 | `PERMISSION_SOURCE_ORDER`         | `["user", "group", "regex", "group-regex"]` | Resolution chain order |
-| `OIDC_WORKSPACE_CACHE_TTL`        | `300`              | Cache TTL in seconds                                   |
-| `OIDC_WORKSPACE_CACHE_MAXSIZE`    | `1024`             | Maximum cache entries                                  |
+| `WORKSPACE_CACHE_TTL_SECONDS`     | `300`              | Cache TTL in seconds                                   |
+| `WORKSPACE_CACHE_MAX_SIZE`        | `1024`             | Maximum cache entries                                  |
 
 ---
 
-*Architecture analysis: 2026-03-23 (workspace permissions: 2026-03-26)*
+*Architecture analysis: 2026-03-23 (workspace permissions: 2026-03-26, trash/webhook audit: 2026-03-27)*

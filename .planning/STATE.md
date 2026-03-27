@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Workspace Management
-status: Milestone complete
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-03-24T20:40:34.792Z"
+status: Bug fixing and workspace audit
+stopped_at: Trash/webhook workspace investigation complete
+last_updated: "2026-03-27"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Multi-tenant resource isolation — organizations share an MLflow instance while each tenant sees only their own resources
-**Current focus:** Phase 08 — workspace-management-ui-global-picker
+**Current focus:** Post-implementation bug fixing and workspace scoping audit
 
 ## Current Position
 
-Phase: 08
-Plan: Not started
+Phase: Post-implementation (bug fixing / audit)
+Plan: Ad-hoc — verifying workspace scoping of trash and webhooks
 
 ## Performance Metrics
 
@@ -59,10 +59,12 @@ v1.1 roadmap decisions:
 - [Phase 08]: Workspace CRUD modals follow webhook modal pattern (Modal + useToast + local isSubmitting); DNS-safe validation (2-63 chars, lowercase alphanum + hyphens, "default" reserved)
 - [Phase 08]: Module-level getter/setter (getActiveWorkspace/setActiveWorkspace) bridges React context to plain http.ts module without prop-drilling
 - [Phase 08]: BulkAssignModal uses sequential grant calls for individual result tracking; admin-only via useUser().is_admin
+- [Bug fix]: Trash router needs no changes — MLflow's WorkspaceAwareSqlAlchemyStore handles workspace scoping transparently
+- [Bug fix]: useWebhooks refactored to use useApi for workspace reactivity — manual useCallback/useEffect pattern was missing workspace deps
 
 ### Pending Todos
 
-None.
+None — all trash/webhook workspace audit items resolved.
 
 ### Blockers/Concerns
 
@@ -72,8 +74,20 @@ None.
 - Phase 7 research flag: verify experiment→workspace mapping in `SearchExperiments.Response` proto
 - Phase 6 research flag: resolve CRUD proxy implementation approach (httpx vs WSGI bridge vs tracking store)
 
+## Bug Fix History (Post-Implementation)
+
+| # | Commit | Description | Root Cause |
+|---|--------|-------------|------------|
+| 1 | `2c4cf0f` | Permission audit bug fixes + ARCHITECTURE.md workspace enforcement docs | Multiple enforcement gaps |
+| 2 | `c669f60` | Documentation audit — update all docs for workspace support | Stale docs |
+| 3 | `02a8c2a` | Batch permission resolver workspace fallback (Bug 2) | Missing workspace fallback in batch resolver |
+| 4 | `1772386` | Synchronous workspace state update (Bug 1) | React effect execution order race condition |
+| 5 | `02263be` | Workspace permissions as resource-level fallback docs | Missing documentation |
+| 6 | `67326d8` | Workspace-aware model registry store for webhooks | Wrong store class for workspace-enabled DBs |
+| 7 | (uncommitted) | useWebhooks workspace reactivity fix | Hook not using useApi, missing workspace deps |
+
 ## Session Continuity
 
-Last session: 2026-03-24T20:31:25.273Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-03-27
+Stopped at: Trash/webhook workspace investigation complete, useWebhooks fix applied (uncommitted)
 Resume file: None

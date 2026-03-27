@@ -75,6 +75,26 @@
 - Trigger: Send a request with a gateway resource name that doesn't match any known endpoint/secret/model_definition.
 - Workaround: None — this is a logic error that should be fixed to fail-closed (return `False`).
 
+**~~Webhook UI Not Refreshing on Workspace Change~~ (RESOLVED)**
+- The `useWebhooks` hook used a manual `useCallback`/`useEffect` pattern instead of the shared `useApi` hook. This meant webhook data was fetched once on mount but never refetched when the active workspace changed, causing stale webhook data from the previous workspace to remain visible.
+- Fix: Refactored `useWebhooks` to use `useApi<WebhookListResponse>(listWebhooks)`, which includes `selectedWorkspace` in its effect dependency array. Local status overrides preserved via a `localOverrides` Map.
+- Files: `web-react/src/core/hooks/use-webhooks.ts`
+
+**~~Workspace Permissions Showing as "regex" Kind~~ (RESOLVED)**
+- The batch permission resolver in `utils/batch_permissions.py` was missing workspace fallback logic, causing workspace-derived permissions to be misidentified as "regex" kind in the UI.
+- Fix: Added `_apply_workspace_fallback()` function, updated all three `resolve_*_permission_from_context()` functions, updated `PermissionKind` TypeScript type.
+- Files: `mlflow_oidc_auth/utils/batch_permissions.py`, `web-react/src/shared/types/entity.ts`
+
+**~~Workspace Change Not Reloading Permission Data~~ (RESOLVED)**
+- React effect execution order race condition — child effects (`useApi`) ran before parent effects (`WorkspaceProvider`), so `getActiveWorkspace()` returned stale value.
+- Fix: Update `_activeWorkspace` synchronously in `setSelectedWorkspace()` setter and `useState` initializer.
+- Files: `web-react/src/shared/context/workspace-context.tsx`
+
+**~~Webhooks 503 When Workspaces Enabled~~ (RESOLVED)**
+- Webhook router used plain `SqlAlchemyStore` which rejects DBs with models in non-default workspaces via `_initialize_store_state()`.
+- Fix: Use `WorkspaceAwareSqlAlchemyStore` when `config.MLFLOW_ENABLE_WORKSPACES` is true.
+- Files: `mlflow_oidc_auth/routers/webhook.py`
+
 ## Security Considerations
 
 **No JWKS/Discovery Caching**
@@ -215,12 +235,12 @@
 ## Test Coverage Gaps
 
 **Comprehensive Test Suite Exists**
-- The Python backend has 2563+ tests across ~110 test files in `mlflow_oidc_auth/tests/`. Test types include unit tests, repository tests, router tests, middleware tests, hook tests, validator tests, and integration tests (Playwright-based).
+- The Python backend has 2574+ tests across ~110 test files in `mlflow_oidc_auth/tests/`. Test types include unit tests, repository tests, router tests, middleware tests, hook tests, validator tests, and integration tests (Playwright-based).
 - Files: `mlflow_oidc_auth/tests/` (entire directory)
 - Coverage: Tracked via `coverage.py` and reported to SonarCloud.
 
 **Frontend Tests Exist**
-- The React frontend has 815+ tests across ~116 test files, co-located with source files. Uses Vitest with Testing Library.
+- The React frontend has 819+ tests across ~116 test files, co-located with source files. Uses Vitest with Testing Library.
 - Files: `web-react/src/` (`.test.tsx` / `.test.ts` files)
 - Coverage: Enforced at 80% thresholds (statements, branches, functions, lines).
 
@@ -228,4 +248,4 @@
 
 ---
 
-*Concerns audit: 2026-03-23*
+*Concerns audit: 2026-03-23 (bug fix history updated: 2026-03-27)*
