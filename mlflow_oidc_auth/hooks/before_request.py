@@ -168,6 +168,9 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_workspace,
     validate_can_delete_workspace,
     validate_can_list_workspaces,
+    validate_can_read_prompt_optimization_job,
+    validate_can_update_prompt_optimization_job,
+    validate_can_delete_prompt_optimization_job,
 )
 
 
@@ -257,12 +260,12 @@ BEFORE_REQUEST_HANDLERS = {
     GetScorer: validate_can_read_scorer,
     DeleteScorer: validate_can_delete_scorer,
     ListScorerVersions: validate_can_read_scorer,
-    # Routes for prompt optimization jobs (experiment-scoped per D-11)
+    # Routes for prompt optimization jobs (resolved via job_id → experiment_id)
     CreatePromptOptimizationJob: validate_can_update_experiment,
-    GetPromptOptimizationJob: validate_can_read_experiment,
+    GetPromptOptimizationJob: validate_can_read_prompt_optimization_job,
     SearchPromptOptimizationJobs: validate_can_read_experiment,
-    DeletePromptOptimizationJob: validate_can_delete_experiment,
-    CancelPromptOptimizationJob: validate_can_update_experiment,
+    DeletePromptOptimizationJob: validate_can_delete_prompt_optimization_job,
+    CancelPromptOptimizationJob: validate_can_update_prompt_optimization_job,
     # Routes for gateway endpoints
     CreateGatewayEndpoint: validate_can_create_gateway,
     GetGatewayEndpoint: validate_can_read_gateway_endpoint,

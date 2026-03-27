@@ -68,6 +68,12 @@ from mlflow_oidc_auth.validators.gateway import (
     validate_can_delete_gateway_model_definition,
 )
 
+from mlflow_oidc_auth.validators.prompt_optimization_job import (
+    validate_can_read_prompt_optimization_job,
+    validate_can_update_prompt_optimization_job,
+    validate_can_delete_prompt_optimization_job,
+)
+
 from mlflow_oidc_auth.validators.workspace import (
     validate_can_create_workspace,
     validate_can_read_workspace,
@@ -133,4 +139,7 @@ __all__ = [
     "validate_can_update_workspace",
     "validate_can_delete_workspace",
     "validate_can_list_workspaces",
+    "validate_can_read_prompt_optimization_job",
+    "validate_can_update_prompt_optimization_job",
+    "validate_can_delete_prompt_optimization_job",
 ]

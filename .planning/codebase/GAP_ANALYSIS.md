@@ -102,10 +102,10 @@ We always return a FastAPI app. This is fine — our plugin is designed for ASGI
 | ListScorerVersions | `validate_can_read_scorer` | `validate_can_read_scorer` | MATCH |
 | **Prompt Optimization Jobs** | | | |
 | CreatePromptOptimizationJob | `validate_can_update_experiment` | `validate_can_update_experiment` | MATCH |
-| GetPromptOptimizationJob | `validate_can_read_prompt_optimization_job` | `validate_can_read_experiment` | **DIFFERS** (see GAP-SEC-01) |
+| GetPromptOptimizationJob | `validate_can_read_prompt_optimization_job` | `validate_can_read_prompt_optimization_job` | MATCH |
 | SearchPromptOptimizationJobs | `validate_can_read_experiment` | `validate_can_read_experiment` | MATCH |
-| DeletePromptOptimizationJob | `validate_can_delete_prompt_optimization_job` | `validate_can_delete_experiment` | **DIFFERS** (see GAP-SEC-01) |
-| CancelPromptOptimizationJob | `validate_can_update_prompt_optimization_job` | `validate_can_update_experiment` | **DIFFERS** (see GAP-SEC-01) |
+| DeletePromptOptimizationJob | `validate_can_delete_prompt_optimization_job` | `validate_can_delete_prompt_optimization_job` | MATCH |
+| CancelPromptOptimizationJob | `validate_can_update_prompt_optimization_job` | `validate_can_update_prompt_optimization_job` | MATCH |
 | **Gateway Endpoints** | | | |
 | CreateGatewayEndpoint | `sender_is_admin` | `validate_can_create_gateway` | **STRICTER** (see NOTE-01) |
 | GetGatewayEndpoint | `validate_can_read_gateway_endpoint` | `validate_can_read_gateway_endpoint` | MATCH |
@@ -250,29 +250,17 @@ We always return a FastAPI app. This is fine — our plugin is designed for ASGI
 
 ## 4. Specific Behavioral Gaps
 
-### GAP-SEC-01: Prompt Optimization Job validators (MEDIUM)
+### GAP-SEC-01: Prompt Optimization Job validators — RESOLVED ✅
 
-**Upstream** has dedicated validators:
-- `GetPromptOptimizationJob` → `validate_can_read_prompt_optimization_job` (resolves job → experiment)
-- `DeletePromptOptimizationJob` → `validate_can_delete_prompt_optimization_job` (resolves job → experiment)
-- `CancelPromptOptimizationJob` → `validate_can_update_prompt_optimization_job` (resolves job → experiment)
-
-**Our plugin** uses experiment-level validators directly:
-- `GetPromptOptimizationJob` → `validate_can_read_experiment`
-- `DeletePromptOptimizationJob` → `validate_can_delete_experiment`
-- `CancelPromptOptimizationJob` → `validate_can_update_experiment`
-
-**Impact:** Our validators require the experiment_id to be directly available in the request. The upstream validators first resolve the job ID to an experiment ID. If the request only contains a job ID (not an experiment ID), our validators may fail. **This needs verification** — check what parameters the proto messages actually carry.
+> **Resolved in Phase 3.** Proto investigation confirmed that `GetPromptOptimizationJob`, `DeletePromptOptimizationJob`, and `CancelPromptOptimizationJob` carry only `job_id` (no `experiment_id`). Created new `mlflow_oidc_auth/validators/prompt_optimization_job.py` with job-level validators that resolve `job_id` → `get_job()` → `params.experiment_id` → experiment permission, matching upstream behavior.
 
 ### GAP-SEC-02: Gateway Budget Policies — RESOLVED ✅
 
 > **Resolved in commit `02adb99`** — Added forward-compatible `try/except ImportError` handler. Budget policy protos are mapped to `_deny_non_admin` (admin-only). When MLflow ships the protos in a future version, they'll be automatically picked up.
 
-### GAP-SEC-03: Internal Gateway Auth Token (LOW)
+### GAP-SEC-03: Internal Gateway Auth Token — NO GAP (verified)
 
-**Upstream** has `_MLFLOW_INTERNAL_GATEWAY_AUTH_TOKEN` which allows server-spawned job subprocesses to authenticate without a real password on `/gateway/` routes only.
-
-**Our plugin** doesn't implement this. Not a security gap (if anything, we're stricter), but it may cause internal MLflow processes to fail when they try to call gateway endpoints with the internal token.
+> **Verified in Phase 3.** `_MLFLOW_INTERNAL_GATEWAY_AUTH_TOKEN` does not exist in MLflow 3.10.1. This was a false positive in the original gap analysis. No action needed.
 
 ---
 
@@ -304,11 +292,8 @@ Our plugin provides several features upstream does NOT have:
 ### Phase 2: High — Add missing security controls — COMPLETE ✅
 > Resolved in commit `02adb99`. Added budget policy handlers, Flask route validators, SearchModelVersions filter, and verified webhook handling.
 
-### Phase 3: Medium — Behavioral parity (REMAINING)
-1. Verify and fix Prompt Optimization Job validators (GAP-SEC-01)
-2. ~~Add Webhook before-request handlers~~ — Verified: handled via FastAPI router
-3. ~~Add `GATEWAY_SUPPORTED_PROVIDERS` and `GATEWAY_SUPPORTED_MODELS` validators~~ — Done in Phase 2
-4. Add internal gateway auth token support (GAP-SEC-03) for MLflow job subprocesses
+### Phase 3: Medium — Behavioral parity — COMPLETE ✅
+> Resolved in Phase 3. Prompt optimization job validators now properly resolve `job_id` → experiment permission. Webhooks verified as handled via FastAPI router. `GATEWAY_SUPPORTED_PROVIDERS`/`GATEWAY_SUPPORTED_MODELS` done in Phase 2. Internal gateway auth token confirmed non-existent in MLflow 3.10.1.
 
 ---
 
