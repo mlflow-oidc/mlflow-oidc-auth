@@ -60,7 +60,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
         return path.startswith(unprotected_prefixes)
 
-    async def _authenticate_basic_auth(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
+    async def _authenticate_basic_auth(
+        self, auth_header: str
+    ) -> Tuple[bool, Optional[str], str]:
         """
         Authenticate using basic auth.
 
@@ -83,10 +85,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             else:
                 return False, None, "Invalid basic auth credentials"
         except Exception as e:
-            logger.error(f"Basic auth error: {e}")
+            logger.error("Basic auth error: %s", type(e).__name__)
             return False, None, "Invalid basic auth format"
 
-    async def _authenticate_bearer_token(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
+    async def _authenticate_bearer_token(
+        self, auth_header: str
+    ) -> Tuple[bool, Optional[str], str]:
         """
         Authenticate using bearer token.
 
@@ -107,10 +111,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             else:
                 return False, None, "Invalid token payload"
         except Exception as e:
-            logger.error(f"Bearer auth error: {e}")
+            logger.error("Bearer auth error: %s", type(e).__name__)
             return False, None, "Invalid token"
 
-    async def _authenticate_session(self, request: Request) -> Tuple[bool, Optional[str], str]:
+    async def _authenticate_session(
+        self, request: Request
+    ) -> Tuple[bool, Optional[str], str]:
         """
         Authenticate using session.
 
@@ -130,18 +136,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         logger.debug(f"User {username} authenticated via session")
                         return True, username, ""
                 except Exception as session_error:
-                    logger.debug(f"Session access error: {session_error}")
-                    return False, None, f"Session access failed: {session_error}"
+                    logger.debug(
+                        "Session access error: %s", type(session_error).__name__
+                    )
+                    return False, None, "Session access failed"
             else:
                 logger.debug("Session middleware not available - no session attribute")
                 return False, None, "Session middleware not available"
         except Exception as e:
-            logger.debug(f"Session check error: {e}")
-            return False, None, f"Session error: {e}"
+            logger.debug("Session check error: %s", type(e).__name__)
+            return False, None, "Session error"
 
         return False, None, "No session authentication"
 
-    async def _authenticate_user(self, request: Request) -> Tuple[bool, Optional[str], str]:
+    async def _authenticate_user(
+        self, request: Request
+    ) -> Tuple[bool, Optional[str], str]:
         """
         Attempt to authenticate the user via multiple methods.
 
@@ -239,7 +249,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 is_admin=request.state.is_admin,
                 workspace=workspace,
             )
-            logger.debug(f"User {username} (admin: {request.state.is_admin}) accessing {path}")
+            logger.debug(
+                f"User {username} (admin: {request.state.is_admin}) accessing {path}"
+            )
 
             # Proceed to the next middleware/handler
             return await call_next(request)
@@ -249,10 +261,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Treat certain non-/api routes as API-style endpoints (no redirects)
             # so callers get an HTTP error instead of a redirected 200.
             if path.startswith("/api"):
-                return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+                return JSONResponse(
+                    status_code=401, content={"detail": "Authentication required"}
+                )
             if path.startswith("/oidc/trash"):
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": "Administrator privileges required for this operation"},
+                    content={
+                        "detail": "Administrator privileges required for this operation"
+                    },
                 )
             return await self._handle_auth_redirect(request)
