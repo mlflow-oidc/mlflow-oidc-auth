@@ -74,9 +74,7 @@ class TestRedisCacheBackend:
             importlib.reload(rb_module)
 
             with pytest.raises(ImportError, match="redis"):
-                rb_module.RedisCacheBackend(
-                    url="redis://localhost:6379/0", prefix="t:", ttl=30
-                )
+                rb_module.RedisCacheBackend(url="redis://localhost:6379/0", prefix="t:", ttl=30)
 
     def test_get_returns_none_for_missing_key(self, backend, mock_redis):
         """get() returns None when key does not exist in Redis."""
@@ -90,9 +88,7 @@ class TestRedisCacheBackend:
     def test_get_returns_deserialized_value(self, backend, mock_redis):
         """get() deserializes pickle data from Redis."""
         _, mock_client = mock_redis
-        mock_client.get.return_value = pickle.dumps(
-            "hello", protocol=pickle.HIGHEST_PROTOCOL
-        )
+        mock_client.get.return_value = pickle.dumps("hello", protocol=pickle.HIGHEST_PROTOCOL)
 
         result = backend.get("key1")
         assert result == "hello"

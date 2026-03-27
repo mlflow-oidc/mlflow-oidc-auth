@@ -55,9 +55,7 @@ class TestPermissions(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.config")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission")
-    def test_get_permission_from_store_or_default(
-        self, mock_get_permission, mock_config, mock_store
-    ):
+    def test_get_permission_from_store_or_default(self, mock_get_permission, mock_config, mock_store):
         """Test permission retrieval with fallback to default permission."""
         with self.app.test_request_context():
             mock_store_permission_user_func = MagicMock()
@@ -87,9 +85,7 @@ class TestPermissions(unittest.TestCase):
             self.assertEqual(result.kind, "user")
 
             # user not found, group found
-            mock_store_permission_user_func.side_effect = MlflowException(
-                "", RESOURCE_DOES_NOT_EXIST
-            )
+            mock_store_permission_user_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
             result = get_permission_from_store_or_default(
                 {
                     "user": mock_store_permission_user_func,
@@ -100,9 +96,7 @@ class TestPermissions(unittest.TestCase):
             self.assertEqual(result.kind, "group")
 
             # both not found, fallback to default
-            mock_store_permission_group_func.side_effect = MlflowException(
-                "", RESOURCE_DOES_NOT_EXIST
-            )
+            mock_store_permission_group_func.side_effect = MlflowException("", RESOURCE_DOES_NOT_EXIST)
             result = get_permission_from_store_or_default(
                 {
                     "user": mock_store_permission_user_func,
@@ -125,9 +119,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_can_manage_experiment(
-        self, mock_get_permission_from_store_or_default, mock_store
-    ):
+    def test_can_manage_experiment(self, mock_get_permission_from_store_or_default, mock_store):
         """Test experiment management permission checking."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
@@ -161,9 +153,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_can_manage_registered_model(
-        self, mock_get_permission_from_store_or_default, mock_store
-    ):
+    def test_can_manage_registered_model(self, mock_get_permission_from_store_or_default, mock_store):
         """Test registered model management permission checking."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
@@ -197,9 +187,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_effective_experiment_permission(
-        self, mock_get_permission_from_store_or_default, mock_store
-    ):
+    def test_effective_experiment_permission(self, mock_get_permission_from_store_or_default, mock_store):
         """Test effective experiment permission retrieval."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
@@ -219,9 +207,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_effective_registered_model_permission(
-        self, mock_get_permission_from_store_or_default, mock_store
-    ):
+    def test_effective_registered_model_permission(self, mock_get_permission_from_store_or_default, mock_store):
         """Test effective registered model permission retrieval."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
@@ -241,9 +227,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_effective_prompt_permission(
-        self, mock_get_permission_from_store_or_default, mock_store
-    ):
+    def test_effective_prompt_permission(self, mock_get_permission_from_store_or_default, mock_store):
         """Test effective prompt permission retrieval."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
@@ -263,9 +247,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_can_read_experiment(
-        self, mock_get_permission_from_store_or_default, mock_store
-    ):
+    def test_can_read_experiment(self, mock_get_permission_from_store_or_default, mock_store):
         """Test experiment read permission checking."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
@@ -284,9 +266,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_can_read_registered_model(
-        self, mock_get_permission_from_store_or_default, mock_store
-    ):
+    def test_can_read_registered_model(self, mock_get_permission_from_store_or_default, mock_store):
         """Test registered model read permission checking."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
@@ -309,12 +289,8 @@ class TestPermissions(unittest.TestCase):
         from mlflow_oidc_auth.entities import RegisteredModelRegexPermission
 
         regex_perms = [
-            RegisteredModelRegexPermission(
-                id_=1, regex="test.*", permission="READ", priority=1, user_id=1
-            ),
-            RegisteredModelRegexPermission(
-                id_=2, regex="prod.*", permission="MANAGE", priority=2, user_id=1
-            ),
+            RegisteredModelRegexPermission(id_=1, regex="test.*", permission="READ", priority=1, user_id=1),
+            RegisteredModelRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, user_id=1),
         ]
 
         # Match found
@@ -328,9 +304,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions._get_tracking_store")
-    def test_get_experiment_permission_from_regex(
-        self, mock_tracking_store, mock_store
-    ):
+    def test_get_experiment_permission_from_regex(self, mock_tracking_store, mock_store):
         """Test experiment permission retrieval from regex patterns."""
         from mlflow_oidc_auth.entities import ExperimentRegexPermission
 
@@ -339,12 +313,8 @@ class TestPermissions(unittest.TestCase):
         mock_tracking_store.return_value.get_experiment.return_value = mock_experiment
 
         regex_perms = [
-            ExperimentRegexPermission(
-                id_=1, regex="test.*", permission="READ", priority=1, user_id=1
-            ),
-            ExperimentRegexPermission(
-                id_=2, regex="prod.*", permission="MANAGE", priority=2, user_id=1
-            ),
+            ExperimentRegexPermission(id_=1, regex="test.*", permission="READ", priority=1, user_id=1),
+            ExperimentRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, user_id=1),
         ]
 
         # Match found
@@ -363,12 +333,8 @@ class TestPermissions(unittest.TestCase):
         from mlflow_oidc_auth.entities import RegisteredModelGroupRegexPermission
 
         regex_perms = [
-            RegisteredModelGroupRegexPermission(
-                id_=1, regex="test.*", permission="READ", priority=1, group_id=1
-            ),
-            RegisteredModelGroupRegexPermission(
-                id_=2, regex="prod.*", permission="MANAGE", priority=2, group_id=1
-            ),
+            RegisteredModelGroupRegexPermission(id_=1, regex="test.*", permission="READ", priority=1, group_id=1),
+            RegisteredModelGroupRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, group_id=1),
         ]
 
         # Match found
@@ -382,9 +348,7 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions._get_tracking_store")
-    def test_get_experiment_group_permission_from_regex(
-        self, mock_tracking_store, mock_store
-    ):
+    def test_get_experiment_group_permission_from_regex(self, mock_tracking_store, mock_store):
         """Test experiment group permission retrieval from regex patterns."""
         from mlflow_oidc_auth.entities import ExperimentGroupRegexPermission
 
@@ -393,12 +357,8 @@ class TestPermissions(unittest.TestCase):
         mock_tracking_store.return_value.get_experiment.return_value = mock_experiment
 
         regex_perms = [
-            ExperimentGroupRegexPermission(
-                id_=1, regex="test.*", permission="READ", priority=1, group_id=1
-            ),
-            ExperimentGroupRegexPermission(
-                id_=2, regex="prod.*", permission="MANAGE", priority=2, group_id=1
-            ),
+            ExperimentGroupRegexPermission(id_=1, regex="test.*", permission="READ", priority=1, group_id=1),
+            ExperimentGroupRegexPermission(id_=2, regex="prod.*", permission="MANAGE", priority=2, group_id=1),
         ]
 
         # Match found
@@ -438,22 +398,16 @@ class TestPermissions(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.config")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission")
-    def test_get_permission_from_store_or_default_non_resource_exception(
-        self, mock_get_permission, mock_config, mock_store
-    ):
+    def test_get_permission_from_store_or_default_non_resource_exception(self, mock_get_permission, mock_config, mock_store):
         """Test permission retrieval with non-resource exceptions."""
         with self.app.test_request_context():
             mock_store_permission_user_func = MagicMock()
-            mock_store_permission_user_func.side_effect = MlflowException(
-                "Other error", BAD_REQUEST
-            )
+            mock_store_permission_user_func.side_effect = MlflowException("Other error", BAD_REQUEST)
 
             mock_config.PERMISSION_SOURCE_ORDER = ["user"]
 
             with self.assertRaises(MlflowException) as cm:
-                get_permission_from_store_or_default(
-                    {"user": mock_store_permission_user_func}
-                )
+                get_permission_from_store_or_default({"user": mock_store_permission_user_func})
             self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
 
 
@@ -563,9 +517,7 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
         self.assertEqual(result.permission, READ)
 
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_fallback_workspaces_enabled_returns_workspace_permission(
-        self, mock_resolver
-    ):
+    def test_fallback_workspaces_enabled_returns_workspace_permission(self, mock_resolver):
         """When fallback + workspaces enabled + user has workspace perm → returns workspace result."""
         from mlflow_oidc_auth.permissions import EDIT, READ
 
@@ -595,9 +547,7 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
         self.assertEqual(result.permission, EDIT)
 
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_fallback_workspaces_enabled_no_permission_returns_no_permissions(
-        self, mock_resolver
-    ):
+    def test_fallback_workspaces_enabled_no_permission_returns_no_permissions(self, mock_resolver):
         """When fallback + workspaces enabled + no workspace perm → returns NO_PERMISSIONS."""
         from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
 
@@ -647,9 +597,7 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
         self.assertEqual(result.permission, READ)
 
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_fallback_workspaces_enabled_no_workspace_header_returns_default(
-        self, mock_resolver
-    ):
+    def test_fallback_workspaces_enabled_no_workspace_header_returns_default(self, mock_resolver):
         """When fallback + workspaces enabled + no workspace in request → returns existing fallback."""
         from mlflow_oidc_auth.permissions import READ
 

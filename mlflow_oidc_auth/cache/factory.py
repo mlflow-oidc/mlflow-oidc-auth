@@ -51,9 +51,7 @@ def get_cache_backend(namespace: str, maxsize: int, ttl: int) -> CacheBackend:
 
         redis_url = getattr(config, "CACHE_REDIS_URL", None)
         if not redis_url:
-            raise ValueError(
-                "CACHE_BACKEND is set to 'redis' but CACHE_REDIS_URL is not configured"
-            )
+            raise ValueError("CACHE_BACKEND is set to 'redis' but CACHE_REDIS_URL is not configured")
 
         key_prefix = getattr(config, "CACHE_KEY_PREFIX", "mlflow_oidc_auth:")
         full_prefix = f"{key_prefix}{namespace}:"
@@ -68,6 +66,4 @@ def get_cache_backend(namespace: str, maxsize: int, ttl: int) -> CacheBackend:
         return RedisCacheBackend(url=redis_url, prefix=full_prefix, ttl=ttl)
 
     else:
-        raise ValueError(
-            f"Unknown CACHE_BACKEND: '{backend_type}'. Supported values: 'local', 'redis'"
-        )
+        raise ValueError(f"Unknown CACHE_BACKEND: '{backend_type}'. Supported values: 'local', 'redis'")

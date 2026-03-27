@@ -22,9 +22,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     """
 
     @app.exception_handler(mlflow.exceptions.MlflowException)
-    async def handle_mlflow_exception(
-        request: Request, exc: mlflow.exceptions.MlflowException
-    ) -> JSONResponse:
+    async def handle_mlflow_exception(request: Request, exc: mlflow.exceptions.MlflowException) -> JSONResponse:
         """
         Handle MLflow exceptions and convert them to appropriate HTTP responses.
 
@@ -54,9 +52,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         elif exc.error_code == "PERMISSION_DENIED":
             status_code = 403  # Forbidden
         elif exc.error_code == "INVALID_STATE":
-            status_code = (
-                400  # Bad request (e.g., regex validation, duplicate permission)
-            )
+            status_code = 400  # Bad request (e.g., regex validation, duplicate permission)
 
         return JSONResponse(
             status_code=status_code,

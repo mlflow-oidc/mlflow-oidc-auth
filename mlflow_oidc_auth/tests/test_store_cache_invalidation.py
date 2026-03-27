@@ -57,24 +57,18 @@ class TestPermissionCUDMethodsList:
     def test_all_methods_exist_on_store(self):
         """Every method name in _PERMISSION_CUD_METHODS must exist on SqlAlchemyStore."""
         for method_name in _PERMISSION_CUD_METHODS:
-            assert hasattr(SqlAlchemyStore, method_name), (
-                f"Method {method_name} not found on SqlAlchemyStore"
-            )
+            assert hasattr(SqlAlchemyStore, method_name), f"Method {method_name} not found on SqlAlchemyStore"
 
     def test_no_workspace_methods_included(self):
         """Workspace methods must NOT be in the list (they have their own cache)."""
         for method_name in _PERMISSION_CUD_METHODS:
-            assert "workspace" not in method_name, (
-                f"Workspace method {method_name} should not be in _PERMISSION_CUD_METHODS"
-            )
+            assert "workspace" not in method_name, f"Workspace method {method_name} should not be in _PERMISSION_CUD_METHODS"
 
     def test_no_user_management_methods_included(self):
         """User CRUD methods (create_user, update_user, delete_user) must NOT be in the list."""
         user_mgmt_methods = {"create_user", "update_user", "delete_user"}
         overlap = user_mgmt_methods & set(_PERMISSION_CUD_METHODS)
-        assert not overlap, (
-            f"User management methods should not be in _PERMISSION_CUD_METHODS: {overlap}"
-        )
+        assert not overlap, f"User management methods should not be in _PERMISSION_CUD_METHODS: {overlap}"
 
     def test_group_membership_methods_included(self):
         """Group membership changes affect permission resolution and must be included."""
@@ -105,33 +99,25 @@ class TestCacheInvalidationWiring:
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_create_registered_model_permission_flushes_cache(
-        self, mock_flush, mock_store
-    ):
+    def test_create_registered_model_permission_flushes_cache(self, mock_flush, mock_store):
         """Creating a registered model permission must flush the cache."""
         mock_store.create_registered_model_permission("model1", "user1", "READ")
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_wipe_registered_model_permissions_flushes_cache(
-        self, mock_flush, mock_store
-    ):
+    def test_wipe_registered_model_permissions_flushes_cache(self, mock_flush, mock_store):
         """Wiping registered model permissions must flush the cache."""
         mock_store.wipe_registered_model_permissions("model1")
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_create_group_experiment_permission_flushes_cache(
-        self, mock_flush, mock_store
-    ):
+    def test_create_group_experiment_permission_flushes_cache(self, mock_flush, mock_store):
         """Creating a group experiment permission must flush the cache."""
         mock_store.create_group_experiment_permission("group1", "exp1", "READ")
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_create_experiment_regex_permission_flushes_cache(
-        self, mock_flush, mock_store
-    ):
+    def test_create_experiment_regex_permission_flushes_cache(self, mock_flush, mock_store):
         """Creating an experiment regex permission must flush the cache."""
         mock_store.create_experiment_regex_permission(".*", 1, "READ", "user1")
         mock_flush.assert_called_once()
@@ -143,25 +129,19 @@ class TestCacheInvalidationWiring:
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_create_gateway_endpoint_permission_flushes_cache(
-        self, mock_flush, mock_store
-    ):
+    def test_create_gateway_endpoint_permission_flushes_cache(self, mock_flush, mock_store):
         """Creating a gateway endpoint permission must flush the cache."""
         mock_store.create_gateway_endpoint_permission("gw1", "user1", "READ")
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_create_gateway_secret_permission_flushes_cache(
-        self, mock_flush, mock_store
-    ):
+    def test_create_gateway_secret_permission_flushes_cache(self, mock_flush, mock_store):
         """Creating a gateway secret permission must flush the cache."""
         mock_store.create_gateway_secret_permission("secret1", "user1", "READ")
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_create_gateway_model_definition_permission_flushes_cache(
-        self, mock_flush, mock_store
-    ):
+    def test_create_gateway_model_definition_permission_flushes_cache(self, mock_flush, mock_store):
         """Creating a gateway model definition permission must flush the cache."""
         mock_store.create_gateway_model_definition_permission("model1", "user1", "READ")
         mock_flush.assert_called_once()
@@ -185,9 +165,7 @@ class TestCacheInvalidationWiring:
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_delete_scorer_permissions_for_scorer_flushes_cache(
-        self, mock_flush, mock_store
-    ):
+    def test_delete_scorer_permissions_for_scorer_flushes_cache(self, mock_flush, mock_store):
         """Bulk-deleting scorer permissions must flush the cache."""
         mock_store.delete_scorer_permissions_for_scorer("exp1", "scorer1")
         mock_flush.assert_called_once()
@@ -420,6 +398,4 @@ class TestComprehensiveCUDCoverage:
             method = getattr(mock_store, method_name)
             args = sample_args[method_name]
             method(*args)
-            assert mock_flush.called, (
-                f"flush_permission_cache() not called after {method_name}"
-            )
+            assert mock_flush.called, f"flush_permission_cache() not called after {method_name}"

@@ -100,9 +100,7 @@ async def create_access_token(
                 now = datetime.now(timezone.utc)
 
                 if expiration < now:
-                    raise HTTPException(
-                        status_code=400, detail="Expiration date must be in the future"
-                    )
+                    raise HTTPException(status_code=400, detail="Expiration date must be in the future")
 
                 if expiration > now + timedelta(days=366):
                     raise HTTPException(
@@ -110,22 +108,16 @@ async def create_access_token(
                         detail="Expiration date must be less than 1 year in the future",
                     )
             except ValueError:
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid expiration date format"
-                )
+                raise HTTPException(status_code=400, detail=f"Invalid expiration date format")
 
         # Check if the target user exists
         user = store.get_user_profile(target_username)
         if user is None:
-            raise HTTPException(
-                status_code=404, detail=f"User {target_username} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"User {target_username} not found")
 
         # Generate new token and update user
         new_token = generate_token()
-        store.update_user(
-            username=target_username, password=new_token, password_expiration=expiration
-        )
+        store.update_user(username=target_username, password=new_token, password_expiration=expiration)
         emit_audit_event(
             "user.token_rotate",
             actor=current_username,
@@ -155,9 +147,7 @@ async def create_access_token(
     summary="List users",
     description="Retrieves a list of users in the system.",
 )
-async def list_users(
-    service: bool = False, username: str = Depends(get_username)
-) -> JSONResponse:
+async def list_users(service: bool = False, username: str = Depends(get_username)) -> JSONResponse:
     """
     List users in the system.
 
@@ -306,9 +296,7 @@ async def delete_user(
             resource_id=username,
         )
 
-        return JSONResponse(
-            content={"message": f"User {username} has been successfully deleted"}
-        )
+        return JSONResponse(content={"message": f"User {username} has been successfully deleted"})
 
     except HTTPException:
         # Re-raise HTTPExceptions as-is
@@ -356,9 +344,7 @@ async def get_current_user_information(
             display_name=user.display_name,
             is_admin=bool(user.is_admin),
             is_service_account=bool(user.is_service_account),
-            password_expiration=user.password_expiration.isoformat()
-            if user.password_expiration
-            else None,
+            password_expiration=user.password_expiration.isoformat() if user.password_expiration else None,
             groups=[GroupRecord(**g.to_json()) for g in (user.groups or [])],
         )
     except Exception as e:
@@ -372,9 +358,7 @@ async def get_current_user_information(
     summary="Get user information",
     description="Retrieves basic user information (no permissions) about a specified user. Admin-only.",
 )
-async def get_user_information(
-    username: str, admin_username: str = Depends(check_admin_permission)
-) -> CurrentUserProfile:
+async def get_user_information(username: str, admin_username: str = Depends(check_admin_permission)) -> CurrentUserProfile:
     """
     Get information about a specified user.
 
@@ -406,9 +390,7 @@ async def get_user_information(
             display_name=user.display_name,
             is_admin=bool(user.is_admin),
             is_service_account=bool(user.is_service_account),
-            password_expiration=user.password_expiration.isoformat()
-            if user.password_expiration
-            else None,
+            password_expiration=user.password_expiration.isoformat() if user.password_expiration else None,
             groups=[GroupRecord(**g.to_json()) for g in (user.groups or [])],
         )
     except Exception as e:

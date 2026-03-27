@@ -91,9 +91,7 @@ def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
         experiment_ids = request.args.getlist("experiment_ids")
 
     for experiment_id in experiment_ids:
-        if not effective_experiment_permission(
-            experiment_id, username
-        ).permission.can_read:
+        if not effective_experiment_permission(experiment_id, username).permission.can_read:
             return False
     return True
 
@@ -101,6 +99,4 @@ def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
 def validate_can_update_experiment_from_experiment_id(username: str) -> bool:
     """Validate UPDATE permission using an explicit experiment_id parameter."""
     experiment_id = get_request_param("experiment_id")
-    return effective_experiment_permission(
-        experiment_id, username
-    ).permission.can_update
+    return effective_experiment_permission(experiment_id, username).permission.can_update

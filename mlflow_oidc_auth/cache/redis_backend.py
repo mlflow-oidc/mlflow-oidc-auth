@@ -32,10 +32,7 @@ class RedisCacheBackend:
         try:
             import redis
         except ImportError:
-            raise ImportError(
-                "Redis cache backend requires the 'redis' package. "
-                "Install it with: pip install mlflow-oidc-auth[cache]"
-            )
+            raise ImportError("Redis cache backend requires the 'redis' package. " "Install it with: pip install mlflow-oidc-auth[cache]")
 
         self._client = redis.Redis.from_url(url, decode_responses=False)
         self._prefix = prefix

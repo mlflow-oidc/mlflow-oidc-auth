@@ -12,7 +12,6 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from starlette.responses import PlainTextResponse
 
-
 # ---------------------------------------------------------------------------
 # Unit tests: _extract_gateway_endpoint_name
 # ---------------------------------------------------------------------------
@@ -42,23 +41,17 @@ class TestExtractGatewayEndpointName:
 
     def test_chat_completions_mlflow(self):
         """Test MLflow chat completions passthrough."""
-        result = self._extract(
-            "/gateway/mlflow/v1/chat/completions", {"model": "my-model"}
-        )
+        result = self._extract("/gateway/mlflow/v1/chat/completions", {"model": "my-model"})
         assert result == "my-model"
 
     def test_chat_completions_openai(self):
         """Test OpenAI chat completions passthrough."""
-        result = self._extract(
-            "/gateway/openai/v1/chat/completions", {"model": "gpt-4"}
-        )
+        result = self._extract("/gateway/openai/v1/chat/completions", {"model": "gpt-4"})
         assert result == "gpt-4"
 
     def test_embeddings_openai(self):
         """Test OpenAI embeddings passthrough."""
-        result = self._extract(
-            "/gateway/openai/v1/embeddings", {"model": "text-embedding-ada"}
-        )
+        result = self._extract("/gateway/openai/v1/embeddings", {"model": "text-embedding-ada"})
         assert result == "text-embedding-ada"
 
     def test_responses_openai(self):
@@ -77,23 +70,16 @@ class TestExtractGatewayEndpointName:
 
     def test_passthrough_no_model_in_body(self):
         """Test passthrough route with body missing 'model' key."""
-        assert (
-            self._extract("/gateway/mlflow/v1/chat/completions", {"prompt": "hi"})
-            is None
-        )
+        assert self._extract("/gateway/mlflow/v1/chat/completions", {"prompt": "hi"}) is None
 
     def test_gemini_generate_content(self):
         """Test Gemini generateContent pattern."""
-        result = self._extract(
-            "/gateway/gemini/v1beta/models/gemini-pro:generateContent"
-        )
+        result = self._extract("/gateway/gemini/v1beta/models/gemini-pro:generateContent")
         assert result == "gemini-pro"
 
     def test_gemini_stream_generate_content(self):
         """Test Gemini streamGenerateContent pattern."""
-        result = self._extract(
-            "/gateway/gemini/v1beta/models/gemini-ultra:streamGenerateContent"
-        )
+        result = self._extract("/gateway/gemini/v1beta/models/gemini-ultra:streamGenerateContent")
         assert result == "gemini-ultra"
 
     def test_gemini_no_match(self):
@@ -167,38 +153,28 @@ class TestGatewayValidator:
         return _get_gateway_validator(path)
 
     @pytest.mark.asyncio
-    @patch(
-        "mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint"
-    )
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
     async def test_invocations_allowed(self, mock_can_use):
         """Test gateway invocation with USE permission succeeds."""
         mock_can_use.return_value = True
-        validator = self._get_gateway_validator(
-            "/gateway/my-endpoint/mlflow/invocations"
-        )
+        validator = self._get_gateway_validator("/gateway/my-endpoint/mlflow/invocations")
         request = MagicMock(spec=Request)
         result = await validator("user@example.com", request)
         assert result is True
         mock_can_use.assert_called_once_with("my-endpoint", "user@example.com")
 
     @pytest.mark.asyncio
-    @patch(
-        "mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint"
-    )
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
     async def test_invocations_denied(self, mock_can_use):
         """Test gateway invocation without USE permission fails."""
         mock_can_use.return_value = False
-        validator = self._get_gateway_validator(
-            "/gateway/my-endpoint/mlflow/invocations"
-        )
+        validator = self._get_gateway_validator("/gateway/my-endpoint/mlflow/invocations")
         request = MagicMock(spec=Request)
         result = await validator("user@example.com", request)
         assert result is False
 
     @pytest.mark.asyncio
-    @patch(
-        "mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint"
-    )
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
     async def test_passthrough_reads_body(self, mock_can_use):
         """Test passthrough route reads body to extract model name."""
         mock_can_use.return_value = True
@@ -223,15 +199,11 @@ class TestGatewayValidator:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch(
-        "mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint"
-    )
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
     async def test_gemini_route(self, mock_can_use):
         """Test Gemini generateContent route extracts endpoint name."""
         mock_can_use.return_value = True
-        validator = self._get_gateway_validator(
-            "/gateway/gemini/v1beta/models/gemini-pro:generateContent"
-        )
+        validator = self._get_gateway_validator("/gateway/gemini/v1beta/models/gemini-pro:generateContent")
         request = MagicMock(spec=Request)
         result = await validator("user@example.com", request)
         assert result is True
@@ -432,9 +404,7 @@ class TestFastapiPermissionMiddlewareIntegration:
         response = client.get("/ajax-api/3.0/jobs")
         assert response.status_code == 200
 
-    @patch(
-        "mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint"
-    )
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
     def test_regular_user_gateway_with_permission(self, mock_can_use):
         """Test that non-admin user with USE permission passes gateway."""
         mock_can_use.return_value = True
@@ -444,9 +414,7 @@ class TestFastapiPermissionMiddlewareIntegration:
         assert response.status_code == 200
         mock_can_use.assert_called_once_with("my-ep", "user@example.com")
 
-    @patch(
-        "mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint"
-    )
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
     def test_regular_user_gateway_without_permission(self, mock_can_use):
         """Test that non-admin user without USE permission gets 403."""
         mock_can_use.return_value = False
@@ -508,9 +476,7 @@ class TestFastapiPermissionMiddlewareIntegration:
         response = client.get("/v1/traces")
         assert response.status_code == 403
 
-    @patch(
-        "mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint"
-    )
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
     def test_validator_exception_returns_403(self, mock_can_use):
         """Test that an exception in validator returns 403 (fail closed)."""
         mock_can_use.side_effect = RuntimeError("unexpected error")

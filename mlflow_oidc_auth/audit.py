@@ -28,7 +28,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-
 # ---------------------------------------------------------------------------
 # Audit logger — separate from the application logger so operators can
 # route audit events independently (e.g. to a dedicated file / SIEM).

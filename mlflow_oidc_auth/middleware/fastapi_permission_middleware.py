@@ -40,12 +40,8 @@ _ROUTES_NEEDING_BODY = frozenset(
 )
 
 # Compiled patterns for Gemini routes that embed the endpoint name in the URL
-_GEMINI_GENERATE = re.compile(
-    r"^/gateway/gemini/v1beta/models/([^/:]+):generateContent$"
-)
-_GEMINI_STREAM = re.compile(
-    r"^/gateway/gemini/v1beta/models/([^/:]+):streamGenerateContent$"
-)
+_GEMINI_GENERATE = re.compile(r"^/gateway/gemini/v1beta/models/([^/:]+):generateContent$")
+_GEMINI_STREAM = re.compile(r"^/gateway/gemini/v1beta/models/([^/:]+):streamGenerateContent$")
 
 # Pattern: /gateway/{endpoint_name}/mlflow/invocations
 _INVOCATIONS_RE = re.compile(r"^/gateway/([^/]+)/mlflow/invocations$")
@@ -56,9 +52,7 @@ _INVOCATIONS_RE = re.compile(r"^/gateway/([^/]+)/mlflow/invocations$")
 # ---------------------------------------------------------------------------
 
 
-def _extract_gateway_endpoint_name(
-    path: str, body: dict[str, Any] | None
-) -> str | None:
+def _extract_gateway_endpoint_name(path: str, body: dict[str, Any] | None) -> str | None:
     """Extract endpoint name from gateway routes.
 
     Supports:
@@ -111,9 +105,7 @@ def _get_gateway_validator(
 
         endpoint_name = _extract_gateway_endpoint_name(path, body)
         if endpoint_name is None:
-            logger.warning(
-                "Gateway validator: no endpoint name found in request path %s", path
-            )
+            logger.warning("Gateway validator: no endpoint name found in request path %s", path)
             return False
 
         return can_use_gateway_endpoint(endpoint_name, username)
@@ -136,16 +128,12 @@ def _get_otel_validator(path: str) -> Callable[[str, Request], Awaitable[bool]] 
             logger.warning("OTel validator: missing X-Mlflow-Experiment-Id header")
             return False
 
-        return effective_experiment_permission(
-            experiment_id, username
-        ).permission.can_update
+        return effective_experiment_permission(experiment_id, username).permission.can_update
 
     return validator
 
 
-def _get_require_authentication_validator() -> Callable[
-    [str, Request], Awaitable[bool]
-]:
+def _get_require_authentication_validator() -> Callable[[str, Request], Awaitable[bool]]:
     """Return a validator that allows any authenticated user."""
 
     async def validator(username: str, request: Request) -> bool:

@@ -47,8 +47,7 @@ def get_url_param(param: str) -> str:
     view_args = request.view_args
     if not view_args or param not in view_args:
         raise MlflowException(
-            f"Missing value for required URL parameter '{param}'. "
-            "The parameter should be part of the URL path.",
+            f"Missing value for required URL parameter '{param}'. " "The parameter should be part of the URL path.",
             INVALID_PARAMETER_VALUE,
         )
     return view_args[param]
@@ -101,8 +100,7 @@ def get_request_param(param: str) -> str:
         if param == "run_id":
             return get_request_param("run_uuid")
         raise MlflowException(
-            f"Missing value for required parameter '{param}'. "
-            "See the API docs for more information about request parameters.",
+            f"Missing value for required parameter '{param}'. " "See the API docs for more information about request parameters.",
             INVALID_PARAMETER_VALUE,
         )
 
@@ -110,8 +108,7 @@ def get_request_param(param: str) -> str:
     # Check for empty values
     if not value or (isinstance(value, str) and not value.strip()):
         raise MlflowException(
-            f"Empty value for required parameter '{param}'. "
-            "See the API docs for more information about request parameters.",
+            f"Empty value for required parameter '{param}'. " "See the API docs for more information about request parameters.",
             INVALID_PARAMETER_VALUE,
         )
 

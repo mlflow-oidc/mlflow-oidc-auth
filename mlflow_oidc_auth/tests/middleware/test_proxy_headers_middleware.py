@@ -12,7 +12,6 @@ from mlflow_oidc_auth.middleware.proxy_headers_middleware import (
     _parse_trusted_proxies,
 )
 
-
 # ---------------------------------------------------------------------------
 # _parse_trusted_proxies unit tests
 # ---------------------------------------------------------------------------
@@ -36,9 +35,7 @@ class TestParseTrustedProxies:
         assert result[0] == ipaddress.ip_network("192.168.1.1/32")
 
     def test_multiple_cidrs(self):
-        result = _parse_trusted_proxies(
-            ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
-        )
+        result = _parse_trusted_proxies(["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"])
         assert len(result) == 3
 
     def test_ipv6_cidr(self):
@@ -105,40 +102,6 @@ class TestIsTrustedProxy:
         """Request from an IP outside trusted CIDRs is not trusted."""
         middleware = self._make_middleware(["10.0.0.0/8"])
         request = self._make_request("192.168.1.1")
-        assert middleware._is_trusted_proxy(request) is False
-
-    def test_exact_ip_match(self):
-        """Single-host CIDR (/32) should match exactly."""
-        middleware = self._make_middleware(["10.0.0.5"])
-        request_match = self._make_request("10.0.0.5")
-        request_no_match = self._make_request("10.0.0.6")
-        assert middleware._is_trusted_proxy(request_match) is True
-        assert middleware._is_trusted_proxy(request_no_match) is False
-
-    def test_multiple_cidrs(self):
-        """Request matching any of multiple CIDRs is trusted."""
-        middleware = self._make_middleware(["10.0.0.0/8", "172.16.0.0/12"])
-        assert middleware._is_trusted_proxy(self._make_request("10.1.2.3")) is True
-        assert middleware._is_trusted_proxy(self._make_request("172.20.1.1")) is True
-        assert middleware._is_trusted_proxy(self._make_request("192.168.1.1")) is False
-
-    def test_ipv6_trusted(self):
-        """IPv6 loopback should match ::1/128."""
-        middleware = self._make_middleware(["::1/128"])
-        assert middleware._is_trusted_proxy(self._make_request("::1")) is True
-        assert middleware._is_trusted_proxy(self._make_request("::2")) is False
-
-    def test_no_client_returns_false(self):
-        """When client is None (e.g., unit test), proxy is not trusted."""
-        middleware = self._make_middleware(["10.0.0.0/8"])
-        request = MagicMock()
-        request.client = None
-        assert middleware._is_trusted_proxy(request) is False
-
-    def test_unparseable_client_ip_returns_false(self):
-        """When client IP can't be parsed, proxy is not trusted."""
-        middleware = self._make_middleware(["10.0.0.0/8"])
-        request = self._make_request("not-an-ip")
         assert middleware._is_trusted_proxy(request) is False
 
     def test_exact_ip_match(self):

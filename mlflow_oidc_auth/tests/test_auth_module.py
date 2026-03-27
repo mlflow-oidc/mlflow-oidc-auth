@@ -82,9 +82,7 @@ class Payload:
 
 
 def test_validate_token_success(monkeypatch):
-    monkeypatch.setattr(
-        auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []}
-    )
+    monkeypatch.setattr(auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []})
 
     payload = Payload()
 
@@ -100,9 +98,7 @@ def test_validate_token_success(monkeypatch):
 
 
 def test_validate_token_bad_signature_retries(monkeypatch):
-    monkeypatch.setattr(
-        auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []}
-    )
+    monkeypatch.setattr(auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []})
 
     payload = Payload()
     calls = {"count": 0}
@@ -122,9 +118,7 @@ def test_validate_token_bad_signature_retries(monkeypatch):
 
 
 def test_validate_token_other_exception_propagates(monkeypatch):
-    monkeypatch.setattr(
-        auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []}
-    )
+    monkeypatch.setattr(auth, "_get_oidc_jwks", lambda force_refresh=False: {"keys": []})
 
     def fake_decode(token, jwks, claims_options=None):
         raise ValueError("boom")

@@ -63,9 +63,7 @@ def install_mlflow_graphql_authorization_middleware() -> None:
             _ORIGINAL_HANDLERS_HOOK = getattr(mlflow_handlers, _HANDLERS_ATTR, None)
 
             # Verify the original is callable (signature sanity check)
-            if _ORIGINAL_HANDLERS_HOOK is not None and not callable(
-                _ORIGINAL_HANDLERS_HOOK
-            ):
+            if _ORIGINAL_HANDLERS_HOOK is not None and not callable(_ORIGINAL_HANDLERS_HOOK):
                 logger.warning(
                     "MLflow's %s is not callable (type=%s); overwriting anyway",
                     _HANDLERS_ATTR,
@@ -78,14 +76,10 @@ def install_mlflow_graphql_authorization_middleware() -> None:
             setattr(mlflow_handlers, _HANDLERS_ATTR, _get_graphql_auth_middleware)
             _INSTALLED = True
             _INSTALLED_TARGET = f"mlflow.server.handlers.{_HANDLERS_ATTR}"
-            logger.info(
-                "Installed OIDC GraphQL authorization middleware (patched MLflow handlers)"
-            )
+            logger.info("Installed OIDC GraphQL authorization middleware (patched MLflow handlers)")
             return
     except Exception:
-        logger.debug(
-            "Failed to patch mlflow.server.handlers, trying fallback", exc_info=True
-        )
+        logger.debug("Failed to patch mlflow.server.handlers, trying fallback", exc_info=True)
 
     # Fallback: patch mlflow.server.auth if available.
     try:
@@ -108,13 +102,9 @@ def install_mlflow_graphql_authorization_middleware() -> None:
         setattr(mlflow_auth, _AUTH_ATTR, _get_graphql_authorization_middleware)
         _INSTALLED = True
         _INSTALLED_TARGET = f"mlflow.server.auth.{_AUTH_ATTR}"
-        logger.info(
-            "Installed OIDC GraphQL authorization middleware (patched MLflow auth hook)"
-        )
+        logger.info("Installed OIDC GraphQL authorization middleware (patched MLflow auth hook)")
     except Exception:
-        logger.warning(
-            "Failed to install OIDC GraphQL authorization middleware", exc_info=True
-        )
+        logger.warning("Failed to install OIDC GraphQL authorization middleware", exc_info=True)
 
 
 def uninstall_mlflow_graphql_authorization_middleware() -> None:

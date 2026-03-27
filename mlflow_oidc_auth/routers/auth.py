@@ -88,9 +88,7 @@ async def _authorize_access_token_with_retry(
             break
         except Exception as exc:
             last_error = exc
-            logger.warning(
-                "OIDC token exchange attempt %d failed: %s", attempt + 1, exc
-            )
+            logger.warning("OIDC token exchange attempt %d failed: %s", attempt + 1, exc)
             if attempt == 0:
                 await _refresh_oidc_jwks()
                 continue
@@ -101,9 +99,7 @@ async def _authorize_access_token_with_retry(
     return None
 
 
-def _build_ui_url(
-    request: Request, path: str, query_params: Optional[dict] = None
-) -> str:
+def _build_ui_url(request: Request, path: str, query_params: Optional[dict] = None) -> str:
     """
     Build a UI URL with the correct prefix and optional query parameters.
 
@@ -175,9 +171,7 @@ async def login(request: Request):
         try:
             if not hasattr(oauth.oidc, "authorize_redirect"):
                 logger.error("OIDC client authorize_redirect method not available")
-                raise HTTPException(
-                    status_code=500, detail="OIDC authentication not available"
-                )
+                raise HTTPException(status_code=500, detail="OIDC authentication not available")
 
             return await oauth.oidc.authorize_redirect(  # type: ignore
                 request,
@@ -315,9 +309,7 @@ async def callback(request: Request):
         raise
     except Exception as e:
         logger.error(f"Unexpected error in OIDC callback: {e}")
-        raise HTTPException(
-            status_code=500, detail="Internal server error during authentication"
-        )
+        raise HTTPException(status_code=500, detail="Internal server error during authentication")
 
 
 @auth_router.get(AUTH_STATUS)
@@ -342,22 +334,16 @@ async def auth_status(request: Request):
             content={
                 "authenticated": is_authenticated,
                 "username": username,
-                "provider": config.OIDC_PROVIDER_DISPLAY_NAME
-                if is_authenticated
-                else None,
+                "provider": config.OIDC_PROVIDER_DISPLAY_NAME if is_authenticated else None,
             }
         )
 
     except Exception as e:
         logger.error(f"Error getting auth status: {e}")
-        raise HTTPException(
-            status_code=500, detail="Failed to get authentication status"
-        )
+        raise HTTPException(status_code=500, detail="Failed to get authentication status")
 
 
-async def _process_oidc_callback_fastapi(
-    request: Request, session
-) -> tuple[Optional[str], list[str]]:
+async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Optional[str], list[str]]:
     """
     Process the OIDC callback logic using FastAPI-native implementation.
 
@@ -404,9 +390,7 @@ async def _process_oidc_callback_fastapi(
     try:
         # Exchange authorization code for tokens
         if not hasattr(oauth.oidc, "authorize_access_token"):
-            errors.append(
-                "OIDC configuration error: OAuth client not properly initialized."
-            )
+            errors.append("OIDC configuration error: OAuth client not properly initialized.")
             return None, errors
 
         token_response = await _authorize_access_token_with_retry(request)
@@ -445,9 +429,7 @@ async def _process_oidc_callback_fastapi(
 
             # Get user groups
             if config.OIDC_GROUP_DETECTION_PLUGIN:
-                user_groups = importlib.import_module(
-                    config.OIDC_GROUP_DETECTION_PLUGIN
-                ).get_user_groups(access_token)
+                user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(access_token)
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
 
@@ -455,19 +437,13 @@ async def _process_oidc_callback_fastapi(
 
             # Check authorization
             # Determine admin and allowed groups
-            is_admin = any(
-                group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME
-            )
-            if not is_admin and not any(
-                group in user_groups for group in config.OIDC_GROUP_NAME
-            ):
+            is_admin = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
+            if not is_admin and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
                 errors.append("User is not allowed to login")
                 return None, errors
 
             # Create/update user and groups using user_module so monkeypatched functions are used in tests
-            user_module.create_user(
-                username=email.lower(), display_name=display_name, is_admin=is_admin
-            )
+            user_module.create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
             user_module.populate_groups(group_names=user_groups)
             user_module.update_user(username=email.lower(), group_names=user_groups)
 
@@ -477,13 +453,9 @@ async def _process_oidc_callback_fastapi(
                 user_workspaces: list[str] = []
                 if config.OIDC_WORKSPACE_DETECTION_PLUGIN:
                     try:
-                        user_workspaces = importlib.import_module(
-                            config.OIDC_WORKSPACE_DETECTION_PLUGIN
-                        ).get_user_workspaces(access_token)
+                        user_workspaces = importlib.import_module(config.OIDC_WORKSPACE_DETECTION_PLUGIN).get_user_workspaces(access_token)
                     except Exception as ws_plugin_err:
-                        logger.warning(
-                            f"Workspace detection plugin error: {ws_plugin_err}"
-                        )
+                        logger.warning(f"Workspace detection plugin error: {ws_plugin_err}")
                 else:
                     # JWT claim fallback
                     claim_value = userinfo.get(config.OIDC_WORKSPACE_CLAIM_NAME, [])
@@ -498,9 +470,7 @@ async def _process_oidc_callback_fastapi(
 
                     ws_mlflow_store = _get_workspace_store()
                 except Exception as ws_store_err:
-                    logger.warning(
-                        f"Cannot access MLflow workspace store for auto-create: {ws_store_err}"
-                    )
+                    logger.warning(f"Cannot access MLflow workspace store for auto-create: {ws_store_err}")
                     ws_mlflow_store = None
 
                 # Auto-assign workspace memberships
@@ -524,14 +494,10 @@ async def _process_oidc_callback_fastapi(
                                 ws_mlflow_store.create_workspace(
                                     MlflowWorkspace(name=ws_name, description=""),
                                 )
-                                logger.info(
-                                    f"Auto-created workspace '{ws_name}' during OIDC login for user {email}"
-                                )
+                                logger.info(f"Auto-created workspace '{ws_name}' during OIDC login for user {email}")
                             except Exception as create_err:
                                 # Creation may fail if name is invalid or race condition
-                                logger.warning(
-                                    f"Failed to auto-create workspace '{ws_name}': {create_err}"
-                                )
+                                logger.warning(f"Failed to auto-create workspace '{ws_name}': {create_err}")
 
                     # Assign permission (existing logic)
                     try:
@@ -540,18 +506,12 @@ async def _process_oidc_callback_fastapi(
                             email.lower(),
                             config.OIDC_WORKSPACE_DEFAULT_PERMISSION,
                         )
-                        logger.info(
-                            f"Auto-assigned user {email} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}"
-                        )
+                        logger.info(f"Auto-assigned user {email} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}")
                     except Exception:
                         # Permission already exists — not an error (idempotent)
-                        logger.debug(
-                            f"Workspace permission already exists for {email} in '{ws_name}'"
-                        )
+                        logger.debug(f"Workspace permission already exists for {email} in '{ws_name}'")
 
-            logger.info(
-                f"User {email} successfully processed with groups: {user_groups}"
-            )
+            logger.info(f"User {email} successfully processed with groups: {user_groups}")
 
         except Exception as e:
             logger.error(f"User/group management error: {str(e)}")

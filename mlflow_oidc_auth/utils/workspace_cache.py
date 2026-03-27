@@ -34,12 +34,8 @@ def _get_cache() -> CacheBackend:
     """Get or create the workspace permission cache (lazy init)."""
     global _cache
     if _cache is None:
-        maxsize = getattr(
-            config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE
-        )
-        ttl = getattr(
-            config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL
-        )
+        maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
+        ttl = getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL)
         _cache = get_cache_backend("workspace", maxsize=maxsize, ttl=ttl)
     return _cache
 

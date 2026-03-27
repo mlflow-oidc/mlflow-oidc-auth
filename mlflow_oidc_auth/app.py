@@ -139,9 +139,7 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
         oidc_app.include_router(gateway_router)
         logger.info("Included MLflow Gateway router (/gateway)")
     except ImportError:
-        logger.debug(
-            "mlflow.server.gateway_api not available — Gateway endpoints disabled"
-        )
+        logger.debug("mlflow.server.gateway_api not available — Gateway endpoints disabled")
 
     # AI Assistant: /ajax-api/3.0/mlflow/assistant/*
     try:
@@ -150,9 +148,7 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
         oidc_app.include_router(assistant_router)
         logger.info("Included MLflow Assistant router (/ajax-api/3.0/mlflow/assistant)")
     except ImportError:
-        logger.debug(
-            "mlflow.server.assistant.api not available — Assistant endpoints disabled"
-        )
+        logger.debug("mlflow.server.assistant.api not available — Assistant endpoints disabled")
 
 
 def create_app() -> Any:
@@ -167,9 +163,7 @@ def create_app() -> Any:
         version=VERSION,
         docs_url="/docs" if getattr(config, "ENABLE_API_DOCS", True) else None,
         redoc_url="/redoc" if getattr(config, "ENABLE_API_DOCS", True) else None,
-        openapi_url="/openapi.json"
-        if getattr(config, "ENABLE_API_DOCS", True)
-        else None,
+        openapi_url="/openapi.json" if getattr(config, "ENABLE_API_DOCS", True) else None,
         lifespan=lifespan,
     )
     register_exception_handlers(oidc_app)

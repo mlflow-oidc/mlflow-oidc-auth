@@ -96,18 +96,14 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
         try:
             client_ip = ipaddress.ip_address(client_ip_str)
         except ValueError:
-            logger.warning(
-                f"Cannot parse client IP '{client_ip_str}' — proxy headers will be ignored"
-            )
+            logger.warning(f"Cannot parse client IP '{client_ip_str}' — proxy headers will be ignored")
             return False
 
         for network in self._trusted_networks:
             if client_ip in network:
                 return True
 
-        logger.debug(
-            f"Client IP {client_ip_str} is not in TRUSTED_PROXIES — proxy headers will be ignored"
-        )
+        logger.debug(f"Client IP {client_ip_str} is not in TRUSTED_PROXIES — proxy headers will be ignored")
         return False
 
     def _get_forwarded_proto(self, request: Request) -> Optional[str]:
@@ -223,9 +219,7 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
             if forwarded_port and forwarded_port not in (80, 443):
                 # Include port if it's not standard
                 request.scope["headers"] = [
-                    (name, value)
-                    if name != b"host"
-                    else (b"host", f"{forwarded_host}:{forwarded_port}".encode())
+                    (name, value) if name != b"host" else (b"host", f"{forwarded_host}:{forwarded_port}".encode())
                     for name, value in request.scope.get("headers", [])
                 ]
                 # Update server info in scope
@@ -233,10 +227,7 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
             else:
                 # Standard port, don't include in host header
                 request.scope["headers"] = [
-                    (name, value)
-                    if name != b"host"
-                    else (b"host", forwarded_host.encode())
-                    for name, value in request.scope.get("headers", [])
+                    (name, value) if name != b"host" else (b"host", forwarded_host.encode()) for name, value in request.scope.get("headers", [])
                 ]
                 # Update server info in scope
                 default_port = 443 if forwarded_proto == "https" else 80
@@ -263,10 +254,7 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
         }
 
         # Log proxy information for debugging
-        if (
-            hasattr(request.state, "proxy_info")
-            and request.state.proxy_info["is_proxied"]
-        ):
+        if hasattr(request.state, "proxy_info") and request.state.proxy_info["is_proxied"]:
             logger.debug(
                 f"Proxy headers detected: proto={forwarded_proto}, host={forwarded_host}, "
                 f"port={forwarded_port}, prefix={forwarded_prefix}, real_ip={real_ip}"

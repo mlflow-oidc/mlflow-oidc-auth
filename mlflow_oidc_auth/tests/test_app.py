@@ -55,10 +55,7 @@ class TestCreateApp:
             # Verify FastAPI app creation
             assert isinstance(result, FastAPI)
             assert result.title == "MLflow Tracking Server with OIDC Auth"
-            assert (
-                result.description
-                == "MLflow Tracking Server API with OIDC Authentication"
-            )
+            assert result.description == "MLflow Tracking Server API with OIDC Authentication"
             assert result.version == "2.0.0"
             assert result.docs_url == "/docs"
             assert result.redoc_url == "/redoc"
@@ -75,12 +72,8 @@ class TestCreateApp:
 
             # Verify Flask app configuration
             assert mock_flask_app.secret_key == "test-secret-key"
-            mock_flask_app.before_request.assert_called_once_with(
-                mock_before_request_hook
-            )
-            mock_flask_app.after_request.assert_called_once_with(
-                mock_after_request_hook
-            )
+            mock_flask_app.before_request.assert_called_once_with(mock_before_request_hook)
+            mock_flask_app.after_request.assert_called_once_with(mock_after_request_hook)
 
     @patch("mlflow_oidc_auth.app.config")
     @patch("mlflow_oidc_auth.app.register_exception_handlers")
@@ -277,9 +270,7 @@ class TestCreateApp:
             create_app()
 
             # Verify logging occurred (includes MLflow FastAPI router inclusion logs)
-            mock_logger.info.assert_any_call(
-                "MLflow Flask app mounted at / with FastAPI auth info passing"
-            )
+            mock_logger.info.assert_any_call("MLflow Flask app mounted at / with FastAPI auth info passing")
 
     @patch("mlflow_oidc_auth.app.config")
     @patch("mlflow_oidc_auth.app.register_exception_handlers")
@@ -349,12 +340,8 @@ class TestCreateApp:
             create_app()
 
             # Verify Flask hooks were registered
-            mock_flask_app.before_request.assert_called_once_with(
-                mock_before_request_hook
-            )
-            mock_flask_app.after_request.assert_called_once_with(
-                mock_after_request_hook
-            )
+            mock_flask_app.before_request.assert_called_once_with(mock_before_request_hook)
+            mock_flask_app.after_request.assert_called_once_with(mock_after_request_hook)
 
     @patch("mlflow_oidc_auth.app.config")
     @patch("mlflow_oidc_auth.app.register_exception_handlers")
@@ -554,17 +541,13 @@ class TestAppErrorHandling:
         mock_config.EXTEND_MLFLOW_MENU = False
         mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
-        mock_register_exception_handlers.side_effect = Exception(
-            "Exception handler registration failed"
-        )
+        mock_register_exception_handlers.side_effect = Exception("Exception handler registration failed")
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
             mock_getattr.return_value = True
 
             # Verify exception is raised
-            with pytest.raises(
-                Exception, match="Exception handler registration failed"
-            ):
+            with pytest.raises(Exception, match="Exception handler registration failed"):
                 create_app()
 
     @patch("mlflow_oidc_auth.app.config")

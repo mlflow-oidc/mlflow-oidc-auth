@@ -26,9 +26,7 @@ def get_auth_context() -> AuthContext:
         if hasattr(request, "environ"):
             auth_context = request.environ.get(AUTH_CONTEXT_KEY)
             if isinstance(auth_context, AuthContext):
-                logger.debug(
-                    f"Retrieved AuthContext from Flask environ: {auth_context.username}"
-                )
+                logger.debug(f"Retrieved AuthContext from Flask environ: {auth_context.username}")
                 return auth_context
     except Exception as e:
         logger.debug(f"Could not access AuthContext from Flask request: {e}")
@@ -50,7 +48,7 @@ def get_fastapi_username() -> str:
         if ctx.username:
             return ctx.username
     except Exception:
-        pass
+        logger.debug("AuthContext unavailable when resolving username")
     raise Exception("Could not retrieve FastAPI username")
 
 

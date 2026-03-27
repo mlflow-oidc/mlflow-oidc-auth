@@ -64,9 +64,7 @@ def test_patch_warns_when_attribute_missing(caplog) -> None:
         with mock_patch.dict("sys.modules", {"mlflow.server.auth": None}):
             install_mlflow_graphql_authorization_middleware()
 
-        assert any(
-            "does not have attribute" in record.message for record in caplog.records
-        )
+        assert any("does not have attribute" in record.message for record in caplog.records)
     finally:
         # Restore original
         if original is not None:

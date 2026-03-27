@@ -88,9 +88,7 @@ def validate_regex(regex: str) -> None:
         try:
             compiled = re.compile(regex)
         except re.error as e:
-            raise MlflowException(
-                f"Invalid regex pattern: {regex}. Error: {e}", INVALID_STATE
-            )
+            raise MlflowException(f"Invalid regex pattern: {regex}. Error: {e}", INVALID_STATE)
         for warning in w:
             if issubclass(warning.category, SyntaxWarning):
                 raise MlflowException(
