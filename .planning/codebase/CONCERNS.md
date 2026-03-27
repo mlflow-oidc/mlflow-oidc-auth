@@ -215,9 +215,10 @@
 - Problem: No rate limiting on any endpoint, including authentication endpoints (login, token validation, basic auth).
 - Blocks: Protection against brute-force attacks on basic auth credentials and abuse of the OIDC token exchange flow.
 
-**No Audit Logging**
-- Problem: Permission changes (grant, revoke, modify) are not logged to an audit trail. Admin actions have no accountability record.
-- Blocks: Compliance requirements, incident investigation, permission change tracking.
+**~~No Audit Logging~~ (RESOLVED)**
+- Permission changes, user management actions, auth events, and admin operations are now logged to a structured audit trail.
+- Fix: Added `mlflow_oidc_auth/audit.py` module with `emit_audit_event()` function that outputs structured JSON log lines via a dedicated `mlflow_oidc_auth.audit` Python logger. Configurable via `AUDIT_LOG_ENABLED` (default `True`) and `AUDIT_LOG_LEVEL` (default `INFO`) environment variables. Instrumented all state-changing endpoints across 11 router files: auth (login/logout), users (create/delete/token rotation), user_permissions (~42 endpoints), group_permissions (~42 endpoints), workspace_crud (create/update/delete), workspace_permissions (6 CUD endpoints), workspace_regex_permissions (6 CUD endpoints), webhook (create/update/delete), and trash (cleanup/restore). Zero new dependencies.
+- Files: `mlflow_oidc_auth/audit.py`, `mlflow_oidc_auth/config.py`, `mlflow_oidc_auth/routers/auth.py`, `mlflow_oidc_auth/routers/users.py`, `mlflow_oidc_auth/routers/user_permissions.py`, `mlflow_oidc_auth/routers/group_permissions.py`, `mlflow_oidc_auth/routers/workspace_crud.py`, `mlflow_oidc_auth/routers/workspace_permissions.py`, `mlflow_oidc_auth/routers/workspace_regex_permissions.py`, `mlflow_oidc_auth/routers/webhook.py`, `mlflow_oidc_auth/routers/trash.py`
 
 **~~No Health Check Endpoint~~ (RESOLVED)**
 - Health check endpoints exist at `/health` (basic), `/health/ready` (readiness), `/health/live` (liveness), and `/health/startup` (startup probe).

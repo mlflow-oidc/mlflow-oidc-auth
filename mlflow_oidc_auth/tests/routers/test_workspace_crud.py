@@ -107,7 +107,9 @@ class TestWorkspaceCrudPydanticModels:
         from mlflow_oidc_auth.models.workspace import WorkspaceCrudCreateRequest
 
         with pytest.raises(ValidationError):
-            WorkspaceCrudCreateRequest(name="my-ws", default_artifact_root="s3://" + "a" * 1020)
+            WorkspaceCrudCreateRequest(
+                name="my-ws", default_artifact_root="s3://" + "a" * 1020
+            )
 
     def test_update_request_valid(self):
         """Update request accepts valid description."""
@@ -280,7 +282,9 @@ class TestCreateWorkspace:
         from mlflow_oidc_auth.models.workspace import WorkspaceCrudCreateRequest
         from fastapi import HTTPException
 
-        mock_get_ws_store.return_value.create_workspace.side_effect = Exception("Workspace 'dup' already exists")
+        mock_get_ws_store.return_value.create_workspace.side_effect = Exception(
+            "Workspace 'dup' already exists"
+        )
 
         body = WorkspaceCrudCreateRequest(name="dup-ws", description="")
         with pytest.raises(HTTPException) as exc_info:
@@ -301,7 +305,9 @@ class TestListWorkspaces:
     @patch("mlflow_oidc_auth.routers.workspace_crud.get_is_admin")
     @patch("mlflow_oidc_auth.routers.workspace_crud.get_username")
     @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
-    async def test_list_workspaces_admin_sees_all(self, mock_get_ws_store, mock_get_username, mock_get_is_admin, mock_perm_cached):
+    async def test_list_workspaces_admin_sees_all(
+        self, mock_get_ws_store, mock_get_username, mock_get_is_admin, mock_perm_cached
+    ):
         """Admin sees all workspaces."""
         from mlflow_oidc_auth.routers.workspace_crud import list_workspaces
 
@@ -332,7 +338,9 @@ class TestListWorkspaces:
     @patch("mlflow_oidc_auth.routers.workspace_crud.get_is_admin")
     @patch("mlflow_oidc_auth.routers.workspace_crud.get_username")
     @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
-    async def test_list_workspaces_nonadmin_sees_only_permitted(self, mock_get_ws_store, mock_get_username, mock_get_is_admin, mock_perm_cached):
+    async def test_list_workspaces_nonadmin_sees_only_permitted(
+        self, mock_get_ws_store, mock_get_username, mock_get_is_admin, mock_perm_cached
+    ):
         """Non-admin sees only workspaces they have at least READ permission on."""
         from mlflow_oidc_auth.routers.workspace_crud import list_workspaces
         from mlflow_oidc_auth.permissions import READ
@@ -374,7 +382,9 @@ class TestListWorkspaces:
     @patch("mlflow_oidc_auth.routers.workspace_crud.get_is_admin")
     @patch("mlflow_oidc_auth.routers.workspace_crud.get_username")
     @patch("mlflow_oidc_auth.routers.workspace_crud._get_workspace_store")
-    async def test_list_workspaces_nonadmin_excludes_no_permissions(self, mock_get_ws_store, mock_get_username, mock_get_is_admin, mock_perm_cached):
+    async def test_list_workspaces_nonadmin_excludes_no_permissions(
+        self, mock_get_ws_store, mock_get_username, mock_get_is_admin, mock_perm_cached
+    ):
         """Non-admin does not see workspaces where their permission is NO_PERMISSIONS (can_read=False)."""
         from mlflow_oidc_auth.routers.workspace_crud import list_workspaces
         from mlflow_oidc_auth.permissions import READ, NO_PERMISSIONS
@@ -445,7 +455,9 @@ class TestGetWorkspace:
         from mlflow_oidc_auth.routers.workspace_crud import get_workspace
         from fastapi import HTTPException
 
-        mock_get_ws_store.return_value.get_workspace.side_effect = Exception("Workspace 'nonexistent' not found")
+        mock_get_ws_store.return_value.get_workspace.side_effect = Exception(
+            "Workspace 'nonexistent' not found"
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await get_workspace(workspace="nonexistent", _="user@example.com")
@@ -474,7 +486,9 @@ class TestUpdateWorkspace:
         mock_get_ws_store.return_value.update_workspace.return_value = mock_ws
 
         body = WorkspaceCrudUpdateRequest(description="Updated description")
-        result = await update_workspace(body=body, workspace="ws1", _="admin@example.com")
+        result = await update_workspace(
+            body=body, workspace="ws1", current_username="admin@example.com"
+        )
 
         assert result.name == "ws1"
         assert result.description == "Updated description"
@@ -497,7 +511,9 @@ class TestUpdateWorkspace:
             description="Updated",
             default_artifact_root="s3://new-artifacts",
         )
-        result = await update_workspace(body=body, workspace="ws1", _="admin@example.com")
+        result = await update_workspace(
+            body=body, workspace="ws1", current_username="admin@example.com"
+        )
 
         assert result.default_artifact_root == "s3://new-artifacts"
         # Verify Workspace object has artifact root
@@ -512,11 +528,15 @@ class TestUpdateWorkspace:
         from mlflow_oidc_auth.models.workspace import WorkspaceCrudUpdateRequest
         from fastapi import HTTPException
 
-        mock_get_ws_store.return_value.update_workspace.side_effect = Exception("Workspace does not exist")
+        mock_get_ws_store.return_value.update_workspace.side_effect = Exception(
+            "Workspace does not exist"
+        )
 
         body = WorkspaceCrudUpdateRequest(description="Updated")
         with pytest.raises(HTTPException) as exc_info:
-            await update_workspace(body=body, workspace="nonexistent", _="admin@example.com")
+            await update_workspace(
+                body=body, workspace="nonexistent", current_username="admin@example.com"
+            )
         assert exc_info.value.status_code == 404
 
 
@@ -534,7 +554,7 @@ class TestDeleteWorkspace:
         """DELETE with MANAGE permission deletes workspace in RESTRICT mode."""
         from mlflow_oidc_auth.routers.workspace_crud import delete_workspace
 
-        await delete_workspace(workspace="ws1", _="admin@example.com")
+        await delete_workspace(workspace="ws1", current_username="admin@example.com")
 
         mock_get_ws_store.return_value.delete_workspace.assert_called_once()
         call_args = mock_get_ws_store.return_value.delete_workspace.call_args
@@ -550,7 +570,9 @@ class TestDeleteWorkspace:
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as exc_info:
-            await delete_workspace(workspace="default", _="admin@example.com")
+            await delete_workspace(
+                workspace="default", current_username="admin@example.com"
+            )
         assert exc_info.value.status_code == 400
         assert "default" in exc_info.value.detail.lower()
 
@@ -561,10 +583,14 @@ class TestDeleteWorkspace:
         from mlflow_oidc_auth.routers.workspace_crud import delete_workspace
         from fastapi import HTTPException
 
-        mock_get_ws_store.return_value.delete_workspace.side_effect = Exception("Workspace 'ws-gone' not found")
+        mock_get_ws_store.return_value.delete_workspace.side_effect = Exception(
+            "Workspace 'ws-gone' not found"
+        )
 
         with pytest.raises(HTTPException) as exc_info:
-            await delete_workspace(workspace="ws-gone", _="admin@example.com")
+            await delete_workspace(
+                workspace="ws-gone", current_username="admin@example.com"
+            )
         assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -574,10 +600,14 @@ class TestDeleteWorkspace:
         from mlflow_oidc_auth.routers.workspace_crud import delete_workspace
         from fastapi import HTTPException
 
-        mock_get_ws_store.return_value.delete_workspace.side_effect = Exception("Workspace has resources and RESTRICT mode is enabled")
+        mock_get_ws_store.return_value.delete_workspace.side_effect = Exception(
+            "Workspace has resources and RESTRICT mode is enabled"
+        )
 
         with pytest.raises(HTTPException) as exc_info:
-            await delete_workspace(workspace="ws-full", _="admin@example.com")
+            await delete_workspace(
+                workspace="ws-full", current_username="admin@example.com"
+            )
         assert exc_info.value.status_code == 409
 
 

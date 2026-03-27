@@ -11,6 +11,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, Path, Query
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.workspace import (
@@ -51,12 +52,24 @@ GROUP_REGEX_BY_ID = "/group/{permission_id}"
 )
 async def create_user_regex_permission(
     body: WorkspaceRegexPermissionRequest,
-    _: str = Depends(check_admin_permission),
+    admin_username: str = Depends(check_admin_permission),
 ) -> WorkspaceRegexPermissionResponse:
     """Create a user regex workspace permission. Requires admin privileges."""
     _validate_permission(body.permission)
     perm = store.create_workspace_regex_permission(body.regex, body.priority, body.permission, body.username)
     flush_workspace_cache()
+    emit_audit_event(
+        "permission.create",
+        admin_username,
+        resource_type="workspace_regex_permission",
+        resource_id=str(perm.id),
+        detail={
+            "username": body.username,
+            "regex": body.regex,
+            "priority": body.priority,
+            "permission": body.permission,
+        },
+    )
     return WorkspaceRegexPermissionResponse(
         id=perm.id,
         regex=perm.regex,
@@ -96,12 +109,24 @@ async def list_user_regex_permissions(
 async def update_user_regex_permission(
     body: WorkspaceRegexPermissionRequest,
     permission_id: int = Path(..., description="The permission ID"),
-    _: str = Depends(check_admin_permission),
+    admin_username: str = Depends(check_admin_permission),
 ) -> WorkspaceRegexPermissionResponse:
     """Update a user regex workspace permission. Requires admin privileges."""
     _validate_permission(body.permission)
     perm = store.update_workspace_regex_permission(body.regex, body.priority, body.permission, body.username, permission_id)
     flush_workspace_cache()
+    emit_audit_event(
+        "permission.update",
+        admin_username,
+        resource_type="workspace_regex_permission",
+        resource_id=str(permission_id),
+        detail={
+            "username": body.username,
+            "regex": body.regex,
+            "priority": body.priority,
+            "permission": body.permission,
+        },
+    )
     return WorkspaceRegexPermissionResponse(
         id=perm.id,
         regex=perm.regex,
@@ -119,11 +144,18 @@ async def update_user_regex_permission(
 async def delete_user_regex_permission(
     permission_id: int = Path(..., description="The permission ID"),
     username: str = Query(..., description="The username"),
-    _: str = Depends(check_admin_permission),
+    admin_username: str = Depends(check_admin_permission),
 ) -> None:
     """Delete a user regex workspace permission. Requires admin privileges."""
     store.delete_workspace_regex_permission(username, permission_id)
     flush_workspace_cache()
+    emit_audit_event(
+        "permission.delete",
+        admin_username,
+        resource_type="workspace_regex_permission",
+        resource_id=str(permission_id),
+        detail={"username": username},
+    )
 
 
 @workspace_regex_permissions_router.post(
@@ -134,12 +166,24 @@ async def delete_user_regex_permission(
 )
 async def create_group_regex_permission(
     body: WorkspaceGroupRegexPermissionRequest,
-    _: str = Depends(check_admin_permission),
+    admin_username: str = Depends(check_admin_permission),
 ) -> WorkspaceGroupRegexPermissionResponse:
     """Create a group regex workspace permission. Requires admin privileges."""
     _validate_permission(body.permission)
     perm = store.create_workspace_group_regex_permission(body.group_name, body.regex, body.priority, body.permission)
     flush_workspace_cache()
+    emit_audit_event(
+        "permission.create",
+        admin_username,
+        resource_type="group_workspace_regex_permission",
+        resource_id=str(perm.id),
+        detail={
+            "group_name": body.group_name,
+            "regex": body.regex,
+            "priority": body.priority,
+            "permission": body.permission,
+        },
+    )
     return WorkspaceGroupRegexPermissionResponse(
         id=perm.id,
         regex=perm.regex,
@@ -179,12 +223,24 @@ async def list_group_regex_permissions(
 async def update_group_regex_permission(
     body: WorkspaceGroupRegexPermissionRequest,
     permission_id: int = Path(..., description="The permission ID"),
-    _: str = Depends(check_admin_permission),
+    admin_username: str = Depends(check_admin_permission),
 ) -> WorkspaceGroupRegexPermissionResponse:
     """Update a group regex workspace permission. Requires admin privileges."""
     _validate_permission(body.permission)
     perm = store.update_workspace_group_regex_permission(permission_id, body.group_name, body.regex, body.priority, body.permission)
     flush_workspace_cache()
+    emit_audit_event(
+        "permission.update",
+        admin_username,
+        resource_type="group_workspace_regex_permission",
+        resource_id=str(permission_id),
+        detail={
+            "group_name": body.group_name,
+            "regex": body.regex,
+            "priority": body.priority,
+            "permission": body.permission,
+        },
+    )
     return WorkspaceGroupRegexPermissionResponse(
         id=perm.id,
         regex=perm.regex,
@@ -202,8 +258,15 @@ async def update_group_regex_permission(
 async def delete_group_regex_permission(
     permission_id: int = Path(..., description="The permission ID"),
     group_name: str = Query(..., description="The group name"),
-    _: str = Depends(check_admin_permission),
+    admin_username: str = Depends(check_admin_permission),
 ) -> None:
     """Delete a group regex workspace permission. Requires admin privileges."""
     store.delete_workspace_group_regex_permission(group_name, permission_id)
     flush_workspace_cache()
+    emit_audit_event(
+        "permission.delete",
+        admin_username,
+        resource_type="group_workspace_regex_permission",
+        resource_id=str(permission_id),
+        detail={"group_name": group_name},
+    )

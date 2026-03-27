@@ -72,7 +72,7 @@ class TestCreateUserRegexPermission:
             permission="MANAGE",
             username="user1@example.com",
         )
-        result = await create_user_regex_permission(body=body, _="admin@example.com")
+        result = await create_user_regex_permission(body=body, admin_username="admin@example.com")
 
         mock_validate.assert_called_once_with("MANAGE")
         mock_store.create_workspace_regex_permission.assert_called_once_with("^prod-.*", 10, "MANAGE", "user1@example.com")
@@ -136,7 +136,7 @@ class TestUpdateUserRegexPermission:
             permission="READ",
             username="user1@example.com",
         )
-        result = await update_user_regex_permission(body=body, permission_id=5, _="admin@example.com")
+        result = await update_user_regex_permission(body=body, permission_id=5, admin_username="admin@example.com")
 
         mock_validate.assert_called_once_with("READ")
         mock_store.update_workspace_regex_permission.assert_called_once_with("^staging-.*", 20, "READ", "user1@example.com", 5)
@@ -156,7 +156,11 @@ class TestDeleteUserRegexPermission:
             delete_user_regex_permission,
         )
 
-        await delete_user_regex_permission(permission_id=5, username="user1@example.com", _="admin@example.com")
+        await delete_user_regex_permission(
+            permission_id=5,
+            username="user1@example.com",
+            admin_username="admin@example.com",
+        )
 
         mock_store.delete_workspace_regex_permission.assert_called_once_with("user1@example.com", 5)
         mock_flush.assert_called_once()
@@ -186,7 +190,7 @@ class TestCreateGroupRegexPermission:
         mock_store.create_workspace_group_regex_permission.return_value = mock_perm
 
         body = WorkspaceGroupRegexPermissionRequest(regex="^team-.*", priority=5, permission="EDIT", group_name="devs")
-        result = await create_group_regex_permission(body=body, _="admin@example.com")
+        result = await create_group_regex_permission(body=body, admin_username="admin@example.com")
 
         mock_validate.assert_called_once_with("EDIT")
         mock_store.create_workspace_group_regex_permission.assert_called_once_with("devs", "^team-.*", 5, "EDIT")
@@ -244,7 +248,7 @@ class TestUpdateGroupRegexPermission:
         mock_store.update_workspace_group_regex_permission.return_value = mock_perm
 
         body = WorkspaceGroupRegexPermissionRequest(regex="^staging-.*", priority=15, permission="READ", group_name="viewers")
-        result = await update_group_regex_permission(body=body, permission_id=3, _="admin@example.com")
+        result = await update_group_regex_permission(body=body, permission_id=3, admin_username="admin@example.com")
 
         mock_validate.assert_called_once_with("READ")
         mock_store.update_workspace_group_regex_permission.assert_called_once_with(3, "viewers", "^staging-.*", 15, "READ")
@@ -264,7 +268,7 @@ class TestDeleteGroupRegexPermission:
             delete_group_regex_permission,
         )
 
-        await delete_group_regex_permission(permission_id=3, group_name="viewers", _="admin@example.com")
+        await delete_group_regex_permission(permission_id=3, group_name="viewers", admin_username="admin@example.com")
 
         mock_store.delete_workspace_group_regex_permission.assert_called_once_with("viewers", 3)
         mock_flush.assert_called_once()
@@ -292,7 +296,7 @@ class TestCacheFlushBehavior:
         mock_store.create_workspace_regex_permission.return_value = mock_perm
 
         body = WorkspaceRegexPermissionRequest(regex=".*", priority=1, permission="READ", username="u")
-        await create_user_regex_permission(body=body, _="admin")
+        await create_user_regex_permission(body=body, admin_username="admin")
         mock_flush.assert_called_once()
 
     @pytest.mark.asyncio
@@ -314,7 +318,7 @@ class TestCacheFlushBehavior:
         mock_store.update_workspace_regex_permission.return_value = mock_perm
 
         body = WorkspaceRegexPermissionRequest(regex=".*", priority=1, permission="READ", username="u")
-        await update_user_regex_permission(body=body, permission_id=1, _="admin")
+        await update_user_regex_permission(body=body, permission_id=1, admin_username="admin")
         mock_flush.assert_called_once()
 
     @pytest.mark.asyncio
@@ -326,7 +330,7 @@ class TestCacheFlushBehavior:
             delete_user_regex_permission,
         )
 
-        await delete_user_regex_permission(permission_id=1, username="u", _="admin")
+        await delete_user_regex_permission(permission_id=1, username="u", admin_username="admin")
         mock_flush.assert_called_once()
 
     @pytest.mark.asyncio
@@ -350,7 +354,7 @@ class TestCacheFlushBehavior:
         mock_store.create_workspace_group_regex_permission.return_value = mock_perm
 
         body = WorkspaceGroupRegexPermissionRequest(regex=".*", priority=1, permission="READ", group_name="g")
-        await create_group_regex_permission(body=body, _="admin")
+        await create_group_regex_permission(body=body, admin_username="admin")
         mock_flush.assert_called_once()
 
     @pytest.mark.asyncio
@@ -374,7 +378,7 @@ class TestCacheFlushBehavior:
         mock_store.update_workspace_group_regex_permission.return_value = mock_perm
 
         body = WorkspaceGroupRegexPermissionRequest(regex=".*", priority=1, permission="READ", group_name="g")
-        await update_group_regex_permission(body=body, permission_id=1, _="admin")
+        await update_group_regex_permission(body=body, permission_id=1, admin_username="admin")
         mock_flush.assert_called_once()
 
     @pytest.mark.asyncio
@@ -386,7 +390,7 @@ class TestCacheFlushBehavior:
             delete_group_regex_permission,
         )
 
-        await delete_group_regex_permission(permission_id=1, group_name="g", _="admin")
+        await delete_group_regex_permission(permission_id=1, group_name="g", admin_username="admin")
         mock_flush.assert_called_once()
 
     @pytest.mark.asyncio

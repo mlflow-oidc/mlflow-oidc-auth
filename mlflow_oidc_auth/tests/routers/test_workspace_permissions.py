@@ -168,7 +168,7 @@ class TestCreateWorkspaceUserPermission:
         )
 
         body = WorkspaceUserPermissionRequest(username="user1@example.com", permission="MANAGE")
-        result = await create_workspace_user_permission(body=body, workspace="ws1", _="admin@example.com")
+        result = await create_workspace_user_permission(body=body, workspace="ws1", current_username="admin@example.com")
 
         assert result.workspace == "ws1"
         assert result.username == "user1@example.com"
@@ -186,7 +186,7 @@ class TestCreateWorkspaceUserPermission:
         mock_store.create_workspace_permission.return_value = WorkspacePermission(workspace="ws1", user_id=1, permission="READ", username="test@example.com")
 
         body = WorkspaceUserPermissionRequest(username="test@example.com", permission="READ")
-        await create_workspace_user_permission(body=body, workspace="ws1", _="admin@example.com")
+        await create_workspace_user_permission(body=body, workspace="ws1", current_username="admin@example.com")
 
         mock_invalidate.assert_called_once_with("test@example.com", "ws1")
 
@@ -203,7 +203,7 @@ class TestCreateWorkspaceGroupPermission:
         mock_store.create_workspace_group_permission.return_value = WorkspaceGroupPermission(workspace="ws1", group_id=10, permission="EDIT", group_name="devs")
 
         body = WorkspaceGroupPermissionRequest(group_name="devs", permission="EDIT")
-        result = await create_workspace_group_permission(body=body, workspace="ws1", _="admin@example.com")
+        result = await create_workspace_group_permission(body=body, workspace="ws1", current_username="admin@example.com")
 
         assert result.workspace == "ws1"
         assert result.group_name == "devs"
@@ -222,7 +222,7 @@ class TestCreateWorkspaceGroupPermission:
         )
 
         body = WorkspaceGroupPermissionRequest(group_name="viewers", permission="READ")
-        await create_workspace_group_permission(body=body, workspace="ws1", _="admin@example.com")
+        await create_workspace_group_permission(body=body, workspace="ws1", current_username="admin@example.com")
 
         mock_invalidate.assert_not_called()
 
@@ -243,7 +243,7 @@ class TestUpdateWorkspaceUserPermission:
             body=body,
             workspace="ws1",
             username="user1@example.com",
-            _="admin@example.com",
+            current_username="admin@example.com",
         )
 
         assert result.permission == "EDIT"
@@ -266,7 +266,12 @@ class TestUpdateWorkspaceGroupPermission:
         )
 
         body = WorkspaceGroupPermissionRequest(group_name="devs", permission="MANAGE")
-        result = await update_workspace_group_permission(body=body, workspace="ws1", group_name="devs", _="admin@example.com")
+        result = await update_workspace_group_permission(
+            body=body,
+            workspace="ws1",
+            group_name="devs",
+            current_username="admin@example.com",
+        )
 
         assert result.permission == "MANAGE"
         mock_validate.assert_called_once_with("MANAGE")
@@ -283,7 +288,11 @@ class TestDeleteWorkspaceUserPermission:
     @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
     async def test_delete_user_permission_success(self, mock_store, mock_invalidate):
         """Test successful deletion of a user workspace permission."""
-        await delete_workspace_user_permission(workspace="ws1", username="user1@example.com", _="admin@example.com")
+        await delete_workspace_user_permission(
+            workspace="ws1",
+            username="user1@example.com",
+            current_username="admin@example.com",
+        )
 
         mock_store.delete_workspace_permission.assert_called_once_with("ws1", "user1@example.com")
         mock_invalidate.assert_called_once_with("user1@example.com", "ws1")
@@ -297,7 +306,7 @@ class TestDeleteWorkspaceGroupPermission:
     @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
     async def test_delete_group_permission_success(self, mock_store, mock_invalidate):
         """Test successful deletion of a group workspace permission."""
-        await delete_workspace_group_permission(workspace="ws1", group_name="devs", _="admin@example.com")
+        await delete_workspace_group_permission(workspace="ws1", group_name="devs", current_username="admin@example.com")
 
         mock_store.delete_workspace_group_permission.assert_called_once_with("ws1", "devs")
         # Group deletes do NOT invalidate cache per D-15
@@ -315,7 +324,7 @@ class TestCacheInvalidationBehavior:
         """User create must invalidate cache."""
         mock_store.create_workspace_permission.return_value = WorkspacePermission(workspace="ws", user_id=1, permission="READ", username="u")
         body = WorkspaceUserPermissionRequest(username="u", permission="READ")
-        await create_workspace_user_permission(body=body, workspace="ws", _="admin")
+        await create_workspace_user_permission(body=body, workspace="ws", current_username="admin")
         mock_invalidate.assert_called_once()
 
     @pytest.mark.asyncio
@@ -326,7 +335,7 @@ class TestCacheInvalidationBehavior:
         """User update must invalidate cache."""
         mock_store.update_workspace_permission.return_value = WorkspacePermission(workspace="ws", user_id=1, permission="EDIT", username="u")
         body = WorkspaceUserPermissionRequest(username="u", permission="EDIT")
-        await update_workspace_user_permission(body=body, workspace="ws", username="u", _="admin")
+        await update_workspace_user_permission(body=body, workspace="ws", username="u", current_username="admin")
         mock_invalidate.assert_called_once()
 
     @pytest.mark.asyncio
@@ -334,7 +343,7 @@ class TestCacheInvalidationBehavior:
     @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
     async def test_user_delete_invalidates(self, mock_store, mock_invalidate):
         """User delete must invalidate cache."""
-        await delete_workspace_user_permission(workspace="ws", username="u", _="admin")
+        await delete_workspace_user_permission(workspace="ws", username="u", current_username="admin")
         mock_invalidate.assert_called_once()
 
     @pytest.mark.asyncio
@@ -345,7 +354,7 @@ class TestCacheInvalidationBehavior:
         """Group create must NOT invalidate cache (per D-15)."""
         mock_store.create_workspace_group_permission.return_value = WorkspaceGroupPermission(workspace="ws", group_id=1, permission="READ", group_name="g")
         body = WorkspaceGroupPermissionRequest(group_name="g", permission="READ")
-        await create_workspace_group_permission(body=body, workspace="ws", _="admin")
+        await create_workspace_group_permission(body=body, workspace="ws", current_username="admin")
         mock_invalidate.assert_not_called()
 
     @pytest.mark.asyncio
@@ -356,7 +365,7 @@ class TestCacheInvalidationBehavior:
         """Group update must NOT invalidate cache (per D-15)."""
         mock_store.update_workspace_group_permission.return_value = WorkspaceGroupPermission(workspace="ws", group_id=1, permission="EDIT", group_name="g")
         body = WorkspaceGroupPermissionRequest(group_name="g", permission="EDIT")
-        await update_workspace_group_permission(body=body, workspace="ws", group_name="g", _="admin")
+        await update_workspace_group_permission(body=body, workspace="ws", group_name="g", current_username="admin")
         mock_invalidate.assert_not_called()
 
     @pytest.mark.asyncio
@@ -364,7 +373,7 @@ class TestCacheInvalidationBehavior:
     @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
     async def test_group_delete_does_not_invalidate(self, mock_store, mock_invalidate):
         """Group delete must NOT invalidate cache (per D-15)."""
-        await delete_workspace_group_permission(workspace="ws", group_name="g", _="admin")
+        await delete_workspace_group_permission(workspace="ws", group_name="g", current_username="admin")
         mock_invalidate.assert_not_called()
 
 

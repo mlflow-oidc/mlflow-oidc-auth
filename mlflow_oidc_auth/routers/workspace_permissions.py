@@ -11,6 +11,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, Path
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import (
     check_workspace_manage_permission,
     check_workspace_read_permission,
@@ -97,12 +98,19 @@ async def list_workspace_groups(
 async def create_workspace_user_permission(
     body: WorkspaceUserPermissionRequest,
     workspace: str = Path(..., description="The workspace name"),
-    _: str = Depends(check_workspace_manage_permission),
+    current_username: str = Depends(check_workspace_manage_permission),
 ) -> WorkspaceUserPermissionResponse:
     """Grant a user permission on a workspace. Per D-04, MANAGE users can grant up to MANAGE."""
     _validate_permission(body.permission)
     perm = store.create_workspace_permission(workspace, body.username, body.permission)
     invalidate_workspace_permission(body.username, workspace)
+    emit_audit_event(
+        "permission.create",
+        current_username,
+        resource_type="workspace_permission",
+        resource_id=workspace,
+        detail={"username": body.username, "permission": body.permission},
+    )
     return WorkspaceUserPermissionResponse(
         workspace=perm.workspace,
         username=body.username,
@@ -119,12 +127,19 @@ async def create_workspace_user_permission(
 async def create_workspace_group_permission(
     body: WorkspaceGroupPermissionRequest,
     workspace: str = Path(..., description="The workspace name"),
-    _: str = Depends(check_workspace_manage_permission),
+    current_username: str = Depends(check_workspace_manage_permission),
 ) -> WorkspaceGroupPermissionResponse:
     """Grant a group permission on a workspace."""
     _validate_permission(body.permission)
     perm = store.create_workspace_group_permission(workspace, body.group_name, body.permission)
     # Group changes rely on TTL-based cache expiry per D-15
+    emit_audit_event(
+        "permission.create",
+        current_username,
+        resource_type="group_workspace_permission",
+        resource_id=workspace,
+        detail={"group_name": body.group_name, "permission": body.permission},
+    )
     return WorkspaceGroupPermissionResponse(
         workspace=perm.workspace,
         group_name=body.group_name,
@@ -141,12 +156,19 @@ async def update_workspace_user_permission(
     body: WorkspaceUserPermissionRequest,
     workspace: str = Path(..., description="The workspace name"),
     username: str = Path(..., description="The username"),
-    _: str = Depends(check_workspace_manage_permission),
+    current_username: str = Depends(check_workspace_manage_permission),
 ) -> WorkspaceUserPermissionResponse:
     """Update a user's permission on a workspace."""
     _validate_permission(body.permission)
     perm = store.update_workspace_permission(workspace, username, body.permission)
     invalidate_workspace_permission(username, workspace)
+    emit_audit_event(
+        "permission.update",
+        current_username,
+        resource_type="workspace_permission",
+        resource_id=workspace,
+        detail={"username": username, "permission": body.permission},
+    )
     return WorkspaceUserPermissionResponse(
         workspace=perm.workspace,
         username=username,
@@ -163,11 +185,18 @@ async def update_workspace_group_permission(
     body: WorkspaceGroupPermissionRequest,
     workspace: str = Path(..., description="The workspace name"),
     group_name: str = Path(..., description="The group name"),
-    _: str = Depends(check_workspace_manage_permission),
+    current_username: str = Depends(check_workspace_manage_permission),
 ) -> WorkspaceGroupPermissionResponse:
     """Update a group's permission on a workspace."""
     _validate_permission(body.permission)
     perm = store.update_workspace_group_permission(workspace, group_name, body.permission)
+    emit_audit_event(
+        "permission.update",
+        current_username,
+        resource_type="group_workspace_permission",
+        resource_id=workspace,
+        detail={"group_name": group_name, "permission": body.permission},
+    )
     return WorkspaceGroupPermissionResponse(
         workspace=perm.workspace,
         group_name=group_name,
@@ -183,11 +212,18 @@ async def update_workspace_group_permission(
 async def delete_workspace_user_permission(
     workspace: str = Path(..., description="The workspace name"),
     username: str = Path(..., description="The username"),
-    _: str = Depends(check_workspace_manage_permission),
+    current_username: str = Depends(check_workspace_manage_permission),
 ) -> None:
     """Remove a user's permission from a workspace."""
     store.delete_workspace_permission(workspace, username)
     invalidate_workspace_permission(username, workspace)
+    emit_audit_event(
+        "permission.delete",
+        current_username,
+        resource_type="workspace_permission",
+        resource_id=workspace,
+        detail={"username": username},
+    )
 
 
 @workspace_permissions_router.delete(
@@ -198,7 +234,14 @@ async def delete_workspace_user_permission(
 async def delete_workspace_group_permission(
     workspace: str = Path(..., description="The workspace name"),
     group_name: str = Path(..., description="The group name"),
-    _: str = Depends(check_workspace_manage_permission),
+    current_username: str = Depends(check_workspace_manage_permission),
 ) -> None:
     """Remove a group's permission from a workspace."""
     store.delete_workspace_group_permission(workspace, group_name)
+    emit_audit_event(
+        "permission.delete",
+        current_username,
+        resource_type="group_workspace_permission",
+        resource_id=workspace,
+        detail={"group_name": group_name},
+    )

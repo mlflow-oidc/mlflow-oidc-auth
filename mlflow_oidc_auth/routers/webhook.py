@@ -32,6 +32,7 @@ from mlflow.store.db.db_types import DATABASE_ENGINES
 from mlflow.tracking._model_registry.registry import ModelRegistryStoreRegistry
 from mlflow.webhooks.delivery import test_webhook
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
@@ -210,6 +211,17 @@ def create_webhook(
     )
 
     logger.info(f"Webhook {webhook.webhook_id} created successfully by {admin_username}")
+    emit_audit_event(
+        "webhook.create",
+        admin_username,
+        resource_type="webhook",
+        resource_id=str(webhook.webhook_id),
+        detail={
+            "name": webhook_data.name,
+            "url": webhook_data.url,
+            "events": webhook_data.events,
+        },
+    )
     return _webhook_to_response(webhook)
 
 
@@ -385,6 +397,18 @@ def update_webhook(
     )
 
     logger.info(f"Webhook {webhook_id} updated successfully by {admin_username}")
+    emit_audit_event(
+        "webhook.update",
+        admin_username,
+        resource_type="webhook",
+        resource_id=str(webhook_id),
+        detail={
+            "name": webhook_data.name,
+            "url": webhook_data.url,
+            "events": webhook_data.events,
+            "status": webhook_data.status,
+        },
+    )
     return _webhook_to_response(webhook)
 
 
@@ -421,6 +445,12 @@ def delete_webhook(
     store.delete_webhook(webhook_id=webhook_id)
 
     logger.info(f"Webhook {webhook_id} deleted successfully by {admin_username}")
+    emit_audit_event(
+        "webhook.delete",
+        admin_username,
+        resource_type="webhook",
+        resource_id=str(webhook_id),
+    )
     return {"message": f"Webhook {webhook_id} deleted successfully"}
 
 

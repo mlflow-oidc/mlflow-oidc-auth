@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -125,6 +126,12 @@ async def create_access_token(
         store.update_user(
             username=target_username, password=new_token, password_expiration=expiration
         )
+        emit_audit_event(
+            "user.token_rotate",
+            actor=current_username,
+            resource_type="user",
+            resource_id=target_username,
+        )
 
         return JSONResponse(
             content={
@@ -232,6 +239,16 @@ async def create_new_user(
 
         if status:
             # User was created successfully
+            emit_audit_event(
+                "user.create",
+                actor=admin_username,
+                resource_type="user",
+                resource_id=user_request.username,
+                detail={
+                    "is_admin": user_request.is_admin,
+                    "is_service_account": user_request.is_service_account,
+                },
+            )
             return JSONResponse(content={"message": message}, status_code=201)
         else:
             # User already exists (updated)
@@ -282,6 +299,12 @@ async def delete_user(
 
         # Delete the user
         store.delete_user(username)
+        emit_audit_event(
+            "user.delete",
+            actor=admin_username,
+            resource_type="user",
+            resource_id=username,
+        )
 
         return JSONResponse(
             content={"message": f"User {username} has been successfully deleted"}

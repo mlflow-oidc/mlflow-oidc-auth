@@ -188,6 +188,12 @@ class AppConfig:
             "OIDC_WORKSPACE_DEFAULT_PERMISSION", "NO_PERMISSIONS"
         )
 
+        # Audit logging settings
+        self.AUDIT_LOG_ENABLED = config_manager.get_bool(
+            "AUDIT_LOG_ENABLED", default=True
+        )
+        self.AUDIT_LOG_LEVEL = config_manager.get("AUDIT_LOG_LEVEL", "INFO")
+
     def refresh(self) -> None:
         """Reload configuration from all providers.
 

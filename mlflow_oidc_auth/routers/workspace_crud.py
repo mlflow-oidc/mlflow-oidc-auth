@@ -12,6 +12,7 @@ from mlflow.server.handlers import _get_workspace_store
 from mlflow.store.workspace import Workspace
 from mlflow.store.workspace.abstract_store import WorkspaceDeletionMode
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import (
     check_admin_permission,
     check_workspace_manage_permission,
@@ -61,6 +62,16 @@ async def create_workspace(
                 description=body.description,
                 default_artifact_root=body.default_artifact_root,
             ),
+        )
+        emit_audit_event(
+            "workspace.create",
+            username,
+            resource_type="workspace",
+            resource_id=workspace.name,
+            detail={
+                "description": body.description,
+                "default_artifact_root": body.default_artifact_root,
+            },
         )
         logger.info("Workspace created by admin")
         return WorkspaceCrudResponse(
@@ -158,7 +169,7 @@ async def get_workspace(
 async def update_workspace(
     body: WorkspaceCrudUpdateRequest,
     workspace: str = Path(..., description="The workspace name"),
-    _: str = Depends(check_workspace_manage_permission),
+    current_username: str = Depends(check_workspace_manage_permission),
 ) -> WorkspaceCrudResponse:
     """Update a workspace description. Requires MANAGE permission (WSCRUD-04)."""
     try:
@@ -169,6 +180,16 @@ async def update_workspace(
                 description=body.description,
                 default_artifact_root=body.default_artifact_root,
             ),
+        )
+        emit_audit_event(
+            "workspace.update",
+            current_username,
+            resource_type="workspace",
+            resource_id=workspace,
+            detail={
+                "description": body.description,
+                "default_artifact_root": body.default_artifact_root,
+            },
         )
         logger.info("Workspace updated")
         return WorkspaceCrudResponse(
@@ -195,7 +216,7 @@ async def update_workspace(
 )
 async def delete_workspace(
     workspace: str = Path(..., description="The workspace name"),
-    _: str = Depends(check_workspace_manage_permission),
+    current_username: str = Depends(check_workspace_manage_permission),
 ) -> None:
     """Delete a workspace in RESTRICT mode. Requires MANAGE permission (WSCRUD-05).
     The 'default' workspace cannot be deleted."""
@@ -207,6 +228,12 @@ async def delete_workspace(
     try:
         ws_store = _get_workspace_store()
         ws_store.delete_workspace(workspace, mode=WorkspaceDeletionMode.RESTRICT)
+        emit_audit_event(
+            "workspace.delete",
+            current_username,
+            resource_type="workspace",
+            resource_id=workspace,
+        )
         logger.info("Workspace deleted (RESTRICT mode)")
     except Exception as e:
         error_msg = str(e)
