@@ -168,6 +168,16 @@ def create_app() -> Any:
     )
     register_exception_handlers(oidc_app)
 
+    # ---------------------------------------------------------------------------
+    # Middleware ordering (Starlette executes LAST-added as OUTERMOST):
+    #
+    #   Request → Session → WorkspaceContext → Auth → ProxyHeaders
+    #             → PermissionMiddleware → route handler
+    #
+    # PermissionMiddleware MUST be added FIRST (innermost) so it runs AFTER
+    # AuthMiddleware has set request.state.username / is_admin.
+    # ---------------------------------------------------------------------------
+    add_fastapi_permission_middleware(oidc_app)
     oidc_app.add_middleware(ProxyHeadersMiddleware)
     oidc_app.add_middleware(AuthMiddleware)
     oidc_app.add_middleware(WorkspaceContextMiddleware)
@@ -218,11 +228,6 @@ def create_app() -> Any:
     # take precedence over the catch-all Flask mount.
     # ---------------------------------------------------------------------------
     _include_mlflow_fastapi_routers(oidc_app)
-
-    # Add permission middleware for the FastAPI-native routes.
-    # This runs AFTER AuthMiddleware (which sets request.state.username/is_admin)
-    # and enforces per-route authorization on gateway/otel/assistant/job routes.
-    add_fastapi_permission_middleware(oidc_app)
 
     # Mount Flask app at root with auth passing middleware
     oidc_app.mount("/", AuthAwareWSGIMiddleware(app))
