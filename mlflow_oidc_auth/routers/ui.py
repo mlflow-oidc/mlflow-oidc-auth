@@ -6,7 +6,7 @@ This router handles serving the OIDC management UI and static assets.
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.config import config
@@ -69,15 +69,17 @@ async def serve_spa(filename: str):
     For SPA routes (including auth with parameters), serve index.html.
     """
     ui_dir_path, index_file = _get_ui_directory()
-    requested_path = (ui_dir_path / filename).resolve()
 
-    ui_dir_path_str = str(ui_dir_path)
-    requested_path_str = str(requested_path)
-    is_within_ui_dir = (
-        requested_path_str == ui_dir_path_str or requested_path_str.startswith(ui_dir_path_str + "/") or requested_path_str.startswith(ui_dir_path_str + "\\")
-    )
-    if is_within_ui_dir and requested_path.is_file():
-        return FileResponse(requested_path_str)
+    # Sanitize: reject path components that attempt directory traversal
+    if ".." in filename.split("/"):
+        return FileResponse(str(index_file))
+
+    # Build the candidate path from only the sanitized filename and resolve symlinks
+    candidate = (ui_dir_path / filename).resolve()
+
+    # Verify the resolved path is still within the UI directory (防 symlink escape)
+    if candidate.is_relative_to(ui_dir_path) and candidate.is_file():
+        return FileResponse(str(candidate))
 
     return FileResponse(str(index_file))
 
