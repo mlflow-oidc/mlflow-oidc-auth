@@ -15,7 +15,6 @@ _AUTH_ATTR = "get_graphql_authorization_middleware"
 _INSTALLED = False
 _ORIGINAL_AUTH_HOOK: Optional[Callable[[], list[Any]]] = None
 _ORIGINAL_HANDLERS_HOOK: Optional[Callable[[], list[Any]]] = None
-_INSTALLED_TARGET: Optional[str] = None
 
 
 def install_mlflow_graphql_authorization_middleware() -> None:
@@ -41,7 +40,7 @@ def install_mlflow_graphql_authorization_middleware() -> None:
           a warning is logged and the fallback path is attempted.
     """
 
-    global _INSTALLED, _ORIGINAL_AUTH_HOOK, _ORIGINAL_HANDLERS_HOOK, _INSTALLED_TARGET
+    global _INSTALLED, _ORIGINAL_AUTH_HOOK, _ORIGINAL_HANDLERS_HOOK
     if _INSTALLED:
         return
 
@@ -75,7 +74,6 @@ def install_mlflow_graphql_authorization_middleware() -> None:
 
             setattr(mlflow_handlers, _HANDLERS_ATTR, _get_graphql_auth_middleware)
             _INSTALLED = True
-            _INSTALLED_TARGET = f"mlflow.server.handlers.{_HANDLERS_ATTR}"
             logger.info("Installed OIDC GraphQL authorization middleware (patched MLflow handlers)")
             return
     except Exception:
@@ -101,7 +99,6 @@ def install_mlflow_graphql_authorization_middleware() -> None:
 
         setattr(mlflow_auth, _AUTH_ATTR, _get_graphql_authorization_middleware)
         _INSTALLED = True
-        _INSTALLED_TARGET = f"mlflow.server.auth.{_AUTH_ATTR}"
         logger.info("Installed OIDC GraphQL authorization middleware (patched MLflow auth hook)")
     except Exception:
         logger.warning("Failed to install OIDC GraphQL authorization middleware", exc_info=True)
@@ -110,7 +107,7 @@ def install_mlflow_graphql_authorization_middleware() -> None:
 def uninstall_mlflow_graphql_authorization_middleware() -> None:
     """Restore the original MLflow GraphQL middleware hook (used in tests)."""
 
-    global _INSTALLED, _ORIGINAL_AUTH_HOOK, _ORIGINAL_HANDLERS_HOOK, _INSTALLED_TARGET
+    global _INSTALLED, _ORIGINAL_AUTH_HOOK, _ORIGINAL_HANDLERS_HOOK
     if not _INSTALLED:
         return
 
@@ -133,4 +130,3 @@ def uninstall_mlflow_graphql_authorization_middleware() -> None:
     _INSTALLED = False
     _ORIGINAL_AUTH_HOOK = None
     _ORIGINAL_HANDLERS_HOOK = None
-    _INSTALLED_TARGET = None

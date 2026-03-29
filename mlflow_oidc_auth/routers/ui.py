@@ -4,6 +4,7 @@ UI router for FastAPI application.
 This router handles serving the OIDC management UI and static assets.
 """
 
+import os.path
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -70,16 +71,17 @@ async def serve_spa(filename: str):
     """
     ui_dir_path, index_file = _get_ui_directory()
 
-    # Sanitize: reject path components that attempt directory traversal
-    if ".." in filename.split("/"):
+    # Normalize the joined path to collapse any ".." segments, then verify
+    # it still lives under the UI directory.  This uses the os.path.normpath +
+    # startswith pattern that CodeQL recognises as a path-injection sanitiser
+    # (see CWE-22 / py/path-injection).
+    safe_root = str(ui_dir_path) + os.sep
+    candidate = os.path.normpath(os.path.join(str(ui_dir_path), filename))
+    if not candidate.startswith(safe_root):
         return FileResponse(str(index_file))
 
-    # Build the candidate path from only the sanitized filename and resolve symlinks
-    candidate = (ui_dir_path / filename).resolve()
-
-    # Verify the resolved path is still within the UI directory (防 symlink escape)
-    if candidate.is_relative_to(ui_dir_path) and candidate.is_file():
-        return FileResponse(str(candidate))
+    if os.path.isfile(candidate):
+        return FileResponse(candidate)
 
     return FileResponse(str(index_file))
 

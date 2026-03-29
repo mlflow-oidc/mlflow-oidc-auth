@@ -503,7 +503,7 @@ def _rename_gateway_endpoint_permission(resp: Response):
     try:
         store.rename_gateway_endpoint_permissions(old_name, new_name)
     except Exception:
-        get_logger().warning(f"Failed to rename gateway endpoint permissions from '{old_name}' to '{new_name}'")
+        get_logger().warning("Failed to rename gateway endpoint permissions")
 
 
 def _set_can_manage_gateway_secret_permission(resp: Response):
@@ -586,7 +586,7 @@ def _delete_gateway_endpoint_permissions_cascade(resp: Response) -> None:
     try:
         store.wipe_gateway_endpoint_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway endpoint '{name}'")
+        get_logger().warning("Failed to cascade-delete permissions for gateway endpoint")
 
 
 def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
@@ -597,7 +597,7 @@ def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
     try:
         store.wipe_gateway_secret_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway secret '{name}'")
+        get_logger().warning("Failed to cascade-delete permissions for gateway secret")
 
 
 def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None:
@@ -608,7 +608,7 @@ def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None
     try:
         store.wipe_gateway_model_definition_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for gateway model definition '{name}'")
+        get_logger().warning("Failed to cascade-delete permissions for gateway model definition")
 
 
 def _auto_grant_workspace_manage_permission(resp: Response) -> None:
@@ -633,7 +633,7 @@ def _auto_grant_workspace_manage_permission(resp: Response) -> None:
     try:
         store.create_workspace_permission(workspace_name, auth_context.username, MANAGE.name)
     except Exception:
-        get_logger().warning(f"Failed to auto-grant MANAGE on workspace '{workspace_name}' for user '{auth_context.username}'")
+        get_logger().warning("Failed to auto-grant MANAGE on workspace for user")
     flush_workspace_cache()
 
 
@@ -654,7 +654,7 @@ def _cascade_delete_workspace_permissions(resp: Response) -> None:
     try:
         store.wipe_workspace_permissions(name)
     except Exception:
-        get_logger().warning(f"Failed to cascade-delete permissions for workspace '{name}'")
+        get_logger().warning("Failed to cascade-delete permissions for workspace")
     flush_workspace_cache()
 
 

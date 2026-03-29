@@ -38,7 +38,7 @@ def _parse_trusted_proxies(
         try:
             networks.append(ipaddress.ip_network(cidr, strict=False))
         except ValueError:
-            logger.warning(f"Invalid CIDR in TRUSTED_PROXIES, skipping: {cidr}")
+            logger.warning("Invalid CIDR in TRUSTED_PROXIES, skipping entry")
     return networks
 
 

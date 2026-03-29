@@ -22,6 +22,11 @@ class _FakePagedList(list):
         super().__init__(items)
         self.token = token
 
+    def __eq__(self, other):
+        if isinstance(other, _FakePagedList):
+            return list.__eq__(self, other) and self.token == other.token
+        return list.__eq__(self, other)
+
 
 # ---------------------------------------------------------------------------
 # _can_access_workspace helper tests
