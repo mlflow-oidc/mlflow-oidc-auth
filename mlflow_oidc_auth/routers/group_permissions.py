@@ -10,6 +10,7 @@ from typing import List
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from mlflow.server.handlers import _get_tracking_store
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -280,6 +281,13 @@ async def create_group_experiment_permission(
             experiment_id,
             permission_data.permission,
         )
+        emit_audit_event(
+            "permission.create",
+            actor=current_username,
+            resource_type="group_experiment_permission",
+            resource_id=experiment_id,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Experiment permission created for group {group_name} on experiment {experiment_id}")
     except Exception as e:
         logger.error(f"Error creating group experiment permission: {str(e)}")
@@ -324,6 +332,13 @@ async def update_group_experiment_permission(
             experiment_id,
             permission_data.permission,
         )
+        emit_audit_event(
+            "permission.update",
+            actor=current_username,
+            resource_type="group_experiment_permission",
+            resource_id=experiment_id,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Experiment permission updated for group {group_name} on experiment {experiment_id}")
     except Exception as e:
         logger.error(f"Error updating group experiment permission: {str(e)}")
@@ -361,6 +376,13 @@ async def delete_group_experiment_permission(
     """
     try:
         store.delete_group_experiment_permission(group_name, experiment_id)
+        emit_audit_event(
+            "permission.delete",
+            actor=current_username,
+            resource_type="group_experiment_permission",
+            resource_id=experiment_id,
+            detail={"group_name": group_name},
+        )
         return StatusMessageResponse(message=f"Experiment permission deleted for group {group_name} on experiment {experiment_id}")
     except Exception as e:
         logger.error(f"Error deleting group experiment permission: {str(e)}")
@@ -464,6 +486,13 @@ async def create_group_registered_model_permission(
             name=name,
             permission=permission_data.permission,
         )
+        emit_audit_event(
+            "permission.create",
+            actor=current_username,
+            resource_type="group_registered_model_permission",
+            resource_id=name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Registered model permission created for group {group_name} on model {name}")
     except Exception as e:
         logger.error(f"Error creating group registered model permission: {str(e)}")
@@ -514,6 +543,13 @@ async def update_group_registered_model_permission(
             name=name,
             permission=permission_data.permission,
         )
+        emit_audit_event(
+            "permission.update",
+            actor=current_username,
+            resource_type="group_registered_model_permission",
+            resource_id=name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Registered model permission updated for group {group_name} on model {name}")
     except Exception as e:
         logger.error(f"Error updating group registered model permission: {str(e)}")
@@ -557,6 +593,13 @@ async def delete_group_registered_model_permission(
         raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage registered model {name}")
     try:
         store.delete_group_model_permission(group_name, name)
+        emit_audit_event(
+            "permission.delete",
+            actor=current_username,
+            resource_type="group_registered_model_permission",
+            resource_id=name,
+            detail={"group_name": group_name},
+        )
         return StatusMessageResponse(message=f"Registered model permission deleted for group {group_name} on model {name}")
     except Exception as e:
         logger.error(f"Error deleting group registered model permission: {str(e)}")
@@ -661,6 +704,13 @@ async def create_group_prompt_permission(
             name=prompt_name,
             permission=permission_data.permission,
         )
+        emit_audit_event(
+            "permission.create",
+            actor=current_username,
+            resource_type="group_prompt_permission",
+            resource_id=prompt_name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Prompt permission created for group {group_name} on prompt {prompt_name}")
     except Exception as e:
         logger.error(f"Error creating group prompt permission: {str(e)}")
@@ -712,6 +762,13 @@ async def update_group_prompt_permission(
             name=prompt_name,
             permission=permission_data.permission,
         )
+        emit_audit_event(
+            "permission.update",
+            actor=current_username,
+            resource_type="group_prompt_permission",
+            resource_id=prompt_name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Prompt permission updated for group {group_name} on prompt {prompt_name}")
     except Exception as e:
         logger.error(f"Error updating group prompt permission: {str(e)}")
@@ -756,6 +813,13 @@ async def delete_group_prompt_permission(
 
     try:
         store.delete_group_prompt_permission(group_name, prompt_name)
+        emit_audit_event(
+            "permission.delete",
+            actor=current_username,
+            resource_type="group_prompt_permission",
+            resource_id=prompt_name,
+            detail={"group_name": group_name},
+        )
         return StatusMessageResponse(message=f"Prompt permission deleted for group {group_name} on prompt {prompt_name}")
     except Exception as e:
         logger.error(f"Error deleting group prompt permission: {str(e)}")
@@ -828,6 +892,13 @@ async def create_group_experiment_pattern_permission(
         store.create_group_experiment_regex_permission(
             regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, group_name=group_name
         )
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_experiment_regex_permission",
+            resource_id=group_name,
+            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return StatusMessageResponse(message=f"Experiment pattern permission created for group {group_name}")
     except Exception as e:
         logger.error(f"Error creating group experiment pattern permission: {str(e)}")
@@ -895,6 +966,13 @@ async def update_group_experiment_pattern_permission(
         store.update_group_experiment_regex_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_experiment_regex_permission",
+            resource_id=group_name,
+            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return StatusMessageResponse(message=f"Experiment pattern permission updated for group {group_name}")
     except Exception as e:
         logger.error(f"Error updating group experiment pattern permission: {str(e)}")
@@ -918,6 +996,13 @@ async def delete_group_experiment_pattern_permission(
     """
     try:
         store.delete_group_experiment_regex_permission(group_name, id)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_experiment_regex_permission",
+            resource_id=group_name,
+            detail={"id": id},
+        )
         return StatusMessageResponse(message=f"Experiment pattern permission deleted for group {group_name}")
     except Exception as e:
         logger.error(f"Error deleting group experiment pattern permission: {str(e)}")
@@ -992,6 +1077,13 @@ async def create_group_registered_model_pattern_permission(
         store.create_group_registered_model_regex_permission(
             regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, group_name=group_name
         )
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_registered_model_regex_permission",
+            resource_id=group_name,
+            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return StatusMessageResponse(message=f"Registered model pattern permission created for group {group_name}")
     except Exception as e:
         logger.error(f"Error creating group registered model pattern permission: {str(e)}")
@@ -1061,6 +1153,13 @@ async def update_group_registered_model_pattern_permission(
         store.update_group_registered_model_regex_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_registered_model_regex_permission",
+            resource_id=group_name,
+            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return StatusMessageResponse(message=f"Registered model pattern permission updated for group {group_name}")
     except Exception as e:
         logger.error(f"Error updating group registered model pattern permission: {str(e)}")
@@ -1084,6 +1183,13 @@ async def delete_group_registered_model_pattern_permission(
     """
     try:
         store.delete_group_registered_model_regex_permission(group_name, id)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_registered_model_regex_permission",
+            resource_id=group_name,
+            detail={"id": id},
+        )
         return StatusMessageResponse(message=f"Registered model pattern permission deleted for group {group_name}")
     except Exception as e:
         logger.error(f"Error deleting group registered model pattern permission: {str(e)}")
@@ -1158,6 +1264,13 @@ async def create_group_prompt_pattern_permission(
         store.create_group_prompt_regex_permission(
             regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, group_name=group_name
         )
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_prompt_regex_permission",
+            resource_id=group_name,
+            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return StatusMessageResponse(message=f"Prompt pattern permission created for group {group_name}")
     except Exception as e:
         logger.error(f"Error creating group prompt pattern permission: {str(e)}")
@@ -1227,6 +1340,13 @@ async def update_group_prompt_pattern_permission(
         store.update_group_prompt_regex_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_prompt_regex_permission",
+            resource_id=group_name,
+            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return StatusMessageResponse(message=f"Prompt pattern permission updated for group {group_name}")
     except Exception as e:
         logger.error(f"Error updating group prompt pattern permission: {str(e)}")
@@ -1250,6 +1370,13 @@ async def delete_group_prompt_pattern_permission(
     """
     try:
         store.delete_group_prompt_regex_permission(id, group_name)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_prompt_regex_permission",
+            resource_id=group_name,
+            detail={"id": id},
+        )
         return StatusMessageResponse(message=f"Prompt pattern permission deleted for group {group_name}")
     except Exception as e:
         logger.error(f"Error deleting group prompt pattern permission: {str(e)}")
@@ -1307,7 +1434,7 @@ async def create_group_scorer_permission(
     experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
     scorer_name: str = Path(..., description="The scorer name"),
     permission_data: ScorerPermission = Body(..., description="The permission details"),
-    _: None = Depends(check_experiment_manage_permission),
+    current_username: str = Depends(check_experiment_manage_permission),
 ) -> StatusMessageResponse:
     try:
         store.create_group_scorer_permission(
@@ -1315,6 +1442,13 @@ async def create_group_scorer_permission(
             experiment_id=str(experiment_id),
             scorer_name=str(scorer_name),
             permission=str(permission_data.permission),
+        )
+        emit_audit_event(
+            "permission.create",
+            actor=current_username,
+            resource_type="group_scorer_permission",
+            resource_id=scorer_name,
+            detail={"group_name": group_name, "experiment_id": experiment_id, "permission": permission_data.permission},
         )
         return StatusMessageResponse(message=f"Scorer permission created for group {group_name} on scorer {scorer_name}")
     except Exception as e:
@@ -1334,7 +1468,7 @@ async def update_group_scorer_permission(
     experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
     scorer_name: str = Path(..., description="The scorer name"),
     permission_data: ScorerPermission = Body(..., description="Updated permission details"),
-    _: None = Depends(check_experiment_manage_permission),
+    current_username: str = Depends(check_experiment_manage_permission),
 ) -> StatusMessageResponse:
     try:
         store.update_group_scorer_permission(
@@ -1342,6 +1476,13 @@ async def update_group_scorer_permission(
             experiment_id=str(experiment_id),
             scorer_name=str(scorer_name),
             permission=str(permission_data.permission),
+        )
+        emit_audit_event(
+            "permission.update",
+            actor=current_username,
+            resource_type="group_scorer_permission",
+            resource_id=scorer_name,
+            detail={"group_name": group_name, "experiment_id": experiment_id, "permission": permission_data.permission},
         )
         return StatusMessageResponse(message=f"Scorer permission updated for group {group_name} on scorer {scorer_name}")
     except Exception as e:
@@ -1360,10 +1501,17 @@ async def delete_group_scorer_permission(
     group_name: str = Path(..., description="The group name to delete scorer permission for"),
     experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
     scorer_name: str = Path(..., description="The scorer name"),
-    _: None = Depends(check_experiment_manage_permission),
+    current_username: str = Depends(check_experiment_manage_permission),
 ) -> StatusMessageResponse:
     try:
         store.delete_group_scorer_permission(group_name, str(experiment_id), str(scorer_name))
+        emit_audit_event(
+            "permission.delete",
+            actor=current_username,
+            resource_type="group_scorer_permission",
+            resource_id=scorer_name,
+            detail={"group_name": group_name, "experiment_id": experiment_id},
+        )
         return StatusMessageResponse(message=f"Scorer permission deleted for group {group_name} on scorer {scorer_name}")
     except Exception as e:
         logger.error(f"Error deleting group scorer permission: {str(e)}")
@@ -1433,6 +1581,13 @@ async def create_group_scorer_pattern_permission(
             priority=pattern_data.priority,
             permission=pattern_data.permission,
         )
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_scorer_regex_permission",
+            resource_id=group_name,
+            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return StatusMessageResponse(message=f"Scorer pattern permission created for group {group_name}")
     except Exception as e:
         logger.error(f"Error creating group scorer pattern permission: {str(e)}")
@@ -1498,6 +1653,13 @@ async def update_group_scorer_pattern_permission(
             priority=pattern_data.priority,
             permission=pattern_data.permission,
         )
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_scorer_regex_permission",
+            resource_id=group_name,
+            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return StatusMessageResponse(message=f"Scorer pattern permission updated for group {group_name}")
     except Exception as e:
         logger.error(f"Error updating group scorer pattern permission: {str(e)}")
@@ -1518,6 +1680,13 @@ async def delete_group_scorer_pattern_permission(
 ) -> StatusMessageResponse:
     try:
         store.delete_group_scorer_regex_permission(id, group_name)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_scorer_regex_permission",
+            resource_id=group_name,
+            detail={"id": id},
+        )
         return StatusMessageResponse(message=f"Scorer pattern permission deleted for group {group_name}")
     except Exception as e:
         logger.error(f"Error deleting group scorer pattern permission: {str(e)}")
@@ -1566,6 +1735,13 @@ async def create_group_gateway_endpoint_permission(
     """Create a gateway endpoint permission for a group."""
     try:
         perm = store.create_group_gateway_endpoint_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_gateway_endpoint_permission",
+            resource_id=name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return GroupNamedPermissionItem(name=perm.endpoint_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error creating group gateway endpoint permission: {str(e)}")
@@ -1609,6 +1785,13 @@ async def update_group_gateway_endpoint_permission(
     """Update a gateway endpoint permission for a group."""
     try:
         store.update_group_gateway_endpoint_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_gateway_endpoint_permission",
+            resource_id=name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Gateway endpoint permission updated for group {group_name} on {name}")
     except Exception as e:
         logger.error(f"Error updating group gateway endpoint permission: {str(e)}")
@@ -1630,6 +1813,13 @@ async def delete_group_gateway_endpoint_permission(
     """Delete a gateway endpoint permission for a group."""
     try:
         store.delete_group_gateway_endpoint_permission(group_name=group_name, gateway_name=name)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_gateway_endpoint_permission",
+            resource_id=name,
+            detail={"group_name": group_name},
+        )
         return StatusMessageResponse(message=f"Gateway endpoint permission deleted for group {group_name} on {name}")
     except Exception as e:
         logger.error(f"Error deleting group gateway endpoint permission: {str(e)}")
@@ -1679,6 +1869,13 @@ async def create_group_gateway_endpoint_pattern_permission(
         perm = store.create_group_gateway_endpoint_regex_permission(
             group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_gateway_endpoint_regex_permission",
+            resource_id=group_name,
+            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error creating group gateway endpoint pattern permission: {str(e)}")
@@ -1724,6 +1921,13 @@ async def update_group_gateway_endpoint_pattern_permission(
         perm = store.update_group_gateway_endpoint_regex_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_gateway_endpoint_regex_permission",
+            resource_id=group_name,
+            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error updating group gateway endpoint pattern permission: {str(e)}")
@@ -1745,6 +1949,13 @@ async def delete_group_gateway_endpoint_pattern_permission(
     """Delete a gateway endpoint pattern permission for a group."""
     try:
         store.delete_group_gateway_endpoint_regex_permission(id=id, group_name=group_name)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_gateway_endpoint_regex_permission",
+            resource_id=group_name,
+            detail={"id": id},
+        )
         return StatusMessageResponse(message=f"Gateway endpoint pattern permission deleted for group {group_name}")
     except Exception as e:
         logger.error(f"Error deleting group gateway endpoint pattern permission: {str(e)}")
@@ -1793,6 +2004,13 @@ async def create_group_gateway_model_definition_permission(
     """Create a gateway model definition permission for a group."""
     try:
         perm = store.create_group_gateway_model_definition_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_gateway_model_definition_permission",
+            resource_id=name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return GroupNamedPermissionItem(name=perm.model_definition_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error creating group gateway model definition permission: {str(e)}")
@@ -1836,6 +2054,13 @@ async def update_group_gateway_model_definition_permission(
     """Update a gateway model definition permission for a group."""
     try:
         store.update_group_gateway_model_definition_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_gateway_model_definition_permission",
+            resource_id=name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Gateway model definition permission updated for group {group_name} on {name}")
     except Exception as e:
         logger.error(f"Error updating group gateway model definition permission: {str(e)}")
@@ -1857,6 +2082,13 @@ async def delete_group_gateway_model_definition_permission(
     """Delete a gateway model definition permission for a group."""
     try:
         store.delete_group_gateway_model_definition_permission(group_name=group_name, gateway_name=name)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_gateway_model_definition_permission",
+            resource_id=name,
+            detail={"group_name": group_name},
+        )
         return StatusMessageResponse(message=f"Gateway model definition permission deleted for group {group_name} on {name}")
     except Exception as e:
         logger.error(f"Error deleting group gateway model definition permission: {str(e)}")
@@ -1906,6 +2138,13 @@ async def create_group_gateway_model_definition_pattern_permission(
         perm = store.create_group_gateway_model_definition_regex_permission(
             group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_gateway_model_definition_regex_permission",
+            resource_id=group_name,
+            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error creating group gateway model definition pattern permission: {str(e)}")
@@ -1951,6 +2190,13 @@ async def update_group_gateway_model_definition_pattern_permission(
         perm = store.update_group_gateway_model_definition_regex_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_gateway_model_definition_regex_permission",
+            resource_id=group_name,
+            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error updating group gateway model definition pattern permission: {str(e)}")
@@ -1972,6 +2218,13 @@ async def delete_group_gateway_model_definition_pattern_permission(
     """Delete a gateway model definition pattern permission for a group."""
     try:
         store.delete_group_gateway_model_definition_regex_permission(id=id, group_name=group_name)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_gateway_model_definition_regex_permission",
+            resource_id=group_name,
+            detail={"id": id},
+        )
         return StatusMessageResponse(message=f"Gateway model definition pattern permission deleted for group {group_name}")
     except Exception as e:
         logger.error(f"Error deleting group gateway model definition pattern permission: {str(e)}")
@@ -2020,6 +2273,13 @@ async def create_group_gateway_secret_permission(
     """Create a gateway secret permission for a group."""
     try:
         perm = store.create_group_gateway_secret_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_gateway_secret_permission",
+            resource_id=name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return GroupNamedPermissionItem(name=perm.secret_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error creating group gateway secret permission: {str(e)}")
@@ -2063,6 +2323,13 @@ async def update_group_gateway_secret_permission(
     """Update a gateway secret permission for a group."""
     try:
         store.update_group_gateway_secret_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_gateway_secret_permission",
+            resource_id=name,
+            detail={"group_name": group_name, "permission": permission_data.permission},
+        )
         return StatusMessageResponse(message=f"Gateway secret permission updated for group {group_name} on {name}")
     except Exception as e:
         logger.error(f"Error updating group gateway secret permission: {str(e)}")
@@ -2084,6 +2351,13 @@ async def delete_group_gateway_secret_permission(
     """Delete a gateway secret permission for a group."""
     try:
         store.delete_group_gateway_secret_permission(group_name=group_name, gateway_name=name)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_gateway_secret_permission",
+            resource_id=name,
+            detail={"group_name": group_name},
+        )
         return StatusMessageResponse(message=f"Gateway secret permission deleted for group {group_name} on {name}")
     except Exception as e:
         logger.error(f"Error deleting group gateway secret permission: {str(e)}")
@@ -2133,6 +2407,13 @@ async def create_group_gateway_secret_pattern_permission(
         perm = store.create_group_gateway_secret_regex_permission(
             group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.create",
+            actor=admin_username,
+            resource_type="group_gateway_secret_regex_permission",
+            resource_id=group_name,
+            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error creating group gateway secret pattern permission: {str(e)}")
@@ -2178,6 +2459,13 @@ async def update_group_gateway_secret_pattern_permission(
         perm = store.update_group_gateway_secret_regex_permission(
             id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
         )
+        emit_audit_event(
+            "permission.update",
+            actor=admin_username,
+            resource_type="group_gateway_secret_regex_permission",
+            resource_id=group_name,
+            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
+        )
         return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
     except Exception as e:
         logger.error(f"Error updating group gateway secret pattern permission: {str(e)}")
@@ -2199,6 +2487,13 @@ async def delete_group_gateway_secret_pattern_permission(
     """Delete a gateway secret pattern permission for a group."""
     try:
         store.delete_group_gateway_secret_regex_permission(id=id, group_name=group_name)
+        emit_audit_event(
+            "permission.delete",
+            actor=admin_username,
+            resource_type="group_gateway_secret_regex_permission",
+            resource_id=group_name,
+            detail={"id": id},
+        )
         return StatusMessageResponse(message=f"Gateway secret pattern permission deleted for group {group_name}")
     except Exception as e:
         logger.error(f"Error deleting group gateway secret pattern permission: {str(e)}")

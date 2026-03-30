@@ -29,8 +29,16 @@ from mlflow_oidc_auth.models.group import (
 )
 from mlflow_oidc_auth.models.permission import PermissionResult, UserPermission
 from mlflow_oidc_auth.models.prompt import PromptPermission, PromptRegexCreate
-from mlflow_oidc_auth.models.registered_model import RegisteredModelPermission, RegisteredModelRegexCreate
-from mlflow_oidc_auth.models.scorer import ScorerPermission, ScorerPermissionRequest, ScorerRegexCreate, ScorerSummary
+from mlflow_oidc_auth.models.registered_model import (
+    RegisteredModelPermission,
+    RegisteredModelRegexCreate,
+)
+from mlflow_oidc_auth.models.scorer import (
+    ScorerPermission,
+    ScorerPermissionRequest,
+    ScorerRegexCreate,
+    ScorerSummary,
+)
 from mlflow_oidc_auth.models.responses import (
     CurrentUserProfile,
     ExperimentPermissionRecord,
@@ -53,6 +61,16 @@ from mlflow_oidc_auth.models.responses import (
     StatusOnlyResponse,
 )
 from mlflow_oidc_auth.models.user import CreateAccessTokenRequest, CreateUserRequest
+from mlflow_oidc_auth.models.workspace import (
+    WorkspaceGroupPermissionRequest,
+    WorkspaceGroupPermissionResponse,
+    WorkspaceGroupRegexPermissionRequest,
+    WorkspaceGroupRegexPermissionResponse,
+    WorkspaceRegexPermissionRequest,
+    WorkspaceRegexPermissionResponse,
+    WorkspaceUserPermissionRequest,
+    WorkspaceUserPermissionResponse,
+)
 from mlflow_oidc_auth.models.webhook import (
     WebhookCreateRequest,
     WebhookListResponse,
@@ -113,6 +131,14 @@ __all__ = [
     "ScorerRegexPermissionResponse",
     "CreateAccessTokenRequest",
     "CreateUserRequest",
+    "WorkspaceUserPermissionRequest",
+    "WorkspaceGroupPermissionRequest",
+    "WorkspaceUserPermissionResponse",
+    "WorkspaceGroupPermissionResponse",
+    "WorkspaceRegexPermissionRequest",
+    "WorkspaceGroupRegexPermissionRequest",
+    "WorkspaceRegexPermissionResponse",
+    "WorkspaceGroupRegexPermissionResponse",
     "WebhookCreateRequest",
     "WebhookUpdateRequest",
     "WebhookTestRequest",

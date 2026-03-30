@@ -40,6 +40,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_router1 = MagicMock()
         mock_router2 = MagicMock()
         mock_get_all_routers.return_value = [mock_router1, mock_router2]
@@ -98,6 +99,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         # Mock getattr calls for API docs configuration
@@ -135,6 +137,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = True
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
         mock_flask_app.view_functions = {}
 
@@ -173,6 +176,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
         # Create mock routers
         mock_router1 = MagicMock()
@@ -219,6 +223,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key-123"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -255,6 +260,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -263,8 +269,8 @@ class TestCreateApp:
             # Call the function
             create_app()
 
-            # Verify logging occurred
-            mock_logger.info.assert_called_once_with("MLflow Flask app mounted at / with FastAPI auth info passing")
+            # Verify logging occurred (includes MLflow FastAPI router inclusion logs)
+            mock_logger.info.assert_any_call("MLflow Flask app mounted at / with FastAPI auth info passing")
 
     @patch("mlflow_oidc_auth.app.config")
     @patch("mlflow_oidc_auth.app.register_exception_handlers")
@@ -289,6 +295,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -323,6 +330,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -359,6 +367,7 @@ class TestCreateApp:
         test_secret_key = "super-secret-test-key-12345"
         mock_config.SECRET_KEY = test_secret_key
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -393,6 +402,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []  # Empty list
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -428,6 +438,7 @@ class TestCreateApp:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         # Mock getattr to return default value when attribute is missing
@@ -495,6 +506,7 @@ class TestAppErrorHandling:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.side_effect = Exception("Router loading failed")
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
@@ -527,6 +539,7 @@ class TestAppErrorHandling:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
         mock_register_exception_handlers.side_effect = Exception("Exception handler registration failed")
 
@@ -560,6 +573,7 @@ class TestAppErrorHandling:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = True
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
         mock_flask_app.view_functions = {}
 
@@ -570,6 +584,7 @@ class TestAppErrorHandling:
             # we'll test the behavior when EXTEND_MLFLOW_MENU is False instead
             # This ensures the hack import code path is not executed
             mock_config.EXTEND_MLFLOW_MENU = False
+            mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
             # Call the function
             create_app()
@@ -604,6 +619,7 @@ class TestAppConfiguration:
         # Setup mocks
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         test_versions = ["1.0.0", "2.5.1", "3.0.0-dev"]
@@ -653,6 +669,7 @@ class TestAppConfiguration:
         ]
 
         mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_get_all_routers.return_value = []
 
         for secret_key in special_secret_keys:

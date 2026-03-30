@@ -474,6 +474,7 @@ class TestAdditionalTrashBehaviour:
         assert payload["deleted_experiments"] == ["exp-1"]
 
     @pytest.mark.asyncio
+    @pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
     async def test_cleanup_run_not_deleted_and_hard_delete_experiment_failure(self, mock_get_store):
         backend_store = MagicMock()

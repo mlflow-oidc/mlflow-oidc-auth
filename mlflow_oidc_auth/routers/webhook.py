@@ -32,9 +32,18 @@ from mlflow.store.db.db_types import DATABASE_ENGINES
 from mlflow.tracking._model_registry.registry import ModelRegistryStoreRegistry
 from mlflow.webhooks.delivery import test_webhook
 
+from mlflow_oidc_auth.audit import emit_audit_event
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.models import WebhookCreateRequest, WebhookListResponse, WebhookResponse, WebhookTestRequest, WebhookTestResponse, WebhookUpdateRequest
+from mlflow_oidc_auth.models import (
+    WebhookCreateRequest,
+    WebhookListResponse,
+    WebhookResponse,
+    WebhookTestRequest,
+    WebhookTestResponse,
+    WebhookUpdateRequest,
+)
 
 from ._prefix import WEBHOOK_ROUTER_PREFIX
 
@@ -47,6 +56,12 @@ class ModelRegistryStoreRegistryWrapper(ModelRegistryStoreRegistry):
 
     This is needed because the default ModelRegistryStoreRegistry doesn't register
     any database schemes, leading to UnsupportedModelRegistryStoreURIException.
+
+    When ``MLFLOW_ENABLE_WORKSPACES`` is enabled, the wrapper uses MLflow's
+    ``WorkspaceAwareSqlAlchemyStore`` instead of the plain ``SqlAlchemyStore``.
+    The workspace-aware variant skips the ``_initialize_store_state()`` check
+    that rejects databases containing models outside the default workspace,
+    and adds workspace filtering to all queries.
     """
 
     def __init__(self):
@@ -69,7 +84,19 @@ class ModelRegistryStoreRegistryWrapper(ModelRegistryStoreRegistry):
 
     @classmethod
     def _get_sqlalchemy_store(cls, store_uri):
-        """Get SQLAlchemy-based model registry store."""
+        """Get SQLAlchemy-based model registry store.
+
+        Uses ``WorkspaceAwareSqlAlchemyStore`` when workspaces are enabled so
+        that the store does not reject databases with models in non-default
+        workspaces and properly scopes queries to the active workspace.
+        """
+        if config.MLFLOW_ENABLE_WORKSPACES:
+            from mlflow.store.model_registry.sqlalchemy_workspace_store import (
+                WorkspaceAwareSqlAlchemyStore,
+            )
+
+            return WorkspaceAwareSqlAlchemyStore(store_uri)
+
         from mlflow.store.model_registry.sqlalchemy_store import SqlAlchemyStore
 
         return SqlAlchemyStore(store_uri)
@@ -98,7 +125,10 @@ def _get_model_registry_store():
         return _model_registry_store_registry.get_store()
     except Exception as e:
         logger.error(f"Failed to get model registry store: {e}")
-        raise HTTPException(status_code=503, detail="Webhook service temporarily unavailable. Ensure MLflow is properly configured with SQL backend.")
+        raise HTTPException(
+            status_code=503,
+            detail="Webhook service temporarily unavailable. Ensure MLflow is properly configured with SQL backend.",
+        )
 
 
 # Create the router
@@ -181,6 +211,17 @@ def create_webhook(
     )
 
     logger.info(f"Webhook {webhook.webhook_id} created successfully by {admin_username}")
+    emit_audit_event(
+        "webhook.create",
+        admin_username,
+        resource_type="webhook",
+        resource_id=str(webhook.webhook_id),
+        detail={
+            "name": webhook_data.name,
+            "url": webhook_data.url,
+            "events": webhook_data.events,
+        },
+    )
     return _webhook_to_response(webhook)
 
 
@@ -356,6 +397,18 @@ def update_webhook(
     )
 
     logger.info(f"Webhook {webhook_id} updated successfully by {admin_username}")
+    emit_audit_event(
+        "webhook.update",
+        admin_username,
+        resource_type="webhook",
+        resource_id=str(webhook_id),
+        detail={
+            "name": webhook_data.name,
+            "url": webhook_data.url,
+            "events": webhook_data.events,
+            "status": webhook_data.status,
+        },
+    )
     return _webhook_to_response(webhook)
 
 
@@ -392,6 +445,12 @@ def delete_webhook(
     store.delete_webhook(webhook_id=webhook_id)
 
     logger.info(f"Webhook {webhook_id} deleted successfully by {admin_username}")
+    emit_audit_event(
+        "webhook.delete",
+        admin_username,
+        resource_type="webhook",
+        resource_id=str(webhook_id),
+    )
     return {"message": f"Webhook {webhook_id} deleted successfully"}
 
 

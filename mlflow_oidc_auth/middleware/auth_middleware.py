@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
@@ -46,7 +47,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             True if the route is unprotected, False otherwise
         """
-        unprotected_prefixes = ("/health", "/login", "/callback", "/oidc/static", "/metrics", "/docs", "/redoc", "/openapi.json", "/oidc/ui")
+        unprotected_prefixes = (
+            "/health",
+            "/login",
+            "/callback",
+            "/oidc/static",
+            "/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/oidc/ui",
+        )
         return path.startswith(unprotected_prefixes)
 
     async def _authenticate_basic_auth(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
@@ -72,7 +83,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             else:
                 return False, None, "Invalid basic auth credentials"
         except Exception as e:
-            logger.error(f"Basic auth error: {e}")
+            logger.error("Basic auth error: %s", type(e).__name__)
             return False, None, "Invalid basic auth format"
 
     async def _authenticate_bearer_token(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
@@ -96,7 +107,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             else:
                 return False, None, "Invalid token payload"
         except Exception as e:
-            logger.error(f"Bearer auth error: {e}")
+            logger.error("Bearer auth error: %s", type(e).__name__)
             return False, None, "Invalid token"
 
     async def _authenticate_session(self, request: Request) -> Tuple[bool, Optional[str], str]:
@@ -119,14 +130,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         logger.debug(f"User {username} authenticated via session")
                         return True, username, ""
                 except Exception as session_error:
-                    logger.debug(f"Session access error: {session_error}")
-                    return False, None, f"Session access failed: {session_error}"
+                    logger.debug("Session access error: %s", type(session_error).__name__)
+                    return False, None, "Session access failed"
             else:
                 logger.debug("Session middleware not available - no session attribute")
                 return False, None, "Session middleware not available"
         except Exception as e:
-            logger.debug(f"Session check error: {e}")
-            return False, None, f"Session error: {e}"
+            logger.debug("Session check error: %s", type(e).__name__)
+            return False, None, "Session error"
 
         return False, None, "No session authentication"
 
@@ -218,7 +229,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             # ROBUST: Store user info in ASGI scope for WSGI compatibility
             # This ensures Flask RBAC middleware can access user information reliably
-            request.scope["mlflow_oidc_auth"] = {"username": username, "is_admin": request.state.is_admin}
+            # Extract workspace header only when workspaces are enabled (per WSFND-02)
+            workspace = None
+            if config.MLFLOW_ENABLE_WORKSPACES:
+                workspace = request.headers.get("x-mlflow-workspace")
+
+            request.scope[AUTH_CONTEXT_KEY] = AuthContext(
+                username=username,
+                is_admin=request.state.is_admin,
+                workspace=workspace,
+            )
             logger.debug(f"User {username} (admin: {request.state.is_admin}) accessing {path}")
 
             # Proceed to the next middleware/handler
@@ -231,5 +251,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if path.startswith("/api"):
                 return JSONResponse(status_code=401, content={"detail": "Authentication required"})
             if path.startswith("/oidc/trash"):
-                return JSONResponse(status_code=403, content={"detail": "Administrator privileges required for this operation"})
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Administrator privileges required for this operation"},
+                )
             return await self._handle_auth_redirect(request)

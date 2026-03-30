@@ -51,8 +51,14 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code = 401  # Unauthorized
         elif exc.error_code == "PERMISSION_DENIED":
             status_code = 403  # Forbidden
+        elif exc.error_code == "INVALID_STATE":
+            status_code = 400  # Bad request (e.g., regex validation, duplicate permission)
 
         return JSONResponse(
             status_code=status_code,
-            content={"error_code": exc.error_code, "message": str(exc), "details": getattr(exc, "message", None)},
+            content={
+                "error_code": exc.error_code,
+                "message": str(exc),
+                "details": getattr(exc, "message", None),
+            },
         )

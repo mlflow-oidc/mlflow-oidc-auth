@@ -2,7 +2,10 @@ from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import (
+    RESOURCE_ALREADY_EXISTS,
+    RESOURCE_DOES_NOT_EXIST,
+)
 from mlflow.utils.validation import _validate_username
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only, noload, selectinload
@@ -18,7 +21,14 @@ class UserRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
 
-    def create(self, username: str, password: str, display_name: str, is_admin: bool = False, is_service_account: bool = False) -> User:
+    def create(
+        self,
+        username: str,
+        password: str,
+        display_name: str,
+        is_admin: bool = False,
+        is_service_account: bool = False,
+    ) -> User:
         _validate_username(username)
         pwhash = generate_password_hash(password)
         with self._Session() as session:
@@ -108,6 +118,17 @@ class UserRepository:
                 q = q.filter(SqlUser.is_service_account == is_service_account)
             return [u.to_mlflow_entity() for u in q.all()]
 
+    def list_usernames(self, is_service_account: bool = False) -> List[str]:
+        """Return only usernames without loading any relationships.
+
+        This is much cheaper than ``list()`` because it avoids loading
+        experiment/model/scorer/gateway permission collections and groups
+        for every user row.
+        """
+        with self._Session() as session:
+            rows = session.query(SqlUser.username).filter(SqlUser.is_service_account == is_service_account).all()
+            return [r[0] for r in rows]
+
     def update(
         self,
         username: str,
@@ -143,20 +164,54 @@ class UserRepository:
             from mlflow_oidc_auth.db.models import (
                 SqlExperimentPermission,
                 SqlExperimentRegexPermission,
+                SqlGatewayEndpointPermission,
+                SqlGatewayEndpointRegexPermission,
+                SqlGatewayModelDefinitionPermission,
+                SqlGatewayModelDefinitionRegexPermission,
+                SqlGatewaySecretPermission,
+                SqlGatewaySecretRegexPermission,
                 SqlRegisteredModelPermission,
                 SqlRegisteredModelRegexPermission,
                 SqlScorerPermission,
                 SqlScorerRegexPermission,
                 SqlUserGroup,
+                SqlWorkspacePermission,
+                SqlWorkspaceRegexPermission,
             )
 
             user_id = user.id
+
+            # Experiment permissions
             session.query(SqlExperimentPermission).filter(SqlExperimentPermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlExperimentRegexPermission).filter(SqlExperimentRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Registered model permissions
             session.query(SqlRegisteredModelPermission).filter(SqlRegisteredModelPermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlRegisteredModelRegexPermission).filter(SqlRegisteredModelRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Scorer permissions
             session.query(SqlScorerPermission).filter(SqlScorerPermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlScorerRegexPermission).filter(SqlScorerRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Gateway endpoint permissions
+            session.query(SqlGatewayEndpointPermission).filter(SqlGatewayEndpointPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlGatewayEndpointRegexPermission).filter(SqlGatewayEndpointRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Gateway secret permissions
+            session.query(SqlGatewaySecretPermission).filter(SqlGatewaySecretPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlGatewaySecretRegexPermission).filter(SqlGatewaySecretRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Gateway model definition permissions
+            session.query(SqlGatewayModelDefinitionPermission).filter(SqlGatewayModelDefinitionPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlGatewayModelDefinitionRegexPermission).filter(SqlGatewayModelDefinitionRegexPermission.user_id == user_id).delete(
+                synchronize_session=False
+            )
+
+            # Workspace permissions
+            session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlWorkspaceRegexPermission).filter(SqlWorkspaceRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Group memberships
             session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user_id).delete(synchronize_session=False)
 
             session.delete(user)

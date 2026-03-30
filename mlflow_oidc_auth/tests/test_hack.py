@@ -870,7 +870,7 @@ class TestHackModulePerformance:
 
                     # Verify minimal file operations
                     assert mock_file_open.call_count == 2  # Only index.html and menu.html
-                    assert mock_exists.call_count == 1  # Only one existence check
+                    assert mock_exists.call_count == 2  # index.html and menu.html existence checks
 
                     # Verify correct result
                     assert menu_html in result

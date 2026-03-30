@@ -4,9 +4,10 @@ UI router for FastAPI application.
 This router handles serving the OIDC management UI and static assets.
 """
 
+import os.path
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.config import config
@@ -35,7 +36,10 @@ def _get_ui_directory() -> tuple[Path, Path]:
 
 
 @ui_router.get("/config.json")
-async def serve_spa_config(base_path: str = Depends(get_base_path), authenticated: bool = Depends(is_authenticated)):
+async def serve_spa_config(
+    base_path: str = Depends(get_base_path),
+    authenticated: bool = Depends(is_authenticated),
+):
     return JSONResponse(
         content={
             "basePath": base_path,
@@ -43,6 +47,7 @@ async def serve_spa_config(base_path: str = Depends(get_base_path), authenticate
             "provider": config.OIDC_PROVIDER_DISPLAY_NAME,
             "authenticated": authenticated,
             "gen_ai_gateway_enabled": config.OIDC_GEN_AI_GATEWAY_ENABLED,
+            "workspaces_enabled": config.MLFLOW_ENABLE_WORKSPACES,
         }
     )
 
@@ -65,15 +70,18 @@ async def serve_spa(filename: str):
     For SPA routes (including auth with parameters), serve index.html.
     """
     ui_dir_path, index_file = _get_ui_directory()
-    requested_path = (ui_dir_path / filename).resolve()
 
-    ui_dir_path_str = str(ui_dir_path)
-    requested_path_str = str(requested_path)
-    is_within_ui_dir = (
-        requested_path_str == ui_dir_path_str or requested_path_str.startswith(ui_dir_path_str + "/") or requested_path_str.startswith(ui_dir_path_str + "\\")
-    )
-    if is_within_ui_dir and requested_path.is_file():
-        return FileResponse(requested_path_str)
+    # Normalize the joined path to collapse any ".." segments, then verify
+    # it still lives under the UI directory.  This uses the os.path.normpath +
+    # startswith pattern that CodeQL recognises as a path-injection sanitiser
+    # (see CWE-22 / py/path-injection).
+    safe_root = str(ui_dir_path) + os.sep
+    candidate = os.path.normpath(os.path.join(str(ui_dir_path), filename))
+    if not candidate.startswith(safe_root):
+        return FileResponse(str(index_file))
+
+    if os.path.isfile(candidate):
+        return FileResponse(candidate)
 
     return FileResponse(str(index_file))
 

@@ -5,6 +5,7 @@ import { getNavigationData } from "./navigation-data";
 import HeaderDesktopNav from "./header-desktop-nav";
 import { Button } from "./button";
 import HeaderMobileNav from "./header-mobile-nav";
+import { WorkspacePicker } from "./workspace-picker";
 import { useRuntimeConfig } from "../context/use-runtime-config";
 import { faTimes, faBars } from "@fortawesome/free-solid-svg-icons";
 
@@ -40,6 +41,8 @@ const Header: React.FC<HeaderProps> = ({ userName = "User" }) => {
         <img src="favicon.svg" alt="Logo" className="w-6 h-6" />
         Permissions
       </Link>
+
+      <WorkspacePicker />
 
       <div className="flex z-4">
         <div className="flex items-center">

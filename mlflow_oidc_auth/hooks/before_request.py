@@ -30,6 +30,7 @@ from mlflow.protos.service_pb2 import (
     CreateGatewaySecret,
     CreateLoggedModel,
     CreateRun,
+    CreateWorkspace,
     DeleteExperiment,
     DeleteExperimentTag,
     DeleteGatewayEndpoint,
@@ -41,6 +42,7 @@ from mlflow.protos.service_pb2 import (
     DeleteLoggedModelTag,
     DeleteRun,
     DeleteTag,
+    DeleteWorkspace,
     DetachModelFromGatewayEndpoint,
     FinalizeLoggedModel,
     GetExperiment,
@@ -51,8 +53,10 @@ from mlflow.protos.service_pb2 import (
     GetLoggedModel,
     GetMetricHistory,
     GetRun,
+    GetWorkspace,
     ListArtifacts,
     ListGatewayEndpointBindings,
+    ListWorkspaces,
     LogBatch,
     LogLoggedModelParamsRequest,
     LogMetric,
@@ -69,18 +73,44 @@ from mlflow.protos.service_pb2 import (
     UpdateGatewayModelDefinition,
     UpdateGatewaySecret,
     UpdateRun,
+    UpdateWorkspace,
     RegisterScorer,
     ListScorers,
     GetScorer,
     DeleteScorer,
     ListScorerVersions,
+    CreatePromptOptimizationJob,
+    GetPromptOptimizationJob,
+    SearchPromptOptimizationJobs,
+    DeletePromptOptimizationJob,
+    CancelPromptOptimizationJob,
 )
 
 from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
 from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
+# Forward-compatible imports for Gateway Budget Policy protos.
+# These protos may not exist in the installed MLflow version; when they
+# become available they will be automatically picked up as admin-only handlers.
+_BUDGET_POLICY_PROTOS: list = []
+try:
+    from mlflow.protos.service_pb2 import (
+        CreateGatewayBudgetPolicy,
+        UpdateGatewayBudgetPolicy,
+        DeleteGatewayBudgetPolicy,
+    )
+
+    _BUDGET_POLICY_PROTOS = [
+        CreateGatewayBudgetPolicy,
+        UpdateGatewayBudgetPolicy,
+        DeleteGatewayBudgetPolicy,
+    ]
+except ImportError:
+    pass
+
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 import mlflow_oidc_auth.responses as responses
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
     validate_can_delete_experiment,
@@ -133,11 +163,38 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_gateway_model_definition,
     validate_can_delete_gateway_model_definition,
     validate_can_create_gateway,
+    validate_can_create_workspace,
+    validate_can_read_workspace,
+    validate_can_update_workspace,
+    validate_can_delete_workspace,
+    validate_can_list_workspaces,
+    validate_can_read_prompt_optimization_job,
+    validate_can_update_prompt_optimization_job,
+    validate_can_delete_prompt_optimization_job,
 )
 
 
 def _is_unprotected_route(path: str) -> bool:
-    return path.startswith(("/static", "/favicon.ico", "/health", "/metrics", "/docs", "/redoc", "/openapi.json"))
+    return path.startswith(
+        (
+            "/static",
+            "/favicon.ico",
+            "/health",
+            "/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+        )
+    )
+
+
+def _deny_non_admin(_username: str) -> bool:
+    """Sentinel validator that always denies non-admin users.
+
+    Admin users are short-circuited before validators run in before_request_hook,
+    so this function is only called for non-admin users and must always return False.
+    """
+    return False
 
 
 def _get_auth_context() -> tuple[Optional[str], bool]:
@@ -203,6 +260,12 @@ BEFORE_REQUEST_HANDLERS = {
     GetScorer: validate_can_read_scorer,
     DeleteScorer: validate_can_delete_scorer,
     ListScorerVersions: validate_can_read_scorer,
+    # Routes for prompt optimization jobs (resolved via job_id → experiment_id)
+    CreatePromptOptimizationJob: validate_can_update_experiment,
+    GetPromptOptimizationJob: validate_can_read_prompt_optimization_job,
+    SearchPromptOptimizationJobs: validate_can_read_experiment,
+    DeletePromptOptimizationJob: validate_can_delete_prompt_optimization_job,
+    CancelPromptOptimizationJob: validate_can_update_prompt_optimization_job,
     # Routes for gateway endpoints
     CreateGatewayEndpoint: validate_can_create_gateway,
     GetGatewayEndpoint: validate_can_read_gateway_endpoint,
@@ -229,6 +292,11 @@ BEFORE_REQUEST_HANDLERS = {
     SetGatewayEndpointTag: validate_can_update_gateway_endpoint,
     DeleteGatewayEndpointTag: validate_can_update_gateway_endpoint,
 }
+
+# Gateway Budget Policy protos are admin-only.  They are conditionally
+# available (forward-compat), so we add them after the dict is defined.
+for _bp in _BUDGET_POLICY_PROTOS:
+    BEFORE_REQUEST_HANDLERS[_bp] = _deny_non_admin
 
 # `mlflow.server.handlers.get_endpoints()` also includes non-protobuf endpoints like `/graphql`
 # and Gateway discovery routes, whose handlers are *not* our auth validators. We must not treat
@@ -262,6 +330,12 @@ GET_METRIC_HISTORY_BULK_INTERVAL = _get_ajax_path("/mlflow/metrics/get-history-b
 SEARCH_DATASETS = _get_ajax_path("/mlflow/experiments/search-datasets")
 CREATE_PROMPTLAB_RUN = _get_ajax_path("/mlflow/runs/create-promptlab-run")
 GATEWAY_PROXY = _get_ajax_path("/mlflow/gateway-proxy")
+INVOKE_SCORER = _get_ajax_path("/mlflow/invocations/scorer")
+GATEWAY_SUPPORTED_PROVIDERS = _get_ajax_path("/mlflow/gateway/supported-providers")
+GATEWAY_SUPPORTED_MODELS = _get_ajax_path("/mlflow/gateway/supported-models")
+GATEWAY_PROVIDER_CONFIG = _get_ajax_path("/mlflow/gateway/provider-config")
+GATEWAY_SECRETS_CONFIG = _get_ajax_path("/mlflow/gateway/secrets-config")
+
 
 # Flask routes (no proto mapping)
 BEFORE_REQUEST_VALIDATORS.update(
@@ -271,11 +345,23 @@ BEFORE_REQUEST_VALIDATORS.update(
         (GET_MODEL_VERSION_ARTIFACT, "GET"): validate_can_read_model_version_artifact,
         (GET_TRACE_ARTIFACT, "GET"): validate_can_read_trace_artifact,
         (GET_METRIC_HISTORY_BULK, "GET"): validate_can_read_metric_history_bulk,
-        (GET_METRIC_HISTORY_BULK_INTERVAL, "GET"): validate_can_read_metric_history_bulk_interval,
+        (
+            GET_METRIC_HISTORY_BULK_INTERVAL,
+            "GET",
+        ): validate_can_read_metric_history_bulk_interval,
         (SEARCH_DATASETS, "POST"): validate_can_search_datasets,
         (CREATE_PROMPTLAB_RUN, "POST"): validate_can_create_promptlab_run,
         (GATEWAY_PROXY, "GET"): validate_gateway_proxy,
         (GATEWAY_PROXY, "POST"): validate_gateway_proxy,
+        # Scorer invocation uses the same gateway proxy permission check
+        (INVOKE_SCORER, "GET"): validate_gateway_proxy,
+        (INVOKE_SCORER, "POST"): validate_gateway_proxy,
+        # Gateway discovery routes use the same gateway proxy permission check
+        (GATEWAY_SUPPORTED_PROVIDERS, "GET"): validate_gateway_proxy,
+        (GATEWAY_SUPPORTED_MODELS, "GET"): validate_gateway_proxy,
+        # Gateway configuration routes are admin-only
+        (GATEWAY_PROVIDER_CONFIG, "GET"): _deny_non_admin,
+        (GATEWAY_SECRETS_CONFIG, "GET"): _deny_non_admin,
     }
 )
 
@@ -309,6 +395,55 @@ LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
     for method in methods
 }
 
+# Workspace RPC handlers (per decision WSAUTH-A: regex pattern matching like logged models)
+WORKSPACE_BEFORE_REQUEST_HANDLERS = {
+    CreateWorkspace: validate_can_create_workspace,
+    GetWorkspace: validate_can_read_workspace,
+    ListWorkspaces: validate_can_list_workspaces,
+    UpdateWorkspace: validate_can_update_workspace,
+    DeleteWorkspace: validate_can_delete_workspace,
+}
+
+
+def get_workspace_before_request_handler(request_class):
+    return WORKSPACE_BEFORE_REQUEST_HANDLERS.get(request_class)
+
+
+WORKSPACE_BEFORE_REQUEST_VALIDATORS = {
+    (_re_compile_path(http_path), method): handler
+    for http_path, handler, methods in get_endpoints(get_workspace_before_request_handler)
+    for method in methods
+    if handler is not None
+}
+
+
+# ---------------------------------------------------------------------------
+# Workspace creation gating (per WSAUTH-F / WSAUTH-03)
+# ---------------------------------------------------------------------------
+
+_WORKSPACE_GATED_CREATION_PATHS: set[tuple[str, str]] | None = None
+
+
+def _get_workspace_gated_creation_paths() -> set[tuple[str, str]]:
+    """Lazily build the set of (path, method) pairs for workspace-gated creation."""
+    global _WORKSPACE_GATED_CREATION_PATHS
+    if _WORKSPACE_GATED_CREATION_PATHS is None:
+        from mlflow.protos.service_pb2 import CreateExperiment
+        from mlflow.protos.model_registry_pb2 import CreateRegisteredModel
+
+        paths = set()
+        for http_path, handler, methods in get_endpoints(lambda rc: rc if rc in (CreateExperiment, CreateRegisteredModel) else None):
+            if handler in (CreateExperiment, CreateRegisteredModel):
+                for method in methods:
+                    paths.add((http_path, method))
+        _WORKSPACE_GATED_CREATION_PATHS = paths
+    return _WORKSPACE_GATED_CREATION_PATHS
+
+
+def _is_workspace_gated_creation(path: str, method: str) -> bool:
+    """Check if a request path/method corresponds to a workspace-gated creation endpoint."""
+    return (path, method) in _get_workspace_gated_creation_paths()
+
 
 def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[str], bool]]:
     if view_args is None:
@@ -329,6 +464,22 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
     """
     Finds the validator matching the request path and method.
     """
+    if "/mlflow/workspaces" in req.path:
+        # Workspace routes use path parameters (e.g. /mlflow/workspaces/<workspace_name>)
+        validator = next(
+            (v for (pat, method), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            None,
+        )
+        # Stash workspace name for after-request cascade delete (like gateway pattern)
+        if validator is not None and req.method == "DELETE":
+            from mlflow_oidc_auth.validators.workspace import (
+                _extract_workspace_name_from_path,
+            )
+
+            ws_name = _extract_workspace_name_from_path()
+            if ws_name:
+                g._deleting_workspace_name = ws_name
+        return validator
     if "/mlflow/logged-models" in req.path:
         # logged model routes are not registered in the app
         # so we need to check them manually
@@ -356,6 +507,18 @@ def before_request_hook():
     _stash_gateway_context(validator)
     if is_admin:
         return
+    # Workspace creation gating (per WSAUTH-F / WSAUTH-03)
+    if config.MLFLOW_ENABLE_WORKSPACES and _is_workspace_gated_creation(request.path, request.method):
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            get_workspace_permission_cached,
+        )
+
+        workspace = get_request_workspace()
+        if workspace:
+            ws_perm = get_workspace_permission_cached(username, workspace)
+            if ws_perm is None or not ws_perm.can_manage:
+                return responses.make_forbidden_response()
     # authorization
     if validator:
         if not validator(username):
@@ -391,7 +554,10 @@ def _stash_gateway_context(validator) -> None:
     )
 
     # --- Gateway endpoint: update (rename) or delete ---
-    if validator in (validate_can_update_gateway_endpoint, validate_can_delete_gateway_endpoint):
+    if validator in (
+        validate_can_update_gateway_endpoint,
+        validate_can_delete_gateway_endpoint,
+    ):
         data = request.get_json(force=True, silent=True) or {}
         endpoint_id = data.get("endpoint_id")
         if endpoint_id:

@@ -1,5 +1,11 @@
 from mlflow_oidc_auth.permissions import Permission
-from mlflow_oidc_auth.utils import effective_registered_model_permission, effective_experiment_permission, get_model_name, get_model_id, get_request_param
+from mlflow_oidc_auth.utils import (
+    effective_registered_model_permission,
+    effective_experiment_permission,
+    get_model_name,
+    get_model_id,
+    get_request_param,
+)
 from mlflow.server.handlers import _get_tracking_store
 
 
@@ -37,43 +43,43 @@ def _get_permission_from_trace_request_id(username: str) -> Permission:
     return effective_experiment_permission(experiment_id, username).permission
 
 
-def validate_can_read_registered_model(username: str):
+def validate_can_read_registered_model(username: str) -> bool:
     return _get_permission_from_registered_model_name(username).can_read
 
 
-def validate_can_update_registered_model(username: str):
+def validate_can_update_registered_model(username: str) -> bool:
     return _get_permission_from_registered_model_name(username).can_update
 
 
-def validate_can_delete_registered_model(username: str):
+def validate_can_delete_registered_model(username: str) -> bool:
     return _get_permission_from_registered_model_name(username).can_delete
 
 
-def validate_can_manage_registered_model(username: str):
+def validate_can_manage_registered_model(username: str) -> bool:
     return _get_permission_from_registered_model_name(username).can_manage
 
 
-def validate_can_read_logged_model(username: str):
+def validate_can_read_logged_model(username: str) -> bool:
     return _get_permission_from_model_id(username).can_read
 
 
-def validate_can_update_logged_model(username: str):
+def validate_can_update_logged_model(username: str) -> bool:
     return _get_permission_from_model_id(username).can_update
 
 
-def validate_can_delete_logged_model(username: str):
+def validate_can_delete_logged_model(username: str) -> bool:
     return _get_permission_from_model_id(username).can_delete
 
 
-def validate_can_manage_logged_model(username: str):
+def validate_can_manage_logged_model(username: str) -> bool:
     return _get_permission_from_model_id(username).can_manage
 
 
-def validate_can_read_model_version_artifact(username: str):
+def validate_can_read_model_version_artifact(username: str) -> bool:
     """Checks READ permission on model version artifacts."""
     return _get_permission_from_model_version(username).can_read
 
 
-def validate_can_read_trace_artifact(username: str):
+def validate_can_read_trace_artifact(username: str) -> bool:
     """Checks READ permission on trace artifacts."""
     return _get_permission_from_trace_request_id(username).can_read

@@ -1,9 +1,11 @@
 """
 Comprehensive tests for AuthAwareWSGIMiddleware and AuthInjectingWSGIApp.
 
+Updated to use AuthContext pattern instead of individual environ keys.
+
 This module tests WSGI middleware functionality including:
 - ASGI to WSGI conversion with authentication context
-- Authentication information injection into WSGI environ
+- AuthContext injection into WSGI environ
 - WSGI application wrapping and execution
 - Error handling and edge cases
 - Non-HTTP request handling
@@ -12,6 +14,7 @@ This module tests WSGI middleware functionality including:
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from mlflow_oidc_auth.entities.auth_context import AuthContext
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import (
     AuthAwareWSGIMiddleware,
     AuthInjectingWSGIApp,
@@ -28,25 +31,22 @@ class TestAuthInjectingWSGIApp:
         assert app.flask_app == mock_flask_app
         assert app.scope == sample_asgi_scope
 
-    def test_call_with_auth_info(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
-        """Test WSGI app call with authentication information in scope."""
-        # Add auth info to scope
-        sample_asgi_scope["mlflow_oidc_auth"] = {
-            "username": "user@example.com",
-            "is_admin": False,
-        }
+    def test_call_with_auth_context(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
+        """Test WSGI app call with AuthContext in scope."""
+        auth_ctx = AuthContext(username="user@example.com", is_admin=False)
+        sample_asgi_scope["mlflow_oidc_auth"] = auth_ctx
 
         app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
-
-        # Mock start_response
         start_response = MagicMock()
 
         with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.logger", mock_logger):
             result = app(sample_wsgi_environ, start_response)
 
-            # Verify auth info was injected into environ
-            assert sample_wsgi_environ["mlflow_oidc_auth.username"] == "user@example.com"
-            assert sample_wsgi_environ["mlflow_oidc_auth.is_admin"] is False
+            # Verify AuthContext was injected as a single object
+            assert sample_wsgi_environ["mlflow_oidc_auth"] is auth_ctx
+            assert isinstance(sample_wsgi_environ["mlflow_oidc_auth"], AuthContext)
+            assert sample_wsgi_environ["mlflow_oidc_auth"].username == "user@example.com"
+            assert sample_wsgi_environ["mlflow_oidc_auth"].is_admin is False
 
             # Verify Flask app was called with enhanced environ
             assert result == [b'{"message": "Hello from Flask"}']
@@ -54,53 +54,57 @@ class TestAuthInjectingWSGIApp:
             # Verify debug logging
             mock_logger.debug.assert_called_once()
             log_message = mock_logger.debug.call_args[0][0]
-            assert "Injecting auth info into WSGI environ" in log_message
+            assert "Injecting AuthContext into WSGI environ" in log_message
             assert "username=user@example.com" in log_message
             assert "is_admin=False" in log_message
 
-    def test_call_with_admin_auth_info(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
-        """Test WSGI app call with admin authentication information."""
-        # Add admin auth info to scope
-        sample_asgi_scope["mlflow_oidc_auth"] = {
-            "username": "admin@example.com",
-            "is_admin": True,
-        }
+    def test_call_with_admin_auth_context(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
+        """Test WSGI app call with admin AuthContext."""
+        auth_ctx = AuthContext(username="admin@example.com", is_admin=True)
+        sample_asgi_scope["mlflow_oidc_auth"] = auth_ctx
 
         app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
-
-        # Mock start_response
         start_response = MagicMock()
 
         with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.logger", mock_logger):
             result = app(sample_wsgi_environ, start_response)
 
-            # Verify admin auth info was injected
-            assert sample_wsgi_environ["mlflow_oidc_auth.username"] == "admin@example.com"
-            assert sample_wsgi_environ["mlflow_oidc_auth.is_admin"] is True
+            assert sample_wsgi_environ["mlflow_oidc_auth"] is auth_ctx
+            assert sample_wsgi_environ["mlflow_oidc_auth"].username == "admin@example.com"
+            assert sample_wsgi_environ["mlflow_oidc_auth"].is_admin is True
 
-            # Verify Flask app was called
             assert result == [b'{"message": "Hello from Flask"}']
 
-            # Verify debug logging with admin status
             mock_logger.debug.assert_called_once()
             log_message = mock_logger.debug.call_args[0][0]
             assert "username=admin@example.com" in log_message
             assert "is_admin=True" in log_message
 
+    def test_call_with_workspace_in_auth_context(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
+        """Test WSGI app call with workspace in AuthContext."""
+        auth_ctx = AuthContext(username="user@example.com", is_admin=False, workspace="my-ws")
+        sample_asgi_scope["mlflow_oidc_auth"] = auth_ctx
+
+        app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
+        start_response = MagicMock()
+
+        with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.logger", mock_logger):
+            result = app(sample_wsgi_environ, start_response)
+
+            assert sample_wsgi_environ["mlflow_oidc_auth"].workspace == "my-ws"
+            assert result == [b'{"message": "Hello from Flask"}']
+
     def test_call_without_auth_info(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
         """Test WSGI app call without authentication information in scope."""
         # No auth info in scope
         app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
-
-        # Mock start_response
         start_response = MagicMock()
 
         with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.logger", mock_logger):
             result = app(sample_wsgi_environ, start_response)
 
             # Verify no auth info was injected into environ
-            assert "mlflow_oidc_auth.username" not in sample_wsgi_environ
-            assert "mlflow_oidc_auth.is_admin" not in sample_wsgi_environ
+            assert "mlflow_oidc_auth" not in sample_wsgi_environ
 
             # Verify Flask app was still called
             assert result == [b'{"message": "Hello from Flask"}']
@@ -108,69 +112,35 @@ class TestAuthInjectingWSGIApp:
             # Verify no debug logging for auth injection
             mock_logger.debug.assert_not_called()
 
-    def test_call_with_empty_auth_info(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
-        """Test WSGI app call with empty authentication information."""
-        # Empty auth info in scope
-        sample_asgi_scope["mlflow_oidc_auth"] = {}
-
-        app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
-
-        # Mock start_response
-        start_response = MagicMock()
-
-        with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.logger", mock_logger):
-            result = app(sample_wsgi_environ, start_response)
-
-            # Verify no auth info was injected
-            assert "mlflow_oidc_auth.username" not in sample_wsgi_environ
-            assert "mlflow_oidc_auth.is_admin" not in sample_wsgi_environ
-
-            # Verify Flask app was called
-            assert result == [b'{"message": "Hello from Flask"}']
-
-            # Verify no debug logging
-            mock_logger.debug.assert_not_called()
-
-    def test_call_with_username_only(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
-        """Test WSGI app call with username but no is_admin flag."""
-        # Auth info with username only
-        sample_asgi_scope["mlflow_oidc_auth"] = {"username": "user@example.com"}
-
-        app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
-
-        # Mock start_response
-        start_response = MagicMock()
-
-        with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.logger", mock_logger):
-            result = app(sample_wsgi_environ, start_response)
-
-            # Verify username was injected, is_admin defaults to False
-            assert sample_wsgi_environ["mlflow_oidc_auth.username"] == "user@example.com"
-            assert sample_wsgi_environ["mlflow_oidc_auth.is_admin"] is False
-
-            # Verify Flask app was called
-            assert result == [b'{"message": "Hello from Flask"}']
-
-            # Verify debug logging
-            mock_logger.debug.assert_called_once()
-            log_message = mock_logger.debug.call_args[0][0]
-            assert "is_admin=False" in log_message
-
-    def test_call_preserves_existing_environ(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ):
-        """Test that existing environ variables are preserved."""
-        # Add some existing environ variables
-        sample_wsgi_environ["EXISTING_VAR"] = "existing_value"
-        sample_wsgi_environ["HTTP_AUTHORIZATION"] = "Bearer token"
-
-        # Add auth info to scope
+    def test_call_with_non_auth_context_type(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ, mock_logger):
+        """Test WSGI app call when scope has a dict instead of AuthContext (should not inject)."""
+        # Old-style dict — should NOT be injected since isinstance check fails
         sample_asgi_scope["mlflow_oidc_auth"] = {
             "username": "user@example.com",
-            "is_admin": True,
+            "is_admin": False,
         }
 
         app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
+        start_response = MagicMock()
 
-        # Mock start_response
+        with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.logger", mock_logger):
+            result = app(sample_wsgi_environ, start_response)
+
+            # Dict should not be injected — isinstance(dict, AuthContext) is False
+            assert "mlflow_oidc_auth" not in sample_wsgi_environ
+
+            assert result == [b'{"message": "Hello from Flask"}']
+            mock_logger.debug.assert_not_called()
+
+    def test_call_preserves_existing_environ(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ):
+        """Test that existing environ variables are preserved."""
+        sample_wsgi_environ["EXISTING_VAR"] = "existing_value"
+        sample_wsgi_environ["HTTP_AUTHORIZATION"] = "Bearer token"
+
+        auth_ctx = AuthContext(username="user@example.com", is_admin=True)
+        sample_asgi_scope["mlflow_oidc_auth"] = auth_ctx
+
+        app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
         start_response = MagicMock()
 
         app(sample_wsgi_environ, start_response)
@@ -180,8 +150,7 @@ class TestAuthInjectingWSGIApp:
         assert sample_wsgi_environ["HTTP_AUTHORIZATION"] == "Bearer token"
 
         # Verify auth info was added
-        assert sample_wsgi_environ["mlflow_oidc_auth.username"] == "user@example.com"
-        assert sample_wsgi_environ["mlflow_oidc_auth.is_admin"] is True
+        assert sample_wsgi_environ["mlflow_oidc_auth"] is auth_ctx
 
     def test_call_flask_app_exception(self, sample_asgi_scope, sample_wsgi_environ):
         """Test handling when Flask app raises an exception."""
@@ -190,25 +159,18 @@ class TestAuthInjectingWSGIApp:
             raise RuntimeError("Flask app error")
 
         app = AuthInjectingWSGIApp(failing_flask_app, sample_asgi_scope)
-
-        # Mock start_response
         start_response = MagicMock()
 
-        # Verify exception is propagated
         with pytest.raises(RuntimeError, match="Flask app error"):
             app(sample_wsgi_environ, start_response)
 
     def test_call_start_response_called(self, mock_flask_app, sample_asgi_scope, sample_wsgi_environ):
         """Test that start_response is properly called by Flask app."""
         app = AuthInjectingWSGIApp(mock_flask_app, sample_asgi_scope)
-
-        # Mock start_response
         start_response = MagicMock()
 
         result = app(sample_wsgi_environ, start_response)
 
-        # Verify start_response was called (by the mock Flask app)
-        # The mock Flask app should call start_response
         assert result == [b'{"message": "Hello from Flask"}']
 
 
@@ -225,28 +187,23 @@ class TestAuthAwareWSGIMiddleware:
     async def test_call_http_request(self, mock_flask_app, sample_asgi_scope, mock_receive, mock_send):
         """Test middleware call with HTTP request."""
         sample_asgi_scope["type"] = "http"
-        sample_asgi_scope["mlflow_oidc_auth"] = {
-            "username": "user@example.com",
-            "is_admin": False,
-        }
+        auth_ctx = AuthContext(username="user@example.com", is_admin=False)
+        sample_asgi_scope["mlflow_oidc_auth"] = auth_ctx
 
         middleware = AuthAwareWSGIMiddleware(mock_flask_app)
 
         with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.WSGIMiddleware") as mock_wsgi_middleware:
-            # Mock WSGIMiddleware instance
             mock_wsgi_instance = AsyncMock()
             mock_wsgi_middleware.return_value = mock_wsgi_instance
 
             await middleware(sample_asgi_scope, mock_receive, mock_send)
 
-            # Verify WSGIMiddleware was created with AuthInjectingWSGIApp
             mock_wsgi_middleware.assert_called_once()
             created_app = mock_wsgi_middleware.call_args[0][0]
             assert isinstance(created_app, AuthInjectingWSGIApp)
             assert created_app.flask_app == mock_flask_app
             assert created_app.scope == sample_asgi_scope
 
-            # Verify WSGIMiddleware was called
             mock_wsgi_instance.assert_called_once_with(sample_asgi_scope, mock_receive, mock_send)
 
     @pytest.mark.asyncio
@@ -256,13 +213,11 @@ class TestAuthAwareWSGIMiddleware:
 
         middleware = AuthAwareWSGIMiddleware(mock_flask_app)
 
-        # Mock Flask app as ASGI app for non-HTTP requests
         mock_asgi_flask_app = AsyncMock()
         middleware.flask_app = mock_asgi_flask_app
 
         await middleware(sample_asgi_scope, mock_receive, mock_send)
 
-        # Verify Flask app was called directly for non-HTTP requests
         mock_asgi_flask_app.assert_called_once_with(sample_asgi_scope, mock_receive, mock_send)
 
     @pytest.mark.asyncio
@@ -275,25 +230,19 @@ class TestAuthAwareWSGIMiddleware:
 
         middleware = AuthAwareWSGIMiddleware(mock_flask_app)
 
-        # Mock Flask app as ASGI app for lifespan requests
         mock_asgi_flask_app = AsyncMock()
         middleware.flask_app = mock_asgi_flask_app
 
         await middleware(sample_asgi_scope, mock_receive, mock_send)
 
-        # Verify Flask app was called directly for lifespan requests
         mock_asgi_flask_app.assert_called_once_with(sample_asgi_scope, mock_receive, mock_send)
 
     @pytest.mark.asyncio
-    async def test_call_http_with_complex_auth_info(self, mock_flask_app, sample_asgi_scope, mock_receive, mock_send):
-        """Test middleware with complex authentication information."""
+    async def test_call_http_with_auth_context_including_workspace(self, mock_flask_app, sample_asgi_scope, mock_receive, mock_send):
+        """Test middleware with AuthContext including workspace."""
         sample_asgi_scope["type"] = "http"
-        sample_asgi_scope["mlflow_oidc_auth"] = {
-            "username": "admin@example.com",
-            "is_admin": True,
-            "groups": ["admin", "users"],
-            "extra_claims": {"department": "engineering"},
-        }
+        auth_ctx = AuthContext(username="admin@example.com", is_admin=True, workspace="prod-ws")
+        sample_asgi_scope["mlflow_oidc_auth"] = auth_ctx
 
         middleware = AuthAwareWSGIMiddleware(mock_flask_app)
 
@@ -303,17 +252,14 @@ class TestAuthAwareWSGIMiddleware:
 
             await middleware(sample_asgi_scope, mock_receive, mock_send)
 
-            # Verify AuthInjectingWSGIApp was created with full scope
             created_app = mock_wsgi_middleware.call_args[0][0]
-            assert created_app.scope["mlflow_oidc_auth"]["username"] == "admin@example.com"
-            assert created_app.scope["mlflow_oidc_auth"]["is_admin"] is True
-            assert created_app.scope["mlflow_oidc_auth"]["groups"] == ["admin", "users"]
+            assert created_app.scope["mlflow_oidc_auth"] is auth_ctx
+            assert created_app.scope["mlflow_oidc_auth"].workspace == "prod-ws"
 
     @pytest.mark.asyncio
     async def test_call_http_without_auth_info(self, mock_flask_app, sample_asgi_scope, mock_receive, mock_send):
         """Test middleware with HTTP request but no authentication information."""
         sample_asgi_scope["type"] = "http"
-        # No mlflow_oidc_auth in scope
 
         middleware = AuthAwareWSGIMiddleware(mock_flask_app)
 
@@ -323,7 +269,6 @@ class TestAuthAwareWSGIMiddleware:
 
             await middleware(sample_asgi_scope, mock_receive, mock_send)
 
-            # Verify WSGIMiddleware was still created and called
             mock_wsgi_middleware.assert_called_once()
             created_app = mock_wsgi_middleware.call_args[0][0]
             assert isinstance(created_app, AuthInjectingWSGIApp)
@@ -343,7 +288,6 @@ class TestAuthAwareWSGIMiddleware:
             mock_wsgi_instance.side_effect = RuntimeError("WSGI middleware error")
             mock_wsgi_middleware.return_value = mock_wsgi_instance
 
-            # Verify exception is propagated
             with pytest.raises(RuntimeError, match="WSGI middleware error"):
                 await middleware(sample_asgi_scope, mock_receive, mock_send)
 
@@ -352,51 +296,43 @@ class TestAuthAwareWSGIMiddleware:
         """Test middleware handles multiple HTTP requests correctly."""
         middleware = AuthAwareWSGIMiddleware(mock_flask_app)
 
-        # First request
+        auth_ctx1 = AuthContext(username="user1@example.com", is_admin=False)
+        auth_ctx2 = AuthContext(username="admin@example.com", is_admin=True)
+
         scope1 = {
             "type": "http",
             "path": "/api/users",
-            "mlflow_oidc_auth": {"username": "user1@example.com", "is_admin": False},
+            "mlflow_oidc_auth": auth_ctx1,
         }
 
-        # Second request
         scope2 = {
             "type": "http",
             "path": "/api/admin",
-            "mlflow_oidc_auth": {"username": "admin@example.com", "is_admin": True},
+            "mlflow_oidc_auth": auth_ctx2,
         }
 
         with patch("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.WSGIMiddleware") as mock_wsgi_middleware:
             mock_wsgi_instance = AsyncMock()
             mock_wsgi_middleware.return_value = mock_wsgi_instance
 
-            # Process first request
             await middleware(scope1, mock_receive, mock_send)
-
-            # Process second request
             await middleware(scope2, mock_receive, mock_send)
 
-            # Verify WSGIMiddleware was created twice with different AuthInjectingWSGIApp instances
             assert mock_wsgi_middleware.call_count == 2
 
-            # Verify each call had correct scope
             first_app = mock_wsgi_middleware.call_args_list[0][0][0]
             second_app = mock_wsgi_middleware.call_args_list[1][0][0]
 
-            assert first_app.scope["mlflow_oidc_auth"]["username"] == "user1@example.com"
-            assert second_app.scope["mlflow_oidc_auth"]["username"] == "admin@example.com"
+            assert first_app.scope["mlflow_oidc_auth"].username == "user1@example.com"
+            assert second_app.scope["mlflow_oidc_auth"].username == "admin@example.com"
 
     @pytest.mark.asyncio
-    async def test_integration_auth_injection_flow(self, sample_asgi_scope, sample_wsgi_environ, mock_receive, mock_send):
+    async def test_integration_auth_context_injection_flow(self, sample_asgi_scope, sample_wsgi_environ, mock_receive, mock_send):
         """Test complete integration flow from ASGI scope to WSGI environ injection."""
-        # Setup auth info in ASGI scope
         sample_asgi_scope["type"] = "http"
-        sample_asgi_scope["mlflow_oidc_auth"] = {
-            "username": "integration@example.com",
-            "is_admin": True,
-        }
+        auth_ctx = AuthContext(username="integration@example.com", is_admin=True, workspace="test-ws")
+        sample_asgi_scope["mlflow_oidc_auth"] = auth_ctx
 
-        # Create a Flask app that captures the environ
         captured_environ = {}
 
         def capturing_flask_app(environ, start_response):
@@ -408,9 +344,10 @@ class TestAuthAwareWSGIMiddleware:
 
         middleware = AuthAwareWSGIMiddleware(capturing_flask_app)
 
-        # Execute the middleware
         await middleware(sample_asgi_scope, mock_receive, mock_send)
 
-        # Verify auth info was properly injected into WSGI environ
-        assert captured_environ["mlflow_oidc_auth.username"] == "integration@example.com"
-        assert captured_environ["mlflow_oidc_auth.is_admin"] is True
+        # Verify AuthContext was properly injected into WSGI environ
+        assert isinstance(captured_environ["mlflow_oidc_auth"], AuthContext)
+        assert captured_environ["mlflow_oidc_auth"].username == "integration@example.com"
+        assert captured_environ["mlflow_oidc_auth"].is_admin is True
+        assert captured_environ["mlflow_oidc_auth"].workspace == "test-ws"

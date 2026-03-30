@@ -65,16 +65,28 @@ def list_user_groups(session: Session, user: SqlUser) -> list[SqlUserGroup]:
 
 def validate_regex(regex: str) -> None:
     """
-    Validate a regex pattern.
+    Validate a regex pattern, including ReDoS safety checks.
+
+    Rejects patterns that are empty, syntactically invalid, or contain
+    constructs likely to cause catastrophic backtracking (ReDoS).
+
     :param regex: The regex pattern to validate.
-    :raises MlflowException: If the regex is invalid.
+    :raises MlflowException: If the regex is invalid or potentially dangerous.
     """
     if not regex:
         raise MlflowException("Regex pattern cannot be empty", INVALID_STATE)
+
+    # Reject excessively long patterns (defense-in-depth)
+    if len(regex) > 1024:
+        raise MlflowException(
+            f"Regex pattern exceeds maximum length of 1024 characters (got {len(regex)})",
+            INVALID_STATE,
+        )
+
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         try:
-            re.compile(regex)
+            compiled = re.compile(regex)
         except re.error as e:
             raise MlflowException(f"Invalid regex pattern: {regex}. Error: {e}", INVALID_STATE)
         for warning in w:
@@ -83,3 +95,47 @@ def validate_regex(regex: str) -> None:
                     f"Regex pattern may contain invalid escape sequences: {regex}. Warning: {warning.message}",
                     INVALID_STATE,
                 )
+
+    # ReDoS safety: reject patterns with nested quantifiers.
+    # These are the primary cause of catastrophic backtracking:
+    #   (a+)+  (a*)*  (a+)*  (a*)+  (a{2,})+  etc.
+    # We detect this by looking for quantifiers applied to groups that
+    # themselves contain quantifiers.
+    _check_redos_patterns(regex)
+
+
+# Quantifier characters/patterns that follow an atom
+_QUANTIFIER_CHARS = set("+*?")
+
+# Pattern matching a group that contains a quantifier, followed by a repeating quantifier.
+# This catches constructs like (a+)+, (?:a+)*, (a+){2,} etc.
+# The outer quantifier must be repeating: + * {n,} {n,m} but NOT {n} (exact count).
+_NESTED_QUANTIFIER_RE = re.compile(
+    r"\("  # opening group paren
+    r"(?:\?[:<>=!])?"  # optional non-capturing or lookahead prefix
+    r"[^)]*"  # group contents
+    r"[+*?]"  # quantifier inside the group
+    r"[^)]*"  # any remaining group contents
+    r"\)"  # closing group paren
+    r"(?:"  # outer quantifier alternatives:
+    r"[+*]"  # + or *
+    r"|"
+    r"\{\d+,\d*\}"  # {n,m} or {n,} (open-ended repetition)
+    r")"
+)
+
+
+def _check_redos_patterns(regex: str) -> None:
+    """Reject regex patterns with constructs that cause catastrophic backtracking.
+
+    Detects nested quantifiers — the most common ReDoS vector — by scanning
+    for groups containing a quantifier that are themselves followed by a quantifier.
+
+    :param regex: The regex pattern string.
+    :raises MlflowException: If a nested quantifier pattern is detected.
+    """
+    if _NESTED_QUANTIFIER_RE.search(regex):
+        raise MlflowException(
+            f"Regex pattern rejected: nested quantifiers detected (potential ReDoS). Pattern: {regex}",
+            INVALID_STATE,
+        )

@@ -65,7 +65,15 @@ class AppConfig:
         self.PERMISSION_SOURCE_ORDER = config_manager.get_list("PERMISSION_SOURCE_ORDER", default=["user", "group", "regex", "group-regex"])
 
         # Security settings (secrets - may come from Secrets Manager/Key Vault)
-        self.SECRET_KEY = config_manager.get("SECRET_KEY") or secrets.token_hex(16)
+        _secret_key = config_manager.get("SECRET_KEY")
+        if not _secret_key:
+            logger.warning(
+                "SECRET_KEY is not configured — using a random key. "
+                "Sessions will not survive restarts and will be invalid across replicas. "
+                "Set the SECRET_KEY environment variable for production deployments."
+            )
+            _secret_key = secrets.token_hex(16)
+        self.SECRET_KEY = _secret_key
         self.OIDC_CLIENT_SECRET = config_manager.get("OIDC_CLIENT_SECRET")
 
         # Database settings (sensitive)
@@ -80,6 +88,13 @@ class AppConfig:
         self.OIDC_SCOPE = config_manager.get("OIDC_SCOPE", "openid,email,profile")
         self.OIDC_PROVIDER_DISPLAY_NAME = config_manager.get("OIDC_PROVIDER_DISPLAY_NAME", "Login with OIDC")
         self.OIDC_GROUPS_ATTRIBUTE = config_manager.get("OIDC_GROUPS_ATTRIBUTE", "groups")
+        self.OIDC_AUDIENCE = config_manager.get("OIDC_AUDIENCE")
+
+        # JWKS caching settings
+        self.OIDC_JWKS_CACHE_TTL_SECONDS = config_manager.get_int("OIDC_JWKS_CACHE_TTL_SECONDS", default=300)
+
+        # Permission cache settings
+        self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
 
         # Group settings
         self.OIDC_GROUP_NAME = config_manager.get_list("OIDC_GROUP_NAME", default=["mlflow"])
@@ -96,6 +111,38 @@ class AppConfig:
 
         # Feature flags
         self.OIDC_GEN_AI_GATEWAY_ENABLED = config_manager.get_bool("OIDC_GEN_AI_GATEWAY_ENABLED", default=True)
+
+        # Workspace feature flags
+        self.MLFLOW_ENABLE_WORKSPACES = config_manager.get_bool("MLFLOW_ENABLE_WORKSPACES", default=False)
+
+        # Workspace cache settings
+        self.WORKSPACE_CACHE_MAX_SIZE = config_manager.get_int("WORKSPACE_CACHE_MAX_SIZE", default=1024)
+        self.WORKSPACE_CACHE_TTL_SECONDS = config_manager.get_int("WORKSPACE_CACHE_TTL_SECONDS", default=300)
+
+        # Proxy trust settings
+        self.TRUSTED_PROXIES = config_manager.get_list("TRUSTED_PROXIES", default=[])
+
+        # Cache backend settings
+        # "local" (default, in-process TTLCache) or "redis" (shared across replicas)
+        self.CACHE_BACKEND = config_manager.get("CACHE_BACKEND", "local")
+        self.CACHE_REDIS_URL = config_manager.get("CACHE_REDIS_URL")
+        self.CACHE_KEY_PREFIX = config_manager.get("CACHE_KEY_PREFIX", "mlflow_oidc_auth:")
+
+        # Database connection pool settings (auth DB only — separate from MLflow tracking store)
+        # These are passed to SQLAlchemy's create_engine().  A value of 0 / None
+        # means "use SQLAlchemy defaults".  SQLite ignores pool_size/max_overflow.
+        self.DB_POOL_SIZE = config_manager.get_int("OIDC_DB_POOL_SIZE", default=0)
+        self.DB_POOL_MAX_OVERFLOW = config_manager.get_int("OIDC_DB_POOL_MAX_OVERFLOW", default=0)
+        self.DB_POOL_RECYCLE_SECONDS = config_manager.get_int("OIDC_DB_POOL_RECYCLE_SECONDS", default=0)
+
+        # OIDC workspace detection settings
+        self.OIDC_WORKSPACE_CLAIM_NAME = config_manager.get("OIDC_WORKSPACE_CLAIM_NAME", "workspace")
+        self.OIDC_WORKSPACE_DETECTION_PLUGIN = config_manager.get("OIDC_WORKSPACE_DETECTION_PLUGIN")
+        self.OIDC_WORKSPACE_DEFAULT_PERMISSION = config_manager.get("OIDC_WORKSPACE_DEFAULT_PERMISSION", "NO_PERMISSIONS")
+
+        # Audit logging settings
+        self.AUDIT_LOG_ENABLED = config_manager.get_bool("AUDIT_LOG_ENABLED", default=True)
+        self.AUDIT_LOG_LEVEL = config_manager.get("AUDIT_LOG_LEVEL", "INFO")
 
     def refresh(self) -> None:
         """Reload configuration from all providers.

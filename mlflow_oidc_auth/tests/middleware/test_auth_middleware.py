@@ -257,7 +257,7 @@ class TestAuthMiddleware:
 
         assert success is False
         assert username is None
-        assert "SessionMiddleware must be installed to access request.session" in error
+        assert error == "Session error"
 
     @pytest.mark.asyncio
     async def test_authenticate_session_access_error(self, auth_middleware, create_mock_request):
@@ -279,7 +279,7 @@ class TestAuthMiddleware:
 
             assert success is False
             assert username is None
-            assert "Session access failed" in error
+            assert error == "Session error"
         finally:
             # Restore original session descriptor/property
             if original_session_prop is not None:
@@ -439,8 +439,8 @@ class TestAuthMiddleware:
 
             # Verify ASGI scope was updated for WSGI compatibility
             assert "mlflow_oidc_auth" in request.scope
-            assert request.scope["mlflow_oidc_auth"]["username"] == "user@example.com"
-            assert request.scope["mlflow_oidc_auth"]["is_admin"] is False
+            assert request.scope["mlflow_oidc_auth"].username == "user@example.com"
+            assert request.scope["mlflow_oidc_auth"].is_admin is False
 
     @pytest.mark.asyncio
     async def test_dispatch_authenticated_admin(self, auth_middleware, create_mock_request, mock_store):
@@ -463,8 +463,8 @@ class TestAuthMiddleware:
 
             # Verify ASGI scope was updated for WSGI compatibility
             assert "mlflow_oidc_auth" in request.scope
-            assert request.scope["mlflow_oidc_auth"]["username"] == "admin@example.com"
-            assert request.scope["mlflow_oidc_auth"]["is_admin"] is True
+            assert request.scope["mlflow_oidc_auth"].username == "admin@example.com"
+            assert request.scope["mlflow_oidc_auth"].is_admin is True
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_user_automatic_redirect(self, auth_middleware, create_mock_request, mock_config):
@@ -684,16 +684,16 @@ class TestAuthMiddleware:
             async def mock_call_next(req):
                 # Verify scope has auth info during request processing
                 assert "mlflow_oidc_auth" in req.scope
-                assert req.scope["mlflow_oidc_auth"]["username"] == "admin@example.com"
-                assert req.scope["mlflow_oidc_auth"]["is_admin"] is True
+                assert req.scope["mlflow_oidc_auth"].username == "admin@example.com"
+                assert req.scope["mlflow_oidc_auth"].is_admin is True
                 return Response(content="OK", status_code=200)
 
             await auth_middleware.dispatch(request, mock_call_next)
 
             # Verify scope still has auth info after processing
             assert "mlflow_oidc_auth" in request.scope
-            assert request.scope["mlflow_oidc_auth"]["username"] == "admin@example.com"
-            assert request.scope["mlflow_oidc_auth"]["is_admin"] is True
+            assert request.scope["mlflow_oidc_auth"].username == "admin@example.com"
+            assert request.scope["mlflow_oidc_auth"].is_admin is True
 
     @pytest.mark.asyncio
     async def test_authenticate_session_no_session_attribute(self, auth_middleware):
@@ -728,7 +728,7 @@ class TestAuthMiddleware:
 
         assert success is False
         assert username is None
-        assert "Session error: Outer exception" in error
+        assert error == "Session error"
 
     @pytest.mark.asyncio
     async def test_authenticate_session_inner_exception(self, auth_middleware):
@@ -746,7 +746,7 @@ class TestAuthMiddleware:
 
         assert success is False
         assert username is None
-        assert "Session error: Session access failed" in error
+        assert error == "Session error"
 
     @pytest.mark.asyncio
     async def test_authenticate_session_session_get_exception(self, auth_middleware):
@@ -768,4 +768,4 @@ class TestAuthMiddleware:
 
         assert success is False
         assert username is None
-        assert "Session access failed: Session get failed" in error
+        assert error == "Session access failed"

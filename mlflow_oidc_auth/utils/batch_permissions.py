@@ -22,7 +22,7 @@ from mlflow_oidc_auth.entities import (
 )
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import get_permission
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, get_permission
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -160,6 +160,45 @@ def _resolve_permission_from_context(
     return PermissionResult(get_permission(config.DEFAULT_MLFLOW_PERMISSION), "fallback")
 
 
+def _apply_workspace_fallback(result: PermissionResult, username: str) -> PermissionResult:
+    """Apply workspace-level permission fallback when no resource-level permission exists.
+
+    When workspaces are enabled and the resource-level resolution returned "fallback"
+    (i.e., no user/group/regex/group-regex permission was found), this function checks
+    whether the user has a workspace-level permission grant for the active workspace.
+
+    This mirrors the workspace fallback logic in ``permissions.resolve_permission()``
+    (WSAUTH-C/WSAUTH-04) but is designed for batch resolution in FastAPI route context
+    where the workspace is available via MLflow's ContextVar (set by WorkspaceContextMiddleware).
+
+    Parameters:
+        result: The PermissionResult from resource-level resolution.
+        username: The username to check workspace permission for.
+
+    Returns:
+        Original result if no workspace fallback applies, otherwise a workspace-derived result.
+    """
+    if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
+        return result
+
+    from mlflow.utils.workspace_context import (
+        get_request_workspace as mlflow_get_request_workspace,
+    )
+
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    workspace = mlflow_get_request_workspace()
+    if workspace:
+        ws_perm = get_workspace_permission_cached(username, workspace)
+        if ws_perm is not None:
+            logger.debug(f"Batch permission workspace fallback: {ws_perm} for {username}@{workspace}")
+            return PermissionResult(ws_perm, "workspace")
+        logger.debug(f"Batch permission workspace-deny for {username}@{workspace}")
+        return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+
+    return result
+
+
 def _find_regex_permission(regexes: List, name: str) -> Optional[str]:
     """Find the first matching regex permission for a given name.
 
@@ -202,13 +241,14 @@ def resolve_experiment_permission_from_context(
     user_regex = _find_regex_permission(ctx.experiment_regex_permissions, experiment_name)
     group_regex = _find_regex_permission(ctx.group_experiment_regex_permissions, experiment_name)
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    return _apply_workspace_fallback(result, ctx.username)
 
 
 def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name: str) -> PermissionResult:
@@ -226,13 +266,14 @@ def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name
     user_regex = _find_regex_permission(ctx.model_regex_permissions, model_name)
     group_regex = _find_regex_permission(ctx.group_model_regex_permissions, model_name)
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    return _apply_workspace_fallback(result, ctx.username)
 
 
 def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_name: str) -> PermissionResult:
@@ -254,13 +295,14 @@ def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_na
     user_regex = _find_regex_permission(ctx.prompt_regex_permissions, prompt_name)
     group_regex = _find_regex_permission(ctx.group_prompt_regex_permissions, prompt_name)
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    return _apply_workspace_fallback(result, ctx.username)
 
 
 def batch_resolve_experiment_permissions(

@@ -6,7 +6,11 @@ import { faHome } from "@fortawesome/free-solid-svg-icons";
 
 // Mock dependencies
 vi.mock("./sidebar-data", () => ({
-  getSidebarData: (isAdmin: boolean, genAiGatewayEnabled: boolean) => [
+  getSidebarData: (
+    isAdmin: boolean,
+    genAiGatewayEnabled: boolean,
+    workspacesEnabled: boolean,
+  ) => [
     { label: "Home", href: "/home", icon: faHome, isInternalLink: true },
     ...(genAiGatewayEnabled
       ? [
@@ -18,14 +22,32 @@ vi.mock("./sidebar-data", () => ({
           },
         ]
       : []),
+    ...(workspacesEnabled
+      ? [
+          {
+            label: "Workspaces",
+            href: "/workspaces",
+            icon: faHome,
+            isInternalLink: true,
+          },
+        ]
+      : []),
     ...(isAdmin
-      ? [{ label: "Admin", href: "/admin", icon: faHome, isInternalLink: true }]
+      ? [
+          {
+            label: "Admin",
+            href: "/admin",
+            icon: faHome,
+            isInternalLink: true,
+          },
+        ]
       : []),
   ],
 }));
 
 const mockRuntimeConfig = {
   gen_ai_gateway_enabled: false,
+  workspaces_enabled: false,
   basePath: "/api",
   uiPath: "/ui",
   provider: "oidc",
@@ -153,5 +175,37 @@ describe("Sidebar", () => {
     );
 
     expect(screen.queryByText("AI Endpoints")).not.toBeInTheDocument();
+  });
+
+  it("renders Workspaces link when enabled", () => {
+    mockRuntimeConfig.workspaces_enabled = true;
+    render(
+      <MemoryRouter>
+        <Sidebar
+          currentUser={null}
+          isOpen={true}
+          toggleSidebar={() => {}}
+          widthClass="w-64"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Workspaces")).toBeInTheDocument();
+  });
+
+  it("hides Workspaces link when disabled", () => {
+    mockRuntimeConfig.workspaces_enabled = false;
+    render(
+      <MemoryRouter>
+        <Sidebar
+          currentUser={null}
+          isOpen={true}
+          toggleSidebar={() => {}}
+          widthClass="w-64"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Workspaces")).not.toBeInTheDocument();
   });
 });

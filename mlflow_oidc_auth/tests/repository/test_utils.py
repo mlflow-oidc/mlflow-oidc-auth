@@ -113,3 +113,39 @@ def test_validate_regex_with_syntax_warning():
 
         assert "Regex pattern may contain invalid escape sequences" in str(exc.value)
         assert exc.value.error_code == "INVALID_STATE"
+
+
+def test_validate_regex_rejects_nested_quantifiers():
+    """Test that nested quantifier patterns are rejected to prevent ReDoS."""
+    redos_patterns = [
+        "(a+)+",
+        "(a*)*",
+        "(a+)*",
+        "(a*)+",
+        "(?:a+)+",
+        "(a+){2,}",
+        "(x+y+)+z",
+    ]
+    for pattern in redos_patterns:
+        with pytest.raises(MlflowException, match="nested quantifiers detected"):
+            utils.validate_regex(pattern)
+
+
+def test_validate_regex_allows_safe_quantifiers():
+    """Test that safe patterns with quantifiers are allowed."""
+    safe_patterns = [
+        "(a+)b",
+        "^experiment-[a-z]+$",
+        "team-[0-9]+/model-.*",
+        "(foo|bar)+",  # alternation with quantifier, no inner quantifier
+        "(?:abc){3}",
+    ]
+    for pattern in safe_patterns:
+        utils.validate_regex(pattern)  # should not raise
+
+
+def test_validate_regex_rejects_too_long_pattern():
+    """Test that excessively long patterns are rejected."""
+    long_pattern = "a" * 1025
+    with pytest.raises(MlflowException, match="exceeds maximum length"):
+        utils.validate_regex(long_pattern)

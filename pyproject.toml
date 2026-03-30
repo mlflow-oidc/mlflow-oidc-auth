@@ -35,7 +35,8 @@ dependencies = [
   "uvicorn>=0.41.0",
   "fastapi>=0.132.0",
   "asgiref>=3.11.1",
-  "httpx>=0.28.1"
+  "httpx>=0.28.1",
+  "cachetools>=5.5.0"
 ]
 
 [project.optional-dependencies]
@@ -68,6 +69,10 @@ cloud = [
   "azure-identity>=1.25.1",
   "azure-keyvault-secrets>=4.10.0",
   "hvac>=2.4.0",
+]
+# Redis cache backend
+cache = [
+  "redis>=5.0.0,<6",
 ]
 
 [[project.maintainers]]

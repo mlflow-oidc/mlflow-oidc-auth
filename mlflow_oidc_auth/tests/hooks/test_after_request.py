@@ -9,6 +9,7 @@ from mlflow_oidc_auth.hooks.after_request import (
     _delete_can_manage_registered_model_permission,
     _filter_search_experiments,
     _filter_search_registered_models,
+    _filter_search_model_versions,
     _filter_search_logged_models,
     _rename_registered_model_permission,
     _get_after_request_handler,
@@ -936,7 +937,12 @@ def test_set_can_manage_gateway_model_definition_permission(mock_response, mock_
 
 def test_get_after_request_handler_gateway_endpoints():
     """Test _get_after_request_handler returns correct handlers for gateway protos"""
-    from mlflow.protos.service_pb2 import CreateGatewayEndpoint, CreateGatewaySecret, CreateGatewayModelDefinition, UpdateGatewayEndpoint
+    from mlflow.protos.service_pb2 import (
+        CreateGatewayEndpoint,
+        CreateGatewaySecret,
+        CreateGatewayModelDefinition,
+        UpdateGatewayEndpoint,
+    )
 
     assert _get_after_request_handler(CreateGatewayEndpoint) == _set_can_manage_gateway_endpoint_permission
     assert _get_after_request_handler(CreateGatewaySecret) == _set_can_manage_gateway_secret_permission
@@ -946,7 +952,11 @@ def test_get_after_request_handler_gateway_endpoints():
 
 def test_get_after_request_handler_gateway_list():
     """Test _get_after_request_handler returns correct handlers for gateway list protos"""
-    from mlflow.protos.service_pb2 import ListGatewayEndpoints, ListGatewaySecretInfos, ListGatewayModelDefinitions
+    from mlflow.protos.service_pb2 import (
+        ListGatewayEndpoints,
+        ListGatewaySecretInfos,
+        ListGatewayModelDefinitions,
+    )
 
     assert _get_after_request_handler(ListGatewayEndpoints) == _filter_list_gateway_endpoints
     assert _get_after_request_handler(ListGatewaySecretInfos) == _filter_list_gateway_secrets
@@ -1097,7 +1107,11 @@ def test_filter_list_gateway_model_definitions_non_admin(mock_response, mock_bri
 
 def test_get_after_request_handler_gateway_deletes():
     """Test that delete cascade handlers are registered for gateway resources."""
-    from mlflow.protos.service_pb2 import DeleteGatewayEndpoint, DeleteGatewaySecret, DeleteGatewayModelDefinition
+    from mlflow.protos.service_pb2 import (
+        DeleteGatewayEndpoint,
+        DeleteGatewaySecret,
+        DeleteGatewayModelDefinition,
+    )
 
     assert _get_after_request_handler(DeleteGatewayEndpoint) is _delete_gateway_endpoint_permissions_cascade
     assert _get_after_request_handler(DeleteGatewaySecret) is _delete_gateway_secret_permissions_cascade
@@ -1207,3 +1221,257 @@ def test_rename_gateway_endpoint_permission_no_old_name(mock_response, mock_stor
     ):
         _rename_gateway_endpoint_permission(mock_response)
         mock_store.rename_gateway_endpoint_permissions.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: SearchModelVersions after-request filter tests
+# ---------------------------------------------------------------------------
+
+
+def test_get_after_request_handler_search_model_versions():
+    """Test _get_after_request_handler returns correct handler for SearchModelVersions."""
+    from mlflow.protos.model_registry_pb2 import SearchModelVersions
+
+    assert _get_after_request_handler(SearchModelVersions) is _filter_search_model_versions
+
+
+def test_filter_search_model_versions_admin(mock_response, mock_bridge):
+    """Test _filter_search_model_versions when user is admin (should not filter)."""
+    mock_response.json = {"model_versions": [{"name": "model1", "version": "1"}]}
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/model-versions/search",
+        method="GET",
+        headers={"Content-Type": "application/json"},
+    ):
+        with patch(
+            "mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status",
+            return_value=True,
+        ):
+            original_json = mock_response.json.copy()
+            _filter_search_model_versions(mock_response)
+            assert mock_response.json == original_json
+
+
+def test_filter_search_model_versions_non_admin(mock_response, mock_bridge):
+    """Test _filter_search_model_versions for non-admin user."""
+    mock_response.json = {"model_versions": [{"name": "model1", "version": "1"}]}
+
+    mock_request_message = MagicMock()
+    mock_request_message.filter = None
+    mock_request_message.order_by = []
+    mock_request_message.max_results = 1000
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/model-versions/search",
+        method="GET",
+        headers={"Content-Type": "application/json"},
+    ):
+        with (
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status",
+                return_value=False,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                return_value=True,
+            ) as mock_can_read,
+            patch(
+                "mlflow_oidc_auth.hooks.after_request._get_request_message",
+                return_value=mock_request_message,
+            ),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.message_to_json",
+                return_value='{"model_versions": [{"name": "model1", "version": "1"}]}',
+            ),
+        ):
+            mv = MagicMock()
+            mv.name = "model1"
+            mock_response_message = MagicMock()
+            mock_response_message.model_versions = [mv]
+            mock_response_message.next_page_token = ""
+
+            with patch(
+                "mlflow_oidc_auth.hooks.after_request.SearchModelVersions.Response",
+                return_value=mock_response_message,
+            ):
+                _filter_search_model_versions(mock_response)
+
+                mock_can_read.assert_called_once_with("model1", "test_user")
+                assert len(mock_response_message.model_versions) == 1
+
+
+def test_filter_search_model_versions_filters_unreadable(mock_response, mock_bridge):
+    """Test _filter_search_model_versions filters out model versions for unreadable models."""
+    mock_response.json = {
+        "model_versions": [
+            {"name": "allowed_model", "version": "1"},
+            {"name": "forbidden_model", "version": "1"},
+        ]
+    }
+
+    mock_request_message = MagicMock()
+    mock_request_message.filter = None
+    mock_request_message.order_by = []
+    mock_request_message.max_results = 1000
+
+    def fake_can_read(name: str, _user: str) -> bool:
+        return name == "allowed_model"
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/model-versions/search",
+        method="GET",
+        headers={"Content-Type": "application/json"},
+    ):
+        with (
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status",
+                return_value=False,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                side_effect=fake_can_read,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request._get_request_message",
+                return_value=mock_request_message,
+            ),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.message_to_json",
+                return_value='{"model_versions": []}',
+            ),
+        ):
+            mv1 = MagicMock()
+            mv1.name = "allowed_model"
+            mv2 = MagicMock()
+            mv2.name = "forbidden_model"
+            mock_response_message = MagicMock()
+            mock_response_message.model_versions = [mv1, mv2]
+            mock_response_message.next_page_token = ""
+
+            with patch(
+                "mlflow_oidc_auth.hooks.after_request.SearchModelVersions.Response",
+                return_value=mock_response_message,
+            ):
+                _filter_search_model_versions(mock_response)
+
+                assert len(mock_response_message.model_versions) == 1
+                assert mock_response_message.model_versions[0].name == "allowed_model"
+
+
+def test_filter_search_model_versions_with_pagination(mock_response, mock_bridge):
+    """Test _filter_search_model_versions with pagination needed."""
+    mock_response.json = {"model_versions": []}
+
+    mock_request_message = MagicMock()
+    mock_request_message.filter = None
+    mock_request_message.order_by = []
+    mock_request_message.max_results = 10
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/model-versions/search",
+        method="GET",
+        headers={"Content-Type": "application/json"},
+    ):
+        mv_entities = []
+        for i in range(10):
+            mv = MagicMock()
+            mv.name = f"model_{i}"
+            mv.to_proto.return_value = {"name": f"model_{i}", "version": "1"}
+            mv_entities.append(mv)
+
+        model_registry_store = MagicMock()
+        model_registry_store.search_model_versions.return_value = _FakePagedList(mv_entities, token=None)
+
+        with (
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status",
+                return_value=False,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                return_value=True,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request._get_model_registry_store",
+                return_value=model_registry_store,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request._get_request_message",
+                return_value=mock_request_message,
+            ),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.message_to_json",
+                return_value='{"model_versions": []}',
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token",
+                return_value=0,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.SearchUtils.create_page_token",
+                return_value="page_token_mv_789",
+            ) as mock_page_token,
+        ):
+            mock_response_message = MagicMock()
+            mock_response_message.model_versions = []
+            mock_response_message.next_page_token = "page_token_0"
+
+            with patch(
+                "mlflow_oidc_auth.hooks.after_request.SearchModelVersions.Response",
+                return_value=mock_response_message,
+            ):
+                _filter_search_model_versions(mock_response)
+
+                mock_page_token.assert_called_once_with(10)
+                assert mock_response_message.next_page_token == "page_token_mv_789"
+
+
+def test_filter_search_model_versions_no_pagination(mock_response, mock_bridge):
+    """Test _filter_search_model_versions when no pagination is needed."""
+    mock_response.json = {"model_versions": []}
+
+    mock_request_message = MagicMock()
+    mock_request_message.filter = None
+    mock_request_message.order_by = []
+    mock_request_message.max_results = 10
+
+    with app.test_request_context(
+        path="/api/2.0/mlflow/model-versions/search",
+        method="GET",
+        headers={"Content-Type": "application/json"},
+    ):
+        with (
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status",
+                return_value=False,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                return_value=True,
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request._get_request_message",
+                return_value=mock_request_message,
+            ),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict"),
+            patch(
+                "mlflow_oidc_auth.hooks.after_request.message_to_json",
+                return_value='{"model_versions": []}',
+            ),
+        ):
+            mv = MagicMock()
+            mv.name = "model_1"
+            mock_response_message = MagicMock()
+            mock_response_message.model_versions = [mv]
+            mock_response_message.next_page_token = ""
+
+            with patch(
+                "mlflow_oidc_auth.hooks.after_request.SearchModelVersions.Response",
+                return_value=mock_response_message,
+            ):
+                _filter_search_model_versions(mock_response)
+                assert mock_response_message.next_page_token == ""

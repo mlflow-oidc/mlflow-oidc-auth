@@ -51,6 +51,7 @@ describe("user-service", () => {
       provider: "",
       gen_ai_gateway_enabled: false,
       authenticated: true,
+      workspaces_enabled: false,
     });
     await createUser({
       username: "test",

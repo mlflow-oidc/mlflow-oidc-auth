@@ -5,7 +5,11 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission
-from mlflow_oidc_auth.utils import effective_experiment_permission, get_experiment_id, get_request_param
+from mlflow_oidc_auth.utils import (
+    effective_experiment_permission,
+    get_experiment_id,
+    get_request_param,
+)
 
 
 def _get_permission_from_experiment_id(username: str) -> Permission:
@@ -26,7 +30,11 @@ _EXPERIMENT_ID_PATTERN = re.compile(r"^(\d+)/")
 
 
 def _get_experiment_id_from_view_args():
-    # TODO: check it with get_request_param("artifact_path") to replace
+    # The artifact proxy routes encode experiment_id as the first path segment
+    # of the artifact_path (e.g. "123/artifacts/model.pkl").  This cannot be
+    # replaced with get_request_param("artifact_path") because we need to
+    # *parse* the experiment_id out of the composite path value, not just read
+    # the parameter verbatim.
     view_args = request.view_args
     if view_args is not None and (artifact_path := view_args.get("artifact_path")):
         if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
@@ -40,35 +48,35 @@ def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permissi
     return get_permission(config.DEFAULT_MLFLOW_PERMISSION)
 
 
-def validate_can_read_experiment(username: str):
+def validate_can_read_experiment(username: str) -> bool:
     return _get_permission_from_experiment_id(username).can_read
 
 
-def validate_can_read_experiment_by_name(username: str):
+def validate_can_read_experiment_by_name(username: str) -> bool:
     return _get_permission_from_experiment_name(username).can_read
 
 
-def validate_can_update_experiment(username: str):
+def validate_can_update_experiment(username: str) -> bool:
     return _get_permission_from_experiment_id(username).can_update
 
 
-def validate_can_delete_experiment(username: str):
+def validate_can_delete_experiment(username: str) -> bool:
     return _get_permission_from_experiment_id(username).can_delete
 
 
-def validate_can_manage_experiment(username: str):
+def validate_can_manage_experiment(username: str) -> bool:
     return _get_permission_from_experiment_id(username).can_manage
 
 
-def validate_can_read_experiment_artifact_proxy(username: str):
+def validate_can_read_experiment_artifact_proxy(username: str) -> bool:
     return _get_permission_from_experiment_id_artifact_proxy(username).can_read
 
 
-def validate_can_update_experiment_artifact_proxy(username: str):
+def validate_can_update_experiment_artifact_proxy(username: str) -> bool:
     return _get_permission_from_experiment_id_artifact_proxy(username).can_update
 
 
-def validate_can_delete_experiment_artifact_proxy(username: str):
+def validate_can_delete_experiment_artifact_proxy(username: str) -> bool:
     return _get_permission_from_experiment_id_artifact_proxy(username).can_delete
 
 

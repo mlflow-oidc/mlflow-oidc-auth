@@ -25,13 +25,15 @@ from mlflow_oidc_auth.utils import (
     get_permission_from_store_or_default,
 )
 from mlflow_oidc_auth.utils.permissions import (
-    _get_registered_model_permission_from_regex,
-    _get_experiment_permission_from_regex,
-    _get_registered_model_group_permission_from_regex,
+    PERMISSION_REGISTRY,
+    _build_experiment_sources,
+    _build_prompt_sources,
+    flush_permission_cache,
+    _build_registered_model_sources,
     _get_experiment_group_permission_from_regex,
-    _permission_prompt_sources_config,
-    _permission_experiment_sources_config,
-    _permission_registered_model_sources_config,
+    _get_experiment_permission_from_regex,
+    _match_regex_permission,
+    resolve_permission,
 )
 
 
@@ -134,6 +136,7 @@ class TestPermissions(unittest.TestCase):
             )
             self.assertTrue(can_manage_experiment("exp_id", "user"))
 
+            flush_permission_cache()  # Clear cache before re-testing with different mock
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
                     name="perm",
@@ -167,6 +170,7 @@ class TestPermissions(unittest.TestCase):
             )
             self.assertTrue(can_manage_registered_model("model_name", "user"))
 
+            flush_permission_cache()  # Clear cache before re-testing with different mock
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
                     name="perm",
@@ -280,8 +284,8 @@ class TestPermissions(unittest.TestCase):
             self.assertTrue(can_read_registered_model("model_name", "user"))
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
-    def test_get_registered_model_permission_from_regex(self, mock_store):
-        """Test registered model permission retrieval from regex patterns."""
+    def test_match_regex_permission(self, mock_store):
+        """Test generic regex permission matching."""
         from mlflow_oidc_auth.entities import RegisteredModelRegexPermission
 
         regex_perms = [
@@ -290,12 +294,12 @@ class TestPermissions(unittest.TestCase):
         ]
 
         # Match found
-        result = _get_registered_model_permission_from_regex(regex_perms, "test-model")
+        result = _match_regex_permission(regex_perms, "test-model", "model name")
         self.assertEqual(result, "READ")
 
         # No match
         with self.assertRaises(MlflowException) as cm:
-            _get_registered_model_permission_from_regex(regex_perms, "other-model")
+            _match_regex_permission(regex_perms, "other-model", "model name")
         self.assertEqual(cm.exception.error_code, "RESOURCE_DOES_NOT_EXIST")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
@@ -324,8 +328,8 @@ class TestPermissions(unittest.TestCase):
         self.assertEqual(cm.exception.error_code, "RESOURCE_DOES_NOT_EXIST")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
-    def test_get_registered_model_group_permission_from_regex(self, mock_store):
-        """Test registered model group permission retrieval from regex patterns."""
+    def test_match_regex_permission_group(self, mock_store):
+        """Test group regex permission matching via generic matcher."""
         from mlflow_oidc_auth.entities import RegisteredModelGroupRegexPermission
 
         regex_perms = [
@@ -334,12 +338,12 @@ class TestPermissions(unittest.TestCase):
         ]
 
         # Match found
-        result = _get_registered_model_group_permission_from_regex(regex_perms, "test-model")
+        result = _match_regex_permission(regex_perms, "test-model", "model name")
         self.assertEqual(result, "READ")
 
         # No match
         with self.assertRaises(MlflowException) as cm:
-            _get_registered_model_group_permission_from_regex(regex_perms, "other-model")
+            _match_regex_permission(regex_perms, "other-model", "model name")
         self.assertEqual(cm.exception.error_code, "RESOURCE_DOES_NOT_EXIST")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
@@ -368,24 +372,24 @@ class TestPermissions(unittest.TestCase):
         self.assertEqual(cm.exception.error_code, "RESOURCE_DOES_NOT_EXIST")
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
-    def test_permission_sources_config(self, mock_store):
-        """Test permission sources configuration functions."""
-        # Test prompt sources config
-        config = _permission_prompt_sources_config("model1", "user1")
+    def test_build_sources_config(self, mock_store):
+        """Test builder functions return correct source keys."""
+        # Test prompt builder
+        config = _build_prompt_sources("model1", "user1")
         self.assertIn("user", config)
         self.assertIn("group", config)
         self.assertIn("regex", config)
         self.assertIn("group-regex", config)
 
-        # Test experiment sources config
-        config = _permission_experiment_sources_config("exp1", "user1")
+        # Test experiment builder
+        config = _build_experiment_sources("exp1", "user1")
         self.assertIn("user", config)
         self.assertIn("group", config)
         self.assertIn("regex", config)
         self.assertIn("group-regex", config)
 
-        # Test registered model sources config
-        config = _permission_registered_model_sources_config("model1", "user1")
+        # Test registered model builder
+        config = _build_registered_model_sources("model1", "user1")
         self.assertIn("user", config)
         self.assertIn("group", config)
         self.assertIn("regex", config)
@@ -405,6 +409,217 @@ class TestPermissions(unittest.TestCase):
             with self.assertRaises(MlflowException) as cm:
                 get_permission_from_store_or_default({"user": mock_store_permission_user_func})
             self.assertEqual(cm.exception.error_code, "BAD_REQUEST")
+
+
+class TestResolvePermission(unittest.TestCase):
+    """Tests for resolve_permission() and PERMISSION_REGISTRY."""
+
+    def test_registry_has_seven_entries(self) -> None:
+        """PERMISSION_REGISTRY should contain exactly 7 resource types."""
+        self.assertEqual(len(PERMISSION_REGISTRY), 7)
+        self.assertIn("experiment", PERMISSION_REGISTRY)
+        self.assertIn("registered_model", PERMISSION_REGISTRY)
+        self.assertIn("prompt", PERMISSION_REGISTRY)
+        self.assertIn("scorer", PERMISSION_REGISTRY)
+        self.assertIn("gateway_endpoint", PERMISSION_REGISTRY)
+        self.assertIn("gateway_secret", PERMISSION_REGISTRY)
+        self.assertIn("gateway_model_definition", PERMISSION_REGISTRY)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_resolve_experiment_calls_builder_and_resolver(self, mock_resolver):
+        """resolve_permission('experiment', ...) should call the experiment builder from PERMISSION_REGISTRY and then get_permission_from_store_or_default."""
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock(), "group": MagicMock()}
+        mock_builder.return_value = mock_sources
+        mock_resolver.return_value = MagicMock()
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"experiment": mock_builder},
+        ):
+            resolve_permission("experiment", "exp-1", "user1")
+
+        mock_builder.assert_called_once_with("exp-1", "user1")
+        mock_resolver.assert_called_once_with(mock_sources)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_resolve_scorer_passes_kwargs(self, mock_resolver):
+        """resolve_permission('scorer', ..., scorer_name='s1') should pass scorer_name through **kwargs."""
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        mock_resolver.return_value = MagicMock()
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"scorer": mock_builder},
+        ):
+            resolve_permission("scorer", "exp-1", "user1", scorer_name="scorer-1")
+
+        mock_builder.assert_called_once_with("exp-1", "user1", scorer_name="scorer-1")
+        mock_resolver.assert_called_once_with(mock_sources)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_resolve_prompt_routes_to_prompt_builder(self, mock_resolver):
+        """resolve_permission('prompt', ...) should route to the prompt builder."""
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        mock_resolver.return_value = MagicMock()
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"prompt": mock_builder},
+        ):
+            resolve_permission("prompt", "model-1", "user1")
+
+        mock_builder.assert_called_once_with("model-1", "user1")
+        mock_resolver.assert_called_once_with(mock_sources)
+
+    def test_resolve_unknown_type_raises_key_error(self) -> None:
+        """resolve_permission('unknown_type', ...) should raise KeyError."""
+        with self.assertRaises(KeyError):
+            resolve_permission("unknown_type", "id-1", "user1")
+
+
+class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
+    """Tests for resolve_permission() workspace fallback logic (WSAUTH-C/WSAUTH-04)."""
+
+    def setUp(self) -> None:
+        self.app = Flask(__name__)
+        self.app.config["TESTING"] = True
+        self.app_context = self.app.app_context()
+        self.app_context.push()
+
+    def tearDown(self) -> None:
+        self.app_context.pop()
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_resource_level_found_no_workspace_check(self, mock_resolver):
+        """When resource-level permission found (kind != 'fallback'), no workspace check occurs."""
+        from mlflow_oidc_auth.permissions import READ
+
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        # Resource-level permission found (kind="user", not "fallback")
+        mock_resolver.return_value = PermissionResult(READ, "user")
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"experiment": mock_builder},
+        ):
+            with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                result = resolve_permission("experiment", "exp-1", "user1")
+
+        self.assertEqual(result.kind, "user")
+        self.assertEqual(result.permission, READ)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_fallback_workspaces_enabled_returns_workspace_permission(self, mock_resolver):
+        """When fallback + workspaces enabled + user has workspace perm → returns workspace result."""
+        from mlflow_oidc_auth.permissions import EDIT, READ
+
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        # Fallback — no resource-level permission found
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"experiment": mock_builder},
+        ):
+            with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                    return_value="team-ws",
+                ) as mock_ws:
+                    with patch(
+                        "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                        return_value=EDIT,
+                    ) as mock_cache:
+                        result = resolve_permission("experiment", "exp-1", "user1")
+
+        self.assertEqual(result.kind, "workspace")
+        self.assertEqual(result.permission, EDIT)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_fallback_workspaces_enabled_no_permission_returns_no_permissions(self, mock_resolver):
+        """When fallback + workspaces enabled + no workspace perm → returns NO_PERMISSIONS."""
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
+
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"experiment": mock_builder},
+        ):
+            with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                    return_value="team-ws",
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                        return_value=None,
+                    ):
+                        result = resolve_permission("experiment", "exp-1", "user1")
+
+        self.assertEqual(result.kind, "workspace-deny")
+        self.assertEqual(result.permission, NO_PERMISSIONS)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_fallback_workspaces_disabled_returns_default(self, mock_resolver):
+        """When fallback + workspaces disabled → returns existing default (unchanged behavior)."""
+        from mlflow_oidc_auth.permissions import READ
+
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"experiment": mock_builder},
+        ):
+            with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = False
+                result = resolve_permission("experiment", "exp-1", "user1")
+
+        self.assertEqual(result.kind, "fallback")
+        self.assertEqual(result.permission, READ)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_fallback_workspaces_enabled_no_workspace_header_returns_default(self, mock_resolver):
+        """When fallback + workspaces enabled + no workspace in request → returns existing fallback."""
+        from mlflow_oidc_auth.permissions import READ
+
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"experiment": mock_builder},
+        ):
+            with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                    return_value=None,
+                ):
+                    result = resolve_permission("experiment", "exp-1", "user1")
+
+        self.assertEqual(result.kind, "fallback")
+        self.assertEqual(result.permission, READ)
 
 
 if __name__ == "__main__":

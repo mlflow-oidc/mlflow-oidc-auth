@@ -14,21 +14,21 @@ def _get_permission_from_scorer_permission_request(username: str) -> Permission:
     return effective_scorer_permission(experiment_id=experiment_id, scorer_name=scorer_name, user=username).permission
 
 
-def validate_can_read_scorer(username: str):
+def validate_can_read_scorer(username: str) -> bool:
     return _get_permission_from_scorer_name(username).can_read
 
 
-def validate_can_update_scorer(username: str):
+def validate_can_update_scorer(username: str) -> bool:
     return _get_permission_from_scorer_name(username).can_update
 
 
-def validate_can_delete_scorer(username: str):
+def validate_can_delete_scorer(username: str) -> bool:
     return _get_permission_from_scorer_name(username).can_delete
 
 
-def validate_can_manage_scorer(username: str):
+def validate_can_manage_scorer(username: str) -> bool:
     return _get_permission_from_scorer_name(username).can_manage
 
 
-def validate_can_manage_scorer_permission(username: str):
+def validate_can_manage_scorer_permission(username: str) -> bool:
     return _get_permission_from_scorer_permission_request(username).can_manage

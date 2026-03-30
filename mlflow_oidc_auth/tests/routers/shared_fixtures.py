@@ -81,6 +81,11 @@ def mock_store():
     store_mock.authenticate_user.return_value = True
 
     store_mock.list_users.return_value = [admin_user, regular_user, service_user]
+    store_mock.list_usernames.return_value = [
+        "admin@example.com",
+        "user@example.com",
+        "service@example.com",
+    ]
     store_mock.create_user.return_value = True
     store_mock.update_user.return_value = None
     store_mock.delete_user.return_value = None

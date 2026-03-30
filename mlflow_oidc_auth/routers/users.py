@@ -4,9 +4,15 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.models import CreateAccessTokenRequest, CreateUserRequest, CurrentUserProfile, GroupRecord
+from mlflow_oidc_auth.models import (
+    CreateAccessTokenRequest,
+    CreateUserRequest,
+    CurrentUserProfile,
+    GroupRecord,
+)
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -31,7 +37,11 @@ CURRENT_USER = "/current"
 USERNAME = "/{username}"
 
 
-@users_router.patch(CREATE_ACCESS_TOKEN, summary="Create user access token", description="Creates a new access token for the authenticated user.")
+@users_router.patch(
+    CREATE_ACCESS_TOKEN,
+    summary="Create user access token",
+    description="Creates a new access token for the authenticated user.",
+)
 async def create_access_token(
     token_request: Optional[CreateAccessTokenRequest] = Body(None),
     current_username: str = Depends(get_username),
@@ -70,7 +80,10 @@ async def create_access_token(
         if token_request and token_request.username:
             target_username = token_request.username
             if target_username != current_username and not is_admin:
-                raise HTTPException(status_code=403, detail="Administrator privileges required for this operation")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Administrator privileges required for this operation",
+                )
         else:
             target_username = current_username
 
@@ -90,7 +103,10 @@ async def create_access_token(
                     raise HTTPException(status_code=400, detail="Expiration date must be in the future")
 
                 if expiration > now + timedelta(days=366):
-                    raise HTTPException(status_code=400, detail="Expiration date must be less than 1 year in the future")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Expiration date must be less than 1 year in the future",
+                    )
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid expiration date format")
 
@@ -102,8 +118,19 @@ async def create_access_token(
         # Generate new token and update user
         new_token = generate_token()
         store.update_user(username=target_username, password=new_token, password_expiration=expiration)
+        emit_audit_event(
+            "user.token_rotate",
+            actor=current_username,
+            resource_type="user",
+            resource_id=target_username,
+        )
 
-        return JSONResponse(content={"token": new_token, "message": f"Token for {target_username} has been created"})
+        return JSONResponse(
+            content={
+                "token": new_token,
+                "message": f"Token for {target_username} has been created",
+            }
+        )
 
     except HTTPException:
         # Re-raise HTTPExceptions as-is
@@ -115,7 +142,11 @@ async def create_access_token(
         raise HTTPException(status_code=500, detail=f"Failed to create access token")
 
 
-@users_router.get(USERS_ROOT, summary="List users", description="Retrieves a list of users in the system.")
+@users_router.get(
+    USERS_ROOT,
+    summary="List users",
+    description="Retrieves a list of users in the system.",
+)
 async def list_users(service: bool = False, username: str = Depends(get_username)) -> JSONResponse:
     """
     List users in the system.
@@ -144,8 +175,9 @@ async def list_users(service: bool = False, username: str = Depends(get_username
     try:
         from mlflow_oidc_auth.store import store
 
-        # Get users filtered by service account type
-        users = [user.username for user in store.list_users(is_service_account=service)]
+        # Use lightweight query that only fetches usernames,
+        # avoiding eager loading of all permission relationships per user.
+        users = store.list_usernames(is_service_account=service)
 
         return JSONResponse(content=users)
 
@@ -160,7 +192,8 @@ async def list_users(service: bool = False, username: str = Depends(get_username
     description="Creates a new user or service account in the system. Only admins can create users.",
 )
 async def create_new_user(
-    user_request: CreateUserRequest = Body(..., description="User creation details"), admin_username: str = Depends(check_admin_permission)
+    user_request: CreateUserRequest = Body(..., description="User creation details"),
+    admin_username: str = Depends(check_admin_permission),
 ) -> JSONResponse:
     """
     Create a new user or service account in the system.
@@ -196,6 +229,16 @@ async def create_new_user(
 
         if status:
             # User was created successfully
+            emit_audit_event(
+                "user.create",
+                actor=admin_username,
+                resource_type="user",
+                resource_id=user_request.username,
+                detail={
+                    "is_admin": user_request.is_admin,
+                    "is_service_account": user_request.is_service_account,
+                },
+            )
             return JSONResponse(content={"message": message}, status_code=201)
         else:
             # User already exists (updated)
@@ -206,9 +249,14 @@ async def create_new_user(
         raise HTTPException(status_code=500, detail=f"Failed to create user")
 
 
-@users_router.delete(USERS_ROOT, summary="Delete a user", description="Deletes a user from the system. Only admins can delete users.")
+@users_router.delete(
+    USERS_ROOT,
+    summary="Delete a user",
+    description="Deletes a user from the system. Only admins can delete users.",
+)
 async def delete_user(
-    username: str = Body(..., description="The username to delete", embed=True), admin_username: str = Depends(check_admin_permission)
+    username: str = Body(..., description="The username to delete", embed=True),
+    admin_username: str = Depends(check_admin_permission),
 ) -> JSONResponse:
     """
     Delete a user from the system.
@@ -241,6 +289,12 @@ async def delete_user(
 
         # Delete the user
         store.delete_user(username)
+        emit_audit_event(
+            "user.delete",
+            actor=admin_username,
+            resource_type="user",
+            resource_id=username,
+        )
 
         return JSONResponse(content={"message": f"User {username} has been successfully deleted"})
 
@@ -258,7 +312,9 @@ async def delete_user(
     summary="Get current user information",
     description="Retrieves basic information (no permissions) about the currently authenticated user.",
 )
-async def get_current_user_information(current_username: str = Depends(get_username)) -> CurrentUserProfile:
+async def get_current_user_information(
+    current_username: str = Depends(get_username),
+) -> CurrentUserProfile:
     """
     Get information about the currently authenticated user.
 

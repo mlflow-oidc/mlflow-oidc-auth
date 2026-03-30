@@ -35,6 +35,7 @@ describe("AiEndpointsPage", () => {
       provider: "local",
       authenticated: true,
       gen_ai_gateway_enabled: true,
+      workspaces_enabled: false,
     }); // Mock runtime config
   });
 

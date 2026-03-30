@@ -260,6 +260,7 @@ describe("usePermissionsManagement", () => {
       provider: "",
       authenticated: true,
       gen_ai_gateway_enabled: false,
+      workspaces_enabled: false,
     });
     vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
     const { result } = renderHook(() =>
