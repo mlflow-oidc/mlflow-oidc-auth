@@ -316,17 +316,19 @@ When workspaces are enabled, webhooks are automatically scoped to the active wor
 
 These endpoints are only available when `MLFLOW_ENABLE_WORKSPACES=true`.
 
-### Workspace CRUD
+### Workspace CRUD (MLflow Native)
 
-Base path: `/api/3.0/mlflow/workspaces/crud`
+Workspace lifecycle is handled by MLflow's native workspace API. The auth plugin enforces permission checks via `before_request` / `after_request` hooks.
+
+Base path: `/api/3.0/mlflow/workspaces`
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/api/3.0/mlflow/workspaces/crud` | Admin | Create workspace |
-| GET | `/api/3.0/mlflow/workspaces/crud` | Authenticated | List workspaces (filtered by permission) |
-| GET | `/api/3.0/mlflow/workspaces/crud/{workspace}` | Workspace READ | Get workspace details |
-| PATCH | `/api/3.0/mlflow/workspaces/crud/{workspace}` | Workspace MANAGE | Update workspace |
-| DELETE | `/api/3.0/mlflow/workspaces/crud/{workspace}` | Workspace MANAGE | Delete workspace |
+| POST | `/api/3.0/mlflow/workspaces` | Admin | Create workspace |
+| GET | `/api/3.0/mlflow/workspaces` | Authenticated | List workspaces (filtered by permission) |
+| GET | `/api/3.0/mlflow/workspaces/{workspace_name}` | Workspace READ | Get workspace details |
+| PATCH | `/api/3.0/mlflow/workspaces/{workspace_name}` | Workspace MANAGE | Update workspace |
+| DELETE | `/api/3.0/mlflow/workspaces/{workspace_name}` | Workspace MANAGE | Delete workspace |
 
 ### Workspace User Permissions
 

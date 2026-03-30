@@ -34,7 +34,7 @@
 **Router Layer (FastAPI):**
 - Purpose: REST API endpoints for permissions, users, groups, auth flows, health, UI, workspaces
 - Location: `mlflow_oidc_auth/routers/`
-- Contains: 18 routers — auth, experiment_permissions, group_permissions, prompt_permissions, registered_model_permissions, scorers_permissions, gateway_endpoint_permissions, gateway_secret_permissions, gateway_model_definition_permissions, health, trash, ui, user_permissions, users, webhook, workspace_crud, workspace_permissions, workspace_regex_permissions
+- Contains: 17 routers — auth, experiment_permissions, group_permissions, prompt_permissions, registered_model_permissions, scorers_permissions, gateway_endpoint_permissions, gateway_secret_permissions, gateway_model_definition_permissions, health, trash, ui, user_permissions, users, webhook, workspace_permissions, workspace_regex_permissions
 - Depends on: Store, Config, Models (Pydantic), Utils, Dependencies
 - Used by: FastAPI app (registered in `create_app`)
 

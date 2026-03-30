@@ -189,15 +189,17 @@ Both user-level and group-level workspace regex permissions are supported throug
 
 ## API Reference
 
-### Workspace CRUD
+### Workspace CRUD (MLflow Native)
+
+Workspace lifecycle is handled by MLflow's native workspace API. The auth plugin enforces permission checks via `before_request` / `after_request` hooks.
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/api/3.0/mlflow/workspaces/crud` | Admin | Create workspace |
-| GET | `/api/3.0/mlflow/workspaces/crud` | Authenticated | List workspaces (filtered by permission) |
-| GET | `/api/3.0/mlflow/workspaces/crud/{workspace}` | Workspace READ | Get workspace details |
-| PATCH | `/api/3.0/mlflow/workspaces/crud/{workspace}` | Workspace MANAGE | Update workspace |
-| DELETE | `/api/3.0/mlflow/workspaces/crud/{workspace}` | Workspace MANAGE | Delete workspace |
+| POST | `/api/3.0/mlflow/workspaces` | Admin | Create workspace |
+| GET | `/api/3.0/mlflow/workspaces` | Authenticated | List workspaces (filtered by permission) |
+| GET | `/api/3.0/mlflow/workspaces/{workspace_name}` | Workspace READ | Get workspace details |
+| PATCH | `/api/3.0/mlflow/workspaces/{workspace_name}` | Workspace MANAGE | Update workspace |
+| DELETE | `/api/3.0/mlflow/workspaces/{workspace_name}` | Workspace MANAGE | Delete workspace |
 
 ### Workspace Permissions
 

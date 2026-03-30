@@ -163,7 +163,6 @@ mlflow-oidc-auth/
 │   │   ├── user_permissions.py
 │   │   ├── users.py
 │   │   ├── webhook.py
-│   │   ├── workspace_crud.py      # Workspace CRUD endpoints
 │   │   ├── workspace_permissions.py        # Workspace permission management
 │   │   └── workspace_regex_permissions.py  # Workspace regex permission management
 │   ├── utils/                      # Utility modules
