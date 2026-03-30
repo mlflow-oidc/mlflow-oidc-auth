@@ -75,6 +75,8 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 
 > **Note:** Permission caches are automatically invalidated when permissions are created, updated, or deleted through the plugin's API. The TTL acts as a safety net, not the primary invalidation mechanism.
 
+> **Compatibility:** Any Redis-protocol-compatible server works — including [Valkey](https://valkey.io/), [Dragonfly](https://www.dragonflydb.io/), and [KeyDB](https://docs.keydb.dev/). The plugin uses standard Redis commands (`GET`, `SET`, `DELETE`, `SCAN`) via the `redis-py` client library.
+
 ### Workspace Settings
 
 These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.

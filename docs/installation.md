@@ -176,7 +176,7 @@ Key considerations:
 - All replicas **must** share the same `SECRET_KEY` for session cookie validation
 - Use `OIDC_USERS_DB_URI` pointing to a shared database (not SQLite)
 - Configure `TRUSTED_PROXIES` with your load balancer's CIDR range(s) to validate proxy headers
-- For multi-replica deployments, use `CACHE_BACKEND=redis` with a shared Redis instance so permission changes propagate immediately across replicas (install with `pip install "mlflow-oidc-auth[cache]"`)
+- For multi-replica deployments, use `CACHE_BACKEND=redis` with a shared Redis-compatible instance (Redis, Valkey, Dragonfly, KeyDB) so permission changes propagate immediately across replicas (install with `pip install "mlflow-oidc-auth[cache]"`)
 - Set `OIDC_AUDIENCE` to your client ID to validate JWT audience claims
 - Health probes: `/health/live` (liveness), `/health/ready` (readiness), `/health/startup` (startup)
 

@@ -195,7 +195,7 @@ Permission resolution results (the computed permission for a user + resource pai
 
 The cache backend is configurable via `CACHE_BACKEND`:
 - **`local`** (default): In-process TTL cache. Suitable for single-replica deployments.
-- **`redis`**: Shared Redis instance. Required for multi-replica deployments where permission changes must propagate immediately across all replicas. Requires `CACHE_REDIS_URL` to be set. Install with `pip install "mlflow-oidc-auth[cache]"`.
+- **`redis`**: Shared Redis-compatible instance (Redis, Valkey, Dragonfly, KeyDB). Required for multi-replica deployments where permission changes must propagate immediately across all replicas. Requires `CACHE_REDIS_URL` to be set. Install with `pip install "mlflow-oidc-auth[cache]"`.
 
 The workspace permission cache uses the same backend and has separate configuration (`WORKSPACE_CACHE_TTL_SECONDS`, `WORKSPACE_CACHE_MAX_SIZE`).
 
