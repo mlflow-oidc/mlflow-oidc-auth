@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { MemoryRouter } from "react-router";
 import { WorkspacePicker } from "./workspace-picker";
 
 // Mock dependencies
@@ -66,17 +67,29 @@ describe("WorkspacePicker", () => {
 
   it("renders nothing when workspaces_enabled is false", () => {
     (useRuntimeConfig as Mock).mockReturnValue(disabledConfig);
-    const { container } = render(<WorkspacePicker />);
+    const { container } = render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     expect(container.firstChild).toBeNull();
   });
 
   it("renders workspace picker button when workspaces_enabled is true", () => {
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     expect(screen.getByLabelText("Select workspace")).toBeInTheDocument();
   });
 
   it("shows 'All Workspaces' when no workspace selected", () => {
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     expect(screen.getByText("All Workspaces")).toBeInTheDocument();
   });
 
@@ -85,12 +98,20 @@ describe("WorkspacePicker", () => {
       ...defaultWorkspaceContext,
       selectedWorkspace: "workspace-a",
     });
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     expect(screen.getByText("workspace-a")).toBeInTheDocument();
   });
 
   it("opens dropdown on click and shows workspace list", () => {
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     const button = screen.getByLabelText("Select workspace");
     fireEvent.click(button);
 
@@ -102,7 +123,11 @@ describe("WorkspacePicker", () => {
 
   it("filters workspaces by search input", async () => {
     const user = userEvent.setup();
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
 
     fireEvent.click(screen.getByLabelText("Select workspace"));
 
@@ -115,7 +140,11 @@ describe("WorkspacePicker", () => {
   });
 
   it("selecting a workspace calls setSelectedWorkspace and closes dropdown", () => {
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByLabelText("Select workspace"));
 
     // Click on a workspace
@@ -131,22 +160,28 @@ describe("WorkspacePicker", () => {
       ...defaultWorkspaceContext,
       selectedWorkspace: "workspace-a",
     });
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByLabelText("Select workspace"));
 
     // The "All Workspaces" option in the dropdown (not in the button)
     const allWorkspacesOptions = screen.getAllByText(/All Workspaces/);
     // Click the one in the dropdown (role=option)
-    const dropdownOption = allWorkspacesOptions.find(
-      (el) => el.getAttribute("role") === "option",
-    );
+    const dropdownOption = allWorkspacesOptions.find((el) => el.getAttribute("role") === "option");
     fireEvent.click(dropdownOption!);
 
     expect(mockSetSelectedWorkspace).toHaveBeenCalledWith(null);
   });
 
   it("closes dropdown on Escape key", () => {
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByLabelText("Select workspace"));
     expect(screen.getByRole("listbox")).toBeInTheDocument();
 
@@ -155,7 +190,11 @@ describe("WorkspacePicker", () => {
   });
 
   it("toggles dropdown on Ctrl+K", () => {
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 
     // Open with Ctrl+K
@@ -169,10 +208,12 @@ describe("WorkspacePicker", () => {
 
   it("closes dropdown on click outside", () => {
     render(
-      <div>
-        <div data-testid="outside">Outside</div>
-        <WorkspacePicker />
-      </div>,
+      <MemoryRouter>
+        <div>
+          <div data-testid="outside">Outside</div>
+          <WorkspacePicker />
+        </div>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByLabelText("Select workspace"));
@@ -187,14 +228,45 @@ describe("WorkspacePicker", () => {
       ...defaultWorkspaceContext,
       selectedWorkspace: "workspace-b",
     });
-    render(<WorkspacePicker />);
+    render(
+      <MemoryRouter>
+        <WorkspacePicker />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByLabelText("Select workspace"));
 
     const options = screen.getAllByRole("option");
-    const selectedOption = options.find(
-      (el) => el.getAttribute("aria-selected") === "true" && el.textContent?.includes("workspace-b"),
-    );
+    const selectedOption = options.find((el) => el.getAttribute("aria-selected") === "true" && el.textContent?.includes("workspace-b"));
     expect(selectedOption).toBeDefined();
     expect(selectedOption!.textContent).toContain("✓");
+  });
+
+  describe("route-based hiding", () => {
+    it("renders nothing on /workspaces route", () => {
+      const { container } = render(
+        <MemoryRouter initialEntries={["/workspaces"]}>
+          <WorkspacePicker />
+        </MemoryRouter>,
+      );
+      expect(container.querySelector("[data-testid='workspace-picker']")).toBeNull();
+    });
+
+    it("renders nothing on /workspaces/:workspaceName route", () => {
+      const { container } = render(
+        <MemoryRouter initialEntries={["/workspaces/my-workspace"]}>
+          <WorkspacePicker />
+        </MemoryRouter>,
+      );
+      expect(container.querySelector("[data-testid='workspace-picker']")).toBeNull();
+    });
+
+    it("renders normally on non-hidden routes", () => {
+      render(
+        <MemoryRouter initialEntries={["/experiments"]}>
+          <WorkspacePicker />
+        </MemoryRouter>,
+      );
+      expect(screen.getByLabelText("Select workspace")).toBeInTheDocument();
+    });
   });
 });

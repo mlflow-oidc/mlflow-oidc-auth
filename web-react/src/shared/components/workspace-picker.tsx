@@ -1,12 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useLocation } from "react-router";
 import { useWorkspace } from "../context/use-workspace";
 import { useAllWorkspaces } from "../../core/hooks/use-all-workspaces";
 import { useRuntimeConfig } from "../context/use-runtime-config";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronDown, faLayerGroup } from "@fortawesome/free-solid-svg-icons";
 
+/** Routes where the workspace picker is hidden (cross-workspace / workspace-management pages). */
+const HIDDEN_ON_ROUTES = ["/workspaces"];
+
 export function WorkspacePicker() {
   const config = useRuntimeConfig();
+  const location = useLocation();
   const { selectedWorkspace, setSelectedWorkspace } = useWorkspace();
   const { allWorkspaces } = useAllWorkspaces();
   const [isOpen, setIsOpen] = useState(false);
@@ -72,6 +77,10 @@ export function WorkspacePicker() {
   }, [isOpen]);
 
   if (!config.workspaces_enabled) return null;
+
+  // Hide on cross-workspace pages (e.g. workspace management) to avoid confusion
+  const isHiddenRoute = HIDDEN_ON_ROUTES.some((route) => location.pathname === route || location.pathname.startsWith(route + "/"));
+  if (isHiddenRoute) return null;
 
   const displayName = selectedWorkspace ?? "All Workspaces";
 
