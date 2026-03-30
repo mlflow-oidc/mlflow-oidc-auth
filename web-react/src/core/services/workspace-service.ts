@@ -39,34 +39,39 @@ export const fetchWorkspaceGroups = createDynamicApiFetcher<
   responseType: [] as WorkspaceGroupPermission[],
 });
 
+/** MLflow native workspace response wraps the object in a `workspace` key. */
+type MlflowWorkspaceResponse = { workspace: WorkspaceCrudResponse };
+
 export const createWorkspace = async (
   data: WorkspaceCrudCreateRequest,
 ): Promise<WorkspaceCrudResponse> => {
-  return request<WorkspaceCrudResponse>(
-    STATIC_API_ENDPOINTS.WORKSPACE_CRUD,
+  const res = await request<MlflowWorkspaceResponse>(
+    STATIC_API_ENDPOINTS.ALL_WORKSPACES,
     {
       method: "POST",
       body: JSON.stringify(data),
     },
   );
+  return res.workspace;
 };
 
 export const updateWorkspace = async (
   workspace: string,
   data: WorkspaceCrudUpdateRequest,
 ): Promise<WorkspaceCrudResponse> => {
-  return request<WorkspaceCrudResponse>(
-    DYNAMIC_API_ENDPOINTS.WORKSPACE_CRUD_DETAIL(workspace),
+  const res = await request<MlflowWorkspaceResponse>(
+    DYNAMIC_API_ENDPOINTS.WORKSPACE_DETAIL(workspace),
     {
       method: "PATCH",
       body: JSON.stringify(data),
     },
   );
+  return res.workspace;
 };
 
 export const deleteWorkspace = async (workspace: string): Promise<void> => {
-  return request<void>(
-    DYNAMIC_API_ENDPOINTS.WORKSPACE_CRUD_DETAIL(workspace),
+  await request<void>(
+    DYNAMIC_API_ENDPOINTS.WORKSPACE_DETAIL(workspace),
     {
       method: "DELETE",
     },

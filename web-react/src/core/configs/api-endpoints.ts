@@ -11,7 +11,6 @@ export const STATIC_API_ENDPOINTS = {
 
   // Workspace management
   ALL_WORKSPACES: "/api/3.0/mlflow/workspaces",
-  WORKSPACE_CRUD: "/api/3.0/mlflow/workspaces/crud",
 
   // User management
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
@@ -201,8 +200,8 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions-patterns/${encodeURIComponent(patternId)}`,
 
   // Workspace CRUD
-  WORKSPACE_CRUD_DETAIL: (workspace: string) =>
-    `/api/3.0/mlflow/workspaces/crud/${encodeURIComponent(workspace)}`,
+  WORKSPACE_DETAIL: (workspace: string) =>
+    `/api/3.0/mlflow/workspaces/${encodeURIComponent(workspace)}`,
 
   // Workspace permission management
   WORKSPACE_USERS: (workspace: string) =>

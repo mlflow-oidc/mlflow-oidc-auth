@@ -65,6 +65,9 @@ export async function http<T = unknown>(
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
+  // 204 No Content — nothing to parse
+  if (res.status === 204) return undefined as unknown as T;
+
   const contentType = res.headers.get("content-type") || "";
   if (contentType.includes("application/json")) return (await res.json()) as T;
   return (await res.text()) as unknown as T;

@@ -209,11 +209,9 @@ def create_app() -> Any:
         from mlflow_oidc_auth.routers.workspace_regex_permissions import (
             workspace_regex_permissions_router,
         )
-        from mlflow_oidc_auth.routers.workspace_crud import workspace_crud_router
 
         oidc_app.include_router(workspace_permissions_router)
         oidc_app.include_router(workspace_regex_permissions_router)
-        oidc_app.include_router(workspace_crud_router)
 
     # ---------------------------------------------------------------------------
     # Include MLflow's FastAPI-native routers (GAP-ARCH-01 fix)

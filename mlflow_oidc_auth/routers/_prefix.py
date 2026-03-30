@@ -21,4 +21,3 @@ TRASH_ROUTER_PREFIX = "/oidc/trash"
 WEBHOOK_ROUTER_PREFIX = "/oidc/webhook"
 WORKSPACE_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/workspaces", version=3)
 WORKSPACE_REGEX_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/workspaces/regex", version=3)
-WORKSPACE_CRUD_ROUTER_PREFIX = _get_rest_path("/mlflow/workspaces/crud", version=3)

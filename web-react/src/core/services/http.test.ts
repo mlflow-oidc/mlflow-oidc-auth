@@ -126,6 +126,20 @@ describe("http", () => {
       }),
     );
   });
+
+  it("returns undefined for 204 No Content responses", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 204,
+      statusText: "No Content",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: () => Promise.reject(new Error("Unexpected end of JSON input")),
+      text: () => Promise.resolve(""),
+    } as Response);
+
+    const result = await http("/test");
+    expect(result).toBeUndefined();
+  });
 });
 
 describe("extractErrorMessage", () => {
