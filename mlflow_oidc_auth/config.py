@@ -21,7 +21,7 @@ class AppConfig:
         self.DEFAULT_MLFLOW_PERMISSION = os.environ.get("DEFAULT_MLFLOW_PERMISSION", "MANAGE")
         self.SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(16))
         self.OIDC_USERS_DB_URI = os.environ.get("OIDC_USERS_DB_URI", "sqlite:///auth.db")
-        self.OIDC_GROUP_NAME = [group.strip() for group in os.environ.get("OIDC_GROUP_NAME", "mlflow").split(",")]
+        self.OIDC_GROUP_NAME = [group.strip() for group in os.environ.get("OIDC_GROUP_NAME", "mlflow").split(os.environ.get("OIDC_GROUP_NAME_DELIMITER", ","))]
         self.OIDC_ADMIN_GROUP_NAME = os.environ.get("OIDC_ADMIN_GROUP_NAME", "mlflow-admin")
         self.OIDC_PROVIDER_DISPLAY_NAME = os.environ.get("OIDC_PROVIDER_DISPLAY_NAME", "Login with OIDC")
         self.OIDC_DISCOVERY_URL = os.environ.get("OIDC_DISCOVERY_URL", None)

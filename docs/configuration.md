@@ -23,7 +23,8 @@ The application can be configured through environment variables, dotenv files, o
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `OIDC_GROUP_NAME` | String | `mlflow` | Comma-separated list of allowed groups |
+| `OIDC_GROUP_NAME` | String | `mlflow` | List of allowed groups separated by the delimiter |
+| `OIDC_GROUP_NAME_DELIMITER` | String | `,` | Delimiter to separate groups in `OIDC_GROUP_NAME` |
 | `OIDC_ADMIN_GROUP_NAME` | String | `mlflow-admin` | Name of the admin group for full privileges |
 | `DEFAULT_MLFLOW_PERMISSION` | String | `MANAGE` | Default permission level for MLflow objects |
 | `PERMISSION_SOURCE_ORDER` | String | `user,group,regex,group-regex` | Order of precedence for permission resolution |
