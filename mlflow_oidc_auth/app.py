@@ -151,7 +151,7 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
         logger.debug("mlflow.server.assistant.api not available — Assistant endpoints disabled")
 
 
-def create_app() -> Any:
+def create_app() -> FastAPI:
     """Create a FastAPI application with OIDC integration.
 
     The app uses a lifespan context manager to ensure OIDC client registration
