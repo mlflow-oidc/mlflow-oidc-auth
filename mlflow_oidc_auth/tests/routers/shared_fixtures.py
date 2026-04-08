@@ -7,6 +7,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
+from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.entities import User
 
@@ -68,7 +69,10 @@ def mock_store():
     }.get(username)
 
     def _get_user_profile(username: str):
-        return store_mock.get_user(username)
+        result = store_mock.get_user(username)
+        if result is None:
+            raise MlflowException(f"User '{username}' not found")
+        return result
 
     store_mock.get_user_profile.side_effect = _get_user_profile
 
@@ -80,7 +84,14 @@ def mock_store():
         "user@example.com",
         "service@example.com",
     ]
-    store_mock.create_user.return_value = True
+    store_mock.create_user.return_value = User(
+        id_=99,
+        username="newuser@example.com",
+        is_admin=False,
+        is_service_account=False,
+        display_name="New User",
+    )
+    store_mock.create_user_token.return_value = MagicMock(id=1, name="default")
     store_mock.update_user.return_value = None
     store_mock.delete_user.return_value = None
 
@@ -210,6 +221,7 @@ def _patch_router_stores(mock_store):
         patch("mlflow_oidc_auth.routers.users.store", mock_store),
         patch("mlflow_oidc_auth.routers.experiment_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.prompt_permissions.store", mock_store),
+        patch("mlflow_oidc_auth.user.store", mock_store),
     ]
 
     for p in patches:

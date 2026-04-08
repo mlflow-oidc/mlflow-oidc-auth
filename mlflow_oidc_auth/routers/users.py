@@ -108,8 +108,9 @@ async def create_access_token(
             expiration = datetime.now(timezone.utc) + timedelta(days=365)
 
         # Check if the target user exists
-        user = store.get_user_profile(target_username)
-        if user is None:
+        try:
+            store.get_user_profile(target_username)
+        except MlflowException:
             raise HTTPException(status_code=404, detail=f"User {target_username} not found")
 
         # Delete existing default token if it exists (rotate behavior)
@@ -286,8 +287,9 @@ async def delete_user(
     """
     try:
         # Check if user exists before attempting deletion
-        user = store.get_user_profile(username)
-        if not user:
+        try:
+            store.get_user_profile(username)
+        except MlflowException:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
 
         # Delete the user
@@ -552,8 +554,9 @@ async def list_user_tokens_admin(
     """List all tokens for a specific user (admin only)."""
     try:
         # Verify user exists
-        user = store.get_user_profile(username)
-        if user is None:
+        try:
+            store.get_user_profile(username)
+        except MlflowException:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
 
         tokens = store.list_user_tokens(username)
@@ -580,8 +583,9 @@ async def create_user_token_admin(
     """Create a new named token for a specific user (admin only)."""
     try:
         # Verify user exists
-        user = store.get_user_profile(username)
-        if user is None:
+        try:
+            store.get_user_profile(username)
+        except MlflowException:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
 
         expiration = _parse_expiration(token_request.expiration)

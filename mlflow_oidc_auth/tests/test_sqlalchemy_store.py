@@ -304,7 +304,7 @@ class TestSqlAlchemyStore:
         """Test authenticate_user_token delegates to user_token_repo."""
         mock_store.user_token_repo.authenticate.return_value = True
         result = mock_store.authenticate_user_token("testuser", "secret")
-        mock_store.user_token_repo.authenticate.assert_called_once_with("testuser", "secret")
+        mock_store.user_token_repo.authenticate.assert_called_once_with(username="testuser", password="secret")
         assert result is True
 
     # Test experiment permission methods
