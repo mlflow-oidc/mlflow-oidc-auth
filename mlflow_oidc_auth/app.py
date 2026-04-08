@@ -181,7 +181,14 @@ def create_app() -> Any:
     oidc_app.add_middleware(ProxyHeadersMiddleware)
     oidc_app.add_middleware(AuthMiddleware)
     oidc_app.add_middleware(WorkspaceContextMiddleware)
-    oidc_app.add_middleware(StarletteSessionMiddleware, secret_key=config.SECRET_KEY)
+    oidc_app.add_middleware(
+        StarletteSessionMiddleware,
+        secret_key=config.SECRET_KEY,
+        session_cookie=config.SESSION_COOKIE_NAME,
+        max_age=config.SESSION_COOKIE_MAX_AGE_SECONDS,
+        same_site=config.SESSION_COOKIE_SAMESITE,
+        https_only=config.SESSION_COOKIE_SECURE,
+    )
 
     for router in get_all_routers():
         oidc_app.include_router(router)
