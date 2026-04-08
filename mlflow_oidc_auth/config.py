@@ -144,6 +144,9 @@ class AppConfig:
         self.AUDIT_LOG_ENABLED = config_manager.get_bool("AUDIT_LOG_ENABLED", default=True)
         self.AUDIT_LOG_LEVEL = config_manager.get("AUDIT_LOG_LEVEL", "INFO")
 
+        # API documentation settings
+        self.ENABLE_API_DOCS = config_manager.get_bool("ENABLE_API_DOCS", default=True)
+
     def refresh(self) -> None:
         """Reload configuration from all providers.
 
