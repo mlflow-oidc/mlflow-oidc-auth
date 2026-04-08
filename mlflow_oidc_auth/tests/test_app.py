@@ -9,6 +9,7 @@ error handler registration, and application startup/shutdown procedures.
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
 
 from mlflow_oidc_auth.app import create_app
 
@@ -683,3 +684,43 @@ class TestAppConfiguration:
 
                 # Verify secret key is set correctly
                 assert mock_flask_app.secret_key == secret_key
+
+    @patch("mlflow_oidc_auth.app.config")
+    @patch("mlflow_oidc_auth.app.register_exception_handlers")
+    @patch("mlflow_oidc_auth.app.get_all_routers")
+    @patch("mlflow_oidc_auth.app.AuthMiddleware")
+    @patch("mlflow_oidc_auth.app.AuthAwareWSGIMiddleware")
+    @patch("mlflow_oidc_auth.app.app")
+    @patch("mlflow_oidc_auth.app.before_request_hook")
+    @patch("mlflow_oidc_auth.app.after_request_hook")
+    def test_create_app_with_session_middleware_config(
+        self,
+        mock_after,
+        mock_before,
+        mock_flask_app,
+        mock_wsgi,
+        mock_auth,
+        mock_get_all_routers,
+        mock_register,
+        mock_config,
+    ):
+        """Starlette SessionMiddleware should be configured with correct parameters from config."""
+        mock_config.SECRET_KEY = "test-secret"
+        mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
+        mock_config.SESSION_COOKIE_NAME = "my_session"
+        mock_config.SESSION_COOKIE_MAX_AGE_SECONDS = 3600
+        mock_config.SESSION_COOKIE_SAMESITE = "strict"
+        mock_config.SESSION_COOKIE_SECURE = True
+        mock_get_all_routers.return_value = []
+
+        result = create_app()
+        middleware = next(m for m in result.user_middleware if m.cls == StarletteSessionMiddleware)
+        assert middleware is not None, "SessionMiddleware not found in app middleware stack"
+
+        kwargs = middleware.kwargs
+        assert kwargs["secret_key"] == "test-secret"
+        assert kwargs["session_cookie"] == "my_session"
+        assert kwargs["max_age"] == 3600
+        assert kwargs["same_site"] == "strict"
+        assert kwargs["https_only"] is True
