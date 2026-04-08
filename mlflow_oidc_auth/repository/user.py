@@ -130,22 +130,14 @@ class UserRepository:
                 session.flush()
                 return u.to_mlflow_entity()
             except IntegrityError as e:
-                raise MlflowException(
-                    f"User '{username}' already exists: {e}", RESOURCE_ALREADY_EXISTS
-                ) from e
+                raise MlflowException(f"User '{username}' already exists: {e}", RESOURCE_ALREADY_EXISTS) from e
 
     def get(self, username: str) -> User:
         username = normalize_username(username)
         with self._Session() as session:
-            u = (
-                session.query(SqlUser)
-                .filter(SqlUser.username == username)
-                .one_or_none()
-            )
+            u = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
             if u is None:
-                raise MlflowException(
-                    f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST
-                )
+                raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
             return u.to_mlflow_entity()
 
     def get_profile(self, username: str) -> User:
@@ -179,9 +171,7 @@ class UserRepository:
                         SqlUser.active,
                         SqlUser.managed_by,
                     ),
-                    selectinload(SqlUser.groups).load_only(
-                        SqlGroup.id, SqlGroup.group_name
-                    ),
+                    selectinload(SqlUser.groups).load_only(SqlGroup.id, SqlGroup.group_name),
                     noload(SqlUser.experiment_permissions),
                     noload(SqlUser.registered_model_permissions),
                     noload(SqlUser.scorer_permissions),
@@ -193,9 +183,7 @@ class UserRepository:
                 .one_or_none()
             )
             if u is None:
-                raise MlflowException(
-                    f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST
-                )
+                raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
 
             return User(
                 id_=u.id,
@@ -214,10 +202,7 @@ class UserRepository:
     def exist(self, username: str) -> bool:
         username = normalize_username(username)
         with self._Session() as session:
-            return (
-                session.query(SqlUser).filter(SqlUser.username == username).first()
-                is not None
-            )
+            return session.query(SqlUser).filter(SqlUser.username == username).first() is not None
 
     def list(self, is_service_account: bool = False, all: bool = False) -> List[User]:
         with self._Session() as session:
