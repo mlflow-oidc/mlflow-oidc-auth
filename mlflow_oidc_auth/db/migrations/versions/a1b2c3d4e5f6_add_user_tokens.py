@@ -15,7 +15,7 @@ from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
 
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f6"
-down_revision = "6a7b8c9def01"
+down_revision = "8a9b0c1de234"
 branch_labels = None
 depends_on = None
 

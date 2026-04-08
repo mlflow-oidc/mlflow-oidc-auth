@@ -42,7 +42,7 @@ def test_delete_user_with_gateway_permissions_deletes_all_gateway_rows(
     store.init_db(f"sqlite:///{db_path.as_posix()}")
 
     username = "gw-user@example.com"
-    store.create_user(username=username, password="pw", display_name="GW User")
+    store.create_user(username=username, display_name="GW User")
 
     store.create_gateway_endpoint_permission(gateway_name="ep1", username=username, permission="READ")
     store.create_gateway_secret_permission(gateway_name="sec1", username=username, permission="READ")
