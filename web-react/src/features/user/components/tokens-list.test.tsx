@@ -166,7 +166,7 @@ describe("TokensList", () => {
 
       render(<TokensList />);
       expect(
-        screen.getByText("No tokens found. Create your first token to get started.")
+        screen.getByText("No items found")
       ).toBeInTheDocument();
     });
 
@@ -179,7 +179,7 @@ describe("TokensList", () => {
       const form = searchInput.closest("form");
       fireEvent.submit(form!);
 
-      expect(screen.getByText('No tokens matching "nonexistent"')).toBeInTheDocument();
+      expect(screen.getByText('No items found for "nonexistent"')).toBeInTheDocument();
     });
   });
 
@@ -237,7 +237,8 @@ describe("TokensList", () => {
       fireEvent.click(deleteButtons[0]);
 
       expect(screen.getByText("Delete Token")).toBeInTheDocument();
-      expect(screen.getByText(/token-one/)).toBeInTheDocument();
+      // "token-one" appears both in the table row and the delete modal, so use getAllByText
+      expect(screen.getAllByText(/token-one/).length).toBeGreaterThanOrEqual(2);
     });
 
     it("deletes token when confirmed", async () => {
