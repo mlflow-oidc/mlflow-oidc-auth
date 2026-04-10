@@ -433,6 +433,11 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
 
+            # With jumpcloud, if the groups attribute is a single group, it will be sent as a string.
+            # To process the groups correctly, bring the group into a list of groups.
+            if isinstance(user_groups, str):
+                user_groups = [user_groups]
+
             logger.debug(f"User groups: {user_groups}")
 
             # Check authorization
