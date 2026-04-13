@@ -214,6 +214,10 @@ def test_filter_search_experiments_non_admin(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
+                "mlflow_oidc_auth.hooks.after_request.config.MLFLOW_ENABLE_WORKSPACES",
+                False,
+            ),
+            patch(
                 "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
                 return_value=True,
             ) as mock_can_read,
