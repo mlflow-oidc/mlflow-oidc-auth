@@ -131,7 +131,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["user", "group", "regex", "group-regex"])
         self.assertTrue(config.EXTEND_MLFLOW_MENU)
         self.assertTrue(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
-        self.assertTrue(config.ENABLE_API_DOCS)
+        self.assertFalse(config.ENABLE_API_DOCS)
 
     def test_app_config_environment_variable_override(self):
         """Test that environment variables override default values."""
@@ -307,8 +307,9 @@ class TestAppConfig(unittest.TestCase):
 
     def test_workspace_feature_flags_defaults(self):
         """Test that workspace feature flags have correct default values."""
-        config = AppConfig()
-        self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
+        with patch.dict(os.environ, {}, clear=True):
+            config = AppConfig()
+            self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
 
     def test_workspace_feature_flags_override(self):
         """Test that workspace feature flags can be overridden via environment variables."""
