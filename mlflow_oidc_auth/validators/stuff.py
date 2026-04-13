@@ -128,13 +128,13 @@ def validate_gateway_proxy(username: str) -> bool:
     def _extract_gateway_name():
         # Try query params first
         if request.args:
-            for key in ("gateway_name", "gateway", "name", "target"):
+            for key in ("gateway_name", "gateway", "name", "target", "gateway_path"):
                 if key in request.args:
                     return request.args.get(key)
         # Try JSON body
         if request.is_json:
             data = request.get_json(silent=True) or {}
-            for key in ("gateway_name", "gateway", "name", "target"):
+            for key in ("gateway_name", "gateway", "name", "target", "gateway_path"):
                 if key in data:
                     return data.get(key)
         return None
