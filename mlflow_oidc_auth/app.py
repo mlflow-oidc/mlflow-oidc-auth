@@ -161,9 +161,9 @@ def create_app() -> Any:
         title="MLflow Tracking Server with OIDC Auth",
         description="MLflow Tracking Server API with OIDC Authentication",
         version=VERSION,
-        docs_url="/docs" if getattr(config, "ENABLE_API_DOCS", True) else None,
-        redoc_url="/redoc" if getattr(config, "ENABLE_API_DOCS", True) else None,
-        openapi_url="/openapi.json" if getattr(config, "ENABLE_API_DOCS", True) else None,
+        docs_url="/docs" if config.ENABLE_API_DOCS else None,
+        redoc_url="/redoc" if config.ENABLE_API_DOCS else None,
+        openapi_url="/openapi.json" if config.ENABLE_API_DOCS else None,
         lifespan=lifespan,
     )
     register_exception_handlers(oidc_app)

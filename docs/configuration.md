@@ -60,6 +60,7 @@ The application is configured through environment variables, `.env` files, or pl
 |----------|------|---------|-------------|
 | `OIDC_GEN_AI_GATEWAY_ENABLED` | Boolean | `true` | Enable AI Gateway permission management in the admin UI and API. Disable if you don't use MLflow AI Gateway |
 | `MLFLOW_ENABLE_WORKSPACES` | Boolean | `false` | Enable workspace (multi-tenant) support. Requires MLflow >=3.10. See [Workspaces](workspaces) |
+| `ENABLE_API_DOCS` | Boolean | `true` | Enable OpenAPI documentation at `/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc` |
 
 ### Caching
 
@@ -148,6 +149,9 @@ OIDC_USERS_DB_URI=postgresql://mlflow:pass@db:5432/mlflow_auth
 
 # Explicit secret key for multi-replica deployments
 SECRET_KEY=your-random-64-char-hex-string
+
+# Disable API docs
+ENABLE_API_DOCS=false
 
 # Auto-redirect to OIDC login
 AUTOMATIC_LOGIN_REDIRECT=true
