@@ -27,7 +27,9 @@ def _get_permission_from_experiment_name(username: str) -> Permission:
 
 
 _EXPERIMENT_ID_PATTERN = re.compile(r"^(\d+)/")
-
+# Workspace paths are structured: workspaces/{workspace-name}/{experiment-id}/...
+# where the workspace name can be alphanumeric with an optional single hyphen.
+_WORKSPACES_EXPERIMENT_ID_PATTERN = re.compile(r"^(workspaces)/([\w-]+)/(\d+)/")
 
 def _get_experiment_id_from_view_args():
     # The artifact proxy routes encode experiment_id as the first path segment
@@ -39,6 +41,9 @@ def _get_experiment_id_from_view_args():
     if view_args is not None and (artifact_path := view_args.get("artifact_path")):
         if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
             return m.group(1)
+        if m:= _WORKSPACES_EXPERIMENT_ID_PATTERN.match(artifact_path):
+            # Group 1: workspace, Group 2: {workspace_name}, Group 3: experiment-id
+            return m.group(3)
     return None
 
 
