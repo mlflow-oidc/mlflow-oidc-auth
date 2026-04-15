@@ -31,6 +31,7 @@ _EXPERIMENT_ID_PATTERN = re.compile(r"^(\d+)/")
 # where the workspace name can be alphanumeric with an optional single hyphen.
 _WORKSPACES_EXPERIMENT_ID_PATTERN = re.compile(r"^(workspaces)/([\w-]+)/(\d+)/")
 
+
 def _get_experiment_id_from_view_args():
     # The artifact proxy routes encode experiment_id as the first path segment
     # of the artifact_path (e.g. "123/artifacts/model.pkl").  This cannot be
@@ -41,7 +42,7 @@ def _get_experiment_id_from_view_args():
     if view_args is not None and (artifact_path := view_args.get("artifact_path")):
         if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
             return m.group(1)
-        if m:= _WORKSPACES_EXPERIMENT_ID_PATTERN.match(artifact_path):
+        if m := _WORKSPACES_EXPERIMENT_ID_PATTERN.match(artifact_path):
             # Group 1: workspace, Group 2: {workspace_name}, Group 3: experiment-id
             return m.group(3)
     return None
