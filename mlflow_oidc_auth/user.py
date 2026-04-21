@@ -1,8 +1,10 @@
 import secrets
 import string
+from datetime import datetime, timedelta, timezone
 
 from mlflow.exceptions import MlflowException
 
+from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
 from mlflow_oidc_auth.store import store
 
 
@@ -18,14 +20,22 @@ def create_user(username: str, display_name: str, is_admin: bool = False, is_ser
         store.update_user(username=username, is_admin=is_admin, is_service_account=is_service_account)
         return False, f"User {user.username} (ID: {user.id}) already exists"
     except MlflowException:
-        password = generate_token()
+        # Generate initial token
+        token = generate_token()
+
+        # Create user (no password stored on users table - authentication uses tokens table)
         user = store.create_user(
             username=username,
-            password=password,
             display_name=display_name,
             is_admin=is_admin,
             is_service_account=is_service_account,
         )
+
+        # Create the token in the tokens table (this is what's used for authentication)
+        # Default expiration is 1 year from now
+        default_expiration = datetime.now(timezone.utc) + timedelta(days=365)
+        store.create_user_token(username=username, name=DEFAULT_TOKEN_NAME, token=token, expires_at=default_expiration)
+
         return True, f"User {user.username} (ID: {user.id}) successfully created"
 
 

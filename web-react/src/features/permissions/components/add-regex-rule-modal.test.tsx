@@ -25,7 +25,7 @@ describe("AddRegexRuleModal", () => {
       />,
     );
 
-    const regexInput = screen.getByLabelText(/Regex/i);
+    const regexInput = screen.getByRole("textbox", { name: /Regex/i });
     fireEvent.change(regexInput, { target: { value: "[" } }); // Invalid regex
 
     const saveBtn = screen.getByText("Save");
@@ -65,10 +65,10 @@ describe("AddRegexRuleModal", () => {
     );
 
     // Regex valid
-    const regexInput = screen.getByLabelText(/Regex/i);
+    const regexInput = screen.getByRole("textbox", { name: /Regex/i });
     fireEvent.change(regexInput, { target: { value: ".*" } });
 
-    const priorityInput = screen.getByLabelText(/Priority/i);
+    const priorityInput = screen.getByRole("spinbutton", { name: /Priority/i });
     fireEvent.change(priorityInput, { target: { value: "-1" } }); // Invalid priority
 
     const saveBtn = screen.getByText("Save");
@@ -90,10 +90,10 @@ describe("AddRegexRuleModal", () => {
       />,
     );
 
-    const regexInput = screen.getByLabelText(/Regex/i);
+    const regexInput = screen.getByRole("textbox", { name: /Regex/i });
     fireEvent.change(regexInput, { target: { value: "^test_.*" } });
 
-    const priorityInput = screen.getByLabelText(/Priority/i);
+    const priorityInput = screen.getByRole("spinbutton", { name: /Priority/i });
     fireEvent.change(priorityInput, { target: { value: "10" } });
 
     const saveBtn = screen.getByText("Save");

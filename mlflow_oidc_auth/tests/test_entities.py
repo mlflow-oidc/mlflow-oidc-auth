@@ -1,5 +1,4 @@
 import unittest
-from datetime import datetime
 from mlflow_oidc_auth.entities import (
     User,
     ExperimentPermission,
@@ -18,8 +17,6 @@ class TestUser(unittest.TestCase):
         user = User(
             id_="123",
             username="test_user",
-            password_hash="password",
-            password_expiration=None,
             is_admin=True,
             is_service_account=False,
             display_name="Test User",
@@ -54,7 +51,6 @@ class TestUser(unittest.TestCase):
             "gateway_endpoint_permissions": [],
             "gateway_model_definition_permissions": [],
             "gateway_secret_permissions": [],
-            "password_expiration": None,
             "display_name": "Test User",
             "groups": [{"id": "group1", "group_name": "Group 1"}],
         }
@@ -89,7 +85,6 @@ class TestUser(unittest.TestCase):
 
         self.assertEqual(user.id, "123")
         self.assertEqual(user.username, "test_user")
-        self.assertEqual(user.password_hash, "REDACTED")
         self.assertTrue(user.is_admin)
         self.assertEqual(user.display_name, "Test User")
         self.assertEqual(len(user.experiment_permissions or []), 1)
@@ -107,8 +102,6 @@ class TestUser(unittest.TestCase):
         user = User(
             id_="123",
             username="test_user",
-            password_hash="password",
-            password_expiration=None,
             is_admin=True,
             is_service_account=False,
             display_name="Test User",
@@ -128,7 +121,6 @@ class TestUser(unittest.TestCase):
             "gateway_endpoint_permissions": [],
             "gateway_model_definition_permissions": [],
             "gateway_secret_permissions": [],
-            "password_expiration": None,
             "display_name": "Test User",
             "groups": [],
         }
@@ -149,7 +141,6 @@ class TestUser(unittest.TestCase):
 
         self.assertEqual(user.id, "123")
         self.assertEqual(user.username, "test_user")
-        self.assertEqual(user.password_hash, "REDACTED")
         self.assertTrue(user.is_admin)
         self.assertEqual(user.display_name, "Test User")
         self.assertEqual(user.experiment_permissions, [])
@@ -252,8 +243,6 @@ class TestUserPropertiesSetters(unittest.TestCase):
         user = User(
             id_="1",
             username="u",
-            password_hash="dummy_hash",
-            password_expiration=None,
             is_admin=False,
             is_service_account=False,
             display_name="d",
@@ -273,49 +262,6 @@ class TestUserPropertiesSetters(unittest.TestCase):
         self.assertEqual(user.registered_model_permissions[0].name, "m")
         self.assertEqual(user.display_name, "display")
         self.assertEqual(user.groups[0].id, "g")
-
-    def test_user_password_expiration_setter(self):
-        user = User(
-            id_="1",
-            username="u",
-            password_hash="dummy_hash",
-            password_expiration=None,
-            is_admin=False,
-            is_service_account=False,
-            display_name="d",
-        )
-        expiration_date = datetime(2024, 12, 31, 23, 59, 59)
-        user.password_expiration = expiration_date
-        self.assertEqual(user.password_expiration, expiration_date)
-
-    def test_user_to_json_with_password_expiration(self):
-        expiration_date = datetime(2024, 12, 31, 23, 59, 59)
-        user = User(
-            id_="123",
-            username="test_user",
-            password_hash="password",
-            password_expiration=expiration_date,
-            is_admin=True,
-            is_service_account=False,
-            display_name="Test User",
-        )
-
-        json_data = user.to_json()
-        self.assertEqual(json_data["password_expiration"], "2024-12-31T23:59:59")
-
-    def test_user_from_json_parses_password_expiration(self):
-        json_data = {
-            "id": "123",
-            "username": "test_user",
-            "is_admin": False,
-            "password_expiration": "2024-12-31T23:59:59",
-            "experiment_permissions": [],
-            "registered_model_permissions": [],
-            "groups": [],
-        }
-        user = User.from_json(json_data)
-        self.assertIsInstance(user.password_expiration, datetime)
-        self.assertEqual(user.password_expiration.isoformat(), "2024-12-31T23:59:59")
 
     def test_user_from_json_with_is_service_account_default(self):
         json_data = {
