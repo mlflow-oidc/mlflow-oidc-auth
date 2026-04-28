@@ -76,6 +76,15 @@ class AppConfig:
         self.SECRET_KEY = _secret_key
         self.OIDC_CLIENT_SECRET = config_manager.get("OIDC_CLIENT_SECRET")
 
+        # Session cookie settings
+        self.SESSION_COOKIE_NAME = config_manager.get("SESSION_COOKIE_NAME", "session")
+        self.SESSION_COOKIE_MAX_AGE_SECONDS = config_manager.get_int("SESSION_COOKIE_MAX_AGE_SECONDS", default=14 * 24 * 60 * 60) or None
+        _session_cookie_samesite = config_manager.get("SESSION_COOKIE_SAMESITE", "lax").lower()
+        if _session_cookie_samesite not in {"lax", "strict", "none"}:
+            raise ValueError(f"Invalid SESSION_COOKIE_SAMESITE value: '{_session_cookie_samesite}'")
+        self.SESSION_COOKIE_SAMESITE = _session_cookie_samesite
+        self.SESSION_COOKIE_SECURE = config_manager.get_bool("SESSION_COOKIE_SECURE", default=False)
+
         # Database settings (sensitive)
         self.OIDC_USERS_DB_URI = config_manager.get("OIDC_USERS_DB_URI", "sqlite:///auth.db")
 

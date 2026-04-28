@@ -102,6 +102,10 @@ class TestAppConfig(unittest.TestCase):
             "PERMISSION_SOURCE_ORDER",
             "EXTEND_MLFLOW_MENU",
             "DEFAULT_LANDING_PAGE_IS_PERMISSIONS",
+            "SESSION_COOKIE_NAME",
+            "SESSION_COOKIE_MAX_AGE_SECONDS",
+            "SESSION_COOKIE_SAMESITE",
+            "SESSION_COOKIE_SECURE",
             "ENABLE_API_DOCS",
         ]
 
@@ -351,6 +355,43 @@ class TestAppConfig(unittest.TestCase):
                 config = AppConfig()
                 mock_logger.warning.assert_not_called()
                 self.assertEqual(config.SECRET_KEY, "my-production-secret")
+
+    def test_session_cookie_defaults(self):
+        """Test that session cookie settings have correct default values."""
+        config = AppConfig()
+        self.assertEqual(config.SESSION_COOKIE_NAME, "session")
+        self.assertEqual(config.SESSION_COOKIE_MAX_AGE_SECONDS, 14 * 24 * 60 * 60)
+        self.assertEqual(config.SESSION_COOKIE_SAMESITE, "lax")
+        self.assertFalse(config.SESSION_COOKIE_SECURE)
+
+    def test_session_cookie_env_overrides(self):
+        """SESSION_COOKIE_* env vars are picked up correctly."""
+        with patch.dict(
+            os.environ,
+            {
+                "SESSION_COOKIE_NAME": "mlflow_auth",
+                "SESSION_COOKIE_MAX_AGE_SECONDS": "3600",
+                "SESSION_COOKIE_SAMESITE": "strict",
+                "SESSION_COOKIE_SECURE": "true",
+            },
+        ):
+            config = AppConfig()
+            self.assertEqual(config.SESSION_COOKIE_NAME, "mlflow_auth")
+            self.assertEqual(config.SESSION_COOKIE_MAX_AGE_SECONDS, 3600)
+            self.assertEqual(config.SESSION_COOKIE_SAMESITE, "strict")
+            self.assertTrue(config.SESSION_COOKIE_SECURE)
+
+    def test_session_cookie_samesite_invalid_raises(self):
+        """An invalid SESSION_COOKIE_SAMESITE value raises ValueError."""
+        with patch.dict(os.environ, {"SESSION_COOKIE_SAMESITE": "invalid"}):
+            with self.assertRaises(ValueError):
+                AppConfig()
+
+    def test_session_cookie_max_age_zero_becomes_none(self):
+        """SESSION_COOKIE_MAX_AGE_SECONDS=0 is treated as no expiry (None)."""
+        with patch.dict(os.environ, {"SESSION_COOKIE_MAX_AGE_SECONDS": "0"}):
+            config = AppConfig()
+            self.assertIsNone(config.SESSION_COOKIE_MAX_AGE_SECONDS)
 
 
 if __name__ == "__main__":

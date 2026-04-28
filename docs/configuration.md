@@ -106,6 +106,15 @@ The plugin uses Starlette's built-in cookie-based sessions:
 - The cookie is signed with `SECRET_KEY` — all replicas **must** share the same key
 - Sessions survive server restarts only if `SECRET_KEY` is explicitly configured
 
+Additional session cookie settings:
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SESSION_COOKIE_NAME` | String | `session` | Session cookie name |
+| `SESSION_COOKIE_MAX_AGE_SECONDS` | Integer | `1209600` (2 weeks) | Session expiry time in seconds, if set to `0` then the cookie will last as long as the browser session |
+| `SESSION_COOKIE_SAMESITE` | String | `lax` | SameSite flag prevents the browser from sending session cookie along with cross-site requests |
+| `SESSION_COOKIE_SECURE` | Boolean | `false` | Indicate that the "Secure" flag should be set (can be used with HTTPS only), set this to `true` in production to ensure the session cookie is only sent over HTTPS |
+
 ## MLflow Server Environment Variables
 
 MLflow natively supports environment variables for server configuration. These are not managed by the plugin but are commonly used alongside it:
@@ -149,6 +158,11 @@ OIDC_USERS_DB_URI=postgresql://mlflow:pass@db:5432/mlflow_auth
 
 # Explicit secret key for multi-replica deployments
 SECRET_KEY=your-random-64-char-hex-string
+
+# Secure session cookies
+SESSION_COOKIE_MAX_AGE_SECONDS=0
+SESSION_COOKIE_SAMESITE=strict
+SESSION_COOKIE_SECURE=true
 
 # Disable API docs
 ENABLE_API_DOCS=false
