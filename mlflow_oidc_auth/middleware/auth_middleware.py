@@ -83,7 +83,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             else:
                 return False, None, "Invalid basic auth credentials"
         except Exception as e:
-            logger.error("Basic auth error: %s", type(e).__name__)
+            logger.error("Basic auth error: %s: %s", type(e).__name__, e, exc_info=True)
             return False, None, "Invalid basic auth format"
 
     async def _authenticate_bearer_token(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
@@ -107,7 +107,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             else:
                 return False, None, "Invalid token payload"
         except Exception as e:
-            logger.error("Bearer auth error: %s", type(e).__name__)
+            logger.error("Bearer auth error: %s: %s", type(e).__name__, e, exc_info=True)
             return False, None, "Invalid token"
 
     async def _authenticate_session(self, request: Request) -> Tuple[bool, Optional[str], str]:

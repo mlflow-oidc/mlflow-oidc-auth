@@ -45,16 +45,18 @@ def _get_oidc_jwks(force_refresh: bool = False) -> dict:
         if cached is not None:
             return cached
 
-    # Fetch outside the lock to avoid blocking other threads during HTTP I/O
+    # Fetch outside the lock to avoid blocking other threads during HTTP I/O.
+    # Timeouts are essential: without them, a hung IdP can block request threads
+    # until the OS-level TCP timeout (~2 minutes), causing cascading auth failures.
     try:
         logger.debug("Fetching OIDC discovery metadata")
-        metadata = requests.get(config.OIDC_DISCOVERY_URL).json()
+        metadata = requests.get(config.OIDC_DISCOVERY_URL, timeout=10).json()
         jwks_uri = metadata.get("jwks_uri")
         if not jwks_uri:
             raise ValueError("No jwks_uri found in OIDC discovery metadata")
 
         logger.debug("Fetching JWKS from %s", jwks_uri)
-        jwks = requests.get(jwks_uri).json()
+        jwks = requests.get(jwks_uri, timeout=10).json()
     except requests.exceptions.RequestException as e:
         logger.error("Failed to fetch OIDC JWKS: %s", e)
         raise
