@@ -173,6 +173,7 @@ For workspace-specific permission behavior, see [Workspaces](workspaces).
 Key points:
 - Workspace permissions serve a dual role: workspace access control **and** resource-level fallback
 - When workspaces are enabled, `DEFAULT_MLFLOW_PERMISSION` is not used as a resource fallback — workspace permissions take that role
+- With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`)
 - All workspace-isolated resources (experiments, models, webhooks, trash) are automatically scoped to the active workspace
 
 ## Configuration

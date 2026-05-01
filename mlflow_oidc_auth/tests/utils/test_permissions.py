@@ -547,6 +547,68 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
         self.assertEqual(result.permission, EDIT)
 
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_workspace_edit_fallback_allows_experiment_update_but_not_manage(self, mock_resolver):
+        """Workspace EDIT fallback grants update capability for existing experiments but not manage."""
+        from mlflow_oidc_auth.permissions import EDIT, READ
+
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"experiment": mock_builder},
+        ):
+            with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                    return_value="team-ws",
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                        return_value=EDIT,
+                    ):
+                        result = resolve_permission("experiment", "exp-1", "user1")
+
+        self.assertEqual(result.kind, "workspace")
+        self.assertEqual(result.permission, EDIT)
+        self.assertTrue(result.permission.can_update)
+        self.assertFalse(result.permission.can_manage)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_workspace_edit_fallback_allows_registered_model_update_but_not_manage(self, mock_resolver):
+        """Workspace EDIT fallback grants update capability for existing models but not manage."""
+        from mlflow_oidc_auth.permissions import EDIT, READ
+
+        mock_builder = MagicMock()
+        mock_sources = {"user": MagicMock()}
+        mock_builder.return_value = mock_sources
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"registered_model": mock_builder},
+        ):
+            with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                    return_value="team-ws",
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                        return_value=EDIT,
+                    ):
+                        result = resolve_permission("registered_model", "model-a", "user1")
+
+        self.assertEqual(result.kind, "workspace")
+        self.assertEqual(result.permission, EDIT)
+        self.assertTrue(result.permission.can_update)
+        self.assertFalse(result.permission.can_manage)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
     def test_fallback_workspaces_enabled_no_permission_returns_no_permissions(self, mock_resolver):
         """When fallback + workspaces enabled + no workspace perm → returns NO_PERMISSIONS."""
         from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ

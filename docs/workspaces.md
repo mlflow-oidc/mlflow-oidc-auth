@@ -115,8 +115,24 @@ Result: Access denied (NO_PERMISSIONS)
 ### Implications
 
 - Granting `MANAGE` on a workspace means the user can manage **all resources** in that workspace that lack more specific permissions
+- Granting `EDIT` on a workspace allows updating existing experiments and registered models (via workspace fallback) but **does not** allow creating new experiments or models
 - To restrict access to specific resources within a workspace, assign explicit resource-level permissions (they always take priority over the workspace fallback)
 - The workspace fallback only applies when `MLFLOW_ENABLE_WORKSPACES=true`
+
+### Creation vs Update Behavior
+
+With workspaces enabled, creation is intentionally stricter than update:
+
+- `CreateExperiment` requires workspace `MANAGE`
+- `CreateRegisteredModel` requires workspace `MANAGE`
+- Updating existing experiments/models follows normal permission resolution, so workspace `EDIT` fallback is sufficient for update operations when no resource-level override exists
+
+This means the following setup allows users to edit existing resources but not create new ones:
+
+```bash
+MLFLOW_ENABLE_WORKSPACES=true
+OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT
+```
 
 ## `NO_PERMISSIONS` vs No Record
 
@@ -156,6 +172,8 @@ OIDC_WORKSPACE_DETECTION_PLUGIN=mypackage.workspace_detector
 # Permission level for auto-detected workspaces
 OIDC_WORKSPACE_DEFAULT_PERMISSION=READ
 ```
+
+If you set `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, newly auto-assigned users can modify existing resources in that workspace but cannot create new experiments or registered models until granted workspace `MANAGE`.
 
 ## Workspace Permission Cache
 
