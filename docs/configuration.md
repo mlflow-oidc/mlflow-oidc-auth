@@ -69,6 +69,7 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `OIDC_JWKS_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for the JWKS key set cache. The OIDC provider's signing keys are fetched once and cached for this duration. This is always a local in-process cache (not affected by `CACHE_BACKEND`) because JWKS data is identical across replicas |
+| `OIDC_HTTP_TIMEOUT_SECONDS` | Integer | `10` | Timeout (seconds) applied to OIDC discovery and JWKS HTTP fetches. Set lower for faster failover when the IdP is unreachable; without a timeout a hung IdP can block request threads until the OS-level TCP timeout (~2 minutes), causing cascading auth failures |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
 | `CACHE_BACKEND` | String | `local` | Cache backend for permission and workspace caches. Options: `local` (in-process TTL cache) or `redis` (shared Redis instance). Use `redis` for multi-replica deployments where permission changes must propagate immediately across all replicas |
 | `CACHE_REDIS_URL` | String | None | Redis connection URL. Required when `CACHE_BACKEND=redis`. Example: `redis://localhost:6379/0` or `redis://:password@redis-host:6379/1` |
