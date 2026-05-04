@@ -684,5 +684,135 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
         self.assertEqual(result.permission, READ)
 
 
+class TestEffectiveNewPermissionWorkspaceFallback(unittest.TestCase):
+    """Workspace-aware fallback for effective_new_*_permission (creation paths)."""
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_new_experiment_fallback_uses_workspace_permission(self, mock_resolver):
+        """Regex miss + workspaces enabled + workspace perm set → use workspace perm."""
+        from mlflow_oidc_auth.permissions import EDIT, READ
+        from mlflow_oidc_auth.utils.permissions import effective_new_experiment_permission
+
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            with patch(
+                "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                return_value="team-ws",
+            ):
+                with patch(
+                    "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                    return_value=EDIT,
+                ):
+                    result = effective_new_experiment_permission("new-exp", "user1")
+
+        self.assertEqual(result.kind, "workspace")
+        self.assertEqual(result.permission, EDIT)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_new_experiment_fallback_no_workspace_perm_denies(self, mock_resolver):
+        """Regex miss + workspaces enabled + no workspace perm → NO_PERMISSIONS deny."""
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
+        from mlflow_oidc_auth.utils.permissions import effective_new_experiment_permission
+
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            with patch(
+                "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                return_value="team-ws",
+            ):
+                with patch(
+                    "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                    return_value=None,
+                ):
+                    result = effective_new_experiment_permission("new-exp", "user1")
+
+        self.assertEqual(result.kind, "workspace-deny")
+        self.assertEqual(result.permission, NO_PERMISSIONS)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_new_experiment_regex_match_skips_workspace_check(self, mock_resolver):
+        """Regex match → use that permission, no workspace lookup."""
+        from mlflow_oidc_auth.permissions import MANAGE
+        from mlflow_oidc_auth.utils.permissions import effective_new_experiment_permission
+
+        mock_resolver.return_value = PermissionResult(MANAGE, "regex")
+
+        with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            with patch(
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+            ) as mock_cache:
+                result = effective_new_experiment_permission("new-exp", "user1")
+
+        self.assertEqual(result.kind, "regex")
+        self.assertEqual(result.permission, MANAGE)
+        mock_cache.assert_not_called()
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_new_experiment_workspaces_disabled_returns_default(self, mock_resolver):
+        """Regex miss + workspaces disabled → existing DEFAULT_MLFLOW_PERMISSION fallback preserved."""
+        from mlflow_oidc_auth.permissions import READ
+        from mlflow_oidc_auth.utils.permissions import effective_new_experiment_permission
+
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = False
+            result = effective_new_experiment_permission("new-exp", "user1")
+
+        self.assertEqual(result.kind, "fallback")
+        self.assertEqual(result.permission, READ)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_new_registered_model_fallback_uses_workspace_permission(self, mock_resolver):
+        """Same workspace-fallback contract for registered model creation."""
+        from mlflow_oidc_auth.permissions import EDIT, READ
+        from mlflow_oidc_auth.utils.permissions import effective_new_registered_model_permission
+
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            with patch(
+                "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                return_value="team-ws",
+            ):
+                with patch(
+                    "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                    return_value=EDIT,
+                ):
+                    result = effective_new_registered_model_permission("new-model", "user1")
+
+        self.assertEqual(result.kind, "workspace")
+        self.assertEqual(result.permission, EDIT)
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_new_registered_model_fallback_no_workspace_perm_denies(self, mock_resolver):
+        """No workspace perm on a workspace-enabled deployment → deny model creation."""
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
+        from mlflow_oidc_auth.utils.permissions import effective_new_registered_model_permission
+
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            with patch(
+                "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                return_value="team-ws",
+            ):
+                with patch(
+                    "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                    return_value=None,
+                ):
+                    result = effective_new_registered_model_permission("new-model", "user1")
+
+        self.assertEqual(result.kind, "workspace-deny")
+        self.assertEqual(result.permission, NO_PERMISSIONS)
+
+
 if __name__ == "__main__":
     unittest.main()

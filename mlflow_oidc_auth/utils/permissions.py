@@ -257,6 +257,30 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
 }
 
 
+def _apply_workspace_fallback(result: PermissionResult, username: str) -> PermissionResult:
+    """Replace a generic ``fallback`` result with the user's workspace permission.
+
+    Per WSAUTH-C/WSAUTH-04: when workspaces are enabled, a missing resource-level
+    permission must defer to the user's workspace permission instead of
+    ``DEFAULT_MLFLOW_PERMISSION``. If the user has no permission on the request
+    workspace, deny by returning ``NO_PERMISSIONS`` with kind ``workspace-deny``.
+    """
+    if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
+        return result
+
+    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    workspace = get_request_workspace()
+    if workspace is None:
+        return result
+
+    ws_perm = get_workspace_permission_cached(username, workspace)
+    if ws_perm is not None:
+        return PermissionResult(ws_perm, "workspace")
+    return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+
+
 def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs) -> PermissionResult:
     """Single entry point for all permission resolution. Per D-01 (REFAC-01).
 
@@ -273,21 +297,7 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     builder = PERMISSION_REGISTRY[resource_type]
     sources_config = builder(resource_id, username, **kwargs)
     result = get_permission_from_store_or_default(sources_config)
-
-    # Workspace fallback: when no resource-level permission found (per WSAUTH-C/WSAUTH-04)
-    if result.kind == "fallback" and config.MLFLOW_ENABLE_WORKSPACES:
-        from mlflow_oidc_auth.bridge.user import get_request_workspace
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            get_workspace_permission_cached,
-        )
-
-        workspace = get_request_workspace()
-        if workspace:
-            ws_perm = get_workspace_permission_cached(username, workspace)
-            if ws_perm is not None:
-                result = PermissionResult(ws_perm, "workspace")
-            else:
-                result = PermissionResult(NO_PERMISSIONS, "workspace-deny")
+    result = _apply_workspace_fallback(result, username)
 
     cache.set(cache_key, result)
     return result
@@ -331,13 +341,25 @@ def _permission_new_registered_model_sources_config(model_name: str, username: s
 
 
 def effective_new_experiment_permission(experiment_name: str, user: str) -> PermissionResult:
-    """Resolve permission for creating a new experiment by name."""
-    return get_permission_from_store_or_default(_permission_new_experiment_sources_config(experiment_name, user))
+    """Resolve permission for creating a new experiment by name.
+
+    When workspaces are enabled, a regex/group-regex miss falls back to the
+    user's workspace permission (or NO_PERMISSIONS if absent), matching the
+    contract enforced by ``resolve_permission`` for existing resources.
+    """
+    result = get_permission_from_store_or_default(_permission_new_experiment_sources_config(experiment_name, user))
+    return _apply_workspace_fallback(result, user)
 
 
 def effective_new_registered_model_permission(model_name: str, user: str) -> PermissionResult:
-    """Resolve permission for creating a new registered model by name."""
-    return get_permission_from_store_or_default(_permission_new_registered_model_sources_config(model_name, user))
+    """Resolve permission for creating a new registered model by name.
+
+    When workspaces are enabled, a regex/group-regex miss falls back to the
+    user's workspace permission (or NO_PERMISSIONS if absent), matching the
+    contract enforced by ``resolve_permission`` for existing resources.
+    """
+    result = get_permission_from_store_or_default(_permission_new_registered_model_sources_config(model_name, user))
+    return _apply_workspace_fallback(result, user)
 
 
 def effective_experiment_permission(experiment_id: str, user: str) -> PermissionResult:

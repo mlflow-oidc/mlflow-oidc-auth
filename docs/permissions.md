@@ -133,7 +133,9 @@ Since the resource does not exist yet at creation time, only **name-based** perm
 
 1. **`regex`** — user-specific regex patterns matched against the new resource name
 2. **`group-regex`** — group-based regex patterns matched against the new resource name
-3. **Fallback** — `DEFAULT_MLFLOW_PERMISSION` if no regex pattern matches
+3. **Fallback**:
+   - If workspaces enabled → use the user's workspace permission (or deny if the user has no permission on the request workspace)
+   - If workspaces disabled → use `DEFAULT_MLFLOW_PERMISSION`
 
 > **Note:** The `user` and `group` sources are not used for creation checks because they are tied to existing resources (by experiment ID or model name) that don't exist yet.
 
