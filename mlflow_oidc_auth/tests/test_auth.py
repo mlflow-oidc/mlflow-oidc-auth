@@ -27,6 +27,7 @@ class TestGetOidcJwks:
     def test_get_oidc_jwks_success(self, mock_config, mock_requests):
         """Test successful JWKS retrieval from OIDC provider"""
         mock_config.OIDC_DISCOVERY_URL = "https://example.com/.well-known/openid_configuration"
+        mock_config.OIDC_HTTP_TIMEOUT_SECONDS = 10
 
         discovery_response = MagicMock()
         discovery_response.json.return_value = {"jwks_uri": "https://example.com/jwks"}
@@ -38,9 +39,28 @@ class TestGetOidcJwks:
         result = _get_oidc_jwks()
 
         assert mock_requests.get.call_count == 2
-        mock_requests.get.assert_any_call("https://example.com/.well-known/openid_configuration")
-        mock_requests.get.assert_any_call("https://example.com/jwks")
+        mock_requests.get.assert_any_call("https://example.com/.well-known/openid_configuration", timeout=10)
+        mock_requests.get.assert_any_call("https://example.com/jwks", timeout=10)
         assert result == {"keys": [{"kty": "RSA", "kid": "test"}]}
+
+    @patch("mlflow_oidc_auth.auth.requests")
+    @patch("mlflow_oidc_auth.auth.config")
+    def test_get_oidc_jwks_uses_configured_timeout(self, mock_config, mock_requests):
+        """Test that OIDC_HTTP_TIMEOUT_SECONDS overrides the default timeout"""
+        mock_config.OIDC_DISCOVERY_URL = "https://example.com/.well-known/openid_configuration"
+        mock_config.OIDC_HTTP_TIMEOUT_SECONDS = 3
+
+        discovery_response = MagicMock()
+        discovery_response.json.return_value = {"jwks_uri": "https://example.com/jwks"}
+        jwks_response = MagicMock()
+        jwks_response.json.return_value = {"keys": []}
+
+        mock_requests.get.side_effect = [discovery_response, jwks_response]
+
+        _get_oidc_jwks()
+
+        for call in mock_requests.get.call_args_list:
+            assert call.kwargs.get("timeout") == 3
 
     @patch("mlflow_oidc_auth.auth.requests")
     @patch("mlflow_oidc_auth.auth.config")
