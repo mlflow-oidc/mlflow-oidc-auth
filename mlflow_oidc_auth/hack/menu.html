@@ -130,7 +130,9 @@
         document.addEventListener("DOMContentLoaded", function () {
             getJSON("api/2.0/mlflow/users/current", function (err, res) {
                 if (err) { console.error("Error fetching username:", err); return; }
-                waitForElement('a[href="#/settings"]', function (settingsLink) {
+                // Prefix-match: newer MLflow versions land on sub-routes like
+                // "#/settings/general?returnTo=%2F" instead of plain "#/settings".
+                waitForElement('a[href^="#/settings"]', function (settingsLink) {
                     injectMenu(res.display_name, settingsLink);
                 });
             });
