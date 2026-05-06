@@ -29,6 +29,10 @@ export function _resetReauthForTests(): void {
  * can return the user to where they were. Skips the redirect on the auth
  * feature page itself, which legitimately receives 401-ish responses while
  * a logged-out user is on it.
+ *
+ * The login endpoint lives at ``<basePath>/login``, NOT under the SPA's
+ * ``<base href>`` (which is ``<basePath>/oidc/ui/``). Use the runtime
+ * config's ``basePath`` to get the proxy prefix.
  */
 function triggerReauth(): void {
   if (reauthTriggered) return;
@@ -36,11 +40,12 @@ function triggerReauth(): void {
   const pathname = window.location.pathname;
   if (pathname.includes("/oidc/ui/auth")) return;
   reauthTriggered = true;
-  const baseHref = document.querySelector("base")?.getAttribute("href") ?? "/";
+  const runtime = (window as { __RUNTIME_CONFIG__?: { basePath?: string } })
+    .__RUNTIME_CONFIG__;
+  const basePath = (runtime?.basePath ?? "").replace(/\/$/, "");
   const next =
     window.location.pathname + window.location.search + window.location.hash;
-  const loginUrl =
-    baseHref.replace(/\/$/, "") + "/login?next=" + encodeURIComponent(next);
+  const loginUrl = basePath + "/login?next=" + encodeURIComponent(next);
   window.location.assign(loginUrl);
 }
 

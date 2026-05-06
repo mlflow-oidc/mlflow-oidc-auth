@@ -146,8 +146,8 @@ describe("http", () => {
           assign: assignSpy,
         },
       });
-      // Ensure no <base> element from a prior test.
-      document.head.querySelector("base")?.remove();
+      // Reset runtime config between tests.
+      delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;
     });
 
     afterEachRestoreLocation: {
@@ -234,10 +234,10 @@ describe("http", () => {
       expect(assignSpy).toHaveBeenCalledTimes(1);
     });
 
-    it("respects <base href> when computing the login URL", async () => {
-      const baseEl = document.createElement("base");
-      baseEl.setAttribute("href", "/proxy/path/");
-      document.head.appendChild(baseEl);
+    it("uses runtime config basePath for the login URL behind a proxy", async () => {
+      (window as { __RUNTIME_CONFIG__?: { basePath?: string } }).__RUNTIME_CONFIG__ = {
+        basePath: "/proxy/path",
+      };
 
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
@@ -250,6 +250,29 @@ describe("http", () => {
       await expect(http("/api/users")).rejects.toThrow("HTTP 401");
       expect(assignSpy).toHaveBeenCalledWith(
         "/proxy/path/login?next=" + encodeURIComponent("/oidc/ui/users"),
+      );
+    });
+
+    it("ignores <base href> (which points at /oidc/ui/) when redirecting", async () => {
+      // The plugin SPA's <base href> is the UI mount point — not the right
+      // anchor for /login, which lives at <basePath>/login.
+      const baseEl = document.createElement("base");
+      baseEl.setAttribute("href", "/oidc/ui/");
+      document.head.appendChild(baseEl);
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      // Falls back to root because no runtime config is set, so /login (NOT
+      // /oidc/ui/login) is what gets called.
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/login?next=" + encodeURIComponent("/oidc/ui/users"),
       );
 
       baseEl.remove();
