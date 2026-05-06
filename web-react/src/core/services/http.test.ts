@@ -141,6 +141,8 @@ describe("http", () => {
         value: {
           ...originalLocation,
           pathname: "/oidc/ui/users",
+          search: "",
+          hash: "",
           assign: assignSpy,
         },
       });
@@ -153,7 +155,7 @@ describe("http", () => {
       // so explicit restore isn't required.
     }
 
-    it("redirects to /login on 401 from a non-auth page", async () => {
+    it("redirects to /login with ?next= on 401 from a non-auth page", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 401,
@@ -164,13 +166,47 @@ describe("http", () => {
 
       await expect(http("/api/users")).rejects.toThrow("HTTP 401");
       expect(assignSpy).toHaveBeenCalledTimes(1);
-      expect(assignSpy).toHaveBeenCalledWith("/login");
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/login?next=" + encodeURIComponent("/oidc/ui/users"),
+      );
+    });
+
+    it("preserves search and hash in ?next=", async () => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "/",
+          search: "?tab=runs",
+          hash: "#/experiments/0",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/login?next=" + encodeURIComponent("/?tab=runs#/experiments/0"),
+      );
     });
 
     it("does not redirect when already on the auth feature page", async () => {
       Object.defineProperty(window, "location", {
         configurable: true,
-        value: { ...window.location, pathname: "/oidc/ui/auth", assign: assignSpy },
+        value: {
+          ...window.location,
+          pathname: "/oidc/ui/auth",
+          search: "",
+          hash: "",
+          assign: assignSpy,
+        },
       });
 
       vi.mocked(fetch).mockResolvedValue({
@@ -212,7 +248,9 @@ describe("http", () => {
       } as Response);
 
       await expect(http("/api/users")).rejects.toThrow("HTTP 401");
-      expect(assignSpy).toHaveBeenCalledWith("/proxy/path/login");
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/proxy/path/login?next=" + encodeURIComponent("/oidc/ui/users"),
+      );
 
       baseEl.remove();
     });

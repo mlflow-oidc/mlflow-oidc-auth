@@ -456,17 +456,21 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_handle_auth_redirect_automatic_login(self, auth_middleware, create_mock_request, mock_config):
-        """Test authentication redirect with automatic login enabled."""
+        """Test authentication redirect with automatic login enabled.
+
+        Includes the ``?next=<original-path>`` round-trip so the user lands
+        back on the page they tried to load instead of the root.
+        """
         mock_config.AUTOMATIC_LOGIN_REDIRECT = True
 
         with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
-            request = create_mock_request()
+            request = create_mock_request(path="/protected")
 
             response = await auth_middleware._handle_auth_redirect(request)
 
             assert isinstance(response, RedirectResponse)
             assert response.status_code == 302
-            assert response.headers["location"] == "/login"
+            assert response.headers["location"] == "/login?next=%2Fprotected"
 
     @pytest.mark.asyncio
     async def test_handle_auth_redirect_no_automatic_login(self, auth_middleware, create_mock_request, mock_config):
@@ -566,7 +570,7 @@ class TestAuthMiddleware:
 
             assert isinstance(response, RedirectResponse)
             assert response.status_code == 302
-            assert response.headers["location"] == "/login"
+            assert response.headers["location"] == "/login?next=%2Fprotected"
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_user_oidc_ui_redirect(self, auth_middleware, create_mock_request, mock_config):
@@ -588,6 +592,24 @@ class TestAuthMiddleware:
             assert isinstance(response, RedirectResponse)
             assert response.status_code == 302
             assert response.headers["location"] == "/oidc/ui"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_unauthenticated_user_preserves_query_string_in_next(self, auth_middleware, create_mock_request, mock_config):
+        """Query string is forwarded as part of ?next= so deep links survive re-auth."""
+        mock_config.AUTOMATIC_LOGIN_REDIRECT = True
+
+        with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
+            request = create_mock_request(
+                path="/protected",
+                session={},
+                headers={"sec-fetch-dest": "document"},
+            )
+            request.url.query = "tab=runs&id=42"
+
+            response = await auth_middleware.dispatch(request, lambda r: pytest.fail("nope"))
+
+            assert isinstance(response, RedirectResponse)
+            assert response.headers["location"] == "/login?next=%2Fprotected%3Ftab%3Druns%26id%3D42"
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_subresource_returns_401(self, auth_middleware, create_mock_request, mock_config):

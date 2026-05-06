@@ -25,8 +25,10 @@ export function _resetReauthForTests(): void {
  * Navigate to the OIDC login flow once on 401. /oidc/ui is in the auth
  * middleware's unprotected prefix list, so a plain reload would just bring
  * the SPA back into the same broken state — we have to actively redirect to
- * /login. Skips the redirect on the auth feature page itself, which legitimately
- * receives 401-ish responses while a logged-out user is on it.
+ * /login. Forwards the current path/search/hash as ?next= so the callback
+ * can return the user to where they were. Skips the redirect on the auth
+ * feature page itself, which legitimately receives 401-ish responses while
+ * a logged-out user is on it.
  */
 function triggerReauth(): void {
   if (reauthTriggered) return;
@@ -35,7 +37,10 @@ function triggerReauth(): void {
   if (pathname.includes("/oidc/ui/auth")) return;
   reauthTriggered = true;
   const baseHref = document.querySelector("base")?.getAttribute("href") ?? "/";
-  const loginUrl = baseHref.replace(/\/$/, "") + "/login";
+  const next =
+    window.location.pathname + window.location.search + window.location.hash;
+  const loginUrl =
+    baseHref.replace(/\/$/, "") + "/login?next=" + encodeURIComponent(next);
   window.location.assign(loginUrl);
 }
 

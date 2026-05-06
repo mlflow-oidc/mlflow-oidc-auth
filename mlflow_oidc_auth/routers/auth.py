@@ -189,6 +189,28 @@ def _persist_session_auth(session, token_response: dict[str, Any]) -> None:
         session.pop("refresh_token", None)
 
 
+def _sanitize_next(value: Optional[str]) -> Optional[str]:
+    """Validate a ``next`` redirect target. Only same-origin relative paths are
+    accepted to prevent open-redirect attacks. Returns None on rejection.
+
+    Accepts: ``/users``, ``/oidc/ui/groups``, ``/#/experiments/0``.
+    Rejects: ``http://evil``, ``//evil``, ``javascript:...``, anything not starting
+    with a single ``/``.
+    """
+
+    if not value:
+        return None
+    if not isinstance(value, str):
+        return None
+    if not value.startswith("/"):
+        return None
+    if value.startswith("//"):  # protocol-relative URL — would escape origin
+        return None
+    if "\n" in value or "\r" in value:  # header-injection guard
+        return None
+    return value
+
+
 def _build_ui_url(request: Request, path: str, query_params: Optional[dict] = None) -> str:
     """
     Build a UI URL with the correct prefix and optional query parameters.
@@ -241,6 +263,13 @@ async def login(request: Request):
         # Generate OAuth state for CSRF protection
         oauth_state = secrets.token_urlsafe(32)
         session["oauth_state"] = oauth_state
+
+        # Capture an optional ?next= return target so the callback can return
+        # the user to where they were before the session expired. Validated to
+        # be a same-origin relative path; anything else is dropped silently.
+        next_target = _sanitize_next(request.query_params.get("next"))
+        if next_target:
+            session["redirect_after_login"] = next_target
 
         # Get redirect URI (configured or dynamic). Use a safe fallback if dynamic calculation fails
         try:

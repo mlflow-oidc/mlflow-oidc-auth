@@ -965,8 +965,10 @@ class TestReauthInjection:
         assert os.path.isfile(snippet_path)
         with open(snippet_path) as f:
             content = f.read()
-        # Spot-check: the snippet should patch fetch and XHR and act on a 401.
+        # Spot-check: the snippet should patch fetch and XHR, react to a 401,
+        # and forward the current location to /login as ?next=.
         assert "window.fetch" in content
         assert "XMLHttpRequest.prototype.send" in content
         assert "401" in content
-        assert "window.location.reload" in content
+        assert "/login?next=" in content
+        assert "window.location.hash" in content

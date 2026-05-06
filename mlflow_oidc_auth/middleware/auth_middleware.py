@@ -227,6 +227,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """
         Handle authentication redirect for unauthenticated users.
 
+        Forwards the original request path (and query string) as ``?next=`` so
+        the post-login callback can return the user to where they were instead
+        of dumping them at the root.
+
         Args:
             request: FastAPI request object
 
@@ -234,12 +238,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
             Appropriate response (redirect or auth page)
         """
         # Import here to avoid circular imports
+        from urllib.parse import quote
+
         from mlflow_oidc_auth.utils import get_base_path
 
         base_path = await get_base_path(request)
 
+        # Reconstruct the original target so the user is returned to it after
+        # IdP login. We can only see path + query server-side; the SPA layer
+        # also forwards the URL fragment for hash-routed apps like MLflow.
+        target = request.url.path
+        query = request.url.query
+        if query and isinstance(query, str):
+            target = f"{target}?{query}"
+        next_param = f"?next={quote(target, safe='')}"
+
         if config.AUTOMATIC_LOGIN_REDIRECT:
-            login_url = f"{base_path}/login"
+            login_url = f"{base_path}/login{next_param}"
             return RedirectResponse(url=login_url, status_code=302)
 
         ui_url = f"{base_path}/oidc/ui"

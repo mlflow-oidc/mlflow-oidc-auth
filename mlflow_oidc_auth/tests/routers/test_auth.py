@@ -111,6 +111,40 @@ class TestLoginEndpoint:
             )
 
     @pytest.mark.asyncio
+    async def test_login_captures_safe_next_param(self, mock_request_with_session, mock_oauth, mock_config):
+        """``/login?next=<relative-path>`` is stored so the callback can return there."""
+        request = mock_request_with_session({"oauth_state": None})
+        request.query_params = {"next": "/oidc/ui/groups"}
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri") as mock_redirect,
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+        ):
+            mock_redirect.return_value = "http://localhost:8000/callback"
+            await login(request)
+
+        assert request.session["redirect_after_login"] == "/oidc/ui/groups"
+
+    @pytest.mark.asyncio
+    async def test_login_drops_unsafe_next_param(self, mock_request_with_session, mock_oauth, mock_config):
+        """Open-redirect targets must be ignored."""
+        request = mock_request_with_session({"oauth_state": None})
+        request.query_params = {"next": "https://attacker.example/steal"}
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri") as mock_redirect,
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+        ):
+            mock_redirect.return_value = "http://localhost:8000/callback"
+            await login(request)
+
+        assert "redirect_after_login" not in request.session
+
+    @pytest.mark.asyncio
     async def test_login_oauth_not_configured(self, mock_request_with_session):
         """Test login when OAuth client is not properly configured."""
         request = mock_request_with_session()
@@ -797,3 +831,47 @@ class TestProcessCallbackPersistsExpiry:
         assert email == "test@example.com"
         assert request.session["expires_at"] == 9999999999
         assert request.session["refresh_token"] == "rt-xyz"
+
+
+class TestSanitizeNext:
+    """Validate the open-redirect guard on the ?next= query param."""
+
+    def test_accepts_relative_path(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("/oidc/ui/groups") == "/oidc/ui/groups"
+
+    def test_accepts_path_with_search_and_hash(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("/?tab=runs#/experiments/0") == "/?tab=runs#/experiments/0"
+
+    def test_rejects_absolute_url(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("https://attacker.example/steal") is None
+        assert _sanitize_next("http://attacker.example/") is None
+
+    def test_rejects_protocol_relative(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        # //evil.example escapes origin in browsers — must reject.
+        assert _sanitize_next("//evil.example/path") is None
+
+    def test_rejects_javascript_scheme(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("javascript:alert(1)") is None
+
+    def test_rejects_header_injection_chars(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("/path\nLocation: http://evil") is None
+        assert _sanitize_next("/path\rfoo") is None
+
+    def test_rejects_empty_and_none(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next(None) is None
+        assert _sanitize_next("") is None
+        assert _sanitize_next("no-leading-slash") is None

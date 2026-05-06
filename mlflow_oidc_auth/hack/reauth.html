@@ -12,7 +12,15 @@
         function reauth() {
             if (triggered) return;
             triggered = true;
-            window.location.reload();
+            // Forward path + search + hash so the post-login callback can
+            // return the user to where they were. MLflow uses hash routing,
+            // so the hash is essential — without it they'd land at the root.
+            var next = window.location.pathname + window.location.search + window.location.hash;
+            var baseHref = (document.querySelector("base") || {}).getAttribute
+                ? document.querySelector("base").getAttribute("href")
+                : "/";
+            baseHref = (baseHref || "/").replace(/\/$/, "");
+            window.location.assign(baseHref + "/login?next=" + encodeURIComponent(next));
         }
 
         if (typeof window.fetch === "function") {
