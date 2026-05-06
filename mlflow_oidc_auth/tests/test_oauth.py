@@ -406,5 +406,45 @@ class TestOAuthSecurity(unittest.TestCase):
         self.assertTrue(hasattr(mlflow_oidc_auth.oauth.oauth, "register"))
 
 
+class TestBuildScope(unittest.TestCase):
+    """Test the ``_build_scope`` helper that adds ``offline_access`` when refresh is enabled."""
+
+    def test_no_offline_access_when_refresh_disabled(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,email,profile", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid,email,profile")
+
+    def test_appends_offline_access_to_csv_scope(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", True, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,email,profile", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid,email,profile,offline_access")
+
+    def test_appends_offline_access_to_space_separated_scope(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", True, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid email profile", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile offline_access")
+
+    def test_does_not_duplicate_offline_access(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", True, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,offline_access,email", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid,offline_access,email")
+
+
 if __name__ == "__main__":
     unittest.main()

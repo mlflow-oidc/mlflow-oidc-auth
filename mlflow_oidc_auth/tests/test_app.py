@@ -538,9 +538,10 @@ class TestAppErrorHandling:
             mock_getattr.return_value = True
 
             # Since testing actual import failures is complex and can affect other imports,
-            # we'll test the behavior when EXTEND_MLFLOW_MENU is False instead
-            # This ensures the hack import code path is not executed
+            # we'll test the behavior when EXTEND_MLFLOW_MENU and EXTEND_MLFLOW_REAUTH
+            # are both False — this ensures the hack import code path is not executed.
             mock_config.EXTEND_MLFLOW_MENU = False
+            mock_config.EXTEND_MLFLOW_REAUTH = False
             mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
             # Call the function

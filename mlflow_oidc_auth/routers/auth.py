@@ -5,6 +5,7 @@ This router handles OIDC authentication flows including login, logout, and callb
 """
 
 import secrets
+import time
 from collections.abc import Awaitable
 from typing import Any, Optional
 from urllib.parse import urlencode
@@ -97,6 +98,95 @@ async def _authorize_access_token_with_retry(
     if last_error:
         raise last_error
     return None
+
+
+async def refresh_session_with_idp(session) -> bool:
+    """Attempt to refresh an expired session against the IdP using the stored refresh token.
+
+    Returns True on success (session updated in place with new ``expires_at`` and,
+    when rotated, a new ``refresh_token``). Returns False on any failure — the
+    caller is expected to clear the session and force re-authentication.
+
+    No-op (returns False) when ``OIDC_USE_REFRESH_TOKEN`` is disabled or no
+    refresh token is stored, so this is safe to call unconditionally from the
+    middleware.
+    """
+
+    if not config.OIDC_USE_REFRESH_TOKEN:
+        return False
+
+    refresh_token = session.get("refresh_token") if session is not None else None
+    if not refresh_token:
+        return False
+
+    fetch_fn = getattr(oauth.oidc, "fetch_access_token", None)
+    if fetch_fn is None:
+        logger.warning("OIDC client has no fetch_access_token; cannot refresh session")
+        return False
+
+    try:
+        new_token = await _maybe_await(fetch_fn(grant_type="refresh_token", refresh_token=refresh_token))
+    except Exception as exc:
+        logger.warning("OIDC refresh token exchange failed: %s", exc)
+        return False
+
+    if not new_token:
+        return False
+
+    _persist_session_auth(session, new_token)
+    return True
+
+
+def _extract_session_expiry(token_response: dict[str, Any]) -> Optional[int]:
+    """Extract the session expiry timestamp (Unix seconds) from an OIDC token response.
+
+    Prefers ``expires_at`` (set by Authlib from ``expires_in``), then the ``exp``
+    claim of the validated id_token, then falls back to computing
+    ``now + expires_in``. Returns None when no expiry information is available
+    (in which case the caller should leave the session unchanged so behaviour
+    matches the legacy ~14-day cookie window).
+    """
+
+    expires_at = token_response.get("expires_at")
+    if isinstance(expires_at, (int, float)) and expires_at > 0:
+        return int(expires_at)
+
+    userinfo = token_response.get("userinfo") or {}
+    id_token_exp = userinfo.get("exp")
+    if isinstance(id_token_exp, (int, float)) and id_token_exp > 0:
+        return int(id_token_exp)
+
+    expires_in = token_response.get("expires_in")
+    if isinstance(expires_in, (int, float)) and expires_in > 0:
+        return int(time.time()) + int(expires_in)
+
+    return None
+
+
+def _persist_session_auth(session, token_response: dict[str, Any]) -> None:
+    """Store IdP-issued expiry (and optionally the refresh token) in the session.
+
+    Called after a successful OIDC token exchange. ``OIDC_USE_REFRESH_TOKEN``
+    gates persistence of the refresh token because storing one in a signed
+    (but not encrypted) cookie has security implications, and many enterprises
+    disallow ``offline_access`` outright.
+    """
+
+    expiry = _extract_session_expiry(token_response)
+    if expiry is not None:
+        session["expires_at"] = expiry
+    else:
+        # No reliable expiry from the IdP; remove any stale value from a prior login.
+        session.pop("expires_at", None)
+
+    if config.OIDC_USE_REFRESH_TOKEN:
+        refresh_token = token_response.get("refresh_token")
+        if refresh_token:
+            session["refresh_token"] = refresh_token
+        else:
+            session.pop("refresh_token", None)
+    else:
+        session.pop("refresh_token", None)
 
 
 def _build_ui_url(request: Request, path: str, query_params: Optional[dict] = None) -> str:
@@ -517,6 +607,8 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             logger.error(f"User/group management error: {str(e)}")
             errors.append("Failed to update user/groups")
             return None, errors
+
+        _persist_session_auth(session, token_response)
 
         return email.lower(), []
 

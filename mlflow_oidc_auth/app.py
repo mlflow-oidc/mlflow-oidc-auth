@@ -193,8 +193,10 @@ def create_app() -> FastAPI:
     for router in get_all_routers():
         oidc_app.include_router(router)
 
-    # Add links to MLFlow UI
-    if config.EXTEND_MLFLOW_MENU:
+    # Inject into MLflow's index.html when the menu links or the re-auth helper
+    # are enabled. Both live in the same hack module to keep injection ordering
+    # predictable.
+    if config.EXTEND_MLFLOW_MENU or config.EXTEND_MLFLOW_REAUTH:
         from mlflow_oidc_auth import hack
 
         app.view_functions["serve"] = hack.index

@@ -30,6 +30,26 @@ def _has_required_config() -> bool:
     return bool(config.OIDC_CLIENT_ID and config.OIDC_CLIENT_SECRET and config.OIDC_DISCOVERY_URL)
 
 
+def _build_scope() -> str:
+    """Build the OIDC scope string, adding ``offline_access`` if refresh is enabled.
+
+    Authlib accepts either comma- or space-separated scopes. We normalise to the
+    same separator the user configured to keep the rendered authorize URL
+    predictable, while making sure ``offline_access`` is present when the
+    refresh-token flow is enabled.
+    """
+
+    raw = config.OIDC_SCOPE or ""
+    if not config.OIDC_USE_REFRESH_TOKEN:
+        return raw
+
+    separator = "," if "," in raw else " "
+    scopes = [s.strip() for s in raw.replace(",", " ").split() if s.strip()]
+    if "offline_access" not in scopes:
+        scopes.append("offline_access")
+    return separator.join(scopes)
+
+
 def ensure_oidc_client_registered() -> bool:
     """Ensure the 'oidc' client is registered.
 
@@ -50,7 +70,7 @@ def ensure_oidc_client_registered() -> bool:
             client_id=config.OIDC_CLIENT_ID,
             client_secret=config.OIDC_CLIENT_SECRET,
             server_metadata_url=config.OIDC_DISCOVERY_URL,
-            client_kwargs={"scope": config.OIDC_SCOPE},
+            client_kwargs={"scope": _build_scope()},
         )
         _oidc_client_registered = True
         return True

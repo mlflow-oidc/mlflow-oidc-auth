@@ -459,8 +459,11 @@ class TestUIRouterIntegration:
                 # Attempt path traversal
                 response = client.get("/oidc/ui/../../../etc/passwd")
 
-                # Router may either return the SPA (200) or reject access (403)
-                assert response.status_code in [200, 403, 404]
+                # Acceptable outcomes: serve the SPA (200), reject (401/403/404).
+                # 401 is the AuthMiddleware's response when an unauthenticated
+                # subresource fetch falls outside the unprotected /oidc/ui prefix —
+                # which is exactly what we want for a traversal attempt.
+                assert response.status_code in [200, 401, 403, 404]
 
                 if response.status_code == 200:
                     assert "UI" in response.text

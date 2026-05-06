@@ -8,6 +8,7 @@ Authorization (what the user can do) is handled by RBACMiddleware.
 
 from typing import Optional, Tuple
 import base64
+import time
 
 from fastapi import Request, Response
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -57,6 +58,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/redoc",
             "/openapi.json",
             "/oidc/ui",
+            # MLflow's React bundle is served from /static-files/<path:path> with
+            # content-addressed (hashed) filenames and ships publicly on PyPI.
+            # Letting it load unauthenticated lets a session-expired SPA finish
+            # loading chunks instead of dying with ChunkLoadError; the next
+            # navigation will redirect through the IdP for re-auth.
+            "/static-files",
         )
         return path.startswith(unprotected_prefixes)
 
@@ -114,6 +121,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """
         Authenticate using session.
 
+        Enforces the IdP-issued ``expires_at`` (set at OIDC callback) so a session
+        cannot outlive the underlying token. When ``OIDC_USE_REFRESH_TOKEN`` is
+        enabled and a refresh token is stored, an expired session is silently
+        refreshed against the IdP before being rejected.
+
         Args:
             request: FastAPI request object
 
@@ -126,9 +138,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 try:
                     session = request.session
                     username = session.get("username")
-                    if username:
-                        logger.debug(f"User {username} authenticated via session")
-                        return True, username, ""
+                    if not username:
+                        return False, None, "No session authentication"
+
+                    if self._is_session_expired(session):
+                        # Try a silent refresh first; only force re-login if it fails.
+                        from mlflow_oidc_auth.routers.auth import refresh_session_with_idp
+
+                        refreshed = await refresh_session_with_idp(session)
+                        if not refreshed:
+                            logger.info(
+                                "Session expired for user %s; clearing session to force re-authentication",
+                                username,
+                            )
+                            session.clear()
+                            return False, None, "Session expired"
+                        logger.debug(f"Session for {username} refreshed against IdP")
+
+                    logger.debug(f"User {username} authenticated via session")
+                    return True, username, ""
                 except Exception as session_error:
                     logger.debug("Session access error: %s", type(session_error).__name__)
                     return False, None, "Session access failed"
@@ -140,6 +168,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return False, None, "Session error"
 
         return False, None, "No session authentication"
+
+    @staticmethod
+    def _is_session_expired(session) -> bool:
+        """Return True when the IdP-issued ``expires_at`` (minus leeway) is in the past.
+
+        Returns False when no expiry is recorded — older sessions predating this
+        feature should keep working until the cookie TTL takes them out, instead
+        of being summarily logged out at deploy time.
+        """
+
+        expires_at = session.get("expires_at")
+        if not isinstance(expires_at, (int, float)):
+            return False
+        leeway = max(0, config.OIDC_SESSION_EXPIRY_LEEWAY_SECONDS)
+        return time.time() >= float(expires_at) - leeway
 
     async def _authenticate_user(self, request: Request) -> Tuple[bool, Optional[str], str]:
         """
@@ -255,4 +298,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     status_code=403,
                     content={"detail": "Administrator privileges required for this operation"},
                 )
+            # Only redirect top-level navigation requests. Subresource fetches
+            # (chunks, fetch/XHR, telemetry) must get 401 — otherwise the
+            # browser silently follows the 302 and hands HTML to the JS chunk
+            # loader / JSON.parse, breaking the SPA mid-session.
+            if not self._is_document_request(request):
+                return JSONResponse(status_code=401, content={"detail": "Authentication required"})
             return await self._handle_auth_redirect(request)
+
+    @staticmethod
+    def _is_document_request(request: Request) -> bool:
+        """Return True when the request is a top-level navigation (HTML document fetch).
+
+        Uses the ``Sec-Fetch-Dest`` header (sent by all modern browsers) and falls
+        back to the ``Accept`` header for clients that don't set it. Only document
+        requests should receive a 302 redirect to the login flow; everything else
+        (script/style/image/fetch/XHR) needs a 401 so the SPA can react instead
+        of receiving HTML in place of expected JSON or JS.
+        """
+
+        sec_fetch_dest = request.headers.get("sec-fetch-dest", "").lower()
+        if sec_fetch_dest:
+            return sec_fetch_dest == "document"
+        # Older clients without Sec-Fetch-Dest: trust Accept. fetch()/XHR usually
+        # send `application/json` or `*/*`; navigations send `text/html,...`.
+        accept = request.headers.get("accept", "").lower()
+        return "text/html" in accept
