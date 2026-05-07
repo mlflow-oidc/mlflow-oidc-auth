@@ -710,6 +710,20 @@ class TestPersistSessionAuth:
 
         assert "refresh_token" not in session
 
+    def test_keeps_existing_refresh_token_when_response_omits_one(self, mock_config):
+        """Many IdPs (Entra, some Keycloak configs) emit refresh_token only on
+        the initial token exchange and reuse the same one across refreshes.
+        Removing the stored token would break the next refresh."""
+        mock_config.OIDC_USE_REFRESH_TOKEN = True
+        session = {"refresh_token": "rt-original"}
+        token = {"expires_at": 9999999999}  # No refresh_token in the response
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            _persist_session_auth(session, token)
+
+        assert session["refresh_token"] == "rt-original"
+        assert session["expires_at"] == 9999999999
+
 
 class TestRefreshSessionWithIdP:
     """Test ``refresh_session_with_idp`` against the OAuth client."""

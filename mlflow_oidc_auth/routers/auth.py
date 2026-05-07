@@ -183,8 +183,10 @@ def _persist_session_auth(session, token_response: dict[str, Any]) -> None:
         refresh_token = token_response.get("refresh_token")
         if refresh_token:
             session["refresh_token"] = refresh_token
-        else:
-            session.pop("refresh_token", None)
+        # If the response has no refresh_token, keep the existing one. Many
+        # IdPs only emit refresh_token on the initial token exchange and reuse
+        # it across subsequent refreshes (Microsoft Entra, some Keycloak
+        # configs, etc.). Popping it here would break the next refresh.
     else:
         session.pop("refresh_token", None)
 
