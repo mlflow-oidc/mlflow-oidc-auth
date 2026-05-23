@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
@@ -10,7 +9,6 @@ from mlflow.utils.validation import _validate_username
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only, noload, selectinload
 from sqlalchemy.orm import Session
-from werkzeug.security import check_password_hash, generate_password_hash
 
 from mlflow_oidc_auth.db.models import SqlGroup, SqlUser
 from mlflow_oidc_auth.entities import User
@@ -24,18 +22,15 @@ class UserRepository:
     def create(
         self,
         username: str,
-        password: str,
         display_name: str,
         is_admin: bool = False,
         is_service_account: bool = False,
     ) -> User:
         _validate_username(username)
-        pwhash = generate_password_hash(password)
         with self._Session() as session:
             try:
                 u = SqlUser(
                     username=username,
-                    password_hash=pwhash,
                     display_name=display_name,
                     is_admin=is_admin,
                     is_service_account=is_service_account,
@@ -75,7 +70,6 @@ class UserRepository:
                         SqlUser.id,
                         SqlUser.username,
                         SqlUser.display_name,
-                        SqlUser.password_expiration,
                         SqlUser.is_admin,
                         SqlUser.is_service_account,
                     ),
@@ -97,8 +91,6 @@ class UserRepository:
                 id_=u.id,
                 username=u.username,
                 display_name=u.display_name,
-                password_hash="REDACTED",
-                password_expiration=u.password_expiration,
                 is_admin=u.is_admin,
                 is_service_account=u.is_service_account,
                 experiment_permissions=[],
@@ -132,19 +124,11 @@ class UserRepository:
     def update(
         self,
         username: str,
-        password: Optional[str] = None,
-        password_expiration: Optional[datetime] = None,
         is_admin: Optional[bool] = False,
         is_service_account: Optional[bool] = False,
     ) -> User:
-        from werkzeug.security import generate_password_hash
-
         with self._Session() as session:
             user = get_user(session, username)
-            if password is not None:
-                user.password_hash = generate_password_hash(password)
-            if password_expiration is not None:
-                user.password_expiration = password_expiration
             if is_admin is not None:
                 user.is_admin = is_admin
             if is_service_account is not None:
@@ -175,6 +159,7 @@ class UserRepository:
                 SqlScorerPermission,
                 SqlScorerRegexPermission,
                 SqlUserGroup,
+                SqlUserToken,
                 SqlWorkspacePermission,
                 SqlWorkspaceRegexPermission,
             )
@@ -211,21 +196,11 @@ class UserRepository:
             session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlWorkspaceRegexPermission).filter(SqlWorkspaceRegexPermission.user_id == user_id).delete(synchronize_session=False)
 
+            # User tokens
+            session.query(SqlUserToken).filter(SqlUserToken.user_id == user_id).delete(synchronize_session=False)
+
             # Group memberships
             session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user_id).delete(synchronize_session=False)
 
             session.delete(user)
             session.flush()
-
-    def authenticate(self, username: str, password: str) -> bool:
-        with self._Session() as session:
-            try:
-                user = get_user(session, username)
-                if user.password_expiration is not None:
-                    if user.password_expiration.tzinfo is None:
-                        user.password_expiration = user.password_expiration.replace(tzinfo=timezone.utc)
-                    if user.password_expiration < datetime.now(timezone.utc):
-                        return False
-                return check_password_hash(getattr(user, "password_hash"), password)
-            except MlflowException:
-                return False

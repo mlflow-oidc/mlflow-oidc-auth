@@ -1,9 +1,13 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mlflow_oidc_auth.db.models._base import Base
+
+if TYPE_CHECKING:
+    from mlflow_oidc_auth.db.models.user_token import SqlUserToken
 from mlflow_oidc_auth.db.models.experiment import SqlExperimentPermission
 from mlflow_oidc_auth.db.models.gateway_endpoint import SqlGatewayEndpointPermission
 from mlflow_oidc_auth.db.models.gateway_model_definition import SqlGatewayModelDefinitionPermission
@@ -18,8 +22,6 @@ class SqlUser(Base):
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     username: Mapped[str] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_expiration: Mapped[datetime] = mapped_column(nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
     experiment_permissions: Mapped[list["SqlExperimentPermission"]] = relationship("SqlExperimentPermission", backref="users")
@@ -35,14 +37,13 @@ class SqlUser(Base):
         secondary="user_groups",
         back_populates="users",
     )
+    tokens: Mapped[list["SqlUserToken"]] = relationship("SqlUserToken", back_populates="user")
 
     def to_mlflow_entity(self):
         return User(
             id_=self.id,
             username=self.username,
             display_name=self.display_name,
-            password_hash=self.password_hash,
-            password_expiration=self.password_expiration,
             is_admin=self.is_admin,
             is_service_account=self.is_service_account,
             experiment_permissions=[p.to_mlflow_entity() for p in self.experiment_permissions],
