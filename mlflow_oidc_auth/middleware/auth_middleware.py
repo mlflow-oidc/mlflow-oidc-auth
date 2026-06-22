@@ -13,6 +13,7 @@ import time
 from fastapi import Request, Response
 from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import HTMLResponse
 from starlette.types import ASGIApp
 
 from mlflow_oidc_auth.config import config
@@ -233,22 +234,32 @@ class AuthMiddleware(BaseHTTPMiddleware):
         the post-login callback can return the user to where they were instead
         of dumping them at the root.
 
+        When ``AUTOMATIC_LOGIN_REDIRECT`` is enabled, the response is a tiny
+        HTML page with inline JavaScript instead of a bare 302.  This gives the
+        browser a chance to capture ``window.location.hash`` — which is never
+        sent to the server (RFC 3986 §3.5) — and include it in the ``?next=``
+        parameter.  Without this, deep links that rely on hash-based routing
+        (e.g. ``/#/experiments/0``) lose the fragment during the redirect chain
+        and the user lands on the root page after login.
+
+        Browsers without JavaScript fall back to a ``<noscript>`` meta-refresh
+        that behaves identically to the previous 302 (the fragment is still
+        lost, but the login flow works).
+
         Args:
             request: FastAPI request object
 
         Returns:
             Appropriate response (redirect or auth page)
         """
-        # Import here to avoid circular imports
+        import json
+
         from urllib.parse import quote
 
         from mlflow_oidc_auth.utils import get_base_path
 
         base_path = await get_base_path(request)
 
-        # Reconstruct the original target so the user is returned to it after
-        # IdP login. We can only see path + query server-side; the SPA layer
-        # also forwards the URL fragment for hash-routed apps like MLflow.
         target = request.url.path
         query = request.url.query
         if query and isinstance(query, str):
@@ -256,8 +267,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
         next_param = f"?next={quote(target, safe='')}"
 
         if config.AUTOMATIC_LOGIN_REDIRECT:
-            login_url = f"{base_path}/login{next_param}"
-            return RedirectResponse(url=login_url, status_code=302)
+            login_path = f"{base_path}/login"
+            fallback_url = f"{login_path}{next_param}"
+            html = (
+                "<!DOCTYPE html><html><head>"
+                "<script>"
+                "(function(){"
+                f"var t={json.dumps(target)};"
+                "var h=window.location.hash;"
+                "if(h)t+=h;"
+                f"window.location.replace({json.dumps(login_path)}"
+                '+"?next="+encodeURIComponent(t));'
+                "})();"
+                "</script>"
+                f'<noscript><meta http-equiv="refresh" content="0;url={fallback_url}"></noscript>'
+                "</head>"
+                "<body>Redirecting\u2026</body></html>"
+            )
+            return HTMLResponse(content=html, status_code=200, headers={"Cache-Control": "no-store"})
 
         ui_url = f"{base_path}/oidc/ui"
         return RedirectResponse(url=ui_url, status_code=302)

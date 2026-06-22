@@ -458,8 +458,10 @@ class TestAuthMiddleware:
     async def test_handle_auth_redirect_automatic_login(self, auth_middleware, create_mock_request, mock_config):
         """Test authentication redirect with automatic login enabled.
 
-        Includes the ``?next=<original-path>`` round-trip so the user lands
-        back on the page they tried to load instead of the root.
+        Returns an HTML page with JavaScript that captures the URL fragment
+        before redirecting, so hash-routed deep links survive the login flow.
+        A ``<noscript>`` fallback provides the same ``?next=`` redirect for
+        clients without JavaScript.
         """
         mock_config.AUTOMATIC_LOGIN_REDIRECT = True
 
@@ -468,9 +470,14 @@ class TestAuthMiddleware:
 
             response = await auth_middleware._handle_auth_redirect(request)
 
-            assert isinstance(response, RedirectResponse)
-            assert response.status_code == 302
-            assert response.headers["location"] == "/login?next=%2Fprotected"
+            assert response.status_code == 200
+            assert response.headers["cache-control"] == "no-store"
+            body = response.body.decode()
+            assert "<script>" in body
+            assert "window.location.hash" in body
+            assert '"/login"' in body
+            assert "encodeURIComponent" in body
+            assert "/login?next=%2Fprotected" in body
 
     @pytest.mark.asyncio
     async def test_handle_auth_redirect_no_automatic_login(self, auth_middleware, create_mock_request, mock_config):
@@ -553,7 +560,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_user_automatic_redirect(self, auth_middleware, create_mock_request, mock_config):
-        """Document navigation requests redirect to login when auto-redirect is enabled."""
+        """Document navigation requests return an HTML fragment-capture page when auto-redirect is enabled."""
         mock_config.AUTOMATIC_LOGIN_REDIRECT = True
 
         with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
@@ -568,9 +575,10 @@ class TestAuthMiddleware:
 
             response = await auth_middleware.dispatch(request, mock_call_next)
 
-            assert isinstance(response, RedirectResponse)
-            assert response.status_code == 302
-            assert response.headers["location"] == "/login?next=%2Fprotected"
+            assert response.status_code == 200
+            body = response.body.decode()
+            assert "window.location.hash" in body
+            assert "/login?next=%2Fprotected" in body
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_user_oidc_ui_redirect(self, auth_middleware, create_mock_request, mock_config):
@@ -608,8 +616,10 @@ class TestAuthMiddleware:
 
             response = await auth_middleware.dispatch(request, lambda r: pytest.fail("nope"))
 
-            assert isinstance(response, RedirectResponse)
-            assert response.headers["location"] == "/login?next=%2Fprotected%3Ftab%3Druns%26id%3D42"
+            assert response.status_code == 200
+            body = response.body.decode()
+            assert "/protected?tab=runs&id=42" in body
+            assert "window.location.hash" in body
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_subresource_returns_401(self, auth_middleware, create_mock_request, mock_config):
@@ -653,7 +663,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_html_accept_redirects(self, auth_middleware, create_mock_request, mock_config):
-        """Without Sec-Fetch-Dest, an Accept: text/html header still redirects."""
+        """Without Sec-Fetch-Dest, an Accept: text/html header still triggers login."""
         mock_config.AUTOMATIC_LOGIN_REDIRECT = True
 
         with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
@@ -665,8 +675,8 @@ class TestAuthMiddleware:
 
             response = await auth_middleware.dispatch(request, lambda r: pytest.fail("should not be called"))
 
-            assert isinstance(response, RedirectResponse)
-            assert response.status_code == 302
+            assert response.status_code == 200
+            assert "window.location.hash" in response.body.decode()
 
     @pytest.mark.asyncio
     async def test_dispatch_basic_auth_header(self, auth_middleware, create_mock_request, mock_store):
@@ -809,8 +819,8 @@ class TestAuthMiddleware:
 
             response = await auth_middleware.dispatch(request, mock_call_next)
 
-            assert isinstance(response, RedirectResponse)
-            assert response.status_code == 302
+            assert response.status_code == 200
+            assert "window.location.hash" in response.body.decode()
 
     @pytest.mark.asyncio
     async def test_dispatch_request_state_isolation(self, auth_middleware, create_mock_request, mock_store):
