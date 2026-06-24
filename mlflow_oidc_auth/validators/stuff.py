@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Sequence
+import re
+from typing import Any, Sequence
 
 from flask import request
 from mlflow.exceptions import MlflowException
@@ -74,6 +75,78 @@ def validate_can_search_datasets(username: str) -> bool:
     return True
 
 
+def _get_dataset_id() -> str:
+    if request.view_args and request.view_args.get("dataset_id"):
+        return str(request.view_args["dataset_id"])
+    return get_request_param("dataset_id")
+
+
+def _get_dataset_experiment_ids() -> list[str]:
+    dataset_id = _get_dataset_id()
+    return list(_get_tracking_store().get_dataset_experiment_ids(dataset_id=dataset_id))
+
+
+def validate_can_read_dataset(username: str) -> bool:
+    experiment_ids = _get_dataset_experiment_ids()
+    if not experiment_ids:
+        return False
+    for experiment_id in experiment_ids:
+        if not effective_experiment_permission(experiment_id, username).permission.can_read:
+            return False
+    return True
+
+
+def validate_can_update_dataset(username: str) -> bool:
+    experiment_ids = _get_dataset_experiment_ids()
+    if not experiment_ids:
+        return False
+    for experiment_id in experiment_ids:
+        if not effective_experiment_permission(experiment_id, username).permission.can_update:
+            return False
+    return True
+
+
+def validate_can_delete_dataset(username: str) -> bool:
+    experiment_ids = _get_dataset_experiment_ids()
+    if not experiment_ids:
+        return False
+    for experiment_id in experiment_ids:
+        if not effective_experiment_permission(experiment_id, username).permission.can_delete:
+            return False
+    return True
+
+
+def validate_can_create_dataset(username: str) -> bool:
+    if request.method == "POST" and request.is_json:
+        data = request.get_json(silent=True) or {}
+        experiment_ids = data.get("experiment_ids", []) or []
+    else:
+        experiment_ids = request.args.getlist("experiment_ids")
+    if not experiment_ids:
+        return False
+    for experiment_id in experiment_ids:
+        if not effective_experiment_permission(experiment_id, username).permission.can_update:
+            return False
+    return True
+
+
+def validate_can_update_dataset_experiment_links(username: str) -> bool:
+    existing_experiment_ids = _get_dataset_experiment_ids()
+    if request.method == "POST" and request.is_json:
+        data = request.get_json(silent=True) or {}
+        target_experiment_ids = data.get("experiment_ids", []) or []
+    else:
+        target_experiment_ids = request.args.getlist("experiment_ids")
+
+    all_experiment_ids = list({*existing_experiment_ids, *target_experiment_ids})
+    if not all_experiment_ids:
+        return False
+    for experiment_id in all_experiment_ids:
+        if not effective_experiment_permission(experiment_id, username).permission.can_update:
+            return False
+    return True
+
+
 def validate_can_create_promptlab_run(username: str) -> bool:
     """Validate UPDATE permission for promptlab run creation.
 
@@ -96,6 +169,55 @@ def validate_can_create_promptlab_run(username: str) -> bool:
         ) from e
 
     return effective_experiment_permission(experiment_id, username).permission.can_update
+
+
+def _collect_experiment_ids_from_payload(payload: Any) -> list[str]:
+    ids: list[str] = []
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in {"experiment_ids", "experimentIds"} and isinstance(value, list):
+                    ids.extend(str(v) for v in value if v is not None)
+                elif key in {"experiment_id", "experimentId"} and value is not None:
+                    ids.append(str(value))
+                elif key in {"mlflow_experiment", "mlflowExperiment"} and isinstance(value, dict):
+                    for nested_key in ("experiment_id", "experimentId"):
+                        if value.get(nested_key) is not None:
+                            ids.append(str(value[nested_key]))
+                else:
+                    _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(payload)
+    return ids
+
+
+def validate_can_access_graphql(username: str) -> bool:
+    if not request.is_json:
+        return True
+
+    payload = request.get_json(silent=True) or {}
+    experiment_ids = _collect_experiment_ids_from_payload(payload)
+    for experiment_id in experiment_ids:
+        if not effective_experiment_permission(experiment_id, username).permission.can_read:
+            return False
+    return True
+
+
+def validate_can_search_registered_models(username: str) -> bool:
+    filter_string = request.args.get("filter", "")
+    if not filter_string:
+        return True
+
+    # Example: tags.`_mlflow_experiment_ids` ILIKE '%,1,%'
+    matched = re.findall(r"%[, ]*(\d+)[, ]*%", filter_string)
+    for experiment_id in matched:
+        if not effective_experiment_permission(experiment_id, username).permission.can_read:
+            return False
+    return True
 
 
 def validate_can_create_gateway(username: str) -> bool:

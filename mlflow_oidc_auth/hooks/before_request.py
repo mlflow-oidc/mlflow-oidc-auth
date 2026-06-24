@@ -117,6 +117,8 @@ from mlflow_oidc_auth.validators import (
     validate_can_delete_experiment_artifact_proxy,
     validate_can_delete_logged_model,
     validate_can_delete_registered_model,
+    validate_can_create_model_version,
+    validate_can_create_registered_model,
     validate_can_delete_run,
     validate_can_manage_experiment,
     validate_can_manage_registered_model,
@@ -124,6 +126,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_read_experiment_artifact_proxy,
     validate_can_read_experiment_by_name,
     validate_can_read_logged_model,
+    validate_can_search_model_versions,
     validate_can_read_registered_model,
     validate_can_read_run,
     validate_can_update_experiment,
@@ -135,6 +138,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_experiment_from_experiment_id,
     validate_can_read_metric_history_bulk_interval,
     validate_can_read_traces_from_experiment_ids,
+    validate_can_read_traces_from_trace_ids,
     validate_can_read_trace,
     validate_can_update_trace_from_experiment_id,
     validate_can_update_trace_from_run_id,
@@ -151,6 +155,13 @@ from mlflow_oidc_auth.validators import (
     validate_can_read_trace_artifact,
     validate_can_read_metric_history_bulk,
     validate_can_search_datasets,
+    validate_can_access_graphql,
+    validate_can_search_registered_models,
+    validate_can_read_dataset,
+    validate_can_update_dataset,
+    validate_can_delete_dataset,
+    validate_can_create_dataset,
+    validate_can_update_dataset_experiment_links,
     validate_can_create_promptlab_run,
     validate_gateway_proxy,
     validate_can_read_gateway_endpoint,
@@ -241,7 +252,7 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateRegisteredModel: validate_can_update_registered_model,
     RenameRegisteredModel: validate_can_update_registered_model,
     GetLatestVersions: validate_can_read_registered_model,
-    CreateModelVersion: validate_can_update_registered_model,
+    CreateModelVersion: validate_can_create_model_version,
     GetModelVersion: validate_can_read_registered_model,
     DeleteModelVersion: validate_can_delete_registered_model,
     UpdateModelVersion: validate_can_update_registered_model,
@@ -350,6 +361,23 @@ BEFORE_REQUEST_VALIDATORS.update(
             "GET",
         ): validate_can_read_metric_history_bulk_interval,
         (SEARCH_DATASETS, "POST"): validate_can_search_datasets,
+        ("/api/2.0/mlflow/runs/search", "POST"): validate_can_read_experiments_from_experiment_ids,
+        ("/ajax-api/2.0/mlflow/runs/search", "POST"): validate_can_read_experiments_from_experiment_ids,
+        ("/api/2.0/mlflow/logged-models/search", "POST"): validate_can_read_experiments_from_experiment_ids,
+        ("/ajax-api/2.0/mlflow/logged-models/search", "POST"): validate_can_read_experiments_from_experiment_ids,
+        ("/api/2.0/mlflow/registered-models/create", "POST"): validate_can_create_registered_model,
+        ("/ajax-api/2.0/mlflow/registered-models/create", "POST"): validate_can_create_registered_model,
+        ("/api/2.0/mlflow/model-versions/create", "POST"): validate_can_create_model_version,
+        ("/ajax-api/2.0/mlflow/model-versions/create", "POST"): validate_can_create_model_version,
+        ("/api/2.0/mlflow/registered-models/get", "GET"): validate_can_read_registered_model,
+        ("/ajax-api/2.0/mlflow/registered-models/get", "GET"): validate_can_read_registered_model,
+        ("/api/2.0/mlflow/model-versions/get", "GET"): validate_can_read_registered_model,
+        ("/ajax-api/2.0/mlflow/model-versions/get", "GET"): validate_can_read_registered_model,
+        ("/api/2.0/mlflow/model-versions/search", "GET"): validate_can_search_model_versions,
+        ("/ajax-api/2.0/mlflow/model-versions/search", "GET"): validate_can_search_model_versions,
+        ("/api/2.0/mlflow/registered-models/search", "GET"): validate_can_search_registered_models,
+        ("/ajax-api/2.0/mlflow/registered-models/search", "GET"): validate_can_search_registered_models,
+        ("/graphql", "POST"): validate_can_access_graphql,
         (CREATE_PROMPTLAB_RUN, "POST"): validate_can_create_promptlab_run,
         (GATEWAY_PROXY, "GET"): validate_gateway_proxy,
         (GATEWAY_PROXY, "POST"): validate_gateway_proxy,
@@ -362,6 +390,52 @@ BEFORE_REQUEST_VALIDATORS.update(
         # Gateway configuration routes are admin-only
         (GATEWAY_PROVIDER_CONFIG, "GET"): _deny_non_admin,
         (GATEWAY_SECRETS_CONFIG, "GET"): _deny_non_admin,
+    }
+)
+
+# MLflow 3.x Flask routes not covered by protobuf mapping in get_endpoints()
+BEFORE_REQUEST_VALIDATORS.update(
+    {
+        # Trace APIs (v3)
+        ("/api/3.0/mlflow/traces/search", "POST"): validate_can_read_traces_from_experiment_ids,
+        ("/ajax-api/3.0/mlflow/traces/search", "POST"): validate_can_read_traces_from_experiment_ids,
+        ("/api/3.0/mlflow/traces/metrics", "POST"): validate_can_read_traces_from_experiment_ids,
+        ("/ajax-api/3.0/mlflow/traces/metrics", "POST"): validate_can_read_traces_from_experiment_ids,
+        ("/api/3.0/mlflow/traces/get", "GET"): validate_can_read_trace,
+        ("/ajax-api/3.0/mlflow/traces/get", "GET"): validate_can_read_trace,
+        ("/api/3.0/mlflow/traces/batchGet", "GET"): validate_can_read_traces_from_trace_ids,
+        ("/ajax-api/3.0/mlflow/traces/batchGet", "GET"): validate_can_read_traces_from_trace_ids,
+        ("/api/3.0/mlflow/traces/batchGetInfos", "POST"): validate_can_read_traces_from_trace_ids,
+        ("/ajax-api/3.0/mlflow/traces/batchGetInfos", "POST"): validate_can_read_traces_from_trace_ids,
+        ("/api/3.0/mlflow/traces/<trace_id>", "GET"): validate_can_read_trace,
+        ("/ajax-api/3.0/mlflow/traces/<trace_id>", "GET"): validate_can_read_trace,
+        # Dataset APIs (v3)
+        ("/api/3.0/mlflow/datasets/search", "GET"): validate_can_search_datasets,
+        ("/api/3.0/mlflow/datasets/search", "POST"): validate_can_search_datasets,
+        ("/ajax-api/3.0/mlflow/datasets/search", "GET"): validate_can_search_datasets,
+        ("/ajax-api/3.0/mlflow/datasets/search", "POST"): validate_can_search_datasets,
+        ("/api/3.0/mlflow/datasets/create", "POST"): validate_can_create_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/create", "POST"): validate_can_create_dataset,
+        ("/api/3.0/mlflow/datasets/<dataset_id>", "GET"): validate_can_read_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>", "GET"): validate_can_read_dataset,
+        ("/api/3.0/mlflow/datasets/<dataset_id>", "DELETE"): validate_can_delete_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>", "DELETE"): validate_can_delete_dataset,
+        ("/api/3.0/mlflow/datasets/<dataset_id>/records", "GET"): validate_can_read_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/records", "GET"): validate_can_read_dataset,
+        ("/api/3.0/mlflow/datasets/<dataset_id>/records", "POST"): validate_can_update_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/records", "POST"): validate_can_update_dataset,
+        ("/api/3.0/mlflow/datasets/<dataset_id>/records", "DELETE"): validate_can_update_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/records", "DELETE"): validate_can_update_dataset,
+        ("/api/3.0/mlflow/datasets/<dataset_id>/experiment-ids", "GET"): validate_can_read_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/experiment-ids", "GET"): validate_can_read_dataset,
+        ("/api/3.0/mlflow/datasets/<dataset_id>/add-experiments", "POST"): validate_can_update_dataset_experiment_links,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/add-experiments", "POST"): validate_can_update_dataset_experiment_links,
+        ("/api/3.0/mlflow/datasets/<dataset_id>/remove-experiments", "POST"): validate_can_update_dataset_experiment_links,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/remove-experiments", "POST"): validate_can_update_dataset_experiment_links,
+        ("/api/3.0/mlflow/datasets/<dataset_id>/tags", "PATCH"): validate_can_update_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/tags", "PATCH"): validate_can_update_dataset,
+        ("/api/3.0/mlflow/datasets/<dataset_id>/tags/<key>", "DELETE"): validate_can_update_dataset,
+        ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/tags/<key>", "DELETE"): validate_can_update_dataset,
     }
 )
 
@@ -386,6 +460,15 @@ def _re_compile_path(path: str) -> re.Pattern:
     "/api/2.0/experiments/<experiment_id>" becomes "/api/2.0/experiments/([^/]+)".
     """
     return re.compile(re.sub(r"<([^>]+)>", r"([^/]+)", path))
+
+
+# Some MLflow endpoints include path parameters (e.g. /api/2.0/mlflow/experiments/<experiment_id>).
+# Flask request.path contains concrete values; this registry is used for dynamic route matching.
+PATH_PARAM_BEFORE_REQUEST_VALIDATORS = {
+    (_re_compile_path(path), method): validator
+    for (path, method), validator in BEFORE_REQUEST_VALIDATORS.items()
+    if "<" in path and ">" in path
+}
 
 
 LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
@@ -492,7 +575,13 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
             None,
         )
     else:
-        return BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
+        validator = BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
+        if validator is not None:
+            return validator
+        return next(
+            (v for (pat, method), v in PATH_PARAM_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            None,
+        )
 
 
 def before_request_hook():

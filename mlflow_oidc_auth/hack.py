@@ -57,6 +57,8 @@ def index():
         injections.append(_read_snippet("reauth.html"))
     if config.EXTEND_MLFLOW_MENU:
         injections.append(_read_snippet("menu.html"))
+    if config.EXTEND_MLFLOW_EXPERIMENT_GUARD:
+        injections.append(_read_snippet("experiment_guard.html"))
 
     injected = "\n".join(s for s in injections if s)
     if not injected:

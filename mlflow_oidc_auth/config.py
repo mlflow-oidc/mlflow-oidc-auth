@@ -128,6 +128,9 @@ class AppConfig:
         # any 401 response, so expired sessions trigger the IdP redirect flow instead
         # of leaving the user staring at empty SPA pages.
         self.EXTEND_MLFLOW_REAUTH = config_manager.get_bool("EXTEND_MLFLOW_REAUTH", default=True)
+        # Inject a small script that checks experiment access on hash-navigation and
+        # shows an "Access denied" overlay when the current user has no permission.
+        self.EXTEND_MLFLOW_EXPERIMENT_GUARD = config_manager.get_bool("EXTEND_MLFLOW_EXPERIMENT_GUARD", default=True)
         self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = config_manager.get_bool("DEFAULT_LANDING_PAGE_IS_PERMISSIONS", default=True)
         self.AUTOMATIC_LOGIN_REDIRECT = config_manager.get_bool("AUTOMATIC_LOGIN_REDIRECT", default=False)
 

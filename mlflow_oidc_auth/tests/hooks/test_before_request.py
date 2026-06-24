@@ -165,6 +165,26 @@ def test_find_validator_regular_routes():
         assert result == mock_validator
 
 
+def test_find_validator_regular_routes_with_path_parameters():
+    """Test _find_validator fallback matching for regular routes with URL parameters."""
+    mock_request = MagicMock()
+    mock_request.path = "/api/2.0/mlflow/experiments/123"
+    mock_request.method = "GET"
+
+    mock_validator = lambda username: username == "test_user"
+    mock_pattern = _re_compile_path("/api/2.0/mlflow/experiments/<experiment_id>")
+
+    with (
+        patch("mlflow_oidc_auth.hooks.before_request.BEFORE_REQUEST_VALIDATORS", {}),
+        patch(
+            "mlflow_oidc_auth.hooks.before_request.PATH_PARAM_BEFORE_REQUEST_VALIDATORS",
+            {(mock_pattern, "GET"): mock_validator},
+        ),
+    ):
+        result = _find_validator(mock_request)
+        assert result == mock_validator
+
+
 def test_find_validator_no_match():
     """Test _find_validator when no validator is found"""
     mock_request = MagicMock()
@@ -180,6 +200,25 @@ def test_find_validator_no_match():
     ):
         result = _find_validator(mock_request)
         assert result is None
+
+
+def test_before_request_hook_forbids_unauthorized_experiment_url(client, mock_bridge):
+    """Direct experiment URL access must enforce permissions for non-admin users."""
+    with app.test_request_context(path="/api/2.0/mlflow/experiments/123", method="GET"):
+        with (
+            patch("mlflow_oidc_auth.hooks.before_request.BEFORE_REQUEST_VALIDATORS", {}),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request.PATH_PARAM_BEFORE_REQUEST_VALIDATORS",
+                {(_re_compile_path("/api/2.0/mlflow/experiments/<experiment_id>"), "GET"): MagicMock(return_value=False)},
+            ),
+            patch(
+                "mlflow_oidc_auth.hooks.before_request.responses.make_forbidden_response",
+                return_value=Response("Forbidden", status=403),
+            ) as mock_forbidden,
+        ):
+            response = before_request_hook()
+            assert response.status_code == 403  # type: ignore
+            mock_forbidden.assert_called_once()
 
 
 def test_re_compile_path():

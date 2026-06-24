@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from flask import request
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.permissions import Permission
@@ -30,20 +31,40 @@ def _get_permission_from_trace_id(username: str) -> Permission:
 
 
 def validate_can_read_traces_from_experiment_ids(username: str) -> bool:
-    # SearchTraces includes experiment_ids; reuse the same semantics as experiment list read.
-    # We avoid importing flask.request here and use get_request_param via request_helpers.
+    # SearchTraces v2 uses experiment_ids, while SearchTraces v3 uses locations[].
     try:
-        # SearchTraces is POST in MLflow REST API
-        # but request_helpers doesn't have list support; we can rely on Flask request directly.
-        from flask import request
-
         data = request.get_json(silent=True) or {}
-        experiment_ids = data.get("experiment_ids", []) or []
+        experiment_ids = list(data.get("experiment_ids", []) or [])
+        if locations := data.get("locations", []):
+            for location in locations:
+                if not isinstance(location, dict):
+                    continue
+                mlflow_experiment = location.get("mlflow_experiment")
+                if isinstance(mlflow_experiment, dict):
+                    experiment_id = mlflow_experiment.get("experiment_id")
+                    if experiment_id:
+                        experiment_ids.append(str(experiment_id))
     except Exception:
         experiment_ids = []
 
     for experiment_id in experiment_ids:
         if not effective_experiment_permission(experiment_id, username).permission.can_read:
+            return False
+    return True
+
+
+def validate_can_read_traces_from_trace_ids(username: str) -> bool:
+    trace_ids = []
+    if request.method == "POST" and request.is_json:
+        data = request.get_json(silent=True) or {}
+        trace_ids = data.get("trace_ids", []) or []
+    else:
+        trace_ids = request.args.getlist("trace_ids")
+
+    tracking_store = _get_tracking_store()
+    for trace_id in trace_ids:
+        trace_info = tracking_store.get_trace_info(trace_id)
+        if not effective_experiment_permission(trace_info.experiment_id, username).permission.can_read:
             return False
     return True
 

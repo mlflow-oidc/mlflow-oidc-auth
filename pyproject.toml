@@ -96,6 +96,7 @@ mlflow_oidc_auth = [
   "db/migrations/alembic.ini",
   "hack/menu.html",
   "hack/reauth.html",
+  "hack/experiment_guard.html",
   "ui/**/*",
 ]
 

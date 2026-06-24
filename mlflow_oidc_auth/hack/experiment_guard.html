@@ -1,0 +1,138 @@
+<script>
+    // Checks experiment access on every SPA navigation (hash change).
+    // When the current user is not allowed to read an experiment,
+    // an overlay is shown immediately and all tab links are hidden,
+    // preventing the "blank page but the menu is still there" experience.
+    (function () {
+        "use strict";
+
+        var OVERLAY_ID = "mlflow-oidc-exp-guard-overlay";
+
+        // ── Helpers ─────────────────────────────────────────────────────
+
+        function experimentIdFromHash(hash) {
+            var m = (hash || "").match(/^#\/experiments\/(\d+)/);
+            return m ? m[1] : null;
+        }
+
+        /** Lightweight permission check via XHR (avoids going through the
+         *  fetch-patched reauth interceptor for accidental 401 loops). */
+        function checkAccess(experimentId, cb) {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState !== XMLHttpRequest.DONE) return;
+                cb(xhr.status === 200);
+            };
+            xhr.open(
+                "GET",
+                "ajax-api/2.0/mlflow/experiments/get?experiment_id=" + experimentId,
+                true
+            );
+            xhr.send();
+        }
+
+        // ── Overlay ──────────────────────────────────────────────────────
+
+        function removeOverlay() {
+            var el = document.getElementById(OVERLAY_ID);
+            if (el) el.remove();
+            // Restore any hidden tab content
+            document.querySelectorAll("[data-mlflow-oidc-hidden]").forEach(function (el) {
+                el.style.display = "";
+                el.removeAttribute("data-mlflow-oidc-hidden");
+            });
+        }
+
+        function showOverlay() {
+            if (document.getElementById(OVERLAY_ID)) return; // already shown
+
+            // Hide the page body content behind the overlay so users
+            // can't read data that leaked before the check finished.
+            var main = document.querySelector(".content-area, main, #root > div > div:last-child");
+            if (main) {
+                main.setAttribute("data-mlflow-oidc-hidden", "true");
+                main.style.display = "none";
+            }
+
+            var overlay = document.createElement("div");
+            overlay.id = OVERLAY_ID;
+            overlay.style.cssText = [
+                "position:fixed;top:0;left:0;right:0;bottom:0",
+                "display:flex;align-items:center;justify-content:center",
+                "background:rgba(250,250,250,0.92);z-index:9999"
+            ].join(";");
+
+            var box = document.createElement("div");
+            box.style.cssText = [
+                "background:#fff;border-radius:8px;padding:40px 48px",
+                "max-width:440px;width:90%;text-align:center",
+                "box-shadow:0 6px 40px rgba(0,0,0,0.12)",
+                "border:1px solid #ffd4d4"
+            ].join(";");
+
+            var icon = document.createElement("div");
+            icon.style.cssText = "font-size:40px;margin-bottom:12px";
+            icon.textContent = "🔒";
+
+            var title = document.createElement("h3");
+            title.style.cssText = "color:#cf1322;margin:0 0 12px;font-size:18px";
+            title.textContent = "Accès refusé";
+
+            var msg = document.createElement("p");
+            msg.style.cssText = "color:#555;margin:0 0 28px;line-height:1.5";
+            msg.textContent = "Vous n'avez pas les droits nécessaires pour consulter cet experiment.";
+
+            var btn = document.createElement("button");
+            btn.textContent = "Retour à l'accueil";
+            btn.style.cssText = [
+                "background:#1677ff;color:#fff;border:none;border-radius:6px",
+                "padding:9px 26px;font-size:14px;cursor:pointer"
+            ].join(";");
+            btn.onmouseover = function () { btn.style.background = "#0958d9"; };
+            btn.onmouseout  = function () { btn.style.background = "#1677ff"; };
+            btn.onclick = function () {
+                // A hash-only change keeps the React component tree alive, so
+                // the experiment sidebar would stay visible.  A full navigation
+                // to the root resets the entire SPA state and lands on a clean
+                // home page.
+                window.location.replace(window.location.origin + window.location.pathname);
+            };
+
+            box.appendChild(icon);
+            box.appendChild(title);
+            box.appendChild(msg);
+            box.appendChild(btn);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+        }
+
+        // ── Core ─────────────────────────────────────────────────────────
+
+        var _lastChecked = null; // avoid duplicate calls for the same id
+
+        function guard() {
+            var expId = experimentIdFromHash(window.location.hash);
+
+            if (!expId) {
+                removeOverlay();
+                _lastChecked = null;
+                return;
+            }
+
+            if (expId === _lastChecked) return; // same experiment, no re-check needed
+            _lastChecked = expId;
+            removeOverlay();
+
+            checkAccess(expId, function (allowed) {
+                // Re-verify we're still on the same page (user may have navigated away)
+                if (experimentIdFromHash(window.location.hash) !== expId) return;
+                if (!allowed) showOverlay();
+            });
+        }
+
+        // ── Bootstrap ────────────────────────────────────────────────────
+
+        window.addEventListener("hashchange", guard);
+        document.addEventListener("DOMContentLoaded", guard);
+    })();
+</script>
