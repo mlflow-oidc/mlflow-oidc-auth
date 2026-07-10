@@ -530,6 +530,12 @@ def _is_workspace_gated_creation(path: str, method: str) -> bool:
     return (path, method) in _get_workspace_gated_creation_paths()
 
 
+def _get_config_bool(name: str, default: bool = False) -> bool:
+    """Read bool config values defensively for tests that patch config with MagicMock."""
+    value = getattr(config, name, default)
+    return value if isinstance(value, bool) else default
+
+
 def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[str], bool]]:
     if view_args is None:
         return validate_can_read_experiment_artifact_proxy  # List
@@ -608,7 +614,12 @@ def before_request_hook():
         )
 
         workspace = get_request_workspace()
-        if workspace:
+        if not workspace:
+            if _get_config_bool("OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT"):
+                return responses.make_forbidden_response()
+        elif workspace == "default" and _get_config_bool("OIDC_WORKSPACE_DENY_DEFAULT_CREATION"):
+            return responses.make_forbidden_response()
+        else:
             ws_perm = get_workspace_permission_cached(username, workspace)
             if ws_perm is None or not ws_perm.can_manage:
                 return responses.make_forbidden_response()

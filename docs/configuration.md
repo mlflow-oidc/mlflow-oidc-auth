@@ -90,6 +90,8 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 | `OIDC_WORKSPACE_DEFAULT_PERMISSION` | String | `NO_PERMISSIONS` | Permission level auto-assigned to users for workspaces detected during OIDC login |
 | `OIDC_WORKSPACE_CLAIM_NAME` | String | `workspace` | OIDC token claim name used for workspace detection during login |
 | `OIDC_WORKSPACE_DETECTION_PLUGIN` | String | None | Python module path for a custom workspace detection plugin. Used to extract workspace assignments from the OIDC token |
+| `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` | Boolean | `false` | Reject workspace-gated create requests when no workspace context is present |
+| `OIDC_WORKSPACE_DENY_DEFAULT_CREATION` | Boolean | `false` | Reject non-admin workspace-gated create requests that target the `default` workspace |
 | `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache |
 | `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for workspace permission cache entries |
 

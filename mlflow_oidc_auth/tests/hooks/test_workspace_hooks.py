@@ -421,6 +421,135 @@ class TestWorkspaceCreationGating:
                                 # Should not return 403 — either None or pass through
                                 assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
 
+    def test_before_request_hook_allows_experiment_creation_without_workspace_when_strict_disabled(self):
+        """Missing workspace context keeps legacy behavior when strict creation context is disabled."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/2.0/mlflow/experiments/create",
+            method="POST",
+        ):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("testuser", False),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                    mock_config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = False
+                    with patch(
+                        "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                        return_value=None,
+                    ):
+                        with patch(
+                            "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                        ) as mock_get_permission:
+                            with patch(
+                                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                                return_value=None,
+                            ):
+                                resp = before_request_hook()
+                                assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
+                                mock_get_permission.assert_not_called()
+
+    def test_before_request_hook_blocks_experiment_creation_without_workspace_when_strict_enabled(self):
+        """CreateExperiment is denied when strict mode requires workspace context."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/2.0/mlflow/experiments/create",
+            method="POST",
+        ):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("testuser", False),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                    mock_config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = True
+                    with patch(
+                        "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                        return_value=None,
+                    ):
+                        with patch(
+                            "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                        ) as mock_get_permission:
+                            with patch(
+                                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                                return_value=None,
+                            ):
+                                resp = before_request_hook()
+                                assert resp is not None
+                                assert resp.status_code == 403
+                                mock_get_permission.assert_not_called()
+
+    def test_before_request_hook_blocks_registered_model_creation_without_workspace_when_strict_enabled(self):
+        """CreateRegisteredModel is denied when strict mode requires workspace context."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/2.0/mlflow/registered-models/create",
+            method="POST",
+        ):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("testuser", False),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                    mock_config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = True
+                    with patch(
+                        "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                        return_value=None,
+                    ):
+                        with patch(
+                            "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                        ) as mock_get_permission:
+                            with patch(
+                                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                                return_value=None,
+                            ):
+                                resp = before_request_hook()
+                                assert resp is not None
+                                assert resp.status_code == 403
+                                mock_get_permission.assert_not_called()
+
+    def test_before_request_hook_blocks_default_workspace_creation_when_config_enabled(self):
+        """Workspace-gated creation can deny non-admin creates that target the default workspace."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(
+            "/api/2.0/mlflow/experiments/create",
+            method="POST",
+        ):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("testuser", False),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                    mock_config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = True
+                    with patch(
+                        "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                        return_value="default",
+                    ):
+                        with patch(
+                            "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                            return_value=MANAGE,
+                        ) as mock_get_permission:
+                            with patch(
+                                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                                return_value=None,
+                            ):
+                                resp = before_request_hook()
+                                assert resp is not None
+                                assert resp.status_code == 403
+                                mock_get_permission.assert_not_called()
+
     def test_before_request_hook_blocks_experiment_creation_with_workspace_edit(self):
         """CreateExperiment is denied for workspace EDIT because creation requires MANAGE."""
         from mlflow_oidc_auth.hooks.before_request import before_request_hook

@@ -161,6 +161,8 @@ class AppConfig:
         self.OIDC_WORKSPACE_CLAIM_NAME = config_manager.get("OIDC_WORKSPACE_CLAIM_NAME", "workspace")
         self.OIDC_WORKSPACE_DETECTION_PLUGIN = config_manager.get("OIDC_WORKSPACE_DETECTION_PLUGIN")
         self.OIDC_WORKSPACE_DEFAULT_PERMISSION = config_manager.get("OIDC_WORKSPACE_DEFAULT_PERMISSION", "NO_PERMISSIONS")
+        self.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = config_manager.get_bool("OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT", default=False)
+        self.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = config_manager.get_bool("OIDC_WORKSPACE_DENY_DEFAULT_CREATION", default=False)
 
         # Audit logging settings
         self.AUDIT_LOG_ENABLED = config_manager.get_bool("AUDIT_LOG_ENABLED", default=True)

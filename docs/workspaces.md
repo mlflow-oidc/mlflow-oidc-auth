@@ -127,6 +127,8 @@ With workspaces enabled, creation is intentionally stricter than update:
 - `CreateRegisteredModel` requires workspace `MANAGE`
 - Updating existing experiments/models follows normal permission resolution, so workspace `EDIT` fallback is sufficient for update operations when no resource-level override exists
 
+For stricter workspace isolation, set `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT=true` to reject create requests without workspace context. Set `OIDC_WORKSPACE_DENY_DEFAULT_CREATION=true` to prevent non-admin resource creation in the `default` workspace.
+
 This means the following setup allows users to edit existing resources but not create new ones:
 
 ```bash
