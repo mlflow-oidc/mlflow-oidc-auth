@@ -289,6 +289,7 @@ def mock_config():
     config_mock.OIDC_GROUPS_ATTRIBUTE = "groups"
     config_mock.OIDC_ADMIN_GROUP_NAME = ["admin-group"]
     config_mock.OIDC_GROUP_NAME = ["user-group", "test-group"]
+    config_mock.OIDC_CODE_CHALLENGE = None
     config_mock.OIDC_GEN_AI_GATEWAY_ENABLED = False
     config_mock.MLFLOW_ENABLE_WORKSPACES = False
     return config_mock

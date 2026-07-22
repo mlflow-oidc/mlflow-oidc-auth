@@ -63,7 +63,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         logger.warning(
             "OIDC client registration failed at startup. "
-            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL). "
+            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL) "
+            "or that OIDC_CODE_CHALLENGE is not set to 'S256' when OIDC_CLIENT_SECRET is omitted. "
             "OIDC authentication will not be available until configuration is corrected."
         )
 

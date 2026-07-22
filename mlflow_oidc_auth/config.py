@@ -130,8 +130,12 @@ class AppConfig:
         # TLS verification for OIDC discovery/JWKS and the token endpoint. Default True;
         # only disable for providers with self-signed certs in trusted networks.
         self.OIDC_VERIFY_SSL = config_manager.get_bool("OIDC_VERIFY_SSL", default=True)
-        # PKCE code challenge method (e.g. "S256"). None disables PKCE.
-        self.OIDC_CODE_CHALLENGE = config_manager.get("OIDC_CODE_CHALLENGE", None)
+        # PKCE code challenge method. None disables PKCE. Only "S256" is accepted, because
+        # plain PKCE adds no security, and enabling it allows omitting OIDC_CLIENT_SECRET.
+        _code_challenge = config_manager.get("OIDC_CODE_CHALLENGE", None)
+        if _code_challenge and _code_challenge != "S256":
+            raise ValueError(f"Invalid OIDC_CODE_CHALLENGE value: '{_code_challenge}'. Only 'S256' is supported; leave unset to disable PKCE.")
+        self.OIDC_CODE_CHALLENGE = _code_challenge
 
         # Permission cache settings
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)

@@ -190,6 +190,26 @@ class TestAppConfig(unittest.TestCase):
             self.assertFalse(config.DEFAULT_LANDING_PAGE_IS_PERMISSIONS)
             self.assertFalse(config.ENABLE_API_DOCS)
 
+    def test_app_config_pkce_default_is_none(self):
+        """Test that OIDC_CODE_CHALLENGE defaults to None when not set."""
+        with patch.dict(os.environ, {}, clear=True):
+            config = AppConfig()
+            self.assertIsNone(config.OIDC_CODE_CHALLENGE)
+
+    def test_app_config_pkce_s256_accepted(self):
+        """Test that OIDC_CODE_CHALLENGE=S256 is accepted."""
+        with patch.dict(os.environ, {"OIDC_CODE_CHALLENGE": "S256"}):
+            config = AppConfig()
+            self.assertEqual(config.OIDC_CODE_CHALLENGE, "S256")
+
+    def test_app_config_pkce_invalid_value_rejected(self):
+        """Test that invalid OIDC_CODE_CHALLENGE values raise ValueError."""
+        for invalid_value in ["plain", "S128", "s256", "S256 ", "invalid"]:
+            with patch.dict(os.environ, {"OIDC_CODE_CHALLENGE": invalid_value}):
+                with self.assertRaises(ValueError) as cm:
+                    AppConfig()
+                self.assertIn("Invalid OIDC_CODE_CHALLENGE", str(cm.exception))
+
     def test_app_config_group_name_parsing(self):
         """Test that OIDC_GROUP_NAME is correctly parsed from comma-separated values."""
         test_cases = [
