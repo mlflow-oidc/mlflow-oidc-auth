@@ -42,7 +42,7 @@ class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGro
 
     def grant_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = SqlScorerGroupPermission(
                 experiment_id=experiment_id,
@@ -99,7 +99,7 @@ class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGro
 
     def update_group_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = (
                 session.query(SqlScorerGroupPermission)
@@ -115,7 +115,7 @@ class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGro
             return perm.to_mlflow_entity()
 
     def revoke_group_permission(self, group_name: str, experiment_id: str, scorer_name: str) -> None:  # type: ignore[override]
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = (
                 session.query(SqlScorerGroupPermission)
