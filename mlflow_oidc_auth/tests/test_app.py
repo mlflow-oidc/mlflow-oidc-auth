@@ -8,7 +8,7 @@ error handler registration, and application startup/shutdown procedures.
 
 import pytest
 from unittest.mock import MagicMock, patch
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
 
 from mlflow_oidc_auth.app import create_app
@@ -43,9 +43,9 @@ class TestCreateApp:
         mock_config.EXTEND_MLFLOW_MENU = False
         mock_config.MLFLOW_ENABLE_WORKSPACES = False
         mock_config.ENABLE_API_DOCS = True
-        mock_router1 = MagicMock()
-        mock_router2 = MagicMock()
-        mock_get_all_routers.return_value = [mock_router1, mock_router2]
+        # Use real APIRouter instances: FastAPI's include_router inspects the
+        # router it is given, so a MagicMock trips its internal assertions.
+        mock_get_all_routers.return_value = [APIRouter(), APIRouter()]
 
         # Call the function
         result = create_app()
@@ -173,15 +173,13 @@ class TestCreateApp:
         mock_config.EXTEND_MLFLOW_MENU = False
         mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
-        # Create mock routers
-        mock_router1 = MagicMock()
-        mock_router1.prefix = "/api/v1"
-        mock_router2 = MagicMock()
-        mock_router2.prefix = "/api/v2"
-        mock_router3 = MagicMock()
-        mock_router3.prefix = "/ui"
-
-        mock_get_all_routers.return_value = [mock_router1, mock_router2, mock_router3]
+        # Use real APIRouter instances: FastAPI's include_router inspects the
+        # router it is given, so a MagicMock trips its internal assertions.
+        mock_get_all_routers.return_value = [
+            APIRouter(prefix="/api/v1"),
+            APIRouter(prefix="/api/v2"),
+            APIRouter(prefix="/ui"),
+        ]
 
         with patch("mlflow_oidc_auth.app.getattr") as mock_getattr:
             mock_getattr.return_value = True
