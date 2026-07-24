@@ -598,8 +598,9 @@ class TestWorkspaceCreationGating:
                                 mock_get_permission.assert_not_called()
 
     def test_before_request_hook_blocks_padded_default_workspace_creation(self):
-        """Workspace names are stripped like MLflow does, so padding cannot bypass the default-workspace guard."""
+        """A padded header reaches the hook already normalized, so it cannot bypass the guard."""
         from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.middleware.auth_middleware import normalize_workspace_header
 
         _app = self._make_flask_app()
         with _app.test_request_context(
@@ -616,7 +617,7 @@ class TestWorkspaceCreationGating:
                     mock_config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = True
                     with patch(
                         "mlflow_oidc_auth.bridge.user.get_request_workspace",
-                        return_value="  default  ",
+                        return_value=normalize_workspace_header("  default  "),
                     ):
                         with patch(
                             "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
@@ -631,8 +632,9 @@ class TestWorkspaceCreationGating:
                                 mock_get_permission.assert_not_called()
 
     def test_before_request_hook_strips_workspace_before_permission_lookup(self):
-        """A padded workspace header resolves to the same permission entry MLflow will use."""
+        """A padded header resolves to the same permission entry MLflow will use."""
         from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.middleware.auth_middleware import normalize_workspace_header
         from mlflow_oidc_auth.permissions import MANAGE
 
         _app = self._make_flask_app()
@@ -650,7 +652,7 @@ class TestWorkspaceCreationGating:
                     mock_config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = False
                     with patch(
                         "mlflow_oidc_auth.bridge.user.get_request_workspace",
-                        return_value=" team-ws ",
+                        return_value=normalize_workspace_header(" team-ws "),
                     ):
                         with patch(
                             "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
@@ -1279,16 +1281,25 @@ class TestValidateCanUpdateWorkspaceManage:
         _app = self._make_flask_app()
         with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="PUT"):
             mock_ctx = AuthContext(username="reader", is_admin=False, workspace=None)
-            with patch(
-                "mlflow_oidc_auth.validators.workspace.get_auth_context",
-                return_value=mock_ctx,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=mock_ctx,
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.config",
+                    self._make_mock_config(),
+                ),
             ):
                 with patch(
                     "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
                     return_value=READ,
-                ):
+                ) as mock_get_permission:
                     result = validate_can_update_workspace("reader")
                     assert result is False
+                    # Without the config patch this passed via the feature-disabled
+                    # short-circuit, never reaching the MANAGE check.
+                    mock_get_permission.assert_called_once()
 
     def test_no_permission_at_all_denied(self):
         """Users with no workspace permission at all are denied."""
@@ -1298,16 +1309,25 @@ class TestValidateCanUpdateWorkspaceManage:
         _app = self._make_flask_app()
         with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="PUT"):
             mock_ctx = AuthContext(username="nobody", is_admin=False, workspace=None)
-            with patch(
-                "mlflow_oidc_auth.validators.workspace.get_auth_context",
-                return_value=mock_ctx,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=mock_ctx,
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.config",
+                    self._make_mock_config(),
+                ),
             ):
                 with patch(
                     "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
                     return_value=None,
-                ):
+                ) as mock_get_permission:
                     result = validate_can_update_workspace("nobody")
                     assert result is False
+                    # Without the config patch this passed via the feature-disabled
+                    # short-circuit, never reaching the MANAGE check.
+                    mock_get_permission.assert_called_once()
 
 
 class TestValidateCanDeleteWorkspaceManage:
@@ -1379,16 +1399,25 @@ class TestValidateCanDeleteWorkspaceManage:
         _app = self._make_flask_app()
         with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="DELETE"):
             mock_ctx = AuthContext(username="editor", is_admin=False, workspace=None)
-            with patch(
-                "mlflow_oidc_auth.validators.workspace.get_auth_context",
-                return_value=mock_ctx,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=mock_ctx,
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.config",
+                    self._make_mock_config(),
+                ),
             ):
                 with patch(
                     "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
                     return_value=EDIT,
-                ):
+                ) as mock_get_permission:
                     result = validate_can_delete_workspace("editor")
                     assert result is False
+                    # Without the config patch this passed via the feature-disabled
+                    # short-circuit, never reaching the MANAGE check.
+                    mock_get_permission.assert_called_once()
 
     def test_no_permission_at_all_denied(self):
         """Users with no workspace permission at all are denied."""
@@ -1398,13 +1427,117 @@ class TestValidateCanDeleteWorkspaceManage:
         _app = self._make_flask_app()
         with _app.test_request_context("/api/3.0/mlflow/workspaces/ws1", method="DELETE"):
             mock_ctx = AuthContext(username="nobody", is_admin=False, workspace=None)
-            with patch(
-                "mlflow_oidc_auth.validators.workspace.get_auth_context",
-                return_value=mock_ctx,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.get_auth_context",
+                    return_value=mock_ctx,
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.workspace.config",
+                    self._make_mock_config(),
+                ),
             ):
                 with patch(
                     "mlflow_oidc_auth.validators.workspace.get_workspace_permission_cached",
                     return_value=None,
-                ):
+                ) as mock_get_permission:
                     result = validate_can_delete_workspace("nobody")
                     assert result is False
+                    # Without the config patch this passed via the feature-disabled
+                    # short-circuit, never reaching the MANAGE check.
+                    mock_get_permission.assert_called_once()
+
+
+class TestValidatorPathsMatchMlflowRoutes:
+    """Every validator must be keyed on a route MLflow actually serves."""
+
+    def test_no_dead_validator_paths(self):
+        """A validator on a non-existent path leaves the real endpoint unguarded."""
+        from mlflow_oidc_auth.hooks.before_request import find_dead_validator_paths
+
+        dead = find_dead_validator_paths()
+        assert dead == [], f"validators keyed on paths MLflow does not serve (endpoint is unguarded): {dead}"
+
+    def test_gateway_guardrail_routes_are_all_guarded(self):
+        """Guardrails control content filtering, so every route must deny non-admins."""
+        from mlflow.server import app as mlflow_flask_app
+
+        from mlflow_oidc_auth.hooks.before_request import (
+            BEFORE_REQUEST_VALIDATORS,
+            _deny_non_admin,
+        )
+
+        guardrail_rules = [r for r in mlflow_flask_app.url_map.iter_rules() if "guardrail" in str(r)]
+        assert guardrail_rules, "expected MLflow to register gateway guardrail routes"
+
+        for rule in guardrail_rules:
+            for method in rule.methods or set():
+                if method in ("HEAD", "OPTIONS"):
+                    continue
+                validator = BEFORE_REQUEST_VALIDATORS.get((str(rule), method))
+                assert validator is _deny_non_admin, f"{method} {rule} is not admin-guarded"
+
+    def test_scorer_invoke_is_guarded(self):
+        """The scorer invocation endpoint spends gateway budget, so it needs a check."""
+        from mlflow_oidc_auth.hooks.before_request import (
+            BEFORE_REQUEST_VALIDATORS,
+            INVOKE_SCORER,
+        )
+
+        assert INVOKE_SCORER == "/ajax-api/3.0/mlflow/scorer/invoke"
+        assert BEFORE_REQUEST_VALIDATORS.get((INVOKE_SCORER, "POST")) is not None
+
+
+class TestWorkspaceHeaderNormalization:
+    """The auth layer must resolve a header to the same workspace MLflow stores into."""
+
+    def test_whitespace_only_header_normalizes_to_none(self):
+        """MLflow treats "   " as absent; so must we, or the guards diverge from storage."""
+        from mlflow_oidc_auth.middleware.auth_middleware import normalize_workspace_header
+
+        assert normalize_workspace_header("   ") is None
+        assert normalize_workspace_header("") is None
+        assert normalize_workspace_header(None) is None
+
+    def test_normalization_matches_mlflow_exactly(self):
+        """Compare against MLflow's own normalizer rather than restating our implementation."""
+        from mlflow.utils.workspace_utils import _normalize_workspace
+
+        from mlflow_oidc_auth.middleware.auth_middleware import normalize_workspace_header
+
+        for raw in ("  team-ws  ", "team-ws", "\tteam-ws\n", "   ", "", None, "\u00a0ws\u00a0"):
+            assert normalize_workspace_header(raw) == _normalize_workspace(raw), f"diverged on {raw!r}"
+
+    def test_middleware_uses_the_normalizer(self):
+        """Guard against the middleware drifting back to reading the header raw."""
+        import inspect
+
+        from mlflow_oidc_auth.middleware import auth_middleware
+
+        source = inspect.getsource(auth_middleware.AuthMiddleware.dispatch)
+        assert "normalize_workspace_header(" in source
+        assert 'request.headers.get("x-mlflow-workspace")' in source
+
+    def test_non_proto_flask_routes_are_guarded_under_every_spelling(self):
+        """MLflow serves some of these under several prefixes, one of them malformed.
+
+        Binding only the expected spelling leaves the others serving data unchecked, which is
+        how the /api variant of get-history-bulk-interval and the 3.0 get-trace-artifact were
+        reachable without a permission check.
+        """
+        from mlflow.server import app as mlflow_flask_app
+
+        from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_VALIDATORS
+
+        sensitive = (
+            "mlflow/experiments/search-datasets",
+            "mlflow/get-trace-artifact",
+            "mlflow/metrics/get-history-bulk",
+            "mlflow/metrics/get-history-bulk-interval",
+            "mlflow/upload-artifact",
+            "mlflow/gateway-proxy",
+            "mlflow/scorer/invoke",
+        )
+        guarded = {k[0] for k in BEFORE_REQUEST_VALIDATORS}
+        unguarded = sorted(str(rule) for rule in mlflow_flask_app.url_map.iter_rules() if any(s in str(rule) for s in sensitive) and str(rule) not in guarded)
+        assert unguarded == [], f"MLflow serves these without any permission check: {unguarded}"
