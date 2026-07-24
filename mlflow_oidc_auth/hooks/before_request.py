@@ -318,7 +318,7 @@ BEFORE_REQUEST_VALIDATORS = {
     if handler in _PROTO_VALIDATORS
 }
 
-from mlflow.server.handlers import _add_static_prefix, _get_ajax_path
+from mlflow.server.handlers import _add_static_prefix, _get_ajax_path, _get_rest_path
 
 # Flask routes (not part of Protobuf API)
 GET_ARTIFACT = _add_static_prefix("/get-artifact")
@@ -327,14 +327,34 @@ GET_MODEL_VERSION_ARTIFACT = _add_static_prefix("/model-versions/get-artifact")
 GET_TRACE_ARTIFACT = _get_ajax_path("/mlflow/get-trace-artifact")
 GET_METRIC_HISTORY_BULK = _get_ajax_path("/mlflow/metrics/get-history-bulk")
 GET_METRIC_HISTORY_BULK_INTERVAL = _get_ajax_path("/mlflow/metrics/get-history-bulk-interval")
+GET_METRIC_HISTORY_BULK_INTERVAL_REST = _get_rest_path("/mlflow/metrics/get-history-bulk-interval")
 SEARCH_DATASETS = _get_ajax_path("/mlflow/experiments/search-datasets")
 CREATE_PROMPTLAB_RUN = _get_ajax_path("/mlflow/runs/create-promptlab-run")
 GATEWAY_PROXY = _get_ajax_path("/mlflow/gateway-proxy")
-INVOKE_SCORER = _get_ajax_path("/mlflow/invocations/scorer")
-GATEWAY_SUPPORTED_PROVIDERS = _get_ajax_path("/mlflow/gateway/supported-providers")
-GATEWAY_SUPPORTED_MODELS = _get_ajax_path("/mlflow/gateway/supported-models")
-GATEWAY_PROVIDER_CONFIG = _get_ajax_path("/mlflow/gateway/provider-config")
-GATEWAY_SECRETS_CONFIG = _get_ajax_path("/mlflow/gateway/secrets-config")
+# The gateway and scorer routes below are served under the 3.0 prefix, not 2.0. Getting the
+# version wrong makes the entry dead: _find_validator matches on the exact path, so the real
+# endpoint falls through unguarded rather than failing loudly. _assert_validator_paths_exist
+# at the bottom of this module pins every constant here to a route MLflow actually registers.
+INVOKE_SCORER = _get_ajax_path("/mlflow/scorer/invoke", version=3)
+GATEWAY_SUPPORTED_PROVIDERS = _get_ajax_path("/mlflow/gateway/supported-providers", version=3)
+GATEWAY_SUPPORTED_MODELS = _get_ajax_path("/mlflow/gateway/supported-models", version=3)
+GATEWAY_PROVIDER_CONFIG = _get_ajax_path("/mlflow/gateway/provider-config", version=3)
+GATEWAY_SECRETS_CONFIG = _get_ajax_path("/mlflow/gateway/secrets/config", version=3)
+
+# Gateway guardrails control content filtering on gateway endpoints. MLflow registers these
+# under both /api and /ajax-api with no authorization of its own; without an entry here they
+# fall through the hook and any authenticated user can create, reconfigure, detach or delete
+# a guardrail in any workspace. Admin-only, matching the treatment of gateway budgets.
+GATEWAY_GUARDRAIL_OPERATIONS = (
+    "create",
+    "get",
+    "list",
+    "delete",
+    "add-to-endpoint",
+    "remove-from-endpoint",
+    "list-for-endpoint",
+    "update-config",
+)
 
 
 # Flask routes (no proto mapping)
@@ -347,6 +367,10 @@ BEFORE_REQUEST_VALIDATORS.update(
         (GET_METRIC_HISTORY_BULK, "GET"): validate_can_read_metric_history_bulk,
         (
             GET_METRIC_HISTORY_BULK_INTERVAL,
+            "GET",
+        ): validate_can_read_metric_history_bulk_interval,
+        (
+            GET_METRIC_HISTORY_BULK_INTERVAL_REST,
             "GET",
         ): validate_can_read_metric_history_bulk_interval,
         (SEARCH_DATASETS, "POST"): validate_can_search_datasets,
@@ -364,6 +388,54 @@ BEFORE_REQUEST_VALIDATORS.update(
         (GATEWAY_SECRETS_CONFIG, "GET"): _deny_non_admin,
     }
 )
+
+# Gateway guardrails: admin-only on every method MLflow serves, under both prefixes.
+BEFORE_REQUEST_VALIDATORS.update(
+    {
+        (path, method): _deny_non_admin
+        for operation in GATEWAY_GUARDRAIL_OPERATIONS
+        for path in (
+            _get_ajax_path(f"/mlflow/gateway/guardrails/{operation}", version=3),
+            _get_rest_path(f"/mlflow/gateway/guardrails/{operation}", version=3),
+        )
+        # MLflow serves these across GET/POST/DELETE/PATCH (update-config is PATCH); cover
+        # every verb rather than the ones in use today, so a new one is denied by default.
+        for method in ("GET", "POST", "PUT", "PATCH", "DELETE")
+    }
+)
+
+
+def _bind_non_proto_route(suffix: str, method: str, validator: Callable[[str], bool]) -> None:
+    """Guard every spelling of a non-proto Flask route that MLflow actually registers.
+
+    These routes have no protobuf message, so they are matched by exact path. MLflow serves
+    several of them under more than one prefix and version, and some under a malformed one
+    (``/api/2.0mlflow/experiments/search-datasets``, missing the slash). Every spelling is
+    reachable, so binding only the expected one leaves the others returning data with no
+    permission check. Enumerating the real routing table avoids having to predict them.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    for rule in mlflow_flask_app.url_map.iter_rules():
+        path = str(rule)
+        if path.endswith(suffix) and method in (rule.methods or set()):
+            BEFORE_REQUEST_VALIDATORS[(path, method)] = validator
+
+
+# Suffixes deliberately omit the leading slash: MLflow registers some of these as
+# "/api/2.0mlflow/..." without it, and those spellings are reachable too.
+for _suffix, _method, _validator in (
+    ("mlflow/experiments/search-datasets", "POST", validate_can_search_datasets),
+    ("mlflow/get-trace-artifact", "GET", validate_can_read_trace_artifact),
+    ("mlflow/metrics/get-history-bulk", "GET", validate_can_read_metric_history_bulk),
+    ("mlflow/metrics/get-history-bulk-interval", "GET", validate_can_read_metric_history_bulk_interval),
+    ("mlflow/upload-artifact", "POST", validate_can_update_run_artifact),
+    ("mlflow/runs/create-promptlab-run", "POST", validate_can_create_promptlab_run),
+    ("mlflow/gateway-proxy", "GET", validate_gateway_proxy),
+    ("mlflow/gateway-proxy", "POST", validate_gateway_proxy),
+):
+    _bind_non_proto_route(_suffix, _method, _validator)
+
 
 LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
     CreateLoggedModel: validate_can_update_experiment,
@@ -386,6 +458,15 @@ def _re_compile_path(path: str) -> re.Pattern:
     "/api/2.0/experiments/<experiment_id>" becomes "/api/2.0/experiments/([^/]+)".
     """
     return re.compile(re.sub(r"<([^>]+)>", r"([^/]+)", path))
+
+
+# Routes whose path carries a parameter (e.g. /prompt-optimization/jobs/<job_id>) are keyed
+# in BEFORE_REQUEST_VALIDATORS by the placeholder MLflow registers, which never equals a
+# concrete request path. They therefore need regex matching, exactly as workspace and
+# logged-model routes already do. Built after every update() above so none are missed.
+PARAMETERIZED_BEFORE_REQUEST_VALIDATORS = {
+    (_re_compile_path(path), method): validator for (path, method), validator in BEFORE_REQUEST_VALIDATORS.items() if "<" in path
+}
 
 
 LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
@@ -491,8 +572,16 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
             (v for (pat, method), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
             None,
         )
-    else:
-        return BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
+    validator = BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
+    if validator is not None:
+        return validator
+    # Fall back to the parameterized keys. Their paths carry a placeholder
+    # ("/prompt-optimization/jobs/<job_id>") which never equals a concrete request path,
+    # so the exact lookup above can never match them.
+    return next(
+        (v for (pat, method), v in PARAMETERIZED_BEFORE_REQUEST_VALIDATORS.items() if method == req.method and pat.fullmatch(req.path)),
+        None,
+    )
 
 
 def before_request_hook():
@@ -596,3 +685,36 @@ def _stash_gateway_context(validator) -> None:
         if name:
             g._deleting_gateway_model_definition_name = name
         return
+
+
+def find_dead_validator_paths() -> list:
+    """Return validator paths that match no route MLflow actually registers.
+
+    A validator keyed on a path MLflow does not serve is silently dead: ``_find_validator``
+    matches the exact path, so the real endpoint falls through the hook unguarded instead of
+    failing loudly. That is how ``/mlflow/scorer/invoke`` and four gateway routes ended up
+    reachable without a permission check. Covered by a regression test rather than a startup
+    assertion so that importing this module stays side-effect free.
+
+    Static-prefix routes (``/get-artifact``) and the artifact proxy are excluded: they are
+    matched by prefix rather than registered as exact rules.
+
+    A path is dead in either of two ways: MLflow does not register it at all, or it carries a
+    parameter placeholder that the exact-path lookup in ``_find_validator`` can never match.
+    Checking only the first is a false negative — the prompt-optimization job routes were
+    registered *and* unreachable, so a registration-only check reported them healthy.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    registered = {str(rule) for rule in mlflow_flask_app.url_map.iter_rules()}
+    reachable_by_regex = {pattern.pattern for pattern, _method in PARAMETERIZED_BEFORE_REQUEST_VALIDATORS}
+
+    dead = set()
+    for path, _method in BEFORE_REQUEST_VALIDATORS:
+        if not path.startswith(("/api/", "/ajax-api/")):
+            continue
+        if path not in registered:
+            dead.add(path)
+        elif "<" in path and _re_compile_path(path).pattern not in reachable_by_regex:
+            dead.add(path)
+    return sorted(dead)
