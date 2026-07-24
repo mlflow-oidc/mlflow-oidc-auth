@@ -295,6 +295,32 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
 }
 
 
+def _apply_workspace_fallback(result: PermissionResult, username: str) -> PermissionResult:
+    """Defer a generic ``fallback`` result to the user's workspace permission.
+
+    Per WSAUTH-C/WSAUTH-04: when workspaces are enabled and no resource-level
+    permission was found, use the user's permission on the request workspace
+    instead of the global default; if the user has no workspace permission,
+    deny with ``NO_PERMISSIONS`` (kind ``workspace-deny``). A header-less request
+    (no workspace) is left unchanged so the global default still applies.
+
+    Shared by resolve_permission and the creation resolvers so both paths agree.
+    """
+    if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
+        return result
+
+    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    workspace = get_request_workspace()
+    if not workspace:
+        return result
+    ws_perm = get_workspace_permission_cached(username, workspace)
+    if ws_perm is not None:
+        return PermissionResult(ws_perm, "workspace")
+    return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+
+
 def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs) -> PermissionResult:
     """Single entry point for all permission resolution. Per D-01 (REFAC-01).
 
@@ -311,21 +337,7 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     builder = PERMISSION_REGISTRY[resource_type]
     sources_config = builder(resource_id, username, **kwargs)
     result = get_permission_from_store_or_default(sources_config)
-
-    # Workspace fallback: when no resource-level permission found (per WSAUTH-C/WSAUTH-04)
-    if result.kind == "fallback" and config.MLFLOW_ENABLE_WORKSPACES:
-        from mlflow_oidc_auth.bridge.user import get_request_workspace
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            get_workspace_permission_cached,
-        )
-
-        workspace = get_request_workspace()
-        if workspace:
-            ws_perm = get_workspace_permission_cached(username, workspace)
-            if ws_perm is not None:
-                result = PermissionResult(ws_perm, "workspace")
-            else:
-                result = PermissionResult(NO_PERMISSIONS, "workspace-deny")
+    result = _apply_workspace_fallback(result, username)
 
     cache.set(cache_key, result)
     return result
@@ -352,6 +364,64 @@ def effective_registered_model_permission(model_name: str, user: str) -> Permiss
     Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
     """
     return resolve_permission(REGISTERED_MODEL, model_name, user)
+
+
+# ---------------------------------------------------------------------------
+# Creation-time resolvers (per issue #202 / #195)
+#
+# At creation the resource does not exist yet, so user/group sources keyed by
+# experiment id or model name cannot apply. Only name-based regex sources are
+# meaningful. A regex/group-regex miss falls back to the workspace permission
+# (when workspaces are enabled) or the global default, via the shared helper.
+# These are intentionally uncached: creation is rare and the request-scoped
+# workspace fallback must be re-evaluated each call.
+# ---------------------------------------------------------------------------
+
+
+def _permission_new_experiment_sources_config(experiment_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "regex": lambda experiment_name=experiment_name, user=username: _match_regex_permission(
+            store.list_experiment_regex_permissions(user), experiment_name, "experiment name"
+        ),
+        "group-regex": lambda experiment_name=experiment_name, user=username: _match_regex_permission(
+            store.list_group_experiment_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+            experiment_name,
+            "experiment name",
+        ),
+    }
+
+
+def _permission_new_registered_model_sources_config(model_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "regex": lambda model_name=model_name, user=username: _match_regex_permission(
+            store.list_registered_model_regex_permissions(user), model_name, "model name"
+        ),
+        "group-regex": lambda model_name=model_name, user=username: _match_regex_permission(
+            store.list_group_registered_model_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+            model_name,
+            "model name",
+        ),
+    }
+
+
+def effective_new_experiment_permission(experiment_name: str, user: str) -> PermissionResult:
+    """Resolve the permission for creating an experiment with ``experiment_name``.
+
+    Name-based regex/group-regex only; a miss falls back to the workspace
+    permission (workspaces on) or the global default (workspaces off).
+    """
+    result = get_permission_from_store_or_default(_permission_new_experiment_sources_config(experiment_name, user))
+    return _apply_workspace_fallback(result, user)
+
+
+def effective_new_registered_model_permission(model_name: str, user: str) -> PermissionResult:
+    """Resolve the permission for creating a registered model named ``model_name``.
+
+    Name-based regex/group-regex only; a miss falls back to the workspace
+    permission (workspaces on) or the global default (workspaces off).
+    """
+    result = get_permission_from_store_or_default(_permission_new_registered_model_sources_config(model_name, user))
+    return _apply_workspace_fallback(result, user)
 
 
 def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult:

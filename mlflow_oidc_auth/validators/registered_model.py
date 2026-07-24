@@ -1,6 +1,8 @@
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils import (
     effective_registered_model_permission,
+    effective_new_registered_model_permission,
     effective_experiment_permission,
     get_model_name,
     get_model_id,
@@ -83,3 +85,15 @@ def validate_can_read_model_version_artifact(username: str) -> bool:
 def validate_can_read_trace_artifact(username: str) -> bool:
     """Checks READ permission on trace artifacts."""
     return _get_permission_from_trace_request_id(username).can_read
+
+
+def validate_can_create_registered_model(username: str) -> bool:
+    """Authorize CreateRegisteredModel when RESTRICT_RESOURCE_CREATION is enabled.
+
+    No-op (allow) unless the flag is set. When set, the user needs EDIT+ for the
+    new model name, resolved from name regex / group-regex with a workspace fallback.
+    """
+    if not config.RESTRICT_RESOURCE_CREATION:
+        return True
+    model_name = get_model_name()
+    return effective_new_registered_model_permission(model_name, username).permission.can_update
