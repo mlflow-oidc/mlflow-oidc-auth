@@ -8,6 +8,7 @@ spellings with 400, before any authorization decision.
 """
 
 import json
+from unittest.mock import patch
 
 import pytest
 from flask import Flask, request
@@ -33,6 +34,26 @@ def _json_ctx(path, method, body=None, query=None):
 
 # A concrete gated route with two collidable fields, used across the vector tests.
 _UPDATE_EXPERIMENT = "/api/2.0/mlflow/experiments/update"
+
+
+def test_empty_route_maps_fail_loudly_instead_of_disabling_the_guard():
+    """A broken MLflow contract must crash at startup, not silently disable the guard.
+
+    The maps are derived from MLflow's registry, so a future release that changes the
+    get_endpoints() handler contract would yield empty maps and turn this guard into a
+    no-op — silently reopening the bypass. Verify that state is refused, not tolerated.
+    """
+    with (
+        patch.object(guard, "_EXACT_COLLIDABLE", {}),
+        patch.object(guard, "_PATTERN_COLLIDABLE", []),
+    ):
+        with pytest.raises(RuntimeError, match="dual-spelling authorization guard would be inert"):
+            guard._assert_maps_populated()
+
+
+def test_maps_populated_check_passes_with_real_mlflow():
+    """The live MLflow install must yield a non-empty map (the guard is actually active)."""
+    guard._assert_maps_populated()
 
 
 def test_route_maps_cover_the_full_proto_surface():

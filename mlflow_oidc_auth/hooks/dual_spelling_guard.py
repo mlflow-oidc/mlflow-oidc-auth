@@ -78,6 +78,29 @@ def _build_proto_route_maps() -> None:
 _build_proto_route_maps()
 
 
+def _assert_maps_populated() -> None:
+    """Fail loudly if the route maps came up empty.
+
+    The maps are derived from MLflow's registry rather than hardcoded, so a future
+    MLflow release that changes the ``get_endpoints`` handler contract (or stops
+    exposing proto classes) would yield empty maps — and this guard would silently
+    become a no-op, quietly reopening the cross-tenant bypass it exists to close.
+    A security control must not fail open silently, so refuse to start instead.
+    MLflow always serves proto routes with multi-word fields (experiment_id, run_id,
+    ...), so empty maps mean the derivation broke, never a legitimate state.
+    """
+    if not _EXACT_COLLIDABLE and not _PATTERN_COLLIDABLE:
+        raise RuntimeError(
+            "mlflow-oidc-auth: could not derive any proto routes from MLflow's endpoint "
+            "registry, so the dual-spelling authorization guard would be inert. This "
+            "usually means the installed MLflow version changed the get_endpoints() "
+            "contract. Refusing to start rather than run without the guard (issue #270)."
+        )
+
+
+_assert_maps_populated()
+
+
 def _collidable_fields_for(path: str, method: str) -> Optional[_CollidablePairs]:
     """Return the collidable field pairs for a route, or ``None`` if it has none.
 
