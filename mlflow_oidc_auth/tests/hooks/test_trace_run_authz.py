@@ -141,6 +141,66 @@ class TestDeleteTraceAuthz:
                 assert trace_v.validate_can_delete_traces_from_experiment_id("u") is True
 
 
+class TestDualSpellingBypass:
+    """Regression: proto-JSON resolves a field supplied under BOTH snake_case and camelCase to
+    the LAST (caller-controlled) one, so authorizing only one spelling lets an attacker check
+    their own resource while MLflow operates on the victim's. Every field must union both
+    spellings and require permission on all values. ('OWN' authorized, 'VICTIM' not.)"""
+
+    ONLY_OWN = {"OWN": _perm(read=True, update=True, delete=True)}
+
+    def test_search_experiment_ids_dual_denied(self):
+        with _app.test_request_context("/api/2.0/mlflow/traces", method="POST", json={"experiment_ids": ["OWN"], "experimentIds": ["VICTIM"]}):
+            with patch(f"{_TP}.effective_experiment_permission", side_effect=_eff(self.ONLY_OWN)):
+                assert trace_v.validate_can_read_traces_from_experiment_ids("u") is False
+
+    def test_delete_experiment_id_dual_denied(self):
+        """The worst vector: dual-spelling here was permanent cross-tenant trace deletion."""
+        with _app.test_request_context("/api/2.0/mlflow/traces/delete-traces", method="POST", json={"experiment_id": "OWN", "experimentId": "VICTIM"}):
+            with patch(f"{_TP}.effective_experiment_permission", side_effect=_eff(self.ONLY_OWN)):
+                assert trace_v.validate_can_delete_traces_from_experiment_id("u") is False
+
+    def test_batch_trace_ids_dual_denied(self):
+        with _app.test_request_context("/api/3.0/mlflow/traces/batchGetInfos", method="POST", json={"trace_ids": ["own-t"], "traceIds": ["victim-t"]}):
+            with (
+                patch(f"{_TP}._get_tracking_store") as ts,
+                patch(f"{_TP}.effective_experiment_permission", side_effect=_eff(self.ONLY_OWN)),
+            ):
+                ts.return_value.get_trace_info.side_effect = lambda tid: MagicMock(experiment_id="OWN" if tid == "own-t" else "VICTIM")
+                assert trace_v.validate_can_read_traces_from_trace_ids("u") is False
+
+    def test_single_trace_dual_denied(self):
+        with _app.test_request_context("/api/3.0/mlflow/traces/get", method="GET", query_string={"trace_id": "own-t", "traceId": "victim-t"}):
+            with (
+                patch(f"{_TP}._get_tracking_store") as ts,
+                patch(f"{_TP}.effective_experiment_permission", side_effect=_eff(self.ONLY_OWN)),
+            ):
+                ts.return_value.get_trace_info.side_effect = lambda tid: MagicMock(experiment_id="OWN" if tid == "own-t" else "VICTIM")
+                assert trace_v.validate_can_read_trace("u") is False
+
+    def test_link_to_run_dual_run_id_denied(self):
+        with _app.test_request_context("/api/2.0/mlflow/traces/link-to-run", method="POST", json={"run_id": "own-r", "runId": "victim-r"}):
+            with (
+                patch(f"{_TP}._get_tracking_store") as ts,
+                patch(f"{_TP}.effective_experiment_permission", side_effect=_eff(self.ONLY_OWN)),
+            ):
+                ts.return_value.get_run.side_effect = lambda rid: MagicMock(info=MagicMock(experiment_id="OWN" if rid == "own-r" else "VICTIM"))
+                assert trace_v.validate_can_update_trace_from_run_id("u") is False
+
+    def test_search_runs_experiment_ids_dual_denied(self):
+        from mlflow_oidc_auth.validators import experiment as exp_v
+
+        with _app.test_request_context("/api/2.0/mlflow/runs/search", method="POST", json={"experiment_ids": ["OWN"], "experimentIds": ["VICTIM"]}):
+            with patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission", side_effect=_eff(self.ONLY_OWN)):
+                assert exp_v.validate_can_read_experiments_from_experiment_ids("u") is False
+
+    def test_legit_single_spelling_still_allowed(self):
+        """No false-deny for real traffic (which only ever sends one spelling)."""
+        with _app.test_request_context("/api/2.0/mlflow/traces", method="POST", json={"experimentIds": ["OWN"]}):
+            with patch(f"{_TP}.effective_experiment_permission", side_effect=_eff(self.ONLY_OWN)):
+                assert trace_v.validate_can_read_traces_from_experiment_ids("u") is True
+
+
 class TestBindings:
     """Structural guards on the before_request dispatch (#259)."""
 
