@@ -66,7 +66,7 @@ class RegisteredModelGroupRegexPermissionRepository(
         prompt: bool = False,
     ) -> RegisteredModelGroupRegexPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = SqlRegisteredModelGroupRegexPermission(
                 regex=regex,
@@ -138,7 +138,7 @@ class RegisteredModelGroupRegexPermissionRepository(
         prompt: bool = False,
     ) -> RegisteredModelGroupRegexPermission:
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = self._get_registered_model_group_regex_permission(session, id, group.id, prompt=prompt)
             perm.permission = permission
@@ -149,7 +149,7 @@ class RegisteredModelGroupRegexPermissionRepository(
             return perm.to_mlflow_entity()
 
     def revoke(self, id: int, group_name: str, prompt: bool = False) -> None:  # type: ignore[override]
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = self._get_registered_model_group_regex_permission(session, id, group.id, prompt=prompt)
             session.delete(perm)

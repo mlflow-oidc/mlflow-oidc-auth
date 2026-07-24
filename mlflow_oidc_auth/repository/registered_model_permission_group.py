@@ -44,7 +44,7 @@ class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[Sql
     # -- Custom rename: raises when nothing is found --------------------------
 
     def rename(self, old_name: str, new_name: str):
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perms = session.query(self.model_class).filter(self.model_class.name == old_name).all()
             if not perms:
                 raise MlflowException(

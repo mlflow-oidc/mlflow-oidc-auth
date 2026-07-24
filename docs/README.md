@@ -97,7 +97,7 @@ Authentication context flows from FastAPI middleware through an ASGI-to-WSGI bri
 ## Requirements
 
 - Python >=3.10 (3.12 recommended)
-- MLflow >=3.10.0, <4
+- MLflow >=3.14.0, <4
 - An OIDC provider (Keycloak, Okta, Auth0, Azure AD, etc.)
 - Database: SQLite (default), PostgreSQL, or MySQL
 

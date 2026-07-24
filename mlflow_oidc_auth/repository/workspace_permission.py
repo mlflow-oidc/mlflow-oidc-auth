@@ -65,7 +65,7 @@ class WorkspacePermissionRepository:
         Raises:
             MlflowException: If a permission already exists for this workspace+user.
         """
-        with self.ManagedSessionMaker() as session:
+        with self.ManagedSessionMaker(read_only=False) as session:
             try:
                 perm = SqlWorkspacePermission(workspace=workspace, user_id=user_id, permission=permission)
                 session.add(perm)
@@ -91,7 +91,7 @@ class WorkspacePermissionRepository:
         Raises:
             MlflowException: If the permission does not exist.
         """
-        with self.ManagedSessionMaker() as session:
+        with self.ManagedSessionMaker(read_only=False) as session:
             try:
                 perm = (
                     session.query(SqlWorkspacePermission)
@@ -120,7 +120,7 @@ class WorkspacePermissionRepository:
         Raises:
             MlflowException: If the permission does not exist.
         """
-        with self.ManagedSessionMaker() as session:
+        with self.ManagedSessionMaker(read_only=False) as session:
             try:
                 perm = (
                     session.query(SqlWorkspacePermission)
@@ -173,7 +173,7 @@ class WorkspacePermissionRepository:
         Returns:
             Number of permission rows deleted.
         """
-        with self.ManagedSessionMaker() as session:
+        with self.ManagedSessionMaker(read_only=False) as session:
             count = session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.workspace == workspace).delete()
             session.flush()
             return count

@@ -54,7 +54,7 @@ class ScorerPermissionRepository(BaseUserPermissionRepository[SqlScorerPermissio
 
     def grant_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 user = get_user(session, username)
                 perm = SqlScorerPermission(
@@ -79,14 +79,14 @@ class ScorerPermissionRepository(BaseUserPermissionRepository[SqlScorerPermissio
 
     def update_permission(self, experiment_id: str, scorer_name: str, username: str, permission: str) -> ScorerPermission:  # type: ignore[override]
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
             perm.permission = permission
             session.flush()
             return perm.to_mlflow_entity()
 
     def revoke_permission(self, experiment_id: str, scorer_name: str, username: str) -> None:  # type: ignore[override]
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perm = self._get_permission(session, experiment_id, scorer_name, username)
             session.delete(perm)
             session.flush()

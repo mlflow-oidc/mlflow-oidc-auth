@@ -85,7 +85,7 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
         :return: The created permission entity.
         """
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 user = get_user(session, username)
                 perm = self.model_class(
@@ -145,7 +145,7 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
         :return: The updated permission entity.
         """
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perm = self._get_permission(session, resource_id, username)
             perm.permission = permission
             session.flush()
@@ -157,14 +157,14 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
         :param resource_id: The resource identifier value.
         :param username: The username of the user.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perm = self._get_permission(session, resource_id, username)
             session.delete(perm)
             session.flush()
 
     def rename(self, old_name: str, new_name: str) -> None:
         """Update all permissions from old_name to new_name."""
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perms = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == old_name).all()
             for perm in perms:
                 setattr(perm, self.resource_id_attr, new_name)
@@ -172,7 +172,7 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
 
     def wipe(self, resource_id: str) -> None:
         """Delete all permissions for a resource."""
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perms = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == resource_id).all()
             for p in perms:
                 session.delete(p)
@@ -264,7 +264,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
         :return: The created permission entity.
         """
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 group = get_group(session, group_name)
                 perm = self.model_class(
@@ -379,7 +379,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
         :return: The updated permission entity.
         """
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = (
                 session.query(self.model_class)
@@ -399,7 +399,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
         :param group_name: The name of the group.
         :param resource_id: The resource identifier value.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = (
                 session.query(self.model_class)
@@ -414,7 +414,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
 
     def rename(self, old_name: str, new_name: str) -> None:
         """Update all group permissions from old_name to new_name."""
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perms = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == old_name).all()
             for perm in perms:
                 setattr(perm, self.resource_id_attr, new_name)
@@ -422,7 +422,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
 
     def wipe(self, resource_id: str) -> None:
         """Delete all group permissions for a resource."""
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             perms = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == resource_id).all()
             for p in perms:
                 session.delete(p)
@@ -481,7 +481,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
         """
         validate_regex(regex)
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 user = get_user(session, username)
                 perm = self.model_class(
@@ -543,7 +543,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
         """
         validate_regex(regex)
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             perm = self._get_regex_permission(session, user.id, id)
             perm.priority = priority
@@ -558,7 +558,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
         :param username: The username of the user.
         :param id: The ID of the permission record.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             perm = self._get_regex_permission(session=session, user_id=user.id, id=id)
             session.delete(perm)
@@ -627,7 +627,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
         """
         _validate_permission(permission)
         validate_regex(regex)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 group = get_group(session, group_name)
                 perm = self.model_class(
@@ -669,7 +669,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
         """
         _validate_permission(permission)
         validate_regex(regex)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = self._get_group_regex_permission(session, id, group.id)
             perm.permission = permission
@@ -684,7 +684,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
         :param group_name: The name of the group.
         :param id: The ID of the permission record.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = self._get_group_regex_permission(session, id, group.id)
             session.delete(perm)

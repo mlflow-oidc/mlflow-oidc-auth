@@ -59,7 +59,7 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
 
     def grant_prompt_permission_to_group(self, group_name: str, name: str, permission: str) -> RegisteredModelPermission:
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = SqlRegisteredModelGroupPermission(name=name, group_id=group.id, permission=permission, prompt=True)
             session.add(perm)
@@ -99,7 +99,7 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
 
     def update_prompt_permission_for_group(self, group_name: str, name: str, permission: str):
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = self._get_prompt_group_permission(session, name, group.id)
             perm.permission = permission
@@ -107,7 +107,7 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
             return perm.to_mlflow_entity()
 
     def revoke_prompt_permission_from_group(self, group_name: str, name: str):
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = self._get_prompt_group_permission(session, name, group.id)
             session.delete(perm)

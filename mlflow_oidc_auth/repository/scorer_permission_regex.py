@@ -21,7 +21,7 @@ class ScorerPermissionRegexRepository(BaseRegexPermissionRepository[SqlScorerReg
     def update(self, id: int, regex: str, priority: int, permission: str, username: str) -> ScorerRegexPermission:  # type: ignore[override]
         validate_regex(regex)
         _validate_permission(permission)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             perm = self._get_regex_permission(session, user.id, id)
             perm.regex = regex
@@ -31,7 +31,7 @@ class ScorerPermissionRegexRepository(BaseRegexPermissionRepository[SqlScorerReg
             return perm.to_mlflow_entity()
 
     def revoke(self, id: int, username: str) -> None:  # type: ignore[override]
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             perm = self._get_regex_permission(session, user.id, id)
             session.delete(perm)

@@ -31,7 +31,7 @@ class UserRepository:
     ) -> User:
         _validate_username(username)
         pwhash = generate_password_hash(password)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 u = SqlUser(
                     username=username,
@@ -139,7 +139,7 @@ class UserRepository:
     ) -> User:
         from werkzeug.security import generate_password_hash
 
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if password is not None:
                 user.password_hash = generate_password_hash(password)
@@ -153,7 +153,7 @@ class UserRepository:
             return user.to_mlflow_entity()
 
     def delete(self, username: str) -> None:
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if user is None:
                 raise MlflowException(f"User '{username}' not found.")
@@ -221,10 +221,13 @@ class UserRepository:
         with self._Session() as session:
             try:
                 user = get_user(session, username)
-                if user.password_expiration is not None:
-                    if user.password_expiration.tzinfo is None:
-                        user.password_expiration = user.password_expiration.replace(tzinfo=timezone.utc)
-                    if user.password_expiration < datetime.now(timezone.utc):
+                expiration = user.password_expiration
+                if expiration is not None:
+                    # Normalize into a local, so the comparison does not mark the
+                    # persistent user row dirty and flush an UPDATE on every login.
+                    if expiration.tzinfo is None:
+                        expiration = expiration.replace(tzinfo=timezone.utc)
+                    if expiration < datetime.now(timezone.utc):
                         return False
                 return check_password_hash(getattr(user, "password_hash"), password)
             except MlflowException:
