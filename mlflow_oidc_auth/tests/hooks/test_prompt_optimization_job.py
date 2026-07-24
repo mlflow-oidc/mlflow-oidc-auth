@@ -6,7 +6,11 @@ for Get/Delete/Cancel (which carry only job_id) and experiment-level validators
 for Create/Search (which carry experiment_id).
 """
 
+import json
+from unittest.mock import MagicMock, patch
+
 import pytest
+from flask import Flask, request
 from mlflow.protos.service_pb2 import (
     CreatePromptOptimizationJob,
     GetPromptOptimizationJob,
@@ -23,6 +27,9 @@ from mlflow_oidc_auth.validators import (
     validate_can_delete_prompt_optimization_job,
     validate_can_update_prompt_optimization_job,
 )
+from mlflow_oidc_auth.validators import prompt_optimization_job as job_validator
+
+app = Flask(__name__)
 
 
 class TestPromptOptimizationJobHandlers:
@@ -58,3 +65,55 @@ class TestPromptOptimizationJobHandlers:
             CancelPromptOptimizationJob,
         }
         assert expected.issubset(set(BEFORE_REQUEST_HANDLERS.keys()))
+
+
+class TestPromptOptimizationJobIdSource:
+    """job_id must be read from the URL path — the identifier MLflow dispatches on."""
+
+    def _perm(self, **flags):
+        perm = MagicMock()
+        for k, v in flags.items():
+            setattr(perm.permission, k, v)
+        return perm
+
+    def test_job_id_read_from_path_not_body(self):
+        """A body job_id must never override the path job_id (cross-source bypass)."""
+        job = MagicMock()
+        job.params = json.dumps({"experiment_id": "exp-victim"})
+        with app.test_request_context(
+            path="/api/3.0/mlflow/prompt-optimization/jobs/VICTIM_JOB",
+            method="DELETE",
+            json={"job_id": "OWN_JOB"},
+            content_type="application/json",
+        ):
+            request.view_args = {"job_id": "VICTIM_JOB"}
+            with (
+                patch.object(job_validator, "get_job", return_value=job) as mock_get_job,
+                patch.object(
+                    job_validator,
+                    "effective_experiment_permission",
+                    return_value=self._perm(can_delete=False),
+                ),
+            ):
+                assert validate_can_delete_prompt_optimization_job("attacker") is False
+                # Resolution used the path job, not the attacker's body job.
+                mock_get_job.assert_called_once_with("VICTIM_JOB")
+
+    def test_job_id_resolves_permission_from_path(self):
+        job = MagicMock()
+        job.params = json.dumps({"experiment_id": "exp1"})
+        with app.test_request_context(
+            path="/api/3.0/mlflow/prompt-optimization/jobs/JOB123",
+            method="GET",
+        ):
+            request.view_args = {"job_id": "JOB123"}
+            with (
+                patch.object(job_validator, "get_job", return_value=job) as mock_get_job,
+                patch.object(
+                    job_validator,
+                    "effective_experiment_permission",
+                    return_value=self._perm(can_read=True),
+                ),
+            ):
+                assert validate_can_read_prompt_optimization_job("user1") is True
+                mock_get_job.assert_called_once_with("JOB123")
