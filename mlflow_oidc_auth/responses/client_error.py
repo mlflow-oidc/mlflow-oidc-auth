@@ -15,6 +15,14 @@ def make_forbidden_response(msg=None) -> Response:
     return response
 
 
+def make_bad_request_response(msg=None) -> Response:
+    if msg is None:
+        msg = {"message": "Bad request"}
+    response = make_response(jsonify(msg))
+    response.status_code = 400
+    return response
+
+
 def make_basic_auth_response() -> Response:
     response = make_response("You are not authenticated. Please see documentation for details" "https://github.com/mlflow-oidc/mlflow-oidc-auth")
     response.status_code = 401
