@@ -602,15 +602,30 @@ def before_request_hook():
         return
     # Workspace creation gating (per WSAUTH-F / WSAUTH-03)
     if config.MLFLOW_ENABLE_WORKSPACES and _is_workspace_gated_creation(request.path, request.method):
+        from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
         from mlflow_oidc_auth.bridge.user import get_request_workspace
         from mlflow_oidc_auth.utils.workspace_cache import (
             get_workspace_permission_cached,
         )
 
+        # AuthMiddleware already normalized this the way MLflow does, so an empty or
+        # whitespace-only header arrives as None rather than "".
         workspace = get_request_workspace()
-        if workspace:
+        # When no workspace context is supplied, MLflow resolves the request to the
+        # default workspace, so the guards must treat it as such rather than skip.
+        effective_workspace = workspace or DEFAULT_WORKSPACE_NAME
+
+        if workspace is None and config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT:
+            logger.warning(f"Denying {request.method} {request.path} for {username}: workspace context is required for creation")
+            return responses.make_forbidden_response()
+        if effective_workspace == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:
+            logger.warning(f"Denying {request.method} {request.path} for {username}: creation in the '{DEFAULT_WORKSPACE_NAME}' workspace is disabled")
+            return responses.make_forbidden_response()
+        if workspace is not None:
             ws_perm = get_workspace_permission_cached(username, workspace)
             if ws_perm is None or not ws_perm.can_manage:
+                logger.warning(f"Denying {request.method} {request.path} for {username}: MANAGE required on workspace '{workspace}'")
                 return responses.make_forbidden_response()
     # authorization
     if validator:

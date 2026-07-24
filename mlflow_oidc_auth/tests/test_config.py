@@ -314,6 +314,8 @@ class TestAppConfig(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             config = AppConfig()
             self.assertFalse(config.MLFLOW_ENABLE_WORKSPACES)
+            self.assertFalse(config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT)
+            self.assertFalse(config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION)
 
     def test_workspace_feature_flags_override(self):
         """Test that workspace feature flags can be overridden via environment variables."""
@@ -321,10 +323,14 @@ class TestAppConfig(unittest.TestCase):
             os.environ,
             {
                 "MLFLOW_ENABLE_WORKSPACES": "true",
+                "OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT": "true",
+                "OIDC_WORKSPACE_DENY_DEFAULT_CREATION": "true",
             },
         ):
             config = AppConfig()
             self.assertTrue(config.MLFLOW_ENABLE_WORKSPACES)
+            self.assertTrue(config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT)
+            self.assertTrue(config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION)
 
     def test_workspace_feature_flags_disabled_by_default(self):
         """Test that workspaces are disabled by default."""

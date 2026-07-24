@@ -127,6 +127,21 @@ With workspaces enabled, creation is intentionally stricter than update:
 - `CreateRegisteredModel` requires workspace `MANAGE`
 - Updating existing experiments/models follows normal permission resolution, so workspace `EDIT` fallback is sufficient for update operations when no resource-level override exists
 
+#### Hardening creation for clients that send no workspace context
+
+A client that omits the `X-MLFLOW-WORKSPACE` header still creates resources — MLflow resolves such a
+request to the `default` workspace. By default this path is not workspace-gated, which preserves
+backward compatibility. Two opt-in settings tighten it:
+
+- `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT=true` rejects workspace-gated create requests that carry no
+  workspace context at all, forcing clients to be explicit about their target workspace.
+- `OIDC_WORKSPACE_DENY_DEFAULT_CREATION=true` rejects non-admin creates that land in the `default`
+  workspace. Because a request with no workspace context lands there too, this also covers clients
+  that omit the header — it cannot be bypassed by dropping the header.
+
+Admins bypass both guards. Enabling both gives the strictest posture: every non-admin create must name
+a non-default workspace on which the user holds `MANAGE`.
+
 This means the following setup allows users to edit existing resources but not create new ones:
 
 ```bash

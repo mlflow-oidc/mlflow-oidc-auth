@@ -24,6 +24,21 @@ from mlflow_oidc_auth.store import store
 logger = get_logger()
 
 
+def normalize_workspace_header(raw_workspace: Optional[str]) -> Optional[str]:
+    """Normalize the X-MLFLOW-WORKSPACE header the way MLflow itself does.
+
+    MLflow's ``_normalize_workspace`` strips the value and treats an empty result as absent,
+    then resolves an absent workspace to the default one. The auth layer must agree exactly:
+    if it derived a different name than the tracking layer stores into, permissions would be
+    checked against one workspace while the resource landed in another.
+
+    Returns the trimmed name, or None when the header is missing, empty, or whitespace-only.
+    """
+    if not raw_workspace:
+        return None
+    return raw_workspace.strip() or None
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """
     FastAPI middleware for user authentication.
@@ -292,7 +307,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Extract workspace header only when workspaces are enabled (per WSFND-02)
             workspace = None
             if config.MLFLOW_ENABLE_WORKSPACES:
-                workspace = request.headers.get("x-mlflow-workspace")
+                workspace = normalize_workspace_header(request.headers.get("x-mlflow-workspace"))
 
             request.scope[AUTH_CONTEXT_KEY] = AuthContext(
                 username=username,

@@ -52,18 +52,56 @@ def _get_permission_cache() -> CacheBackend:
     return _permission_cache
 
 
-def _make_cache_key(resource_type: str, resource_id: str, username: str) -> str:
-    """Build a string cache key from the permission lookup tuple."""
+# Distinguishes "no workspace context on this request" from a workspace literally named
+# after it. Cannot collide with a real name: MLflow's WorkspaceNameValidator rejects ":".
+_NO_WORKSPACE_CACHE_MARKER = "::no-workspace"
+
+
+def _get_cache_workspace() -> str | None:
+    """Return the workspace component of the cache key, or None when workspaces are off.
+
+    This must describe what ``resolve_permission`` actually *did*, not what MLflow would
+    resolve the request to. A header-less request currently skips workspace authorization
+    entirely and keeps the resource-level fallback, whereas an explicit
+    ``X-MLFLOW-WORKSPACE: default`` request runs the workspace check and can come back
+    ``workspace-deny``. Those are different decisions, so they must not share a key —
+    substituting the default workspace name here let a header-less result be served to an
+    explicit-default request, and vice versa, for the lifetime of the entry.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return None
+
+    from mlflow_oidc_auth.bridge.user import get_request_workspace
+
+    # None also covers resolution outside a Flask request context, which likewise skips
+    # the workspace branch below and so belongs in the same bucket.
+    return get_request_workspace() or _NO_WORKSPACE_CACHE_MARKER
+
+
+def _make_cache_key(resource_type: str, resource_id: str, username: str, workspace: str | None = None) -> str:
+    """Build a string cache key from the permission lookup tuple.
+
+    The workspace is part of the key whenever workspaces are enabled: the same
+    resource id denotes different entities in different workspaces, and a result
+    may itself be workspace-derived, so a workspace-blind key would serve one
+    tenant's decision to another for the lifetime of the entry.
+    """
+    if workspace is not None:
+        return f"{workspace}:{resource_type}:{resource_id}:{username}"
     return f"{resource_type}:{resource_id}:{username}"
 
 
-def invalidate_permission_cache(resource_type: str, resource_id: str, username: str) -> None:
+def invalidate_permission_cache(resource_type: str, resource_id: str, username: str, workspace: str | None = None) -> None:
     """Remove a specific permission entry from cache.
 
-    Call after permission CUD operations for a specific user+resource.
+    Call after permission CUD operations for a specific user+resource. When
+    workspaces are enabled, pass the workspace the entry was cached under;
+    omitting it falls back to the workspace of the current request.
     """
     cache = _get_permission_cache()
-    cache.delete(_make_cache_key(resource_type, resource_id, username))
+    if workspace is None:
+        workspace = _get_cache_workspace()
+    cache.delete(_make_cache_key(resource_type, resource_id, username, workspace))
 
 
 def flush_permission_cache() -> None:
@@ -264,7 +302,7 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     every request. The cache key is ``resource_type:resource_id:username``.
     """
     cache = _get_permission_cache()
-    cache_key = _make_cache_key(resource_type, resource_id, username)
+    cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace())
 
     cached = cache.get(cache_key)
     if cached is not None:
