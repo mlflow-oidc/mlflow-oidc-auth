@@ -16,7 +16,10 @@ from flask import Flask, request
 from mlflow.server.handlers import get_endpoints
 
 from mlflow_oidc_auth.hooks import dual_spelling_guard as guard
-from mlflow_oidc_auth.hooks.dual_spelling_guard import find_dual_spelling_collision
+from mlflow_oidc_auth.hooks.dual_spelling_guard import (
+    find_dual_spelling_collision,
+    has_unexpected_get_body,
+)
 
 app = Flask(__name__)
 app.secret_key = "test_secret_key"
@@ -82,9 +85,74 @@ def test_camel_only_body_is_clean():
 
 
 def test_get_query_dual_spelling_is_not_a_vector():
-    """MLflow builds GET protos from args keyed by field.name (snake) only."""
+    """With a NON-EMPTY query string MLflow builds GET protos from args, keyed by snake field.name."""
     with _json_ctx("/api/2.0/mlflow/experiments/get", "GET", query={"experiment_id": "own", "experimentId": "victim"}):
         assert find_dual_spelling_collision(request) is None
+
+
+def test_get_with_empty_query_and_dual_spelled_body_is_rejected():
+    """A GET with an EMPTY query string proto-parses the BODY, so it must be checked.
+
+    MLflow's _get_request_message takes the args path only when request.args is
+    non-empty; otherwise it parse_dicts the body and last-spelling-wins applies.
+    Exempting every GET left the #270 bypass fully open on the GET surface.
+    """
+    with _json_ctx("/api/2.0/mlflow/experiments/get", "GET", {"experiment_id": "own", "experimentId": "victim"}):
+        assert find_dual_spelling_collision(request) == "experiment_id"
+
+
+def test_get_with_query_args_and_a_body_ignores_the_body():
+    """When args are present MLflow ignores the body entirely, so it is not a vector."""
+    with _json_ctx(
+        "/api/2.0/mlflow/experiments/get",
+        "GET",
+        {"experiment_id": "own", "experimentId": "victim"},
+        query={"experiment_id": "own"},
+    ):
+        assert find_dual_spelling_collision(request) is None
+        assert has_unexpected_get_body(request) is False
+
+
+def test_get_body_on_proto_route_is_rejected_even_without_dual_spelling():
+    """A GET body defeats args-only validators, which then authorize with no store lookup.
+
+    validate_can_read_metric_history_bulk_interval reads request.args; on a GET with an
+    empty query string it finds no run_ids and returns True without consulting the store,
+    while MLflow proto-parses the body and serves the run named there. No dual spelling
+    is needed, so has_unexpected_get_body must reject it.
+    """
+    with _json_ctx(
+        "/ajax-api/2.0/mlflow/metrics/get-history-bulk-interval",
+        "GET",
+        {"run_ids": ["victim_run"], "metric_key": "loss"},
+    ):
+        assert has_unexpected_get_body(request) is True
+
+
+def test_plain_get_without_body_is_allowed():
+    with _json_ctx("/api/2.0/mlflow/experiments/get", "GET"):
+        assert has_unexpected_get_body(request) is False
+
+
+def test_get_body_on_non_proto_route_is_allowed():
+    """Routes MLflow never proto-parses read args only, so a stray body is harmless."""
+    with _json_ctx("/api/2.0/mlflow/get-artifact", "GET", {"stray": "body"}):
+        assert has_unexpected_get_body(request) is False
+
+
+def test_live_search_datasets_route_is_covered():
+    """MLflow serves search-datasets via @app.route, so it is absent from get_endpoints().
+
+    Only the malformed twins ("/api/2.0mlflow/...", missing a slash, bound to
+    _not_implemented) appear in the registry. Binding only those would leave the real
+    route unguarded, so the live path is bound from the Flask routing table.
+    """
+    for path in (
+        "/ajax-api/2.0/mlflow/experiments/search-datasets",
+        "/api/2.0mlflow/experiments/search-datasets",
+    ):
+        with _json_ctx(path, "POST", {"experiment_ids": ["own"], "experimentIds": ["victim"]}):
+            assert find_dual_spelling_collision(request) == "experiment_ids", f"unguarded: {path}"
 
 
 def test_unmapped_route_is_ignored():
@@ -160,6 +228,13 @@ def test_hook_returns_400_on_dual_spelling():
     assert resp.status_code == 400
 
 
+def test_hook_returns_400_on_get_with_body():
+    """End-to-end: a GET carrying a proto-parsable body is rejected before authorization."""
+    resp = _hook_response("/api/2.0/mlflow/experiments/get", "GET", {"experiment_id": "own"})
+    assert resp is not None
+    assert resp.status_code == 400
+
+
 def test_hook_rejects_dual_spelling_even_for_admin():
     """A dual-spelled body is malformed regardless of who sends it."""
     from unittest.mock import patch
@@ -193,6 +268,14 @@ def test_every_collidable_route_rejects_dual_spelling():
     for path, method, snake, camel in routes:
         if method != "GET":
             continue
-        # GET routes read args by field.name (snake) only — not a dual-spelling vector.
+        # With a non-empty query string MLflow reads args by field.name (snake) only,
+        # so a camelCase query param is never read — not a dual-spelling vector.
         with _json_ctx(path, method, query={snake: "own", camel: "victim"}):
             assert find_dual_spelling_collision(request) is None, f"unexpected GET rejection on {path}"
+        # But with an EMPTY query string MLflow proto-parses the body, so the same
+        # dual spelling in a body IS a vector and must be rejected.
+        with _json_ctx(path, method, {snake: "own", camel: "victim"}):
+            assert find_dual_spelling_collision(request) == snake, f"guard missed GET-body dual-spelling on {path}"
+        # And any GET body on a proto route defeats args-only validators.
+        with _json_ctx(path, method, {snake: "own"}):
+            assert has_unexpected_get_body(request) is True, f"guard missed GET body on {path}"

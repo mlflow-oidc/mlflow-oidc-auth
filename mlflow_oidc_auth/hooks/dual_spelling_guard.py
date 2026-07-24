@@ -1,4 +1,4 @@
-"""Reject requests that carry one proto field under two spellings (issue #270).
+"""Reject ambiguous requests before any authorization decision (issue #270).
 
 MLflow parses request bodies as proto-JSON.  ``protobuf.ParseDict`` accepts a
 field under BOTH its snake_case name AND its lowerCamelCase ``json_name``, and
@@ -18,19 +18,41 @@ UI sends snake_case request bodies.  Rejecting a dual-spelling request with 400
 therefore cannot break a real client — it only closes the ambiguity an attacker
 relies on.
 
-The ``(path, method) -> proto class`` map is derived directly from MLflow's own
-service registry via ``get_endpoints``, so it covers every proto endpoint MLflow
-serves — current and future — with no manual maintenance.  The request body is
-read through MLflow's own ``_get_normalized_request_json`` so the guard inspects
-exactly the dict MLflow will ``parse_dict`` (force-parsed, double-encoding aware),
-leaving no room for a ``Content-Type`` evasion.
+GET requests need care.  MLflow's ``_get_request_message`` builds the proto from
+``request.args`` (keyed by snake_case ``field.name``, so camelCase query params
+are never read) **only when the query string is non-empty**::
+
+    if flask_request.method == "GET" and flask_request.args:   # args path
+        ...
+    else:                                                       # body path
+        request_json = _get_normalized_request_json(flask_request)
+    parse_dict(request_json, request_message)
+
+A GET with an *empty* query string therefore falls through and proto-parses the
+JSON **body**, with full dual-spelling semantics.  Worse, validators that read
+only ``request.args`` find nothing in such a request and authorize *vacuously*
+(no store lookup at all) while MLflow serves whatever the body named.  So a GET
+that carries a body MLflow will parse is rejected outright — see
+``has_unexpected_get_body``.  No legitimate client sends a GET body; real clients
+put GET parameters in the query string, which stays on the safe args path.
+
+The ``(path, method) -> proto class`` map is derived from MLflow's own service
+registry via ``get_endpoints``, so it covers every proto endpoint MLflow serves —
+current and future — with no manual maintenance.  A few proto-parsing handlers are
+registered with ``@app.route`` instead and never appear in that registry, so they
+are bound by enumerating the real Flask routing table (see
+``_NON_REGISTRY_PROTO_ROUTES``).  The request body is read through MLflow's own
+``_get_normalized_request_json`` so the guard inspects exactly the dict MLflow will
+``parse_dict`` (force-parsed, double-encoding aware), leaving no room for a
+``Content-Type`` evasion.
 """
 
 import re
-from typing import List, Optional, Pattern, Tuple
+from typing import Any, Dict, List, Optional, Pattern, Set, Tuple
 
 from flask import Request
 
+from mlflow.protos.service_pb2 import SearchDatasets
 from mlflow.server.handlers import get_endpoints, _get_normalized_request_json
 
 from mlflow_oidc_auth.logger import get_logger
@@ -42,8 +64,20 @@ logger = get_logger()
 # and cannot be spelled two ways, so they can never collide.
 _CollidablePairs = List[Tuple[str, str]]
 
-_EXACT_COLLIDABLE: dict[Tuple[str, str], _CollidablePairs] = {}
+_EXACT_COLLIDABLE: Dict[Tuple[str, str], _CollidablePairs] = {}
 _PATTERN_COLLIDABLE: List[Tuple[Pattern[str], str, _CollidablePairs]] = []
+
+# Every proto-backed route, whether or not it has collidable fields. Used to decide
+# whether a GET body would be proto-parsed by MLflow.
+_EXACT_PROTO_ROUTES: Set[Tuple[str, str]] = set()
+_PATTERN_PROTO_ROUTES: List[Tuple[Pattern[str], str]] = []
+
+# Proto-parsing handlers MLflow registers with @app.route rather than through the
+# service registry, so get_endpoints() never yields their live path. MLflow also
+# registers malformed twins of some of these ("/api/2.0mlflow/...", missing the
+# slash) which DO appear in the registry — binding only those would leave the real
+# route unguarded. Enumerating the routing table avoids having to predict spellings.
+_NON_REGISTRY_PROTO_ROUTES = (("mlflow/experiments/search-datasets", "POST", SearchDatasets),)
 
 
 def _re_compile_path(path: str) -> Pattern[str]:
@@ -51,28 +85,46 @@ def _re_compile_path(path: str) -> Pattern[str]:
     return re.compile(re.sub(r"<([^>]+)>", r"([^/]+)", path))
 
 
+def _register_route(http_path: str, methods, descriptor) -> None:
+    """Record one route's proto membership and its collidable field pairs."""
+    collidable = [(f.name, f.json_name) for f in descriptor.fields if f.name != f.json_name]
+    parameterized = "<" in http_path
+    compiled = _re_compile_path(http_path) if parameterized else None
+    for method in methods:
+        if parameterized:
+            _PATTERN_PROTO_ROUTES.append((compiled, method))
+            if collidable:
+                _PATTERN_COLLIDABLE.append((compiled, method, collidable))
+        else:
+            _EXACT_PROTO_ROUTES.add((http_path, method))
+            if collidable:
+                _EXACT_COLLIDABLE[(http_path, method)] = collidable
+
+
+def _bind_non_registry_proto_routes() -> None:
+    """Bind proto-parsing routes that MLflow serves outside the service registry."""
+    from mlflow.server import app as mlflow_flask_app
+
+    for suffix, method, proto in _NON_REGISTRY_PROTO_ROUTES:
+        for rule in mlflow_flask_app.url_map.iter_rules():
+            path = str(rule)
+            if path.endswith(suffix) and method in (rule.methods or set()):
+                _register_route(path, [method], proto.DESCRIPTOR)
+
+
 def _build_proto_route_maps() -> None:
-    """Populate the collidable-field maps from MLflow's full proto surface.
+    """Populate the route maps from MLflow's full proto surface.
 
     ``get_endpoints(lambda rc: rc)`` yields ``(path, handler, methods)`` for every
     registered endpoint, with the handler being the request proto class for proto
     routes and a plain function (``_graphql``, server-info, scoring, ...) otherwise.
-    We keep only proto handlers that actually have collidable fields.
     """
     for http_path, handler, methods in get_endpoints(lambda rc: rc):
         descriptor = getattr(handler, "DESCRIPTOR", None)
         if descriptor is None:
             continue  # non-proto handler
-        collidable = [(f.name, f.json_name) for f in descriptor.fields if f.name != f.json_name]
-        if not collidable:
-            continue
-        if "<" in http_path:
-            compiled = _re_compile_path(http_path)
-            for method in methods:
-                _PATTERN_COLLIDABLE.append((compiled, method, collidable))
-        else:
-            for method in methods:
-                _EXACT_COLLIDABLE[(http_path, method)] = collidable
+        _register_route(http_path, methods, descriptor)
+    _bind_non_registry_proto_routes()
 
 
 _build_proto_route_maps()
@@ -116,26 +168,47 @@ def _collidable_fields_for(path: str, method: str) -> Optional[_CollidablePairs]
     return None
 
 
-def find_dual_spelling_collision(req: Request) -> Optional[str]:
-    """Return the snake_case name of a dual-spelled field, or ``None`` if clean.
+def _is_proto_route(path: str, method: str) -> bool:
+    """True when MLflow will build a proto message for this route."""
+    if (path, method) in _EXACT_PROTO_ROUTES:
+        return True
+    for compiled, m in _PATTERN_PROTO_ROUTES:
+        if m == method and compiled.fullmatch(path):
+            return True
+    return False
 
-    Only the request body is inspected: on GET, MLflow builds the proto solely
-    from ``request.args`` keyed by ``field.name`` (snake_case), so a camelCase
-    query parameter is never read and no dual-spelling vector exists there.
-    """
-    collidable = _collidable_fields_for(req.path, req.method)
-    if not collidable:
-        return None
-    if req.method == "GET":
-        return None
 
+def _request_body(req: Request) -> Optional[Dict[str, Any]]:
+    """The dict MLflow will ``parse_dict``, or ``None`` if there isn't one."""
     try:
         data = _get_normalized_request_json(req)
     except Exception:
         # Malformed / wrong-content-type body: MLflow will reject it downstream,
         # so there is nothing for the guard to protect.
         return None
-    if not isinstance(data, dict):
+    return data if isinstance(data, dict) else None
+
+
+def _mlflow_reads_args(req: Request) -> bool:
+    """True when MLflow builds the proto from the query string and ignores the body.
+
+    Mirrors ``_get_request_message``: the args path is taken only for a GET whose
+    query string is non-empty. Query args are keyed by snake_case ``field.name``,
+    so camelCase params are never read and dual spelling is not a vector there.
+    """
+    return req.method == "GET" and bool(req.args)
+
+
+def find_dual_spelling_collision(req: Request) -> Optional[str]:
+    """Return the snake_case name of a dual-spelled field, or ``None`` if clean."""
+    collidable = _collidable_fields_for(req.path, req.method)
+    if not collidable:
+        return None
+    if _mlflow_reads_args(req):
+        return None
+
+    data = _request_body(req)
+    if not data:
         return None
 
     keys = data.keys()
@@ -143,3 +216,19 @@ def find_dual_spelling_collision(req: Request) -> Optional[str]:
         if snake in keys and camel in keys:
             return snake
     return None
+
+
+def has_unexpected_get_body(req: Request) -> bool:
+    """True for a GET that carries a body MLflow will proto-parse.
+
+    With an empty query string MLflow parses the JSON body instead of the args. A
+    validator that reads ``request.args`` then finds nothing and authorizes without
+    consulting the store at all, while MLflow serves whatever the body named — a
+    cross-tenant read that needs no dual spelling. No legitimate client sends a GET
+    body (real clients put GET parameters in the query string), so reject it.
+    """
+    if req.method != "GET" or req.args:
+        return False
+    if not _is_proto_route(req.path, req.method):
+        return False
+    return bool(_request_body(req))
