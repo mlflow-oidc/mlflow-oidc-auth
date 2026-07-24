@@ -200,6 +200,9 @@ class TestLogoutEndpoint:
             assert isinstance(result, RedirectResponse)
             assert result.status_code == 302
             assert "https://provider.com/logout" in result.headers["location"]
+            # client_id must be sent so providers like Keycloak do not reject the
+            # logout with "Missing parameters: id_token_hint".
+            assert "client_id=" in result.headers["location"]
 
     @pytest.mark.asyncio
     async def test_logout_without_oidc_provider_logout(self, mock_request_with_session):

@@ -344,9 +344,20 @@ async def logout(request: Request):
             end_session_endpoint = metadata.get("end_session_endpoint")
 
             if end_session_endpoint:
-                # Redirect to OIDC provider logout with post-logout redirect to auth page
+                # Redirect to OIDC provider logout with post-logout redirect to auth page.
+                # client_id is sent alongside post_logout_redirect_uri because providers
+                # such as Keycloak (>= 18) reject RP-initiated logout with "Missing
+                # parameters: id_token_hint" unless either id_token_hint or client_id is
+                # present. The session is already cleared, so client_id is the reliable
+                # choice here.
                 post_logout_redirect = _build_ui_url(request, "/auth")
-                logout_url = f"{end_session_endpoint}?post_logout_redirect_uri={post_logout_redirect}"
+                params = urlencode(
+                    {
+                        "post_logout_redirect_uri": post_logout_redirect,
+                        "client_id": config.OIDC_CLIENT_ID,
+                    }
+                )
+                logout_url = f"{end_session_endpoint}?{params}"
                 return RedirectResponse(url=logout_url, status_code=302)
 
         # Default redirect to auth page using the helper function
