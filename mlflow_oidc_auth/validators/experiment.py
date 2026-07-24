@@ -88,12 +88,20 @@ def validate_can_delete_experiment_artifact_proxy(username: str) -> bool:
 
 
 def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
-    """Validate READ permission for requests that include an experiment_ids list."""
+    """Validate READ permission for requests that include an experiment_ids list.
+
+    proto-JSON accepts both ``experiment_ids`` and ``experimentIds`` and resolves a body
+    carrying both to the last one (caller-controlled), so authorize the union of both
+    spellings — a body cannot hide an unreadable experiment under the spelling we skip.
+    """
     experiment_ids = []
 
     if request.method == "POST" and request.is_json:
         data = request.get_json(silent=True) or {}
-        experiment_ids = data.get("experiment_ids", []) or []
+        for key in ("experiment_ids", "experimentIds"):
+            value = data.get(key)
+            if isinstance(value, list):
+                experiment_ids += value
     else:
         experiment_ids = request.args.getlist("experiment_ids")
 
