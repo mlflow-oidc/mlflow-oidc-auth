@@ -1,14 +1,20 @@
 name: SonarQube
 
+# TEMPORARILY DISABLED. The SonarCloud scan fails on JRE/engine provisioning with
+# HTTP 403 — the SONAR_TOKEN needs regenerating (and/or Automatic Analysis toggled)
+# in SonarCloud before this can run. Until then it runs on manual dispatch only, so it
+# does not block PRs. To re-enable, restore the pull_request + push triggers below.
 on:
-  pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+# on:
+#   pull_request:
+#     types:
+#       - opened
+#       - reopened
+#       - synchronize
+#   push:
+#     branches:
+#       - main
 
 jobs:
   sonarqube:
