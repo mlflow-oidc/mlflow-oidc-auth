@@ -703,6 +703,24 @@ AFTER_REQUEST_PATH_HANDLERS = {
     DeleteWorkspace: _cascade_delete_workspace_permissions,
 }
 
+# Create endpoints whose after-request handler auto-grants the creator MANAGE via a
+# get_user lookup. If the authenticated user has no permission-DB record yet, that grant
+# fails *after* MLflow has already committed the resource, leaving it ownerless (issue #262).
+# before_request uses this set to reject such creates pre-commit. Derived from the handler
+# map so a newly added create type is covered automatically.
+CREATOR_GRANT_HANDLERS = frozenset(
+    {
+        _set_can_manage_experiment_permission,
+        _set_can_manage_registered_model_permission,
+        _set_can_manage_scorer_permission,
+        _set_can_manage_gateway_endpoint_permission,
+        _set_can_manage_gateway_secret_permission,
+        _set_can_manage_gateway_model_definition_permission,
+        _auto_grant_workspace_manage_permission,
+    }
+)
+CREATOR_GRANT_REQUEST_CLASSES = frozenset(proto for proto, handler in AFTER_REQUEST_PATH_HANDLERS.items() if handler in CREATOR_GRANT_HANDLERS)
+
 _our_handlers = set(AFTER_REQUEST_PATH_HANDLERS.values())
 AFTER_REQUEST_HANDLERS = {
     (http_path, method): handler

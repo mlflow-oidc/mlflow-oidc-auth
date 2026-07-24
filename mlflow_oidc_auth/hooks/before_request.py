@@ -113,6 +113,7 @@ except ImportError:
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 import mlflow_oidc_auth.responses as responses
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
     validate_can_create_experiment,
@@ -533,6 +534,33 @@ def _get_workspace_gated_creation_paths() -> set[tuple[str, str]]:
     return _WORKSPACE_GATED_CREATION_PATHS
 
 
+_CREATE_GRANT_PATHS: set[tuple[str, str]] | None = None
+
+
+def _get_create_grant_paths() -> set:
+    """Paths whose after-request handler auto-grants the creator MANAGE (issue #262).
+
+    Lazily derived from after_request's CREATOR_GRANT_REQUEST_CLASSES so the set stays in
+    sync when create endpoints are added. Deferred import avoids any hook import cycle.
+    """
+    global _CREATE_GRANT_PATHS
+    if _CREATE_GRANT_PATHS is None:
+        from mlflow_oidc_auth.hooks.after_request import CREATOR_GRANT_REQUEST_CLASSES
+
+        paths: set[tuple[str, str]] = set()
+        for http_path, handler, methods in get_endpoints(lambda rc: rc if rc in CREATOR_GRANT_REQUEST_CLASSES else None):
+            if handler in CREATOR_GRANT_REQUEST_CLASSES:
+                for method in methods:
+                    paths.add((http_path, method))
+        _CREATE_GRANT_PATHS = paths
+    return _CREATE_GRANT_PATHS
+
+
+def _requires_existing_user(path: str, method: str) -> bool:
+    """True for create endpoints that will grant the caller MANAGE post-commit."""
+    return (path, method) in _get_create_grant_paths()
+
+
 def _is_workspace_gated_creation(path: str, method: str) -> bool:
     """Check if a request path/method corresponds to a workspace-gated creation endpoint."""
     return (path, method) in _get_workspace_gated_creation_paths()
@@ -606,6 +634,16 @@ def before_request_hook():
     logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
     validator = _find_validator(request)
     _stash_gateway_context(validator)
+    # Issue #262: an authenticated user with no permission-DB record (e.g. API-first via a
+    # bearer token, never logged in through the browser) would have MLflow commit the new
+    # resource while the after-request MANAGE grant fails on the missing user, leaving an
+    # ownerless resource invisible to everyone including its creator. Reject such creates
+    # pre-commit. This runs before the admin early-out because an API-first admin hits the
+    # identical failure. When bearer provisioning (OIDC_PROVISION_ON_BEARER_AUTH) is enabled,
+    # the user is created in auth middleware before this runs, so has_user is already True.
+    if _requires_existing_user(request.path, request.method) and not store.has_user(username):
+        logger.warning(f"Denying {request.method} {request.path} for {username}: no permission record yet, cannot own the created resource (issue #262)")
+        return responses.make_forbidden_response()
     if is_admin:
         return
     # Workspace creation gating (per WSAUTH-F / WSAUTH-03)
