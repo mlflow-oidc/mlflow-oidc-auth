@@ -147,17 +147,25 @@ class TestBindings:
     def test_no_imported_validator_is_left_unbound(self):
         """Every validate_can_* imported into the hook must be bound to some handler dict — the
         6 trace validators were previously imported-but-unbound (silent no-ops)."""
-        import mlflow_oidc_auth.hooks.before_request as b
+        from mlflow_oidc_auth.hooks.before_request import (
+            BEFORE_REQUEST_HANDLERS,
+            BEFORE_REQUEST_VALIDATORS,
+            LOGGED_MODEL_BEFORE_REQUEST_HANDLERS,
+            LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS,
+            PARAMETERIZED_BEFORE_REQUEST_VALIDATORS,
+            WORKSPACE_BEFORE_REQUEST_HANDLERS,
+            WORKSPACE_BEFORE_REQUEST_VALIDATORS,
+        )
 
         bound = set()
         for d in (
-            b.BEFORE_REQUEST_HANDLERS,
-            b.BEFORE_REQUEST_VALIDATORS,
-            b.PARAMETERIZED_BEFORE_REQUEST_VALIDATORS,
-            b.WORKSPACE_BEFORE_REQUEST_HANDLERS,
-            b.WORKSPACE_BEFORE_REQUEST_VALIDATORS,
-            b.LOGGED_MODEL_BEFORE_REQUEST_HANDLERS,
-            b.LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS,
+            BEFORE_REQUEST_HANDLERS,
+            BEFORE_REQUEST_VALIDATORS,
+            PARAMETERIZED_BEFORE_REQUEST_VALIDATORS,
+            WORKSPACE_BEFORE_REQUEST_HANDLERS,
+            WORKSPACE_BEFORE_REQUEST_VALIDATORS,
+            LOGGED_MODEL_BEFORE_REQUEST_HANDLERS,
+            LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS,
         ):
             for v in d.values():
                 bound.add(getattr(v, "__name__", v))
