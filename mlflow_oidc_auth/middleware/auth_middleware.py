@@ -109,6 +109,76 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug("Basic auth error traceback", exc_info=True)
             return False, None, "Invalid basic auth format"
 
+    def _maybe_provision_bearer_user(self, username: str, token: str, payload) -> None:
+        """Issue #262 (Layer 2): create a permission-DB record on first bearer authentication.
+
+        API-first users who never logged in through the browser have no user record, so the
+        after-request MANAGE grant on their first create fails and leaves an ownerless
+        resource. When OIDC_PROVISION_ON_BEARER_AUTH is enabled, provision them here — before
+        the request reaches the Flask hooks — mirroring the login flow.
+
+        Hardened and conservative:
+          * only when the token is scoped by BOTH audience and issuer (else refuse);
+          * only when the user's group claim passes the same authorization gate as interactive
+            login, so bearer is never more permissive than login;
+          * NON-admin unless OIDC_TRUST_BEARER_GROUP_CLAIMS is explicitly enabled;
+          * a one-time insert guarded by has_user (no per-request re-sync / demotion);
+          * failures never grant access — an unprovisioned user is still denied creates by the
+            before_request existence gate.
+        """
+        if not config.OIDC_PROVISION_ON_BEARER_AUTH:
+            return
+        try:
+            if store.has_user(username):
+                return
+        except Exception as e:
+            logger.warning("Provisioning skipped; has_user check failed for %s: %s", username, type(e).__name__)
+            return
+
+        # Hardening: never provision from a token that is not scoped by both aud and iss.
+        if not (config.OIDC_AUDIENCE and config.OIDC_ISSUER):
+            logger.warning(
+                "OIDC_PROVISION_ON_BEARER_AUTH is set but OIDC_AUDIENCE/OIDC_ISSUER are not both configured; refusing to provision %s from an under-scoped token",
+                username,
+            )
+            return
+
+        # Derive groups from the token, mirroring the login flow's group resolution.
+        try:
+            if config.OIDC_GROUP_DETECTION_PLUGIN:
+                import importlib
+
+                user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token)
+            else:
+                user_groups = payload.get(config.OIDC_GROUPS_ATTRIBUTE, [])
+            if isinstance(user_groups, str):
+                user_groups = [user_groups]
+        except Exception as e:
+            logger.warning("Failed to read groups for bearer provisioning of %s: %s", username, type(e).__name__)
+            return
+
+        # Same authorization gate as interactive login (routers/auth.py): the user must be an
+        # admin-group or allowed-group member. Otherwise do NOT provision — a bearer token must
+        # never be able to create an account that interactive login would reject.
+        is_admin_claim = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
+        if not is_admin_claim and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+            logger.info("Bearer user %s is in no authorized group; not provisioning (parity with interactive login)", username)
+            return
+
+        # Admin is conferred from a token only when the operator has explicitly opted in.
+        is_admin = is_admin_claim and config.OIDC_TRUST_BEARER_GROUP_CLAIMS
+        display_name = payload.get("name") or username
+        try:
+            import mlflow_oidc_auth.user as user_module
+
+            user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
+            user_module.populate_groups(group_names=user_groups)
+            user_module.update_user(username=username, group_names=user_groups)
+            logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(user_groups))
+        except Exception as e:
+            # A concurrent first request may have inserted the row (unique constraint) — benign.
+            logger.warning("Bearer provisioning of %s did not complete (may already exist): %s", username, type(e).__name__)
+
     async def _authenticate_bearer_token(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
         """
         Authenticate using bearer token.
@@ -125,8 +195,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             payload = validate_token(token)
             username = payload.get("email") or payload.get("preferred_username")
             if username:
+                username = username.lower()
+                self._maybe_provision_bearer_user(username, token, payload)
                 logger.debug(f"User {username} authenticated via bearer token")
-                return True, username.lower(), ""
+                return True, username, ""
             else:
                 return False, None, "Invalid token payload"
         except Exception as e:

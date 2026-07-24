@@ -130,6 +130,7 @@ class TestValidateToken:
     def test_validate_token_success(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test successful token validation without audience configured"""
         mock_config.OIDC_AUDIENCE = None
+        mock_config.OIDC_ISSUER = None
         mock_jwks = {"keys": [{"kty": "RSA", "kid": "test"}]}
         mock_get_oidc_jwks.return_value = mock_jwks
         mock_payload = MagicMock()
@@ -147,6 +148,7 @@ class TestValidateToken:
     def test_validate_token_with_audience(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test token validation passes audience claims_options when OIDC_AUDIENCE is configured"""
         mock_config.OIDC_AUDIENCE = "my-mlflow-app"
+        mock_config.OIDC_ISSUER = None
         mock_jwks = {"keys": [{"kty": "RSA", "kid": "test"}]}
         mock_get_oidc_jwks.return_value = mock_jwks
         mock_payload = MagicMock()
@@ -165,6 +167,7 @@ class TestValidateToken:
     def test_validate_token_bad_signature_then_success(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test token validation with bad signature that succeeds after JWKS refresh"""
         mock_config.OIDC_AUDIENCE = None
+        mock_config.OIDC_ISSUER = None
         mock_get_oidc_jwks.side_effect = [{"keys": "old_jwks"}, {"keys": "new_jwks"}]
         mock_payload = MagicMock()
         mock_jwt_decode.side_effect = [BadSignatureError("bad signature"), mock_payload]
@@ -183,6 +186,7 @@ class TestValidateToken:
     def test_validate_token_bad_signature_after_refresh(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test token validation that fails even after JWKS refresh"""
         mock_config.OIDC_AUDIENCE = None
+        mock_config.OIDC_ISSUER = None
         mock_get_oidc_jwks.side_effect = [{"keys": "old_jwks"}, {"keys": "new_jwks"}]
         mock_jwt_decode.side_effect = [
             BadSignatureError("bad signature"),
@@ -200,6 +204,7 @@ class TestValidateToken:
     def test_validate_token_unexpected_error_after_refresh(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test token validation with unexpected error after JWKS refresh"""
         mock_config.OIDC_AUDIENCE = None
+        mock_config.OIDC_ISSUER = None
         mock_get_oidc_jwks.side_effect = [{"keys": "old_jwks"}, {"keys": "new_jwks"}]
         mock_jwt_decode.side_effect = [
             BadSignatureError("bad signature"),
@@ -217,6 +222,7 @@ class TestValidateToken:
     def test_validate_token_bad_signature_retry_with_audience(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test bad signature retry also passes audience claims_options"""
         mock_config.OIDC_AUDIENCE = "my-mlflow-app"
+        mock_config.OIDC_ISSUER = None
         mock_get_oidc_jwks.side_effect = [{"keys": "old_jwks"}, {"keys": "new_jwks"}]
         mock_payload = MagicMock()
         mock_jwt_decode.side_effect = [BadSignatureError("bad signature"), mock_payload]
@@ -237,17 +243,37 @@ class TestGetClaimsOptions:
     def test_returns_none_when_no_audience(self, mock_config):
         """Test returns None when OIDC_AUDIENCE is not configured"""
         mock_config.OIDC_AUDIENCE = None
+        mock_config.OIDC_ISSUER = None
+        mock_config.OIDC_ISSUER = None
         assert _get_claims_options() is None
 
     @patch("mlflow_oidc_auth.auth.config")
     def test_returns_none_when_audience_is_empty(self, mock_config):
         """Test returns None when OIDC_AUDIENCE is empty string"""
         mock_config.OIDC_AUDIENCE = ""
+        mock_config.OIDC_ISSUER = None
         assert _get_claims_options() is None
 
     @patch("mlflow_oidc_auth.auth.config")
     def test_returns_claims_options_when_audience_configured(self, mock_config):
         """Test returns proper claims_options when OIDC_AUDIENCE is set"""
         mock_config.OIDC_AUDIENCE = "my-mlflow-app"
+        mock_config.OIDC_ISSUER = None
+        mock_config.OIDC_ISSUER = None
         result = _get_claims_options()
         assert result == {"aud": {"essential": True, "value": "my-mlflow-app"}}
+
+    @patch("mlflow_oidc_auth.auth.config")
+    def test_returns_issuer_option_when_configured(self, mock_config):
+        """iss validation is included when OIDC_ISSUER is set."""
+        mock_config.OIDC_AUDIENCE = None
+        mock_config.OIDC_ISSUER = None
+        mock_config.OIDC_ISSUER = "https://idp.example.com"
+        assert _get_claims_options() == {"iss": {"essential": True, "value": "https://idp.example.com"}}
+
+    @patch("mlflow_oidc_auth.auth.config")
+    def test_returns_both_aud_and_iss(self, mock_config):
+        """Both aud and iss are validated when both are configured."""
+        mock_config.OIDC_AUDIENCE = "aud1"
+        mock_config.OIDC_ISSUER = "iss1"
+        assert _get_claims_options() == {"aud": {"essential": True, "value": "aud1"}, "iss": {"essential": True, "value": "iss1"}}

@@ -75,8 +75,13 @@ def _get_claims_options() -> dict | None:
         A claims_options dict for authlib jwt.decode if audience validation
         is configured, otherwise None.
     """
+    options = {}
     if config.OIDC_AUDIENCE:
-        return {"aud": {"essential": True, "value": config.OIDC_AUDIENCE}}
+        options["aud"] = {"essential": True, "value": config.OIDC_AUDIENCE}
+    if config.OIDC_ISSUER:
+        options["iss"] = {"essential": True, "value": config.OIDC_ISSUER}
+    if options:
+        return options
     return None
 
 
