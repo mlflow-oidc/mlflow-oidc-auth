@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Optional
 from flask import Request, g, request
 from mlflow.protos.model_registry_pb2 import (
     CreateModelVersion,
+    CreateRegisteredModel,
     DeleteModelVersion,
     DeleteModelVersionTag,
     DeleteRegisteredModel,
@@ -24,6 +25,7 @@ from mlflow.protos.model_registry_pb2 import (
 )
 from mlflow.protos.service_pb2 import (
     AttachModelToGatewayEndpoint,
+    CreateExperiment,
     CreateGatewayEndpoint,
     CreateGatewayEndpointBinding,
     CreateGatewayModelDefinition,
@@ -113,9 +115,11 @@ import mlflow_oidc_auth.responses as responses
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
+    validate_can_create_experiment,
     validate_can_delete_experiment,
     validate_can_delete_experiment_artifact_proxy,
     validate_can_delete_logged_model,
+    validate_can_create_registered_model,
     validate_can_delete_registered_model,
     validate_can_delete_run,
     validate_can_manage_experiment,
@@ -214,6 +218,10 @@ def _get_auth_context() -> tuple[Optional[str], bool]:
 
 BEFORE_REQUEST_HANDLERS = {
     # Routes for experiments
+    # Creation gating is opt-in via RESTRICT_RESOURCE_CREATION; the validators are
+    # no-ops (allow) unless the flag is set, so binding them is safe by default.
+    CreateExperiment: validate_can_create_experiment,
+    CreateRegisteredModel: validate_can_create_registered_model,
     GetExperiment: validate_can_read_experiment,
     GetExperimentByName: validate_can_read_experiment_by_name,
     DeleteExperiment: validate_can_delete_experiment,

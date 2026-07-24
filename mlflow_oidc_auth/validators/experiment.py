@@ -7,6 +7,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, get_permission
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
+    effective_new_experiment_permission,
     get_experiment_id,
     get_request_param,
 )
@@ -106,3 +107,17 @@ def validate_can_update_experiment_from_experiment_id(username: str) -> bool:
     """Validate UPDATE permission using an explicit experiment_id parameter."""
     experiment_id = get_request_param("experiment_id")
     return effective_experiment_permission(experiment_id, username).permission.can_update
+
+
+def validate_can_create_experiment(username: str) -> bool:
+    """Authorize CreateExperiment when RESTRICT_RESOURCE_CREATION is enabled.
+
+    No-op (allow) unless the flag is set. When set, the user needs EDIT+ for the
+    new experiment name, resolved from name regex / group-regex with a workspace
+    fallback. This composes with the workspace creation gate in before_request_hook:
+    both must pass, so enabling workspaces never grants more than either check alone.
+    """
+    if not config.RESTRICT_RESOURCE_CREATION:
+        return True
+    experiment_name = get_request_param("name")
+    return effective_new_experiment_permission(experiment_name, username).permission.can_update

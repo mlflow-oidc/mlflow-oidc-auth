@@ -62,6 +62,10 @@ class AppConfig:
         """Initialize configuration from the provider chain."""
         # Permission settings
         self.DEFAULT_MLFLOW_PERMISSION = config_manager.get("DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        # Opt-in: enforce permission checks on experiment/registered-model creation.
+        # When enabled, a user needs EDIT+ (via name regex / group-regex, with a workspace
+        # fallback) to create. Off by default, matching upstream MLflow (anyone can create).
+        self.RESTRICT_RESOURCE_CREATION = config_manager.get_bool("RESTRICT_RESOURCE_CREATION", default=False)
         self.PERMISSION_SOURCE_ORDER = config_manager.get_list("PERMISSION_SOURCE_ORDER", default=["user", "group", "regex", "group-regex"])
 
         # Security settings (secrets - may come from Secrets Manager/Key Vault)

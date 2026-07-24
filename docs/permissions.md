@@ -265,3 +265,32 @@ Sources checked:
   5. Workspace fallback: diana has READ on "data-team"
 Result: READ (from workspace fallback)
 ```
+
+## Resource Creation Authorization
+
+By default, any authenticated user can create experiments and registered models — this matches upstream MLflow. Because the resource does not exist yet at creation time, the usual per-resource permission (keyed by experiment id or model name) cannot apply, so creation was historically unguarded.
+
+Set `RESTRICT_RESOURCE_CREATION=true` to require **EDIT** (`can_update`) or higher to create a resource. Since the resource is new, only **name-based** sources are consulted:
+
+1. `regex` — the user's own regex patterns matched against the new resource name
+2. `group-regex` — the user's groups' regex patterns matched against the new resource name
+3. Fallback when neither matches:
+   - **Workspaces disabled** → the global `DEFAULT_MLFLOW_PERMISSION`
+   - **Workspaces enabled** → the user's permission on the request workspace (deny if they have none)
+
+> ⚠️ **The default `DEFAULT_MLFLOW_PERMISSION` is `MANAGE`, which grants `can_update`.** In a non-workspace deployment, enabling `RESTRICT_RESOURCE_CREATION` alone does **nothing** — a name that matches no regex falls back to `MANAGE` and creation is still allowed. To actually restrict creation you must either lower `DEFAULT_MLFLOW_PERMISSION` below `EDIT` (e.g. `NO_PERMISSIONS`) so only regex/group-regex matches can create, or rely on the workspace gate. Setting the flag without doing one of these gives a false sense of lockdown.
+
+This closes a real gap in non-workspace deployments: with a project-prefix scheme like `<project>/<name>`, a user granted `^team-a/.*` could still create `team-b/whatever` (e.g. via a typo) and end up owning a resource they cannot subsequently access.
+
+### Interaction with workspaces
+
+When workspaces are enabled, creation is *also* subject to the workspace creation gate (workspace `MANAGE`, plus `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` / `OIDC_WORKSPACE_DENY_DEFAULT_CREATION`). The two checks compose as **AND** — a create must satisfy *both*. Enabling `RESTRICT_RESOURCE_CREATION` therefore never grants more than the workspace gate alone; it only ever adds restriction. If you run with workspaces, the workspace gate is the primary control and `RESTRICT_RESOURCE_CREATION` is optional.
+
+### Affected endpoints
+
+| Endpoint | Effect when restricted |
+|----------|------------------------|
+| `CreateExperiment` | Requires EDIT+ for the new experiment name |
+| `CreateRegisteredModel` | Requires EDIT+ for the new model name |
+
+Child resources (`CreateRun`, `CreateModelVersion`, …) are unaffected — they inherit permission from their parent.
