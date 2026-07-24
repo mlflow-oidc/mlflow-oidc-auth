@@ -228,6 +228,73 @@ class TestDefaultPermissionActuallyGatesCreation:
         assert result.permission.can_update is False
 
 
+class TestUserAssignedRegexGrantsCreation:
+    """#195 governance path: a name-regex assigned directly to a USER grants creation.
+
+    The existing coverage exercises group-regex and the default fallback; none proves
+    that a pattern assigned to the user themselves lets them create matching resources
+    while still denying names outside the pattern. That is the core #195 use case
+    (an admin grants a user/team a creation scope via a name pattern).
+    """
+
+    def test_user_experiment_regex_grants_only_matching_names(self):
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        user_regexes = [_regex(r"^alice/.*", "EDIT")]
+        with (
+            patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS"),
+            patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+            patch.object(config, "PERMISSION_SOURCE_ORDER", ["regex", "group-regex"]),
+            patch("mlflow_oidc_auth.utils.permissions.store") as store,
+        ):
+            store.list_experiment_regex_permissions.return_value = user_regexes
+            store.get_groups_ids_for_user.return_value = []
+            store.list_group_experiment_regex_permissions_for_groups_ids.return_value = []
+
+            allowed = perms.effective_new_experiment_permission("alice/exp-1", "alice")
+            denied = perms.effective_new_experiment_permission("bob/exp-1", "alice")
+
+        assert allowed.kind == "regex" and allowed.permission == EDIT and allowed.permission.can_update is True
+        assert denied.kind == "fallback" and denied.permission == NO_PERMISSIONS and denied.permission.can_update is False
+
+    def test_validator_allows_creation_for_user_regex_match_end_to_end(self):
+        """Full path with the flag on: a user whose regex matches the new name may create it."""
+        from mlflow_oidc_auth.validators.experiment import validate_can_create_experiment
+
+        with (
+            patch.object(config, "RESTRICT_RESOURCE_CREATION", True),
+            patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS"),
+            patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+            patch.object(config, "PERMISSION_SOURCE_ORDER", ["regex", "group-regex"]),
+            patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="alice/exp-1"),
+            patch("mlflow_oidc_auth.utils.permissions.store") as store,
+        ):
+            store.list_experiment_regex_permissions.return_value = [_regex(r"^alice/.*", "EDIT")]
+            store.get_groups_ids_for_user.return_value = []
+            store.list_group_experiment_regex_permissions_for_groups_ids.return_value = []
+
+            assert validate_can_create_experiment("alice") is True
+
+    def test_user_model_regex_grants_only_matching_names(self):
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        with (
+            patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS"),
+            patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+            patch.object(config, "PERMISSION_SOURCE_ORDER", ["regex", "group-regex"]),
+            patch("mlflow_oidc_auth.utils.permissions.store") as store,
+        ):
+            store.list_registered_model_regex_permissions.return_value = [_regex(r"^team-ml/.*", "MANAGE")]
+            store.get_groups_ids_for_user.return_value = []
+            store.list_group_registered_model_regex_permissions_for_groups_ids.return_value = []
+
+            allowed = perms.effective_new_registered_model_permission("team-ml/model-a", "alice")
+            denied = perms.effective_new_registered_model_permission("other/model-a", "alice")
+
+        assert allowed.permission == MANAGE and allowed.permission.can_update is True
+        assert denied.permission == NO_PERMISSIONS and denied.permission.can_update is False
+
+
 class TestCreateHandlersBound:
     """CreateExperiment/CreateRegisteredModel must be wired into the before-request handlers (#202)."""
 
