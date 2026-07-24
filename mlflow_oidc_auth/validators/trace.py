@@ -5,7 +5,6 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.utils import effective_experiment_permission
 
-
 # ---------------------------------------------------------------------------
 # Dual-spelling extraction (security-critical)
 #
