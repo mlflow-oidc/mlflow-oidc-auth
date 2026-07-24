@@ -8,13 +8,50 @@ import pytest
 from fastapi.testclient import TestClient
 from mlflow.entities import ViewType
 
+from mlflow.exceptions import MlflowException
+
 from mlflow_oidc_auth.routers.trash import (
+    _parse_time_delta,
     list_deleted_experiments,
     list_deleted_runs,
     permanently_delete_all_trashed_entities,
     restore_experiment,
     restore_run,
 )
+
+
+class TestParseTimeDelta:
+    """Regression coverage for _parse_time_delta (#154).
+
+    #154 reported "Unsupported type for timedelta seconds component". The regex named
+    groups (days/hours/minutes/seconds) map directly to timedelta kwargs and values are
+    cast to float, so every component — the seconds one in particular — parses correctly.
+    These tests lock that so the seconds component can't regress silently.
+    """
+
+    @pytest.mark.parametrize(
+        "text,expected_ms",
+        [
+            ("20s", 20_000),  # the seconds component alone — the exact #154 case
+            ("2m4s", 124_000),
+            ("8h", 28_800_000),
+            ("1d", 86_400_000),
+            ("2d8h5m20s", 201_920_000),  # all four components together
+            ("0.5h", 1_800_000),  # fractional value
+            ("1.5s", 1_500),  # fractional seconds
+        ],
+    )
+    def test_valid_formats_parse_to_milliseconds(self, text, expected_ms):
+        assert _parse_time_delta(text) == expected_ms
+
+    def test_seconds_component_is_supported(self):
+        """The literal #154 bug: a string whose only component is seconds must not raise."""
+        assert _parse_time_delta("45s") == 45_000
+
+    @pytest.mark.parametrize("bad", ["bad", "10x", "1h2z", "d"])
+    def test_invalid_formats_raise_mlflow_exception(self, bad):
+        with pytest.raises(MlflowException):
+            _parse_time_delta(bad)
 
 
 class TestListDeletedExperimentsEndpoint:
