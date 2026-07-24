@@ -28,6 +28,7 @@ class TestGetOidcJwks:
         """Test successful JWKS retrieval from OIDC provider"""
         mock_config.OIDC_DISCOVERY_URL = "https://example.com/.well-known/openid_configuration"
         mock_config.OIDC_HTTP_TIMEOUT_SECONDS = 10
+        mock_config.OIDC_VERIFY_SSL = True
 
         discovery_response = MagicMock()
         discovery_response.json.return_value = {"jwks_uri": "https://example.com/jwks"}
@@ -39,8 +40,8 @@ class TestGetOidcJwks:
         result = _get_oidc_jwks()
 
         assert mock_requests.get.call_count == 2
-        mock_requests.get.assert_any_call("https://example.com/.well-known/openid_configuration", timeout=10)
-        mock_requests.get.assert_any_call("https://example.com/jwks", timeout=10)
+        mock_requests.get.assert_any_call("https://example.com/.well-known/openid_configuration", timeout=10, verify=True)
+        mock_requests.get.assert_any_call("https://example.com/jwks", timeout=10, verify=True)
         assert result == {"keys": [{"kty": "RSA", "kid": "test"}]}
 
     @patch("mlflow_oidc_auth.auth.requests")
