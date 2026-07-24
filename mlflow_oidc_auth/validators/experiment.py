@@ -22,7 +22,10 @@ def _get_permission_from_experiment_name(username: str) -> Permission:
     experiment_name = get_request_param("experiment_name")
     store_exp = _get_tracking_store().get_experiment_by_name(experiment_name)
     if store_exp is None:
-        # experiment is not exist, need return all permissions
+        # The experiment does not exist. This helper only gates read-by-name, so we
+        # let the request proceed and MLflow return its own 404 (the UI relies on 404,
+        # not 403, for a missing experiment). Do NOT reuse this helper for a mutating
+        # or creation check — granting MANAGE on a non-existent name would fail open.
         return get_permission("MANAGE")
     return effective_experiment_permission(store_exp.experiment_id, username).permission
 

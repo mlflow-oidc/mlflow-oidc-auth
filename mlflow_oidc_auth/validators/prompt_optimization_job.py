@@ -11,7 +11,7 @@ from mlflow.server.jobs import get_job
 from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
-    get_request_param,
+    get_url_param,
 )
 
 
@@ -28,7 +28,11 @@ def _get_permission_from_prompt_optimization_job_id(username: str) -> Permission
     Returns:
         The effective Permission for the job's parent experiment.
     """
-    job_id = get_request_param("job_id")
+    # job_id is a URL path parameter (/prompt-optimization/jobs/<job_id>), which is
+    # the identifier MLflow itself dispatches on. Reading it from the query/body
+    # instead would let a request authorize one job (in the body) while MLflow acts
+    # on the job named in the path (issue #270 cross-source bypass).
+    job_id = get_url_param("job_id")
     job_entity = get_job(job_id)
     params = json.loads(job_entity.params)
     experiment_id = params.get("experiment_id")

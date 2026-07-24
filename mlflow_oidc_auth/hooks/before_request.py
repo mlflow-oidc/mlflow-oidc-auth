@@ -136,6 +136,7 @@ from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_userna
 import mlflow_oidc_auth.responses as responses
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.hooks.dual_spelling_guard import find_dual_spelling_collision, has_unexpected_get_body
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
     validate_can_create_experiment,
@@ -685,6 +686,23 @@ def before_request_hook():
     logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
     validator = _find_validator(request)
     _stash_gateway_context(validator)
+    # Issue #270: reject proto-JSON dual-spelling before any authorization decision.
+    # A body that spells one field two ways (e.g. experiment_id + experimentId) is
+    # ambiguous — protobuf silently keeps the last, letting a single-spelling authz
+    # check be bypassed while MLflow acts on the other value. No legitimate client
+    # sends both, so 400 is always safe. Runs before the admin early-out because the
+    # request is malformed regardless of who sends it.
+    collision = find_dual_spelling_collision(request)
+    if collision is not None:
+        logger.warning(f"Rejecting {request.method} {request.path}: field '{collision}' specified under multiple spellings")
+        return responses.make_bad_request_response({"message": f"Ambiguous request: field '{collision}' was specified under multiple spellings"})
+    # Issue #270: a GET with an empty query string makes MLflow proto-parse the JSON
+    # body instead of the args. Validators that read request.args then authorize
+    # vacuously — without any store lookup — while MLflow serves whatever the body
+    # named. No legitimate client sends a GET body, so reject it.
+    if has_unexpected_get_body(request):
+        logger.warning(f"Rejecting {request.method} {request.path}: GET carries a request body that MLflow would parse")
+        return responses.make_bad_request_response({"message": "Ambiguous request: GET parameters must be sent in the query string, not a request body"})
     # Issue #262: an authenticated user with no permission-DB record (e.g. API-first via a
     # bearer token, never logged in through the browser) would have MLflow commit the new
     # resource while the after-request MANAGE grant fails on the missing user, leaving an

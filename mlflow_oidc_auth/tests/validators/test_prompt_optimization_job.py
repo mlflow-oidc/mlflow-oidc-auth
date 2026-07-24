@@ -32,10 +32,10 @@ def _make_job_entity(experiment_id: str):
 
 
 def _patch_job_resolution(experiment_id: str = "exp-123", **perm_kwargs):
-    """Context managers that patch get_request_param, get_job, and effective_experiment_permission."""
+    """Context managers that patch get_url_param, get_job, and effective_experiment_permission."""
     return (
         patch(
-            "mlflow_oidc_auth.validators.prompt_optimization_job.get_request_param",
+            "mlflow_oidc_auth.validators.prompt_optimization_job.get_url_param",
             return_value="job-456",
         ),
         patch(
@@ -68,7 +68,7 @@ class TestGetPermissionFromPromptOptimizationJobId:
         job.params = json.dumps({"experiment_id": "exp-999", "other_param": "value"})
         with (
             patch(
-                "mlflow_oidc_auth.validators.prompt_optimization_job.get_request_param",
+                "mlflow_oidc_auth.validators.prompt_optimization_job.get_url_param",
                 return_value="job-1",
             ),
             patch(
