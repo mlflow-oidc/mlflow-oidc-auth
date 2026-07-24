@@ -187,6 +187,15 @@ class TestWorkspaceCreationGating:
         yield
         br_module._WORKSPACE_GATED_CREATION_PATHS = None
 
+    @pytest.fixture(autouse=True)
+    def _assume_provisioned_user(self):
+        """These tests exercise workspace-permission logic, which assumes the user already
+        has a permission record. Mock has_user=True so the #262 pre-commit existence gate
+        (which runs first) does not short-circuit them."""
+        with patch("mlflow_oidc_auth.hooks.before_request.store") as mock_store:
+            mock_store.has_user.return_value = True
+            yield
+
     def _make_flask_app(self):
         """Create a minimal Flask app for testing."""
         _app = Flask(__name__)

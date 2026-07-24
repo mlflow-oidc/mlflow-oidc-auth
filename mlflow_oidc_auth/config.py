@@ -132,6 +132,19 @@ class AppConfig:
         self.OIDC_GROUP_NAME = config_manager.get_list("OIDC_GROUP_NAME", default=["mlflow"])
         self.OIDC_ADMIN_GROUP_NAME = config_manager.get_list("OIDC_ADMIN_GROUP_NAME", default=["mlflow-admin"])
         self.OIDC_GROUP_DETECTION_PLUGIN = config_manager.get("OIDC_GROUP_DETECTION_PLUGIN")
+        # Optional issuer (iss) validation for JWTs. When set, tokens must carry a matching
+        # iss claim. Also a required precondition for bearer auto-provisioning below.
+        self.OIDC_ISSUER = config_manager.get("OIDC_ISSUER")
+        # Issue #262: auto-provision a permission-DB record on first bearer authentication
+        # for API-first users who never logged in via the browser. Opt-in and hardened:
+        # requires OIDC_AUDIENCE and OIDC_ISSUER to be set so only aud/iss-scoped tokens
+        # can provision. Provisioned users are non-admin and must pass the same group
+        # authorization gate as interactive login.
+        self.OIDC_PROVISION_ON_BEARER_AUTH = config_manager.get_bool("OIDC_PROVISION_ON_BEARER_AUTH", default=False)
+        # Whether a bearer token may confer admin (via OIDC_ADMIN_GROUP_NAME membership in
+        # its group claim). Default False: admin is never granted from a token. Only enable
+        # if the IdP, not the subject, controls the groups claim on aud-restricted tokens.
+        self.OIDC_TRUST_BEARER_GROUP_CLAIMS = config_manager.get_bool("OIDC_TRUST_BEARER_GROUP_CLAIMS", default=False)
 
         # Database migration settings
         self.OIDC_ALEMBIC_VERSION_TABLE = config_manager.get("OIDC_ALEMBIC_VERSION_TABLE", "alembic_version")
