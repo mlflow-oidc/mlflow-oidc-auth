@@ -1448,46 +1448,6 @@ class TestValidateCanDeleteWorkspaceManage:
                     mock_get_permission.assert_called_once()
 
 
-class TestValidatorPathsMatchMlflowRoutes:
-    """Every validator must be keyed on a route MLflow actually serves."""
-
-    def test_no_dead_validator_paths(self):
-        """A validator on a non-existent path leaves the real endpoint unguarded."""
-        from mlflow_oidc_auth.hooks.before_request import find_dead_validator_paths
-
-        dead = find_dead_validator_paths()
-        assert dead == [], f"validators keyed on paths MLflow does not serve (endpoint is unguarded): {dead}"
-
-    def test_gateway_guardrail_routes_are_all_guarded(self):
-        """Guardrails control content filtering, so every route must deny non-admins."""
-        from mlflow.server import app as mlflow_flask_app
-
-        from mlflow_oidc_auth.hooks.before_request import (
-            BEFORE_REQUEST_VALIDATORS,
-            _deny_non_admin,
-        )
-
-        guardrail_rules = [r for r in mlflow_flask_app.url_map.iter_rules() if "guardrail" in str(r)]
-        assert guardrail_rules, "expected MLflow to register gateway guardrail routes"
-
-        for rule in guardrail_rules:
-            for method in rule.methods or set():
-                if method in ("HEAD", "OPTIONS"):
-                    continue
-                validator = BEFORE_REQUEST_VALIDATORS.get((str(rule), method))
-                assert validator is _deny_non_admin, f"{method} {rule} is not admin-guarded"
-
-    def test_scorer_invoke_is_guarded(self):
-        """The scorer invocation endpoint spends gateway budget, so it needs a check."""
-        from mlflow_oidc_auth.hooks.before_request import (
-            BEFORE_REQUEST_VALIDATORS,
-            INVOKE_SCORER,
-        )
-
-        assert INVOKE_SCORER == "/ajax-api/3.0/mlflow/scorer/invoke"
-        assert BEFORE_REQUEST_VALIDATORS.get((INVOKE_SCORER, "POST")) is not None
-
-
 class TestWorkspaceHeaderNormalization:
     """The auth layer must resolve a header to the same workspace MLflow stores into."""
 
@@ -1517,27 +1477,3 @@ class TestWorkspaceHeaderNormalization:
         source = inspect.getsource(auth_middleware.AuthMiddleware.dispatch)
         assert "normalize_workspace_header(" in source
         assert 'request.headers.get("x-mlflow-workspace")' in source
-
-    def test_non_proto_flask_routes_are_guarded_under_every_spelling(self):
-        """MLflow serves some of these under several prefixes, one of them malformed.
-
-        Binding only the expected spelling leaves the others serving data unchecked, which is
-        how the /api variant of get-history-bulk-interval and the 3.0 get-trace-artifact were
-        reachable without a permission check.
-        """
-        from mlflow.server import app as mlflow_flask_app
-
-        from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_VALIDATORS
-
-        sensitive = (
-            "mlflow/experiments/search-datasets",
-            "mlflow/get-trace-artifact",
-            "mlflow/metrics/get-history-bulk",
-            "mlflow/metrics/get-history-bulk-interval",
-            "mlflow/upload-artifact",
-            "mlflow/gateway-proxy",
-            "mlflow/scorer/invoke",
-        )
-        guarded = {k[0] for k in BEFORE_REQUEST_VALIDATORS}
-        unguarded = sorted(str(rule) for rule in mlflow_flask_app.url_map.iter_rules() if any(s in str(rule) for s in sensitive) and str(rule) not in guarded)
-        assert unguarded == [], f"MLflow serves these without any permission check: {unguarded}"

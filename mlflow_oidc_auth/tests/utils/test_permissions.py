@@ -686,3 +686,60 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPermissionCacheWorkspaceKey:
+    """The cache key must describe what resolve_permission actually did."""
+
+    def test_headerless_and_explicit_default_do_not_share_a_cache_entry(self):
+        """A header-less request skips the workspace check; an explicit default does not.
+
+        Keying both as "default" served the header-less fallback to the explicit-default
+        request, silently granting access that should have been workspace-denied.
+        """
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        calls = []
+
+        def fake_builder(resource_id, username, **kwargs):
+            calls.append((resource_id, username))
+            return {}
+
+        with (
+            patch.dict(perms.PERMISSION_REGISTRY, {"experiment": fake_builder}),
+            patch.object(perms.config, "MLFLOW_ENABLE_WORKSPACES", True),
+            patch.object(
+                perms,
+                "get_permission_from_store_or_default",
+                return_value=perms.PermissionResult(perms.get_permission("READ"), "fallback"),
+            ),
+        ):
+            perms._get_permission_cache().clear()
+
+            with patch("mlflow_oidc_auth.bridge.user.get_request_workspace", return_value=None):
+                headerless = perms.resolve_permission("experiment", "1", "bob")
+
+            with (
+                patch("mlflow_oidc_auth.bridge.user.get_request_workspace", return_value="default"),
+                patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", return_value=None),
+            ):
+                explicit_default = perms.resolve_permission("experiment", "1", "bob")
+
+        assert headerless.kind == "fallback"
+        assert explicit_default.kind == "workspace-deny"
+        assert explicit_default.permission == perms.NO_PERMISSIONS
+        assert len(calls) == 2, "the two requests shared a cache entry"
+
+    def test_distinct_workspaces_do_not_share_a_cache_entry(self):
+        """The same resource id denotes different entities in different workspaces."""
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        assert perms._make_cache_key("experiment", "1", "bob", "ws-a") != perms._make_cache_key("experiment", "1", "bob", "ws-b")
+
+        with patch.object(perms.config, "MLFLOW_ENABLE_WORKSPACES", False):
+            assert perms._get_cache_workspace() is None
+            assert perms._make_cache_key("experiment", "1", "bob", None) == "experiment:1:bob"
