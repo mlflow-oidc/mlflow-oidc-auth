@@ -33,7 +33,7 @@ The application is configured through environment variables, `.env` files, or pl
 |----------|------|---------|-------------|
 | `DEFAULT_MLFLOW_PERMISSION` | String | `MANAGE` | Default permission level when no explicit permission is found. Options: `READ`, `USE`, `EDIT`, `MANAGE`, `NO_PERMISSIONS`. See [Permissions](permissions) |
 | `PERMISSION_SOURCE_ORDER` | String | `user,group,regex,group-regex` | Comma-separated order for evaluating permission sources. The first source with a matching permission wins. See [Permissions](permissions#permission-source-order) |
-| `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, require EDIT+ permission (via name regex / group-regex, with a workspace fallback) to create experiments and registered models. Off by default, matching upstream MLflow where any authenticated user may create. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
+| `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, require EDIT+ permission (via name regex / group-regex, with a workspace fallback) to create experiments and registered models. **Note:** ineffective on its own if `DEFAULT_MLFLOW_PERMISSION` is left at the default `MANAGE` — lower it below `EDIT` (or use workspaces) to actually restrict creation. Off by default, matching upstream MLflow. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
 
 ### Database
 

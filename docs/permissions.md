@@ -278,6 +278,8 @@ Set `RESTRICT_RESOURCE_CREATION=true` to require **EDIT** (`can_update`) or high
    - **Workspaces disabled** → the global `DEFAULT_MLFLOW_PERMISSION`
    - **Workspaces enabled** → the user's permission on the request workspace (deny if they have none)
 
+> ⚠️ **The default `DEFAULT_MLFLOW_PERMISSION` is `MANAGE`, which grants `can_update`.** In a non-workspace deployment, enabling `RESTRICT_RESOURCE_CREATION` alone does **nothing** — a name that matches no regex falls back to `MANAGE` and creation is still allowed. To actually restrict creation you must either lower `DEFAULT_MLFLOW_PERMISSION` below `EDIT` (e.g. `NO_PERMISSIONS`) so only regex/group-regex matches can create, or rely on the workspace gate. Setting the flag without doing one of these gives a false sense of lockdown.
+
 This closes a real gap in non-workspace deployments: with a project-prefix scheme like `<project>/<name>`, a user granted `^team-a/.*` could still create `team-b/whatever` (e.g. via a typo) and end up owning a resource they cannot subsequently access.
 
 ### Interaction with workspaces
