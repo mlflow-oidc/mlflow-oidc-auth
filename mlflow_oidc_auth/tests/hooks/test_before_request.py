@@ -746,10 +746,13 @@ class TestRoutePathConstants:
     """Tests that new route path constants are correctly defined."""
 
     def test_invoke_scorer_path(self):
-        """INVOKE_SCORER should point to the scorer invocation endpoint."""
+        """INVOKE_SCORER must match the route MLflow actually registers, not a plausible string."""
+        from mlflow.server import app as mlflow_flask_app
+
         from mlflow_oidc_auth.hooks.before_request import INVOKE_SCORER
 
-        assert "/mlflow/invocations/scorer" in INVOKE_SCORER
+        assert INVOKE_SCORER == "/ajax-api/3.0/mlflow/scorer/invoke"
+        assert INVOKE_SCORER in {str(rule) for rule in mlflow_flask_app.url_map.iter_rules()}
 
     def test_gateway_supported_providers_path(self):
         """GATEWAY_SUPPORTED_PROVIDERS should point to the supported providers endpoint."""
@@ -770,10 +773,13 @@ class TestRoutePathConstants:
         assert "/mlflow/gateway/provider-config" in GATEWAY_PROVIDER_CONFIG
 
     def test_gateway_secrets_config_path(self):
-        """GATEWAY_SECRETS_CONFIG should point to the secrets config endpoint."""
+        """GATEWAY_SECRETS_CONFIG must match the route MLflow actually registers."""
+        from mlflow.server import app as mlflow_flask_app
+
         from mlflow_oidc_auth.hooks.before_request import GATEWAY_SECRETS_CONFIG
 
-        assert "/mlflow/gateway/secrets-config" in GATEWAY_SECRETS_CONFIG
+        assert GATEWAY_SECRETS_CONFIG == "/ajax-api/3.0/mlflow/gateway/secrets/config"
+        assert GATEWAY_SECRETS_CONFIG in {str(rule) for rule in mlflow_flask_app.url_map.iter_rules()}
 
 
 class TestBudgetPolicyForwardCompat:
@@ -797,3 +803,81 @@ class TestBudgetPolicyForwardCompat:
             # The handler should deny non-admins (always return False)
             handler = BEFORE_REQUEST_HANDLERS[proto]
             assert handler("any_user") is False
+
+
+class TestValidatorRouteCoverage:
+    """Every validator must be keyed on a route MLflow actually serves, and be reachable."""
+
+    def test_no_dead_validator_paths(self):
+        """A validator on an unreachable path leaves the real endpoint unguarded."""
+        from mlflow_oidc_auth.hooks.before_request import find_dead_validator_paths
+
+        dead = find_dead_validator_paths()
+        assert dead == [], f"validators keyed on paths that can never match a request: {dead}"
+
+    def test_gateway_guardrail_routes_are_all_guarded(self):
+        """Guardrails control content filtering, so every route must deny non-admins."""
+        from mlflow.server import app as mlflow_flask_app
+
+        from mlflow_oidc_auth.hooks.before_request import (
+            BEFORE_REQUEST_VALIDATORS,
+            _deny_non_admin,
+        )
+
+        guardrail_rules = [r for r in mlflow_flask_app.url_map.iter_rules() if "guardrail" in str(r)]
+        assert guardrail_rules, "expected MLflow to register gateway guardrail routes"
+
+        for rule in guardrail_rules:
+            for method in rule.methods or set():
+                if method in ("HEAD", "OPTIONS"):
+                    continue
+                assert BEFORE_REQUEST_VALIDATORS.get((str(rule), method)) is _deny_non_admin, f"{method} {rule} is not admin-guarded"
+
+    def test_scorer_invoke_is_guarded(self):
+        """Scorer invocation spends gateway budget, so it needs a permission check."""
+        from mlflow_oidc_auth.hooks.before_request import (
+            BEFORE_REQUEST_VALIDATORS,
+            INVOKE_SCORER,
+        )
+
+        assert INVOKE_SCORER == "/ajax-api/3.0/mlflow/scorer/invoke"
+        assert BEFORE_REQUEST_VALIDATORS.get((INVOKE_SCORER, "POST")) is not None
+
+    def test_non_proto_flask_routes_are_guarded_under_every_spelling(self):
+        """MLflow serves some of these under several prefixes, one of them malformed."""
+        from mlflow.server import app as mlflow_flask_app
+
+        from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_VALIDATORS
+
+        sensitive = (
+            "mlflow/experiments/search-datasets",
+            "mlflow/get-trace-artifact",
+            "mlflow/metrics/get-history-bulk",
+            "mlflow/metrics/get-history-bulk-interval",
+            "mlflow/upload-artifact",
+            "mlflow/gateway-proxy",
+            "mlflow/scorer/invoke",
+        )
+        guarded = {k[0] for k in BEFORE_REQUEST_VALIDATORS}
+        unguarded = sorted(str(rule) for rule in mlflow_flask_app.url_map.iter_rules() if any(s in str(rule) for s in sensitive) and str(rule) not in guarded)
+        assert unguarded == [], f"MLflow serves these without any permission check: {unguarded}"
+
+    def test_parameterized_routes_resolve_for_concrete_paths(self):
+        """Placeholder keys never equal a request path, so they need regex matching."""
+        from mlflow_oidc_auth.hooks.before_request import _find_validator
+
+        for path, method, expected in (
+            ("/api/3.0/mlflow/prompt-optimization/jobs/abc123", "GET", "validate_can_read_prompt_optimization_job"),
+            ("/api/3.0/mlflow/prompt-optimization/jobs/abc123", "DELETE", "validate_can_delete_prompt_optimization_job"),
+            ("/ajax-api/3.0/mlflow/prompt-optimization/jobs/x/cancel", "POST", "validate_can_update_prompt_optimization_job"),
+        ):
+            validator = _find_validator(MagicMock(path=path, method=method))
+            assert validator is not None, f"{method} {path} has no validator"
+            assert validator.__name__ == expected
+
+    def test_parameterized_pattern_does_not_match_deeper_paths(self):
+        """<job_id> must match one segment, not swallow an arbitrary suffix."""
+        from mlflow_oidc_auth.hooks.before_request import _find_validator
+
+        req = MagicMock(path="/api/3.0/mlflow/prompt-optimization/jobs/abc/extra/deep", method="GET")
+        assert _find_validator(req) is None
