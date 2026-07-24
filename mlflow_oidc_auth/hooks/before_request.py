@@ -609,10 +609,9 @@ def before_request_hook():
             get_workspace_permission_cached,
         )
 
-        # Normalize the same way MLflow does when it resolves the workspace header,
-        # so the auth layer and the tracking layer agree on the workspace name.
-        raw_workspace = get_request_workspace()
-        workspace = raw_workspace.strip() if raw_workspace else None
+        # AuthMiddleware already normalized this the way MLflow does, so an empty or
+        # whitespace-only header arrives as None rather than "".
+        workspace = get_request_workspace()
         # When no workspace context is supplied, MLflow resolves the request to the
         # default workspace, so the guards must treat it as such rather than skip.
         effective_workspace = workspace or DEFAULT_WORKSPACE_NAME
