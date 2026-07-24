@@ -51,13 +51,13 @@ def _get_oidc_jwks(force_refresh: bool = False) -> dict:
     timeout = config.OIDC_HTTP_TIMEOUT_SECONDS
     try:
         logger.debug("Fetching OIDC discovery metadata")
-        metadata = requests.get(config.OIDC_DISCOVERY_URL, timeout=timeout).json()
+        metadata = requests.get(config.OIDC_DISCOVERY_URL, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
         jwks_uri = metadata.get("jwks_uri")
         if not jwks_uri:
             raise ValueError("No jwks_uri found in OIDC discovery metadata")
 
         logger.debug("Fetching JWKS from %s", jwks_uri)
-        jwks = requests.get(jwks_uri, timeout=timeout).json()
+        jwks = requests.get(jwks_uri, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
     except requests.exceptions.RequestException as e:
         logger.error("Failed to fetch OIDC JWKS: %s", e)
         raise

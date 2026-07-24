@@ -448,3 +448,26 @@ class TestBuildScope(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOidcClientRegistrationKwargs(unittest.TestCase):
+    """PKCE and TLS-verify settings must flow into the registered client kwargs."""
+
+    def test_client_kwargs_include_verify_and_code_challenge(self):
+        from unittest.mock import MagicMock, patch
+
+        import mlflow_oidc_auth.oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod, "_oidc_client_registered", False),
+            patch.object(oauth_mod, "_has_required_config", return_value=True),
+            patch.object(oauth_mod, "_build_scope", return_value="openid email"),
+            patch.object(oauth_mod.oauth, "register") as mock_register,
+            patch.object(oauth_mod.config, "OIDC_VERIFY_SSL", False),
+            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", "S256"),
+        ):
+            assert oauth_mod.ensure_oidc_client_registered() is True
+            kwargs = mock_register.call_args.kwargs["client_kwargs"]
+            assert kwargs["scope"] == "openid email"
+            assert kwargs["verify"] is False
+            assert kwargs["code_challenge_method"] == "S256"

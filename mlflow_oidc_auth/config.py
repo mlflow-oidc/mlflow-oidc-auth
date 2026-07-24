@@ -115,6 +115,11 @@ class AppConfig:
         # this, a hung IdP can block request threads until the OS-level TCP
         # timeout (~2 minutes), causing cascading auth failures.
         self.OIDC_HTTP_TIMEOUT_SECONDS = config_manager.get_int("OIDC_HTTP_TIMEOUT_SECONDS", default=10)
+        # TLS verification for OIDC discovery/JWKS and the token endpoint. Default True;
+        # only disable for providers with self-signed certs in trusted networks.
+        self.OIDC_VERIFY_SSL = config_manager.get_bool("OIDC_VERIFY_SSL", default=True)
+        # PKCE code challenge method (e.g. "S256"). None disables PKCE.
+        self.OIDC_CODE_CHALLENGE = config_manager.get("OIDC_CODE_CHALLENGE", None)
 
         # Permission cache settings
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)

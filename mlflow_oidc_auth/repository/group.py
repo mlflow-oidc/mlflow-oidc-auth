@@ -132,6 +132,11 @@ class GroupRepository:
         :param username: The username of the user.
         :param group_names: A list of group names to be set for the user.
         """
+        # Deduplicate while preserving order. Some IdPs (e.g. Microsoft Entra ID)
+        # can emit the same group GUID more than once in the token when a user holds
+        # multiple app roles that are backed by the same security group. Without
+        # deduplication the second INSERT violates the unique_user_group constraint.
+        group_names = list(dict.fromkeys(group_names))
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             user_groups = list_user_groups(session, user)
