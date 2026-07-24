@@ -208,6 +208,49 @@ def _fill_path_params(path):
     return re.sub(r"<[^>]+>", "PLACEHOLDER", path)
 
 
+# Gated routes MLflow never proto-parses: their handlers read request.args only, so
+# neither dual spelling nor a GET body can make the validator and MLflow disagree.
+# Verified by inspecting each live view for a _get_request_message call.
+_ARGS_ONLY_EXEMPT_SUFFIXES = (
+    "/get-artifact",
+    "/model-versions/get-artifact",
+    "mlflow/gateway-proxy",
+    "mlflow/get-trace-artifact",
+    "mlflow/metrics/get-history-bulk",
+    "mlflow/runs/create-promptlab-run",
+    "mlflow/upload-artifact",
+    "mlflow/gateway/provider-config",
+    "mlflow/gateway/secrets/config",
+    "mlflow/gateway/supported-models",
+    "mlflow/gateway/supported-providers",
+    "mlflow/scorer/invoke",
+)
+
+
+def test_every_gated_route_is_guard_covered_or_explicitly_exempt():
+    """Coverage assertion: no gated route may silently escape the guard.
+
+    This is what would have caught experiments/search-datasets, whose live path MLflow
+    registers with @app.route and therefore never appears in get_endpoints(). A gated
+    route is acceptable only if the guard covers it, or its validator is an
+    unconditional deny (no field is read, so there is nothing to bypass), or MLflow
+    never proto-parses it. Anything else is a gap and must fail here.
+    """
+    from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_VALIDATORS, _deny_non_admin
+
+    gaps = []
+    for (path, method), validator in BEFORE_REQUEST_VALIDATORS.items():
+        if guard._is_proto_route(path, method):
+            continue
+        if validator is _deny_non_admin:
+            continue  # admin-only hard deny: no request field feeds the decision
+        if any(path.endswith(suffix) for suffix in _ARGS_ONLY_EXEMPT_SUFFIXES):
+            continue
+        gaps.append(f"{method} {path} -> {getattr(validator, '__name__', validator)}")
+
+    assert not gaps, "gated routes neither guard-covered nor exempt (see #270):\n" + "\n".join(sorted(gaps))
+
+
 def _hook_response(path, method, body):
     from unittest.mock import patch
 
