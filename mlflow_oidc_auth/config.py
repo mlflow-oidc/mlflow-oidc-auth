@@ -111,6 +111,11 @@ class AppConfig:
         # JWKS caching settings
         self.OIDC_JWKS_CACHE_TTL_SECONDS = config_manager.get_int("OIDC_JWKS_CACHE_TTL_SECONDS", default=300)
 
+        # HTTP timeout for OIDC discovery and JWKS fetches (seconds). Without
+        # this, a hung IdP can block request threads until the OS-level TCP
+        # timeout (~2 minutes), causing cascading auth failures.
+        self.OIDC_HTTP_TIMEOUT_SECONDS = config_manager.get_int("OIDC_HTTP_TIMEOUT_SECONDS", default=10)
+
         # Permission cache settings
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
 
