@@ -111,7 +111,6 @@ from mlflow.protos.service_pb2 import (
 )
 
 from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
-from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
 # Forward-compatible imports for Gateway Budget Policy protos.
 # These protos may not exist in the installed MLflow version; when they
@@ -672,6 +671,12 @@ def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any
     """
     family = _artifact_proxy_family(path) if path is not None else "artifacts"
 
+    # werkzeug registers HEAD alongside every GET rule and routes it to the same
+    # handler, so it is a read. Without this it fell through to "no validator" and was
+    # denied outright — even for a user holding MANAGE.
+    if method == "HEAD":
+        method = "GET"
+
     if family == "mpu":
         # create / complete / abort all WRITE to the artifact path.
         return validate_can_update_experiment_artifact_proxy if method == "POST" else None
@@ -685,11 +690,10 @@ def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any
         # denies, rather than falling through and granting read (issue #283).
         return None
 
-    if view_args is None:
-        return validate_can_read_experiment_artifact_proxy  # List
-
     return {
-        "GET": validate_can_read_experiment_artifact_proxy,  # Download
+        # Covers both the download route and the argument-less list route; the list
+        # route's experiment id comes from the `path` query parameter.
+        "GET": validate_can_read_experiment_artifact_proxy,
         "PUT": validate_can_update_experiment_artifact_proxy,  # Upload
         "DELETE": validate_can_delete_experiment_artifact_proxy,  # Delete
     }.get(method)
@@ -813,6 +817,10 @@ def before_request_hook():
         if not validator(username):
             return responses.make_forbidden_response()
     elif _is_proxy_artifact_path(request.path):
+        if request.method == "OPTIONS":
+            # Flask answers OPTIONS itself (provide_automatic_options); it never reaches
+            # an artifact handler and carries no data, so it must not be gated.
+            return
         validator = _get_proxy_artifact_validator(request.method, request.view_args, request.path)
         if validator is None:
             # An artifact route we do not recognise must not be served unchecked — that

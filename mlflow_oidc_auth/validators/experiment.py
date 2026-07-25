@@ -36,6 +36,16 @@ _EXPERIMENT_ID_PATTERN = re.compile(r"^(\d+)/")
 _WORKSPACES_EXPERIMENT_ID_PATTERN = re.compile(r"^(workspaces)/([\w-]+)/(\d+)/")
 
 
+def _experiment_id_from_artifact_path(artifact_path: str):
+    """Parse the experiment id out of a composite artifact path."""
+    if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
+        return m.group(1)
+    if m := _WORKSPACES_EXPERIMENT_ID_PATTERN.match(artifact_path):
+        # Group 1: literal "workspaces", Group 2: {workspace_name}, Group 3: experiment-id
+        return m.group(3)
+    return None
+
+
 def _get_experiment_id_from_view_args():
     # The artifact proxy routes encode experiment_id as the first path segment
     # of the artifact_path (e.g. "123/artifacts/model.pkl").  This cannot be
@@ -43,12 +53,17 @@ def _get_experiment_id_from_view_args():
     # *parse* the experiment_id out of the composite path value, not just read
     # the parameter verbatim.
     view_args = request.view_args
-    if view_args is not None and (artifact_path := view_args.get("artifact_path")):
-        if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
-            return m.group(1)
-        if m := _WORKSPACES_EXPERIMENT_ID_PATTERN.match(artifact_path):
-            # Group 1: workspace, Group 2: {workspace_name}, Group 3: experiment-id
-            return m.group(3)
+    if view_args and (artifact_path := view_args.get("artifact_path")):
+        return _experiment_id_from_artifact_path(artifact_path)
+
+    # The LIST route (GET /mlflow-artifacts/artifacts) has no path converter, so it
+    # carries no artifact_path view arg — MLflow's client passes the location in the
+    # `path` QUERY parameter instead (http_artifact_repo.list_artifacts). Without this
+    # the experiment could not be resolved and resolution fell back to
+    # DEFAULT_MLFLOW_PERMISSION: fail-open on the shipped MANAGE default, and a 403 for
+    # the rightful owner under a hardened default (issue #283).
+    if query_path := request.args.get("path"):
+        return _experiment_id_from_artifact_path(query_path)
     return None
 
 

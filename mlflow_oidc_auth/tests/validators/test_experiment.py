@@ -114,6 +114,7 @@ def test__get_experiment_id_from_view_args_no_match():
 
 def test__get_experiment_id_from_view_args_none():
     mock_request = MagicMock()
+    mock_request.args = {}  # no ?path= query param
     mock_request.view_args = None
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
         assert experiment._get_experiment_id_from_view_args() is None
@@ -265,6 +266,7 @@ def test__get_permission_from_experiment_name_store_exception():
 def test__get_experiment_id_from_view_args_no_view_args():
     """Test when request has no view_args"""
     mock_request = MagicMock()
+    mock_request.args = {}  # no ?path= query param
     mock_request.view_args = {}
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
         assert experiment._get_experiment_id_from_view_args() is None
@@ -273,6 +275,7 @@ def test__get_experiment_id_from_view_args_no_view_args():
 def test__get_experiment_id_from_view_args_no_artifact_path():
     """Test when view_args has no artifact_path"""
     mock_request = MagicMock()
+    mock_request.args = {}  # no ?path= query param
     mock_request.view_args = {"other_param": "value"}
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
         assert experiment._get_experiment_id_from_view_args() is None

@@ -8,7 +8,6 @@ it, so any authenticated user could read and write another workspace's artifacts
 """
 
 import pytest
-from flask import Flask
 
 from mlflow_oidc_auth.hooks.before_request import (
     _ARTIFACT_PROXY_PREFIXES,
@@ -22,7 +21,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_experiment_artifact_proxy,
 )
 
-app = Flask(__name__)
+from mlflow.server import app  # the real routing table: view_args match production
 
 
 def _mlflow_artifact_rules():
@@ -33,7 +32,10 @@ def _mlflow_artifact_rules():
         path = str(rule)
         if "/mlflow-artifacts/" not in path:
             continue
-        for method in sorted((rule.methods or set()) - {"HEAD", "OPTIONS"}):
+        # HEAD and OPTIONS are deliberately INCLUDED: werkzeug auto-registers HEAD on
+        # every GET rule, and excluding them hid the exact methods that were being
+        # denied for everyone (#283 review).
+        for method in sorted((rule.methods or set()) - {"OPTIONS"}):
             yield path, method
 
 
@@ -113,3 +115,71 @@ class TestUnrecognisedArtifactRouteIsDenied:
                 resp = before_request_hook()
 
         assert resp is not None and resp.status_code == 403
+
+
+class TestReviewRegressions:
+    """Defects found reviewing the first cut of this fix — all availability regressions
+    introduced by making the artifact branch fail closed."""
+
+    def _hook(self, path, method, *, has_permission, default_permission):
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.permissions import MANAGE, NO_PERMISSIONS
+
+        with app.test_request_context(path=path, method=method):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", default_permission),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="u"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+                patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission") as resolved,
+            ):
+                resolved.return_value.permission = MANAGE if has_permission else NO_PERMISSIONS
+                return before_request_hook()
+
+    def test_head_is_treated_as_a_read_not_denied(self):
+        """werkzeug registers HEAD on every GET rule; it routes to the download handler."""
+        allowed = self._hook("/api/2.0/mlflow-artifacts/artifacts/12/r/artifacts/f.json", "HEAD", has_permission=True, default_permission="NO_PERMISSIONS")
+        assert allowed is None, "HEAD denied for a user who holds the permission"
+
+    def test_head_still_denied_without_permission(self):
+        denied = self._hook("/api/2.0/mlflow-artifacts/artifacts/12/r/artifacts/f.json", "HEAD", has_permission=False, default_permission="NO_PERMISSIONS")
+        assert denied is not None and denied.status_code == 403
+
+    def test_options_is_not_authorization_gated(self):
+        """Flask answers OPTIONS itself; it reaches no artifact handler."""
+        allowed = self._hook("/api/2.0/mlflow-artifacts/artifacts/12/r/artifacts/f.json", "OPTIONS", has_permission=False, default_permission="NO_PERMISSIONS")
+        assert allowed is None
+
+    def test_list_route_resolves_the_experiment_from_the_query_param(self):
+        """The list route has no path converter — the location is in ?path=.
+
+        Without resolving it, this fell back to DEFAULT_MLFLOW_PERMISSION: fail-open on
+        the shipped MANAGE default, and a 403 for the owner under a hardened default.
+        """
+        allowed = self._hook("/api/2.0/mlflow-artifacts/artifacts?path=12/r/artifacts", "GET", has_permission=True, default_permission="NO_PERMISSIONS")
+        assert allowed is None, "list denied for a user who holds the permission"
+
+        denied = self._hook("/api/2.0/mlflow-artifacts/artifacts?path=12/r/artifacts", "GET", has_permission=False, default_permission="MANAGE")
+        assert denied is not None and denied.status_code == 403, "list allowed for a user with no permission (fail-open)"
+
+    def test_list_route_consults_the_store_rather_than_the_default(self):
+        """Proves the experiment was actually resolved, not defaulted."""
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.permissions import MANAGE
+        from mlflow_oidc_auth.validators.experiment import _get_permission_from_experiment_id_artifact_proxy
+
+        with app.test_request_context("/api/2.0/mlflow-artifacts/artifacts?path=12/r/artifacts", method="GET"):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS"),
+                patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission") as resolved,
+            ):
+                resolved.return_value.permission = MANAGE
+                _get_permission_from_experiment_id_artifact_proxy("u")
+                resolved.assert_called_once()
+                assert resolved.call_args.args[0] == "12", "wrong experiment id parsed from ?path="
