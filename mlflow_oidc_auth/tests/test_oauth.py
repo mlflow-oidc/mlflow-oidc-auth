@@ -407,25 +407,44 @@ class TestOAuthSecurity(unittest.TestCase):
 
 
 class TestBuildScope(unittest.TestCase):
-    """Test the ``_build_scope`` helper that adds ``offline_access`` when refresh is enabled."""
+    """``_build_scope`` must always emit space-delimited scopes (RFC 6749 §3.3, issue #238)."""
 
-    def test_no_offline_access_when_refresh_disabled(self):
+    def test_comma_scope_is_normalized_to_spaces_when_refresh_disabled(self):
+        """The #238 bug: a comma-separated scope must go out space-delimited, not verbatim."""
         from mlflow_oidc_auth import oauth as oauth_mod
 
         with (
             patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
             patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,email,profile", create=True),
         ):
-            self.assertEqual(oauth_mod._build_scope(), "openid,email,profile")
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile")
 
-    def test_appends_offline_access_to_csv_scope(self):
+    def test_space_scope_is_preserved_when_refresh_disabled(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid email profile", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile")
+
+    def test_mixed_and_padded_separators_are_normalized(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", " openid, email profile ,groups ", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile groups")
+
+    def test_appends_offline_access_space_delimited_from_csv_scope(self):
         from mlflow_oidc_auth import oauth as oauth_mod
 
         with (
             patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", True, create=True),
             patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,email,profile", create=True),
         ):
-            self.assertEqual(oauth_mod._build_scope(), "openid,email,profile,offline_access")
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile offline_access")
 
     def test_appends_offline_access_to_space_separated_scope(self):
         from mlflow_oidc_auth import oauth as oauth_mod
@@ -443,7 +462,25 @@ class TestBuildScope(unittest.TestCase):
             patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", True, create=True),
             patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,offline_access,email", create=True),
         ):
-            self.assertEqual(oauth_mod._build_scope(), "openid,offline_access,email")
+            self.assertEqual(oauth_mod._build_scope(), "openid offline_access email")
+
+    def test_duplicate_scopes_are_collapsed(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,openid email email", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email")
+
+    def test_empty_scope_yields_empty_string(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "")
 
 
 if __name__ == "__main__":

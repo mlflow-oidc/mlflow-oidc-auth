@@ -125,7 +125,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(config.OIDC_PROVIDER_DISPLAY_NAME, "Login with OIDC")
         self.assertIsNone(config.OIDC_DISCOVERY_URL)
         self.assertEqual(config.OIDC_GROUPS_ATTRIBUTE, "groups")
-        self.assertEqual(config.OIDC_SCOPE, "openid,email,profile")
+        self.assertEqual(config.OIDC_SCOPE, "openid email profile")
         self.assertIsNone(config.OIDC_GROUP_DETECTION_PLUGIN)
         self.assertIsNone(config.OIDC_REDIRECT_URI)
         self.assertIsNone(config.OIDC_CLIENT_ID)

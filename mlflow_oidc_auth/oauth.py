@@ -31,23 +31,23 @@ def _has_required_config() -> bool:
 
 
 def _build_scope() -> str:
-    """Build the OIDC scope string, adding ``offline_access`` if refresh is enabled.
+    """Build the space-delimited OIDC scope string for the authorize/token requests.
 
-    Authlib accepts either comma- or space-separated scopes. We normalise to the
-    same separator the user configured to keep the rendered authorize URL
-    predictable, while making sure ``offline_access`` is present when the
-    refresh-token flow is enabled.
+    OAuth 2.0 (RFC 6749 §3.3) requires the ``scope`` parameter to be space-delimited.
+    We accept the configured value in comma- or space-separated form (or a mix) and
+    always emit space-delimited scopes, so strict providers like Microsoft Entra ID do
+    not reject the request (issue #238). ``offline_access`` is appended when the
+    refresh-token flow is enabled. Duplicate scopes are collapsed, order preserved.
     """
 
     raw = config.OIDC_SCOPE or ""
-    if not config.OIDC_USE_REFRESH_TOKEN:
-        return raw
-
-    separator = "," if "," in raw else " "
-    scopes = [s.strip() for s in raw.replace(",", " ").split() if s.strip()]
-    if "offline_access" not in scopes:
+    scopes = [s for s in raw.replace(",", " ").split() if s]
+    if config.OIDC_USE_REFRESH_TOKEN and "offline_access" not in scopes:
         scopes.append("offline_access")
-    return separator.join(scopes)
+
+    seen: set[str] = set()
+    unique = [s for s in scopes if not (s in seen or seen.add(s))]
+    return " ".join(unique)
 
 
 def ensure_oidc_client_registered() -> bool:
