@@ -935,3 +935,55 @@ class TestAuthMiddleware:
         assert success is False
         assert username is None
         assert error == "Session access failed"
+
+
+class TestLoginRedirectSchemeRelative:
+    """The login redirect must be scheme-relative so it can't downgrade https->http (#128).
+
+    Behind a TLS-terminating proxy (e.g. Azure Application Gateway) the server sees the
+    request as http. If the redirect Location were an absolute http:// URL the browser
+    would be sent to http and the proxy would 404. Emitting a path-only Location makes the
+    browser resolve it against the current (https) origin, so the scheme is preserved.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("automatic_login_redirect", [True, False])
+    async def test_redirect_location_has_no_scheme(self, automatic_login_redirect):
+        from unittest.mock import AsyncMock
+
+        middleware = AuthMiddleware.__new__(AuthMiddleware)  # bypass __init__ (no app needed)
+
+        fake_url = MagicMock(scheme="http", path="/some/page", query="a=1")
+        request = MagicMock(url=fake_url, headers={}, scope={})
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.utils.get_base_path", new=AsyncMock(return_value="")),
+        ):
+            cfg.AUTOMATIC_LOGIN_REDIRECT = automatic_login_redirect
+            response = await middleware._handle_auth_redirect(request)
+
+        location = response.headers["location"]
+        assert not location.startswith("http://"), f"redirect downgraded to http: {location}"
+        assert not location.startswith("https://"), f"redirect hardcoded a scheme: {location}"
+        assert location.startswith("/"), f"redirect is not path-relative: {location}"
+
+    @pytest.mark.asyncio
+    async def test_redirect_honors_forwarded_prefix_without_scheme(self):
+        """With a proxy path prefix the Location stays path-only (prefix + /login), still no scheme."""
+        from unittest.mock import AsyncMock
+
+        middleware = AuthMiddleware.__new__(AuthMiddleware)
+        fake_url = MagicMock(scheme="http", path="/page", query="")
+        request = MagicMock(url=fake_url, headers={}, scope={})
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.utils.get_base_path", new=AsyncMock(return_value="/mlflow")),
+        ):
+            cfg.AUTOMATIC_LOGIN_REDIRECT = True
+            response = await middleware._handle_auth_redirect(request)
+
+        location = response.headers["location"]
+        assert location.startswith("/mlflow/login")
+        assert "http://" not in location and "https://" not in location
