@@ -119,3 +119,79 @@ class TestFilterPassScaling:
                 store.experiment_group_repo.get_group_permission_for_user_resource(f"exp-{i}", username)
 
         assert counter.count == n_resources, counter.report()
+
+
+class TestFoldedQueriesDoNotOverGrant:
+    """The folded group queries must never grant beyond the caller's own memberships.
+
+    These are real-DB authorization tests, not query-count tests. They exist because
+    dropping the `username` predicate from a folded JOIN — the maximal over-grant — is
+    invisible to a mock-chain test and previously passed the entire suite.
+    """
+
+    def test_experiment_fold_ignores_groups_the_user_is_not_in(self, store, counter):
+        store.create_user("owner@example.com", "pw", "Owner")
+        store.create_user("outsider@example.com", "pw", "Outsider")
+        store.populate_groups(["insiders", "outsiders"])
+        store.set_user_groups("owner@example.com", ["insiders"])
+        store.set_user_groups("outsider@example.com", ["outsiders"])
+        # Only the group the outsider is NOT in has a grant.
+        store.create_group_experiment_permission("insiders", "exp-secret", "MANAGE")
+
+        with pytest.raises(MlflowException):
+            store.experiment_group_repo.get_group_permission_for_user_resource("exp-secret", "outsider@example.com")
+
+        owner = store.experiment_group_repo.get_group_permission_for_user_resource("exp-secret", "owner@example.com")
+        assert owner.permission == "MANAGE"
+
+    def test_registered_model_fold_ignores_groups_the_user_is_not_in(self, store):
+        store.create_user("mowner@example.com", "pw", "M Owner")
+        store.create_user("moutsider@example.com", "pw", "M Outsider")
+        store.populate_groups(["m-insiders", "m-outsiders"])
+        store.set_user_groups("mowner@example.com", ["m-insiders"])
+        store.set_user_groups("moutsider@example.com", ["m-outsiders"])
+        store.create_group_model_permission("m-insiders", "secret-model", "MANAGE")
+
+        with pytest.raises(MlflowException):
+            store.registered_model_group_repo.get_for_user("secret-model", "moutsider@example.com")
+
+        owner = store.registered_model_group_repo.get_for_user("secret-model", "mowner@example.com")
+        assert owner.permission == "MANAGE"
+
+    def test_registered_model_fold_keys_on_the_model_name(self, store):
+        """The resource predicate must survive the fold — a grant on one model is not another."""
+        store.create_user("m2@example.com", "pw", "M2")
+        store.populate_groups(["m2-group"])
+        store.set_user_groups("m2@example.com", ["m2-group"])
+        store.create_group_model_permission("m2-group", "model-a", "MANAGE")
+
+        assert store.registered_model_group_repo.get_for_user("model-a", "m2@example.com").permission == "MANAGE"
+        with pytest.raises(MlflowException):
+            store.registered_model_group_repo.get_for_user("model-b", "m2@example.com")
+
+    def test_scorer_fold_ignores_groups_the_user_is_not_in(self, store):
+        store.create_user("sowner@example.com", "pw", "S Owner")
+        store.create_user("soutsider@example.com", "pw", "S Outsider")
+        store.populate_groups(["s-insiders", "s-outsiders"])
+        store.set_user_groups("sowner@example.com", ["s-insiders"])
+        store.set_user_groups("soutsider@example.com", ["s-outsiders"])
+        store.create_group_scorer_permission("s-insiders", "exp-1", "scorer-x", "MANAGE")
+
+        with pytest.raises(MlflowException):
+            store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-x", "soutsider@example.com")
+
+        owner = store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-x", "sowner@example.com")
+        assert owner.permission == "MANAGE"
+
+    def test_scorer_fold_keys_on_both_experiment_and_scorer_name(self, store):
+        """The scorer fold has a 2-part key; both predicates must survive."""
+        store.create_user("s2@example.com", "pw", "S2")
+        store.populate_groups(["s2-group"])
+        store.set_user_groups("s2@example.com", ["s2-group"])
+        store.create_group_scorer_permission("s2-group", "exp-1", "scorer-x", "MANAGE")
+
+        assert store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-x", "s2@example.com").permission == "MANAGE"
+        with pytest.raises(MlflowException):  # same scorer name, different experiment
+            store.scorer_group_repo.get_group_permission_for_user_scorer("exp-2", "scorer-x", "s2@example.com")
+        with pytest.raises(MlflowException):  # same experiment, different scorer
+            store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-y", "s2@example.com")
