@@ -273,3 +273,65 @@ class TestScopedReviewBypasses:
 
         with app.test_request_context("/api/2.0/mlflow-artifacts/artifacts?path=12/artifacts", method="HEAD"):
             assert has_unexpected_get_body(request) is False
+
+
+class TestExperimentRootPathsResolve:
+    """Paths naming an experiment ROOT must resolve — they are the most dangerous shape.
+
+    The id patterns required a trailing slash ("^(\\d+)/"), so "12", "12/", "12//" and
+    "workspaces/ws/12" all failed to resolve and fell back to DEFAULT_MLFLOW_PERMISSION
+    (ships as MANAGE = allow). DELETE on an experiment root removes its whole artifact
+    tree, so this was the worst possible place to fail open.
+    """
+
+    @pytest.mark.parametrize(
+        "artifact_path",
+        [
+            "12/r/artifacts/f.json",
+            "12",
+            "12/",
+            "12//",
+            "12/.",
+            "./12",
+            "./12/",
+            "%2e/12/r",
+            "%2531%2532/r",
+            "workspaces/ws1/12",
+            "workspaces/ws1/12/",
+            "workspaces/ws-1/12/r/a",
+        ],
+    )
+    def test_every_shape_naming_experiment_12_resolves(self, artifact_path):
+        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
+
+        assert _experiment_id_from_artifact_path(artifact_path) == "12", f"{artifact_path!r} fell back to the permissive default"
+
+    @pytest.mark.parametrize("artifact_path", ["", "/", "./", "not-a-number/x", "workspaces/ws1", "workspaces/ws1/", "models/foo"])
+    def test_paths_naming_no_experiment_do_not_resolve(self, artifact_path):
+        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
+
+        assert _experiment_id_from_artifact_path(artifact_path) is None
+
+    def test_delete_on_an_experiment_root_is_authorized(self):
+        """DELETE /mlflow-artifacts/artifacts/12/ wipes experiment 12's artifacts."""
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+
+        with app.test_request_context("/api/2.0/mlflow-artifacts/artifacts/12/", method="DELETE"):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE"),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="u"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+                patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission") as resolved,
+            ):
+                resolved.return_value.permission = NO_PERMISSIONS
+                response = before_request_hook()
+                resolved.assert_called_once()
+                assert resolved.call_args.args[0] == "12"
+
+        assert response is not None and response.status_code == 403

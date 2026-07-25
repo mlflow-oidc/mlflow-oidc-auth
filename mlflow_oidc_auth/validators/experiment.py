@@ -1,5 +1,4 @@
 import posixpath
-import re
 
 from flask import request
 from mlflow.server.handlers import _get_tracking_store
@@ -35,12 +34,6 @@ def _get_permission_from_experiment_name(username: str) -> Permission:
     return effective_experiment_permission(store_exp.experiment_id, username).permission
 
 
-_EXPERIMENT_ID_PATTERN = re.compile(r"^(\d+)/")
-# Workspace paths are structured: workspaces/{workspace-name}/{experiment-id}/...
-# where the workspace name can be alphanumeric with an optional single hyphen.
-_WORKSPACES_EXPERIMENT_ID_PATTERN = re.compile(r"^(workspaces)/([\w-]+)/(\d+)/")
-
-
 def _experiment_id_from_artifact_path(artifact_path: str):
     """Parse the experiment id out of a composite artifact path.
 
@@ -62,19 +55,28 @@ def _experiment_id_from_artifact_path(artifact_path: str):
         # _decode does not quietly degrade this check.
         logger.warning("Could not decode artifact path for authorization; parsing the raw value")
 
-    # Normalize before matching. Both patterns are anchored at position 0, so a leading
-    # "./" (or "%2e/", ".//") made them miss — resolution then fell back to
-    # DEFAULT_MLFLOW_PERMISSION, which allows on the shipped MANAGE default, while
-    # MLflow's own resolution normalizes the same path and serves the experiment.
-    # normpath collapses "." segments; ".." is left to MLflow, which rejects it.
-    artifact_path = posixpath.normpath(artifact_path)
+    # Match on NORMALIZED SEGMENTS rather than an anchored regex over the raw string.
+    #
+    # The regexes required a trailing slash after the id ("^(\d+)/"), so every path that
+    # names an experiment ROOT — "12", "12/", "12//", "12/.",  "workspaces/ws/12" — failed
+    # to resolve and fell back to DEFAULT_MLFLOW_PERMISSION, which allows on the shipped
+    # MANAGE default. That is the most dangerous shape there is: DELETE on an experiment
+    # root removes the whole artifact tree. A leading "./" defeated them the same way.
+    # Splitting the normalized path handles every variant uniformly (issue #283).
+    #
+    # ".." is deliberately NOT resolved here — MLflow's validate_path_is_safe rejects it
+    # outright, so such a request is never served.
+    segments = [s for s in posixpath.normpath(artifact_path).split("/") if s and s != "."]
+    if not segments:
+        return None
 
-    if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
-        return m.group(1)
-    if m := _WORKSPACES_EXPERIMENT_ID_PATTERN.match(artifact_path):
-        # Group 1: literal "workspaces", Group 2: {workspace_name}, Group 3: experiment-id
-        return m.group(3)
-    return None
+    if segments[0] == "workspaces":
+        # workspaces/{workspace_name}/{experiment_id}/...
+        if len(segments) >= 3 and segments[2].isdigit():
+            return segments[2]
+        return None
+
+    return segments[0] if segments[0].isdigit() else None
 
 
 def _get_experiment_id_from_view_args():
