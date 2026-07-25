@@ -6,6 +6,7 @@ Tests _can_access_workspace helper and workspace filtering in:
 - _filter_search_logged_models (WSSEC-03)
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1106,3 +1107,69 @@ class TestWorkspaceFilteringCrossCutting:
                 return_value=READ,
             ):
                 assert _can_access_workspace("user1", "default") is True
+
+
+class TestWorkspaceMemoLifetime:
+    """The workspace memo's safety argument is that its lifetime is ONE request.
+
+    Nothing else in the suite executes the memoizing branch, so without these a refactor
+    that moved the memo to module scope — turning it into an uninvalidated cross-request
+    authorization cache — would keep CI green.
+    """
+
+    def _app(self):
+        from flask import Flask
+
+        app = Flask(__name__)
+        app.secret_key = "test"
+        return app
+
+    def test_repeat_checks_in_one_request_hit_the_memo(self, monkeypatch):
+        """A DENY is memoized: get_workspace_permission_cached never caches denials."""
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks import after_request as ar
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        calls = []
+        monkeypatch.setattr(ar, "get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
+
+        with self._app().test_request_context("/"):
+            assert ar._can_access_workspace("bob", "ws1") is False
+            assert ar._can_access_workspace("bob", "ws1") is False
+
+        assert len(calls) == 1, f"deny not memoized within one request: {calls}"
+
+    def test_memo_does_not_survive_into_the_next_request(self, monkeypatch):
+        """The bounded lifetime is the whole safety argument — pin it."""
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks import after_request as ar
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        calls = []
+        monkeypatch.setattr(ar, "get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
+
+        app = self._app()
+        for _ in range(2):
+            with app.test_request_context("/"):
+                ar._can_access_workspace("bob", "ws1")
+
+        assert len(calls) == 2, "memo leaked across requests — it must not outlive one request"
+
+    def test_distinct_users_are_not_conflated(self, monkeypatch):
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks import after_request as ar
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        seen = []
+
+        def _perm(username, workspace):
+            seen.append(username)
+            return SimpleNamespace(can_read=(username == "allowed"))
+
+        monkeypatch.setattr(ar, "get_workspace_permission_cached", _perm)
+
+        with self._app().test_request_context("/"):
+            assert ar._can_access_workspace("allowed", "ws1") is True
+            assert ar._can_access_workspace("denied", "ws1") is False
+
+        assert seen == ["allowed", "denied"], "memo key must include the username"

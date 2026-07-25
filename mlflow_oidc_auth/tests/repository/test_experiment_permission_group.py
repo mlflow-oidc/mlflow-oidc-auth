@@ -140,20 +140,12 @@ def test_list_permissions_for_group_id(repo):
     assert result == [perm1.to_mlflow_entity(), perm2.to_mlflow_entity()]
 
 
-@patch("mlflow_oidc_auth.repository._base.get_user")
-@patch("mlflow_oidc_auth.repository._base.list_user_groups")
-def test_list_permissions_for_user_groups(mock_list_user_groups, mock_get_user, repo):
+def test_list_permissions_for_user_groups(repo):
+    """Resolved in one JOIN across users -> user_groups -> permissions (issue #253)."""
     session = MagicMock()
-    user = make_user()
-    mock_get_user.return_value = user
-    group1 = MagicMock()
-    group1.group_id = 1
-    group2 = MagicMock()
-    group2.group_id = 2
-    mock_list_user_groups.return_value = [group1, group2]
     perm1 = make_permission("exp1", 1, "READ")
     perm2 = make_permission("exp2", 2, "EDIT")
-    session.query().filter().all.return_value = [perm1, perm2]
+    session.query().join().join().filter().order_by().all.return_value = [perm1, perm2]
     repo._Session.return_value.__enter__.return_value = session
     result = repo.list_permissions_for_user_groups("user1")
     assert result == [perm1.to_mlflow_entity(), perm2.to_mlflow_entity()]

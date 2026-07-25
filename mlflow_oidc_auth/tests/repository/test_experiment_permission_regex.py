@@ -86,7 +86,7 @@ def test_list_regex_for_user(repo, session):
     user = MagicMock(id=3)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().order_by().all.return_value = [perm]
+    session.query().join().filter().order_by().all.return_value = [perm]
     with patch(
         "mlflow_oidc_auth.repository._base.get_user",
         return_value=user,
