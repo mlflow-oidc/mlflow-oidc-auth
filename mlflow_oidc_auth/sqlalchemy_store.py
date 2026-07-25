@@ -1194,6 +1194,65 @@ _PERMISSION_CUD_METHODS = [
     "set_user_groups",
     "add_user_to_group",
     "remove_user_from_group",
+    # Workspace permissions. When workspaces are enabled these feed permission
+    # resolution through the workspace fallback, so a workspace change can alter an
+    # already-cached resource decision. They were previously excluded on the grounds
+    # that workspace_cache had its own cache — but that cache is a *different*
+    # namespace, so clearing it left the permission cache serving stale results.
+    "create_workspace_permission",
+    "update_workspace_permission",
+    "delete_workspace_permission",
+    "create_workspace_group_permission",
+    "update_workspace_group_permission",
+    "delete_workspace_group_permission",
+    "create_workspace_regex_permission",
+    "update_workspace_regex_permission",
+    "delete_workspace_regex_permission",
+    "create_workspace_group_regex_permission",
+    "update_workspace_group_regex_permission",
+    "delete_workspace_group_regex_permission",
+    # The DeleteWorkspace cascade calls this one (hooks/after_request.py). Without this
+    # entry the permission cache kept serving grants whose kind was "workspace" after
+    # the wipe.
+    "wipe_workspace_permissions",
+]
+
+# Wiping a whole workspace can change the permission of EVERY user in it, and the
+# entries are keyed username:workspace, so there is no bounded target to invalidate —
+# a full workspace-cache flush is the correct choice here. The DeleteWorkspace cascade
+# in hooks/after_request.py already flushes, but doing it at the store keeps the
+# guarantee for any other caller (the same reason the other invalidation lives here).
+_WORKSPACE_WIPE_METHODS = [
+    "wipe_workspace_permissions",
+]
+
+# Group membership drives the group-scoped branch of workspace resolution, so these
+# must additionally drop the mutated user's workspace-cache entries. They take the
+# username as their first positional argument. Targeted (not a full flush) because
+# OIDC login re-syncs membership on every sign-in — flushing here would wipe the
+# whole workspace cache on each login.
+_MEMBERSHIP_CUD_METHODS = [
+    "set_user_groups",
+    "add_user_to_group",
+    "remove_user_from_group",
+]
+
+# Group-scoped workspace permission CUD. Invalidation lives here rather than only in
+# the router so it cannot be bypassed by any other caller of the store. All three take
+# (workspace, group_name) as their first two positional arguments.
+_WORKSPACE_GROUP_CUD_METHODS = [
+    "create_workspace_group_permission",
+    "update_workspace_group_permission",
+    "delete_workspace_group_permission",
+]
+
+# User-scoped workspace permission CUD. The routers already invalidate these, but doing
+# it here too makes the guarantee hold for every caller rather than one code path.
+# All three take (workspace, username) as their first two positional arguments.
+_WORKSPACE_USER_CUD_METHODS = [
+    "create_workspace_permission",
+    "update_workspace_permission",
+    "delete_workspace_permission",
 ]
 
 
@@ -1212,6 +1271,143 @@ def _wrap_with_cache_flush(method):
     return wrapper
 
 
+def _wrap_with_membership_invalidation(method):
+    """Wrap a membership method to drop the mutated user's workspace-cache entries.
+
+    The username is the first positional argument (or the ``username`` keyword).
+    Invalidation failures are logged, never raised — the mutation already succeeded,
+    and masking it would be worse than a short staleness window.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        username = kwargs.get("username") if "username" in kwargs else (args[0] if args else None)
+        if username:
+            try:
+                from mlflow_oidc_auth.utils.workspace_cache import (
+                    invalidate_user_workspace_entries,
+                )
+
+                invalidate_user_workspace_entries(username)
+            except Exception:
+                from mlflow_oidc_auth.logger import get_logger
+
+                get_logger().warning(
+                    "Workspace cache invalidation failed after %s; entries expire via TTL",
+                    method.__name__,
+                )
+        return result
+
+    return wrapper
+
+
 for _method_name in _PERMISSION_CUD_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)
     setattr(SqlAlchemyStore, _method_name, _wrap_with_cache_flush(_original))
+
+
+def _wrap_with_workspace_group_invalidation(method):
+    """Wrap a group-scoped workspace CUD method to invalidate the group's members.
+
+    Signature is (workspace, group_name, ...). Invalidation failures are logged, never
+    raised — the mutation already succeeded.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        workspace = kwargs.get("workspace") if "workspace" in kwargs else (args[0] if len(args) > 0 else None)
+        group_name = kwargs.get("group_name") if "group_name" in kwargs else (args[1] if len(args) > 1 else None)
+        if workspace and group_name:
+            try:
+                from mlflow_oidc_auth.utils.workspace_cache import (
+                    invalidate_group_workspace_permission,
+                )
+
+                invalidate_group_workspace_permission(group_name=group_name, workspace=workspace)
+            except Exception:
+                from mlflow_oidc_auth.logger import get_logger
+
+                get_logger().warning(
+                    "Workspace cache invalidation failed after %s; entries expire via TTL",
+                    method.__name__,
+                )
+        return result
+
+    return wrapper
+
+
+for _method_name in _MEMBERSHIP_CUD_METHODS:
+    _original = getattr(SqlAlchemyStore, _method_name)
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_membership_invalidation(_original))
+
+
+def _wrap_with_workspace_user_invalidation(method):
+    """Wrap a user-scoped workspace CUD method to invalidate that user's entry.
+
+    Signature is (workspace, username, ...). Invalidation failures are logged, never
+    raised — the mutation already succeeded.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        workspace = kwargs.get("workspace") if "workspace" in kwargs else (args[0] if len(args) > 0 else None)
+        username = kwargs.get("username") if "username" in kwargs else (args[1] if len(args) > 1 else None)
+        if workspace and username:
+            try:
+                from mlflow_oidc_auth.utils.workspace_cache import (
+                    invalidate_workspace_permission,
+                )
+
+                invalidate_workspace_permission(username, workspace)
+            except Exception:
+                from mlflow_oidc_auth.logger import get_logger
+
+                get_logger().warning(
+                    "Workspace cache invalidation failed after %s; entries expire via TTL",
+                    method.__name__,
+                )
+        return result
+
+    return wrapper
+
+
+for _method_name in _WORKSPACE_GROUP_CUD_METHODS:
+    _original = getattr(SqlAlchemyStore, _method_name)
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_workspace_group_invalidation(_original))
+
+for _method_name in _WORKSPACE_USER_CUD_METHODS:
+    _original = getattr(SqlAlchemyStore, _method_name)
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_workspace_user_invalidation(_original))
+
+
+def _wrap_with_workspace_flush(method):
+    """Wrap a workspace-wide mutator to flush the whole workspace cache.
+
+    Invalidation failures are logged, never raised — the mutation already succeeded.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        try:
+            from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache
+
+            flush_workspace_cache()
+        except Exception:
+            from mlflow_oidc_auth.logger import get_logger
+
+            get_logger().warning(
+                "Workspace cache flush failed after %s; entries expire via TTL",
+                method.__name__,
+            )
+        return result
+
+    return wrapper
+
+
+for _method_name in _WORKSPACE_WIPE_METHODS:
+    _original = getattr(SqlAlchemyStore, _method_name)
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_workspace_flush(_original))

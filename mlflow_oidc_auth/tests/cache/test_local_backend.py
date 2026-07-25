@@ -91,3 +91,54 @@ class TestLocalTTLCacheBackend:
         backend.set("d", 4)  # Should evict "a"
         assert backend.get("a") is None
         assert backend.get("d") == 4
+
+
+class TestDeletePrefix:
+    """delete_prefix backs targeted workspace-cache invalidation (issue #253).
+
+    Keys are "username:workspace", so an over-delete costs other users their warm
+    entries (perf) and an under-delete leaves a revoked grant live (fail-open).
+    """
+
+    def test_deletes_only_matching_keys(self):
+        backend = LocalTTLCacheBackend(maxsize=100, ttl=60)
+        backend.set("bob:ws1", "a")
+        backend.set("bob:ws2", "b")
+        backend.set("alice:ws1", "c")
+
+        backend.delete_prefix("bob:")
+
+        assert backend.get("bob:ws1") is None
+        assert backend.get("bob:ws2") is None
+        assert backend.get("alice:ws1") == "c"
+
+    def test_does_not_over_delete_usernames_sharing_a_prefix(self):
+        """'bob' must not invalidate 'bob2' or 'bobby' — the colon is the boundary."""
+        backend = LocalTTLCacheBackend(maxsize=100, ttl=60)
+        for key in ("bob:ws1", "bob2:ws1", "bobby:ws1", "bob@example.com:ws1"):
+            backend.set(key, key)
+
+        backend.delete_prefix("bob:")
+
+        assert backend.get("bob:ws1") is None
+        assert backend.get("bob2:ws1") == "bob2:ws1"
+        assert backend.get("bobby:ws1") == "bobby:ws1"
+        assert backend.get("bob@example.com:ws1") == "bob@example.com:ws1"
+
+    def test_no_match_is_a_noop(self):
+        backend = LocalTTLCacheBackend(maxsize=100, ttl=60)
+        backend.set("alice:ws1", "a")
+        backend.delete_prefix("nobody:")
+        assert backend.get("alice:ws1") == "a"
+
+    def test_safe_when_deleting_many_entries(self):
+        """Deleting while walking the TTLCache must not raise (keys are materialized first)."""
+        backend = LocalTTLCacheBackend(maxsize=500, ttl=60)
+        for i in range(200):
+            backend.set(f"bob:ws{i}", i)
+            backend.set(f"eve:ws{i}", i)
+
+        backend.delete_prefix("bob:")
+
+        assert all(backend.get(f"bob:ws{i}") is None for i in range(200))
+        assert all(backend.get(f"eve:ws{i}") == i for i in range(200))

@@ -42,6 +42,17 @@ class CacheBackend(Protocol):
         """
         ...
 
+    def delete_prefix(self, prefix: str) -> None:
+        """Remove every key in this namespace that starts with ``prefix``.
+
+        Enables targeted invalidation of a related group of entries (e.g. every
+        workspace entry for one user) without clearing the whole namespace, which
+        would throw away every other user's warm entries.
+
+        No-op if nothing matches.
+        """
+        ...
+
     def clear(self) -> None:
         """Remove all entries from this cache namespace."""
         ...

@@ -159,3 +159,79 @@ class TestRedisCacheBackend:
 
         backend.delete("foo:bar:baz")
         mock_client.delete.assert_called_once_with("test:foo:bar:baz")
+
+
+class TestGlobEscaping:
+    """SCAN MATCH is a glob pattern, so a username must not act as a wildcard (#253).
+
+    Usernames are not restricted to a safe alphabet, so without escaping a name like
+    ``[a-z]*`` would BOTH match other users' keys (over-delete) AND fail to match its
+    own (under-delete → a revoked grant stays cached, i.e. fail-open).
+    """
+
+    @pytest.fixture
+    def mock_redis(self):
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        mock_redis_module = MagicMock()
+        mock_redis_module.Redis.from_url.return_value = mock_client
+        mock_redis_module.ConnectionError = ConnectionError
+        return mock_redis_module, mock_client
+
+    @pytest.fixture
+    def backend(self, mock_redis):
+        mock_redis_module, _ = mock_redis
+        with patch.dict("sys.modules", {"redis": mock_redis_module}):
+            from mlflow_oidc_auth.cache.redis_backend import RedisCacheBackend
+
+            return RedisCacheBackend(url="redis://localhost:6379/0", prefix="test:", ttl=30)
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("plain", "plain"),
+            ("a*", "a\\*"),
+            ("a?", "a\\?"),
+            ("a[bc]", "a\\[bc\\]"),
+            ("back\\slash", "back\\\\slash"),
+            ("[a-z]*", "\\[a-z\\]\\*"),
+        ],
+    )
+    def test_escapes_every_redis_glob_metacharacter(self, raw, expected):
+        from mlflow_oidc_auth.cache.redis_backend import _escape_glob
+
+        assert _escape_glob(raw) == expected
+
+    def test_backslash_is_escaped_first(self):
+        """If '\\' were escaped last it would double-escape the other metacharacters."""
+        from mlflow_oidc_auth.cache.redis_backend import _escape_glob
+
+        # A literal backslash followed by a star must escape each exactly once.
+        assert _escape_glob("\\*") == "\\\\\\*"
+
+    def test_delete_prefix_scans_with_the_escaped_pattern(self, backend, mock_redis):
+        """The pattern sent to Redis must be namespaced AND escaped."""
+        _, mock_client = mock_redis
+        mock_client.scan.return_value = (0, [])
+
+        backend.delete_prefix("[a-z]*:")
+
+        pattern = mock_client.scan.call_args.kwargs["match"]
+        assert pattern == "test:\\[a-z\\]\\*:*", pattern
+
+    def test_delete_prefix_deletes_returned_keys(self, backend, mock_redis):
+        _, mock_client = mock_redis
+        mock_client.scan.side_effect = [(0, [b"test:bob:ws1", b"test:bob:ws2"])]
+
+        backend.delete_prefix("bob:")
+
+        mock_client.delete.assert_called_once_with(b"test:bob:ws1", b"test:bob:ws2")
+
+    def test_delete_prefix_paginates_until_cursor_zero(self, backend, mock_redis):
+        _, mock_client = mock_redis
+        mock_client.scan.side_effect = [(7, [b"test:bob:a"]), (0, [b"test:bob:b"])]
+
+        backend.delete_prefix("bob:")
+
+        assert mock_client.scan.call_count == 2
+        assert mock_client.delete.call_count == 2
