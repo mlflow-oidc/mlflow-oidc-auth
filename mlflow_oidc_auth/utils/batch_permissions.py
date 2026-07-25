@@ -22,7 +22,7 @@ from mlflow_oidc_auth.entities import (
 )
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import NO_PERMISSIONS, get_permission
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, compare_permissions, get_permission
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -69,6 +69,37 @@ class UserPermissionContext:
     workspace_permission_memo: Dict[str, Optional[object]] = field(default_factory=dict)
 
 
+def _collapse_group_permissions(permissions: List, resource_attr: str) -> Dict[str, str]:
+    """Collapse multiple group grants on one resource to a single permission.
+
+    A user in several groups can hold more than one grant on the same resource. This was
+    previously a last-wins dict comprehension, so the winner was whichever row the
+    database happened to return last — an order SQL does not guarantee without an
+    ORDER BY, and which therefore could differ by backend or query plan.
+
+    Worse, it disagreed with the per-resource path
+    (``BaseGroupPermissionRepository.get_group_permission_for_user_resource``), which
+    folds with ``compare_permissions``. For the same user and data — groups granting
+    MANAGE and READ on one experiment — the per-resource check returned MANAGE while the
+    batch check returned READ. Folding with the same ``compare_permissions`` rule makes
+    the two paths agree and makes the result independent of row order (issue #253).
+
+    NOTE: this deliberately reuses the EXISTING precedence rule rather than defining a
+    new one. ``compare_permissions`` ranks by ``priority``, and NO_PERMISSIONS carries
+    priority 100 — so a NO_PERMISSIONS group grant outranks MANAGE here, exactly as it
+    already does on the per-resource path. Whether that precedence is the right policy
+    for multi-group membership is issue #80, and is intentionally not changed here.
+    """
+    collapsed: Dict[str, str] = {}
+    for perm in permissions:
+        resource_id = getattr(perm, resource_attr)
+        current = collapsed.get(resource_id)
+        # compare_permissions(a, b) is True when b is at least as strong as a.
+        if current is None or compare_permissions(current, perm.permission):
+            collapsed[resource_id] = perm.permission
+    return collapsed
+
+
 def build_user_permission_context(username: str) -> UserPermissionContext:
     """Build a permission context for a user by fetching all permissions in batch.
 
@@ -90,7 +121,7 @@ def build_user_permission_context(username: str) -> UserPermissionContext:
 
     # Fetch all experiment permissions from user's groups (single query)
     group_exp_perms = store.list_user_groups_experiment_permissions(username)
-    group_experiment_permissions = {p.experiment_id: p.permission for p in group_exp_perms}
+    group_experiment_permissions = _collapse_group_permissions(group_exp_perms, "experiment_id")
 
     # Fetch experiment regex permissions (single query each)
     experiment_regex_permissions = store.list_experiment_regex_permissions(username)
@@ -102,7 +133,7 @@ def build_user_permission_context(username: str) -> UserPermissionContext:
 
     # Fetch all model permissions from user's groups (single query)
     group_model_perms = store.list_user_groups_registered_model_permissions(username)
-    group_model_permissions = {p.name: p.permission for p in group_model_perms}
+    group_model_permissions = _collapse_group_permissions(group_model_perms, "name")
 
     # Fetch model regex permissions (single query each)
     model_regex_permissions = store.list_registered_model_regex_permissions(username)
@@ -178,8 +209,8 @@ def _apply_workspace_fallback(result: PermissionResult, username: str, ctx: Opti
 
     The workspace permission is the same for every resource in a batch, but
     ``get_workspace_permission_cached`` deliberately does not cache DENIALS — so without
-    a memo a user with no workspace grant paid a full source walk (~9 queries) for EVERY
-    resource in the batch, making a listing 21+9N queries instead of a flat ~21.
+    a memo a user with no workspace grant paid a full source walk (measured 7 queries) for
+    EVERY resource in the batch, making a listing 15+7N queries instead of a flat 22.
     Memoizing on ``ctx`` bounds the lifetime to this one batch call, so unlike a
     cross-request cache it cannot serve a stale authorization decision (issue #253).
 

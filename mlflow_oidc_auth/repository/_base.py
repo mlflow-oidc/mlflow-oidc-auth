@@ -393,6 +393,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
                 .join(SqlUserGroup, SqlUserGroup.group_id == self.model_class.group_id)
                 .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
                 .filter(SqlUser.username == username)
+                .order_by(self.model_class.group_id)
                 .all()
             )
             return [p.to_mlflow_entity() for p in perms]

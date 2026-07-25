@@ -286,3 +286,106 @@ class TestWorkspaceFallbackMemo:
         assert len(set(finally_counts.values())) == 1, f"workspace deny cost scales with resource count: {finally_counts}"
         # And it must actually be walking the sources, or the test proves nothing.
         assert next(iter(finally_counts.values())) > 0, "deny path issued no queries; test would be vacuous"
+
+
+class TestListFoldsDoNotLeakAcrossUsers:
+    """The three JOIN folds gate cross-user isolation; nothing else tests their predicates.
+
+    Neutering the username predicate or the join column in any of these leaks another
+    user's permissions, and the rest of the suite stays green — so these are the only
+    guard against that.
+    """
+
+    def _seed_two_users(self, store):
+        store.create_user("victim@example.com", "pw", "Victim")
+        store.create_user("alice@example.com", "pw", "Alice")
+        # Decoy groups first so membership-row PKs diverge from group ids — otherwise a
+        # join on the wrong column (SqlUserGroup.id instead of .group_id) is invisible.
+        store.populate_groups(["decoy-a", "decoy-b", "decoy-c", "victim-grp", "alice-grp"])
+        store.set_user_groups("victim@example.com", ["victim-grp"])
+        store.set_user_groups("alice@example.com", ["alice-grp"])
+        # A grant on a decoy group neither user belongs to, whose group id collides with
+        # the membership row PKs, so a wrong-column join surfaces it.
+        store.create_group_experiment_permission("decoy-a", "exp-decoy", "MANAGE")
+
+    def test_list_permissions_for_user_returns_only_the_callers_rows(self, store):
+        self._seed_two_users(store)
+        store.create_experiment_permission("exp-secret", "victim@example.com", "MANAGE")
+
+        assert [p.experiment_id for p in store.experiment_repo.list_permissions_for_user("victim@example.com")] == ["exp-secret"]
+        assert store.experiment_repo.list_permissions_for_user("alice@example.com") == []
+
+    def test_list_permissions_for_user_groups_returns_only_the_callers_groups(self, store):
+        self._seed_two_users(store)
+        store.create_group_experiment_permission("victim-grp", "exp-secret", "MANAGE")
+
+        victim = store.experiment_group_repo.list_permissions_for_user_groups("victim@example.com")
+        assert [p.experiment_id for p in victim] == ["exp-secret"], "wrong rows for the caller"
+        assert store.experiment_group_repo.list_permissions_for_user_groups("alice@example.com") == []
+
+    def test_list_regex_for_user_returns_only_the_callers_rows(self, store):
+        self._seed_two_users(store)
+        store.create_experiment_regex_permission("^secret/.*", 1, "MANAGE", "victim@example.com")
+
+        assert len(store.experiment_regex_repo.list_regex_for_user("victim@example.com")) == 1
+        assert store.experiment_regex_repo.list_regex_for_user("alice@example.com") == []
+
+    def test_group_regex_fold_uses_group_id_not_the_membership_row_id(self, store):
+        """Regression for the join-table-PK bug: membership row PK != group id.
+
+        Seeded so the two diverge, so using the wrong column returns a non-member group.
+        """
+        store.create_user("carol@example.com", "pw", "Carol")
+        groups = [f"grp{i}" for i in range(6)]
+        store.populate_groups(groups)
+        store.set_user_groups("carol@example.com", ["grp5"])  # membership row PK 1, group id 6
+        # Grant on a group carol is NOT in, whose id collides with her membership row PK.
+        store.create_group_experiment_regex_permission("grp0", ".*", 1, "MANAGE")
+
+        rows = store.experiment_group_regex_repo.list_permissions_for_user_groups("carol@example.com")
+        assert rows == [], f"leaked a grant from a non-member group: {[(r.group_id, r.permission) for r in rows]}"
+
+
+class TestGroupPermissionCollapse:
+    """Multiple group grants on one resource must resolve deterministically."""
+
+    def test_batch_and_per_resource_paths_agree(self, store):
+        """The batch path used a last-wins dict; the per-resource path folds by precedence."""
+        import mlflow_oidc_auth.utils.batch_permissions as bp
+
+        store.create_user("dora@example.com", "pw", "Dora")
+        store.populate_groups(["hi", "lo"])
+        store.set_user_groups("dora@example.com", ["hi", "lo"])
+        store.create_group_experiment_permission("hi", "e0", "MANAGE")
+        store.create_group_experiment_permission("lo", "e0", "READ")
+
+        per_resource = store.experiment_group_repo.get_group_permission_for_user_resource("e0", "dora@example.com").permission
+
+        original = bp.store
+        bp.store = store
+        try:
+            batch = bp.build_user_permission_context("dora@example.com").group_experiment_permissions["e0"]
+        finally:
+            bp.store = original
+
+        assert batch == per_resource, "batch and per-resource paths disagree on multi-group resolution"
+
+    def test_collapse_is_independent_of_membership_order(self, store):
+        import mlflow_oidc_auth.utils.batch_permissions as bp
+
+        store.create_user("eve@example.com", "pw", "Eve")
+        store.populate_groups(["ga", "gz"])
+        store.create_group_experiment_permission("ga", "e0", "MANAGE")
+        store.create_group_experiment_permission("gz", "e0", "READ")
+
+        original = bp.store
+        bp.store = store
+        try:
+            results = []
+            for order in (["ga", "gz"], ["gz", "ga"]):
+                store.set_user_groups("eve@example.com", order)
+                results.append(bp.build_user_permission_context("eve@example.com").group_experiment_permissions["e0"])
+        finally:
+            bp.store = original
+
+        assert results[0] == results[1], f"resolution depends on membership insertion order: {results}"

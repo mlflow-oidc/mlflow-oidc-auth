@@ -145,7 +145,7 @@ def test_list_permissions_for_user_groups(repo):
     session = MagicMock()
     perm1 = make_permission("exp1", 1, "READ")
     perm2 = make_permission("exp2", 2, "EDIT")
-    session.query().join().join().filter().all.return_value = [perm1, perm2]
+    session.query().join().join().filter().order_by().all.return_value = [perm1, perm2]
     repo._Session.return_value.__enter__.return_value = session
     result = repo.list_permissions_for_user_groups("user1")
     assert result == [perm1.to_mlflow_entity(), perm2.to_mlflow_entity()]
