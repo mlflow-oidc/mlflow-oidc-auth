@@ -47,6 +47,10 @@ def mock_store():
     store.gateway_model_definition_group_repo = MagicMock()
     store.gateway_model_definition_regex_repo = MagicMock()
     store.gateway_model_definition_group_regex_repo = MagicMock()
+    store.workspace_permission_repo = MagicMock()
+    store.workspace_group_permission_repo = MagicMock()
+    store.workspace_regex_permission_repo = MagicMock()
+    store.workspace_group_regex_permission_repo = MagicMock()
     store.ManagedSessionMaker = MagicMock()
     return store
 
@@ -59,10 +63,24 @@ class TestPermissionCUDMethodsList:
         for method_name in _PERMISSION_CUD_METHODS:
             assert hasattr(SqlAlchemyStore, method_name), f"Method {method_name} not found on SqlAlchemyStore"
 
-    def test_no_workspace_methods_included(self):
-        """Workspace methods must NOT be in the list (they have their own cache)."""
-        for method_name in _PERMISSION_CUD_METHODS:
-            assert "workspace" not in method_name, f"Workspace method {method_name} should not be in _PERMISSION_CUD_METHODS"
+    def test_workspace_methods_included(self):
+        """Workspace permission methods MUST be in the list (issue #253).
+
+        They were previously excluded on the grounds that workspace_cache had its own
+        cache. But that is a *different* cache namespace: when workspaces are enabled,
+        workspace permissions feed resolution through the workspace fallback, so
+        clearing only the workspace cache left the permission cache serving a revoked
+        permission until its TTL expired.
+        """
+        for method_name in (
+            "create_workspace_permission",
+            "update_workspace_permission",
+            "delete_workspace_permission",
+            "create_workspace_group_permission",
+            "update_workspace_group_permission",
+            "delete_workspace_group_permission",
+        ):
+            assert method_name in _PERMISSION_CUD_METHODS, f"{method_name} must flush the permission cache"
 
     def test_no_user_management_methods_included(self):
         """User CRUD methods (create_user, update_user, delete_user) must NOT be in the list."""
@@ -386,6 +404,20 @@ class TestComprehensiveCUDCoverage:
             "set_user_groups": ("user1", ["group1"]),
             "add_user_to_group": ("user1", "group1"),
             "remove_user_from_group": ("user1", "group1"),
+            # Workspace permissions (issue #253 — these feed the workspace fallback in
+            # permission resolution, so they must flush the permission cache too)
+            "create_workspace_permission": ("ws1", "user1", "READ"),
+            "update_workspace_permission": ("ws1", "user1", "EDIT"),
+            "delete_workspace_permission": ("ws1", "user1"),
+            "create_workspace_group_permission": ("ws1", "group1", "READ"),
+            "update_workspace_group_permission": ("ws1", "group1", "EDIT"),
+            "delete_workspace_group_permission": ("ws1", "group1"),
+            "create_workspace_regex_permission": (".*", 1, "READ", "user1"),
+            "update_workspace_regex_permission": (".*", 1, "EDIT", "user1", 1),
+            "delete_workspace_regex_permission": ("user1", 1),
+            "create_workspace_group_regex_permission": ("group1", ".*", 1, "READ"),
+            "update_workspace_group_regex_permission": (1, "group1", ".*", 1, "EDIT"),
+            "delete_workspace_group_regex_permission": ("group1", 1),
         }
 
         # Verify every method in _PERMISSION_CUD_METHODS has sample args
@@ -399,3 +431,58 @@ class TestComprehensiveCUDCoverage:
             args = sample_args[method_name]
             method(*args)
             assert mock_flush.called, f"flush_permission_cache() not called after {method_name}"
+
+
+class TestWorkspaceCacheInvalidationRegressions:
+    """Regression tests for the three fail-open holes found while investigating #253.
+
+    All three left REVOKED authorization working until the workspace cache TTL (300s)
+    expired. They are asserted at the store layer because that is where the guarantee
+    now lives — putting invalidation only in the router made it bypassable by any
+    other caller.
+    """
+
+    def test_group_workspace_cud_invalidates_group_members(self, mock_store):
+        """BUG 1: group-scoped workspace CUD used to invalidate nothing (decision D-15)."""
+        member = MagicMock()
+        member.username = "alice"
+        mock_store.group_repo.list_group_members.return_value = [member]
+
+        with patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_group_workspace_permission") as inv:
+            mock_store.delete_workspace_group_permission("ws-prod", "team-a")
+            inv.assert_called_once_with(group_name="team-a", workspace="ws-prod")
+
+    def test_membership_change_invalidates_that_users_workspace_entries(self, mock_store):
+        """BUG 2: membership mutations flushed the permission cache but not the workspace cache."""
+        with patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_user_workspace_entries") as inv:
+            mock_store.set_user_groups("alice", [])
+            inv.assert_called_once_with("alice")
+
+    def test_membership_invalidation_is_targeted_not_a_full_flush(self, mock_store):
+        """Must NOT full-flush: OIDC login re-syncs membership on every sign-in."""
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_user_workspace_entries"),
+            patch("mlflow_oidc_auth.utils.workspace_cache.flush_workspace_cache") as flush,
+        ):
+            mock_store.set_user_groups("alice", ["g1"])
+            flush.assert_not_called()
+
+    def test_user_workspace_cud_invalidates_at_store_layer(self, mock_store):
+        """BUG 3: user workspace CUD invalidated only in the router, so direct store calls leaked."""
+        with patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_workspace_permission") as inv:
+            mock_store.delete_workspace_permission("ws-prod", "bob")
+            inv.assert_called_once_with("bob", "ws-prod")
+
+    def test_workspace_cud_also_flushes_the_permission_cache(self, mock_store):
+        """BUG 3 (other half): the workspace cache and permission cache are separate namespaces."""
+        with patch(FLUSH_PATCH_PATH) as mock_flush:
+            mock_store.delete_workspace_permission("ws-prod", "bob")
+            mock_flush.assert_called_once()
+
+    def test_invalidation_failure_never_masks_a_successful_mutation(self, mock_store):
+        """A cache problem must not turn a successful permission change into an error."""
+        with patch(
+            "mlflow_oidc_auth.utils.workspace_cache.invalidate_user_workspace_entries",
+            side_effect=RuntimeError("cache down"),
+        ):
+            mock_store.set_user_groups("alice", ["g1"])  # must not raise

@@ -72,10 +72,59 @@ def invalidate_workspace_permission(username: str, workspace: str) -> None:
     """Remove a specific user+workspace entry from cache (per D-13).
 
     Called by workspace permission router after successful CUD operations.
-    Only invalidates user permission changes; group changes rely on TTL (per D-15).
     """
     cache = _get_cache()
     cache.delete(_make_cache_key(username, workspace))
+
+
+def invalidate_user_workspace_entries(username: str) -> None:
+    """Drop every cached workspace entry for one user.
+
+    Group membership drives the group-scoped branch of workspace resolution, so a
+    membership change can alter this user's permission in ANY workspace — but only
+    this user's. Keys are ``username:workspace``, so a prefix delete is exact and
+    bounded, and leaves every other user's entries warm.
+
+    This matters for throughput as well as correctness: OIDC login re-syncs group
+    membership on every sign-in, so a full flush here would wipe the cache fleet-wide
+    on each login.
+    """
+    cache = _get_cache()
+    cache.delete_prefix(f"{username}:")
+    logger.debug("Workspace cache entries invalidated for user %s", _sanitize(username))
+
+
+def invalidate_group_workspace_permission(group_name: str, workspace: str) -> None:
+    """Drop the cached entry for ``workspace`` for every member of ``group_name``.
+
+    A group-scoped workspace permission change affects exactly the group's members in
+    that one workspace, so invalidating per member is exact and costs one bounded
+    query. Previously these changes invalidated nothing and relied on TTL expiry
+    (decision D-15), which left revoked access working for up to the cache TTL.
+    """
+    from mlflow_oidc_auth.store import store
+
+    try:
+        members = store.get_group_users(group_name)
+    except Exception:
+        # Never let an invalidation failure mask the successful mutation — but do not
+        # leave stale authorization behind either: fall back to a full flush.
+        logger.warning(
+            "Could not list members of group %s for targeted workspace-cache invalidation; flushing instead",
+            _sanitize(group_name),
+        )
+        flush_workspace_cache()
+        return
+
+    cache = _get_cache()
+    for member in members:
+        cache.delete(_make_cache_key(member.username, workspace))
+    logger.debug(
+        "Workspace cache invalidated for %d member(s) of group %s in workspace %s",
+        len(members),
+        _sanitize(group_name),
+        _sanitize(workspace),
+    )
 
 
 def flush_workspace_cache() -> None:

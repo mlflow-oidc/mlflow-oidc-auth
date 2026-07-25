@@ -132,7 +132,6 @@ async def create_workspace_group_permission(
     """Grant a group permission on a workspace."""
     _validate_permission(body.permission)
     perm = store.create_workspace_group_permission(workspace, body.group_name, body.permission)
-    # Group changes rely on TTL-based cache expiry per D-15
     emit_audit_event(
         "permission.create",
         current_username,

@@ -36,5 +36,11 @@ class LocalTTLCacheBackend:
     def delete(self, key: str) -> None:
         self._cache.pop(key, None)
 
+    def delete_prefix(self, prefix: str) -> None:
+        # Materialize the key list first: TTLCache mutates on iteration when
+        # entries expire, and we delete while walking it.
+        for key in [k for k in list(self._cache.keys()) if isinstance(k, str) and k.startswith(prefix)]:
+            self._cache.pop(key, None)
+
     def clear(self) -> None:
         self._cache.clear()
