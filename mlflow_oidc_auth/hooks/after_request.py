@@ -753,6 +753,13 @@ def after_request_hook(resp: Response):
     if 400 <= resp.status_code < 600:
         return resp
 
-    if handler := AFTER_REQUEST_HANDLERS.get((request.path, request.method)):
+    # HEAD is folded onto GET (issue #286). werkzeug dispatches HEAD to the GET view and
+    # then strips the body, but it PRESERVES Content-Length. The handlers registered here
+    # filter search/list responses down to what the caller may see, so a HEAD that skipped
+    # them was served the unfiltered global result set and leaked its exact size — the
+    # existence/size oracle #286 is about. Folding the lookup in before_request alone only
+    # closed the authorization half; without this the response half stayed open.
+    method = "GET" if request.method == "HEAD" else request.method
+    if handler := AFTER_REQUEST_HANDLERS.get((request.path, method)):
         handler(resp)
     return resp

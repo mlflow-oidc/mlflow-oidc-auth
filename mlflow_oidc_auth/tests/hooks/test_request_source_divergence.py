@@ -53,6 +53,7 @@ def _ctx(path, method, body=None, query=None):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("prefix", ["/api", "/ajax-api"])
 @pytest.mark.parametrize(
     "path, method, field",
     [
@@ -62,9 +63,15 @@ def _ctx(path, method, body=None, query=None):
         (RENAME_MODEL, "POST", "name"),
     ],
 )
-def test_body_wins_over_query_string_on_non_get_proto_routes(path, method, field):
-    """The body is what MLflow acts on, so the body is what must be authorized."""
-    with _ctx(path, method, body={field: "VICTIM"}, query={field: "OWN"}):
+def test_body_wins_over_query_string_on_non_get_proto_routes(path, method, field, prefix):
+    """The body is what MLflow acts on, so the body is what must be authorized.
+
+    Parameterized over BOTH prefixes: /ajax-api is what MLflow's own web UI calls and
+    carries its own full set of proto routes and validator keys. Covering only /api
+    let a mutation that classified just /api as proto keep the suite green while
+    leaving #285 fully exploitable on the prefix the browser actually uses.
+    """
+    with _ctx(path.replace("/api", prefix, 1), method, body={field: "VICTIM"}, query={field: "OWN"}):
         assert _extract_param_from_all_sources(field) == "VICTIM"
 
 
@@ -120,16 +127,32 @@ def test_body_only_post_is_unchanged():
         assert _extract_param_from_all_sources("experiment_id") == "MINE"
 
 
-def test_view_args_still_win_over_everything():
-    """MLflow's routing binds path params and its handlers read them directly.
+def test_view_args_win_when_the_body_agrees_or_is_silent():
+    """Path params stay authoritative for the shapes a real client actually sends."""
+    for body in ({"model_id": "PATH"}, {"status": 1}):
+        with app.test_request_context("/api/2.0/mlflow/logged-models/PATH", method="PATCH", json=body):
+            # Simulate werkzeug having bound the path converter.
+            request.view_args = {"model_id": "PATH"}
+            assert _extract_param_from_all_sources("model_id") == "PATH"
 
-    The logged-models routes carry model_id as a real path parameter, so view_args
-    must keep winning; only the args-vs-body choice changed.
+
+def test_path_param_disagreeing_with_the_body_is_rejected():
+    """Picking a side here is unsafe in BOTH directions, so refuse to pick.
+
+    Most MLflow handlers act on the bound path argument, but FinalizeLoggedModel
+    (PATCH /logged-models/<model_id>) ignores it entirely and acts on
+    ``request_message.model_id`` from the body. "Path wins" therefore authorizes the
+    URL's model while MLflow finalizes the body's; "body wins" breaks the other way
+    on every route that does use the path. No real client sends two different values
+    for one field, so the ambiguity is refused with a 400.
     """
-    with app.test_request_context("/api/2.0/mlflow/logged-models/PATH", method="PATCH", json={"model_id": "BODY"}):
-        # Simulate werkzeug having bound the path converter.
-        request.view_args = {"model_id": "PATH"}
-        assert _extract_param_from_all_sources("model_id") == "PATH"
+    from mlflow.exceptions import MlflowException
+
+    with app.test_request_context("/api/2.0/mlflow/logged-models/OWN", method="PATCH", json={"model_id": "VICTIM", "status": 1}):
+        request.view_args = {"model_id": "OWN"}
+        with pytest.raises(MlflowException) as exc:
+            _extract_param_from_all_sources("model_id")
+    assert exc.value.get_http_status_code() == 400
 
 
 def test_non_proto_routes_keep_the_legacy_scan():
@@ -159,13 +182,27 @@ def test_proto_request_value_reports_route_membership():
 @pytest.mark.parametrize(
     "path",
     [
+        # exact-match branch
         GET_EXPERIMENT,
         "/api/2.0/mlflow/runs/get",
         "/api/2.0/mlflow/registered-models/get",
+        "/ajax-api/2.0/mlflow/experiments/get",
+        # parameterized branch
+        "/api/2.0/mlflow/traces/tr-1/info",
+        # workspace branch
+        "/api/3.0/mlflow/workspaces/ws1",
+        # logged-model branch
+        "/api/2.0/mlflow/logged-models/m-1",
     ],
 )
 def test_head_resolves_the_same_validator_as_get(path):
-    """A HEAD reaches the same view as its GET, so it must reach the same validator."""
+    """A HEAD reaches the same view as its GET, so it must reach the same validator.
+
+    _find_validator has FOUR lookup branches (workspace, logged-model, exact and
+    parameterized) and the fold had to be applied to all of them. Covering only the
+    exact-match branch let a partial revert of any of the other three pass the whole
+    suite while leaving HEAD unvalidated on those routes.
+    """
     with _ctx(path, "GET", query={"experiment_id": "1"}) as get_ctx:
         expected = _find_validator(get_ctx.request)
     assert expected is not None, f"precondition: {path} must have a GET validator"
@@ -185,6 +222,49 @@ def test_other_methods_are_unaffected_by_the_fold():
     """POST/DELETE lookups must resolve exactly as before the fold was introduced."""
     with _ctx(UPDATE_EXPERIMENT, "POST", body={"experiment_id": "1"}) as ctx:
         assert _find_validator(ctx.request) is not None
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_head_reaches_a_decision_rather_than_an_unsupported_method_error(method):
+    """Closing the HEAD hole must make HEAD decide like GET, not deny everything.
+
+    Folding HEAD in _find_validator alone routed HEAD into get_request_param, whose
+    method whitelist had no HEAD branch — so it raised BAD_REQUEST and every HEAD on a
+    gated route 400'd, including for the rightful owner, and including routes MLflow
+    serves happily (/get-artifact is registered GET+HEAD and its handler reads
+    request.args with no method check). Trading a leak for a blanket denial is not
+    closing the hole.
+    """
+    from mlflow_oidc_auth.utils.request_helpers import get_request_param
+
+    with app.test_request_context("/get-artifact?run_uuid=r1&path=secret.txt", method=method):
+        assert get_request_param("path") == "secret.txt"
+        assert get_request_param("run_uuid") == "r1"
+
+
+def test_head_is_filtered_by_the_after_request_handlers():
+    """The response half of #286: HEAD must not skip tenant filtering.
+
+    werkzeug strips a HEAD body but PRESERVES Content-Length, so a HEAD that skipped
+    the search/list filters was served the unfiltered global result set and leaked its
+    exact size — precisely the existence/size oracle the issue is about.
+    """
+    from unittest.mock import patch
+
+    from flask import Response
+
+    from mlflow_oidc_auth.hooks import after_request as ar
+
+    path = "/api/2.0/mlflow/experiments/search"
+    called = []
+    fake = {(path, "GET"): lambda resp: called.append(resp)}
+
+    with patch.object(ar, "AFTER_REQUEST_HANDLERS", fake):
+        for method in ("GET", "HEAD"):
+            called.clear()
+            with app.test_request_context(path, method=method):
+                ar.after_request_hook(Response(status=200))
+            assert called, f"{method} must reach the filtering handler"
 
 
 # ---------------------------------------------------------------------------

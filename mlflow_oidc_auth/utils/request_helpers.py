@@ -81,7 +81,14 @@ def get_request_param(param: str) -> str:
     Raises:
         MlflowException: If the parameter is not found or is empty
     """
-    if request.method == "GET":
+    # HEAD is folded onto GET (issue #286). werkzeug dispatches HEAD to the GET view,
+    # and _find_validator now folds it too, so a HEAD reaches these validators for the
+    # first time. Without the same fold here, the "unsupported method" branch fired and
+    # every HEAD on a gated route was refused with 400 — including for the rightful
+    # owner, and including routes MLflow serves happily (/get-artifact is registered
+    # GET+HEAD and its handler reads request.args with no method check). Closing the
+    # HEAD hole must make HEAD reach the SAME decision as its GET twin, not deny it.
+    if request.method in ("GET", "HEAD"):
         args = request.args
     elif request.method in ("POST", "PATCH", "DELETE"):
         # Try JSON first, then fall back to form data
@@ -124,7 +131,8 @@ def get_optional_request_param(param: str) -> str | None:
     Returns:
         The parameter value or None if not found
     """
-    if request.method == "GET":
+    # HEAD folds onto GET for the same reason as get_request_param (issue #286).
+    if request.method in ("GET", "HEAD"):
         args = request.args
     elif request.method in ("POST", "PATCH", "DELETE"):
         # Try JSON first, then fall back to form data
@@ -148,11 +156,12 @@ def _extract_param_from_all_sources(param: str) -> str | None:
     """Extract a parameter value from the source MLflow itself will read.
 
     Order:
-    1. URL path parameters (view_args) — MLflow's routing binds these and its
-       handlers read them directly, so they are authoritative wherever present.
-    2. On a proto route, whichever single source MLflow will proto-parse: the query
+    1. A path parameter that disagrees with the proto body is rejected outright — see
+       the ambiguity check below.
+    2. URL path parameters (view_args), which most MLflow handlers read directly.
+    3. On a proto route, whichever single source MLflow will proto-parse: the query
        string for a GET with a non-empty one, the request body for everything else.
-    3. On a non-proto route, fall back to scanning query args then the JSON body.
+    4. On a non-proto route, fall back to scanning query args then the JSON body.
 
     Step 2 exists because MLflow **ignores the query string entirely** on every
     non-GET route. Preferring query args there authorized one resource while MLflow
@@ -168,18 +177,34 @@ def _extract_param_from_all_sources(param: str) -> str | None:
     Returns:
         The parameter value if found, None otherwise.
     """
-    # Fastest: check view_args first
-    if request.view_args and param in request.view_args:
-        return request.view_args[param]
-
     # Imported lazily: mlflow_oidc_auth.hooks.__init__ imports before_request, which
     # imports the validators that import this module, so a module-level import would
     # be circular. Module objects are cached in sys.modules, making this a dict lookup.
     from mlflow_oidc_auth.hooks.dual_spelling_guard import proto_request_value
 
-    is_proto_route, value = proto_request_value(request, param)
+    is_proto_route, proto_value = proto_request_value(request, param)
+    path_value = request.view_args.get(param) if request.view_args else None
+
+    # A path parameter and a proto body that name DIFFERENT resources is unresolvable
+    # without per-route knowledge of MLflow's handler, and guessing is unsafe in both
+    # directions. Most handlers act on the path argument, but FinalizeLoggedModel
+    # (PATCH /logged-models/<model_id>) ignores it and acts on request_message.model_id
+    # from the body — so "path wins" authorizes the URL while MLflow mutates the body's
+    # model, and "body wins" breaks the opposite way on every other route. No legitimate
+    # client sends two different values for one field, so reject the ambiguity outright
+    # rather than pick a side, exactly as the dual-spelling guard does for two spellings.
+    # This raises INVALID_PARAMETER_VALUE, which catch_mlflow_exception turns into a 400
+    # returned from the hook, so the view never runs.
+    if is_proto_route and path_value is not None and proto_value is not None and path_value != proto_value:
+        raise MlflowException(
+            f"Ambiguous request: '{param}' was given as both a path parameter and a request body field, with different values.",
+            INVALID_PARAMETER_VALUE,
+        )
+
+    if path_value is not None:
+        return path_value
     if is_proto_route:
-        return value
+        return proto_value
 
     # Next: check args (GET)
     if request.args and param in request.args:
