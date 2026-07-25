@@ -1,0 +1,197 @@
+"""Query-count characterization and regression tests (issue #253).
+
+Each test asserts the number of SQL statements a resolver path issues. They are
+written as exact assertions so that a regression AND a silent improvement both fail,
+forcing the number in the diff to be updated deliberately.
+
+See conftest.py for why round-trips (not query cost) are the metric.
+"""
+
+import pytest
+from mlflow.exceptions import MlflowException
+
+
+class TestUserGroupLookups:
+    """The user -> groups helpers used by every group-scoped permission check."""
+
+    def test_list_groups_for_user_is_single_query(self, seeded_store, counter):
+        """Resolving a user's group names must not fan out into separate lookups.
+
+        Was 3 statements: get_user, then user_groups by user_id, then groups by id IN (...).
+        """
+        store, username, group_names = seeded_store
+        counter.reset()
+
+        names = store.group_repo.list_groups_for_user(username)
+
+        assert sorted(names) == sorted(group_names)
+        assert counter.count == 1, counter.report()
+
+    def test_list_group_ids_for_user_is_single_query(self, seeded_store, counter):
+        """Was 2 statements: get_user, then user_groups by user_id."""
+        store, username, _ = seeded_store
+        counter.reset()
+
+        ids = store.group_repo.list_group_ids_for_user(username)
+
+        assert len(ids) == 8
+        assert counter.count == 1, counter.report()
+
+    def test_group_lookup_is_constant_in_group_count(self, store, counter):
+        """Group resolution must not scale with how many groups the user belongs to."""
+        counts = {}
+        for n_groups in (1, 4, 8):
+            username = f"user{n_groups}@example.com"
+            groups = [f"g{n_groups}-{i}" for i in range(n_groups)]
+            store.create_user(username, "pw", username)
+            store.populate_groups(groups)
+            store.set_user_groups(username, groups)
+
+            counter.reset()
+            store.group_repo.list_groups_for_user(username)
+            counts[n_groups] = counter.count
+
+        assert len(set(counts.values())) == 1, f"not constant in group count: {counts}"
+
+
+class TestGroupPermissionResolution:
+    """The per-resource group permission check — the hottest path in the resolver."""
+
+    def _grant(self, store, group, exp_id, permission):
+        store.create_group_experiment_permission(group, exp_id, permission)
+
+    def test_group_permission_check_is_single_query(self, seeded_store, counter):
+        """Was 3 + 2G statements (19 at G=8): a per-group loop, each re-resolving the group.
+
+        The user must get the highest permission across all their groups in one query.
+        """
+        store, username, groups = seeded_store
+        self._grant(store, groups[1], "exp-1", "READ")
+        self._grant(store, groups[4], "exp-1", "MANAGE")
+        self._grant(store, groups[6], "exp-1", "EDIT")
+        counter.reset()
+
+        perm = store.experiment_group_repo.get_group_permission_for_user_resource("exp-1", username)
+
+        assert perm is not None
+        assert perm.permission == "MANAGE", "must resolve to the highest permission across groups"
+        assert counter.count == 1, counter.report()
+
+    def test_group_permission_check_is_constant_in_group_count(self, store, counter):
+        """The check must be O(1) in group membership, not O(G)."""
+        counts = {}
+        for n_groups in (1, 4, 8):
+            username = f"perm{n_groups}@example.com"
+            groups = [f"pg{n_groups}-{i}" for i in range(n_groups)]
+            store.create_user(username, "pw", username)
+            store.populate_groups(groups)
+            store.set_user_groups(username, groups)
+            store.create_group_experiment_permission(groups[0], f"exp-{n_groups}", "READ")
+
+            counter.reset()
+            store.experiment_group_repo.get_group_permission_for_user_resource(f"exp-{n_groups}", username)
+            counts[n_groups] = counter.count
+
+        assert len(set(counts.values())) == 1, f"query count scales with group membership: {counts}"
+
+    def test_group_permission_miss_is_single_query(self, seeded_store, counter):
+        """A miss (no group grants anything) is the common case in a search-filter pass."""
+        store, username, _ = seeded_store
+        counter.reset()
+
+        with pytest.raises(MlflowException):
+            store.experiment_group_repo.get_group_permission_for_user_resource("exp-unknown", username)
+
+        assert counter.count == 1, counter.report()
+
+
+class TestFilterPassScaling:
+    """A search/list request resolves permissions for many resources in one pass."""
+
+    @pytest.mark.parametrize("n_resources", [1, 10, 25])
+    def test_group_checks_scale_linearly_with_one_query_each(self, seeded_store, counter, n_resources):
+        """Per-resource cost must be exactly one query, so a filter pass is O(N) not O(N*G)."""
+        store, username, _ = seeded_store
+        counter.reset()
+
+        for i in range(n_resources):
+            with pytest.raises(MlflowException):
+                store.experiment_group_repo.get_group_permission_for_user_resource(f"exp-{i}", username)
+
+        assert counter.count == n_resources, counter.report()
+
+
+class TestFoldedQueriesDoNotOverGrant:
+    """The folded group queries must never grant beyond the caller's own memberships.
+
+    These are real-DB authorization tests, not query-count tests. They exist because
+    dropping the `username` predicate from a folded JOIN — the maximal over-grant — is
+    invisible to a mock-chain test and previously passed the entire suite.
+    """
+
+    def test_experiment_fold_ignores_groups_the_user_is_not_in(self, store, counter):
+        store.create_user("owner@example.com", "pw", "Owner")
+        store.create_user("outsider@example.com", "pw", "Outsider")
+        store.populate_groups(["insiders", "outsiders"])
+        store.set_user_groups("owner@example.com", ["insiders"])
+        store.set_user_groups("outsider@example.com", ["outsiders"])
+        # Only the group the outsider is NOT in has a grant.
+        store.create_group_experiment_permission("insiders", "exp-secret", "MANAGE")
+
+        with pytest.raises(MlflowException):
+            store.experiment_group_repo.get_group_permission_for_user_resource("exp-secret", "outsider@example.com")
+
+        owner = store.experiment_group_repo.get_group_permission_for_user_resource("exp-secret", "owner@example.com")
+        assert owner.permission == "MANAGE"
+
+    def test_registered_model_fold_ignores_groups_the_user_is_not_in(self, store):
+        store.create_user("mowner@example.com", "pw", "M Owner")
+        store.create_user("moutsider@example.com", "pw", "M Outsider")
+        store.populate_groups(["m-insiders", "m-outsiders"])
+        store.set_user_groups("mowner@example.com", ["m-insiders"])
+        store.set_user_groups("moutsider@example.com", ["m-outsiders"])
+        store.create_group_model_permission("m-insiders", "secret-model", "MANAGE")
+
+        with pytest.raises(MlflowException):
+            store.registered_model_group_repo.get_for_user("secret-model", "moutsider@example.com")
+
+        owner = store.registered_model_group_repo.get_for_user("secret-model", "mowner@example.com")
+        assert owner.permission == "MANAGE"
+
+    def test_registered_model_fold_keys_on_the_model_name(self, store):
+        """The resource predicate must survive the fold — a grant on one model is not another."""
+        store.create_user("m2@example.com", "pw", "M2")
+        store.populate_groups(["m2-group"])
+        store.set_user_groups("m2@example.com", ["m2-group"])
+        store.create_group_model_permission("m2-group", "model-a", "MANAGE")
+
+        assert store.registered_model_group_repo.get_for_user("model-a", "m2@example.com").permission == "MANAGE"
+        with pytest.raises(MlflowException):
+            store.registered_model_group_repo.get_for_user("model-b", "m2@example.com")
+
+    def test_scorer_fold_ignores_groups_the_user_is_not_in(self, store):
+        store.create_user("sowner@example.com", "pw", "S Owner")
+        store.create_user("soutsider@example.com", "pw", "S Outsider")
+        store.populate_groups(["s-insiders", "s-outsiders"])
+        store.set_user_groups("sowner@example.com", ["s-insiders"])
+        store.set_user_groups("soutsider@example.com", ["s-outsiders"])
+        store.create_group_scorer_permission("s-insiders", "exp-1", "scorer-x", "MANAGE")
+
+        with pytest.raises(MlflowException):
+            store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-x", "soutsider@example.com")
+
+        owner = store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-x", "sowner@example.com")
+        assert owner.permission == "MANAGE"
+
+    def test_scorer_fold_keys_on_both_experiment_and_scorer_name(self, store):
+        """The scorer fold has a 2-part key; both predicates must survive."""
+        store.create_user("s2@example.com", "pw", "S2")
+        store.populate_groups(["s2-group"])
+        store.set_user_groups("s2@example.com", ["s2-group"])
+        store.create_group_scorer_permission("s2-group", "exp-1", "scorer-x", "MANAGE")
+
+        assert store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-x", "s2@example.com").permission == "MANAGE"
+        with pytest.raises(MlflowException):  # same scorer name, different experiment
+            store.scorer_group_repo.get_group_permission_for_user_scorer("exp-2", "scorer-x", "s2@example.com")
+        with pytest.raises(MlflowException):  # same experiment, different scorer
+            store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-y", "s2@example.com")

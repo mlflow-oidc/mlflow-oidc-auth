@@ -75,12 +75,12 @@ def test_get(repo, session):
 
 
 def test_get_for_user_found(repo, session):
-    repo._group_repo.list_groups_for_user = MagicMock(return_value=["g"])
+    """All of the user's group permissions come back in one query (issue #253)."""
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    with patch.object(repo, "_get_group_permission_or_none", side_effect=[perm]):
-        result = repo.get_for_user("name", "user")
-        assert result == "entity"
+    session.query().join().join().filter().order_by().all.return_value = [perm]
+    result = repo.get_for_user("name", "user")
+    assert result == "entity"
 
 
 def test_get_for_user_compare_permissions_true(repo, session):
@@ -92,10 +92,8 @@ def test_get_for_user_compare_permissions_true(repo, session):
     perm2.permission = "WRITE"
     perm2.to_mlflow_entity.return_value = "entity"
 
-    with (
-        patch.object(repo, "_get_group_permission_or_none", side_effect=[perm1, perm2]),
-        patch(f"{_MOD}.compare_permissions", return_value=True),
-    ):
+    session.query().join().join().filter().order_by().all.return_value = [perm1, perm2]
+    with patch(f"{_MOD}.compare_permissions", return_value=True):
         result = repo.get_for_user("name", "user")
         assert result == "entity"
 
@@ -109,19 +107,16 @@ def test_get_for_user_compare_permissions_attribute_error(repo, session):
     perm2.permission = "WRITE"
     perm2.to_mlflow_entity.return_value = "entity"
 
-    with (
-        patch.object(repo, "_get_group_permission_or_none", side_effect=[perm1, perm2]),
-        patch(f"{_MOD}.compare_permissions", side_effect=AttributeError("test error")),
-    ):
+    session.query().join().join().filter().order_by().all.return_value = [perm1, perm2]
+    with patch(f"{_MOD}.compare_permissions", side_effect=AttributeError("test error")):
         result = repo.get_for_user("name", "user")
         assert result == "entity"
 
 
 def test_get_for_user_not_found(repo, session):
-    repo._group_repo.list_groups_for_user = MagicMock(return_value=["g"])
-    with patch.object(repo, "_get_group_permission_or_none", side_effect=[None]):
-        with pytest.raises(MlflowException):
-            repo.get_for_user("name", "user")
+    session.query().join().join().filter().order_by().all.return_value = []
+    with pytest.raises(MlflowException):
+        repo.get_for_user("name", "user")
 
 
 def test_get_for_user_attribute_error(repo, session):
