@@ -418,6 +418,7 @@ class TestComprehensiveCUDCoverage:
             "create_workspace_group_regex_permission": ("group1", ".*", 1, "READ"),
             "update_workspace_group_regex_permission": (1, "group1", ".*", 1, "EDIT"),
             "delete_workspace_group_regex_permission": ("group1", 1),
+            "wipe_workspace_permissions": ("ws1",),
         }
 
         # Verify every method in _PERMISSION_CUD_METHODS has sample args
