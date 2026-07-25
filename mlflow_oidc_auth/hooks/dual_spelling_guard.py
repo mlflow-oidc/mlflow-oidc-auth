@@ -170,6 +170,10 @@ def _collidable_fields_for(path: str, method: str) -> Optional[_CollidablePairs]
 
 def _is_proto_route(path: str, method: str) -> bool:
     """True when MLflow will build a proto message for this route."""
+    # werkzeug registers HEAD alongside every GET rule and routes it to the same
+    # handler, so a HEAD reaches the same proto route as its GET.
+    if method == "HEAD":
+        method = "GET"
     if (path, method) in _EXACT_PROTO_ROUTES:
         return True
     for compiled, m in _PATTERN_PROTO_ROUTES:
@@ -219,15 +223,23 @@ def find_dual_spelling_collision(req: Request) -> Optional[str]:
 
 
 def has_unexpected_get_body(req: Request) -> bool:
-    """True for a GET that carries a body MLflow will proto-parse.
+    """True for a GET or HEAD that carries a body MLflow will proto-parse.
 
     With an empty query string MLflow parses the JSON body instead of the args. A
     validator that reads ``request.args`` then finds nothing and authorizes without
     consulting the store at all, while MLflow serves whatever the body named — a
     cross-tenant read that needs no dual spelling. No legitimate client sends a GET
     body (real clients put GET parameters in the query string), so reject it.
+
+    HEAD is asymmetric and must not be exempted by a query string: MLflow's
+    ``_get_request_message`` takes ``request.args`` only when the method is literally
+    "GET", so a HEAD is ALWAYS proto-parsed from the body. Without this a request could
+    carry ``?path=<own>`` for the validator while the body named another tenant — the
+    stripped response still leaks an exact Content-Length oracle over their artifacts.
     """
-    if req.method != "GET" or req.args:
+    if req.method not in ("GET", "HEAD"):
+        return False
+    if req.method == "GET" and req.args:
         return False
     if not _is_proto_route(req.path, req.method):
         return False

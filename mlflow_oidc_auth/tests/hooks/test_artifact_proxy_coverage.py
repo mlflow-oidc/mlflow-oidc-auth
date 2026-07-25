@@ -32,9 +32,10 @@ def _mlflow_artifact_rules():
         path = str(rule)
         if "/mlflow-artifacts/" not in path:
             continue
-        # HEAD and OPTIONS are deliberately INCLUDED: werkzeug auto-registers HEAD on
-        # every GET rule, and excluding them hid the exact methods that were being
-        # denied for everyone (#283 review).
+        # HEAD is INCLUDED: werkzeug auto-registers it on every GET rule, and excluding
+        # it hid the exact method that was being denied for everyone (#283 review).
+        # OPTIONS is excluded because Flask answers it automatically — an assumption the
+        # test below makes machine-checked rather than trusting it.
         for method in sorted((rule.methods or set()) - {"OPTIONS"}):
             yield path, method
 
@@ -47,6 +48,19 @@ def _concrete(path):
 
 
 class TestEveryArtifactRouteIsGated:
+    def test_no_artifact_rule_declares_its_own_options_handler(self):
+        """The hook allows OPTIONS unchecked because Flask answers it itself.
+
+        If a future MLflow registered a real OPTIONS handler on an artifact route, that
+        early-return would serve it unauthorized. Pin the assumption.
+        """
+        from mlflow.server import app as mlflow_flask_app
+
+        for rule in mlflow_flask_app.url_map.iter_rules():
+            if "/mlflow-artifacts/" not in str(rule):
+                continue
+            assert rule.provide_automatic_options, f"{rule} declares an explicit OPTIONS handler; the hook would allow it unchecked"
+
     def test_prefixes_cover_both_api_and_ajax_api(self):
         assert any(p.startswith("/api/") for p in _ARTIFACT_PROXY_PREFIXES)
         assert any(p.startswith("/ajax-api/") for p in _ARTIFACT_PROXY_PREFIXES), "the UI prefix must be covered"
@@ -213,3 +227,49 @@ class TestDoubleEncodedPathCannotBypass:
 
         assert resolved == "12", f"double-encoded path not resolved (would fall back to the default): {resolved}"
         assert served.startswith("12/"), "precondition: MLflow serves experiment 12"
+
+
+class TestScopedReviewBypasses:
+    """Two divergences found reviewing the post-review changes — in both, the plugin
+    authorized a different experiment than MLflow would serve."""
+
+    @pytest.mark.parametrize("prefix", ["", "./", "%2e/", "%252e/", ".//"])
+    def test_dot_prefix_cannot_defeat_the_anchored_patterns(self, prefix):
+        """Both id patterns anchor at position 0, so a leading "./" made them miss and
+        resolution fell back to DEFAULT_MLFLOW_PERMISSION — allow on the shipped default —
+        while MLflow normalises the same path and serves the experiment."""
+        import posixpath
+
+        from flask import request
+        from mlflow.utils.uri import validate_path_is_safe
+
+        from mlflow_oidc_auth.validators.experiment import _get_experiment_id_from_view_args
+
+        with app.test_request_context(f"/api/2.0/mlflow-artifacts/artifacts?path={prefix}12/r/artifacts", method="GET"):
+            resolved = _get_experiment_id_from_view_args()
+            served = posixpath.normpath(validate_path_is_safe(request.args.get("path")))
+
+        assert resolved == "12", f"prefix {prefix!r} defeated experiment resolution"
+        assert served.startswith("12/"), "precondition: MLflow serves experiment 12"
+
+    @pytest.mark.parametrize("query", ["?path=99/artifacts", ""])
+    def test_head_carrying_a_body_is_rejected(self, query):
+        """MLflow reads request.args only when the method is literally GET, so a HEAD is
+        always proto-parsed from the BODY. Authorizing ?path= while MLflow lists the body's
+        experiment leaks an exact Content-Length oracle over another tenant's artifacts."""
+        from flask import request
+
+        from mlflow_oidc_auth.hooks.dual_spelling_guard import has_unexpected_get_body
+
+        with app.test_request_context(
+            f"/api/2.0/mlflow-artifacts/artifacts{query}", method="HEAD", data='{"path": "12/artifacts"}', content_type="application/json"
+        ):
+            assert has_unexpected_get_body(request) is True, "HEAD body accepted — cross-tenant listing oracle"
+
+    def test_legitimate_head_without_a_body_is_untouched(self):
+        from flask import request
+
+        from mlflow_oidc_auth.hooks.dual_spelling_guard import has_unexpected_get_body
+
+        with app.test_request_context("/api/2.0/mlflow-artifacts/artifacts?path=12/artifacts", method="HEAD"):
+            assert has_unexpected_get_body(request) is False

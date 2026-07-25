@@ -1,9 +1,12 @@
+import posixpath
 import re
 
 from flask import request
 from mlflow.server.handlers import _get_tracking_store
+from mlflow.utils.uri import _decode
 
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import Permission, get_permission
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
@@ -11,6 +14,8 @@ from mlflow_oidc_auth.utils import (
     get_experiment_id,
     get_request_param,
 )
+
+logger = get_logger()
 
 
 def _get_permission_from_experiment_id(username: str) -> Permission:
@@ -49,13 +54,20 @@ def _experiment_id_from_artifact_path(artifact_path: str):
     step and cannot drift (issue #283).
     """
     try:
-        from mlflow.utils.uri import _decode
-
         artifact_path = _decode(artifact_path)
     except Exception:
         # Never fail the authorization check on a decoding helper; the undecoded value
-        # is still parsed below, and MLflow rejects anything it cannot decode itself.
-        pass
+        # is still normalized and parsed below, and MLflow rejects anything it cannot
+        # decode itself. Logged rather than silent so a future MLflow that changes
+        # _decode does not quietly degrade this check.
+        logger.warning("Could not decode artifact path for authorization; parsing the raw value")
+
+    # Normalize before matching. Both patterns are anchored at position 0, so a leading
+    # "./" (or "%2e/", ".//") made them miss — resolution then fell back to
+    # DEFAULT_MLFLOW_PERMISSION, which allows on the shipped MANAGE default, while
+    # MLflow's own resolution normalizes the same path and serves the experiment.
+    # normpath collapses "." segments; ".." is left to MLflow, which rejects it.
+    artifact_path = posixpath.normpath(artifact_path)
 
     if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
         return m.group(1)
