@@ -444,10 +444,6 @@ class TestWorkspaceCacheInvalidationRegressions:
 
     def test_group_workspace_cud_invalidates_group_members(self, mock_store):
         """BUG 1: group-scoped workspace CUD used to invalidate nothing (decision D-15)."""
-        member = MagicMock()
-        member.username = "alice"
-        mock_store.group_repo.list_group_members.return_value = [member]
-
         with patch("mlflow_oidc_auth.utils.workspace_cache.invalidate_group_workspace_permission") as inv:
             mock_store.delete_workspace_group_permission("ws-prod", "team-a")
             inv.assert_called_once_with(group_name="team-a", workspace="ws-prod")

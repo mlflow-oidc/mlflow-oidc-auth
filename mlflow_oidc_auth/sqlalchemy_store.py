@@ -1211,6 +1211,19 @@ _PERMISSION_CUD_METHODS = [
     "create_workspace_group_regex_permission",
     "update_workspace_group_regex_permission",
     "delete_workspace_group_regex_permission",
+    # The DeleteWorkspace cascade calls this one (hooks/after_request.py). Without this
+    # entry the permission cache kept serving grants whose kind was "workspace" after
+    # the wipe.
+    "wipe_workspace_permissions",
+]
+
+# Wiping a whole workspace can change the permission of EVERY user in it, and the
+# entries are keyed username:workspace, so there is no bounded target to invalidate —
+# a full workspace-cache flush is the correct choice here. The DeleteWorkspace cascade
+# in hooks/after_request.py already flushes, but doing it at the store keeps the
+# guarantee for any other caller (the same reason the other invalidation lives here).
+_WORKSPACE_WIPE_METHODS = [
+    "wipe_workspace_permissions",
 ]
 
 # Group membership drives the group-scoped branch of workspace resolution, so these
@@ -1368,3 +1381,33 @@ for _method_name in _WORKSPACE_GROUP_CUD_METHODS:
 for _method_name in _WORKSPACE_USER_CUD_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)
     setattr(SqlAlchemyStore, _method_name, _wrap_with_workspace_user_invalidation(_original))
+
+
+def _wrap_with_workspace_flush(method):
+    """Wrap a workspace-wide mutator to flush the whole workspace cache.
+
+    Invalidation failures are logged, never raised — the mutation already succeeded.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        try:
+            from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache
+
+            flush_workspace_cache()
+        except Exception:
+            from mlflow_oidc_auth.logger import get_logger
+
+            get_logger().warning(
+                "Workspace cache flush failed after %s; entries expire via TTL",
+                method.__name__,
+            )
+        return result
+
+    return wrapper
+
+
+for _method_name in _WORKSPACE_WIPE_METHODS:
+    _original = getattr(SqlAlchemyStore, _method_name)
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_workspace_flush(_original))

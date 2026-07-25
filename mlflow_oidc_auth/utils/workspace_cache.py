@@ -89,6 +89,11 @@ def invalidate_user_workspace_entries(username: str) -> None:
     membership on every sign-in, so a full flush here would wipe the cache fleet-wide
     on each login.
     """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        # Nothing is ever cached with workspaces off, so skip the work entirely —
+        # otherwise every login pays a Redis keyspace SCAN for no benefit. Mirrors
+        # the guard in get_workspace_permission_cached.
+        return
     cache = _get_cache()
     cache.delete_prefix(f"{username}:")
     logger.debug("Workspace cache entries invalidated for user %s", _sanitize(username))
@@ -102,6 +107,11 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
     query. Previously these changes invalidated nothing and relied on TTL expiry
     (decision D-15), which left revoked access working for up to the cache TTL.
     """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        # Nothing is cached with workspaces off — skip, and in particular skip the
+        # get_group_users lookup, which would otherwise be a wasted query per mutation.
+        return
+
     from mlflow_oidc_auth.store import store
 
     try:
