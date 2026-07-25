@@ -145,12 +145,22 @@ def get_optional_request_param(param: str) -> str | None:
 
 
 def _extract_param_from_all_sources(param: str) -> str | None:
-    """Extract a parameter value from view_args, query args, and JSON body.
+    """Extract a parameter value from the source MLflow itself will read.
 
-    Searches in the following order:
-    1. URL path parameters (view_args)
-    2. Query string parameters (request.args)
-    3. JSON request body (request.json / request.get_json)
+    Order:
+    1. URL path parameters (view_args) — MLflow's routing binds these and its
+       handlers read them directly, so they are authoritative wherever present.
+    2. On a proto route, whichever single source MLflow will proto-parse: the query
+       string for a GET with a non-empty one, the request body for everything else.
+    3. On a non-proto route, fall back to scanning query args then the JSON body.
+
+    Step 2 exists because MLflow **ignores the query string entirely** on every
+    non-GET route. Preferring query args there authorized one resource while MLflow
+    mutated another — a cross-tenant rename/delete needing nothing but a query
+    parameter (issue #285). Deliberately there is no cross-source fallback on a proto
+    route: if the value is absent from the source MLflow reads, then MLflow does not
+    see it either, and guessing from a source it ignores is exactly the divergence
+    this closes.
 
     Args:
         param: The parameter name to extract.
@@ -161,6 +171,16 @@ def _extract_param_from_all_sources(param: str) -> str | None:
     # Fastest: check view_args first
     if request.view_args and param in request.view_args:
         return request.view_args[param]
+
+    # Imported lazily: mlflow_oidc_auth.hooks.__init__ imports before_request, which
+    # imports the validators that import this module, so a module-level import would
+    # be circular. Module objects are cached in sys.modules, making this a dict lookup.
+    from mlflow_oidc_auth.hooks.dual_spelling_guard import proto_request_value
+
+    is_proto_route, value = proto_request_value(request, param)
+    if is_proto_route:
+        return value
+
     # Next: check args (GET)
     if request.args and param in request.args:
         return request.args[param]

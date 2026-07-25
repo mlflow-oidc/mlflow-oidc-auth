@@ -222,6 +222,47 @@ def find_dual_spelling_collision(req: Request) -> Optional[str]:
     return None
 
 
+def _snake_to_camel(name: str) -> str:
+    """protobuf's ``json_name`` spelling for a snake_case field name."""
+    head, *rest = name.split("_")
+    return head + "".join(word[:1].upper() + word[1:] for word in rest)
+
+
+def proto_request_value(req: Request, field: str) -> Tuple[bool, Optional[Any]]:
+    """What value will MLflow see for ``field`` on this request?
+
+    Returns ``(route_is_proto, value)``. When ``route_is_proto`` is False the caller
+    must fall back to its own heuristics — MLflow serves that route with a plain
+    handler whose parameter sourcing this module cannot know.
+
+    Authorization has to read a parameter from the SAME place MLflow will (issue
+    #285). ``_get_request_message`` consults the query string only for a GET with a
+    non-empty one; every other method is proto-parsed from the BODY and the query
+    string is ignored outright. A validator that prefers the query string therefore
+    authorizes one resource while MLflow acts on another::
+
+        POST /experiments/update?experiment_id=<own>
+        {"experiment_id": "<victim>", "new_name": "PWNED"}
+
+    Reading through the same normalized body the guard inspects means the two cannot
+    diverge. Both spellings are accepted on the body path because ``ParseDict`` does:
+    a camelCase-only body is unambiguous (``find_dual_spelling_collision`` has already
+    rejected the both-spellings case), and MLflow will honour it. Query args are keyed
+    by snake_case ``field.name`` only, so no camelCase lookup applies there.
+    """
+    if not _is_proto_route(req.path, req.method):
+        return False, None
+    if _mlflow_reads_args(req):
+        return True, req.args.get(field)
+    data = _request_body(req)
+    if not data:
+        return True, None
+    for key in (field, _snake_to_camel(field)):
+        if key in data:
+            return True, data[key]
+    return True, None
+
+
 def has_unexpected_get_body(req: Request) -> bool:
     """True for a GET or HEAD that carries a body MLflow will proto-parse.
 

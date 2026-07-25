@@ -706,15 +706,25 @@ def _is_proxy_artifact_path(path: str) -> bool:
 def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
     """
     Finds the validator matching the request path and method.
+
+    HEAD is folded onto GET (issue #286). werkzeug auto-registers HEAD on every GET
+    rule and dispatches it to the same view, but every validator here is registered
+    under "GET", so keying the lookup on the literal method left HEAD matching
+    nothing. A None validator is not a deny — it falls through to the unvalidated
+    path — so ``HEAD /get-artifact?path=<victim>`` sailed past the 403 its GET twin
+    receives and returned the response headers, an existence and exact-size oracle
+    over any tenant's data. The same fold is applied in
+    ``dual_spelling_guard._is_proto_route`` and ``_get_proxy_artifact_validator``.
     """
+    method = "GET" if req.method == "HEAD" else req.method
     if "/mlflow/workspaces" in req.path:
         # Workspace routes use path parameters (e.g. /mlflow/workspaces/<workspace_name>)
         validator = next(
-            (v for (pat, method), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            (v for (pat, m), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and m == method),
             None,
         )
         # Stash workspace name for after-request cascade delete (like gateway pattern)
-        if validator is not None and req.method == "DELETE":
+        if validator is not None and method == "DELETE":
             from mlflow_oidc_auth.validators.workspace import (
                 _extract_workspace_name_from_path,
             )
@@ -727,17 +737,17 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
         # logged model routes are not registered in the app
         # so we need to check them manually
         return next(
-            (v for (pat, method), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            (v for (pat, m), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and m == method),
             None,
         )
-    validator = BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
+    validator = BEFORE_REQUEST_VALIDATORS.get((req.path, method))
     if validator is not None:
         return validator
     # Fall back to the parameterized keys. Their paths carry a placeholder
     # ("/prompt-optimization/jobs/<job_id>") which never equals a concrete request path,
     # so the exact lookup above can never match them.
     return next(
-        (v for (pat, method), v in PARAMETERIZED_BEFORE_REQUEST_VALIDATORS.items() if method == req.method and pat.fullmatch(req.path)),
+        (v for (pat, m), v in PARAMETERIZED_BEFORE_REQUEST_VALIDATORS.items() if m == method and pat.fullmatch(req.path)),
         None,
     )
 
