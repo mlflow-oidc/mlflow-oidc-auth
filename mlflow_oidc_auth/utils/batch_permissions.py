@@ -6,7 +6,7 @@ queries compared to per-item permission lookups.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from mlflow.server.handlers import _get_tracking_store
@@ -45,6 +45,8 @@ class UserPermissionContext:
         group_model_regex_permissions: Ordered list of group model regex permissions.
         prompt_regex_permissions: Ordered list of user's prompt regex permissions.
         group_prompt_regex_permissions: Ordered list of group prompt regex permissions.
+        workspace_permission_memo: Per-context memo of the user's workspace permission,
+            keyed by workspace name. See ``_apply_workspace_fallback``.
     """
 
     username: str
@@ -62,6 +64,9 @@ class UserPermissionContext:
     # Prompt-specific regex permissions
     prompt_regex_permissions: List[RegisteredModelRegexPermission]
     group_prompt_regex_permissions: List[RegisteredModelGroupRegexPermission]
+    # Memo for the workspace fallback. Lifetime is this context object — i.e. one
+    # batch call — so it cannot serve a stale decision across requests.
+    workspace_permission_memo: Dict[str, Optional[object]] = field(default_factory=dict)
 
 
 def build_user_permission_context(username: str) -> UserPermissionContext:
@@ -160,7 +165,7 @@ def _resolve_permission_from_context(
     return PermissionResult(get_permission(config.DEFAULT_MLFLOW_PERMISSION), "fallback")
 
 
-def _apply_workspace_fallback(result: PermissionResult, username: str) -> PermissionResult:
+def _apply_workspace_fallback(result: PermissionResult, username: str, ctx: Optional["UserPermissionContext"] = None) -> PermissionResult:
     """Apply workspace-level permission fallback when no resource-level permission exists.
 
     When workspaces are enabled and the resource-level resolution returned "fallback"
@@ -171,9 +176,17 @@ def _apply_workspace_fallback(result: PermissionResult, username: str) -> Permis
     (WSAUTH-C/WSAUTH-04) but is designed for batch resolution in FastAPI route context
     where the workspace is available via MLflow's ContextVar (set by WorkspaceContextMiddleware).
 
+    The workspace permission is the same for every resource in a batch, but
+    ``get_workspace_permission_cached`` deliberately does not cache DENIALS — so without
+    a memo a user with no workspace grant paid a full source walk (~9 queries) for EVERY
+    resource in the batch, making a listing 21+9N queries instead of a flat ~21.
+    Memoizing on ``ctx`` bounds the lifetime to this one batch call, so unlike a
+    cross-request cache it cannot serve a stale authorization decision (issue #253).
+
     Parameters:
         result: The PermissionResult from resource-level resolution.
         username: The username to check workspace permission for.
+        ctx: Optional context supplying the per-batch memo.
 
     Returns:
         Original result if no workspace fallback applies, otherwise a workspace-derived result.
@@ -189,7 +202,12 @@ def _apply_workspace_fallback(result: PermissionResult, username: str) -> Permis
 
     workspace = mlflow_get_request_workspace()
     if workspace:
-        ws_perm = get_workspace_permission_cached(username, workspace)
+        if ctx is not None and workspace in ctx.workspace_permission_memo:
+            ws_perm = ctx.workspace_permission_memo[workspace]
+        else:
+            ws_perm = get_workspace_permission_cached(username, workspace)
+            if ctx is not None:
+                ctx.workspace_permission_memo[workspace] = ws_perm
         if ws_perm is not None:
             logger.debug(f"Batch permission workspace fallback: {ws_perm} for {username}@{workspace}")
             return PermissionResult(ws_perm, "workspace")
@@ -248,7 +266,7 @@ def resolve_experiment_permission_from_context(
         user_regex,
         group_regex,
     )
-    return _apply_workspace_fallback(result, ctx.username)
+    return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
 def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name: str) -> PermissionResult:
@@ -273,7 +291,7 @@ def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name
         user_regex,
         group_regex,
     )
-    return _apply_workspace_fallback(result, ctx.username)
+    return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
 def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_name: str) -> PermissionResult:
@@ -302,7 +320,7 @@ def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_na
         user_regex,
         group_regex,
     )
-    return _apply_workspace_fallback(result, ctx.username)
+    return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
 def batch_resolve_experiment_permissions(

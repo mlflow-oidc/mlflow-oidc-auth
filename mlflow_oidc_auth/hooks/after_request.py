@@ -1,4 +1,4 @@
-from flask import Response, g, request
+from flask import Response, g, has_app_context, request
 from mlflow.protos.model_registry_pb2 import (
     CreateRegisteredModel,
     DeleteRegisteredModel,
@@ -172,13 +172,31 @@ def _can_access_workspace(username: str, workspace: str | None) -> bool:
     - Workspaces are disabled (MLFLOW_ENABLE_WORKSPACES is False)
     - Resource has no workspace assignment (pre-workspace-era, WSSEC-05)
     - User has at least READ workspace permission via get_workspace_permission_cached (WSSEC-01/02/03/04)
+
+    Memoized for the current request. ``get_workspace_permission_cached`` deliberately
+    does not cache DENIALS, so a user with no grant on the workspace re-ran the full
+    source walk for every row of a search result. The memo uses the same request-scoped
+    dict as the ``_cached_can_read_*`` helpers, so it adds no new staleness window
+    (issue #253).
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return True
     if not workspace:
         return True  # Pre-workspace-era resource (WSSEC-05)
-    perm = get_workspace_permission_cached(username, workspace)
-    return perm is not None and perm.can_read
+
+    def _lookup() -> bool:
+        perm = get_workspace_permission_cached(username, workspace)
+        return perm is not None and perm.can_read
+
+    # The memo is an optimization, not a requirement: outside a Flask request context
+    # (direct calls, tests) fall through to the uncached lookup rather than failing.
+    if not has_app_context():
+        return _lookup()
+    cache = _get_request_permission_cache()
+    key = ("ws", workspace, username)
+    if key not in cache:
+        cache[key] = _lookup()
+    return cache[key]
 
 
 def _filter_search_experiments(resp: Response):

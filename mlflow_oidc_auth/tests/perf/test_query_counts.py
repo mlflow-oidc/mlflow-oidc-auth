@@ -7,6 +7,8 @@ forcing the number in the diff to be updated deliberately.
 See conftest.py for why round-trips (not query cost) are the metric.
 """
 
+from types import SimpleNamespace
+
 import pytest
 from mlflow.exceptions import MlflowException
 
@@ -195,3 +197,92 @@ class TestFoldedQueriesDoNotOverGrant:
             store.scorer_group_repo.get_group_permission_for_user_scorer("exp-2", "scorer-x", "s2@example.com")
         with pytest.raises(MlflowException):  # same experiment, different scorer
             store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-y", "s2@example.com")
+
+
+class TestPermissionContextBuild:
+    """build_user_permission_context backs the admin/listing batch paths."""
+
+    def test_context_build_has_no_redundant_identity_lookups(self, seeded_store, counter):
+        """Each pre-fetch used to re-resolve the same user (7x) and memberships (3x).
+
+        Folding those into JOINs took the build from 20 statements to 15. The assertion
+        is exact so a regression, or a further improvement, has to be acknowledged.
+        """
+        store, username, _ = seeded_store
+        import mlflow_oidc_auth.utils.batch_permissions as bp
+
+        original = bp.store
+        bp.store = store
+        try:
+            counter.reset()
+            ctx = bp.build_user_permission_context(username)
+        finally:
+            bp.store = original
+
+        assert ctx.username == username
+        assert counter.count == 15, counter.report()
+
+    def test_context_build_is_constant_in_group_count(self, store, counter):
+        counts = {}
+        import mlflow_oidc_auth.utils.batch_permissions as bp
+
+        original = bp.store
+        bp.store = store
+        try:
+            for n_groups in (1, 4, 8):
+                username = f"ctx{n_groups}@example.com"
+                groups = [f"cg{n_groups}-{i}" for i in range(n_groups)]
+                store.create_user(username, "pw", username)
+                store.populate_groups(groups)
+                store.set_user_groups(username, groups)
+
+                counter.reset()
+                bp.build_user_permission_context(username)
+                counts[n_groups] = counter.count
+        finally:
+            bp.store = original
+
+        assert len(set(counts.values())) == 1, f"context build scales with group count: {counts}"
+
+
+class TestWorkspaceFallbackMemo:
+    """The workspace fallback must be resolved once per batch, not once per resource."""
+
+    def test_workspace_deny_does_not_scale_with_resource_count(self, seeded_store, counter, monkeypatch):
+        """get_workspace_permission_cached never caches DENIALS.
+
+        Without a memo, a user with no workspace grant re-ran the full source walk for
+        every resource, making a listing 21+9N queries. The memo lives on the context, so
+        its lifetime is one batch call and it cannot serve a stale decision.
+        """
+        store, username, _ = seeded_store
+        import mlflow_oidc_auth.utils.batch_permissions as bp
+        from mlflow_oidc_auth.config import config as cfg
+
+        import mlflow_oidc_auth.store as store_mod
+        import mlflow_oidc_auth.utils.workspace_cache as wsc
+
+        monkeypatch.setattr(cfg, "MLFLOW_ENABLE_WORKSPACES", True)
+        monkeypatch.setattr("mlflow.utils.workspace_context.get_request_workspace", lambda: "ws-none")
+        # workspace_cache resolves through the store singleton, not bp.store.
+        monkeypatch.setattr(store_mod, "store", store)
+        wsc.flush_workspace_cache()
+
+        original = bp.store
+        bp.store = store
+        try:
+            counts = {}
+            for n in (1, 5, 20):
+                experiments = [SimpleNamespace(experiment_id=f"e{i}", name=f"exp-{i}") for i in range(n)]
+                ctx = bp.build_user_permission_context(username)
+                counter.reset()
+                for exp in experiments:
+                    bp.resolve_experiment_permission_from_context(ctx, exp.experiment_id, exp.name)
+                counts[n] = counter.count
+        finally:
+            bp.store = original
+
+        finally_counts = counts
+        assert len(set(finally_counts.values())) == 1, f"workspace deny cost scales with resource count: {finally_counts}"
+        # And it must actually be walking the sources, or the test proves nothing.
+        assert next(iter(finally_counts.values())) > 0, "deny path issued no queries; test would be vacuous"

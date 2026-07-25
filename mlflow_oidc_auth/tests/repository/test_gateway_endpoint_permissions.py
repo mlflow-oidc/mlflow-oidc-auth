@@ -169,7 +169,7 @@ class TestListPermissionsForUser:
         perm1.to_mlflow_entity.return_value = "e1"
         perm2 = MagicMock()
         perm2.to_mlflow_entity.return_value = "e2"
-        session.query().filter().all.return_value = [perm1, perm2]
+        session.query().join().filter().all.return_value = [perm1, perm2]
         with patch(f"{_BASE}.get_user", return_value=user):
             result = repo.list_permissions_for_user("alice")
         assert result == ["e1", "e2"]
