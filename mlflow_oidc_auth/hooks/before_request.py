@@ -618,7 +618,73 @@ def _is_workspace_gated_creation(path: str, method: str) -> bool:
     return (path, method) in _get_workspace_gated_creation_paths()
 
 
-def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[str], bool]]:
+_ARTIFACT_PROXY_MARKER = "/mlflow-artifacts/"
+
+
+def _build_artifact_proxy_prefixes() -> tuple[str, ...]:
+    """Every prefix under which MLflow serves the artifact proxy.
+
+    MLflow registers the artifact proxy under BOTH ``/api/2.0`` and ``/ajax-api/2.0``
+    (the latter is what the web UI calls), across several route families —
+    ``artifacts``, ``mpu/{create,complete,abort}`` and ``presigned``. Hardcoding one
+    prefix left the other families reaching no authorization check at all, because an
+    unmatched path falls through ``before_request_hook`` and is allowed (issue #283).
+
+    Derived from MLflow's real routing table so a future release that adds another
+    artifact route or prefix is covered automatically.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    prefixes = set()
+    for rule in mlflow_flask_app.url_map.iter_rules():
+        path = str(rule)
+        index = path.find(_ARTIFACT_PROXY_MARKER)
+        if index != -1:
+            prefixes.add(path[: index + len(_ARTIFACT_PROXY_MARKER)])
+    return tuple(sorted(prefixes))
+
+
+_ARTIFACT_PROXY_PREFIXES: tuple[str, ...] = _build_artifact_proxy_prefixes()
+
+if not _ARTIFACT_PROXY_PREFIXES:
+    # A security control must not silently become a no-op: with no prefixes every
+    # artifact request would skip authorization entirely.
+    raise RuntimeError(
+        "mlflow-oidc-auth: could not derive any artifact-proxy prefixes from MLflow's "
+        "routing table, so artifact requests would be unauthorized. Refusing to start "
+        "(issue #283)."
+    )
+
+
+def _artifact_proxy_family(path: str) -> Optional[str]:
+    """Return the artifact route family ('artifacts' / 'mpu' / 'presigned'), or None."""
+    for prefix in _ARTIFACT_PROXY_PREFIXES:
+        if path.startswith(prefix):
+            return path[len(prefix) :].split("/", 1)[0] or None
+    return None
+
+
+def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]], path: Optional[str] = None) -> Optional[Callable[[str], bool]]:
+    """Pick the validator for an artifact-proxy request by route family and method.
+
+    ``path`` is optional only for backward compatibility with callers that predate the
+    multi-family support; without it the ``artifacts`` family is assumed.
+    """
+    family = _artifact_proxy_family(path) if path is not None else "artifacts"
+
+    if family == "mpu":
+        # create / complete / abort all WRITE to the artifact path.
+        return validate_can_update_experiment_artifact_proxy if method == "POST" else None
+
+    if family == "presigned":
+        # Issues a presigned DOWNLOAD url — a read of the underlying artifact.
+        return validate_can_read_experiment_artifact_proxy if method == "GET" else None
+
+    if family not in (None, "artifacts"):
+        # An artifact family we do not know about. Return no validator so the caller
+        # denies, rather than falling through and granting read (issue #283).
+        return None
+
     if view_args is None:
         return validate_can_read_experiment_artifact_proxy  # List
 
@@ -630,7 +696,7 @@ def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any
 
 
 def _is_proxy_artifact_path(path: str) -> bool:
-    return path.startswith(f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts/")
+    return path.startswith(_ARTIFACT_PROXY_PREFIXES)
 
 
 def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
@@ -747,9 +813,14 @@ def before_request_hook():
         if not validator(username):
             return responses.make_forbidden_response()
     elif _is_proxy_artifact_path(request.path):
-        if validator := _get_proxy_artifact_validator(request.method, request.view_args):
-            if not validator(username):
-                return responses.make_forbidden_response()
+        validator = _get_proxy_artifact_validator(request.method, request.view_args, request.path)
+        if validator is None:
+            # An artifact route we do not recognise must not be served unchecked — that
+            # is exactly how the mpu/presigned families went ungated (issue #283).
+            logger.warning(f"Denying unrecognised artifact-proxy route {request.method} {request.path}")
+            return responses.make_forbidden_response()
+        if not validator(username):
+            return responses.make_forbidden_response()
 
 
 before_request_hook = catch_mlflow_exception(before_request_hook)

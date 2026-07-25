@@ -63,7 +63,7 @@ def test_before_request_hook_no_validator(client, mock_bridge):
             ),
         ):
             response = before_request_hook()
-            assert response is None  # No validator, so no authorization check
+            assert response is None  # Not an artifact route: unmatched routes stay allowed
 
 
 def test_before_request_hook_validator_success(client, mock_bridge):
@@ -221,7 +221,10 @@ def test_is_proxy_artifact_path():
 
     # Test edge cases
     assert _is_proxy_artifact_path("/api/2.0/mlflow-artifacts/artifacts/") is True
-    assert _is_proxy_artifact_path("/api/2.0/mlflow-artifacts/other") is False
+    # Now recognised: every /mlflow-artifacts/ family is an artifact-proxy path, so an
+    # unknown family reaches the validator lookup and is DENIED rather than skipped (#283).
+    assert _is_proxy_artifact_path("/api/2.0/mlflow-artifacts/other") is True
+    assert _is_proxy_artifact_path("/api/2.0/mlflow/experiments/get") is False
 
 
 def test_get_proxy_artifact_validator_no_view_args():
@@ -308,7 +311,10 @@ def test_proxy_artifact_no_validator(client, mock_bridge):
             return_value=None,
         ):
             response = before_request_hook()
-            assert response is None  # No validator, so no authorization check
+            # An artifact route with no validator must FAIL CLOSED: falling through
+            # unchecked is how the mpu/presigned families went ungated (#283).
+            assert response is not None
+            assert response.status_code == 403
 
 
 def test_proxy_artifact_upload_authorization(client, mock_bridge):
@@ -460,12 +466,15 @@ def test_before_request_hook_dependency_management(client, mock_bridge):
             ) as mock_get_proxy_validator,
         ):
             response = before_request_hook()
-            assert response is None  # No validator found, so no authorization check
+            # Fail closed on an unclassifiable artifact route (#283).
+            assert response is not None
+            assert response.status_code == 403
 
             # Verify dependency chain
             mock_find_validator.assert_called_once()
             mock_is_proxy.assert_called_once_with("/api/2.0/mlflow-artifacts/artifacts/exp1/file.txt")
-            mock_get_proxy_validator.assert_called_once_with("GET", None)
+            # The path is now passed too, so the route family can be classified (#283).
+            mock_get_proxy_validator.assert_called_once_with("GET", None, "/api/2.0/mlflow-artifacts/artifacts/exp1/file.txt")
 
 
 def test_logged_model_before_request_validators_structure():
