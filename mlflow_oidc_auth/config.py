@@ -98,7 +98,9 @@ class AppConfig:
         # OIDC_REDIRECT_URI: If not set, will be calculated dynamically based on request headers
         # This enables automatic proxy path detection for OIDC callbacks
         self.OIDC_REDIRECT_URI = config_manager.get("OIDC_REDIRECT_URI")
-        self.OIDC_SCOPE = config_manager.get("OIDC_SCOPE", "openid,email,profile")
+        # Space-delimited per OAuth 2.0 (RFC 6749 §3.3). Comma-separated values are also
+        # accepted for backward compatibility and normalized in oauth._build_scope (#238).
+        self.OIDC_SCOPE = config_manager.get("OIDC_SCOPE", "openid email profile")
         self.OIDC_PROVIDER_DISPLAY_NAME = config_manager.get("OIDC_PROVIDER_DISPLAY_NAME", "Login with OIDC")
         self.OIDC_GROUPS_ATTRIBUTE = config_manager.get("OIDC_GROUPS_ATTRIBUTE", "groups")
         self.OIDC_AUDIENCE = config_manager.get("OIDC_AUDIENCE")
