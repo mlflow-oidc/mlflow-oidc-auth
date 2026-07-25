@@ -4,7 +4,7 @@ from flask import request
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.permissions import Permission, get_permission
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission, get_permission
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
     effective_new_experiment_permission,
@@ -42,20 +42,57 @@ def _get_experiment_id_from_view_args():
     # replaced with get_request_param("artifact_path") because we need to
     # *parse* the experiment_id out of the composite path value, not just read
     # the parameter verbatim.
+    experiment_id, _ = _parse_artifact_path()
+    return experiment_id
+
+
+def _parse_artifact_path() -> tuple[str | None, str | None]:
+    """Return ``(experiment_id, workspace)`` parsed from the artifact proxy path.
+
+    Workspace-scoped artifact paths carry the workspace themselves
+    ("workspaces/{name}/{experiment_id}/..."), which matters because the artifact
+    proxy is the one authenticated path where the workspace is NOT available from
+    the ``X-MLFLOW-WORKSPACE`` header — MLflow's ``http_artifact_repo`` does not
+    send it (issue #236). ``workspace`` is None for non-workspace paths.
+    """
     view_args = request.view_args
     if view_args is not None and (artifact_path := view_args.get("artifact_path")):
         if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
-            return m.group(1)
+            return m.group(1), None
         if m := _WORKSPACES_EXPERIMENT_ID_PATTERN.match(artifact_path):
-            # Group 1: workspace, Group 2: {workspace_name}, Group 3: experiment-id
-            return m.group(3)
-    return None
+            # Group 1: literal "workspaces", Group 2: {workspace_name}, Group 3: experiment-id
+            return m.group(3), m.group(2)
+    return None, None
 
 
 def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permission:
-    if experiment_id := _get_experiment_id_from_view_args():
-        return effective_experiment_permission(experiment_id, username).permission
-    return get_permission(config.DEFAULT_MLFLOW_PERMISSION)
+    experiment_id, path_workspace = _parse_artifact_path()
+    if not experiment_id:
+        return get_permission(config.DEFAULT_MLFLOW_PERMISSION)
+
+    result = effective_experiment_permission(experiment_id, username)
+
+    # Apply the workspace fallback using the workspace named in the PATH.
+    #
+    # Everywhere else the workspace arrives in the X-MLFLOW-WORKSPACE header, so
+    # resolve_permission's own fallback covers it. MLflow's proxied-artifact client
+    # does not send that header, so without this a user whose only grant is on the
+    # workspace fell through to DEFAULT_MLFLOW_PERMISSION and got 403 on upload
+    # (issue #236). The workspace is taken from the same path segment the
+    # experiment_id is taken from, and is the workspace MLflow will itself resolve
+    # the storage location from, so the two checks cannot disagree.
+    if result.kind == "fallback" and config.MLFLOW_ENABLE_WORKSPACES and path_workspace:
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+        from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+        if not get_request_workspace():
+            ws_perm = get_workspace_permission_cached(username, path_workspace)
+            # Deny when the user holds nothing on the workspace, matching
+            # _apply_workspace_fallback's "workspace-deny" rather than silently
+            # falling back to the global default.
+            return ws_perm if ws_perm is not None else NO_PERMISSIONS
+
+    return result.permission
 
 
 def validate_can_read_experiment(username: str) -> bool:

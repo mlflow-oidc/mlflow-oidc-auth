@@ -122,8 +122,8 @@ def test__get_experiment_id_from_view_args_none():
 def test__get_permission_from_experiment_id_artifact_proxy_with_id():
     with (
         patch(
-            "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
-            return_value="123",
+            "mlflow_oidc_auth.validators.experiment._parse_artifact_path",
+            return_value=("123", None),
         ),
         patch(
             "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
@@ -138,8 +138,8 @@ def test__get_permission_from_experiment_id_artifact_proxy_no_id():
     dummy_perm = DummyPermission(can_read=True)
     with (
         patch(
-            "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
-            return_value=None,
+            "mlflow_oidc_auth.validators.experiment._parse_artifact_path",
+            return_value=(None, None),
         ),
         patch("mlflow_oidc_auth.validators.experiment.config") as mock_config,
         patch(
