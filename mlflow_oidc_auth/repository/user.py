@@ -17,6 +17,20 @@ from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.repository.utils import get_user
 
 
+def normalize_username(username: str) -> str:
+    """Fold a username to its canonical (lowercase) form.
+
+    Usernames are case-insensitive identity keys — emails, or admin-chosen
+    service-account names. OIDC providers may return an email in mixed case
+    (issue #145) and admins may create service accounts with capitals
+    (issue #219). Normalizing to lowercase at the store boundary keeps creation
+    and every lookup (OIDC, basic, bearer, token) consistent, so a user can
+    authenticate regardless of the case they or the IdP present. Only the
+    identity key is folded; the human-readable ``display_name`` is left intact.
+    """
+    return username.lower() if isinstance(username, str) else username
+
+
 class UserRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
@@ -29,6 +43,7 @@ class UserRepository:
         is_admin: bool = False,
         is_service_account: bool = False,
     ) -> User:
+        username = normalize_username(username)
         _validate_username(username)
         pwhash = generate_password_hash(password)
         with self._Session(read_only=False) as session:
@@ -47,6 +62,7 @@ class UserRepository:
                 raise MlflowException(f"User '{username}' already exists: {e}", RESOURCE_ALREADY_EXISTS) from e
 
     def get(self, username: str) -> User:
+        username = normalize_username(username)
         with self._Session() as session:
             u = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
             if u is None:
@@ -67,6 +83,7 @@ class UserRepository:
             MlflowException: If the user does not exist.
         """
 
+        username = normalize_username(username)
         with self._Session() as session:
             u = (
                 session.query(SqlUser)
@@ -108,6 +125,7 @@ class UserRepository:
             )
 
     def exist(self, username: str) -> bool:
+        username = normalize_username(username)
         with self._Session() as session:
             return session.query(SqlUser).filter(SqlUser.username == username).first() is not None
 
@@ -139,6 +157,7 @@ class UserRepository:
     ) -> User:
         from werkzeug.security import generate_password_hash
 
+        username = normalize_username(username)
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if password is not None:
@@ -153,6 +172,7 @@ class UserRepository:
             return user.to_mlflow_entity()
 
     def delete(self, username: str) -> None:
+        username = normalize_username(username)
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if user is None:
@@ -218,6 +238,7 @@ class UserRepository:
             session.flush()
 
     def authenticate(self, username: str, password: str) -> bool:
+        username = normalize_username(username)
         with self._Session() as session:
             try:
                 user = get_user(session, username)
