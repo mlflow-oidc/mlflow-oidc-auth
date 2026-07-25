@@ -37,7 +37,26 @@ _WORKSPACES_EXPERIMENT_ID_PATTERN = re.compile(r"^(workspaces)/([\w-]+)/(\d+)/")
 
 
 def _experiment_id_from_artifact_path(artifact_path: str):
-    """Parse the experiment id out of a composite artifact path."""
+    """Parse the experiment id out of a composite artifact path.
+
+    The value is decoded exactly as MLflow decodes it before serving. MLflow's
+    ``validate_path_is_safe`` runs ``_decode``, which unquotes REPEATEDLY, whereas
+    werkzeug percent-decodes a URL only once. Parsing the once-decoded value therefore
+    diverged from what MLflow actually acts on: "%2531%2532/r/artifacts" reaches us as
+    "%31%32/r/artifacts" (no match -> DEFAULT_MLFLOW_PERMISSION, i.e. allow on the
+    shipped MANAGE default) while MLflow resolves it to "12/r/artifacts" and serves
+    experiment 12's artifacts. Decoding through MLflow's own helper keeps the two in
+    step and cannot drift (issue #283).
+    """
+    try:
+        from mlflow.utils.uri import _decode
+
+        artifact_path = _decode(artifact_path)
+    except Exception:
+        # Never fail the authorization check on a decoding helper; the undecoded value
+        # is still parsed below, and MLflow rejects anything it cannot decode itself.
+        pass
+
     if m := _EXPERIMENT_ID_PATTERN.match(artifact_path):
         return m.group(1)
     if m := _WORKSPACES_EXPERIMENT_ID_PATTERN.match(artifact_path):

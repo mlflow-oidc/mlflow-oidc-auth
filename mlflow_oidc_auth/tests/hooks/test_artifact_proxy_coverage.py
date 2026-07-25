@@ -183,3 +183,33 @@ class TestReviewRegressions:
                 _get_permission_from_experiment_id_artifact_proxy("u")
                 resolved.assert_called_once()
                 assert resolved.call_args.args[0] == "12", "wrong experiment id parsed from ?path="
+
+
+class TestDoubleEncodedPathCannotBypass:
+    """MLflow decodes the artifact path REPEATEDLY; werkzeug decodes a URL once.
+
+    Parsing the once-decoded value let a double-encoded path miss the experiment-id
+    match, fall back to DEFAULT_MLFLOW_PERMISSION (shipped default MANAGE = allow), and
+    still be served by MLflow — a fail-open on both the list and download routes.
+    """
+
+    @pytest.mark.parametrize(
+        "url,source",
+        [
+            ("/api/2.0/mlflow-artifacts/artifacts?path=%2531%2532/r/artifacts", "query"),
+            ("/api/2.0/mlflow-artifacts/artifacts/%2531%2532/r/artifacts/f.json", "view_args"),
+        ],
+    )
+    def test_plugin_and_mlflow_resolve_the_same_experiment(self, url, source):
+        from flask import request
+        from mlflow.utils.uri import validate_path_is_safe
+
+        from mlflow_oidc_auth.validators.experiment import _get_experiment_id_from_view_args
+
+        with app.test_request_context(url, method="GET"):
+            resolved = _get_experiment_id_from_view_args()
+            raw = request.args.get("path") if source == "query" else request.view_args.get("artifact_path")
+            served = validate_path_is_safe(raw)
+
+        assert resolved == "12", f"double-encoded path not resolved (would fall back to the default): {resolved}"
+        assert served.startswith("12/"), "precondition: MLflow serves experiment 12"
