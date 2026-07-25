@@ -124,35 +124,15 @@ def test_remove_user_from_group(repo, session):
 
 
 def test_list_groups_for_user(repo, session):
-    user = MagicMock(id=1)
-    group1 = MagicMock(id=10)
-    group2 = MagicMock(id=20)
-    g1 = MagicMock(group_name="g1")
-    g2 = MagicMock(group_name="g2")
-    session.query().filter().all.return_value = [g1, g2]
-    with (
-        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
-        patch(
-            "mlflow_oidc_auth.repository.group.list_user_groups",
-            return_value=[group1, group2],
-        ),
-    ):
-        assert repo.list_groups_for_user("user") == ["g1", "g2"]
+    """Resolved via a single JOIN (issue #253), so rows come back as tuples."""
+    session.query().join().join().filter().order_by().all.return_value = [("g1",), ("g2",)]
+    assert repo.list_groups_for_user("user") == ["g1", "g2"]
 
 
 def test_list_group_ids_for_user(repo, session):
-    user = MagicMock(id=1)
-    ug1 = MagicMock(group_id=10)
-    ug2 = MagicMock(group_id=20)
-    with (
-        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
-        patch(
-            "mlflow_oidc_auth.repository.group.list_user_groups",
-            return_value=[ug1, ug2],
-        ),
-    ):
-        result = repo.list_group_ids_for_user("user")
-        assert result == [10, 20]
+    """Joins user_groups directly so membership rows for deleted groups are preserved."""
+    session.query().join().filter().all.return_value = [(10,), (20,)]
+    assert repo.list_group_ids_for_user("user") == [10, 20]
 
 
 def test_list_group_members(repo, session):

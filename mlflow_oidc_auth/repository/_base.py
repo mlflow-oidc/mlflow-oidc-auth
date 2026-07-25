@@ -18,7 +18,7 @@ from mlflow.protos.databricks_pb2 import (
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
-from mlflow_oidc_auth.db.models import SqlGroup, SqlUser
+from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
 from mlflow_oidc_auth.repository.utils import (
     get_group,
@@ -248,12 +248,20 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
 
         :param username: The username of the user.
         :return: A list of group names the user belongs to.
+
+        Resolved in a single JOIN rather than user -> user_groups -> groups; this runs
+        on every group-scoped permission check (issue #253).
         """
         with self._Session() as session:
-            user = get_user(session, username)
-            user_groups_ids = list_user_groups(session, user)
-            user_groups = session.query(SqlGroup).filter(SqlGroup.id.in_([ug.group_id for ug in user_groups_ids])).all()
-            return [ug.group_name for ug in user_groups]
+            rows = (
+                session.query(SqlGroup.group_name)
+                .join(SqlUserGroup, SqlGroup.id == SqlUserGroup.group_id)
+                .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
+                .filter(SqlUser.username == username)
+                .order_by(SqlGroup.id)
+                .all()
+            )
+            return [r[0] for r in rows]
 
     def grant_group_permission(self, group_name: str, resource_id: str, permission: str) -> EntityT:
         """Create a new group permission for a resource.
@@ -330,12 +338,23 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
         :raises MlflowException: If no group permission found.
         """
         with self._Session() as session:
-            user_groups = self._list_user_groups(username)
+            # One query for every group the user belongs to, rather than a lookup per
+            # group (which was 3 + 2G statements — 19 for a user in 8 groups). This is
+            # the hottest path in the resolver: a search-filter pass runs it once per
+            # resource. See issue #253.
+            candidates = (
+                session.query(self.model_class)
+                .join(SqlUserGroup, SqlUserGroup.group_id == self.model_class.group_id)
+                .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
+                .filter(
+                    SqlUser.username == username,
+                    getattr(self.model_class, self.resource_id_attr) == resource_id,
+                )
+                .order_by(self.model_class.group_id)
+                .all()
+            )
             user_perms = None
-            for ug in user_groups:
-                perms = self._get_group_permission_or_none(session, resource_id, ug)
-                if perms is None:
-                    continue
+            for perms in candidates:
                 if user_perms is None:
                     user_perms = perms
                     continue

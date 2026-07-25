@@ -11,7 +11,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.orm import Session
 
-from mlflow_oidc_auth.db.models import SqlGroup, SqlRegisteredModelGroupPermission
+from mlflow_oidc_auth.db.models import SqlGroup, SqlRegisteredModelGroupPermission, SqlUser, SqlUserGroup
 from mlflow_oidc_auth.entities import RegisteredModelPermission
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
@@ -76,12 +76,21 @@ class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[Sql
 
     def get_for_user(self, name: str, username: str) -> RegisteredModelPermission:
         with self._Session() as session:
-            user_groups = self._group_repo.list_groups_for_user(username)
+            # Single query across all the user's groups rather than one lookup per
+            # group — see issue #253 and BaseGroupPermissionRepository.
+            candidates = (
+                session.query(SqlRegisteredModelGroupPermission)
+                .join(SqlUserGroup, SqlUserGroup.group_id == SqlRegisteredModelGroupPermission.group_id)
+                .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
+                .filter(
+                    SqlUser.username == username,
+                    SqlRegisteredModelGroupPermission.name == name,
+                )
+                .order_by(SqlRegisteredModelGroupPermission.group_id)
+                .all()
+            )
             user_perms: Optional[SqlRegisteredModelGroupPermission] = None
-            for ug in user_groups:
-                perms = self._get_group_permission_or_none(session, name, ug)
-                if perms is None:
-                    continue
+            for perms in candidates:
                 if user_perms is None:
                     user_perms = perms
                     continue
