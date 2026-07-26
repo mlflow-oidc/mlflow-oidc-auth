@@ -6,7 +6,7 @@ from mlflow.utils.uri import validate_path_is_safe
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.permissions import Permission, get_permission
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission, get_permission
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
     effective_new_experiment_permission,
@@ -112,9 +112,37 @@ def _get_experiment_id_from_view_args():
 
 
 def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permission:
+    """Resolve the permission for an artifact-proxy request, failing CLOSED.
+
+    Every legitimate path under the artifact proxy names an experiment: the layout is
+    ``{experiment_id}/{run_id}/artifacts/...``, or ``workspaces/{workspace}/{experiment_id}/...``
+    when workspaces are enabled. A path that names none is either the shared multi-tenant
+    ROOT or malformed, and neither can be authorized by a per-experiment permission check.
+
+    This used to fall back to ``config.DEFAULT_MLFLOW_PERMISSION``, which ships as MANAGE —
+    so "I could not work out which experiment this is" meant "allow" in a default
+    deployment (issue #289). The consequences were not subtle:
+
+      * ``DELETE /mlflow-artifacts/artifacts/.`` (also ``%2e``, ``./.``, ``.//``) reaches
+        ``delete_artifacts(".")``, which recursively empties EVERY experiment's artifacts.
+      * ``GET /mlflow-artifacts/artifacts`` with no ``path`` returns the whole root
+        listing, enumerating every experiment id on the server.
+      * With workspaces enabled, ``workspaces/<ws>`` names a whole tenant rather than one
+        experiment.
+
+    Denying does not break the real client: ``HttpArtifactRepository.list_artifacts``
+    always sends a ``path`` parameter, and for a proxied run repository that path starts
+    with the experiment id. Only an artifact URI that IS the proxy root produces an empty
+    one — a shape no per-experiment permission could ever legitimately grant.
+
+    NOTE this deliberately does NOT change ``DEFAULT_MLFLOW_PERMISSION`` globally; it stops
+    THIS resolver from consulting a global default it has no business applying. Other
+    resolvers are untouched.
+    """
     if experiment_id := _get_experiment_id_from_view_args():
         return effective_experiment_permission(experiment_id, username).permission
-    return get_permission(config.DEFAULT_MLFLOW_PERMISSION)
+    logger.warning("Denying artifact-proxy request: the path names no experiment, so no per-experiment permission applies")
+    return NO_PERMISSIONS
 
 
 def validate_can_read_experiment(username: str) -> bool:

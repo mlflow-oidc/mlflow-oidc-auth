@@ -79,6 +79,8 @@ from mlflow.protos.service_pb2 import (
     GetRun,
     GetWorkspace,
     ListArtifacts,
+    ListLoggedModelArtifacts,
+    CreatePresignedUploadUrl,
     ListGatewayEndpointBindings,
     ListWorkspaces,
     LogBatch,
@@ -175,6 +177,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_scorer,
     validate_can_read_run_artifact,
     validate_can_update_run_artifact,
+    validate_can_create_presigned_upload_url,
     validate_can_read_model_version_artifact,
     validate_can_read_trace_artifact,
     validate_can_read_metric_history_bulk,
@@ -263,6 +266,10 @@ BEFORE_REQUEST_HANDLERS = {
     LogMetric: validate_can_update_run,
     LogBatch: validate_can_update_run,
     LogModel: validate_can_update_run,
+    # Mints a presigned cloud-storage upload URL for a caller-supplied run_id. It carries
+    # no "/mlflow-artifacts/" marker and had no proto handler, so it reached NO validator
+    # at all — a cross-tenant write primitive (issue #289).
+    CreatePresignedUploadUrl: validate_can_create_presigned_upload_url,
     SetTag: validate_can_update_run,
     DeleteTag: validate_can_update_run,
     LogParam: validate_can_update_run,
@@ -507,6 +514,8 @@ LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
     DeleteLoggedModelTag: validate_can_delete_logged_model,
     SetLoggedModelTags: validate_can_update_logged_model,
     LogLoggedModelParamsRequest: validate_can_update_logged_model,
+    # Lists a logged model's artifact directories. Reached no validator before (issue #289).
+    ListLoggedModelArtifacts: validate_can_read_logged_model,
 }
 
 
@@ -537,6 +546,30 @@ LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
     for http_path, handler, methods in get_endpoints(get_logged_model_before_request_handler)
     for method in methods
 }
+
+
+def _bind_non_registry_logged_model_route(suffix: str, method: str, validator: Callable[[str], bool]) -> None:
+    """Guard a logged-model route MLflow serves outside its service registry (issue #289).
+
+    ``.../logged-models/<model_id>/artifacts/files`` serves arbitrary artifact CONTENT but
+    is registered with ``@app.route`` rather than through the RPC registry, so
+    ``get_endpoints()`` never yields it and the comprehension above cannot cover it. It
+    reached no validator at all, and ``_find_validator`` short-circuits on
+    "/mlflow/logged-models" — so binding it in BEFORE_REQUEST_VALIDATORS would be dead
+    code. It has to land in THIS map.
+
+    The real routing table is enumerated rather than the path predicted, so a prefix or
+    version MLflow adds later is picked up automatically.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    for rule in mlflow_flask_app.url_map.iter_rules():
+        path = str(rule)
+        if path.endswith(suffix) and method in (rule.methods or set()):
+            LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS[(_re_compile_path(path), method)] = validator
+
+
+_bind_non_registry_logged_model_route("/artifacts/files", "GET", validate_can_read_logged_model)
 
 # Workspace RPC handlers (per decision WSAUTH-A: regex pattern matching like logged models)
 WORKSPACE_BEFORE_REQUEST_HANDLERS = {

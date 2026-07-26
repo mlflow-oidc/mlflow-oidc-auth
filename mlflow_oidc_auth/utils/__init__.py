@@ -43,6 +43,7 @@ from .request_helpers import (
     get_experiment_id,
     get_model_id,
     get_model_name,
+    get_run_id,
     _experiment_id_from_name,
 )
 
@@ -96,6 +97,7 @@ __all__ = [
     "get_experiment_id",
     "get_model_id",
     "get_model_name",
+    "get_run_id",
     "_experiment_id_from_name",
     # URI utilities
     "get_configured_or_dynamic_redirect_uri",

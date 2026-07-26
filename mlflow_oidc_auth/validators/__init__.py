@@ -29,6 +29,7 @@ from mlflow_oidc_auth.validators.run import (
     validate_can_update_run,
     validate_can_read_metric_history_bulk_interval,
     validate_can_update_run_artifact,
+    validate_can_create_presigned_upload_url,
     validate_can_read_run_artifact,
 )
 
@@ -123,6 +124,7 @@ __all__ = [
     "validate_can_manage_scorer",
     "validate_can_manage_scorer_permission",
     "validate_can_update_run_artifact",
+    "validate_can_create_presigned_upload_url",
     "validate_can_read_run_artifact",
     "validate_can_read_model_version_artifact",
     "validate_can_read_trace_artifact",
