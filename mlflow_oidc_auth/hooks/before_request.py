@@ -111,7 +111,6 @@ from mlflow.protos.service_pb2 import (
 )
 
 from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
-from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
 
 # Forward-compatible imports for Gateway Budget Policy protos.
 # These protos may not exist in the installed MLflow version; when they
@@ -182,6 +181,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_search_datasets,
     validate_can_create_promptlab_run,
     validate_gateway_proxy,
+    validate_can_invoke_scorer,
     validate_can_read_gateway_endpoint,
     validate_can_update_gateway_endpoint,
     validate_can_delete_gateway_endpoint,
@@ -438,9 +438,10 @@ BEFORE_REQUEST_VALIDATORS.update(
         (CREATE_PROMPTLAB_RUN, "POST"): validate_can_create_promptlab_run,
         (GATEWAY_PROXY, "GET"): validate_gateway_proxy,
         (GATEWAY_PROXY, "POST"): validate_gateway_proxy,
-        # Scorer invocation uses the same gateway proxy permission check
-        (INVOKE_SCORER, "GET"): validate_gateway_proxy,
-        (INVOKE_SCORER, "POST"): validate_gateway_proxy,
+        # Scorer invocation is authorized on the experiment MLflow's handler acts on, not
+        # on a gateway endpoint — it never reads one (issue #288). MLflow registers this
+        # route POST-only, so there is no GET entry to bind.
+        (INVOKE_SCORER, "POST"): validate_can_invoke_scorer,
         # Gateway discovery routes use the same gateway proxy permission check
         (GATEWAY_SUPPORTED_PROVIDERS, "GET"): validate_gateway_proxy,
         (GATEWAY_SUPPORTED_MODELS, "GET"): validate_gateway_proxy,
@@ -618,33 +619,114 @@ def _is_workspace_gated_creation(path: str, method: str) -> bool:
     return (path, method) in _get_workspace_gated_creation_paths()
 
 
-def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[str], bool]]:
-    if view_args is None:
-        return validate_can_read_experiment_artifact_proxy  # List
+_ARTIFACT_PROXY_MARKER = "/mlflow-artifacts/"
+
+
+def _build_artifact_proxy_prefixes() -> tuple[str, ...]:
+    """Every prefix under which MLflow serves the artifact proxy.
+
+    MLflow registers the artifact proxy under BOTH ``/api/2.0`` and ``/ajax-api/2.0``
+    (the latter is what the web UI calls), across several route families —
+    ``artifacts``, ``mpu/{create,complete,abort}`` and ``presigned``. Hardcoding one
+    prefix left the other families reaching no authorization check at all, because an
+    unmatched path falls through ``before_request_hook`` and is allowed (issue #283).
+
+    Derived from MLflow's real routing table so a future release that adds another
+    artifact route or prefix is covered automatically.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    prefixes = set()
+    for rule in mlflow_flask_app.url_map.iter_rules():
+        path = str(rule)
+        index = path.find(_ARTIFACT_PROXY_MARKER)
+        if index != -1:
+            prefixes.add(path[: index + len(_ARTIFACT_PROXY_MARKER)])
+    return tuple(sorted(prefixes))
+
+
+_ARTIFACT_PROXY_PREFIXES: tuple[str, ...] = _build_artifact_proxy_prefixes()
+
+if not _ARTIFACT_PROXY_PREFIXES:
+    # A security control must not silently become a no-op: with no prefixes every
+    # artifact request would skip authorization entirely.
+    raise RuntimeError(
+        "mlflow-oidc-auth: could not derive any artifact-proxy prefixes from MLflow's "
+        "routing table, so artifact requests would be unauthorized. Refusing to start "
+        "(issue #283)."
+    )
+
+
+def _artifact_proxy_family(path: str) -> Optional[str]:
+    """Return the artifact route family ('artifacts' / 'mpu' / 'presigned'), or None."""
+    for prefix in _ARTIFACT_PROXY_PREFIXES:
+        if path.startswith(prefix):
+            return path[len(prefix) :].split("/", 1)[0] or None
+    return None
+
+
+def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]], path: Optional[str] = None) -> Optional[Callable[[str], bool]]:
+    """Pick the validator for an artifact-proxy request by route family and method.
+
+    ``path`` is optional only for backward compatibility with callers that predate the
+    multi-family support; without it the ``artifacts`` family is assumed.
+    """
+    family = _artifact_proxy_family(path) if path is not None else "artifacts"
+
+    # werkzeug registers HEAD alongside every GET rule and routes it to the same
+    # handler, so it is a read. Without this it fell through to "no validator" and was
+    # denied outright — even for a user holding MANAGE.
+    if method == "HEAD":
+        method = "GET"
+
+    if family == "mpu":
+        # create / complete / abort all WRITE to the artifact path.
+        return validate_can_update_experiment_artifact_proxy if method == "POST" else None
+
+    if family == "presigned":
+        # Issues a presigned DOWNLOAD url — a read of the underlying artifact.
+        return validate_can_read_experiment_artifact_proxy if method == "GET" else None
+
+    if family not in (None, "artifacts"):
+        # An artifact family we do not know about. Return no validator so the caller
+        # denies, rather than falling through and granting read (issue #283).
+        return None
 
     return {
-        "GET": validate_can_read_experiment_artifact_proxy,  # Download
+        # Covers both the download route and the argument-less list route; the list
+        # route's experiment id comes from the `path` query parameter.
+        "GET": validate_can_read_experiment_artifact_proxy,
         "PUT": validate_can_update_experiment_artifact_proxy,  # Upload
         "DELETE": validate_can_delete_experiment_artifact_proxy,  # Delete
     }.get(method)
 
 
 def _is_proxy_artifact_path(path: str) -> bool:
-    return path.startswith(f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts/")
+    return path.startswith(_ARTIFACT_PROXY_PREFIXES)
 
 
 def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
     """
     Finds the validator matching the request path and method.
+
+    HEAD is folded onto GET (issue #286). werkzeug auto-registers HEAD on every GET
+    rule and dispatches it to the same view, but every validator here is registered
+    under "GET", so keying the lookup on the literal method left HEAD matching
+    nothing. A None validator is not a deny — it falls through to the unvalidated
+    path — so ``HEAD /get-artifact?path=<victim>`` sailed past the 403 its GET twin
+    receives and returned the response headers, an existence and exact-size oracle
+    over any tenant's data. The same fold is applied in
+    ``dual_spelling_guard._is_proto_route`` and ``_get_proxy_artifact_validator``.
     """
+    method = "GET" if req.method == "HEAD" else req.method
     if "/mlflow/workspaces" in req.path:
         # Workspace routes use path parameters (e.g. /mlflow/workspaces/<workspace_name>)
         validator = next(
-            (v for (pat, method), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            (v for (pat, m), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and m == method),
             None,
         )
         # Stash workspace name for after-request cascade delete (like gateway pattern)
-        if validator is not None and req.method == "DELETE":
+        if validator is not None and method == "DELETE":
             from mlflow_oidc_auth.validators.workspace import (
                 _extract_workspace_name_from_path,
             )
@@ -657,17 +739,17 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
         # logged model routes are not registered in the app
         # so we need to check them manually
         return next(
-            (v for (pat, method), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            (v for (pat, m), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and m == method),
             None,
         )
-    validator = BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
+    validator = BEFORE_REQUEST_VALIDATORS.get((req.path, method))
     if validator is not None:
         return validator
     # Fall back to the parameterized keys. Their paths carry a placeholder
     # ("/prompt-optimization/jobs/<job_id>") which never equals a concrete request path,
     # so the exact lookup above can never match them.
     return next(
-        (v for (pat, method), v in PARAMETERIZED_BEFORE_REQUEST_VALIDATORS.items() if method == req.method and pat.fullmatch(req.path)),
+        (v for (pat, m), v in PARAMETERIZED_BEFORE_REQUEST_VALIDATORS.items() if m == method and pat.fullmatch(req.path)),
         None,
     )
 
@@ -747,9 +829,18 @@ def before_request_hook():
         if not validator(username):
             return responses.make_forbidden_response()
     elif _is_proxy_artifact_path(request.path):
-        if validator := _get_proxy_artifact_validator(request.method, request.view_args):
-            if not validator(username):
-                return responses.make_forbidden_response()
+        if request.method == "OPTIONS":
+            # Flask answers OPTIONS itself (provide_automatic_options); it never reaches
+            # an artifact handler and carries no data, so it must not be gated.
+            return
+        validator = _get_proxy_artifact_validator(request.method, request.view_args, request.path)
+        if validator is None:
+            # An artifact route we do not recognise must not be served unchecked — that
+            # is exactly how the mpu/presigned families went ungated (issue #283).
+            logger.warning(f"Denying unrecognised artifact-proxy route {request.method} {request.path}")
+            return responses.make_forbidden_response()
+        if not validator(username):
+            return responses.make_forbidden_response()
 
 
 before_request_hook = catch_mlflow_exception(before_request_hook)

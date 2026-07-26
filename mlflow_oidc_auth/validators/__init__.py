@@ -55,6 +55,7 @@ from mlflow_oidc_auth.validators.stuff import (
     validate_can_read_metric_history_bulk,
     validate_can_search_datasets,
     validate_gateway_proxy,
+    validate_can_invoke_scorer,
     validate_can_create_gateway,
 )
 
@@ -130,6 +131,7 @@ __all__ = [
     "validate_can_create_promptlab_run",
     "validate_can_create_gateway",
     "validate_gateway_proxy",
+    "validate_can_invoke_scorer",
     "validate_can_read_gateway_endpoint",
     "validate_can_update_gateway_endpoint",
     "validate_can_delete_gateway_endpoint",
