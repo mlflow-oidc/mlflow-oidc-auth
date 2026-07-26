@@ -181,6 +181,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_search_datasets,
     validate_can_create_promptlab_run,
     validate_gateway_proxy,
+    validate_can_invoke_scorer,
     validate_can_read_gateway_endpoint,
     validate_can_update_gateway_endpoint,
     validate_can_delete_gateway_endpoint,
@@ -437,9 +438,10 @@ BEFORE_REQUEST_VALIDATORS.update(
         (CREATE_PROMPTLAB_RUN, "POST"): validate_can_create_promptlab_run,
         (GATEWAY_PROXY, "GET"): validate_gateway_proxy,
         (GATEWAY_PROXY, "POST"): validate_gateway_proxy,
-        # Scorer invocation uses the same gateway proxy permission check
-        (INVOKE_SCORER, "GET"): validate_gateway_proxy,
-        (INVOKE_SCORER, "POST"): validate_gateway_proxy,
+        # Scorer invocation is authorized on the experiment MLflow's handler acts on, not
+        # on a gateway endpoint — it never reads one (issue #288). MLflow registers this
+        # route POST-only, so there is no GET entry to bind.
+        (INVOKE_SCORER, "POST"): validate_can_invoke_scorer,
         # Gateway discovery routes use the same gateway proxy permission check
         (GATEWAY_SUPPORTED_PROVIDERS, "GET"): validate_gateway_proxy,
         (GATEWAY_SUPPORTED_MODELS, "GET"): validate_gateway_proxy,

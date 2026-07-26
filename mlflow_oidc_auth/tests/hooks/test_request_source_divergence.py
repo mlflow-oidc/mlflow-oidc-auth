@@ -312,3 +312,53 @@ def test_attacker_cannot_authorize_with_a_query_string_while_mlflow_mutates_the_
     # The attack: own id in the query string, victim id in the body MLflow parses.
     with _ctx(UPDATE_EXPERIMENT, "POST", body={"experiment_id": "2", "new_name": "PWNED"}, query={"experiment_id": "1"}):
         assert validate_can_update_experiment("alice@example.com") is False
+
+
+# ---------------------------------------------------------------------------
+# Validator/handler pairing (issue #288)
+# ---------------------------------------------------------------------------
+
+
+def test_gateway_validator_guards_only_gateway_routes():
+    """One validator must not guard routes whose handlers read different bodies.
+
+    validate_gateway_proxy mirrors gateway_proxy_handler, which reads `gateway_path`.
+    It was also bound to POST /mlflow/scorer/invoke, whose handler reads experiment_id /
+    serialized_scorer / trace_ids and has no gateway_path at all — so tightening the
+    gateway parsing for #288 denied every scorer invocation. Nothing caught it because
+    the tests asserted binding identity in one file and validator behaviour in another,
+    and no test drove a scorer body through the validator it was bound to.
+    """
+    from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_VALIDATORS
+    from mlflow_oidc_auth.validators import validate_can_invoke_scorer, validate_gateway_proxy
+
+    guarded = {path for (path, _method), v in BEFORE_REQUEST_VALIDATORS.items() if v is validate_gateway_proxy}
+    assert guarded, "precondition: the gateway validator must still be bound to something"
+    assert all("gateway" in path for path in guarded), f"gateway validator leaked onto non-gateway routes: {sorted(guarded)}"
+
+    scorer = {(path, method) for (path, method), v in BEFORE_REQUEST_VALIDATORS.items() if v is validate_can_invoke_scorer}
+    assert scorer, "scorer/invoke must be bound to its own validator"
+    assert all(m == "POST" for _p, m in scorer), "MLflow registers scorer/invoke POST-only"
+
+
+def test_head_on_a_proto_get_route_fails_closed():
+    """Do NOT 'complete' the HEAD fold in _mlflow_reads_args — this pins why.
+
+    MLflow's _get_request_message takes the query-string path only when the method is
+    literally "GET", so a HEAD is proto-parsed from the BODY even with a query string.
+    has_unexpected_get_body rejects a HEAD that carries a body, so the proto resolves to
+    nothing and the request is refused. Folding HEAD into _mlflow_reads_args would make
+    the plugin authorize the query string while MLflow parsed the body — reopening #285
+    for HEAD. The 400 here is correct, not a gap.
+    """
+    from mlflow.exceptions import MlflowException
+
+    from mlflow_oidc_auth.utils.request_helpers import get_experiment_id
+
+    with _ctx(GET_EXPERIMENT, "GET", query={"experiment_id": "42"}):
+        assert get_experiment_id() == "42"
+
+    with _ctx(GET_EXPERIMENT, "HEAD", query={"experiment_id": "42"}):
+        with pytest.raises(MlflowException) as exc:
+            get_experiment_id()
+    assert exc.value.get_http_status_code() == 400

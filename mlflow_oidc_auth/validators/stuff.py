@@ -148,7 +148,14 @@ def validate_gateway_proxy(username: str) -> bool:
         ``api/2.0/endpoints`` (a list, which names no endpoint). So the endpoint name is
         the middle segment on POST and absent by construction on GET.
         """
-        args = request.args if request.method == "GET" else (request.get_json(silent=True) or {})
+        if request.method == "GET":
+            args = request.args
+        else:
+            # A truthy non-dict body (a JSON array, string or number) would make .get
+            # raise AttributeError, and catch_mlflow_exception only catches
+            # MlflowException — so the hook would 500 instead of denying.
+            body = request.get_json(silent=True)
+            args = body if isinstance(body, dict) else {}
         gateway_path = args.get("gateway_path")
         if not gateway_path:
             return None
@@ -159,19 +166,56 @@ def validate_gateway_proxy(username: str) -> bool:
 
     # Map HTTP method to required capability
     if request.method == "GET":
-        # USE. A GET is the endpoint listing, which names no single endpoint, so the
-        # any-endpoint fallback below is the check; after_request filters the results.
+        # USE. A GET is the endpoint listing: _validate_gateway_path requires the path to
+        # be exactly "api/2.0/endpoints", so it names no single endpoint and the
+        # any-endpoint check below is the gate. Note the proxied listing itself is NOT
+        # filtered per-tenant — gateway-proxy is a plain Flask route, so it has no
+        # AFTER_REQUEST_HANDLERS entry (that map is built from proto endpoints only).
+        # That exposure is pre-existing and tracked separately.
         if gateway_name:
             return can_use_gateway_endpoint(str(gateway_name), username)
         # Fallback: check if user has any gateway endpoint with use
         perms = store.list_gateway_endpoint_permissions(username)
         return any(get_permission(p.permission).can_use for p in perms)
     else:
-        # POST/PUT/DELETE -> UPDATE required
+        # POST -> UPDATE required
         if gateway_name:
             return can_update_gateway_endpoint(str(gateway_name), username)
         # No resolvable endpoint on a mutating proxy call. Previously this fell through
         # to "does the user hold UPDATE on ANY endpoint", which let a caller with one
         # endpoint of their own invoke a path naming somebody else's. MLflow rejects a
         # missing or malformed gateway_path with 400 anyway, so refuse instead.
+        #
+        # This branch is reachable ONLY for gateway-proxy itself. Every other route that
+        # used to share this validator now has its own — see validate_can_invoke_scorer.
         return False
+
+
+def validate_can_invoke_scorer(username: str) -> bool:
+    """Authorize POST /mlflow/scorer/invoke on the experiment MLflow will act on.
+
+    This route was previously gated by ``validate_gateway_proxy``, which is wrong on its
+    face: MLflow's ``_invoke_scorer_handler`` reads ``experiment_id``,
+    ``serialized_scorer``, ``trace_ids`` and ``log_assessments`` from the JSON body and
+    never touches a gateway endpoint at all. Sharing the gateway validator meant the
+    check was "does the caller hold UPDATE on some unrelated gateway endpoint" — and
+    when that validator was tightened for #288 it began denying the route outright,
+    because a scorer body has no ``gateway_path`` to resolve.
+
+    The permission required mirrors what MLflow will actually do: the handler writes
+    assessments into the experiment only when ``log_assessments`` is set, so that flag
+    selects UPDATE versus READ. The flag is caller-controlled, which is fine — it
+    controls MLflow's behaviour identically, so the two stay in step, which is the whole
+    point of this PR.
+    """
+    body = request.get_json(silent=True)
+    args = body if isinstance(body, dict) else {}
+    experiment_id = args.get("experiment_id")
+    if not experiment_id:
+        # MLflow raises INVALID_PARAMETER_VALUE for a missing experiment_id, and an
+        # unresolvable resource must never mean allow.
+        return False
+    permission = effective_experiment_permission(str(experiment_id), username).permission
+    if args.get("log_assessments", False):
+        return permission.can_update
+    return permission.can_read

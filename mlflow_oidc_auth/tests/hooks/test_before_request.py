@@ -673,21 +673,24 @@ class TestDenyNonAdmin:
 class TestNewFlaskRouteValidators:
     """Tests for newly added Flask route validators (Phase 2 security controls)."""
 
-    def test_invoke_scorer_get_uses_gateway_proxy_validator(self):
-        """INVOKE_SCORER GET route should use validate_gateway_proxy."""
+    def test_invoke_scorer_has_no_get_binding(self):
+        """MLflow registers /mlflow/scorer/invoke POST-only, so a GET entry is dead code."""
         from mlflow_oidc_auth.hooks.before_request import INVOKE_SCORER
-        from mlflow_oidc_auth.validators import validate_gateway_proxy
 
-        assert (INVOKE_SCORER, "GET") in BEFORE_REQUEST_VALIDATORS
-        assert BEFORE_REQUEST_VALIDATORS[(INVOKE_SCORER, "GET")] is validate_gateway_proxy
+        assert (INVOKE_SCORER, "GET") not in BEFORE_REQUEST_VALIDATORS
 
-    def test_invoke_scorer_post_uses_gateway_proxy_validator(self):
-        """INVOKE_SCORER POST route should use validate_gateway_proxy."""
+    def test_invoke_scorer_post_uses_its_own_validator(self):
+        """Scorer invocation is authorized on the experiment, not on a gateway endpoint.
+
+        It previously shared validate_gateway_proxy, whose parsing has nothing to do
+        with what _invoke_scorer_handler reads (experiment_id / serialized_scorer /
+        trace_ids from the JSON body). That mismatch became a hard 403 on every scorer
+        invocation once the gateway validator was tightened for #288.
+        """
         from mlflow_oidc_auth.hooks.before_request import INVOKE_SCORER
-        from mlflow_oidc_auth.validators import validate_gateway_proxy
+        from mlflow_oidc_auth.validators import validate_can_invoke_scorer
 
-        assert (INVOKE_SCORER, "POST") in BEFORE_REQUEST_VALIDATORS
-        assert BEFORE_REQUEST_VALIDATORS[(INVOKE_SCORER, "POST")] is validate_gateway_proxy
+        assert BEFORE_REQUEST_VALIDATORS[(INVOKE_SCORER, "POST")] is validate_can_invoke_scorer
 
     def test_gateway_supported_providers_uses_gateway_proxy_validator(self):
         """GATEWAY_SUPPORTED_PROVIDERS GET route should use validate_gateway_proxy."""
