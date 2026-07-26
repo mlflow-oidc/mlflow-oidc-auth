@@ -2,7 +2,7 @@ import posixpath
 
 from flask import request
 from mlflow.server.handlers import _get_tracking_store
-from mlflow.utils.uri import _decode
+from mlflow.utils.uri import validate_path_is_safe
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
@@ -37,23 +37,34 @@ def _get_permission_from_experiment_name(username: str) -> Permission:
 def _experiment_id_from_artifact_path(artifact_path: str):
     """Parse the experiment id out of a composite artifact path.
 
-    The value is decoded exactly as MLflow decodes it before serving. MLflow's
-    ``validate_path_is_safe`` runs ``_decode``, which unquotes REPEATEDLY, whereas
-    werkzeug percent-decodes a URL only once. Parsing the once-decoded value therefore
-    diverged from what MLflow actually acts on: "%2531%2532/r/artifacts" reaches us as
-    "%31%32/r/artifacts" (no match -> DEFAULT_MLFLOW_PERMISSION, i.e. allow on the
-    shipped MANAGE default) while MLflow resolves it to "12/r/artifacts" and serves
-    experiment 12's artifacts. Decoding through MLflow's own helper keeps the two in
-    step and cannot drift (issue #283).
+    The value is normalized through MLflow's OWN ``validate_path_is_safe``, which is
+    exactly what the artifact handlers run before serving. Calling anything less than
+    that whole function drifts from what MLflow acts on, and every step matters:
+
+      1. ``_decode`` unquotes REPEATEDLY, whereas werkzeug percent-decodes a URL only
+         once. Parsing the once-decoded value diverged: "%2531%2532/r/artifacts" reaches
+         us as "%31%32/r/artifacts" (no match -> DEFAULT_MLFLOW_PERMISSION, i.e. allow on
+         the shipped MANAGE default) while MLflow resolves it to "12/r/artifacts" and
+         serves experiment 12's artifacts.
+      2. ``_escape_control_characters``.
+      3. ``local_file_uri_to_path`` when the value ``is_file_uri`` — so MLflow strips a
+         "file:" scheme and serves "file:12/r/artifacts" as "12/r/artifacts". Calling
+         only ``_decode`` left that unresolved and fell back to the MANAGE default, which
+         reopened the same cross-tenant read/write/delete this function exists to close.
+         "FILE:" and "%66ile:" work too, since the scheme test runs after decoding.
+
+    ``validate_path_is_safe`` RAISES for the paths MLflow refuses outright ("..", "#").
+    Those fall through to the raw value below, which is safe: MLflow rejects such a
+    request with 400 before any artifact handler runs (issue #283).
     """
     try:
-        artifact_path = _decode(artifact_path)
+        artifact_path = validate_path_is_safe(artifact_path)
     except Exception:
-        # Never fail the authorization check on a decoding helper; the undecoded value
-        # is still normalized and parsed below, and MLflow rejects anything it cannot
-        # decode itself. Logged rather than silent so a future MLflow that changes
-        # _decode does not quietly degrade this check.
-        logger.warning("Could not decode artifact path for authorization; parsing the raw value")
+        # Never fail the authorization check on a parsing helper; the raw value is still
+        # normalized and parsed below, and MLflow rejects anything it cannot normalize
+        # itself. Logged rather than silent so a future MLflow that changes this helper
+        # does not quietly degrade the check.
+        logger.warning("Could not normalize artifact path for authorization; parsing the raw value")
 
     # Match on NORMALIZED SEGMENTS rather than an anchored regex over the raw string.
     #

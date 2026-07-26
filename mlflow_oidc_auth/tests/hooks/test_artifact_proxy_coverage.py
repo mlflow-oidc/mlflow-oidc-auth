@@ -308,9 +308,83 @@ class TestExperimentRootPathsResolve:
 
     @pytest.mark.parametrize("artifact_path", ["", "/", "./", "not-a-number/x", "workspaces/ws1", "workspaces/ws1/", "models/foo"])
     def test_paths_naming_no_experiment_do_not_resolve(self, artifact_path):
+        """These name no experiment — but note what "no experiment" currently MEANS.
+
+        Returning None sends the caller to DEFAULT_MLFLOW_PERMISSION, which ships as
+        MANAGE, so under the shipped default these shapes are ALLOWED rather than
+        denied. This test pins the parser's output, NOT a security property: do not read
+        it as a hardening assertion. Making the unresolvable case deny is tracked in
+        issue #289, and doing so will require changing this test — correctly.
+        """
         from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
 
         assert _experiment_id_from_artifact_path(artifact_path) is None
+
+    @pytest.mark.parametrize(
+        "artifact_path",
+        [
+            "file:12/r/artifacts/f",
+            "FILE:12/r/a",
+            "%66ile:12/r/a",
+            "file:12",
+            "file:12/",
+        ],
+    )
+    def test_file_uri_scheme_resolves_the_experiment_mlflow_will_serve(self, artifact_path):
+        """MLflow strips a file: scheme before serving, so authorization must too.
+
+        validate_path_is_safe runs _decode -> _escape_control_characters ->
+        local_file_uri_to_path. Calling only _decode left "file:12/r/artifacts"
+        unresolved, which fell back to the MANAGE default and reopened the cross-tenant
+        read/write/delete this function exists to close. The scheme test runs after
+        decoding, so "FILE:" and "%66ile:" reach the same handler.
+        """
+        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
+
+        assert _experiment_id_from_artifact_path(artifact_path) == "12", f"{artifact_path!r} fell back to the permissive default"
+
+    @pytest.mark.parametrize("default_permission", ["MANAGE", "NO_PERMISSIONS"])
+    @pytest.mark.parametrize(
+        "path, method",
+        [
+            ("/api/2.0/mlflow-artifacts/artifacts/12/r/a", "GET"),
+            ("/api/2.0/mlflow-artifacts/artifacts/12/r/a", "DELETE"),
+            ("/api/2.0/mlflow-artifacts/artifacts/file:12/r/a", "GET"),
+            ("/api/2.0/mlflow-artifacts/artifacts/file:12/r/a", "DELETE"),
+            ("/api/2.0/mlflow-artifacts/mpu/create/12/r/a", "POST"),
+            ("/ajax-api/2.0/mlflow-artifacts/artifacts/12/r/a", "GET"),
+        ],
+    )
+    def test_resolvable_routes_deny_regardless_of_the_configured_default(self, path, method, default_permission):
+        """A denial must come from the store, not from a hardened default.
+
+        The suite inherits DEFAULT_MLFLOW_PERMISSION=NO_PERMISSIONS from the repo .env,
+        under which almost anything denies — so a deny assertion alone proves nothing and
+        would still pass if the code stopped resolving experiment ids entirely. Running
+        each route under BOTH defaults, and asserting the store was consulted with the
+        expected id, is what makes these tests non-vacuous.
+        """
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+
+        with app.test_request_context(path, method=method):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", default_permission),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="u"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+                patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission") as resolved,
+            ):
+                resolved.return_value.permission = NO_PERMISSIONS
+                response = before_request_hook()
+                resolved.assert_called_once()
+                assert resolved.call_args.args[0] == "12", "the store must be consulted for the experiment MLflow will serve"
+
+        assert response is not None and response.status_code == 403
 
     def test_delete_on_an_experiment_root_is_authorized(self):
         """DELETE /mlflow-artifacts/artifacts/12/ wipes experiment 12's artifacts."""
