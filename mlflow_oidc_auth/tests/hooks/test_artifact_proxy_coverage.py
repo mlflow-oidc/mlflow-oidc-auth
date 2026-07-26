@@ -860,3 +860,118 @@ class TestPrefixedArtifactRoots:
                 response = before_request_hook()
 
         assert (response is None) is allowed, f"undecomposable prefix under default={default_permission} should {'allow' if allowed else 'deny'}"
+
+
+class TestConfiguredArtifactRootPrefix:
+    """Paths are interpreted relative to --default-artifact-root (issue #289).
+
+    With ``mlflow-artifacts:/mlartifacts`` the literal path "mlartifacts" IS the proxy
+    root, "mlartifacts/7" is an experiment root, and MLflow 3 logged models live at
+    "mlartifacts/7/models/{model_id}/artifacts/...". Without accounting for the prefix all
+    of those resolved to nothing and fell back to DEFAULT_MLFLOW_PERMISSION — the shipped
+    MANAGE — so the #289 delete-everything primitive stayed open for exactly the
+    deployments prefix support exists to serve.
+    """
+
+    @staticmethod
+    def _store(root, runs=None):
+        runs = runs or {}
+
+        def get_run(run_id):
+            if run_id not in runs:
+                raise MlflowException(f"no run {run_id}")
+            experiment_id, artifact_uri = runs[run_id]
+            run = MagicMock()
+            run.info.experiment_id = experiment_id
+            run.info.artifact_uri = artifact_uri
+            return run
+
+        store = MagicMock()
+        store.artifact_root_uri = root
+        store.get_run.side_effect = get_run
+        return store
+
+    def _with_root(self, root, runs=None):
+        from mlflow_oidc_auth.validators import experiment as experiment_module
+
+        return patch.object(experiment_module, "_get_tracking_store", return_value=self._store(root, runs))
+
+    PREFIXED = "mlflow-artifacts:/mlartifacts"
+
+    @pytest.mark.parametrize("artifact_path", ["mlartifacts", "mlartifacts/", "mlartifacts/.", "mlartifacts/workspaces/wsA"])
+    def test_the_prefixed_root_and_tenant_are_root_scoped(self, artifact_path):
+        """DELETE on these reaches delete_artifacts for every tenant's tree."""
+        from mlflow_oidc_auth.validators.experiment import _artifact_request_targets_the_whole_root
+
+        with self._with_root(self.PREFIXED):
+            assert _artifact_request_targets_the_whole_root(artifact_path) is True
+
+    @pytest.mark.parametrize(
+        "artifact_path, expected",
+        [
+            ("mlartifacts/7", "7"),
+            ("mlartifacts/7/", "7"),
+            ("mlartifacts/7/run/artifacts/model.pkl", "7"),
+            # MLflow 3 logged models: the id is three segments before the marker, which no
+            # positional rule anchored on "artifacts" could ever have found.
+            ("mlartifacts/7/models/m-x/artifacts/MLmodel", "7"),
+            ("mlartifacts/workspaces/wsA/7/run/artifacts/f", "7"),
+            # The crafted path from the previous round now resolves to the experiment
+            # MLflow actually writes under, so the attacker is judged against THAT.
+            ("mlartifacts/7/3/runX/artifacts/evil.txt", "7"),
+        ],
+    )
+    def test_paths_resolve_relative_to_the_configured_root(self, artifact_path, expected):
+        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
+
+        with self._with_root(self.PREFIXED):
+            assert _experiment_id_from_artifact_path(artifact_path) == expected
+
+    @pytest.mark.parametrize("artifact_path", [".", "%2e", "", "workspaces/wsA", "12", "12/run/artifacts/f", "12/models/m-x/artifacts/MLmodel"])
+    def test_the_default_bare_root_is_unaffected(self, artifact_path):
+        """With mlflow-artifacts:/ nothing is stripped and behaviour is unchanged."""
+        from mlflow_oidc_auth.validators.experiment import (
+            _artifact_request_targets_the_whole_root,
+            _experiment_id_from_artifact_path,
+        )
+
+        with self._with_root("mlflow-artifacts:/"):
+            if artifact_path.startswith("12"):
+                assert _experiment_id_from_artifact_path(artifact_path) == "12"
+            else:
+                assert _artifact_request_targets_the_whole_root(artifact_path) is True
+
+    def test_a_non_proxied_artifact_root_strips_nothing(self):
+        """A local or s3 tracking artifact root is not a proxy prefix."""
+        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
+
+        with self._with_root("/var/lib/mlruns"):
+            assert _experiment_id_from_artifact_path("12/run/artifacts/f") == "12"
+
+    def test_a_store_that_cannot_report_its_root_does_not_break_resolution(self):
+        """artifact_root_uri is best-effort; failing to read it must not deny or crash."""
+        from mlflow_oidc_auth.validators import experiment as experiment_module
+
+        broken = MagicMock()
+        type(broken).artifact_root_uri = property(lambda self: (_ for _ in ()).throw(RuntimeError("boom")))
+        with patch.object(experiment_module, "_get_tracking_store", return_value=broken):
+            assert experiment_module._experiment_id_from_artifact_path("12/run/artifacts/f") == "12"
+
+    @pytest.mark.parametrize("default_permission", ["MANAGE", "NO_PERMISSIONS"])
+    def test_deleting_the_prefixed_root_is_denied_end_to_end(self, default_permission):
+        """The #289 headline hole, spelled with the configured prefix."""
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        with app.test_request_context("/api/2.0/mlflow-artifacts/artifacts/mlartifacts", method="DELETE"):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", default_permission),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                self._with_root(self.PREFIXED),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="nobody"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+            ):
+                response = before_request_hook()
+
+        assert response is not None and response.status_code == 403, "the prefixed proxy root must never be deletable"

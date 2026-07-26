@@ -69,7 +69,7 @@ def _experiment_id_from_artifact_path(artifact_path: str):
     #
     # ".." is deliberately NOT resolved here — MLflow's validate_path_is_safe rejects it
     # outright, so such a request is never served.
-    segments = _artifact_path_segments(artifact_path)
+    segments = _strip_configured_proxy_root(_artifact_path_segments(artifact_path))
     if not segments:
         return None
 
@@ -80,13 +80,13 @@ def _experiment_id_from_artifact_path(artifact_path: str):
         return None
 
     if segments[0].isdigit():
+        # Relative to the configured root, everything an experiment owns lives under its
+        # id — run artifacts ({exp}/{run}/artifacts/...), MLflow 3 logged models
+        # ({exp}/models/{model_id}/artifacts/...), traces, and the experiment root itself.
         return segments[0]
 
-    # The artifact root may carry a PREFIX, in which case the experiment id is not the
-    # first segment. `--default-artifact-root mlflow-artifacts:/mlartifacts` makes every
-    # run's proxy path "mlartifacts/{experiment_id}/{run_id}/artifacts/...", and a
-    # per-experiment or per-workspace artifact_location can add an arbitrary prefix too.
-    # Anchoring on segment 0 resolves nothing for those deployments (issue #289).
+    # Still undecomposable: an experiment or workspace whose artifact_location points
+    # somewhere other than under the configured root. Ask the store who owns it.
     return _experiment_id_via_run_lookup(segments)
 
 
@@ -133,6 +133,47 @@ def _experiment_id_via_run_lookup(segments: list):
         # about who owns the bytes MLflow would serve.
         return None
     return run.info.experiment_id
+
+
+def _strip_configured_proxy_root(segments: list) -> list:
+    """Drop the configured artifact-root prefix, so paths are relative to it.
+
+    An artifact-proxy path is relative to the artifacts destination, and the server's
+    ``--default-artifact-root`` decides what sits at the top of it. With the default
+    ``mlflow-artifacts:/`` nothing needs stripping and every experiment id is the first
+    component. With ``mlflow-artifacts:/mlartifacts`` every path gains that prefix, and
+    without accounting for it (issue #289):
+
+      * ``DELETE .../artifacts/mlartifacts`` — the whole proxy root, i.e. every tenant's
+        artifacts — did not look root-scoped, so it fell back to
+        ``DEFAULT_MLFLOW_PERMISSION`` and was ALLOWED on the shipped MANAGE default.
+      * ``mlartifacts/7`` (an experiment root) and
+        ``mlartifacts/7/models/{model_id}/artifacts/...`` (where MLflow 3 actually writes
+        logged models) resolved to nothing and fell back the same way.
+
+    Stripping the prefix first puts every layout back into the simple form the rest of
+    this module already handles correctly, rather than adding more positional guesswork.
+    A path that does not start with the configured root is returned unchanged and falls
+    through to the store lookup below.
+    """
+    root = _configured_proxy_root_segments()
+    if root and segments[: len(root)] == root:
+        return segments[len(root) :]
+    return segments
+
+
+def _configured_proxy_root_segments() -> list:
+    """Components of the configured ``mlflow-artifacts:`` root, or [] when there is none.
+
+    A tracking store whose artifact root is not proxied (a local path, s3:, ...) yields
+    [], so nothing is stripped.
+    """
+    try:
+        root = _get_tracking_store().artifact_root_uri
+    except Exception:
+        logger.warning("Could not read the tracking store's artifact root; not stripping any prefix")
+        return []
+    return _proxy_path_segments(root) or []
 
 
 def _proxy_path_segments(artifact_uri):
@@ -192,11 +233,18 @@ def _artifact_request_targets_the_whole_root(artifact_path: str) -> bool:
         GET returns a listing that enumerates every experiment id on the server.
       * "workspaces" / "workspaces/<ws>" -> a whole workspace, i.e. a whole tenant.
 
-    Deliberately narrow. A path that merely fails to RESOLVE (an artifact root with a
-    prefix we cannot decompose) is not root-scoped and must not be denied on that basis —
-    see _get_permission_from_experiment_id_artifact_proxy.
+    Measured RELATIVE TO THE CONFIGURED ROOT, so a prefixed deployment is covered too:
+    under ``--default-artifact-root mlflow-artifacts:/mlartifacts`` the literal path
+    "mlartifacts" IS the proxy root, and "mlartifacts/workspaces/<ws>" is a whole tenant.
+    Without the strip those spellings were not recognised and fell back to
+    ``DEFAULT_MLFLOW_PERMISSION`` — the shipped MANAGE — leaving the #289 delete-everything
+    primitive open for exactly the deployments the prefix support exists to serve.
+
+    Deliberately narrow. A path that merely fails to RESOLVE (an artifact_location outside
+    the configured root) is not root-scoped and must not be denied on that basis — see
+    _get_permission_from_experiment_id_artifact_proxy.
     """
-    segments = _artifact_path_segments(artifact_path)
+    segments = _strip_configured_proxy_root(_artifact_path_segments(artifact_path))
     if not segments:
         return True
     return segments[0] == "workspaces" and len(segments) <= 2
