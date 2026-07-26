@@ -1,4 +1,5 @@
 import posixpath
+from urllib.parse import urlparse
 
 from flask import request
 from mlflow.server.handlers import _get_tracking_store
@@ -85,17 +86,67 @@ def _experiment_id_from_artifact_path(artifact_path: str):
     # first segment. `--default-artifact-root mlflow-artifacts:/mlartifacts` makes every
     # run's proxy path "mlartifacts/{experiment_id}/{run_id}/artifacts/...", and a
     # per-experiment or per-workspace artifact_location can add an arbitrary prefix too.
-    # Anchoring on segment 0 resolved nothing for those deployments (issue #289).
-    #
-    # Anchor on the "artifacts" marker instead. MLflow always lays a run's artifacts out
-    # as <root...>/{experiment_id}/{run_id}/artifacts/..., so the experiment id sits two
-    # segments before the first "artifacts" component whatever the prefix depth is.
-    if (index := _first_artifacts_marker(segments)) is not None and index >= 2:
-        candidate = segments[index - 2]
-        if candidate.isdigit():
-            return candidate
+    # Anchoring on segment 0 resolves nothing for those deployments (issue #289).
+    return _experiment_id_via_run_lookup(segments)
 
-    return None
+
+def _experiment_id_via_run_lookup(segments: list):
+    """Ask the store which experiment owns this path, instead of guessing from position.
+
+    An earlier attempt read the experiment id positionally — two segments before the first
+    ``artifacts`` component — on the theory that MLflow always lays a run's artifacts out
+    as ``<root...>/{experiment_id}/{run_id}/artifacts/...``. The path is entirely
+    caller-controlled and MLflow serves it verbatim relative to the artifacts destination,
+    so trusting a position in it is trusting the attacker. Both directions were reachable:
+
+      * ``mlartifacts/7/3/runX/artifacts/evil.txt`` — a caller holding a grant on
+        experiment 3 and nothing else supplies both the ``artifacts`` component and the
+        digit two before it, so the check passes on experiment 3 while MLflow writes the
+        bytes inside experiment 7's tree.
+      * an ``artifact_location`` whose last segment is digits (``mlflow-artifacts:/teams/12``)
+        made every path under it resolve to "12" — denying the rightful owner and granting
+        whoever holds experiment 12.
+
+    So resolve it authoritatively. The component before the ``artifacts`` marker is the run
+    id; the store knows which experiment that run belongs to and where its artifacts
+    actually live. The request is only attributed to that experiment when it genuinely
+    falls INSIDE the run's own artifact location — which is what makes an injected digit,
+    or a real run id spliced under someone else's prefix, resolve to nothing.
+
+    Returning None here does not deny by itself; it falls through to the caller's handling
+    for an unresolvable path (see _get_permission_from_experiment_id_artifact_proxy), so a
+    layout this cannot decompose behaves exactly as it did before any of this work.
+    """
+    index = _first_artifacts_marker(segments)
+    if index is None or index < 1:
+        return None
+
+    try:
+        run = _get_tracking_store().get_run(segments[index - 1])
+    except Exception:
+        # No such run, or the store is unhappy. Not something to authorize on.
+        return None
+
+    owner_segments = _proxy_path_segments(getattr(run.info, "artifact_uri", None))
+    if not owner_segments or segments[: len(owner_segments)] != owner_segments:
+        # The request is not inside this run's artifact tree, so the run tells us nothing
+        # about who owns the bytes MLflow would serve.
+        return None
+    return run.info.experiment_id
+
+
+def _proxy_path_segments(artifact_uri):
+    """The proxy-relative components of an ``mlflow-artifacts:`` URI, or None.
+
+    A run stored anywhere else (s3:, file:, ...) is not served through this proxy, so its
+    location cannot corroborate a proxy request.
+    """
+    if not artifact_uri:
+        return None
+    parsed = urlparse(str(artifact_uri))
+    if parsed.scheme != "mlflow-artifacts":
+        return None
+    return _artifact_path_segments(parsed.path)
 
 
 def _artifact_path_segments(artifact_path: str) -> list:
