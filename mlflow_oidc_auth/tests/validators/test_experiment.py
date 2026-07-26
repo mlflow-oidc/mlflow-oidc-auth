@@ -144,11 +144,12 @@ def test__get_permission_from_experiment_id_artifact_proxy_no_id():
     so it fails if the fallback returns: under NO_PERMISSIONS (what the test .env sets) a
     deny assertion would pass either way and prove nothing.
     """
+    from flask import Flask
+
+    probe = Flask(__name__)
+    # A request naming no artifact path at all is the root listing, which is root-scoped.
     with (
-        patch(
-            "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
-            return_value=None,
-        ),
+        probe.test_request_context("/api/2.0/mlflow-artifacts/artifacts", method="GET"),
         patch.object(experiment.config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE"),
     ):
         perm = experiment._get_permission_from_experiment_id_artifact_proxy("alice")

@@ -57,15 +57,6 @@ def _experiment_id_from_artifact_path(artifact_path: str):
     Those fall through to the raw value below, which is safe: MLflow rejects such a
     request with 400 before any artifact handler runs (issue #283).
     """
-    try:
-        artifact_path = validate_path_is_safe(artifact_path)
-    except Exception:
-        # Never fail the authorization check on a parsing helper; the raw value is still
-        # normalized and parsed below, and MLflow rejects anything it cannot normalize
-        # itself. Logged rather than silent so a future MLflow that changes this helper
-        # does not quietly degrade the check.
-        logger.warning("Could not normalize artifact path for authorization; parsing the raw value")
-
     # Match on NORMALIZED SEGMENTS rather than an anchored regex over the raw string.
     #
     # The regexes required a trailing slash after the id ("^(\d+)/"), so every path that
@@ -77,7 +68,7 @@ def _experiment_id_from_artifact_path(artifact_path: str):
     #
     # ".." is deliberately NOT resolved here — MLflow's validate_path_is_safe rejects it
     # outright, so such a request is never served.
-    segments = [s for s in posixpath.normpath(artifact_path).split("/") if s and s != "."]
+    segments = _artifact_path_segments(artifact_path)
     if not segments:
         return None
 
@@ -87,62 +78,155 @@ def _experiment_id_from_artifact_path(artifact_path: str):
             return segments[2]
         return None
 
-    return segments[0] if segments[0].isdigit() else None
+    if segments[0].isdigit():
+        return segments[0]
 
+    # The artifact root may carry a PREFIX, in which case the experiment id is not the
+    # first segment. `--default-artifact-root mlflow-artifacts:/mlartifacts` makes every
+    # run's proxy path "mlartifacts/{experiment_id}/{run_id}/artifacts/...", and a
+    # per-experiment or per-workspace artifact_location can add an arbitrary prefix too.
+    # Anchoring on segment 0 resolved nothing for those deployments (issue #289).
+    #
+    # Anchor on the "artifacts" marker instead. MLflow always lays a run's artifacts out
+    # as <root...>/{experiment_id}/{run_id}/artifacts/..., so the experiment id sits two
+    # segments before the first "artifacts" component whatever the prefix depth is.
+    if (index := _first_artifacts_marker(segments)) is not None and index >= 2:
+        candidate = segments[index - 2]
+        if candidate.isdigit():
+            return candidate
 
-def _get_experiment_id_from_view_args():
-    # The artifact proxy routes encode experiment_id as the first path segment
-    # of the artifact_path (e.g. "123/artifacts/model.pkl").  This cannot be
-    # replaced with get_request_param("artifact_path") because we need to
-    # *parse* the experiment_id out of the composite path value, not just read
-    # the parameter verbatim.
-    view_args = request.view_args
-    if view_args and (artifact_path := view_args.get("artifact_path")):
-        return _experiment_id_from_artifact_path(artifact_path)
-
-    # The LIST route (GET /mlflow-artifacts/artifacts) has no path converter, so it
-    # carries no artifact_path view arg — MLflow's client passes the location in the
-    # `path` QUERY parameter instead (http_artifact_repo.list_artifacts). Without this
-    # the experiment could not be resolved and resolution fell back to
-    # DEFAULT_MLFLOW_PERMISSION: fail-open on the shipped MANAGE default, and a 403 for
-    # the rightful owner under a hardened default (issue #283).
-    if query_path := request.args.get("path"):
-        return _experiment_id_from_artifact_path(query_path)
     return None
 
 
+def _artifact_path_segments(artifact_path: str) -> list:
+    """Decode exactly as MLflow does, then split into meaningful path components.
+
+    The decode lives HERE, in the one place both the experiment-id parser and the
+    root-scope check go through, so the two can never disagree about what a path says.
+    Keeping them separate is precisely how "%2e" slipped past the root check while
+    resolving to "." for MLflow — the same parse-it-two-ways bug this module exists to
+    prevent.
+    """
+    try:
+        artifact_path = validate_path_is_safe(artifact_path)
+    except Exception:
+        # Never fail the authorization check on a parsing helper; the raw value is still
+        # normalized below, and MLflow rejects anything it cannot normalize itself. Logged
+        # rather than silent so a future MLflow that changes this helper does not quietly
+        # degrade the check.
+        logger.warning("Could not normalize artifact path for authorization; parsing the raw value")
+    return [s for s in posixpath.normpath(artifact_path).split("/") if s and s != "."]
+
+
+def _first_artifacts_marker(segments: list):
+    """Index of the first component that is exactly ``artifacts``, or None.
+
+    Matched as a whole component so an artifact root merely CONTAINING the word (say
+    ``my-artifacts/``) is not mistaken for the run's artifact directory.
+    """
+    for index, segment in enumerate(segments):
+        if segment == "artifacts":
+            return index
+    return None
+
+
+def _artifact_request_targets_the_whole_root(artifact_path: str) -> bool:
+    """True when the path names the shared artifact ROOT rather than anything within it.
+
+    These are the shapes where MLflow acts on EVERY tenant's data at once, so they can
+    never be authorized by a per-experiment permission:
+
+      * "", ".", "%2e", "./.", ".//"   -> the proxy root itself. DELETE here reaches
+        ``delete_artifacts(".")``, which recursively empties every experiment's artifacts;
+        GET returns a listing that enumerates every experiment id on the server.
+      * "workspaces" / "workspaces/<ws>" -> a whole workspace, i.e. a whole tenant.
+
+    Deliberately narrow. A path that merely fails to RESOLVE (an artifact root with a
+    prefix we cannot decompose) is not root-scoped and must not be denied on that basis —
+    see _get_permission_from_experiment_id_artifact_proxy.
+    """
+    segments = _artifact_path_segments(artifact_path)
+    if not segments:
+        return True
+    return segments[0] == "workspaces" and len(segments) <= 2
+
+
+def _artifact_path_from_request():
+    """The artifact path this request acts on, or None if it names none.
+
+    The proxy routes carry it as a path converter; the LIST route
+    (GET /mlflow-artifacts/artifacts) has no converter and MLflow's client passes the
+    location in the ``path`` QUERY parameter instead (http_artifact_repo.list_artifacts).
+    """
+    view_args = request.view_args
+    if view_args and (artifact_path := view_args.get("artifact_path")):
+        return artifact_path
+    return request.args.get("path")
+
+
+def _get_experiment_id_from_view_args():
+    # The artifact proxy routes encode experiment_id inside the composite artifact_path
+    # (e.g. "123/artifacts/model.pkl"). This cannot be replaced with
+    # get_request_param("artifact_path") because we need to *parse* the experiment_id out
+    # of the value, not read the parameter verbatim.
+    artifact_path = _artifact_path_from_request()
+    if artifact_path is None:
+        return None
+    return _experiment_id_from_artifact_path(artifact_path)
+
+
 def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permission:
-    """Resolve the permission for an artifact-proxy request, failing CLOSED.
+    """Resolve the permission for an artifact-proxy request.
 
-    Every legitimate path under the artifact proxy names an experiment: the layout is
-    ``{experiment_id}/{run_id}/artifacts/...``, or ``workspaces/{workspace}/{experiment_id}/...``
-    when workspaces are enabled. A path that names none is either the shared multi-tenant
-    ROOT or malformed, and neither can be authorized by a per-experiment permission check.
+    Three outcomes, and the distinction between the last two matters a great deal:
 
-    This used to fall back to ``config.DEFAULT_MLFLOW_PERMISSION``, which ships as MANAGE —
-    so "I could not work out which experiment this is" meant "allow" in a default
-    deployment (issue #289). The consequences were not subtle:
+    1. The path names an experiment -> the permission store decides. This now works for a
+       prefixed artifact root as well, by anchoring on the "artifacts" marker rather than
+       on segment 0.
 
-      * ``DELETE /mlflow-artifacts/artifacts/.`` (also ``%2e``, ``./.``, ``.//``) reaches
-        ``delete_artifacts(".")``, which recursively empties EVERY experiment's artifacts.
-      * ``GET /mlflow-artifacts/artifacts`` with no ``path`` returns the whole root
-        listing, enumerating every experiment id on the server.
-      * With workspaces enabled, ``workspaces/<ws>`` names a whole tenant rather than one
-        experiment.
+    2. The path names the shared ROOT (``.``, ``%2e``, an empty ``?path=``, or
+       ``workspaces/<ws>``) -> DENY. MLflow acts on every tenant's data at once for these,
+       so no per-experiment permission can authorize them, and the previous fallback to
+       ``config.DEFAULT_MLFLOW_PERMISSION`` — which ships as MANAGE — made them ALLOW for
+       any authenticated user with no grants at all (issue #289). ``DELETE
+       /mlflow-artifacts/artifacts/.`` reaches ``delete_artifacts(".")`` and recursively
+       empties every experiment's artifacts; the GET enumerates every experiment id.
 
-    Denying does not break the real client: ``HttpArtifactRepository.list_artifacts``
-    always sends a ``path`` parameter, and for a proxied run repository that path starts
-    with the experiment id. Only an artifact URI that IS the proxy root produces an empty
-    one — a shape no per-experiment permission could ever legitimately grant.
+    3. The path names something we cannot decompose -> fall back to the configured
+       default, exactly as before. This branch exists because denying here caused a total
+       outage: an artifact root with a prefix this parser cannot break down (a
+       per-experiment ``artifact_location``, or a per-workspace ``default_artifact_root``,
+       which this plugin's own workspace API exposes) yields paths like
+       ``team-a/proj/{run_id}/artifacts``. Denying those refuses every read, write and
+       delete for the user who legitimately holds MANAGE, and because the store is never
+       consulted NO grant can restore access — only the admin bypass. Failing closed on a
+       path we merely failed to PARSE is not a security win, it is an outage.
 
-    NOTE this deliberately does NOT change ``DEFAULT_MLFLOW_PERMISSION`` globally; it stops
-    THIS resolver from consulting a global default it has no business applying. Other
-    resolvers are untouched.
+    So the fail-closed behaviour is deliberately scoped to the shapes that are provably
+    root-scoped, not to everything unresolvable. Case 3 is no worse than before this
+    change; cases 1 and 2 are both strictly better.
+
+    This does NOT change ``DEFAULT_MLFLOW_PERMISSION`` globally (see #80).
     """
     if experiment_id := _get_experiment_id_from_view_args():
         return effective_experiment_permission(experiment_id, username).permission
-    logger.warning("Denying artifact-proxy request: the path names no experiment, so no per-experiment permission applies")
-    return NO_PERMISSIONS
+
+    artifact_path = _artifact_path_from_request()
+    if artifact_path is None or _artifact_request_targets_the_whole_root(artifact_path):
+        logger.warning(
+            "Denying artifact-proxy request for %s: path %r targets the shared artifact root, " "which no per-experiment permission can grant",
+            username,
+            artifact_path,
+        )
+        return NO_PERMISSIONS
+
+    logger.warning(
+        "Could not resolve an experiment from artifact path %r; falling back to the configured "
+        "default permission. If this is a prefixed artifact root, the prefix is not one this "
+        "parser recognises.",
+        artifact_path,
+    )
+    return get_permission(config.DEFAULT_MLFLOW_PERMISSION)
 
 
 def validate_can_read_experiment(username: str) -> bool:
