@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Sequence
 
 from flask import request
@@ -126,24 +127,40 @@ def validate_gateway_proxy(username: str) -> bool:
     from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint, can_update_gateway_endpoint
 
     def _extract_gateway_name():
-        # Try query params first
-        if request.args:
-            for key in ("gateway_name", "gateway", "name", "target", "gateway_path"):
-                if key in request.args:
-                    return request.args.get(key)
-        # Try JSON body
-        if request.is_json:
-            data = request.get_json(silent=True) or {}
-            for key in ("gateway_name", "gateway", "name", "target", "gateway_path"):
-                if key in data:
-                    return data.get(key)
-        return None
+        """The endpoint MLflow will actually proxy to, or None.
+
+        Mirrors ``gateway_proxy_handler`` exactly (issue #288). MLflow reads::
+
+            args = request.args if request.method == "GET" else request.json
+            gateway_path = args.get("gateway_path")
+
+        so ``gateway_path`` is the ONLY field it consults, and the query string is
+        ignored on a POST. The previous scan searched gateway_name/gateway/name/target
+        before gateway_path, across query args *then* body, and diverged from that in
+        two independent ways: a POST carrying ``?name=<own>`` authorized the caller's
+        own endpoint while MLflow proxied to the body's ``gateway_path``; and a body
+        carrying both ``gateway_name`` and ``gateway_path`` authorized the former while
+        MLflow used the latter. Either one is a cross-tenant invocation of another
+        tenant's model endpoint.
+
+        MLflow then enforces the shape via ``_validate_gateway_path``: a POST path must
+        be ``gateway/{name}/invocations``, and a GET path must be exactly
+        ``api/2.0/endpoints`` (a list, which names no endpoint). So the endpoint name is
+        the middle segment on POST and absent by construction on GET.
+        """
+        args = request.args if request.method == "GET" else (request.get_json(silent=True) or {})
+        gateway_path = args.get("gateway_path")
+        if not gateway_path:
+            return None
+        match = re.fullmatch(r"gateway/([^/]+)/invocations", str(gateway_path).strip("/"))
+        return match.group(1) if match else None
 
     gateway_name = _extract_gateway_name()
 
     # Map HTTP method to required capability
     if request.method == "GET":
-        # USE
+        # USE. A GET is the endpoint listing, which names no single endpoint, so the
+        # any-endpoint fallback below is the check; after_request filters the results.
         if gateway_name:
             return can_use_gateway_endpoint(str(gateway_name), username)
         # Fallback: check if user has any gateway endpoint with use
@@ -153,5 +170,8 @@ def validate_gateway_proxy(username: str) -> bool:
         # POST/PUT/DELETE -> UPDATE required
         if gateway_name:
             return can_update_gateway_endpoint(str(gateway_name), username)
-        perms = store.list_gateway_endpoint_permissions(username)
-        return any(get_permission(p.permission).can_update for p in perms)
+        # No resolvable endpoint on a mutating proxy call. Previously this fell through
+        # to "does the user hold UPDATE on ANY endpoint", which let a caller with one
+        # endpoint of their own invoke a path naming somebody else's. MLflow rejects a
+        # missing or malformed gateway_path with 400 anyway, so refuse instead.
+        return False

@@ -49,63 +49,95 @@ class TestValidateCanCreateGateway:
 
 
 class TestValidateGatewayProxy:
-    """Tests for the gateway proxy request validator."""
+    """Tests for the gateway proxy request validator.
 
-    def test_get_with_named_endpoint_checks_use(self, flask_app: Flask) -> None:
-        """GET with an explicit gateway name should check can_use."""
+    These assert MLflow's ACTUAL contract (issue #288). ``gateway_proxy_handler`` reads
+
+        args = request.args if request.method == "GET" else request.json
+        gateway_path = args.get("gateway_path")
+
+    so ``gateway_path`` is the only field that decides where the request is proxied,
+    and the query string is ignored on a POST. ``_validate_gateway_path`` then requires
+    ``gateway/{name}/invocations`` for POST and exactly ``api/2.0/endpoints`` for GET.
+    The previous tests here asserted extraction from ``name``/``gateway``/``target``
+    query params, none of which MLflow ever reads — they codified the bypass rather
+    than a requirement.
+    """
+
+    def test_post_resolves_the_endpoint_from_gateway_path(self, flask_app: Flask) -> None:
+        """POST authorizes the endpoint named inside gateway_path."""
         with (
-            flask_app.test_request_context("/?name=my-endpoint", method="GET"),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint",
-                return_value=True,
-            ) as mock_use,
+            flask_app.test_request_context("/", method="POST", json={"gateway_path": "gateway/my-endpoint/invocations"}),
+            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=True) as mock_upd,
         ):
-            result = validate_gateway_proxy("alice")
-
-        assert result is True
-        mock_use.assert_called_once_with("my-endpoint", "alice")
-
-    def test_get_with_named_endpoint_denied(self, flask_app: Flask) -> None:
-        """GET denied when user cannot use the named endpoint."""
-        with (
-            flask_app.test_request_context("/?name=secret-ep", method="GET"),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint",
-                return_value=False,
-            ) as mock_use,
-        ):
-            result = validate_gateway_proxy("bob")
-
-        assert result is False
-        mock_use.assert_called_once_with("secret-ep", "bob")
-
-    def test_post_with_named_endpoint_checks_update(self, flask_app: Flask) -> None:
-        """POST with an explicit gateway name should check can_update."""
-        with (
-            flask_app.test_request_context("/?name=my-endpoint", method="POST"),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
-                return_value=True,
-            ) as mock_upd,
-        ):
-            result = validate_gateway_proxy("alice")
-
-        assert result is True
+            assert validate_gateway_proxy("alice") is True
         mock_upd.assert_called_once_with("my-endpoint", "alice")
 
-    def test_post_with_named_endpoint_denied(self, flask_app: Flask) -> None:
-        """POST denied when user cannot update the named endpoint."""
+    def test_post_denied_when_user_cannot_update_that_endpoint(self, flask_app: Flask) -> None:
         with (
-            flask_app.test_request_context("/?name=locked-ep", method="POST"),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
-                return_value=False,
-            ) as mock_upd,
+            flask_app.test_request_context("/", method="POST", json={"gateway_path": "gateway/locked-ep/invocations"}),
+            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=False) as mock_upd,
         ):
-            result = validate_gateway_proxy("bob")
-
-        assert result is False
+            assert validate_gateway_proxy("bob") is False
         mock_upd.assert_called_once_with("locked-ep", "bob")
+
+    def test_post_ignores_the_query_string(self, flask_app: Flask) -> None:
+        """THE #288 BYPASS: MLflow ignores the query string entirely on a POST.
+
+        Authorizing a name from there let a caller point the query at an endpoint they
+        own while MLflow proxied to the victim named in the body.
+        """
+        with (
+            flask_app.test_request_context(
+                "/?name=my-own&gateway=my-own&target=my-own&gateway_path=gateway/my-own/invocations",
+                method="POST",
+                json={"gateway_path": "gateway/VICTIM/invocations"},
+            ),
+            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=True) as mock_upd,
+        ):
+            validate_gateway_proxy("alice")
+        mock_upd.assert_called_once_with("VICTIM", "alice")
+
+    def test_post_ignores_other_body_keys_in_favour_of_gateway_path(self, flask_app: Flask) -> None:
+        """Second #288 vector: right source, wrong field. MLflow reads gateway_path only."""
+        with (
+            flask_app.test_request_context("/", method="POST", json={"gateway_name": "my-own", "name": "my-own", "gateway_path": "gateway/VICTIM/invocations"}),
+            patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=True) as mock_upd,
+        ):
+            validate_gateway_proxy("alice")
+        mock_upd.assert_called_once_with("VICTIM", "alice")
+
+    @pytest.mark.parametrize("body", [{}, {"gateway_path": ""}, {"gateway_path": "not/a/valid/path"}, {"gateway_path": "gateway//invocations"}])
+    def test_post_denies_when_no_endpoint_can_be_resolved(self, flask_app: Flask, body) -> None:
+        """Unresolvable must mean deny, never "any endpoint the caller happens to own".
+
+        The old any-endpoint fallback let a caller holding UPDATE on one endpoint of
+        their own proxy a request naming somebody else's. MLflow rejects a missing or
+        malformed gateway_path with 400 regardless.
+        """
+        # The user MUST hold UPDATE on an endpoint of their own here, otherwise the
+        # assertion passes whether or not the fallback exists — the fallback would find
+        # nothing to grant on. This is exactly the state that made the old code unsafe.
+        perm = MagicMock()
+        perm.permission = "MANAGE"
+        with (
+            flask_app.test_request_context("/", method="POST", json=body),
+            patch("mlflow_oidc_auth.store.store") as mock_store,
+        ):
+            mock_store.list_gateway_endpoint_permissions.return_value = [perm]
+            assert validate_gateway_proxy("alice") is False
+
+    def test_get_names_no_endpoint_and_falls_back_to_any_use(self, flask_app: Flask) -> None:
+        """A GET is the endpoint listing; _validate_gateway_path forbids naming one."""
+        perm = MagicMock()
+        perm.permission = "EDIT"
+        with (
+            flask_app.test_request_context("/?gateway_path=api/2.0/endpoints", method="GET"),
+            patch("mlflow_oidc_auth.store.store") as mock_store,
+        ):
+            mock_store.list_gateway_endpoint_permissions.return_value = [perm]
+            assert validate_gateway_proxy("alice") is True
+        mock_store.list_gateway_endpoint_permissions.assert_called_once_with("alice")
 
     def test_get_fallback_any_gateway_with_use(self, flask_app: Flask) -> None:
         """GET without explicit name falls back to listing all endpoint permissions."""
@@ -132,106 +164,6 @@ class TestValidateGatewayProxy:
             result = validate_gateway_proxy("nobody")
 
         assert result is False
-
-    def test_post_fallback_any_gateway_with_update(self, flask_app: Flask) -> None:
-        """POST without explicit name checks update capability on all endpoint permissions."""
-        perm = MagicMock()
-        perm.permission = "MANAGE"
-
-        with (
-            flask_app.test_request_context("/", method="POST"),
-            patch("mlflow_oidc_auth.store.store") as mock_store,
-        ):
-            mock_store.list_gateway_endpoint_permissions.return_value = [perm]
-            result = validate_gateway_proxy("alice")
-
-        assert result is True
-
-    def test_post_fallback_read_only_denied(self, flask_app: Flask) -> None:
-        """POST fallback denied when user only has READ permission."""
-        perm = MagicMock()
-        perm.permission = "READ"
-
-        with (
-            flask_app.test_request_context("/", method="POST"),
-            patch("mlflow_oidc_auth.store.store") as mock_store,
-        ):
-            mock_store.list_gateway_endpoint_permissions.return_value = [perm]
-            result = validate_gateway_proxy("alice")
-
-        assert result is False
-
-    def test_extracts_gateway_name_from_query_param_gateway(self, flask_app: Flask) -> None:
-        """Should extract gateway name from 'gateway' query param."""
-        with (
-            flask_app.test_request_context("/?gateway=gw-1", method="GET"),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint",
-                return_value=True,
-            ) as mock_use,
-        ):
-            validate_gateway_proxy("alice")
-
-        mock_use.assert_called_once_with("gw-1", "alice")
-
-    def test_extracts_gateway_name_from_query_param_target(self, flask_app: Flask) -> None:
-        """Should extract gateway name from 'target' query param."""
-        with (
-            flask_app.test_request_context("/?target=tgt-1", method="GET"),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_use_gateway_endpoint",
-                return_value=True,
-            ) as mock_use,
-        ):
-            validate_gateway_proxy("alice")
-
-        mock_use.assert_called_once_with("tgt-1", "alice")
-
-    def test_extracts_gateway_name_from_json_body(self, flask_app: Flask) -> None:
-        """Should extract gateway name from JSON body when not in query params."""
-        with (
-            flask_app.test_request_context(
-                "/",
-                method="POST",
-                json={"name": "json-ep"},
-                content_type="application/json",
-            ),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
-                return_value=True,
-            ) as mock_upd,
-        ):
-            validate_gateway_proxy("alice")
-
-        mock_upd.assert_called_once_with("json-ep", "alice")
-
-    def test_delete_checks_update(self, flask_app: Flask) -> None:
-        """DELETE should check can_update (same as POST/PUT)."""
-        with (
-            flask_app.test_request_context("/?name=ep-del", method="DELETE"),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
-                return_value=True,
-            ) as mock_upd,
-        ):
-            result = validate_gateway_proxy("alice")
-
-        assert result is True
-        mock_upd.assert_called_once_with("ep-del", "alice")
-
-    def test_put_checks_update(self, flask_app: Flask) -> None:
-        """PUT should check can_update."""
-        with (
-            flask_app.test_request_context("/?name=ep-put", method="PUT"),
-            patch(
-                "mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint",
-                return_value=True,
-            ) as mock_upd,
-        ):
-            result = validate_gateway_proxy("alice")
-
-        assert result is True
-        mock_upd.assert_called_once_with("ep-put", "alice")
 
 
 # ---------------------------------------------------------------------------
