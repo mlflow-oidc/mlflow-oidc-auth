@@ -116,7 +116,10 @@ class TestAppConfig(unittest.TestCase):
         config = AppConfig()
 
         # Test default values
-        self.assertEqual(config.DEFAULT_MLFLOW_PERMISSION, "MANAGE")
+        # Deny by default (#293): a resource with no user, group, regex or group-regex
+        # grant is not reachable. This shipped as MANAGE, which made a fresh install
+        # open by default. Setting it to MANAGE explicitly is still supported.
+        self.assertEqual(config.DEFAULT_MLFLOW_PERMISSION, "NO_PERMISSIONS")
         self.assertIsNotNone(config.SECRET_KEY)
         self.assertEqual(len(config.SECRET_KEY), 32)  # secrets.token_hex(16) produces 32 chars
         self.assertEqual(config.OIDC_USERS_DB_URI, "sqlite:///auth.db")

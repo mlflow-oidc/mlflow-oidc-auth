@@ -183,7 +183,7 @@ Key points:
 PERMISSION_SOURCE_ORDER=user,group,regex,group-regex
 
 # Default permission when no explicit permission found (workspaces disabled)
-DEFAULT_MLFLOW_PERMISSION=MANAGE
+DEFAULT_MLFLOW_PERMISSION=NO_PERMISSIONS
 ```
 
 ### Common Configurations
