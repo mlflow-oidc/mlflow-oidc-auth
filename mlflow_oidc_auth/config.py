@@ -200,6 +200,50 @@ class AppConfig:
         # API documentation settings
         self.ENABLE_API_DOCS = config_manager.get_bool("ENABLE_API_DOCS", default=False)
 
+        # Runs last: it reads settings loaded above.
+        self._warn_if_resource_creation_restriction_is_inert()
+
+    def _warn_if_resource_creation_restriction_is_inert(self) -> None:
+        """Warn when RESTRICT_RESOURCE_CREATION is enabled but cannot deny anything.
+
+        The creation validators require EDIT+ on the resource NAME, resolved from name
+        regex and group-regex rules with a workspace fallback. When workspaces are off and
+        no regex matches, that resolution lands on DEFAULT_MLFLOW_PERMISSION — which ships
+        as MANAGE, and MANAGE grants can_update. So enabling the flag on a default install
+        denies nothing at all: every user can still create every experiment and registered
+        model, exactly as before.
+
+        A flag that silently does nothing is worse than no flag, because operators
+        reasonably read "RESTRICT_RESOURCE_CREATION=true" as "creation is restricted" and
+        stop looking. This is documented in docs/permissions.md, and the documentation
+        evidently was not enough — hence a startup warning (issue #293).
+
+        Warn rather than refuse to start: this combination is not dangerous in itself, and
+        refusing would take down running deployments on upgrade over a configuration that
+        was already ineffective.
+        """
+        if not self.RESTRICT_RESOURCE_CREATION or self.MLFLOW_ENABLE_WORKSPACES:
+            return
+
+        # Imported here: mlflow_oidc_auth.permissions imports this module, so a top-level
+        # import would be circular.
+        from mlflow_oidc_auth.permissions import get_permission
+
+        try:
+            default_permission = get_permission(self.DEFAULT_MLFLOW_PERMISSION)
+        except Exception:
+            # An invalid value is reported elsewhere; nothing useful to say here.
+            return
+
+        if default_permission.can_update:
+            logger.warning(
+                f"RESTRICT_RESOURCE_CREATION is enabled but has no effect: workspaces are disabled and "
+                f"DEFAULT_MLFLOW_PERMISSION={self.DEFAULT_MLFLOW_PERMISSION} already grants create rights, "
+                "so a name matching no regex rule can still be created by anyone. "
+                "Set DEFAULT_MLFLOW_PERMISSION below EDIT (e.g. NO_PERMISSIONS) so only regex or "
+                "group-regex matches may create, or enable workspaces and use the workspace creation gate."
+            )
+
     def refresh(self) -> None:
         """Reload configuration from all providers.
 
