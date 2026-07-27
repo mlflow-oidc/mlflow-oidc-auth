@@ -8,12 +8,14 @@ experiment, model, and prompt permissions at the group level.
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
+from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
+    CreateGroupRequest,
     ExperimentPermission,
     ExperimentRegexCreate,
     GatewayPermission,
@@ -57,7 +59,7 @@ group_permissions_router = APIRouter(
     },
 )
 
-LIST_GROUPS = ""
+GROUPS_ROOT = ""
 
 GROUP_EXPERIMENT_PERMISSIONS = "/{group_name:path}/experiments"
 GROUP_EXPERIMENT_PERMISSION_DETAIL = "/{group_name:path}/experiments/{experiment_id}"
@@ -103,7 +105,7 @@ GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/se
 
 
 @group_permissions_router.get(
-    LIST_GROUPS,
+    GROUPS_ROOT,
     summary="List groups",
     description="Retrieves a list of all groups in the system.",
     response_model=GroupListResponse,
@@ -139,6 +141,66 @@ async def list_groups(username: str = Depends(get_username)) -> GroupListRespons
     except Exception as e:
         logger.error(f"Error listing groups: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve groups")
+
+
+@group_permissions_router.post(
+    GROUPS_ROOT,
+    summary="Create a group",
+    description="Creates a group in the system. Only admins can create groups. Creating a group that already exists is a no-op.",
+    tags=["groups"],
+)
+async def create_group(
+    group_request: CreateGroupRequest = Body(..., description="Group creation details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """
+    Create a group in the system.
+
+    Only administrators can create groups. Groups are otherwise created from the identity
+    provider claims when a member signs in, which means a group cannot be granted
+    permissions before its first login. This endpoint creates the group up front so that
+    permission provisioning can be automated.
+
+    Parameters:
+    -----------
+    group_request : CreateGroupRequest
+        The group creation request containing the group name.
+    admin_username : str
+        The authenticated admin username (injected by dependency).
+
+    Returns:
+    --------
+    JSONResponse
+        A JSON response reporting whether the group was created or already existed.
+
+    Raises:
+    -------
+    HTTPException
+        If the group name is empty or there is an error creating the group.
+    """
+    group_name = group_request.group_name.strip()
+    if not group_name:
+        raise HTTPException(status_code=400, detail="Group name must not be empty")
+
+    try:
+        if group_name in store.get_groups():
+            return JSONResponse(content={"message": f"Group {group_name} already exists"})
+
+        # Same idempotent upsert the login flow uses, so a group created concurrently
+        # between the lookup above and this call is not an error.
+        store.populate_groups([group_name])
+        emit_audit_event(
+            "group.create",
+            actor=admin_username,
+            resource_type="group",
+            resource_id=group_name,
+        )
+
+        return JSONResponse(content={"message": f"Group {group_name} successfully created"}, status_code=201)
+
+    except Exception as e:
+        logger.error(f"Error creating group: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create group")
 
 
 @group_permissions_router.get(
