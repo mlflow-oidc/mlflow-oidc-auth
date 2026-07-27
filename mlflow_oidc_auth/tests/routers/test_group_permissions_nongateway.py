@@ -116,6 +116,50 @@ class TestListGroups:
 
 
 # ========================================================================================
+# GROUP CREATION
+# ========================================================================================
+
+
+@pytest.mark.usefixtures("authenticated_session", "override_admin")
+class TestCreateGroup:
+    """Tests for create_group endpoint."""
+
+    def test_create_group_success(self, authenticated_client, mock_store):
+        """Test creating a group that does not exist yet."""
+        mock_store.get_groups.return_value = ["devs"]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 201
+        mock_store.populate_groups.assert_called_once_with(["analysts"])
+
+    def test_create_group_already_exists(self, authenticated_client, mock_store):
+        """Test creating a group that already exists leaves it untouched."""
+        mock_store.get_groups.return_value = ["devs"]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "devs"})
+        assert resp.status_code == 200
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_strips_surrounding_whitespace(self, authenticated_client, mock_store):
+        """Test the group name is trimmed before it reaches the store."""
+        mock_store.get_groups.return_value = []
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "  analysts  "})
+        assert resp.status_code == 201
+        mock_store.populate_groups.assert_called_once_with(["analysts"])
+
+    def test_create_group_blank_name(self, authenticated_client, mock_store):
+        """Test rejecting a group name that is empty once trimmed."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "   "})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_error(self, authenticated_client, mock_store):
+        """Test error handling when group creation fails."""
+        mock_store.get_groups.return_value = []
+        mock_store.populate_groups.side_effect = Exception("DB error")
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 500
+
+
+# ========================================================================================
 # GROUP USERS
 # ========================================================================================
 

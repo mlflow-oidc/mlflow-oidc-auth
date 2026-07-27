@@ -5,6 +5,7 @@ This router handles permission management endpoints for groups, including
 experiment, model, and prompt permissions at the group level.
 """
 
+import unicodedata
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
@@ -15,6 +16,7 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
+    CreateGroupRequest,
     ExperimentPermission,
     ExperimentRegexCreate,
     GatewayPermission,
@@ -37,6 +39,7 @@ from mlflow_oidc_auth.models import (
     GroupExperimentRegexPermissionItem,
     StatusMessageResponse,
 )
+from mlflow_oidc_auth.ownership import MANUAL
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
@@ -58,9 +61,44 @@ group_permissions_router = APIRouter(
     },
 )
 
-LIST_GROUPS = ""
+GROUPS_ROOT = ""
 # Matched before the "/{group_name:path}/..." routes only because none of them is a bare name.
 LIST_GROUP_DETAILS = "/details"
+
+#: Same bound SCIM enforces on a group's ``displayName`` (``routers/scim.py``): the two ways of
+#: creating a group must accept the same names.
+MAX_GROUP_NAME_LENGTH = 255
+#: A group name becomes a path segment (this router's ``{group_name:path}`` and SCIM's
+#: ``/Groups/{id}``), so none of these may appear in it.
+_GROUP_NAME_RESERVED_CHARS = frozenset("/?#%")
+
+
+def _validate_group_name(value: str) -> str:
+    """Validate and normalize a group name for the admin create-group endpoint.
+
+    Mirrors the SCIM ``displayName`` validation in ``routers/scim.py`` so a group created through
+    either path is held to the same rule: stripped, non-empty, at most
+    :data:`MAX_GROUP_NAME_LENGTH` characters, no control or non-printing characters, valid
+    Unicode, and none of ``/ ? # %``.
+
+    :param value: The raw, client-supplied group name.
+    :return: The stripped, validated group name.
+    :raises HTTPException: With status 400 if the name fails any of these checks.
+    """
+    name = value.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Group name must not be empty")
+    if len(name) > MAX_GROUP_NAME_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Group name must be at most {MAX_GROUP_NAME_LENGTH} characters")
+    if any(unicodedata.category(ch).startswith("C") for ch in name):
+        raise HTTPException(status_code=400, detail="Group name must not contain control or non-printing characters")
+    try:
+        name.encode("utf-8")
+    except UnicodeError:
+        raise HTTPException(status_code=400, detail="Group name is not valid Unicode")
+    if any(ch in _GROUP_NAME_RESERVED_CHARS for ch in name):
+        raise HTTPException(status_code=400, detail="Group name must not contain '/', '?', '#' or '%'")
+    return name
 
 GROUP_EXPERIMENT_PERMISSIONS = "/{group_name:path}/experiments"
 GROUP_EXPERIMENT_PERMISSION_DETAIL = "/{group_name:path}/experiments/{experiment_id}"
@@ -106,7 +144,7 @@ GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/se
 
 
 @group_permissions_router.get(
-    LIST_GROUPS,
+    GROUPS_ROOT,
     summary="List groups",
     description="Retrieves a list of all groups in the system.",
     response_model=GroupListResponse,
@@ -142,6 +180,67 @@ async def list_groups(username: str = Depends(get_username)) -> GroupListRespons
     except Exception as e:
         logger.error(f"Error listing groups: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve groups")
+
+
+@group_permissions_router.post(
+    GROUPS_ROOT,
+    summary="Create a group",
+    description="Creates a group in the system. Only admins can create groups. Creating a group that already exists is a no-op.",
+    tags=["groups"],
+)
+async def create_group(
+    group_request: CreateGroupRequest = Body(..., description="Group creation details"),
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """
+    Create a group in the system.
+
+    Only administrators can create groups. Groups are otherwise created from the identity
+    provider claims when a member signs in, which means a group cannot be granted
+    permissions before its first login. This endpoint creates the group up front so that
+    permission provisioning can be automated.
+
+    Parameters:
+    -----------
+    group_request : CreateGroupRequest
+        The group creation request containing the group name.
+    admin_username : str
+        The authenticated admin username (injected by dependency).
+
+    Returns:
+    --------
+    JSONResponse
+        A JSON response reporting whether the group was created or already existed.
+
+    Raises:
+    -------
+    HTTPException
+        If the group name is invalid or there is an error creating the group.
+    """
+    group_name = _validate_group_name(group_request.group_name)
+
+    try:
+        if group_name in store.get_groups():
+            return JSONResponse(content={"message": f"Group {group_name} already exists"})
+
+        # Same idempotent, ownership-aware upsert the login flow uses (GroupRepository.create_groups):
+        # a group created concurrently between the lookup above and this call is not an error, and a
+        # group already owned by another source (e.g. SCIM) keeps that ownership untouched.
+        store.populate_groups([group_name], written_by=MANUAL)
+        emit_audit_event(
+            "group.create",
+            actor=admin_username,
+            resource_type="group",
+            resource_id=group_name,
+        )
+
+        return JSONResponse(content={"message": f"Group {group_name} successfully created"}, status_code=201)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating group: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create group")
 
 
 @group_permissions_router.get(
