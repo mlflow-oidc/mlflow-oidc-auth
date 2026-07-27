@@ -61,7 +61,13 @@ class AppConfig:
     def __init__(self) -> None:
         """Initialize configuration from the provider chain."""
         # Permission settings
-        self.DEFAULT_MLFLOW_PERMISSION = config_manager.get("DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        # Deny by default (issue #293). A resource with no user, group, regex or
+        # group-regex grant is not reachable. This shipped as MANAGE, which made a fresh
+        # install open by default — every authenticated user could read, edit and delete
+        # every experiment and model until grants existed — and silently defeated
+        # RESTRICT_RESOURCE_CREATION. Set this to MANAGE explicitly to keep the old
+        # behaviour; see "Migrating to deny-by-default" in docs/permissions.md.
+        self.DEFAULT_MLFLOW_PERMISSION = config_manager.get("DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
         # Opt-in: enforce permission checks on experiment/registered-model creation.
         # When enabled, a user needs EDIT+ (via name regex / group-regex, with a workspace
         # fallback) to create. Off by default, matching upstream MLflow (anyone can create).
