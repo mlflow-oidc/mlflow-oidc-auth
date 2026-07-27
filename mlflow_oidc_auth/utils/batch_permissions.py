@@ -24,6 +24,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, compare_permissions, get_permission
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.permissions import EXPERIMENT, PROMPT, REGISTERED_MODEL, record_permission_fallback
 
 logger = get_logger()
 
@@ -196,6 +197,18 @@ def _resolve_permission_from_context(
     return PermissionResult(get_permission(config.DEFAULT_MLFLOW_PERMISSION), "fallback")
 
 
+def _record_if_fallback(result: PermissionResult, resource_type: str, resource_id: str, username: str) -> PermissionResult:
+    """Surface a batch-path fallback the same way the single-resource path does.
+
+    The batch resolvers bypass resolve_permission entirely (that is their point — no DB
+    queries), so without this the listing endpoints would grant access from the configured
+    default with no record of it anywhere (issue #293).
+    """
+    if result.kind == "fallback":
+        record_permission_fallback(resource_type, resource_id, username, result.permission)
+    return result
+
+
 def _apply_workspace_fallback(result: PermissionResult, username: str, ctx: Optional["UserPermissionContext"] = None) -> PermissionResult:
     """Apply workspace-level permission fallback when no resource-level permission exists.
 
@@ -297,6 +310,7 @@ def resolve_experiment_permission_from_context(
         user_regex,
         group_regex,
     )
+    result = _record_if_fallback(result, EXPERIMENT, experiment_id, ctx.username)
     return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
@@ -322,6 +336,7 @@ def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name
         user_regex,
         group_regex,
     )
+    result = _record_if_fallback(result, REGISTERED_MODEL, model_name, ctx.username)
     return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
@@ -351,6 +366,7 @@ def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_na
         user_regex,
         group_regex,
     )
+    result = _record_if_fallback(result, PROMPT, prompt_name, ctx.username)
     return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
