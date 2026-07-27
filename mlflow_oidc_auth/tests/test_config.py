@@ -348,9 +348,13 @@ class TestAppConfig(unittest.TestCase):
 
         with patch("mlflow_oidc_auth.config.logger") as mock_logger:
             config = AppConfig()
-            mock_logger.warning.assert_called_once()
-            warning_msg = mock_logger.warning.call_args[0][0]
-            self.assertIn("SECRET_KEY is not configured", warning_msg)
+            # Assert on THIS warning, not on the total count. AppConfig emits other
+            # startup warnings (an inert RESTRICT_RESOURCE_CREATION, a permissive
+            # DEFAULT_MLFLOW_PERMISSION), and whether they fire depends on the ambient
+            # environment — a local .env can silence them while CI, which has none,
+            # sees them. Counting warnings made this test pass locally and fail in CI.
+            secret_key_warnings = [call.args[0] for call in mock_logger.warning.call_args_list if "SECRET_KEY is not configured" in call.args[0]]
+            self.assertEqual(len(secret_key_warnings), 1)
             # Should still generate a usable key
             self.assertEqual(len(config.SECRET_KEY), 32)
 
@@ -359,7 +363,8 @@ class TestAppConfig(unittest.TestCase):
         with patch.dict(os.environ, {"SECRET_KEY": "my-production-secret"}):
             with patch("mlflow_oidc_auth.config.logger") as mock_logger:
                 config = AppConfig()
-                mock_logger.warning.assert_not_called()
+                secret_key_warnings = [call.args[0] for call in mock_logger.warning.call_args_list if "SECRET_KEY" in call.args[0]]
+                self.assertEqual(secret_key_warnings, [], "a configured SECRET_KEY must not warn about SECRET_KEY")
                 self.assertEqual(config.SECRET_KEY, "my-production-secret")
 
     def test_session_cookie_defaults(self):

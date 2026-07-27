@@ -66,3 +66,42 @@ def test_the_check_runs_during_config_construction():
         config_module.AppConfig()
 
     check.assert_called_once()
+
+
+class TestPermissiveDefaultAnnouncement:
+    """An open-by-default deployment must be told the default is changing (#293)."""
+
+    @staticmethod
+    def _warn_for(default_permission, workspaces):
+        stub = MagicMock()
+        stub.MLFLOW_ENABLE_WORKSPACES = workspaces
+        stub.DEFAULT_MLFLOW_PERMISSION = default_permission
+
+        with patch.object(config_module, "logger") as logger:
+            config_module.AppConfig._warn_if_default_permission_is_permissive(stub)
+
+        return logger.warning.call_args.args[0] if logger.warning.called else None
+
+    @pytest.mark.parametrize("default_permission", ["MANAGE", "EDIT", "READ"])
+    def test_a_granting_default_is_announced(self, default_permission):
+        warning = self._warn_for(default_permission, workspaces=False)
+
+        assert warning is not None
+        assert "becomes NO_PERMISSIONS in the next major version" in warning
+        assert "docs/permissions.md" in warning, "the warning must point at the migration"
+
+    def test_a_denying_default_is_already_migrated(self):
+        assert self._warn_for("NO_PERMISSIONS", workspaces=False) is None
+
+    def test_workspace_deployments_are_unaffected(self):
+        """With workspaces, workspace permissions take the fallback role entirely."""
+        assert self._warn_for("MANAGE", workspaces=True) is None
+
+    def test_an_unparseable_default_is_reported_elsewhere(self):
+        assert self._warn_for("NOT_A_PERMISSION", workspaces=False) is None
+
+    def test_the_announcement_runs_during_config_construction(self):
+        with patch.object(config_module.AppConfig, "_warn_if_default_permission_is_permissive") as check:
+            config_module.AppConfig()
+
+        check.assert_called_once()
