@@ -200,8 +200,48 @@ class AppConfig:
         # API documentation settings
         self.ENABLE_API_DOCS = config_manager.get_bool("ENABLE_API_DOCS", default=False)
 
-        # Runs last: it reads settings loaded above.
+        # Run last: these read settings loaded above.
         self._warn_if_resource_creation_restriction_is_inert()
+        self._warn_if_default_permission_is_permissive()
+
+    def _warn_if_default_permission_is_permissive(self) -> None:
+        """Announce that an open-by-default deployment will change on the next major.
+
+        DEFAULT_MLFLOW_PERMISSION decides access when a resource has no user, group, regex
+        or group-regex grant. Shipping MANAGE means a fresh install is open by default:
+        every authenticated user can read, edit and delete every experiment and model
+        until grants exist. That default is changing to NO_PERMISSIONS (issue #293), which
+        is a breaking change for anyone relying on it.
+
+        Warned at startup so the change is not a surprise on upgrade, and so operators can
+        act on it while the current release still behaves permissively. The counters added
+        alongside this (get_permission_fallback_counts) show how much access is actually
+        coming from the fallback in a running deployment.
+
+        Silent when the deployment is unaffected: a default that grants nothing, or
+        workspaces enabled — with workspaces, workspace permissions take the fallback role
+        and the global default is not consulted as a resource fallback at all.
+        """
+        if self.MLFLOW_ENABLE_WORKSPACES:
+            return
+
+        from mlflow_oidc_auth.permissions import get_permission
+
+        try:
+            default_permission = get_permission(self.DEFAULT_MLFLOW_PERMISSION)
+        except Exception:
+            return
+
+        if not default_permission.can_read:
+            return
+
+        logger.warning(
+            f"DEFAULT_MLFLOW_PERMISSION={self.DEFAULT_MLFLOW_PERMISSION} grants access to every resource that has no "
+            "explicit permission, so any authenticated user can reach resources nobody granted them. "
+            "This default becomes NO_PERMISSIONS in the next major version (issue #293). "
+            "See docs/permissions.md 'Migrating to deny-by-default' — set the value explicitly now to pin "
+            "current behaviour, or create the grants your users rely on before upgrading."
+        )
 
     def _warn_if_resource_creation_restriction_is_inert(self) -> None:
         """Warn when RESTRICT_RESOURCE_CREATION is enabled but cannot deny anything.

@@ -202,6 +202,68 @@ PERMISSION_SOURCE_ORDER=regex,group-regex,user,group
 DEFAULT_MLFLOW_PERMISSION=READ
 ```
 
+## Migrating to deny-by-default
+
+> **The shipped `DEFAULT_MLFLOW_PERMISSION` changes from `MANAGE` to `NO_PERMISSIONS` in the next major version** ([#293](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/293)).
+
+### What changes, and for whom
+
+`DEFAULT_MLFLOW_PERMISSION` decides access when a resource has **no** user, group, regex or group-regex grant. Today it ships as `MANAGE`, so a fresh install is open by default: every authenticated user can read, edit and delete every experiment and registered model until grants exist.
+
+You are affected only if **all** of the following hold:
+
+- you do **not** set `DEFAULT_MLFLOW_PERMISSION` explicitly, **and**
+- workspaces are disabled (`MLFLOW_ENABLE_WORKSPACES=false`), **and**
+- some users reach resources through the fallback rather than through a grant
+
+With workspaces enabled the global default is not used as a resource fallback at all — workspace permissions take that role — so workspace deployments are unaffected.
+
+### Pinning current behaviour
+
+If you want no change at all, set the value explicitly before upgrading:
+
+```bash
+DEFAULT_MLFLOW_PERMISSION=MANAGE
+```
+
+This is supported and will keep working. The change is to the *default*, not to the option.
+
+### Migrating properly (recommended)
+
+**1. Find out how much access is coming from the fallback.** Every permission decision made by the default is logged, and grants are warned about:
+
+```
+WARNING DEFAULT_MLFLOW_PERMISSION granted MANAGE on experiment=12 to alice
+        because no explicit permission exists (1 such grants for experiment so far)
+```
+
+Warnings are throttled (occurrences 1, 10, 100, 1000, …), so treat them as a signal to investigate, not a count. Enable `DEBUG` logging to see every occurrence with its resource and user.
+
+**2. Create the grants those users actually need.** For each resource that showed up, grant explicitly — to a user, a group, or a name-regex rule. Group and regex grants scale better than per-user ones:
+
+```bash
+# via the UI:  Permissions → Experiments / Models
+# or the REST API under /oidc/api/
+```
+
+**3. Verify with the default already lowered**, in staging:
+
+```bash
+DEFAULT_MLFLOW_PERMISSION=NO_PERMISSIONS
+```
+
+Anything still reachable is reachable because of a real grant. Anything that breaks was relying on the fallback and needs a grant from step 2.
+
+**4. Upgrade.** With the value set explicitly, or with the grants in place, the new default is a no-op for you.
+
+### If you upgrade without migrating
+
+Users lose access to resources they had no explicit grant for, and see `403`. Nothing is deleted and no permission records change — set `DEFAULT_MLFLOW_PERMISSION=MANAGE` to restore the previous behaviour immediately while you work through the steps above.
+
+### Why this is changing
+
+Open-by-default is a reasonable *adoption* choice — install the plugin and nothing breaks — but it is the wrong default for a plugin whose purpose is multi-tenant isolation. It also silently defeats `RESTRICT_RESOURCE_CREATION`: with a permissive default, that flag denies nothing (the plugin now warns at startup when this combination is configured).
+
 ## Examples
 
 ### Direct User Permission
