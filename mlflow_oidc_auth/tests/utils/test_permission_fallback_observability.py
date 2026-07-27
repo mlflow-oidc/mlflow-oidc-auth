@@ -63,8 +63,10 @@ class TestFallbackRecording:
         captured_logger.warning.assert_called_once()
         message = captured_logger.warning.call_args.args[0]
         assert "DEFAULT_MLFLOW_PERMISSION granted MANAGE" in message
-        assert "experiment=12" in message
+        assert "experiment" in message, "the resource TYPE tells the operator where to look"
         assert "alice" in message
+        # The resource id is deliberately absent — see TestResourceIdsStayOutOfLogs.
+        assert "12" not in message.replace("#293", "")
 
     def test_a_denying_fallback_never_warns(self, captured_logger):
         """No access was handed out, so there is nothing for an operator to act on."""
@@ -124,3 +126,40 @@ class TestResolutionPathsRecord:
 
         assert result.kind == "fallback", "precondition: an empty context must fall back"
         assert P.get_permission_fallback_counts() == {"registered_model": 1}
+
+
+class TestResourceIdsStayOutOfLogs:
+    """Identifiers are recorded in-process, not written to the log (CodeQL, #294).
+
+    One resource type here is the gateway SECRET, whose id is the secret's name. Not its
+    value — but a name like "openai-prod-key" still should not land in a log aggregator by
+    default, and an operator can get the same detail on demand.
+    """
+
+    def test_the_warning_does_not_contain_the_resource_id(self, captured_logger):
+        P.record_permission_fallback("gateway_secret", "openai-prod-key", "alice", get_permission("MANAGE"))
+
+        message = captured_logger.warning.call_args.args[0]
+        assert "openai-prod-key" not in message
+        assert "gateway_secret" in message, "the resource TYPE is still actionable"
+
+    def test_the_debug_line_does_not_contain_the_resource_id(self, captured_logger):
+        P.record_permission_fallback("gateway_secret", "openai-prod-key", "alice", get_permission("MANAGE"))
+
+        rendered = " ".join(str(part) for call in captured_logger.debug.call_args_list for part in call.args)
+        assert "openai-prod-key" not in rendered
+
+    def test_ids_are_available_on_demand(self):
+        P.record_permission_fallback("experiment", "12", "alice", get_permission("MANAGE"))
+        P.record_permission_fallback("experiment", "13", "alice", get_permission("MANAGE"))
+        P.record_permission_fallback("experiment", "12", "bob", get_permission("MANAGE"))
+
+        assert P.get_permission_fallback_samples() == {"experiment": ["12", "13"]}, "deduplicated, in order"
+
+    def test_the_sample_is_bounded(self):
+        """Never drained, and keyed on caller-supplied ids — unbounded would be a leak."""
+        for i in range(500):
+            P.record_permission_fallback("experiment", f"exp-{i}", "alice", get_permission("MANAGE"))
+
+        assert len(P.get_permission_fallback_samples()["experiment"]) == P._FALLBACK_SAMPLE_LIMIT
+        assert P.get_permission_fallback_counts() == {"experiment": 500}, "counting is not capped"

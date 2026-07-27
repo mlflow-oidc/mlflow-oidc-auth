@@ -329,6 +329,12 @@ _FALLBACK_COUNTS: Dict[str, int] = {}
 _FALLBACK_WARN_AT = frozenset((1, 10, 100, 1_000))
 _FALLBACK_WARN_EVERY = 10_000
 
+# A bounded, in-process sample of which resources were reached through the default.
+# Bounded because it is never drained: an unbounded set keyed on caller-supplied ids
+# would be a memory leak on a busy server.
+_FALLBACK_SAMPLES: Dict[str, list] = {}
+_FALLBACK_SAMPLE_LIMIT = 50
+
 
 def get_permission_fallback_counts() -> Dict[str, int]:
     """How many times each resource type has fallen back to the configured default.
@@ -338,9 +344,19 @@ def get_permission_fallback_counts() -> Dict[str, int]:
     return dict(_FALLBACK_COUNTS)
 
 
+def get_permission_fallback_samples() -> Dict[str, list]:
+    """Which resources were reached through the configured default, per resource type.
+
+    Capped at _FALLBACK_SAMPLE_LIMIT ids per type — enough to start a migration, small
+    enough not to grow without bound. Deliberately not logged: see record_permission_fallback.
+    """
+    return {resource_type: list(ids) for resource_type, ids in _FALLBACK_SAMPLES.items()}
+
+
 def reset_permission_fallback_counts() -> None:
-    """Clear the counters (tests)."""
+    """Clear the counters and samples (tests)."""
     _FALLBACK_COUNTS.clear()
+    _FALLBACK_SAMPLES.clear()
 
 
 def record_permission_fallback(resource_type: str, resource_id: str, username: str, permission) -> None:
@@ -365,7 +381,17 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
     count = _FALLBACK_COUNTS.get(resource_type, 0) + 1
     _FALLBACK_COUNTS[resource_type] = count
 
-    logger.debug(f"Permission fallback: {resource_type}={resource_id} user={username} -> {permission.name} (occurrence {count})")
+    # Resource ids are recorded in-process rather than written to the log. One of the
+    # resource types here is the GATEWAY SECRET, whose id is the secret's NAME — not its
+    # value, but a name like "openai-prod-key" is still something that does not belong in
+    # a log aggregator, and CodeQL flags the whole parameter as tainted for exactly that
+    # reason. get_permission_fallback_samples() gives an operator the same detail on
+    # demand, without every deployment shipping identifiers off-host by default.
+    samples = _FALLBACK_SAMPLES.setdefault(resource_type, [])
+    if len(samples) < _FALLBACK_SAMPLE_LIMIT and resource_id not in samples:
+        samples.append(resource_id)
+
+    logger.debug("Permission fallback: %s granted %s to %s (occurrence %d)", resource_type, permission.name, username, count)
 
     if not permission.can_read:
         # A fallback that grants nothing is the safe, expected shape.
@@ -373,9 +399,10 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
 
     if count in _FALLBACK_WARN_AT or count % _FALLBACK_WARN_EVERY == 0:
         logger.warning(
-            f"DEFAULT_MLFLOW_PERMISSION granted {permission.name} on {resource_type}={resource_id} to {username} "
+            f"DEFAULT_MLFLOW_PERMISSION granted {permission.name} on a {resource_type} to {username} "
             f"because no explicit permission exists ({count} such grants for {resource_type} so far). "
             "Access is coming from configuration rather than a permission record. "
+            "Call get_permission_fallback_samples() for the affected resource ids, or enable DEBUG logging. "
             "See issue #293: this default is changing to NO_PERMISSIONS in a future major version."
         )
 
