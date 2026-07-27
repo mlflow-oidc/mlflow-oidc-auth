@@ -321,6 +321,65 @@ def _apply_workspace_fallback(result: PermissionResult, username: str) -> Permis
     return PermissionResult(NO_PERMISSIONS, "workspace-deny")
 
 
+_FALLBACK_COUNTS: Dict[str, int] = {}
+
+# Warn on these occurrence numbers, then every _FALLBACK_WARN_EVERY after that. The
+# batch filters resolve one permission per resource, so a listing of a few thousand
+# experiments would otherwise emit a few thousand identical warnings.
+_FALLBACK_WARN_AT = frozenset((1, 10, 100, 1_000))
+_FALLBACK_WARN_EVERY = 10_000
+
+
+def get_permission_fallback_counts() -> Dict[str, int]:
+    """How many times each resource type has fallen back to the configured default.
+
+    Exposed for diagnostics and tests. Counts are per process and reset on restart.
+    """
+    return dict(_FALLBACK_COUNTS)
+
+
+def reset_permission_fallback_counts() -> None:
+    """Clear the counters (tests)."""
+    _FALLBACK_COUNTS.clear()
+
+
+def record_permission_fallback(resource_type: str, resource_id: str, username: str, permission) -> None:
+    """Record that a permission decision came from ``DEFAULT_MLFLOW_PERMISSION``.
+
+    A fallback means the resource has no user, group, regex or group-regex grant for this
+    user, so the configured default decided the outcome. That is unremarkable when the
+    default DENIES — the user simply has no access. It is worth surfacing when the default
+    GRANTS, because then access is being handed out by configuration rather than by an
+    explicit permission record, and nothing in the system says who intended it.
+
+    The shipped default is ``MANAGE``, so on a fresh install this is the granting case for
+    every resource, which is exactly the exposure operators should be able to see before
+    the default changes (issue #293). Only the granting case warns; both cases are counted
+    and logged at debug.
+
+    Warnings are throttled by occurrence count rather than suppressed, so a long-running
+    process keeps reporting at a decreasing rate instead of going quiet after startup.
+    The counter is not synchronized: concurrent requests may race and skip a warning
+    threshold, which affects log cadence only, never an authorization outcome.
+    """
+    count = _FALLBACK_COUNTS.get(resource_type, 0) + 1
+    _FALLBACK_COUNTS[resource_type] = count
+
+    logger.debug(f"Permission fallback: {resource_type}={resource_id} user={username} -> {permission.name} (occurrence {count})")
+
+    if not permission.can_read:
+        # A fallback that grants nothing is the safe, expected shape.
+        return
+
+    if count in _FALLBACK_WARN_AT or count % _FALLBACK_WARN_EVERY == 0:
+        logger.warning(
+            f"DEFAULT_MLFLOW_PERMISSION granted {permission.name} on {resource_type}={resource_id} to {username} "
+            f"because no explicit permission exists ({count} such grants for {resource_type} so far). "
+            "Access is coming from configuration rather than a permission record. "
+            "See issue #293: this default is changing to NO_PERMISSIONS in a future major version."
+        )
+
+
 def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs) -> PermissionResult:
     """Single entry point for all permission resolution. Per D-01 (REFAC-01).
 
@@ -338,6 +397,12 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     sources_config = builder(resource_id, username, **kwargs)
     result = get_permission_from_store_or_default(sources_config)
     result = _apply_workspace_fallback(result, username)
+
+    # Recorded here rather than where the fallback is constructed, because this is the
+    # only layer that knows WHICH resource and user it was for. Checked after the
+    # workspace fallback, which may already have replaced it with a real decision.
+    if result.kind == "fallback":
+        record_permission_fallback(resource_type, resource_id, username, result.permission)
 
     cache.set(cache_key, result)
     return result
