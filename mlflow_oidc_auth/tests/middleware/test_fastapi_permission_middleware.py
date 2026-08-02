@@ -6,11 +6,11 @@ This module tests the OIDC-aware permission middleware for FastAPI-native routes
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from starlette.responses import PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 
 # ---------------------------------------------------------------------------
 # Unit tests: _extract_gateway_endpoint_name
@@ -311,6 +311,20 @@ def _create_app_with_auth(username=None, is_admin=False):
     async def gateway_invocations(endpoint_name: str):
         return {"endpoint": endpoint_name}
 
+    @app.get("/gateway/mlflow/v1/models")
+    async def list_gateway_models():
+        response = JSONResponse(
+            {
+                "object": "list",
+                "data": [
+                    {"id": "allowed-endpoint", "object": "model", "created": 1, "owned_by": "mlflow"},
+                    {"id": "denied-endpoint", "object": "model", "created": 2, "owned_by": "mlflow"},
+                ],
+            }
+        )
+        response.raw_headers.extend([(b"x-model-metadata", b"first"), (b"x-model-metadata", b"second")])
+        return response
+
     @app.get("/v1/traces")
     async def otel_traces():
         return {"traces": []}
@@ -361,6 +375,13 @@ class TestFastapiPermissionMiddlewareIntegration:
         response = client.get("/gateway/my-ep/mlflow/invocations")
         assert response.status_code == 401
 
+    def test_unauthenticated_models_returns_401(self):
+        """Test that the models route requires authentication."""
+        app = self._create_app_with_middleware()
+        client = TestClient(app)
+        response = client.get("/gateway/mlflow/v1/models")
+        assert response.status_code == 401
+
     def test_unauthenticated_otel_returns_401(self):
         """Test that OTel route without auth returns 401."""
         app = self._create_app_with_middleware()
@@ -389,6 +410,20 @@ class TestFastapiPermissionMiddlewareIntegration:
         response = client.get("/gateway/my-ep/mlflow/invocations")
         assert response.status_code == 200
         assert response.json() == {"endpoint": "my-ep"}
+
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
+    def test_admin_models_returns_all_endpoints(self, mock_can_use):
+        """Test that admins receive the complete models list without per-endpoint checks."""
+        app = _create_app_with_auth(username="admin@example.com", is_admin=True)
+        client = TestClient(app)
+        response = client.get("/gateway/mlflow/v1/models")
+
+        assert response.status_code == 200
+        assert [model["id"] for model in response.json()["data"]] == [
+            "allowed-endpoint",
+            "denied-endpoint",
+        ]
+        mock_can_use.assert_not_called()
 
     def test_admin_otel_passes(self):
         """Test that admin user passes OTel check."""
@@ -422,6 +457,44 @@ class TestFastapiPermissionMiddlewareIntegration:
         client = TestClient(app)
         response = client.get("/gateway/my-ep/mlflow/invocations")
         assert response.status_code == 403
+
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
+    def test_regular_user_models_returns_only_usable_endpoints(self, mock_can_use):
+        """Test that non-admin users only receive endpoints they can USE."""
+        mock_can_use.side_effect = lambda endpoint_name, username: endpoint_name == "allowed-endpoint"
+        app = _create_app_with_auth(username="user@example.com", is_admin=False)
+        client = TestClient(app)
+        response = client.get("/gateway/mlflow/v1/models")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "object": "list",
+            "data": [{"id": "allowed-endpoint", "object": "model", "created": 1, "owned_by": "mlflow"}],
+        }
+        assert response.headers.get_list("x-model-metadata") == ["first", "second"]
+        mock_can_use.assert_has_calls(
+            [
+                call("allowed-endpoint", "user@example.com"),
+                call("denied-endpoint", "user@example.com"),
+            ]
+        )
+
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
+    def test_models_permission_error_excludes_endpoint(self, mock_can_use):
+        """Test that a failed permission lookup cannot expose its endpoint."""
+
+        def check_permission(endpoint_name, username):
+            if endpoint_name == "denied-endpoint":
+                raise RuntimeError("permission backend unavailable")
+            return True
+
+        mock_can_use.side_effect = check_permission
+        app = _create_app_with_auth(username="user@example.com", is_admin=False)
+        client = TestClient(app)
+        response = client.get("/gateway/mlflow/v1/models")
+
+        assert response.status_code == 200
+        assert [model["id"] for model in response.json()["data"]] == ["allowed-endpoint"]
 
     def test_flask_route_passes_through(self):
         """Test that Flask-handled routes pass through without permission check."""
