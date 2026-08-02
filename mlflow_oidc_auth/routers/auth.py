@@ -19,7 +19,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri
-from mlflow_oidc_auth.utils.groups import matches_group_patterns
+from mlflow_oidc_auth.utils.groups import matches_group_patterns, normalize_group_values
 
 from ._prefix import UI_ROUTER_PREFIX
 
@@ -566,10 +566,9 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
 
-            # With jumpcloud, if the groups attribute is a single group, it will be sent as a string.
-            # To process the groups correctly, bring the group into a list of groups.
-            if isinstance(user_groups, str):
-                user_groups = [user_groups]
+            # Normalize both provider claims and plugin output before authorization
+            # and synchronization. Invalid values fail closed.
+            user_groups = normalize_group_values(user_groups)
 
             logger.debug(f"User groups: {user_groups}")
 

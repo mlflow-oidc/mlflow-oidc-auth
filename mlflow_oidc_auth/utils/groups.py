@@ -1,10 +1,23 @@
 """Utilities for matching OIDC group claims against configured access rules."""
 
 from fnmatch import fnmatchcase
-from typing import Iterable
+from collections.abc import Iterable, Mapping
 
 
-def matches_group_patterns(user_groups: Iterable[str], allowed_group_patterns: Iterable[str]) -> bool:
+def normalize_group_values(group_values: object) -> list[str]:
+    """Return valid group names from an OIDC claim or detection plugin result."""
+
+    if isinstance(group_values, str):
+        values: Iterable[object] = (group_values,)
+    elif isinstance(group_values, Iterable) and not isinstance(group_values, Mapping):
+        values = group_values
+    else:
+        return []
+
+    return [group for group in values if isinstance(group, str) and group]
+
+
+def matches_group_patterns(user_groups: object, allowed_group_patterns: object) -> bool:
     """Return whether any claimed group matches an allowed shell-style pattern.
 
     Exact group names remain valid patterns, preserving the existing
@@ -12,5 +25,6 @@ def matches_group_patterns(user_groups: Iterable[str], allowed_group_patterns: I
     consistent with OIDC group claim values and Linux deployments.
     """
 
-    patterns = [pattern for pattern in allowed_group_patterns if isinstance(pattern, str)]
-    return any(isinstance(group, str) and any(fnmatchcase(group, pattern) for pattern in patterns) for group in user_groups)
+    groups = normalize_group_values(user_groups)
+    patterns = normalize_group_values(allowed_group_patterns)
+    return any(fnmatchcase(group, pattern) for group in groups for pattern in patterns)

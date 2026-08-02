@@ -20,7 +20,7 @@ from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils.groups import matches_group_patterns
+from mlflow_oidc_auth.utils.groups import matches_group_patterns, normalize_group_values
 
 logger = get_logger()
 
@@ -152,8 +152,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token)
             else:
                 user_groups = payload.get(config.OIDC_GROUPS_ATTRIBUTE, [])
-            if isinstance(user_groups, str):
-                user_groups = [user_groups]
+            user_groups = normalize_group_values(user_groups)
         except Exception as e:
             logger.warning("Failed to read groups for bearer provisioning of %s: %s", username, type(e).__name__)
             return
