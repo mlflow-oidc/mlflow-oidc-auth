@@ -26,9 +26,11 @@ The application is configured through environment variables, `.env` files, or pl
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `OIDC_GROUP_NAME` | String | `mlflow` | Comma-separated list of allowed groups. Users must belong to at least one of these groups (or an admin group) to log in |
+| `OIDC_GROUP_NAME` | String | `mlflow` | Comma-separated list of allowed group names or shell-style patterns. Users must belong to at least one matching group (or an admin group) to log in. Exact names remain supported; for example, `mlflow-*` automatically admits newly created MLflow groups. `*` admits any user with a non-empty group claim |
 | `OIDC_ADMIN_GROUP_NAME` | String | `mlflow-admin` | Comma-separated list of admin groups. Members have full admin privileges and bypass all permission checks |
 | `OIDC_GROUP_DETECTION_PLUGIN` | String | None | Python module path for a custom group detection plugin. When set, groups are extracted from the access token using this plugin instead of the ID token's groups attribute |
+
+Group patterns are evaluated locally against the groups already returned by the OIDC provider, so they do not add a provider API call to login. Empty and non-string claim values are ignored. After a successful login, all valid groups from the claim are synchronized to the authorization database, including groups that did not participate in the access match. Prefer a scoped pattern such as `mlflow-*`; using `*` allows every identity with at least one non-empty string group in the claim to log in.
 
 ### Permissions
 
