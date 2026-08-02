@@ -19,6 +19,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri
+from mlflow_oidc_auth.utils.groups import matches_group_patterns
 
 from ._prefix import UI_ROUTER_PREFIX
 
@@ -575,7 +576,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             # Check authorization
             # Determine admin and allowed groups
             is_admin = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
-            if not is_admin and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+            if not is_admin and not matches_group_patterns(user_groups, config.OIDC_GROUP_NAME):
                 errors.append("User is not allowed to login")
                 return None, errors
 

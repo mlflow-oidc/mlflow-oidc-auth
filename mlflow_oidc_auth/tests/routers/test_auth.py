@@ -619,6 +619,41 @@ class TestProcessOIDCCallbackFastAPI:
             assert "User is not allowed to login" in errors[0]
 
     @pytest.mark.asyncio
+    async def test_process_callback_allows_group_pattern_and_syncs_all_claimed_groups(
+        self,
+        mock_request_with_session,
+        mock_oauth,
+        mock_config,
+        mock_user_management,
+    ):
+        """A newly created matching group is accepted without dropping other memberships."""
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+        claimed_groups = ["mlflow-new-team", "shared-data-platform"]
+        mock_oauth.oidc.authorize_access_token.return_value = {
+            "access_token": "token",
+            "id_token": "id_token",
+            "userinfo": {
+                "email": "new-user@example.com",
+                "name": "New User",
+                "groups": claimed_groups,
+            },
+        }
+        mock_config.OIDC_ADMIN_GROUP_NAME = ["mlflow-admin"]
+        mock_config.OIDC_GROUP_NAME = ["mlflow-*"]
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert email == "new-user@example.com"
+        assert errors == []
+        mock_user_management["populate_groups"].assert_called_once_with(group_names=claimed_groups)
+        mock_user_management["update_user"].assert_called_once_with(username="new-user@example.com", group_names=claimed_groups)
+
+    @pytest.mark.asyncio
     async def test_process_callback_user_management_error(self, mock_request_with_session, mock_oauth, mock_config):
         """Test callback processing with user management error."""
         request = mock_request_with_session({"oauth_state": "test_state"})
