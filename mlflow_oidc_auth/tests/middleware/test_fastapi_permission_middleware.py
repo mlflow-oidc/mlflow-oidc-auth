@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from starlette.responses import PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 
 # ---------------------------------------------------------------------------
 # Unit tests: _extract_gateway_endpoint_name
@@ -313,13 +313,17 @@ def _create_app_with_auth(username=None, is_admin=False):
 
     @app.get("/gateway/mlflow/v1/models")
     async def list_gateway_models():
-        return {
-            "object": "list",
-            "data": [
-                {"id": "allowed-endpoint", "object": "model", "created": 1, "owned_by": "mlflow"},
-                {"id": "denied-endpoint", "object": "model", "created": 2, "owned_by": "mlflow"},
-            ],
-        }
+        response = JSONResponse(
+            {
+                "object": "list",
+                "data": [
+                    {"id": "allowed-endpoint", "object": "model", "created": 1, "owned_by": "mlflow"},
+                    {"id": "denied-endpoint", "object": "model", "created": 2, "owned_by": "mlflow"},
+                ],
+            }
+        )
+        response.raw_headers.extend([(b"x-model-metadata", b"first"), (b"x-model-metadata", b"second")])
+        return response
 
     @app.get("/v1/traces")
     async def otel_traces():
@@ -467,6 +471,7 @@ class TestFastapiPermissionMiddlewareIntegration:
             "object": "list",
             "data": [{"id": "allowed-endpoint", "object": "model", "created": 1, "owned_by": "mlflow"}],
         }
+        assert response.headers.get_list("x-model-metadata") == ["first", "second"]
         mock_can_use.assert_has_calls(
             [
                 call("allowed-endpoint", "user@example.com"),

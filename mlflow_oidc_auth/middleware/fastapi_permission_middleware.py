@@ -209,15 +209,15 @@ async def _filter_gateway_models_response(response, username: str):
         data["data"] = visible_models
     except Exception as e:
         logger.error("Gateway models response filtering failed: %s", type(e).__name__)
-        return PlainTextResponse("Permission denied", status_code=500)
+        return PlainTextResponse("Internal server error", status_code=500)
 
-    headers = {key: value for key, value in response.headers.items() if key.lower() not in {"content-length", "content-type"}}
-    return JSONResponse(
+    filtered_response = JSONResponse(
         content=data,
         status_code=response.status_code,
-        headers=headers,
         background=response.background,
     )
+    filtered_response.raw_headers.extend((key, value) for key, value in response.raw_headers if key.lower() not in {b"content-length", b"content-type"})
+    return filtered_response
 
 
 # ---------------------------------------------------------------------------
