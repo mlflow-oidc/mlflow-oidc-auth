@@ -8,7 +8,9 @@ Each router is responsible for a specific set of endpoints.
 from typing import List
 
 from fastapi import APIRouter
+from fastapi.routing import APIRoute
 
+from mlflow_oidc_auth.routers._prefix import to_ajax_path
 from mlflow_oidc_auth.routers.auth import auth_router
 from mlflow_oidc_auth.routers.experiment_permissions import (
     experiment_permissions_router,
@@ -40,6 +42,7 @@ from mlflow_oidc_auth.routers.workspace_regex_permissions import (
 )
 
 __all__ = [
+    "ajax_alias_router",
     "auth_router",
     "experiment_permissions_router",
     "group_permissions_router",
@@ -58,6 +61,55 @@ __all__ = [
     "workspace_permissions_router",
     "workspace_regex_permissions_router",
 ]
+
+
+def ajax_alias_router(router: APIRouter) -> APIRouter:
+    """Mirror a router's "/api" routes onto MLflow's "/ajax-api" prefix.
+
+    MLflow registers every one of its own REST handlers under both "/api/..."
+    and "/ajax-api/...", and its web UI calls the "/ajax-api" variants. This
+    plugin's routers were registered under "/api" only, so UI calls such as
+    ``GET /ajax-api/2.0/mlflow/users/current`` matched no FastAPI route, fell
+    through to the mounted Flask app and returned 404. The UI reads that failure
+    as "not authenticated" (its current-user query runs with ``retry: false``,
+    after which ``is_admin`` is false and ``username`` empty), so it hides the
+    edit affordances even for admins.
+
+    Routes outside the REST prefix - health checks and the "/oidc/*" routes -
+    have no UI-facing twin and are left alone.
+
+    Args:
+        router: The router whose API routes should be mirrored.
+
+    Returns:
+        APIRouter: A router holding the "/ajax-api" twins. Empty when `router`
+        exposes no routes under the REST prefix.
+    """
+    alias = APIRouter()
+    for route in router.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        ajax_path = to_ajax_path(route.path)
+        if ajax_path is None:
+            continue
+        alias.add_api_route(
+            ajax_path,
+            route.endpoint,
+            methods=sorted(route.methods),
+            response_model=route.response_model,
+            status_code=route.status_code,
+            dependencies=list(route.dependencies),
+            summary=route.summary,
+            description=route.description,
+            tags=list(route.tags),
+            response_class=route.response_class,
+            # The canonical "/api" paths are the documented ones; keeping the
+            # twins out of the schema avoids listing every endpoint twice. The
+            # distinct name keeps url_path_for() unambiguous.
+            name=f"{route.name}_ajax",
+            include_in_schema=False,
+        )
+    return alias
 
 
 def get_all_routers() -> List[APIRouter]:
