@@ -588,6 +588,32 @@ class TestProcessOIDCCallbackFastAPI:
             assert "No username provided in OIDC userinfo" in errors[0]
 
     @pytest.mark.asyncio
+    async def test_process_callback_missing_display_name_falls_back_to_username(self, mock_request_with_session, mock_oauth, mock_config, mock_user_management):
+        """A missing display name must not block login — it falls back to the username."""
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+
+        mock_oauth.oidc.authorize_access_token.return_value = {
+            "access_token": "token",
+            "id_token": "id_token",
+            "userinfo": {
+                "email": "test@example.com",
+                "groups": ["test-group"],
+                # Missing "name", so display-name extraction fails.
+            },
+        }
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+        ):
+            username, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+            assert username == "test@example.com"
+            assert errors == []
+            mock_user_management["create_user"].assert_called_once_with(username="test@example.com", display_name="test@example.com", is_admin=False)
+
+    @pytest.mark.asyncio
     async def test_process_callback_unauthorized_user(self, mock_request_with_session, mock_oauth, mock_config):
         """Test callback processing for unauthorized user."""
         request = mock_request_with_session({"oauth_state": "test_state"})

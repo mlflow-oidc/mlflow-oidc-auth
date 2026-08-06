@@ -214,6 +214,23 @@ class AppConfig:
         self._warn_if_resource_creation_restriction_is_inert()
         self._warn_if_default_permission_is_permissive()
         self._warn_if_username_field_unusable()
+        self._warn_if_group_name_unusable()
+
+    @staticmethod
+    def _has_usable_entry(field_list) -> bool:
+        """Return True if field_list contains at least one non-blank string.
+
+        Shared by every "is this list-of-names config usable" startup check below.
+        Defends against two footguns of the underlying config_manager.get_list():
+        a comma-split value of "" resolves to [""] rather than [], and a
+        provider-supplied list (e.g. from JSON in a secret) may contain non-string
+        or None entries. Never raises — every input, including a non-iterable
+        value from a misbehaving config provider, is simply "not usable".
+        """
+        try:
+            return any(isinstance(field, str) and field.strip() for field in field_list)
+        except TypeError:
+            return False
 
     def _warn_if_username_field_unusable(self) -> None:
         """Warn at startup when OIDC_USERNAME_FIELD or OIDC_DISPLAY_NAME_FIELD is unusable.
@@ -234,19 +251,29 @@ class AppConfig:
         fetch (auth.py), and a failed OIDC client registration at ASGI lifespan startup
         (app.py's `lifespan`) only logs a warning and lets the app come up — OIDC-specific
         breakage is surfaced without ever taking down the whole process.
-
-        A value provided only as blank/whitespace entries (e.g. OIDC_USERNAME_FIELD="",
-        which config_manager.get_list turns into [""] rather than []) is treated the same
-        as an empty list — both leave no field that could ever match a real claim. A
-        non-string entry (e.g. from a secret provider returning malformed JSON) is treated
-        as unusable rather than raising, since this check exists to warn cleanly, not to
-        validate types — extract_field_from_payload already reports a specific error for
-        a non-string claim value at the point it's actually used.
         """
-        if not any(isinstance(field, str) and field.strip() for field in self.OIDC_USERNAME_FIELD):
+        if not self._has_usable_entry(self.OIDC_USERNAME_FIELD):
             logger.warning("OIDC_USERNAME_FIELD is empty; no OIDC login or bearer-token authentication will be able to resolve a username.")
-        if not any(isinstance(field, str) and field.strip() for field in self.OIDC_DISPLAY_NAME_FIELD):
+        if not self._has_usable_entry(self.OIDC_DISPLAY_NAME_FIELD):
             logger.warning("OIDC_DISPLAY_NAME_FIELD is empty; no OIDC login will be able to resolve a display name.")
+
+    def _warn_if_group_name_unusable(self) -> None:
+        """Warn at startup when OIDC_GROUP_NAME or OIDC_ADMIN_GROUP_NAME is unusable.
+
+        Both are lists of group names matched against the groups claim to decide
+        whether a user may log in (OIDC_GROUP_NAME) or is an admin (OIDC_ADMIN_GROUP_NAME).
+        Like OIDC_USERNAME_FIELD/OIDC_DISPLAY_NAME_FIELD above, `OIDC_GROUP_NAME=""`
+        resolves to [""] via get_list rather than [] and would otherwise silently
+        deny every non-admin user with no signal at startup — a login-time symptom
+        (every user rejected as "not in an allowed group") with no config-time warning
+        to point an operator at the cause. Warns rather than raises for the same
+        reason as _warn_if_username_field_unusable: this is a module-level singleton
+        imported by tooling that has nothing to do with OIDC login.
+        """
+        if not self._has_usable_entry(self.OIDC_GROUP_NAME):
+            logger.warning("OIDC_GROUP_NAME is empty; no user will ever be recognized as a member of an allowed group and be able to log in.")
+        if not self._has_usable_entry(self.OIDC_ADMIN_GROUP_NAME):
+            logger.warning("OIDC_ADMIN_GROUP_NAME is empty; no user will ever be granted admin access via group membership.")
 
     def _warn_if_default_permission_is_permissive(self) -> None:
         """Announce that an open-by-default deployment will change on the next major.

@@ -544,13 +544,14 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         username, username_error = extract_username(userinfo)
         if username_error:
             errors.append(username_error)
+            return None, errors
 
+        # A missing display name doesn't block login — fall back to the username,
+        # matching the bearer-token provisioning path (auth_middleware.py).
         display_name, display_name_error = extract_display_name(userinfo)
         if display_name_error:
-            errors.append(display_name_error)
-
-        if username_error or display_name_error:
-            return None, errors
+            logger.debug("Falling back to username as display name for %s: %s", username, display_name_error)
+            display_name = username
 
         # Handle user and group management
         try:
