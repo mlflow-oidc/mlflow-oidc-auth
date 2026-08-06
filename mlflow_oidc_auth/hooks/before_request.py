@@ -82,6 +82,8 @@ from mlflow.protos.service_pb2 import (
     ListGatewayEndpointBindings,
     ListWorkspaces,
     LogBatch,
+    LogInputs,
+    LogOutputs,
     LogLoggedModelParamsRequest,
     LogMetric,
     LogModel,
@@ -262,6 +264,11 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateRun: validate_can_update_run,
     LogMetric: validate_can_update_run,
     LogBatch: validate_can_update_run,
+    # Both attach data to a run and reached NO validator, while every sibling
+    # run-mutating proto here is gated — any authenticated user could attach datasets or
+    # logged-model outputs to any other tenant's run (issue #291).
+    LogInputs: validate_can_update_run,
+    LogOutputs: validate_can_update_run,
     LogModel: validate_can_update_run,
     SetTag: validate_can_update_run,
     DeleteTag: validate_can_update_run,
@@ -497,6 +504,38 @@ for _suffix, _method, _validator in (
     ("mlflow/gateway-proxy", "POST", validate_gateway_proxy),
 ):
     _bind_non_proto_route(_suffix, _method, _validator)
+
+
+def _bind_native_webhook_routes_admin_only() -> None:
+    """Restrict MLflow's own registry-webhook CRUD to admins (issue #291).
+
+    MLflow serves a full webhook API (create / list / get / update / delete / test) that
+    reached no validator at all, so a non-admin could register a webhook and receive the
+    WHOLE server's registry events — delivery is filtered by event type only, with no
+    tenant scoping — as well as read, tamper with and delete other tenants' webhooks. That
+    also bypasses this plugin's own admin-only webhook API at /oidc/webhook.
+
+    Not an SSRF primitive: MLflow rejects non-https and non-public-IP destinations at
+    creation with a 400. The exposure is cross-tenant exfiltration to an attacker's public
+    endpoint, plus tampering.
+
+    Admin-only matches how the gateway guardrail routes are handled and is the
+    conservative reading — this plugin already provides a managed webhook API, so nothing
+    legitimate depends on the native one being reachable by ordinary users. Bound by
+    enumerating the real routing table so every prefix and version MLflow registers is
+    covered, including any added later.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    for rule in mlflow_flask_app.url_map.iter_rules():
+        path = str(rule)
+        if "/mlflow/webhooks" not in path:
+            continue
+        for method in (rule.methods or set()) - {"OPTIONS", "HEAD"}:
+            BEFORE_REQUEST_VALIDATORS[(path, method)] = _deny_non_admin
+
+
+_bind_native_webhook_routes_admin_only()
 
 
 LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
