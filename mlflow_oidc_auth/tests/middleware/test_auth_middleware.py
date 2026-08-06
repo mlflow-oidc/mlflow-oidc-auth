@@ -196,7 +196,7 @@ class TestAuthMiddleware:
 
             assert success is False
             assert username is None
-            assert error == "No username provided in OIDC userinfo"
+            assert error == "No username provided in bearer token payload"
 
     @pytest.mark.asyncio
     async def test_authenticate_bearer_token_invalid_token(self, auth_middleware, mock_validate_token):

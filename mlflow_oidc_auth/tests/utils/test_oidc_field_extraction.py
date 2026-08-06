@@ -5,6 +5,8 @@ Tests verify that the extract_username and extract_display_name functions
 correctly handle configurable fields and fallback logic.
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from mlflow_oidc_auth.config import config
@@ -53,6 +55,34 @@ class TestExtractFieldFromPayload:
         assert value is None
         assert "No username fields configured" in error
 
+    def test_extract_empty_string_value_falls_back_to_next_field(self):
+        """Test that an empty-string field value is treated as missing, not as found."""
+        payload = {"email": "", "preferred_username": "alice"}
+        value, error = extract_field_from_payload(payload, ["email", "preferred_username"], "username")
+        assert value == "alice"
+        assert error is None
+
+    def test_extract_all_empty_string_values_errors(self):
+        """Test that an all-empty-string payload reports an error rather than a blank value."""
+        payload = {"email": "", "preferred_username": ""}
+        value, error = extract_field_from_payload(payload, ["email", "preferred_username"], "username")
+        assert value is None
+        assert "No username provided in OIDC userinfo" in error
+
+    def test_extract_custom_source_in_error_message(self):
+        """Test that the source description is used in the 'not found' error message."""
+        payload = {}
+        value, error = extract_field_from_payload(payload, ["email"], "username", source="bearer token payload")
+        assert value is None
+        assert "No username provided in bearer token payload" in error
+
+    def test_extract_field_type_name_underscore_humanized(self):
+        """Test that an underscore in field_type_name is rendered as a space in messages."""
+        payload = {}
+        value, error = extract_field_from_payload(payload, ["name"], "display_name")
+        assert value is None
+        assert "No display name provided in OIDC userinfo" in error
+
 
 class TestExtractUsername:
     """Tests for extract_username utility function."""
@@ -89,6 +119,30 @@ class TestExtractUsername:
         assert username is None
         assert "Invalid OIDC username field" in error
 
+    def test_extract_username_empty_string_is_not_a_valid_username(self, monkeypatch):
+        """Test that an empty-string field value never yields a None username with no error."""
+        monkeypatch.setattr(config, "OIDC_USERNAME_FIELD", ["email", "preferred_username"])
+        payload = {"email": "", "preferred_username": ""}
+        username, error = extract_username(payload)
+        assert username is None
+        assert error is not None
+
+    def test_extract_username_custom_source(self, monkeypatch):
+        """Test that a custom source is reflected in the error message."""
+        monkeypatch.setattr(config, "OIDC_USERNAME_FIELD", ["email"])
+        username, error = extract_username({}, source="bearer token payload")
+        assert username is None
+        assert "bearer token payload" in error
+
+    def test_extract_username_delegates_to_normalize_username(self, monkeypatch):
+        """Test that username normalization reuses the codebase's canonical normalizer."""
+        monkeypatch.setattr(config, "OIDC_USERNAME_FIELD", ["email"])
+        with patch("mlflow_oidc_auth.utils.oidc_field_extraction.normalize_username", return_value="normalized") as mock_normalize:
+            username, error = extract_username({"email": "User@Example.COM"})
+        mock_normalize.assert_called_once_with("User@Example.COM")
+        assert username == "normalized"
+        assert error is None
+
 
 class TestExtractDisplayName:
     """Tests for extract_display_name utility function."""
@@ -107,7 +161,7 @@ class TestExtractDisplayName:
         payload = {"email": "user@example.com"}
         display_name, error = extract_display_name(payload)
         assert display_name is None
-        assert "No display_name provided in OIDC userinfo" in error
+        assert "No display name provided in OIDC userinfo" in error
 
     def test_extract_display_name_non_string(self, monkeypatch):
         """Test error when display name field is not a string."""
@@ -115,7 +169,7 @@ class TestExtractDisplayName:
         payload = {"name": {"first": "John", "last": "Doe"}}
         display_name, error = extract_display_name(payload)
         assert display_name is None
-        assert "Invalid OIDC display_name field" in error
+        assert "Invalid OIDC display name field" in error
 
     def test_extract_display_name_fallback(self, monkeypatch):
         """Test falling back to alternative display name field."""

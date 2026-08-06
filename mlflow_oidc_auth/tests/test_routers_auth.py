@@ -403,7 +403,7 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     req.query_params = {"state": "ok", "code": "c"}
     session = {"oauth_state": "ok"}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
-    assert "No display_name provided" in errors[0]
+    assert "No display name provided" in errors[0]
 
     # user not allowed
     async def fake_exchange5(request):

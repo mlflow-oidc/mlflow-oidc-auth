@@ -213,6 +213,22 @@ class AppConfig:
         # Run last: these read settings loaded above.
         self._warn_if_resource_creation_restriction_is_inert()
         self._warn_if_default_permission_is_permissive()
+        self._warn_if_username_field_misconfigured()
+
+    def _warn_if_username_field_misconfigured(self) -> None:
+        """Warn at startup when OIDC_USERNAME_FIELD or OIDC_DISPLAY_NAME_FIELD is empty.
+
+        Both are lists of claim names tried in order against the OIDC userinfo/token
+        payload; an empty list means no field can ever be found, so every login and
+        every bearer-token authentication would fail with a generic "no username/display
+        name provided" error. That failure only surfaces on the first real login attempt
+        in production — warn here instead so a typo'd or emptied config value (e.g. from
+        a misconfigured secret provider) is caught before anyone tries to sign in.
+        """
+        if not self.OIDC_USERNAME_FIELD:
+            logger.warning("OIDC_USERNAME_FIELD is empty; no OIDC login or bearer-token authentication will be able to resolve a username.")
+        if not self.OIDC_DISPLAY_NAME_FIELD:
+            logger.warning("OIDC_DISPLAY_NAME_FIELD is empty; no OIDC login will be able to resolve a display name.")
 
     def _warn_if_default_permission_is_permissive(self) -> None:
         """Announce that an open-by-default deployment will change on the next major.
