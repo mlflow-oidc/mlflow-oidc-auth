@@ -87,4 +87,3 @@ def extract_display_name(payload: Dict[str, Any]) -> tuple[Optional[str], Option
     """
     value, error_msg = extract_field_from_payload(payload, config.OIDC_DISPLAY_NAME_FIELD, "display_name")
     return value, error_msg
-

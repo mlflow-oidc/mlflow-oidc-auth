@@ -124,4 +124,3 @@ class TestExtractDisplayName:
         display_name, error = extract_display_name(payload)
         assert display_name == "John"
         assert error is None
-
