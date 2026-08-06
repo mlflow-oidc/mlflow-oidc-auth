@@ -136,6 +136,10 @@ class AppConfig:
         # Permission cache settings
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
 
+        # username source
+        self.OIDC_USERNAME_FIELD = config_manager.get_list("OIDC_USERNAME_FIELD", default=["email", "preferred_username"])
+        self.OIDC_DISPLAY_NAME_FIELD = config_manager.get_list("OIDC_DISPLAY_NAME_FIELD", default=["name"])
+
         # Group settings
         self.OIDC_GROUP_NAME = config_manager.get_list("OIDC_GROUP_NAME", default=["mlflow"])
         self.OIDC_ADMIN_GROUP_NAME = config_manager.get_list("OIDC_ADMIN_GROUP_NAME", default=["mlflow-admin"])
@@ -209,6 +213,67 @@ class AppConfig:
         # Run last: these read settings loaded above.
         self._warn_if_resource_creation_restriction_is_inert()
         self._warn_if_default_permission_is_permissive()
+        self._warn_if_username_field_unusable()
+        self._warn_if_group_name_unusable()
+
+    @staticmethod
+    def _has_usable_entry(field_list) -> bool:
+        """Return True if field_list contains at least one non-blank string.
+
+        Shared by every "is this list-of-names config usable" startup check below.
+        Defends against two footguns of the underlying config_manager.get_list():
+        a comma-split value of "" resolves to [""] rather than [], and a
+        provider-supplied list (e.g. from JSON in a secret) may contain non-string
+        or None entries. Never raises — every input, including a non-iterable
+        value from a misbehaving config provider, is simply "not usable".
+        """
+        try:
+            return any(isinstance(field, str) and field.strip() for field in field_list)
+        except TypeError:
+            return False
+
+    def _warn_if_username_field_unusable(self) -> None:
+        """Warn at startup when OIDC_USERNAME_FIELD or OIDC_DISPLAY_NAME_FIELD is unusable.
+
+        Both are lists of claim names tried in order against the OIDC userinfo/token
+        payload; a list with no usable entry means no field can ever be found, so every
+        OIDC login (and, for OIDC_USERNAME_FIELD, every bearer-token authentication too)
+        fails for every user. That failure only surfaces on the first real login attempt
+        in production — warn here instead so a typo'd or emptied config value (e.g. from
+        a misconfigured secret provider) is caught before anyone tries to sign in.
+
+        This deliberately warns rather than raises, unlike SESSION_COOKIE_SAMESITE above.
+        AppConfig() is a module-level singleton imported by tooling that has nothing to
+        do with OIDC login (e.g. the Alembic migration environment in
+        db/migrations/env.py), so raising here would take that unrelated tooling down
+        too. It matches the existing precedent for "OIDC is completely unusable" failures
+        elsewhere in this plugin: OIDC_DISCOVERY_URL is validated lazily on first JWKS
+        fetch (auth.py), and a failed OIDC client registration at ASGI lifespan startup
+        (app.py's `lifespan`) only logs a warning and lets the app come up — OIDC-specific
+        breakage is surfaced without ever taking down the whole process.
+        """
+        if not self._has_usable_entry(self.OIDC_USERNAME_FIELD):
+            logger.warning("OIDC_USERNAME_FIELD is empty; no OIDC login or bearer-token authentication will be able to resolve a username.")
+        if not self._has_usable_entry(self.OIDC_DISPLAY_NAME_FIELD):
+            logger.warning("OIDC_DISPLAY_NAME_FIELD is empty; no OIDC login will be able to resolve a display name.")
+
+    def _warn_if_group_name_unusable(self) -> None:
+        """Warn at startup when OIDC_GROUP_NAME or OIDC_ADMIN_GROUP_NAME is unusable.
+
+        Both are lists of group names matched against the groups claim to decide
+        whether a user may log in (OIDC_GROUP_NAME) or is an admin (OIDC_ADMIN_GROUP_NAME).
+        Like OIDC_USERNAME_FIELD/OIDC_DISPLAY_NAME_FIELD above, `OIDC_GROUP_NAME=""`
+        resolves to [""] via get_list rather than [] and would otherwise silently
+        deny every non-admin user with no signal at startup — a login-time symptom
+        (every user rejected as "not in an allowed group") with no config-time warning
+        to point an operator at the cause. Warns rather than raises for the same
+        reason as _warn_if_username_field_unusable: this is a module-level singleton
+        imported by tooling that has nothing to do with OIDC login.
+        """
+        if not self._has_usable_entry(self.OIDC_GROUP_NAME):
+            logger.warning("OIDC_GROUP_NAME is empty; no user will ever be recognized as a member of an allowed group and be able to log in.")
+        if not self._has_usable_entry(self.OIDC_ADMIN_GROUP_NAME):
+            logger.warning("OIDC_ADMIN_GROUP_NAME is empty; no user will ever be granted admin access via group membership.")
 
     def _warn_if_default_permission_is_permissive(self) -> None:
         """Announce that an open-by-default deployment will change on the next major.
