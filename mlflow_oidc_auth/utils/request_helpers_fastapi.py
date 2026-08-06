@@ -8,7 +8,7 @@ from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, UNAUTHENTICATE
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username
+from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, BEARER_TOKEN_SOURCE
 
 # Initialize security schemes
 basic_security = HTTPBasic(auto_error=False)
@@ -106,7 +106,7 @@ async def get_username_from_bearer_token(credentials: Optional[HTTPAuthorization
 
     try:
         token_data = validate_token(credentials.credentials)
-        username, error_msg = extract_username(token_data, source="bearer token payload")
+        username, error_msg = extract_username(token_data, source=BEARER_TOKEN_SOURCE)
         if username:
             logger.debug(f"Username from bearer token: {username}")
             return username

@@ -13,21 +13,27 @@ from mlflow_oidc_auth.repository.user import normalize_username
 
 logger = get_logger()
 
+# Default and alternate values for the `source` parameter shared by the functions below,
+# so every call site describes the payload the same way instead of retyping the string.
+OIDC_USERINFO_SOURCE = "OIDC userinfo"
+BEARER_TOKEN_SOURCE = "bearer token payload"
+
 
 def extract_field_from_payload(
     payload: Dict[str, Any],
     field_list: List[str],
     field_type_name: str,
-    source: str = "OIDC userinfo",
+    source: str = OIDC_USERINFO_SOURCE,
 ) -> tuple[Optional[str], Optional[str]]:
     """
     Extract a field value from a payload using a configured list of field names.
 
     This function attempts to extract a value from the payload by iterating through
-    the configured field names in order and returning the first non-empty value found.
-    The value must be a string; non-string values are rejected with an error. An empty
-    string is treated the same as a missing field, so it falls through to the next
-    configured field instead of being accepted as the extracted value.
+    the configured field names in order and returning the first non-blank value found.
+    The value must be a string; non-string values (including non-string falsy values
+    like 0 or False) are rejected with an error. A missing, empty, or whitespace-only
+    string is treated as absent, so it falls through to the next configured field
+    instead of being accepted as the extracted value.
 
     Parameters:
         payload: Dictionary containing the fields to extract from (e.g., userinfo or token payload)
@@ -48,18 +54,21 @@ def extract_field_from_payload(
 
     for field in field_list:
         value = payload.get(field)
-        if value:
-            if not isinstance(value, str):
-                error_msg = f"Invalid OIDC {field_label} field: {field} is not a string"
-                logger.error(error_msg)
-                return None, error_msg
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            error_msg = f"Invalid OIDC {field_label} field: {field} is not a string"
+            logger.error(error_msg)
+            return None, error_msg
+        if value.strip():
             return value, None
+        # Empty or whitespace-only string: treat as absent, try the next configured field.
 
-    # No field found (or every configured field was missing/empty)
+    # No field found (or every configured field was missing/blank)
     return None, f"No {field_label} provided in {source}"
 
 
-def extract_username(payload: Dict[str, Any], source: str = "OIDC userinfo") -> tuple[Optional[str], Optional[str]]:
+def extract_username(payload: Dict[str, Any], source: str = OIDC_USERINFO_SOURCE) -> tuple[Optional[str], Optional[str]]:
     """
     Extract username from OIDC userinfo or token payload.
 
@@ -80,7 +89,7 @@ def extract_username(payload: Dict[str, Any], source: str = "OIDC userinfo") -> 
     return normalize_username(value), None
 
 
-def extract_display_name(payload: Dict[str, Any], source: str = "OIDC userinfo") -> tuple[Optional[str], Optional[str]]:
+def extract_display_name(payload: Dict[str, Any], source: str = OIDC_USERINFO_SOURCE) -> tuple[Optional[str], Optional[str]]:
     """
     Extract display name from OIDC userinfo or token payload.
 

@@ -83,6 +83,34 @@ class TestExtractFieldFromPayload:
         assert value is None
         assert "No display name provided in OIDC userinfo" in error
 
+    def test_extract_whitespace_only_value_falls_back_to_next_field(self):
+        """Test that a whitespace-only field value is treated as missing, not as found."""
+        payload = {"email": "   ", "preferred_username": "alice"}
+        value, error = extract_field_from_payload(payload, ["email", "preferred_username"], "username")
+        assert value == "alice"
+        assert error is None
+
+    def test_extract_all_whitespace_only_values_errors(self):
+        """Test that whitespace-only values across every field report an error, not a blank value."""
+        payload = {"email": "   ", "preferred_username": "\t"}
+        value, error = extract_field_from_payload(payload, ["email", "preferred_username"], "username")
+        assert value is None
+        assert "No username provided in OIDC userinfo" in error
+
+    def test_extract_falsy_non_string_value_still_reports_type_error(self):
+        """Test that a present-but-falsy non-string value (e.g. 0) still gets the type-error diagnostic."""
+        payload = {"email": 0}
+        value, error = extract_field_from_payload(payload, ["email"], "username")
+        assert value is None
+        assert "Invalid OIDC username field: email is not a string" in error
+
+    def test_extract_false_value_still_reports_type_error(self):
+        """Test that a boolean False value still gets the type-error diagnostic rather than being skipped."""
+        payload = {"email": False}
+        value, error = extract_field_from_payload(payload, ["email"], "username")
+        assert value is None
+        assert "Invalid OIDC username field: email is not a string" in error
+
 
 class TestExtractUsername:
     """Tests for extract_username utility function."""

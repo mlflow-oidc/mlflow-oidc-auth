@@ -403,7 +403,7 @@ async def callback(request: Request):
         session = request.session
 
         # Process OIDC callback using FastAPI-native implementation
-        email, errors = await _process_oidc_callback_fastapi(request, session)
+        username, errors = await _process_oidc_callback_fastapi(request, session)
 
         if errors:
             # Handle authentication errors
@@ -415,13 +415,13 @@ async def callback(request: Request):
             logger.debug(f"Redirecting to auth error page: {auth_error_url}")
             return RedirectResponse(url=auth_error_url, status_code=302)
 
-        if email:
+        if username:
             # Successful authentication
-            session["username"] = email
+            session["username"] = username
             session["authenticated"] = True
 
-            logger.info(f"User {email} authenticated successfully via OIDC")
-            emit_audit_event("auth.login", actor=email, detail={"method": "oidc"})
+            logger.info(f"User {username} authenticated successfully via OIDC")
+            emit_audit_event("auth.login", actor=username, detail={"method": "oidc"})
 
             # Redirect to UI home page or original destination
             default_redirect = session.pop("redirect_after_login", None)
