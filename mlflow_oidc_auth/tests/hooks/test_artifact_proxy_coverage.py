@@ -7,6 +7,9 @@ web UI itself uses — and in the `mpu/{create,complete,abort}` (write) and `pre
 it, so any authenticated user could read and write another workspace's artifacts.
 """
 
+import re
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from mlflow_oidc_auth.hooks.before_request import (
@@ -21,6 +24,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_experiment_artifact_proxy,
 )
 
+from mlflow.exceptions import MlflowException
 from mlflow.server import app  # the real routing table: view_args match production
 
 
@@ -409,3 +413,565 @@ class TestExperimentRootPathsResolve:
                 assert resolved.call_args.args[0] == "12"
 
         assert response is not None and response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Issue #289 — fail closed, and gate the routes that reached no validator
+# ---------------------------------------------------------------------------
+
+
+class TestUnresolvableArtifactPathFailsClosed:
+    """An artifact-proxy path naming no experiment must deny, not fall back to the default.
+
+    Every one of these ran with DEFAULT_MLFLOW_PERMISSION="MANAGE" — the SHIPPED default,
+    not the NO_PERMISSIONS the test .env sets. Under NO_PERMISSIONS these assertions pass
+    whether or not the fix is present, which is exactly how the hole survived four review
+    rounds.
+    """
+
+    @pytest.mark.parametrize(
+        "path, method",
+        [
+            # The root shapes. DELETE here reaches delete_artifacts(".") which recursively
+            # empties EVERY experiment's artifacts.
+            ("/api/2.0/mlflow-artifacts/artifacts/.", "DELETE"),
+            ("/api/2.0/mlflow-artifacts/artifacts/%2e", "DELETE"),
+            ("/api/2.0/mlflow-artifacts/artifacts/./.", "DELETE"),
+            ("/api/2.0/mlflow-artifacts/artifacts/.//", "DELETE"),
+            ("/api/2.0/mlflow-artifacts/artifacts/.", "GET"),
+            ("/ajax-api/2.0/mlflow-artifacts/artifacts/.", "DELETE"),
+            # Names a whole tenant rather than one experiment.
+            ("/api/2.0/mlflow-artifacts/artifacts/workspaces/wsA", "DELETE"),
+        ],
+    )
+    def test_root_shaped_paths_are_denied(self, path, method):
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        with app.test_request_context(path, method=method):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE"),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="u"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+            ):
+                response = before_request_hook()
+
+        assert response is not None and response.status_code == 403, f"{method} {path} was allowed on the shipped MANAGE default"
+
+    @pytest.mark.parametrize("query", ["", "path=", "path=.", "path=./"])
+    def test_root_listing_is_denied(self, query):
+        """GET the proxy root returns every experiment id on the server.
+
+        The real client never sends this: HttpArtifactRepository.list_artifacts always
+        sends a path, and for a proxied run repository it starts with the experiment id.
+        """
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        with app.test_request_context(f"/api/2.0/mlflow-artifacts/artifacts?{query}", method="GET"):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE"),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="u"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+            ):
+                response = before_request_hook()
+
+        assert response is not None and response.status_code == 403
+
+    def test_a_resolvable_path_is_still_authorized_normally(self):
+        """The fail-closed change must not swallow the normal path — the store still decides."""
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.permissions import get_permission
+
+        with app.test_request_context("/api/2.0/mlflow-artifacts/artifacts?path=12/r/a", method="GET"):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE"),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="u"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+                patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission") as resolved,
+            ):
+                resolved.return_value.permission = get_permission("READ")
+                response = before_request_hook()
+                assert resolved.call_args.args[0] == "12"
+
+        assert response is None, "a user holding READ must still be served"
+
+
+class TestPreviouslyUngatedArtifactRoutes:
+    """These reached NO validator at all — and a None validator is not a deny (#289)."""
+
+    @pytest.mark.parametrize(
+        "path, method, expected",
+        [
+            ("/ajax-api/2.0/mlflow/logged-models/m-1/artifacts/files", "GET", "validate_can_read_logged_model"),
+            ("/ajax-api/2.0/mlflow/logged-models/m-1/artifacts/directories", "GET", "validate_can_read_logged_model"),
+            ("/api/2.0/mlflow/logged-models/m-1/artifacts/directories", "GET", "validate_can_read_logged_model"),
+            ("/api/2.0/mlflow/artifacts/presigned-upload-url", "POST", "validate_can_create_presigned_upload_url"),
+            ("/ajax-api/2.0/mlflow/artifacts/presigned-upload-url", "POST", "validate_can_create_presigned_upload_url"),
+        ],
+    )
+    def test_route_now_resolves_a_validator(self, path, method, expected):
+        from mlflow_oidc_auth.hooks.before_request import _find_validator
+
+        with app.test_request_context(path, method=method) as ctx:
+            validator = _find_validator(ctx.request)
+
+        assert validator is not None, f"{method} {path} still reaches no validator"
+        assert validator.__name__ == expected
+
+    @pytest.mark.parametrize("permission, allowed", [("READ", True), ("NO_PERMISSIONS", False)])
+    def test_logged_model_artifact_files_decides_on_the_owning_experiment(self, permission, allowed):
+        """Resolving a validator is not enough — it must reach a real allow/deny.
+
+        A wiring assertion alone would pass even if the validator always errored, which is
+        the failure mode that has bitten this codebase before.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from flask import request
+
+        from mlflow_oidc_auth.permissions import get_permission
+        from mlflow_oidc_auth.validators import validate_can_read_logged_model
+
+        with app.test_request_context("/ajax-api/2.0/mlflow/logged-models/m-1/artifacts/files", method="GET"):
+            request.view_args = {"model_id": "m-1"}
+            with (
+                patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as store,
+                patch("mlflow_oidc_auth.validators.registered_model.effective_experiment_permission") as resolved,
+            ):
+                model = MagicMock()
+                model.experiment_id = "exp-7"
+                store.return_value.get_logged_model.return_value = model
+                resolved.return_value.permission = get_permission(permission)
+
+                assert validate_can_read_logged_model("bob") is allowed
+                store.return_value.get_logged_model.assert_called_once_with("m-1")
+                assert resolved.call_args.args[0] == "exp-7"
+
+    def test_presigned_upload_url_denies_without_update_on_the_run(self):
+        """It mints a cloud upload URL for a caller-supplied run_id — a write primitive."""
+        from unittest.mock import MagicMock, patch
+
+        from mlflow_oidc_auth.permissions import get_permission
+        from mlflow_oidc_auth.validators.run import validate_can_create_presigned_upload_url
+
+        run = MagicMock()
+        run.info.experiment_id = "exp-of-victim"
+
+        with (
+            app.test_request_context(
+                "/api/2.0/mlflow/artifacts/presigned-upload-url",
+                method="POST",
+                json={"run_id": "VICTIM-RUN", "path": "f.bin"},
+            ),
+            patch("mlflow_oidc_auth.validators.run._get_tracking_store") as store,
+            patch("mlflow_oidc_auth.validators.run.effective_experiment_permission") as resolved,
+        ):
+            store.return_value.get_run.return_value = run
+            resolved.return_value.permission = get_permission("READ")
+            allowed = validate_can_create_presigned_upload_url("bob")
+
+            store.return_value.get_run.assert_called_once_with("VICTIM-RUN")
+            assert resolved.call_args.args[0] == "exp-of-victim"
+
+        assert allowed is False, "READ must not be enough to mint an upload URL"
+
+    def test_presigned_upload_url_reads_the_body_not_the_query_string(self):
+        """It is a proto route, so MLflow reads run_id from the body (issues #285, #289)."""
+        from unittest.mock import MagicMock, patch
+
+        from mlflow_oidc_auth.permissions import get_permission
+        from mlflow_oidc_auth.validators.run import validate_can_create_presigned_upload_url
+
+        run = MagicMock()
+        run.info.experiment_id = "exp-1"
+
+        with (
+            app.test_request_context(
+                "/api/2.0/mlflow/artifacts/presigned-upload-url?run_id=MY-OWN-RUN",
+                method="POST",
+                json={"run_id": "VICTIM-RUN", "path": "f.bin"},
+            ),
+            patch("mlflow_oidc_auth.validators.run._get_tracking_store") as store,
+            patch("mlflow_oidc_auth.validators.run.effective_experiment_permission") as resolved,
+        ):
+            store.return_value.get_run.return_value = run
+            resolved.return_value.permission = get_permission("EDIT")
+            allowed = validate_can_create_presigned_upload_url("bob")
+
+            store.return_value.get_run.assert_called_once_with("VICTIM-RUN")
+
+        # Assert the ALLOW direction too: without this an always-deny validator passes
+        # the whole suite, which is exactly what the review found.
+        assert allowed is True
+
+
+def test_structural_every_artifact_serving_route_reaches_a_validator():
+    """No artifact route MLflow serves may reach the view unauthorized.
+
+    Derived from MLflow's live url_map rather than a hardcoded list, so a future MLflow
+    that adds an artifact route fails this test instead of shipping it ungated. This is
+    the check that would have caught all five routes in #289 the moment they appeared.
+    """
+    from flask import Flask as _Flask
+
+    from mlflow.server import app as mlflow_app
+
+    from mlflow_oidc_auth.hooks.before_request import _find_validator, _is_proxy_artifact_path
+
+    probe = _Flask(__name__)
+    ungated = []
+    for rule in mlflow_app.url_map.iter_rules():
+        path = str(rule)
+        if "artifact" not in path.lower():
+            continue
+        for method in sorted((rule.methods or set()) - {"OPTIONS", "HEAD"}):
+            concrete = re.sub(r"<[^>]+>", "x", path)
+            with probe.test_request_context(concrete, method=method) as ctx:
+                if _find_validator(ctx.request) is None and not _is_proxy_artifact_path(concrete):
+                    ungated.append(f"{method} {path}")
+
+    assert not ungated, "artifact routes reachable with no authorization: " + ", ".join(sorted(ungated))
+
+
+class TestPrefixedArtifactRoots:
+    """Prefixed artifact roots must resolve — and only to the experiment that owns them.
+
+    Two failed attempts preceded this. Denying every unresolvable path locked out whole
+    deployments; then resolving the id POSITIONALLY (two segments before the first
+    "artifacts" component) trusted a caller-controlled string and could be spoofed.
+    Resolution is now authoritative: the component before the marker is the run id, the
+    store says which experiment owns it and where its artifacts live, and the request is
+    attributed to that experiment only if it falls inside the run's own artifact tree.
+    """
+
+    RUN = "1f1635b6c312404381490146137572aa"
+
+    # run_id -> (experiment_id, artifact_uri)
+    RUNS = {
+        RUN: ("1", f"mlflow-artifacts:/mlartifacts/1/{RUN}/artifacts"),
+        "bare": ("1", "mlflow-artifacts:/1/bare/artifacts"),
+        "deep": ("1", "mlflow-artifacts:/a/b/c/1/deep/artifacts"),
+        "wsrun": ("1", "mlflow-artifacts:/workspaces/wsA/1/wsrun/artifacts"),
+        "attackers": ("3", "mlflow-artifacts:/mlartifacts/3/attackers/artifacts"),
+        "numerictail": ("55", "mlflow-artifacts:/teams/12/numerictail/artifacts"),
+        "elsewhere": ("9", "s3://bucket/9/elsewhere/artifacts"),
+    }
+
+    @staticmethod
+    def _store(runs):
+        def get_run(run_id):
+            if run_id not in runs:
+                raise MlflowException(f"no run {run_id}")
+            experiment_id, artifact_uri = runs[run_id]
+            run = MagicMock()
+            run.info.experiment_id = experiment_id
+            run.info.artifact_uri = artifact_uri
+            return run
+
+        store = MagicMock()
+        store.get_run.side_effect = get_run
+        return store
+
+    def _resolve(self, artifact_path):
+        from mlflow_oidc_auth.validators import experiment as experiment_module
+
+        with patch.object(experiment_module, "_get_tracking_store", return_value=self._store(self.RUNS)):
+            return experiment_module._experiment_id_from_artifact_path(artifact_path)
+
+    @pytest.mark.parametrize(
+        "artifact_path",
+        [
+            "1/bare/artifacts",
+            "1/bare/artifacts/model.pkl",
+            "mlartifacts/1/{run}/artifacts",
+            "mlartifacts/1/{run}/artifacts/model.pkl",
+            "a/b/c/1/deep/artifacts/model.pkl",
+            "workspaces/wsA/1/wsrun/artifacts/model.pkl",
+            # A user-created directory literally named "artifacts" nested inside the run's
+            # own artifacts. Anchoring on the LAST marker instead of the first would read
+            # "artifacts" as the run id here and resolve nothing.
+            "mlartifacts/1/{run}/artifacts/artifacts/model.pkl",
+        ],
+    )
+    def test_experiment_resolves_whatever_the_prefix_depth(self, artifact_path):
+        resolved = self._resolve(artifact_path.format(run=self.RUN))
+        assert resolved == "1", f"{artifact_path!r} did not resolve — a MANAGE holder would be locked out"
+
+    @pytest.mark.parametrize(
+        "artifact_path",
+        [
+            # THE SPOOF: attacker owns experiment 3 and supplies both the "artifacts"
+            # component and a digit two before it, while MLflow writes under experiment 7.
+            "mlartifacts/7/3/runX/artifacts/evil.txt",
+            "mlartifacts/7/runV/3/y/artifacts/evil.txt",
+            # A run the attacker really owns, spliced under someone else's prefix. The
+            # containment check is what kills this one.
+            "mlartifacts/7/attackers/artifacts/evil.txt",
+            # A run whose artifacts live outside the proxy (s3:), so its location cannot
+            # corroborate a proxy request. Written with a prefix so it actually reaches the
+            # lookup — under a bare root, segment 0 IS the experiment directory and the
+            # fast path resolves it without consulting the store.
+            "mlartifacts/9/elsewhere/artifacts/x",
+        ],
+    )
+    def test_a_crafted_path_resolves_to_nothing(self, artifact_path):
+        """Positional trust was the bug; none of these may attribute to an experiment."""
+        assert self._resolve(artifact_path) is None, f"{artifact_path!r} was attributed to an experiment it does not belong to"
+
+    def test_a_non_proxy_run_never_corroborates_even_when_its_path_coincides(self):
+        """A run stored outside the proxy cannot vouch for proxy bytes.
+
+        s3://bucket/mlartifacts/9/coincide/artifacts has a URI *path* identical to the
+        requested proxy path, but it names different physical bytes — the proxy would
+        serve them from the artifacts destination, not from S3. Comparing paths without
+        checking the scheme would attribute someone else's data to experiment 9.
+        """
+        from mlflow_oidc_auth.validators import experiment as experiment_module
+
+        runs = dict(self.RUNS, coincide=("9", "s3://bucket/mlartifacts/9/coincide/artifacts"))
+        with patch.object(experiment_module, "_get_tracking_store", return_value=self._store(runs)):
+            resolved = experiment_module._experiment_id_from_artifact_path("mlartifacts/9/coincide/artifacts/x")
+
+        assert resolved is None
+
+    def test_a_numeric_tail_location_resolves_to_the_real_owner(self):
+        """artifact_location "mlflow-artifacts:/teams/12" must not read as experiment 12.
+
+        Positionally it did, which both denied the rightful owner (experiment 55) and
+        granted whoever held experiment 12.
+        """
+        assert self._resolve("teams/12/numerictail/artifacts/model.pkl") == "55"
+
+    def _hook(self, path, method, permission, default_permission="MANAGE"):
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.validators import experiment as experiment_module
+
+        seen = {}
+
+        def resolve(experiment_id, username):
+            seen["experiment_id"] = experiment_id
+            result = MagicMock()
+            result.permission = permission
+            return result
+
+        with app.test_request_context(path, method=method):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", default_permission),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                patch.object(experiment_module, "_get_tracking_store", return_value=self._store(self.RUNS)),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="u"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+                patch.object(experiment_module, "effective_experiment_permission", side_effect=resolve),
+            ):
+                response = before_request_hook()
+        return response, seen.get("experiment_id")
+
+    @pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+    def test_a_manage_holder_is_served_under_a_prefixed_root(self, method):
+        from mlflow_oidc_auth.permissions import get_permission
+
+        path = f"/api/2.0/mlflow-artifacts/artifacts/mlartifacts/1/{self.RUN}/artifacts/model.pkl"
+        response, experiment_id = self._hook(path, method, get_permission("MANAGE"))
+
+        assert experiment_id == "1", "the store must be consulted for the run's real experiment"
+        assert response is None, f"{method} was denied for a MANAGE holder under a prefixed artifact root"
+
+    def test_an_unprivileged_user_is_still_denied_under_a_prefixed_root(self):
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+
+        path = f"/api/2.0/mlflow-artifacts/artifacts/mlartifacts/1/{self.RUN}/artifacts/model.pkl"
+        response, _ = self._hook(path, "DELETE", NO_PERMISSIONS)
+
+        assert response is not None and response.status_code == 403
+
+    def test_the_spoof_is_denied_end_to_end_under_a_hardened_default(self):
+        """The attacker holds MANAGE on experiment 3; MLflow would write under 7.
+
+        Pinned with DEFAULT_MLFLOW_PERMISSION=NO_PERMISSIONS because that is where the
+        positional version produced a clean deny -> allow flip against main.
+        """
+        from mlflow_oidc_auth.permissions import get_permission
+
+        path = "/api/2.0/mlflow-artifacts/artifacts/mlartifacts/7/3/runX/artifacts/evil.txt"
+        response, experiment_id = self._hook(path, "PUT", get_permission("MANAGE"), default_permission="NO_PERMISSIONS")
+
+        assert experiment_id is None, "a crafted path must never reach the permission store"
+        assert response is not None and response.status_code == 403
+
+    @pytest.mark.parametrize("artifact_path", [".", "%2e", "%252e", "./.", ".//", "", "workspaces", "workspaces/wsA"])
+    def test_root_scoped_paths_are_still_root_scoped_after_decoding(self, artifact_path):
+        """The root check must decode exactly as the id parser does.
+
+        These two used to normalize the value separately, so "%2e" looked like an ordinary
+        segment to the root check while MLflow resolved it to "." — the parse-it-two-ways
+        bug again, this time inside the fix for it.
+        """
+        from mlflow_oidc_auth.validators.experiment import _artifact_request_targets_the_whole_root
+
+        assert _artifact_request_targets_the_whole_root(artifact_path) is True
+
+    @pytest.mark.parametrize("artifact_path", ["1/r/artifacts", "mlartifacts/1/r/artifacts", "team-a/proj/r/artifacts"])
+    def test_paths_naming_something_within_the_root_are_not_root_scoped(self, artifact_path):
+        from mlflow_oidc_auth.validators.experiment import _artifact_request_targets_the_whole_root
+
+        assert _artifact_request_targets_the_whole_root(artifact_path) is False
+
+    @pytest.mark.parametrize("default_permission, allowed", [("MANAGE", True), ("NO_PERMISSIONS", False)])
+    def test_an_undecomposable_prefix_falls_back_rather_than_locking_the_tenant_out(self, default_permission, allowed):
+        """A layout we cannot decompose must NOT be denied outright — that is an outage.
+
+        Denying every unresolvable path refused every operation for the user who holds
+        MANAGE, and because the store is never consulted no grant could restore access —
+        only the admin bypass. This branch therefore keeps the pre-change behaviour and
+        defers to the configured default. Both directions are asserted so it cannot be
+        silently flipped to deny (an outage) or hardcoded to allow.
+        """
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.validators import experiment as experiment_module
+
+        # "unknownrun" is not in the store, so nothing can be attributed to an experiment.
+        path = "/api/2.0/mlflow-artifacts/artifacts/team-a/proj/unknownrun/artifacts/model.pkl"
+        with app.test_request_context(path, method="GET"):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", default_permission),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                patch.object(experiment_module, "_get_tracking_store", return_value=self._store(self.RUNS)),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="owner"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+            ):
+                response = before_request_hook()
+
+        assert (response is None) is allowed, f"undecomposable prefix under default={default_permission} should {'allow' if allowed else 'deny'}"
+
+
+class TestConfiguredArtifactRootPrefix:
+    """Paths are interpreted relative to --default-artifact-root (issue #289).
+
+    With ``mlflow-artifacts:/mlartifacts`` the literal path "mlartifacts" IS the proxy
+    root, "mlartifacts/7" is an experiment root, and MLflow 3 logged models live at
+    "mlartifacts/7/models/{model_id}/artifacts/...". Without accounting for the prefix all
+    of those resolved to nothing and fell back to DEFAULT_MLFLOW_PERMISSION — the shipped
+    MANAGE — so the #289 delete-everything primitive stayed open for exactly the
+    deployments prefix support exists to serve.
+    """
+
+    @staticmethod
+    def _store(root, runs=None):
+        runs = runs or {}
+
+        def get_run(run_id):
+            if run_id not in runs:
+                raise MlflowException(f"no run {run_id}")
+            experiment_id, artifact_uri = runs[run_id]
+            run = MagicMock()
+            run.info.experiment_id = experiment_id
+            run.info.artifact_uri = artifact_uri
+            return run
+
+        store = MagicMock()
+        store.artifact_root_uri = root
+        store.get_run.side_effect = get_run
+        return store
+
+    def _with_root(self, root, runs=None):
+        from mlflow_oidc_auth.validators import experiment as experiment_module
+
+        return patch.object(experiment_module, "_get_tracking_store", return_value=self._store(root, runs))
+
+    PREFIXED = "mlflow-artifacts:/mlartifacts"
+
+    @pytest.mark.parametrize("artifact_path", ["mlartifacts", "mlartifacts/", "mlartifacts/.", "mlartifacts/workspaces/wsA"])
+    def test_the_prefixed_root_and_tenant_are_root_scoped(self, artifact_path):
+        """DELETE on these reaches delete_artifacts for every tenant's tree."""
+        from mlflow_oidc_auth.validators.experiment import _artifact_request_targets_the_whole_root
+
+        with self._with_root(self.PREFIXED):
+            assert _artifact_request_targets_the_whole_root(artifact_path) is True
+
+    @pytest.mark.parametrize(
+        "artifact_path, expected",
+        [
+            ("mlartifacts/7", "7"),
+            ("mlartifacts/7/", "7"),
+            ("mlartifacts/7/run/artifacts/model.pkl", "7"),
+            # MLflow 3 logged models: the id is three segments before the marker, which no
+            # positional rule anchored on "artifacts" could ever have found.
+            ("mlartifacts/7/models/m-x/artifacts/MLmodel", "7"),
+            ("mlartifacts/workspaces/wsA/7/run/artifacts/f", "7"),
+            # The crafted path from the previous round now resolves to the experiment
+            # MLflow actually writes under, so the attacker is judged against THAT.
+            ("mlartifacts/7/3/runX/artifacts/evil.txt", "7"),
+        ],
+    )
+    def test_paths_resolve_relative_to_the_configured_root(self, artifact_path, expected):
+        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
+
+        with self._with_root(self.PREFIXED):
+            assert _experiment_id_from_artifact_path(artifact_path) == expected
+
+    @pytest.mark.parametrize("artifact_path", [".", "%2e", "", "workspaces/wsA", "12", "12/run/artifacts/f", "12/models/m-x/artifacts/MLmodel"])
+    def test_the_default_bare_root_is_unaffected(self, artifact_path):
+        """With mlflow-artifacts:/ nothing is stripped and behaviour is unchanged."""
+        from mlflow_oidc_auth.validators.experiment import (
+            _artifact_request_targets_the_whole_root,
+            _experiment_id_from_artifact_path,
+        )
+
+        with self._with_root("mlflow-artifacts:/"):
+            if artifact_path.startswith("12"):
+                assert _experiment_id_from_artifact_path(artifact_path) == "12"
+            else:
+                assert _artifact_request_targets_the_whole_root(artifact_path) is True
+
+    def test_a_non_proxied_artifact_root_strips_nothing(self):
+        """A local or s3 tracking artifact root is not a proxy prefix."""
+        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
+
+        with self._with_root("/var/lib/mlruns"):
+            assert _experiment_id_from_artifact_path("12/run/artifacts/f") == "12"
+
+    def test_a_store_that_cannot_report_its_root_does_not_break_resolution(self):
+        """artifact_root_uri is best-effort; failing to read it must not deny or crash."""
+        from mlflow_oidc_auth.validators import experiment as experiment_module
+
+        broken = MagicMock()
+        type(broken).artifact_root_uri = property(lambda self: (_ for _ in ()).throw(RuntimeError("boom")))
+        with patch.object(experiment_module, "_get_tracking_store", return_value=broken):
+            assert experiment_module._experiment_id_from_artifact_path("12/run/artifacts/f") == "12"
+
+    @pytest.mark.parametrize("default_permission", ["MANAGE", "NO_PERMISSIONS"])
+    def test_deleting_the_prefixed_root_is_denied_end_to_end(self, default_permission):
+        """The #289 headline hole, spelled with the configured prefix."""
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        with app.test_request_context("/api/2.0/mlflow-artifacts/artifacts/mlartifacts", method="DELETE"):
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", default_permission),
+                patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False),
+                self._with_root(self.PREFIXED),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="nobody"),
+                patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+                patch("mlflow_oidc_auth.hooks.before_request._requires_existing_user", return_value=False),
+            ):
+                response = before_request_hook()
+
+        assert response is not None and response.status_code == 403, "the prefixed proxy root must never be deletable"

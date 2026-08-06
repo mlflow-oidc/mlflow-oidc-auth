@@ -259,6 +259,31 @@ def get_model_id() -> str:
     )
 
 
+def get_run_id() -> str:
+    """Get the run id from the source MLflow itself will read.
+
+    Unlike ``get_request_param("run_id")`` this goes through
+    ``_extract_param_from_all_sources``, so on a proto route it reads exactly the source
+    MLflow proto-parses and accepts the ``runId`` json_name spelling too. Used by
+    validators for proto routes carrying a run id in the body; the older helper is left
+    alone because many validators depend on its behaviour.
+
+    Raises:
+        MlflowException: INVALID_PARAMETER_VALUE if no run id is present, which
+        ``catch_mlflow_exception`` turns into a 400 returned from the hook.
+    """
+    run_id = _extract_param_from_all_sources("run_id")
+    if run_id is None:
+        # Some MLflow routes spell it run_uuid.
+        run_id = _extract_param_from_all_sources("run_uuid")
+    if run_id is not None:
+        return run_id
+    raise MlflowException(
+        "Run ID must be provided in the request data.",
+        INVALID_PARAMETER_VALUE,
+    )
+
+
 def get_model_name() -> str:
     """
     Helper function to get the model name from the request.
