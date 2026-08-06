@@ -9,6 +9,7 @@ import { getRuntimeConfig } from "./shared/services/runtime-config";
 import { removeTrailingSlashes } from "./shared/utils/string-utils";
 import { RuntimeConfigProvider } from "./shared/context/runtime-config-provider.tsx";
 import { UserProvider } from "./core/context/user-provider.tsx";
+import { WorkspaceProvider } from "./shared/context/workspace-context.tsx";
 import { ToastProvider } from "./shared/components/toast/toast-context.tsx";
 
 async function init() {
@@ -24,9 +25,11 @@ async function init() {
         <Suspense fallback={<LoadingSpinner />}>
           <RuntimeConfigProvider config={config}>
             <UserProvider>
-              <ToastProvider>
-                <App />
-              </ToastProvider>
+              <WorkspaceProvider>
+                <ToastProvider>
+                  <App />
+                </ToastProvider>
+              </WorkspaceProvider>
             </UserProvider>
           </RuntimeConfigProvider>
         </Suspense>

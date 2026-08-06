@@ -66,6 +66,12 @@ class TestAuthMiddleware:
         assert auth_middleware._is_unprotected_route("/oidc/ui") is True
         assert auth_middleware._is_unprotected_route("/oidc/ui/admin") is True
 
+    def test_is_unprotected_route_mlflow_static_files(self, auth_middleware):
+        """MLflow's hashed bundle assets must load even without a valid session."""
+        assert auth_middleware._is_unprotected_route("/static-files/static/js/9605.46a42772.chunk.js") is True
+        assert auth_middleware._is_unprotected_route("/static-files/static/css/main.css") is True
+        assert auth_middleware._is_unprotected_route("/static-files/static/media/default-error.svg") is True
+
     def test_is_unprotected_route_protected(self, auth_middleware):
         """Test that other routes are protected."""
         assert auth_middleware._is_unprotected_route("/api/users") is False
@@ -190,7 +196,7 @@ class TestAuthMiddleware:
 
             assert success is False
             assert username is None
-            assert error == "Invalid token payload"
+            assert error == "No username provided in OIDC userinfo"
 
     @pytest.mark.asyncio
     async def test_authenticate_bearer_token_invalid_token(self, auth_middleware, mock_validate_token):
@@ -257,7 +263,7 @@ class TestAuthMiddleware:
 
         assert success is False
         assert username is None
-        assert "SessionMiddleware must be installed to access request.session" in error
+        assert error == "Session error"
 
     @pytest.mark.asyncio
     async def test_authenticate_session_access_error(self, auth_middleware, create_mock_request):
@@ -279,13 +285,88 @@ class TestAuthMiddleware:
 
             assert success is False
             assert username is None
-            assert "Session access failed" in error
+            assert error == "Session error"
         finally:
             # Restore original session descriptor/property
             if original_session_prop is not None:
                 request.__class__.session = original_session_prop
             else:
                 delattr(request.__class__, "session")
+
+    @pytest.mark.asyncio
+    async def test_authenticate_session_unexpired_passes_through(self, auth_middleware, create_mock_request):
+        """A session with a future ``expires_at`` is allowed without touching the IdP."""
+        future = 9999999999  # year 2286
+        request = create_mock_request(session={"username": "user@example.com", "expires_at": future})
+
+        success, username, error = await auth_middleware._authenticate_session(request)
+
+        assert success is True
+        assert username == "user@example.com"
+        assert error == ""
+
+    @pytest.mark.asyncio
+    async def test_authenticate_session_expired_no_refresh_token_clears(self, auth_middleware, create_mock_request):
+        """Expired sessions without a refresh token are cleared and rejected."""
+        from mlflow_oidc_auth.middleware import auth_middleware as middleware_mod
+
+        session = {"username": "user@example.com", "expires_at": 100}  # 1970, well past
+
+        # Patch refresh helper to confirm no successful refresh path
+        from unittest.mock import AsyncMock, patch as _patch
+
+        with (
+            _patch("mlflow_oidc_auth.routers.auth.refresh_session_with_idp", new=AsyncMock(return_value=False)),
+            _patch.object(middleware_mod.config, "OIDC_SESSION_EXPIRY_LEEWAY_SECONDS", 0, create=True),
+        ):
+            request = create_mock_request(session=session)
+            success, username, error = await auth_middleware._authenticate_session(request)
+
+        assert success is False
+        assert username is None
+        assert error == "Session expired"
+        assert "username" not in session  # session.clear() was called
+
+    @pytest.mark.asyncio
+    async def test_authenticate_session_expired_refresh_succeeds(self, auth_middleware, create_mock_request):
+        """When OIDC_USE_REFRESH_TOKEN is on and refresh succeeds, the session is accepted."""
+        from mlflow_oidc_auth.middleware import auth_middleware as middleware_mod
+
+        session = {
+            "username": "user@example.com",
+            "expires_at": 100,
+            "refresh_token": "rt-123",
+        }
+
+        async def fake_refresh(s):
+            s["expires_at"] = 9999999999
+            s["refresh_token"] = "rt-456"
+            return True
+
+        from unittest.mock import patch as _patch
+
+        with (
+            _patch("mlflow_oidc_auth.routers.auth.refresh_session_with_idp", side_effect=fake_refresh),
+            _patch.object(middleware_mod.config, "OIDC_SESSION_EXPIRY_LEEWAY_SECONDS", 0, create=True),
+        ):
+            request = create_mock_request(session=session)
+            success, username, error = await auth_middleware._authenticate_session(request)
+
+        assert success is True
+        assert username == "user@example.com"
+        assert error == ""
+        assert session["expires_at"] == 9999999999
+        assert session["refresh_token"] == "rt-456"
+
+    @pytest.mark.asyncio
+    async def test_authenticate_session_no_expires_at_unchanged(self, auth_middleware, create_mock_request):
+        """Sessions predating this feature (no ``expires_at``) keep working."""
+        request = create_mock_request(session={"username": "user@example.com"})
+
+        success, username, error = await auth_middleware._authenticate_session(request)
+
+        assert success is True
+        assert username == "user@example.com"
 
     @pytest.mark.asyncio
     async def test_authenticate_user_basic_auth_priority(self, auth_middleware, create_mock_request, mock_store):
@@ -375,17 +456,21 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_handle_auth_redirect_automatic_login(self, auth_middleware, create_mock_request, mock_config):
-        """Test authentication redirect with automatic login enabled."""
+        """Test authentication redirect with automatic login enabled.
+
+        Includes the ``?next=<original-path>`` round-trip so the user lands
+        back on the page they tried to load instead of the root.
+        """
         mock_config.AUTOMATIC_LOGIN_REDIRECT = True
 
         with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
-            request = create_mock_request()
+            request = create_mock_request(path="/protected")
 
             response = await auth_middleware._handle_auth_redirect(request)
 
             assert isinstance(response, RedirectResponse)
             assert response.status_code == 302
-            assert response.headers["location"] == "/login"
+            assert response.headers["location"] == "/login?next=%2Fprotected"
 
     @pytest.mark.asyncio
     async def test_handle_auth_redirect_no_automatic_login(self, auth_middleware, create_mock_request, mock_config):
@@ -439,8 +524,8 @@ class TestAuthMiddleware:
 
             # Verify ASGI scope was updated for WSGI compatibility
             assert "mlflow_oidc_auth" in request.scope
-            assert request.scope["mlflow_oidc_auth"]["username"] == "user@example.com"
-            assert request.scope["mlflow_oidc_auth"]["is_admin"] is False
+            assert request.scope["mlflow_oidc_auth"].username == "user@example.com"
+            assert request.scope["mlflow_oidc_auth"].is_admin is False
 
     @pytest.mark.asyncio
     async def test_dispatch_authenticated_admin(self, auth_middleware, create_mock_request, mock_store):
@@ -463,18 +548,21 @@ class TestAuthMiddleware:
 
             # Verify ASGI scope was updated for WSGI compatibility
             assert "mlflow_oidc_auth" in request.scope
-            assert request.scope["mlflow_oidc_auth"]["username"] == "admin@example.com"
-            assert request.scope["mlflow_oidc_auth"]["is_admin"] is True
+            assert request.scope["mlflow_oidc_auth"].username == "admin@example.com"
+            assert request.scope["mlflow_oidc_auth"].is_admin is True
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_user_automatic_redirect(self, auth_middleware, create_mock_request, mock_config):
-        """Test dispatch for unauthenticated user with automatic login redirect."""
+        """Document navigation requests redirect to login when auto-redirect is enabled."""
         mock_config.AUTOMATIC_LOGIN_REDIRECT = True
 
         with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
-            request = create_mock_request(path="/protected", session={})
+            request = create_mock_request(
+                path="/protected",
+                session={},
+                headers={"sec-fetch-dest": "document"},
+            )
 
-            # Mock call_next (should not be called)
             async def mock_call_next(req):
                 pytest.fail("call_next should not be called for unauthenticated user")
 
@@ -482,17 +570,20 @@ class TestAuthMiddleware:
 
             assert isinstance(response, RedirectResponse)
             assert response.status_code == 302
-            assert response.headers["location"] == "/login"
+            assert response.headers["location"] == "/login?next=%2Fprotected"
 
     @pytest.mark.asyncio
     async def test_dispatch_unauthenticated_user_oidc_ui_redirect(self, auth_middleware, create_mock_request, mock_config):
-        """Test dispatch for unauthenticated user with OIDC UI redirect."""
+        """Document navigation requests redirect to the UI when auto-redirect is disabled."""
         mock_config.AUTOMATIC_LOGIN_REDIRECT = False
 
         with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
-            request = create_mock_request(path="/protected", session={})
+            request = create_mock_request(
+                path="/protected",
+                session={},
+                headers={"sec-fetch-dest": "document"},
+            )
 
-            # Mock call_next (should not be called)
             async def mock_call_next(req):
                 pytest.fail("call_next should not be called for unauthenticated user")
 
@@ -501,6 +592,81 @@ class TestAuthMiddleware:
             assert isinstance(response, RedirectResponse)
             assert response.status_code == 302
             assert response.headers["location"] == "/oidc/ui"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_unauthenticated_user_preserves_query_string_in_next(self, auth_middleware, create_mock_request, mock_config):
+        """Query string is forwarded as part of ?next= so deep links survive re-auth."""
+        mock_config.AUTOMATIC_LOGIN_REDIRECT = True
+
+        with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
+            request = create_mock_request(
+                path="/protected",
+                session={},
+                headers={"sec-fetch-dest": "document"},
+            )
+            request.url.query = "tab=runs&id=42"
+
+            response = await auth_middleware.dispatch(request, lambda r: pytest.fail("nope"))
+
+            assert isinstance(response, RedirectResponse)
+            assert response.headers["location"] == "/login?next=%2Fprotected%3Ftab%3Druns%26id%3D42"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_unauthenticated_subresource_returns_401(self, auth_middleware, create_mock_request, mock_config):
+        """Subresource fetches (chunks, fetch/XHR) get 401 instead of a 302 → HTML.
+
+        Otherwise the browser silently follows the redirect and the JS chunk
+        loader / JSON.parse receives HTML and throws — that's the regression
+        that broke the SPA mid-session once IdP-issued expiry kicked in.
+        """
+        mock_config.AUTOMATIC_LOGIN_REDIRECT = True
+
+        with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
+            # Browser script fetch — Sec-Fetch-Dest is the modern signal.
+            # Use a protected path; /static-files/* is unprotected by design.
+            request = create_mock_request(
+                path="/some-app-route/data.js",
+                session={},
+                headers={"sec-fetch-dest": "script"},
+            )
+
+            response = await auth_middleware.dispatch(request, lambda r: pytest.fail("should not be called"))
+
+            assert response.status_code == 401
+            assert b"Authentication required" in response.body
+
+    @pytest.mark.asyncio
+    async def test_dispatch_unauthenticated_xhr_returns_401_via_accept_fallback(self, auth_middleware, create_mock_request, mock_config):
+        """Older clients without Sec-Fetch-Dest fall back to the Accept header."""
+        mock_config.AUTOMATIC_LOGIN_REDIRECT = True
+
+        with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
+            request = create_mock_request(
+                path="/some-endpoint",
+                session={},
+                headers={"accept": "application/json"},
+            )
+
+            response = await auth_middleware.dispatch(request, lambda r: pytest.fail("should not be called"))
+
+            assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_dispatch_unauthenticated_html_accept_redirects(self, auth_middleware, create_mock_request, mock_config):
+        """Without Sec-Fetch-Dest, an Accept: text/html header still redirects."""
+        mock_config.AUTOMATIC_LOGIN_REDIRECT = True
+
+        with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
+            request = create_mock_request(
+                path="/some-endpoint",
+                session={},
+                headers={"accept": "text/html,application/xhtml+xml"},
+            )
+
+            response = await auth_middleware.dispatch(request, lambda r: pytest.fail("should not be called"))
+
+            assert isinstance(response, RedirectResponse)
+            assert response.status_code == 302
 
     @pytest.mark.asyncio
     async def test_dispatch_basic_auth_header(self, auth_middleware, create_mock_request, mock_store):
@@ -632,7 +798,7 @@ class TestAuthMiddleware:
     async def test_dispatch_case_sensitivity(self, auth_middleware, create_mock_request):
         """Test that route protection is case sensitive."""
         # Uppercase paths should be protected (case sensitive)
-        request = create_mock_request(path="/HEALTH")
+        request = create_mock_request(path="/HEALTH", headers={"sec-fetch-dest": "document"})
 
         # Mock call_next (should not be called for protected route without auth)
         async def mock_call_next(req):
@@ -684,16 +850,16 @@ class TestAuthMiddleware:
             async def mock_call_next(req):
                 # Verify scope has auth info during request processing
                 assert "mlflow_oidc_auth" in req.scope
-                assert req.scope["mlflow_oidc_auth"]["username"] == "admin@example.com"
-                assert req.scope["mlflow_oidc_auth"]["is_admin"] is True
+                assert req.scope["mlflow_oidc_auth"].username == "admin@example.com"
+                assert req.scope["mlflow_oidc_auth"].is_admin is True
                 return Response(content="OK", status_code=200)
 
             await auth_middleware.dispatch(request, mock_call_next)
 
             # Verify scope still has auth info after processing
             assert "mlflow_oidc_auth" in request.scope
-            assert request.scope["mlflow_oidc_auth"]["username"] == "admin@example.com"
-            assert request.scope["mlflow_oidc_auth"]["is_admin"] is True
+            assert request.scope["mlflow_oidc_auth"].username == "admin@example.com"
+            assert request.scope["mlflow_oidc_auth"].is_admin is True
 
     @pytest.mark.asyncio
     async def test_authenticate_session_no_session_attribute(self, auth_middleware):
@@ -728,7 +894,7 @@ class TestAuthMiddleware:
 
         assert success is False
         assert username is None
-        assert "Session error: Outer exception" in error
+        assert error == "Session error"
 
     @pytest.mark.asyncio
     async def test_authenticate_session_inner_exception(self, auth_middleware):
@@ -746,7 +912,7 @@ class TestAuthMiddleware:
 
         assert success is False
         assert username is None
-        assert "Session error: Session access failed" in error
+        assert error == "Session error"
 
     @pytest.mark.asyncio
     async def test_authenticate_session_session_get_exception(self, auth_middleware):
@@ -768,4 +934,56 @@ class TestAuthMiddleware:
 
         assert success is False
         assert username is None
-        assert "Session access failed: Session get failed" in error
+        assert error == "Session access failed"
+
+
+class TestLoginRedirectSchemeRelative:
+    """The login redirect must be scheme-relative so it can't downgrade https->http (#128).
+
+    Behind a TLS-terminating proxy (e.g. Azure Application Gateway) the server sees the
+    request as http. If the redirect Location were an absolute http:// URL the browser
+    would be sent to http and the proxy would 404. Emitting a path-only Location makes the
+    browser resolve it against the current (https) origin, so the scheme is preserved.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("automatic_login_redirect", [True, False])
+    async def test_redirect_location_has_no_scheme(self, automatic_login_redirect):
+        from unittest.mock import AsyncMock
+
+        middleware = AuthMiddleware.__new__(AuthMiddleware)  # bypass __init__ (no app needed)
+
+        fake_url = MagicMock(scheme="http", path="/some/page", query="a=1")
+        request = MagicMock(url=fake_url, headers={}, scope={})
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.utils.get_base_path", new=AsyncMock(return_value="")),
+        ):
+            cfg.AUTOMATIC_LOGIN_REDIRECT = automatic_login_redirect
+            response = await middleware._handle_auth_redirect(request)
+
+        location = response.headers["location"]
+        assert not location.startswith("http://"), f"redirect downgraded to http: {location}"
+        assert not location.startswith("https://"), f"redirect hardcoded a scheme: {location}"
+        assert location.startswith("/"), f"redirect is not path-relative: {location}"
+
+    @pytest.mark.asyncio
+    async def test_redirect_honors_forwarded_prefix_without_scheme(self):
+        """With a proxy path prefix the Location stays path-only (prefix + /login), still no scheme."""
+        from unittest.mock import AsyncMock
+
+        middleware = AuthMiddleware.__new__(AuthMiddleware)
+        fake_url = MagicMock(scheme="http", path="/page", query="")
+        request = MagicMock(url=fake_url, headers={}, scope={})
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.utils.get_base_path", new=AsyncMock(return_value="/mlflow")),
+        ):
+            cfg.AUTOMATIC_LOGIN_REDIRECT = True
+            response = await middleware._handle_auth_redirect(request)
+
+        location = response.headers["location"]
+        assert location.startswith("/mlflow/login")
+        assert "http://" not in location and "https://" not in location

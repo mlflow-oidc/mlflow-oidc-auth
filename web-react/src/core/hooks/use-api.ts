@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./use-auth";
+import { useSelectedWorkspace } from "../../shared/context/use-workspace";
 
 export interface ApiState<T> {
   data: T | null;
@@ -16,6 +17,7 @@ export function useApi<T>(
   const [error, setError] = useState<Error | null>(null);
 
   const { isAuthenticated } = useAuth();
+  const selectedWorkspace = useSelectedWorkspace();
 
   const initialFetcher = useCallback(fetcher, [fetcher]);
 
@@ -52,7 +54,7 @@ export function useApi<T>(
         controller.abort();
       };
     }
-  }, [isAuthenticated, initialFetcher]);
+  }, [isAuthenticated, initialFetcher, selectedWorkspace]);
 
   const refetch = useCallback(() => {
     setIsLoading(true);

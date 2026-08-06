@@ -7,7 +7,14 @@ dependency injection system for common authorization and validation tasks.
 
 from fastapi import Depends, Request, HTTPException, Path
 
-from mlflow_oidc_auth.utils import can_manage_experiment, can_manage_registered_model, can_manage_scorer, get_is_admin, get_username
+from mlflow_oidc_auth.utils import (
+    can_manage_experiment,
+    can_manage_registered_model,
+    can_manage_scorer,
+    get_is_admin,
+    get_username,
+)
+from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
 
 async def check_admin_permission(
@@ -40,10 +47,16 @@ async def check_admin_permission(
     except Exception:
         # Keep behavior simple for callers: admin-only endpoints always respond
         # with 403 when the user cannot be identified or checked.
-        raise HTTPException(status_code=403, detail="Administrator privileges required for this operation")
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator privileges required for this operation",
+        )
 
     if not is_admin:
-        raise HTTPException(status_code=403, detail="Administrator privileges required for this operation")
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator privileges required for this operation",
+        )
 
     return username
 
@@ -77,7 +90,10 @@ async def check_experiment_manage_permission(
         If the user doesn't have management permission for the experiment.
     """
     if not is_admin and not can_manage_experiment(experiment_id, current_username):
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage experiment {experiment_id}")
+        raise HTTPException(
+            status_code=403,
+            detail=f"Insufficient permissions to manage experiment {experiment_id}",
+        )
 
     return None
 
@@ -139,7 +155,10 @@ async def check_gateway_endpoint_manage_permission(
     from mlflow_oidc_auth.utils.permissions import can_manage_gateway_endpoint
 
     if not is_admin and not can_manage_gateway_endpoint(name, current_username):
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage endpoint {name}")
+        raise HTTPException(
+            status_code=403,
+            detail=f"Insufficient permissions to manage endpoint {name}",
+        )
 
     return None
 
@@ -173,7 +192,10 @@ async def check_gateway_model_definition_manage_permission(
     from mlflow_oidc_auth.utils.permissions import can_manage_gateway_model_definition
 
     if not is_admin and not can_manage_gateway_model_definition(name, current_username):
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage model definition {name}")
+        raise HTTPException(
+            status_code=403,
+            detail=f"Insufficient permissions to manage model definition {name}",
+        )
 
     return None
 
@@ -204,9 +226,85 @@ async def check_scorer_manage_permission(
             scorer_name = scorer_name or body.get("scorer_name")
 
     if not experiment_id or not scorer_name:
-        raise HTTPException(status_code=400, detail="Missing required parameters: experiment_id and scorer_name")
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameters: experiment_id and scorer_name",
+        )
 
     if not is_admin and not can_manage_scorer(str(experiment_id), str(scorer_name), str(current_username)):
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage scorer {scorer_name}")
+        raise HTTPException(
+            status_code=403,
+            detail=f"Insufficient permissions to manage scorer {scorer_name}",
+        )
 
     return None
+
+
+async def check_workspace_manage_permission(
+    workspace: str = Path(..., description="The workspace name"),
+    request: Request = None,
+) -> str:
+    """Verify global admin OR workspace MANAGE permission (per D-03).
+
+    Used on create/update/delete workspace permission endpoints.
+
+    Returns:
+        The username of the authenticated user.
+    """
+    try:
+        username = await get_username(request=request)
+        is_admin = await get_is_admin(request=request)
+    except Exception:
+        raise HTTPException(status_code=403, detail="Authentication required")
+
+    if is_admin:
+        return username
+
+    from mlflow_oidc_auth.config import config
+
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        raise HTTPException(status_code=403, detail="Workspaces are not enabled")
+
+    perm = get_workspace_permission_cached(username, workspace)
+    if perm is None or not perm.can_manage:
+        raise HTTPException(
+            status_code=403,
+            detail=f"MANAGE permission required on workspace '{workspace}'",
+        )
+
+    return username
+
+
+async def check_workspace_read_permission(
+    workspace: str = Path(..., description="The workspace name"),
+    request: Request = None,
+) -> str:
+    """Verify global admin OR at least workspace READ permission.
+
+    Used on list workspace permission endpoints.
+
+    Returns:
+        The username of the authenticated user.
+    """
+    try:
+        username = await get_username(request=request)
+        is_admin = await get_is_admin(request=request)
+    except Exception:
+        raise HTTPException(status_code=403, detail="Authentication required")
+
+    if is_admin:
+        return username
+
+    from mlflow_oidc_auth.config import config
+
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        raise HTTPException(status_code=403, detail="Workspaces are not enabled")
+
+    perm = get_workspace_permission_cached(username, workspace)
+    if perm is None or not perm.can_read:
+        raise HTTPException(
+            status_code=403,
+            detail=f"READ permission required on workspace '{workspace}'",
+        )
+
+    return username

@@ -17,6 +17,7 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_ALREADY_EXISTS,
     RESOURCE_DOES_NOT_EXIST,
     INVALID_PARAMETER_VALUE,
+    INVALID_STATE,
     PERMISSION_DENIED,
     UNAUTHENTICATED,
 )
@@ -184,6 +185,26 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
         self.assertIn("PERMISSION_DENIED", response_content)
         self.assertIn("Permission denied", response_content)
 
+    def test_handle_mlflow_exception_invalid_state(self):
+        """Test handling of INVALID_STATE MLflow exception."""
+        import asyncio
+
+        register_exception_handlers(self.app)
+
+        exc = mlflow.exceptions.MlflowException("Invalid state", INVALID_STATE)
+
+        handlers = self.app.exception_handlers
+        handler = handlers.get(mlflow.exceptions.MlflowException)
+
+        response = asyncio.run(handler(self.mock_request, exc))
+
+        self.assertIsInstance(response, JSONResponse)
+        self.assertEqual(response.status_code, 400)  # Bad request
+
+        response_content = response.body.decode("utf-8")
+        self.assertIn("INVALID_STATE", response_content)
+        self.assertIn("Invalid state", response_content)
+
     def test_handle_mlflow_exception_unknown_error_code(self):
         """Test handling of unknown MLflow exception error codes (default to 500)."""
         import asyncio
@@ -346,6 +367,7 @@ class TestRegisterExceptionHandlers(unittest.TestCase):
             (RESOURCE_ALREADY_EXISTS, "RESOURCE_ALREADY_EXISTS", 409),
             (RESOURCE_DOES_NOT_EXIST, "RESOURCE_DOES_NOT_EXIST", 404),
             (INVALID_PARAMETER_VALUE, "INVALID_PARAMETER_VALUE", 400),
+            (INVALID_STATE, "INVALID_STATE", 400),
             (PERMISSION_DENIED, "PERMISSION_DENIED", 403),
         ]
 
@@ -464,6 +486,7 @@ class TestExceptionModuleIntegration(unittest.TestCase):
             (RESOURCE_ALREADY_EXISTS, "RESOURCE_ALREADY_EXISTS", "Resource exists"),
             (RESOURCE_DOES_NOT_EXIST, "RESOURCE_DOES_NOT_EXIST", "Resource missing"),
             (INVALID_PARAMETER_VALUE, "INVALID_PARAMETER_VALUE", "Invalid param"),
+            (INVALID_STATE, "INVALID_STATE", "Invalid state"),
             (UNAUTHENTICATED, "UNAUTHENTICATED", "Not authorized"),
             (PERMISSION_DENIED, "PERMISSION_DENIED", "Access denied"),
         ]

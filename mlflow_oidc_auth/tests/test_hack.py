@@ -15,6 +15,20 @@ from flask import Response
 from mlflow_oidc_auth.hack import index
 
 
+@pytest.fixture(autouse=True)
+def _menu_only_config():
+    """Pin pre-existing tests to menu-only injection so their fixtures stay valid.
+
+    Reauth injection (default-on in production) is exercised by its own dedicated
+    test class below.
+    """
+
+    with patch("mlflow_oidc_auth.hack.config") as cfg:
+        cfg.EXTEND_MLFLOW_MENU = True
+        cfg.EXTEND_MLFLOW_REAUTH = False
+        yield cfg
+
+
 class TestHackIndex:
     """Test the index function that handles MLflow UI extension."""
 
@@ -870,7 +884,91 @@ class TestHackModulePerformance:
 
                     # Verify minimal file operations
                     assert mock_file_open.call_count == 2  # Only index.html and menu.html
-                    assert mock_exists.call_count == 1  # Only one existence check
+                    assert mock_exists.call_count == 2  # index.html and menu.html existence checks
 
                     # Verify correct result
                     assert menu_html in result
+
+
+class TestReauthInjection:
+    """Cover the EXTEND_MLFLOW_REAUTH flag and the combined injection ordering."""
+
+    def _run_index(self, html: str, snippets: dict, *, reauth: bool, menu: bool):
+        """Drive ``hack.index()`` with a controlled file-system / config state."""
+
+        mock_app = MagicMock()
+        mock_app.static_folder = "/fake/static"
+
+        def open_side_effect(file_path, mode="r"):
+            if "index.html" in file_path:
+                return mock_open(read_data=html).return_value
+            for key, content in snippets.items():
+                if key in file_path:
+                    return mock_open(read_data=content).return_value
+            raise FileNotFoundError(file_path)
+
+        with (
+            patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}),
+            patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True),
+            patch("builtins.open", mock_open()) as mock_file_open,
+            patch("mlflow_oidc_auth.hack.config") as cfg,
+        ):
+            cfg.EXTEND_MLFLOW_REAUTH = reauth
+            cfg.EXTEND_MLFLOW_MENU = menu
+            mock_file_open.side_effect = open_side_effect
+            return index()
+
+    def test_reauth_only_injection(self):
+        """When only reauth is enabled, only the reauth snippet is appended."""
+        html = "<html><body>Content</body></html>"
+        result = self._run_index(
+            html,
+            {"reauth.html": "<script>REAUTH</script>", "menu.html": "<script>MENU</script>"},
+            reauth=True,
+            menu=False,
+        )
+        assert "REAUTH" in result
+        assert "MENU" not in result
+        assert "</body>" in result
+
+    def test_both_enabled_reauth_runs_first(self):
+        """Reauth must precede menu in the injected output so the fetch patch
+        is in place before any later script issues network calls."""
+        html = "<html><body>Content</body></html>"
+        result = self._run_index(
+            html,
+            {"reauth.html": "<!--REAUTH_MARK-->", "menu.html": "<!--MENU_MARK-->"},
+            reauth=True,
+            menu=True,
+        )
+        assert result.index("REAUTH_MARK") < result.index("MENU_MARK")
+
+    def test_both_disabled_returns_unmodified(self):
+        """If both flags are off, ``index`` returns the original HTML unchanged."""
+        html = "<html><body>Content</body></html>"
+        result = self._run_index(
+            html,
+            {"reauth.html": "<!--REAUTH-->", "menu.html": "<!--MENU-->"},
+            reauth=False,
+            menu=False,
+        )
+        assert "REAUTH" not in result
+        assert "MENU" not in result
+        assert result == html
+
+    def test_reauth_snippet_file_exists_in_repo(self):
+        """The shipped reauth.html must exist on disk — otherwise default-on
+        deployments silently degrade to no re-auth helper."""
+        from mlflow_oidc_auth import hack
+
+        snippet_path = os.path.join(hack._HACK_DIR, "reauth.html")
+        assert os.path.isfile(snippet_path)
+        with open(snippet_path) as f:
+            content = f.read()
+        # Spot-check: the snippet should patch fetch and XHR, react to a 401,
+        # and forward the current location to /login as ?next=.
+        assert "window.fetch" in content
+        assert "XMLHttpRequest.prototype.send" in content
+        assert "401" in content
+        assert "/login?next=" in content
+        assert "window.location.hash" in content

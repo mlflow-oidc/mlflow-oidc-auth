@@ -210,6 +210,10 @@ class MockRequest:
         self.scope = scope
         self.url = MagicMock()
         self.url.path = scope.get("path", "/")
+        # Real string so middleware code that does string ops on .query works.
+        self.url.query = (
+            scope.get("query_string", b"").decode() if isinstance(scope.get("query_string", b""), (bytes, bytearray)) else (scope.get("query_string", "") or "")
+        )
         self.headers = {}
 
         # Convert headers from scope

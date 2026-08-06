@@ -18,12 +18,15 @@ from mlflow_oidc_auth.routers.auth import (
     LOGIN,
     LOGOUT,
     _build_ui_url,
+    _extract_session_expiry,
+    _persist_session_auth,
     _process_oidc_callback_fastapi,
     auth_router,
     auth_status,
     callback,
     login,
     logout,
+    refresh_session_with_idp,
 )
 
 
@@ -108,6 +111,40 @@ class TestLoginEndpoint:
             )
 
     @pytest.mark.asyncio
+    async def test_login_captures_safe_next_param(self, mock_request_with_session, mock_oauth, mock_config):
+        """``/login?next=<relative-path>`` is stored so the callback can return there."""
+        request = mock_request_with_session({"oauth_state": None})
+        request.query_params = {"next": "/oidc/ui/groups"}
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri") as mock_redirect,
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+        ):
+            mock_redirect.return_value = "http://localhost:8000/callback"
+            await login(request)
+
+        assert request.session["redirect_after_login"] == "/oidc/ui/groups"
+
+    @pytest.mark.asyncio
+    async def test_login_drops_unsafe_next_param(self, mock_request_with_session, mock_oauth, mock_config):
+        """Open-redirect targets must be ignored."""
+        request = mock_request_with_session({"oauth_state": None})
+        request.query_params = {"next": "https://attacker.example/steal"}
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri") as mock_redirect,
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+        ):
+            mock_redirect.return_value = "http://localhost:8000/callback"
+            await login(request)
+
+        assert "redirect_after_login" not in request.session
+
+    @pytest.mark.asyncio
     async def test_login_oauth_not_configured(self, mock_request_with_session):
         """Test login when OAuth client is not properly configured."""
         request = mock_request_with_session()
@@ -163,6 +200,9 @@ class TestLogoutEndpoint:
             assert isinstance(result, RedirectResponse)
             assert result.status_code == 302
             assert "https://provider.com/logout" in result.headers["location"]
+            # client_id must be sent so providers like Keycloak do not reject the
+            # logout with "Missing parameters: id_token_hint".
+            assert "client_id=" in result.headers["location"]
 
     @pytest.mark.asyncio
     async def test_logout_without_oidc_provider_logout(self, mock_request_with_session):
@@ -545,7 +585,7 @@ class TestProcessOIDCCallbackFastAPI:
 
             assert email is None
             assert len(errors) == 1
-            assert "No email provided in OIDC userinfo" in errors[0]
+            assert "No username provided in OIDC userinfo" in errors[0]
 
     @pytest.mark.asyncio
     async def test_process_callback_unauthorized_user(self, mock_request_with_session, mock_oauth, mock_config):
@@ -597,3 +637,258 @@ class TestProcessOIDCCallbackFastAPI:
             assert email is None
             assert len(errors) == 1
             assert "Failed to update user/groups" in errors[0]
+
+
+class TestExtractSessionExpiry:
+    """Test ``_extract_session_expiry`` precedence rules."""
+
+    def test_prefers_expires_at(self):
+        token = {"expires_at": 12345, "expires_in": 3600, "userinfo": {"exp": 99999}}
+        assert _extract_session_expiry(token) == 12345
+
+    def test_falls_back_to_id_token_exp(self):
+        token = {"userinfo": {"exp": 99999}, "expires_in": 3600}
+        assert _extract_session_expiry(token) == 99999
+
+    def test_computes_from_expires_in_when_no_expires_at(self):
+        import time as _time
+
+        token = {"expires_in": 3600}
+        result = _extract_session_expiry(token)
+        # Allow a few seconds of slack between time.time() inside and outside.
+        assert result is not None
+        assert abs(result - (int(_time.time()) + 3600)) < 5
+
+    def test_returns_none_when_unavailable(self):
+        assert _extract_session_expiry({}) is None
+        assert _extract_session_expiry({"userinfo": {}}) is None
+
+    def test_ignores_non_numeric_expiry(self):
+        assert _extract_session_expiry({"expires_at": "soon"}) is None
+
+
+class TestPersistSessionAuth:
+    """Test that the callback persists exactly the session fields needed for re-auth."""
+
+    def test_stores_expires_at_when_refresh_disabled(self, mock_config):
+        mock_config.OIDC_USE_REFRESH_TOKEN = False
+        session = {}
+        token = {"expires_at": 9999999999, "refresh_token": "rt"}
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            _persist_session_auth(session, token)
+
+        assert session["expires_at"] == 9999999999
+        # Refresh token must NOT leak into the cookie when feature is disabled.
+        assert "refresh_token" not in session
+
+    def test_stores_refresh_token_when_enabled(self, mock_config):
+        mock_config.OIDC_USE_REFRESH_TOKEN = True
+        session = {}
+        token = {"expires_at": 9999999999, "refresh_token": "rt-abc"}
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            _persist_session_auth(session, token)
+
+        assert session["expires_at"] == 9999999999
+        assert session["refresh_token"] == "rt-abc"
+
+    def test_clears_stale_expires_at_when_no_new_expiry(self, mock_config):
+        mock_config.OIDC_USE_REFRESH_TOKEN = False
+        session = {"expires_at": 100}
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            _persist_session_auth(session, {})  # token response without expiry info
+
+        assert "expires_at" not in session
+
+    def test_drops_refresh_token_when_disabled_after_enabled(self, mock_config):
+        # Simulates rotating from refresh-enabled deployment back to disabled.
+        mock_config.OIDC_USE_REFRESH_TOKEN = False
+        session = {"refresh_token": "stale"}
+        token = {"expires_at": 9999999999, "refresh_token": "rt-new"}
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            _persist_session_auth(session, token)
+
+        assert "refresh_token" not in session
+
+    def test_keeps_existing_refresh_token_when_response_omits_one(self, mock_config):
+        """Many IdPs (Entra, some Keycloak configs) emit refresh_token only on
+        the initial token exchange and reuse the same one across refreshes.
+        Removing the stored token would break the next refresh."""
+        mock_config.OIDC_USE_REFRESH_TOKEN = True
+        session = {"refresh_token": "rt-original"}
+        token = {"expires_at": 9999999999}  # No refresh_token in the response
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            _persist_session_auth(session, token)
+
+        assert session["refresh_token"] == "rt-original"
+        assert session["expires_at"] == 9999999999
+
+
+class TestRefreshSessionWithIdP:
+    """Test ``refresh_session_with_idp`` against the OAuth client."""
+
+    @pytest.mark.asyncio
+    async def test_disabled_when_feature_off(self, mock_config):
+        mock_config.OIDC_USE_REFRESH_TOKEN = False
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            assert await refresh_session_with_idp({"refresh_token": "rt"}) is False
+
+    @pytest.mark.asyncio
+    async def test_returns_false_without_refresh_token(self, mock_config):
+        mock_config.OIDC_USE_REFRESH_TOKEN = True
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+            assert await refresh_session_with_idp({}) is False
+
+    @pytest.mark.asyncio
+    async def test_success_updates_session(self, mock_config, mock_oauth):
+        mock_config.OIDC_USE_REFRESH_TOKEN = True
+        mock_oauth.oidc.fetch_access_token = AsyncMock(
+            return_value={
+                "access_token": "new",
+                "expires_at": 9999999999,
+                "refresh_token": "rt-new",
+            }
+        )
+        session = {"refresh_token": "rt-old", "expires_at": 1, "username": "u@x"}
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+        ):
+            ok = await refresh_session_with_idp(session)
+
+        assert ok is True
+        assert session["expires_at"] == 9999999999
+        assert session["refresh_token"] == "rt-new"
+        assert session["username"] == "u@x"  # untouched
+        mock_oauth.oidc.fetch_access_token.assert_awaited_once_with(grant_type="refresh_token", refresh_token="rt-old")
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_false_without_mutating(self, mock_config, mock_oauth):
+        mock_config.OIDC_USE_REFRESH_TOKEN = True
+        mock_oauth.oidc.fetch_access_token = AsyncMock(side_effect=RuntimeError("idp down"))
+        session = {"refresh_token": "rt-old", "expires_at": 1}
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+        ):
+            ok = await refresh_session_with_idp(session)
+
+        assert ok is False
+        # Session retains its (still-stale) values; middleware is responsible for clearing it.
+        assert session["refresh_token"] == "rt-old"
+        assert session["expires_at"] == 1
+
+
+class TestProcessCallbackPersistsExpiry:
+    """End-to-end: the callback path persists the IdP expiry into the session."""
+
+    @pytest.mark.asyncio
+    async def test_callback_writes_expires_at(self, mock_request_with_session, mock_oauth, mock_config, mock_user_management):
+        mock_config.OIDC_USE_REFRESH_TOKEN = False
+        mock_oauth.oidc.authorize_access_token = AsyncMock(
+            return_value={
+                "access_token": "at",
+                "id_token": "idt",
+                "expires_at": 9999999999,
+                "userinfo": {
+                    "email": "test@example.com",
+                    "name": "Test User",
+                    "groups": ["test-group"],
+                },
+            }
+        )
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "test@example.com"
+        assert request.session["expires_at"] == 9999999999
+        assert "refresh_token" not in request.session
+
+    @pytest.mark.asyncio
+    async def test_callback_writes_refresh_token_when_enabled(self, mock_request_with_session, mock_oauth, mock_config, mock_user_management):
+        mock_config.OIDC_USE_REFRESH_TOKEN = True
+        mock_oauth.oidc.authorize_access_token = AsyncMock(
+            return_value={
+                "access_token": "at",
+                "id_token": "idt",
+                "expires_at": 9999999999,
+                "refresh_token": "rt-xyz",
+                "userinfo": {
+                    "email": "test@example.com",
+                    "name": "Test User",
+                    "groups": ["test-group"],
+                },
+            }
+        )
+        request = mock_request_with_session({"oauth_state": "test_state"})
+        request.query_params = {"state": "test_state", "code": "auth_code_123"}
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+        ):
+            email, errors = await _process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert email == "test@example.com"
+        assert request.session["expires_at"] == 9999999999
+        assert request.session["refresh_token"] == "rt-xyz"
+
+
+class TestSanitizeNext:
+    """Validate the open-redirect guard on the ?next= query param."""
+
+    def test_accepts_relative_path(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("/oidc/ui/groups") == "/oidc/ui/groups"
+
+    def test_accepts_path_with_search_and_hash(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("/?tab=runs#/experiments/0") == "/?tab=runs#/experiments/0"
+
+    def test_rejects_absolute_url(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("https://attacker.example/steal") is None
+        assert _sanitize_next("http://attacker.example/") is None
+
+    def test_rejects_protocol_relative(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        # //evil.example escapes origin in browsers — must reject.
+        assert _sanitize_next("//evil.example/path") is None
+
+    def test_rejects_javascript_scheme(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("javascript:alert(1)") is None
+
+    def test_rejects_header_injection_chars(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next("/path\nLocation: http://evil") is None
+        assert _sanitize_next("/path\rfoo") is None
+
+    def test_rejects_empty_and_none(self):
+        from mlflow_oidc_auth.routers.auth import _sanitize_next
+
+        assert _sanitize_next(None) is None
+        assert _sanitize_next("") is None
+        assert _sanitize_next("no-leading-slash") is None

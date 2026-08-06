@@ -71,14 +71,21 @@ export const AuthPage = () => {
         </div>
       </div>
 
-      <footer className="w-full py-6 flex flex-col ml-10 items-start gap-4 text-sm text-ui-text/60 dark:text-ui-text-dark/40">
-        <div className="flex gap-4">
-          <span>&copy; {currentYear} mlflow-oidc-auth</span>
+      <footer className="w-full py-6 px-6 md:px-10 text-sm text-ui-text/60 dark:text-ui-text-dark/40">
+        <div className="mx-auto w-full max-w-5xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <a
+            href="https://kharkevich.com/"
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-3 hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
+          >
+            &copy; {currentYear} Kharkevich Engineering Lab
+          </a>
           <a
             href="https://github.com/sponsors/mlflow-oidc?o=esb"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-4 hover:text-ui-text dark:hover:text-ui-text-dark transition-colors"
+            className="inline-flex items-center gap-3 hover:text-ui-text dark:hover:text-ui-text-dark transition-colors sm:justify-end"
           >
             <FontAwesomeIcon
               icon={faHeart}

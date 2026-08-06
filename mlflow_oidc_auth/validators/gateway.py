@@ -33,13 +33,14 @@ _logger = get_logger()
 def validate_can_read_gateway_endpoint(username: str) -> bool:
     """Validate READ permission on a gateway endpoint.
 
-    ``GetGatewayEndpoint`` provides ``name`` (or ``endpoint_id``).
-    We check by name when available, falling back to ID resolution.
+    ``GetGatewayEndpoint`` accepts both ``name`` and ``endpoint_id``, and MLflow
+    passes both to the store, so a request may reference two different resources
+    (issue #270 cross-field bypass). We require READ on *every* resource named.
     """
-    name = _get_gateway_endpoint_name()
-    if not name:
+    names = _all_gateway_endpoint_names()
+    if not names:
         return False
-    return can_read_gateway_endpoint(name, username)
+    return all(can_read_gateway_endpoint(name, username) for name in names)
 
 
 def validate_can_update_gateway_endpoint(username: str) -> bool:
@@ -59,21 +60,22 @@ def validate_can_update_gateway_endpoint(username: str) -> bool:
 def validate_can_delete_gateway_endpoint(username: str) -> bool:
     """Validate MANAGE permission for deleting a gateway endpoint.
 
-    The name is already stashed in ``flask.g`` by
-    ``_stash_gateway_context`` (which runs for all users).
+    ``DeleteGatewayEndpoint`` identifies the resource by ``endpoint_id`` only, so
+    any ``name`` in the body is ignored by MLflow. We still require MANAGE on every
+    resource the request references (issue #270 cross-field bypass).
     """
-    name = _get_gateway_endpoint_name()
-    if not name:
+    names = _all_gateway_endpoint_names()
+    if not names:
         return False
-    return can_manage_gateway_endpoint(name, username)
+    return all(can_manage_gateway_endpoint(name, username) for name in names)
 
 
 def validate_can_manage_gateway_endpoint_validator(username: str) -> bool:
     """Validate MANAGE permission on a gateway endpoint."""
-    name = _get_gateway_endpoint_name()
-    if not name:
+    names = _all_gateway_endpoint_names()
+    if not names:
         return False
-    return can_manage_gateway_endpoint(name, username)
+    return all(can_manage_gateway_endpoint(name, username) for name in names)
 
 
 # ---------------------------------------------------------------------------
@@ -84,17 +86,23 @@ def validate_can_manage_gateway_endpoint_validator(username: str) -> bool:
 def validate_can_read_gateway_secret(username: str) -> bool:
     """Validate READ permission on a gateway secret.
 
-    ``GetGatewaySecretInfo`` provides ``secret_name`` (or ``secret_id``).
+    ``GetGatewaySecretInfo`` accepts both ``secret_name`` and ``secret_id``; we
+    require READ on every resource referenced (issue #270 cross-field bypass).
     """
-    name = _get_gateway_secret_name()
-    if not name:
+    names = _all_gateway_secret_names()
+    if not names:
         return False
-    return can_read_gateway_secret(name, username)
+    return all(can_read_gateway_secret(name, username) for name in names)
 
 
 def validate_can_update_gateway_secret(username: str) -> bool:
-    """Validate UPDATE permission on a gateway secret."""
-    name = _get_gateway_secret_name()
+    """Validate UPDATE permission on a gateway secret.
+
+    ``UpdateGatewaySecret`` identifies the resource by ``secret_id`` only, so we
+    resolve the current name from the id rather than trusting a request ``secret_name``
+    (issue #270 cross-field bypass).
+    """
+    name = _get_gateway_secret_name_for_update()
     if not name:
         return False
     return can_update_gateway_secret(name, username)
@@ -103,13 +111,13 @@ def validate_can_update_gateway_secret(username: str) -> bool:
 def validate_can_delete_gateway_secret(username: str) -> bool:
     """Validate MANAGE permission for deleting a gateway secret.
 
-    The name is already stashed in ``flask.g`` by
-    ``_stash_gateway_context`` (which runs for all users).
+    ``DeleteGatewaySecret`` identifies the resource by ``secret_id`` only; we still
+    require MANAGE on every resource the request references (issue #270).
     """
-    name = _get_gateway_secret_name()
-    if not name:
+    names = _all_gateway_secret_names()
+    if not names:
         return False
-    return can_manage_gateway_secret(name, username)
+    return all(can_manage_gateway_secret(name, username) for name in names)
 
 
 # ---------------------------------------------------------------------------
@@ -120,35 +128,42 @@ def validate_can_delete_gateway_secret(username: str) -> bool:
 def validate_can_read_gateway_model_definition(username: str) -> bool:
     """Validate READ permission on a gateway model definition.
 
-    ``GetGatewayModelDefinition`` only provides ``model_definition_id``,
-    so we fall back to ID resolution via the tracking store. If
-    resolution fails, we allow through and rely on list filtering.
+    ``GetGatewayModelDefinition`` identifies the resource by ``model_definition_id``,
+    so any request ``name`` is ignored by MLflow. We require READ on every resource
+    the request references (issue #270 cross-field bypass). Fail-closed on no match.
     """
-    name = _get_gateway_model_definition_name()
-    if not name:
-        # ID-only request — cannot resolve name; allow and rely on list filtering
-        return True
-    return can_read_gateway_model_definition(name, username)
+    names = _all_gateway_model_definition_names()
+    if not names:
+        _logger.warning("Cannot resolve gateway model definition name — denying access (fail-closed)")
+        return False
+    return all(can_read_gateway_model_definition(name, username) for name in names)
 
 
 def validate_can_update_gateway_model_definition(username: str) -> bool:
-    """Validate UPDATE permission on a gateway model definition."""
-    name = _get_gateway_model_definition_name()
+    """Validate UPDATE permission on a gateway model definition.
+
+    ``UpdateGatewayModelDefinition`` identifies the resource by ``model_definition_id``
+    (the ``name`` field carries the *new* name on a rename), so we resolve the current
+    name from the id rather than trusting a request ``name`` (issue #270).
+    """
+    name = _get_gateway_model_definition_name_for_update()
     if not name:
-        return True
+        _logger.warning("Cannot resolve gateway model definition name — denying access (fail-closed)")
+        return False
     return can_update_gateway_model_definition(name, username)
 
 
 def validate_can_delete_gateway_model_definition(username: str) -> bool:
     """Validate MANAGE permission for deleting a gateway model definition.
 
-    The name is already stashed in ``flask.g`` by
-    ``_stash_gateway_context`` (which runs for all users).
+    ``DeleteGatewayModelDefinition`` identifies the resource by ``model_definition_id``;
+    we require MANAGE on every resource the request references (issue #270).
     """
-    name = _get_gateway_model_definition_name()
-    if not name:
-        return True
-    return can_manage_gateway_model_definition(name, username)
+    names = _all_gateway_model_definition_names()
+    if not names:
+        _logger.warning("Cannot resolve gateway model definition name — denying access (fail-closed)")
+        return False
+    return all(can_manage_gateway_model_definition(name, username) for name in names)
 
 
 # ---------------------------------------------------------------------------
@@ -192,67 +207,97 @@ def _resolve_model_definition_name_from_id(model_definition_id: str) -> str | No
         return None
 
 
-def _get_gateway_endpoint_name() -> str | None:
-    """Extract gateway endpoint name from the request.
-
-    Tries ``name`` first, then falls back to resolving ``endpoint_id``
-    via the tracking store.
-    """
+def _safe_param(name: str) -> str | None:
+    """Read a request parameter without raising when it is absent."""
     try:
-        return get_request_param("name")
-    except Exception:
-        pass
-    try:
-        endpoint_id = get_request_param("endpoint_id")
-        return _resolve_endpoint_name_from_id(endpoint_id)
+        value = get_request_param(name)
     except Exception:
         return None
+    return value or None
+
+
+def _all_gateway_endpoint_names() -> list[str]:
+    """Every endpoint name a read/delete request references.
+
+    ``GetGatewayEndpoint``/``DeleteGatewayEndpoint`` may carry ``name`` and/or
+    ``endpoint_id``, and MLflow resolves whichever the store prefers.  To close the
+    cross-field bypass (issue #270) we return *all* distinct resources referenced —
+    the ``name`` as given and the name resolved from ``endpoint_id`` — so the caller
+    must be authorized on every one.
+    """
+    names: list[str] = []
+    direct = _safe_param("name")
+    if direct:
+        names.append(direct)
+    endpoint_id = _safe_param("endpoint_id")
+    if endpoint_id:
+        resolved = _resolve_endpoint_name_from_id(endpoint_id)
+        if resolved:
+            names.append(resolved)
+    # De-duplicate while preserving order (a legit request naming one resource two ways).
+    return list(dict.fromkeys(names))
 
 
 def _get_gateway_endpoint_name_for_update() -> str | None:
-    """Extract the *current* gateway endpoint name for update requests.
+    """Resolve the *current* endpoint name for update requests.
 
-    Unlike ``_get_gateway_endpoint_name``, this deliberately skips the
-    ``name`` request parameter because in ``UpdateGatewayEndpoint`` the
-    ``name`` field holds the *new* name.  We resolve the current name
-    via ``endpoint_id`` instead.
+    ``UpdateGatewayEndpoint`` identifies the resource by ``endpoint_id`` (the ``name``
+    field holds the *new* name on a rename), so we resolve the current name via the id.
     """
-    try:
-        endpoint_id = get_request_param("endpoint_id")
-        return _resolve_endpoint_name_from_id(endpoint_id)
-    except Exception:
+    endpoint_id = _safe_param("endpoint_id")
+    if not endpoint_id:
         return None
+    return _resolve_endpoint_name_from_id(endpoint_id)
 
 
-def _get_gateway_secret_name() -> str | None:
-    """Extract gateway secret name from the request.
+def _all_gateway_secret_names() -> list[str]:
+    """Every secret name a read/delete request references (see ``_all_gateway_endpoint_names``)."""
+    names: list[str] = []
+    direct = _safe_param("secret_name")
+    if direct:
+        names.append(direct)
+    secret_id = _safe_param("secret_id")
+    if secret_id:
+        resolved = _resolve_secret_name_from_id(secret_id)
+        if resolved:
+            names.append(resolved)
+    return list(dict.fromkeys(names))
 
-    Tries ``secret_name`` first, then falls back to resolving ``secret_id``
-    via the tracking store.
+
+def _get_gateway_secret_name_for_update() -> str | None:
+    """Resolve the current secret name for update requests.
+
+    ``UpdateGatewaySecret`` identifies the resource by ``secret_id`` only, so we resolve
+    the current name via the id rather than trusting a request ``secret_name``.
     """
-    try:
-        return get_request_param("secret_name")
-    except Exception:
-        pass
-    try:
-        secret_id = get_request_param("secret_id")
-        return _resolve_secret_name_from_id(secret_id)
-    except Exception:
+    secret_id = _safe_param("secret_id")
+    if not secret_id:
         return None
+    return _resolve_secret_name_from_id(secret_id)
 
 
-def _get_gateway_model_definition_name() -> str | None:
-    """Extract gateway model definition name from the request.
+def _all_gateway_model_definition_names() -> list[str]:
+    """Every model-definition name a read/delete request references (see ``_all_gateway_endpoint_names``)."""
+    names: list[str] = []
+    direct = _safe_param("name")
+    if direct:
+        names.append(direct)
+    model_definition_id = _safe_param("model_definition_id")
+    if model_definition_id:
+        resolved = _resolve_model_definition_name_from_id(model_definition_id)
+        if resolved:
+            names.append(resolved)
+    return list(dict.fromkeys(names))
 
-    Tries ``name`` first, then falls back to resolving ``model_definition_id``
-    via the tracking store.
+
+def _get_gateway_model_definition_name_for_update() -> str | None:
+    """Resolve the current model-definition name for update requests.
+
+    ``UpdateGatewayModelDefinition`` identifies the resource by ``model_definition_id``
+    (the ``name`` field holds the *new* name on a rename), so we resolve the current
+    name via the id rather than trusting a request ``name``.
     """
-    try:
-        return get_request_param("name")
-    except Exception:
-        pass
-    try:
-        model_definition_id = get_request_param("model_definition_id")
-        return _resolve_model_definition_name_from_id(model_definition_id)
-    except Exception:
+    model_definition_id = _safe_param("model_definition_id")
+    if not model_definition_id:
         return None
+    return _resolve_model_definition_name_from_id(model_definition_id)

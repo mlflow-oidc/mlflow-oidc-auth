@@ -1,0 +1,68 @@
+name: SonarQube
+
+# TEMPORARILY DISABLED. The SonarCloud scan fails on JRE/engine provisioning with
+# HTTP 403 — the SONAR_TOKEN needs regenerating (and/or Automatic Analysis toggled)
+# in SonarCloud before this can run. Until then it runs on manual dispatch only, so it
+# does not block PRs. To re-enable, restore the pull_request + push triggers below.
+on:
+  workflow_dispatch:
+# on:
+#   pull_request:
+#     types:
+#       - opened
+#       - reopened
+#       - synchronize
+#   push:
+#     branches:
+#       - main
+
+jobs:
+  sonarqube:
+    name: SonarQube Scan
+    runs-on: ubuntu-latest
+    # Skip on forks: the SONAR_TOKEN secret is not available to fork PRs, so the
+    # scan would always fail there. Fork PRs are analyzed after merge to main.
+    if: ${{ !github.event.repository.fork && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # Provide the JRE ourselves so the scanner does not auto-provision one from
+      # api.sonarcloud.io/analysis/jres, which was returning HTTP 403 and failing
+      # the whole job before analysis even started (skipJreProvisioning below).
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Generate JS coverage
+        run: |
+          yarn install
+          yarn test:coverage
+        working-directory: web-react
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: 3.12
+      - name: Generate Python coverage
+        run: |
+          python -m pip install --upgrade pip
+          pip install tox
+          tox -e py
+      - name: Override coverage source path for Sonar
+        run: sed -i "s@<source>/home/runner/work/mlflow-oidc-auth/mlflow-oidc-auth</source>@<source>/github/workspace</source>@g" "${GITHUB_WORKSPACE}/coverage.xml"
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v7.0.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          args: >
+            -Dsonar.scanner.skipJreProvisioning=true

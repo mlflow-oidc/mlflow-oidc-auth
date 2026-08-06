@@ -214,82 +214,48 @@ class TestDataFetching(unittest.TestCase):
             self.assertEqual(result[0], mock_model1)
 
     @patch("mlflow_oidc_auth.utils.data_fetching._get_tracking_store")
-    @patch("mlflow_oidc_auth.utils.data_fetching.store")
-    @patch("mlflow_oidc_auth.utils.data_fetching.config")
-    @patch("mlflow_oidc_auth.utils.data_fetching.get_permission")
-    def test_fetch_readable_logged_models_default_username(self, mock_get_permission, mock_config, mock_store, mock_tracking_store):
-        """Test fetch_readable_logged_models with explicit username."""
+    @patch("mlflow_oidc_auth.utils.data_fetching.effective_experiment_permission")
+    def test_fetch_readable_logged_models_default_username(self, mock_eff_perm, mock_tracking_store):
+        """Readable model is kept when the effective experiment permission grants read."""
         with self.app.test_request_context():
-            # Setup mocks
-            mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
+            mock_eff_perm.return_value.permission.can_read = True
 
-            # Mock permission
-            mock_permission = MagicMock()
-            mock_permission.can_read = True
-            mock_get_permission.return_value = mock_permission
-
-            # Mock store permissions
-            mock_perms = [MagicMock(experiment_id="exp1", permission="READ")]
-            mock_store.list_experiment_permissions.return_value = mock_perms
-
-            # Mock tracking store search
             mock_logged_model = MagicMock()
             mock_logged_model.experiment_id = "exp1"
-
             mock_search_result = MagicMock()
             mock_search_result.__iter__ = lambda self: iter([mock_logged_model])
             mock_search_result.token = None
             mock_tracking_store.return_value.search_logged_models.return_value = mock_search_result
 
-            # Call function
             result = fetch_readable_logged_models("test_user")
 
-            # Verify
-            mock_store.list_experiment_permissions.assert_called_once_with("test_user")
+            mock_eff_perm.assert_called_once_with("exp1", "test_user")
             self.assertEqual(len(result), 1)
             self.assertEqual(result[0].experiment_id, "exp1")
 
     @patch("mlflow_oidc_auth.utils.data_fetching._get_tracking_store")
-    @patch("mlflow_oidc_auth.utils.data_fetching.store")
-    @patch("mlflow_oidc_auth.utils.data_fetching.config")
-    @patch("mlflow_oidc_auth.utils.data_fetching.get_permission")
-    def test_fetch_readable_logged_models_with_username(self, mock_get_permission, mock_config, mock_store, mock_tracking_store):
-        """Test fetch_readable_logged_models with explicit username."""
+    @patch("mlflow_oidc_auth.utils.data_fetching.effective_experiment_permission")
+    def test_fetch_readable_logged_models_with_username(self, mock_eff_perm, mock_tracking_store):
+        """All readable models across pages are returned."""
         with self.app.test_request_context():
-            # Setup mocks
-            mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
+            mock_eff_perm.return_value.permission.can_read = True
 
-            # Mock permission
-            mock_permission = MagicMock()
-            mock_permission.can_read = True
-            mock_get_permission.return_value = mock_permission
-
-            # Mock store permissions
-            mock_perms = [MagicMock(experiment_id="exp1", permission="READ")]
-            mock_store.list_experiment_permissions.return_value = mock_perms
-
-            # Mock tracking store search with pagination
             mock_logged_model1 = MagicMock()
             mock_logged_model1.experiment_id = "exp1"
             mock_logged_model2 = MagicMock()
             mock_logged_model2.experiment_id = "exp2"
 
-            # First page
             mock_search_result1 = MagicMock()
             mock_search_result1.__iter__ = lambda self: iter([mock_logged_model1])
             mock_search_result1.token = "token123"
-
-            # Second page
             mock_search_result2 = MagicMock()
             mock_search_result2.__iter__ = lambda self: iter([mock_logged_model2])
             mock_search_result2.token = None
-
             mock_tracking_store.return_value.search_logged_models.side_effect = [
                 mock_search_result1,
                 mock_search_result2,
             ]
 
-            # Call function
             result = fetch_readable_logged_models(
                 experiment_ids=["exp1", "exp2"],
                 filter_string="filter",
@@ -297,84 +263,53 @@ class TestDataFetching(unittest.TestCase):
                 username="custom_user",
             )
 
-            # Verify
-            mock_store.list_experiment_permissions.assert_called_once_with("custom_user")
-            self.assertEqual(len(result), 2)  # Both models should be readable
+            self.assertEqual(len(result), 2)
             self.assertEqual(mock_tracking_store.return_value.search_logged_models.call_count, 2)
-            # Verify mock was actually used instead of real database
-            mock_store.list_experiment_permissions.assert_called_once_with("custom_user")
+            mock_eff_perm.assert_any_call("exp1", "custom_user")
+            mock_eff_perm.assert_any_call("exp2", "custom_user")
 
     @patch("mlflow_oidc_auth.utils.data_fetching._get_tracking_store")
-    @patch("mlflow_oidc_auth.utils.data_fetching.store")
-    @patch("mlflow_oidc_auth.utils.data_fetching.config")
-    @patch("mlflow_oidc_auth.utils.data_fetching.get_permission")
-    def test_fetch_readable_logged_models_filtered_by_permissions(self, mock_get_permission, mock_config, mock_store, mock_tracking_store):
-        """Test fetch_readable_logged_models filters models based on permissions."""
+    @patch("mlflow_oidc_auth.utils.data_fetching.effective_experiment_permission")
+    def test_fetch_readable_logged_models_filtered_by_permissions(self, mock_eff_perm, mock_tracking_store):
+        """Models are filtered out when the effective experiment permission denies read."""
         with self.app.test_request_context():
-            # Setup mocks
-            mock_config.DEFAULT_MLFLOW_PERMISSION = "NONE"
+            # Readable for exp1, not for exp2 — includes the group/regex-aware resolution
+            # that a user-only permission map would have missed.
+            def eff(experiment_id, username):
+                result = MagicMock()
+                result.permission.can_read = experiment_id == "exp1"
+                return result
 
-            # Mock permissions - can read only returns True for READ permission
-            def mock_permission_side_effect(perm):
-                mock_perm = MagicMock()
-                mock_perm.can_read = perm == "READ"
-                return mock_perm
+            mock_eff_perm.side_effect = eff
 
-            mock_get_permission.side_effect = mock_permission_side_effect
-
-            # Mock store permissions - user has READ on exp1, NONE on exp2
-            mock_perms = [MagicMock(experiment_id="exp1", permission="READ")]
-            mock_store.list_experiment_permissions.return_value = mock_perms
-
-            # Mock tracking store search
             mock_logged_model1 = MagicMock()
-            mock_logged_model1.experiment_id = "exp1"  # Should be readable
+            mock_logged_model1.experiment_id = "exp1"
             mock_logged_model2 = MagicMock()
-            mock_logged_model2.experiment_id = "exp2"  # Should NOT be readable (default NONE)
-
+            mock_logged_model2.experiment_id = "exp2"
             mock_search_result = MagicMock()
             mock_search_result.__iter__ = lambda self: iter([mock_logged_model1, mock_logged_model2])
             mock_search_result.token = None
             mock_tracking_store.return_value.search_logged_models.return_value = mock_search_result
 
-            # Call function
             result = fetch_readable_logged_models(username="test_user")
 
-            # Verify - only model1 should be in result
-            mock_store.list_experiment_permissions.assert_called_once_with("test_user")
             self.assertEqual(len(result), 1)
             self.assertEqual(result[0].experiment_id, "exp1")
 
     @patch("mlflow_oidc_auth.utils.data_fetching._get_tracking_store")
-    @patch("mlflow_oidc_auth.utils.data_fetching.store")
-    @patch("mlflow_oidc_auth.utils.data_fetching.config")
-    @patch("mlflow_oidc_auth.utils.data_fetching.get_permission")
-    def test_fetch_readable_logged_models_empty_result(self, mock_get_permission, mock_config, mock_store, mock_tracking_store):
-        """Test fetch_readable_logged_models with empty search result."""
+    @patch("mlflow_oidc_auth.utils.data_fetching.effective_experiment_permission")
+    def test_fetch_readable_logged_models_empty_result(self, mock_eff_perm, mock_tracking_store):
+        """Empty search result yields no models and no permission checks."""
         with self.app.test_request_context():
-            # Setup mocks
-            mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
-
-            # Mock permission
-            mock_permission = MagicMock()
-            mock_permission.can_read = True
-            mock_get_permission.return_value = mock_permission
-
-            # Mock store permissions
-            mock_store.list_experiment_permissions.return_value = []
-
-            # Mock tracking store search - empty result
             mock_search_result = MagicMock()
             mock_search_result.__iter__ = lambda self: iter([])
             mock_search_result.token = None
             mock_tracking_store.return_value.search_logged_models.return_value = mock_search_result
 
-            # Call function
             result = fetch_readable_logged_models(username="test_user")
 
-            # Verify
-            mock_store.list_experiment_permissions.assert_called_once_with("test_user")
             self.assertEqual(len(result), 0)
+            mock_eff_perm.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ This router handles OIDC authentication flows including login, logout, and callb
 """
 
 import secrets
+import time
 from collections.abc import Awaitable
 from typing import Any, Optional
 from urllib.parse import urlencode
@@ -13,6 +14,7 @@ from authlib.jose.errors import BadSignatureError
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
@@ -64,7 +66,9 @@ async def _call_authorize_access_token(request: Request) -> Optional[dict[str, A
     return await _maybe_await(token_call)
 
 
-async def _authorize_access_token_with_retry(request: Request) -> Optional[dict[str, Any]]:
+async def _authorize_access_token_with_retry(
+    request: Request,
+) -> Optional[dict[str, Any]]:
     """Exchange code for tokens, retrying once after a JWKS refresh on any validation failure."""
 
     last_error: Optional[Exception] = None
@@ -74,7 +78,11 @@ async def _authorize_access_token_with_retry(request: Request) -> Optional[dict[
             return await _call_authorize_access_token(request)
         except BadSignatureError as exc:
             last_error = exc
-            logger.warning("OIDC token exchange attempt %d failed with bad signature: %s", attempt + 1, exc)
+            logger.warning(
+                "OIDC token exchange attempt %d failed with bad signature: %s",
+                attempt + 1,
+                exc,
+            )
             if attempt == 0:
                 await _refresh_oidc_jwks()
                 continue
@@ -90,6 +98,119 @@ async def _authorize_access_token_with_retry(request: Request) -> Optional[dict[
     if last_error:
         raise last_error
     return None
+
+
+async def refresh_session_with_idp(session) -> bool:
+    """Attempt to refresh an expired session against the IdP using the stored refresh token.
+
+    Returns True on success (session updated in place with new ``expires_at`` and,
+    when rotated, a new ``refresh_token``). Returns False on any failure — the
+    caller is expected to clear the session and force re-authentication.
+
+    No-op (returns False) when ``OIDC_USE_REFRESH_TOKEN`` is disabled or no
+    refresh token is stored, so this is safe to call unconditionally from the
+    middleware.
+    """
+
+    if not config.OIDC_USE_REFRESH_TOKEN:
+        return False
+
+    refresh_token = session.get("refresh_token") if session is not None else None
+    if not refresh_token:
+        return False
+
+    fetch_fn = getattr(oauth.oidc, "fetch_access_token", None)
+    if fetch_fn is None:
+        logger.warning("OIDC client has no fetch_access_token; cannot refresh session")
+        return False
+
+    try:
+        new_token = await _maybe_await(fetch_fn(grant_type="refresh_token", refresh_token=refresh_token))
+    except Exception as exc:
+        logger.warning("OIDC refresh token exchange failed: %s", exc)
+        return False
+
+    if not new_token:
+        return False
+
+    _persist_session_auth(session, new_token)
+    return True
+
+
+def _extract_session_expiry(token_response: dict[str, Any]) -> Optional[int]:
+    """Extract the session expiry timestamp (Unix seconds) from an OIDC token response.
+
+    Prefers ``expires_at`` (set by Authlib from ``expires_in``), then the ``exp``
+    claim of the validated id_token, then falls back to computing
+    ``now + expires_in``. Returns None when no expiry information is available
+    (in which case the caller should leave the session unchanged so behaviour
+    matches the legacy ~14-day cookie window).
+    """
+
+    expires_at = token_response.get("expires_at")
+    if isinstance(expires_at, (int, float)) and expires_at > 0:
+        return int(expires_at)
+
+    userinfo = token_response.get("userinfo") or {}
+    id_token_exp = userinfo.get("exp")
+    if isinstance(id_token_exp, (int, float)) and id_token_exp > 0:
+        return int(id_token_exp)
+
+    expires_in = token_response.get("expires_in")
+    if isinstance(expires_in, (int, float)) and expires_in > 0:
+        return int(time.time()) + int(expires_in)
+
+    return None
+
+
+def _persist_session_auth(session, token_response: dict[str, Any]) -> None:
+    """Store IdP-issued expiry (and optionally the refresh token) in the session.
+
+    Called after a successful OIDC token exchange. ``OIDC_USE_REFRESH_TOKEN``
+    gates persistence of the refresh token because storing one in a signed
+    (but not encrypted) cookie has security implications, and many enterprises
+    disallow ``offline_access`` outright.
+    """
+
+    expiry = _extract_session_expiry(token_response)
+    if expiry is not None:
+        session["expires_at"] = expiry
+    else:
+        # No reliable expiry from the IdP; remove any stale value from a prior login.
+        session.pop("expires_at", None)
+
+    if config.OIDC_USE_REFRESH_TOKEN:
+        refresh_token = token_response.get("refresh_token")
+        if refresh_token:
+            session["refresh_token"] = refresh_token
+        # If the response has no refresh_token, keep the existing one. Many
+        # IdPs only emit refresh_token on the initial token exchange and reuse
+        # it across subsequent refreshes (Microsoft Entra, some Keycloak
+        # configs, etc.). Popping it here would break the next refresh.
+    else:
+        session.pop("refresh_token", None)
+
+
+def _sanitize_next(value: Optional[str]) -> Optional[str]:
+    """Validate a ``next`` redirect target. Only same-origin relative paths are
+    accepted to prevent open-redirect attacks. Returns None on rejection.
+
+    Accepts: ``/users``, ``/oidc/ui/groups``, ``/#/experiments/0``.
+    Rejects: ``http://evil``, ``//evil``, ``javascript:...``, anything not starting
+    with a single ``/``.
+    """
+
+    if not value:
+        return None
+    if not isinstance(value, str):
+        return None
+    if not value.startswith("/"):
+        return None
+    if value.startswith("//"):  # protocol-relative URL — would escape origin
+        return None
+    if "\n" in value or "\r" in value:  # header-injection guard
+        return None
+    return value
 
 
 def _build_ui_url(request: Request, path: str, query_params: Optional[dict] = None) -> str:
@@ -133,7 +254,10 @@ async def login(request: Request):
         # Check if OIDC is properly configured before proceeding
         if not is_oidc_configured():
             logger.error("OIDC is not properly configured")
-            raise HTTPException(status_code=500, detail="OIDC authentication not available - configuration error")
+            raise HTTPException(
+                status_code=500,
+                detail="OIDC authentication not available - configuration error",
+            )
 
         # Get session for storing OAuth state (using Starlette's built-in session)
         session = request.session
@@ -142,9 +266,20 @@ async def login(request: Request):
         oauth_state = secrets.token_urlsafe(32)
         session["oauth_state"] = oauth_state
 
+        # Capture an optional ?next= return target so the callback can return
+        # the user to where they were before the session expired. Validated to
+        # be a same-origin relative path; anything else is dropped silently.
+        next_target = _sanitize_next(request.query_params.get("next"))
+        if next_target:
+            session["redirect_after_login"] = next_target
+
         # Get redirect URI (configured or dynamic). Use a safe fallback if dynamic calculation fails
         try:
-            redirect_url = get_configured_or_dynamic_redirect_uri(request=request, callback_path=CALLBACK, configured_uri=config.OIDC_REDIRECT_URI)
+            redirect_url = get_configured_or_dynamic_redirect_uri(
+                request=request,
+                callback_path=CALLBACK,
+                configured_uri=config.OIDC_REDIRECT_URI,
+            )
         except Exception as e:
             logger.warning(f"Failed to get dynamic redirect URI: {e}")
             # Fallback to base_url + callback when request.url or other internals are not available in tests
@@ -201,6 +336,7 @@ async def logout(request: Request):
 
         if username:
             logger.info(f"User {username} logged out successfully")
+            emit_audit_event("auth.logout", actor=username)
 
         # Check if OIDC provider supports logout
         if hasattr(oauth.oidc, "server_metadata"):
@@ -208,9 +344,20 @@ async def logout(request: Request):
             end_session_endpoint = metadata.get("end_session_endpoint")
 
             if end_session_endpoint:
-                # Redirect to OIDC provider logout with post-logout redirect to auth page
+                # Redirect to OIDC provider logout with post-logout redirect to auth page.
+                # client_id is sent alongside post_logout_redirect_uri because providers
+                # such as Keycloak (>= 18) reject RP-initiated logout with "Missing
+                # parameters: id_token_hint" unless either id_token_hint or client_id is
+                # present. The session is already cleared, so client_id is the reliable
+                # choice here.
                 post_logout_redirect = _build_ui_url(request, "/auth")
-                logout_url = f"{end_session_endpoint}?post_logout_redirect_uri={post_logout_redirect}"
+                params = urlencode(
+                    {
+                        "post_logout_redirect_uri": post_logout_redirect,
+                        "client_id": config.OIDC_CLIENT_ID,
+                    }
+                )
+                logout_url = f"{end_session_endpoint}?{params}"
                 return RedirectResponse(url=logout_url, status_code=302)
 
         # Default redirect to auth page using the helper function
@@ -245,7 +392,11 @@ async def callback(request: Request):
         # This handles the case where callback hits a replica that hasn't registered the client yet
         if not is_oidc_configured():
             logger.error("OIDC is not properly configured when processing callback")
-            auth_error_url = _build_ui_url(request, "/auth", {"error": ["OIDC authentication not available - configuration error"]})
+            auth_error_url = _build_ui_url(
+                request,
+                "/auth",
+                {"error": ["OIDC authentication not available - configuration error"]},
+            )
             return RedirectResponse(url=auth_error_url, status_code=302)
 
         # Get session (using Starlette's built-in session)
@@ -270,6 +421,7 @@ async def callback(request: Request):
             session["authenticated"] = True
 
             logger.info(f"User {email} authenticated successfully via OIDC")
+            emit_audit_event("auth.login", actor=email, detail={"method": "oidc"})
 
             # Redirect to UI home page or original destination
             default_redirect = session.pop("redirect_after_login", None)
@@ -414,6 +566,11 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
 
+            # With jumpcloud, if the groups attribute is a single group, it will be sent as a string.
+            # To process the groups correctly, bring the group into a list of groups.
+            if isinstance(user_groups, str):
+                user_groups = [user_groups]
+
             logger.debug(f"User groups: {user_groups}")
 
             # Check authorization
@@ -428,6 +585,70 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             user_module.populate_groups(group_names=user_groups)
             user_module.update_user(username=username, group_names=user_groups)
 
+            # Workspace detection (per D-07, D-08, WSOIDC-01/02/03)
+            # Layered approach: plugin first, JWT claim fallback, then auto-assign
+            if config.MLFLOW_ENABLE_WORKSPACES:
+                user_workspaces: list[str] = []
+                if config.OIDC_WORKSPACE_DETECTION_PLUGIN:
+                    try:
+                        user_workspaces = importlib.import_module(config.OIDC_WORKSPACE_DETECTION_PLUGIN).get_user_workspaces(access_token)
+                    except Exception as ws_plugin_err:
+                        logger.warning(f"Workspace detection plugin error: {ws_plugin_err}")
+                else:
+                    # JWT claim fallback
+                    claim_value = userinfo.get(config.OIDC_WORKSPACE_CLAIM_NAME, [])
+                    if isinstance(claim_value, str):
+                        user_workspaces = [claim_value]
+                    elif isinstance(claim_value, list):
+                        user_workspaces = [str(w) for w in claim_value]
+
+                # Auto-create workspaces that don't exist yet (WSOIDC-04)
+                try:
+                    from mlflow.server.handlers import _get_workspace_store
+
+                    ws_mlflow_store = _get_workspace_store()
+                except Exception as ws_store_err:
+                    logger.warning(f"Cannot access MLflow workspace store for auto-create: {ws_store_err}")
+                    ws_mlflow_store = None
+
+                # Auto-assign workspace memberships
+                from mlflow_oidc_auth.store import store as ws_store
+
+                for ws_name in user_workspaces:
+                    if not ws_name:
+                        continue
+
+                    # Auto-create workspace if it doesn't exist (WSOIDC-04)
+                    if ws_mlflow_store is not None:
+                        try:
+                            ws_mlflow_store.get_workspace(ws_name)
+                        except Exception:
+                            # Workspace doesn't exist — try to create it
+                            try:
+                                from mlflow.store.workspace import (
+                                    Workspace as MlflowWorkspace,
+                                )
+
+                                ws_mlflow_store.create_workspace(
+                                    MlflowWorkspace(name=ws_name, description=""),
+                                )
+                                logger.info(f"Auto-created workspace '{ws_name}' during OIDC login for user {username}")
+                            except Exception as create_err:
+                                # Creation may fail if name is invalid or race condition
+                                logger.warning(f"Failed to auto-create workspace '{ws_name}': {create_err}")
+
+                    # Assign permission (existing logic)
+                    try:
+                        ws_store.create_workspace_permission(
+                            ws_name,
+                            username,
+                            config.OIDC_WORKSPACE_DEFAULT_PERMISSION,
+                        )
+                        logger.info(f"Auto-assigned user {username} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}")
+                    except Exception:
+                        # Permission already exists — not an error (idempotent)
+                        logger.debug(f"Workspace permission already exists for {username} in '{ws_name}'")
+
             logger.info(f"User {username} successfully processed with groups: {user_groups}")
 
         except Exception as e:
@@ -435,9 +656,16 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             errors.append("Failed to update user/groups")
             return None, errors
 
+        _persist_session_auth(session, token_response)
+
         return username, []
 
     except Exception as e:
-        logger.error("OIDC token exchange error (%s.%s): %s", type(e).__module__, type(e).__name__, str(e))
+        logger.error(
+            "OIDC token exchange error (%s.%s): %s",
+            type(e).__module__,
+            type(e).__name__,
+            str(e),
+        )
         errors.append("Failed to process authentication response")
         return None, errors

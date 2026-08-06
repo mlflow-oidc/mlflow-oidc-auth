@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Optional
 from flask import Request, g, request
 from mlflow.protos.model_registry_pb2 import (
     CreateModelVersion,
+    CreateRegisteredModel,
     DeleteModelVersion,
     DeleteModelVersionTag,
     DeleteRegisteredModel,
@@ -24,12 +25,36 @@ from mlflow.protos.model_registry_pb2 import (
 )
 from mlflow.protos.service_pb2 import (
     AttachModelToGatewayEndpoint,
+    SearchRuns,
+    SearchTraces,
+    SearchTracesV3,
+    GetTraceInfo,
+    GetTraceInfoV3,
+    GetTrace,
+    BatchGetTraces,
+    BatchGetTraceInfos,
+    SetTraceTag,
+    SetTraceTagV3,
+    DeleteTraceTag,
+    DeleteTraceTagV3,
+    DeleteTraces,
+    DeleteTracesV3,
+    LinkTracesToRun,
+    LinkPromptsToTrace,
+    CreateAssessment,
+    UpdateAssessment,
+    DeleteAssessment,
+    GetAssessmentRequest,
+    QueryTraceMetrics,
+    CalculateTraceFilterCorrelation,
+    CreateExperiment,
     CreateGatewayEndpoint,
     CreateGatewayEndpointBinding,
     CreateGatewayModelDefinition,
     CreateGatewaySecret,
     CreateLoggedModel,
     CreateRun,
+    CreateWorkspace,
     DeleteExperiment,
     DeleteExperimentTag,
     DeleteGatewayEndpoint,
@@ -41,6 +66,7 @@ from mlflow.protos.service_pb2 import (
     DeleteLoggedModelTag,
     DeleteRun,
     DeleteTag,
+    DeleteWorkspace,
     DetachModelFromGatewayEndpoint,
     FinalizeLoggedModel,
     GetExperiment,
@@ -51,8 +77,10 @@ from mlflow.protos.service_pb2 import (
     GetLoggedModel,
     GetMetricHistory,
     GetRun,
+    GetWorkspace,
     ListArtifacts,
     ListGatewayEndpointBindings,
+    ListWorkspaces,
     LogBatch,
     LogLoggedModelParamsRequest,
     LogMetric,
@@ -69,23 +97,52 @@ from mlflow.protos.service_pb2 import (
     UpdateGatewayModelDefinition,
     UpdateGatewaySecret,
     UpdateRun,
+    UpdateWorkspace,
     RegisterScorer,
     ListScorers,
     GetScorer,
     DeleteScorer,
     ListScorerVersions,
+    CreatePromptOptimizationJob,
+    GetPromptOptimizationJob,
+    SearchPromptOptimizationJobs,
+    DeletePromptOptimizationJob,
+    CancelPromptOptimizationJob,
 )
 
 from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
-from mlflow.utils.rest_utils import _REST_API_PATH_PREFIX
+
+# Forward-compatible imports for Gateway Budget Policy protos.
+# These protos may not exist in the installed MLflow version; when they
+# become available they will be automatically picked up as admin-only handlers.
+_BUDGET_POLICY_PROTOS: list = []
+try:
+    from mlflow.protos.service_pb2 import (
+        CreateGatewayBudgetPolicy,
+        UpdateGatewayBudgetPolicy,
+        DeleteGatewayBudgetPolicy,
+    )
+
+    _BUDGET_POLICY_PROTOS = [
+        CreateGatewayBudgetPolicy,
+        UpdateGatewayBudgetPolicy,
+        DeleteGatewayBudgetPolicy,
+    ]
+except ImportError:
+    pass
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 import mlflow_oidc_auth.responses as responses
+from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.hooks.dual_spelling_guard import find_dual_spelling_collision, has_unexpected_get_body
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
+    validate_can_create_experiment,
     validate_can_delete_experiment,
     validate_can_delete_experiment_artifact_proxy,
     validate_can_delete_logged_model,
+    validate_can_create_registered_model,
     validate_can_delete_registered_model,
     validate_can_delete_run,
     validate_can_manage_experiment,
@@ -105,6 +162,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_experiment_from_experiment_id,
     validate_can_read_metric_history_bulk_interval,
     validate_can_read_traces_from_experiment_ids,
+    validate_can_read_traces_from_trace_ids,
     validate_can_read_trace,
     validate_can_update_trace_from_experiment_id,
     validate_can_update_trace_from_run_id,
@@ -123,6 +181,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_search_datasets,
     validate_can_create_promptlab_run,
     validate_gateway_proxy,
+    validate_can_invoke_scorer,
     validate_can_read_gateway_endpoint,
     validate_can_update_gateway_endpoint,
     validate_can_delete_gateway_endpoint,
@@ -133,11 +192,38 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_gateway_model_definition,
     validate_can_delete_gateway_model_definition,
     validate_can_create_gateway,
+    validate_can_create_workspace,
+    validate_can_read_workspace,
+    validate_can_update_workspace,
+    validate_can_delete_workspace,
+    validate_can_list_workspaces,
+    validate_can_read_prompt_optimization_job,
+    validate_can_update_prompt_optimization_job,
+    validate_can_delete_prompt_optimization_job,
 )
 
 
 def _is_unprotected_route(path: str) -> bool:
-    return path.startswith(("/static", "/favicon.ico", "/health", "/metrics", "/docs", "/redoc", "/openapi.json"))
+    return path.startswith(
+        (
+            "/static",
+            "/favicon.ico",
+            "/health",
+            "/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+        )
+    )
+
+
+def _deny_non_admin(_username: str) -> bool:
+    """Sentinel validator that always denies non-admin users.
+
+    Admin users are short-circuited before validators run in before_request_hook,
+    so this function is only called for non-admin users and must always return False.
+    """
+    return False
 
 
 def _get_auth_context() -> tuple[Optional[str], bool]:
@@ -157,6 +243,10 @@ def _get_auth_context() -> tuple[Optional[str], bool]:
 
 BEFORE_REQUEST_HANDLERS = {
     # Routes for experiments
+    # Creation gating is opt-in via RESTRICT_RESOURCE_CREATION; the validators are
+    # no-ops (allow) unless the flag is set, so binding them is safe by default.
+    CreateExperiment: validate_can_create_experiment,
+    CreateRegisteredModel: validate_can_create_registered_model,
     GetExperiment: validate_can_read_experiment,
     GetExperimentByName: validate_can_read_experiment_by_name,
     DeleteExperiment: validate_can_delete_experiment,
@@ -178,6 +268,34 @@ BEFORE_REQUEST_HANDLERS = {
     LogParam: validate_can_update_run,
     GetMetricHistory: validate_can_read_run,
     ListArtifacts: validate_can_read_run,
+    # Search runs across experiments must require READ on every requested experiment (#259).
+    SearchRuns: validate_can_read_experiments_from_experiment_ids,
+    # Trace authorization (#259): a trace inherits its experiment's permission. These endpoints
+    # were previously default-allow, leaking prompts/responses across tenants.
+    # Reads (scoped by experiment_ids / v3 locations, or by trace id):
+    SearchTraces: validate_can_read_traces_from_experiment_ids,
+    SearchTracesV3: validate_can_read_traces_from_experiment_ids,
+    QueryTraceMetrics: validate_can_read_traces_from_experiment_ids,
+    CalculateTraceFilterCorrelation: validate_can_read_traces_from_experiment_ids,
+    GetTraceInfo: validate_can_read_trace,
+    GetTraceInfoV3: validate_can_read_trace,
+    GetTrace: validate_can_read_trace,
+    GetAssessmentRequest: validate_can_read_trace,
+    BatchGetTraces: validate_can_read_traces_from_trace_ids,
+    BatchGetTraceInfos: validate_can_read_traces_from_trace_ids,
+    # Writes on an existing trace require UPDATE on its experiment:
+    SetTraceTag: validate_can_update_trace,
+    SetTraceTagV3: validate_can_update_trace,
+    DeleteTraceTag: validate_can_update_trace,
+    DeleteTraceTagV3: validate_can_update_trace,
+    CreateAssessment: validate_can_update_trace,
+    UpdateAssessment: validate_can_update_trace,
+    DeleteAssessment: validate_can_update_trace,
+    LinkPromptsToTrace: validate_can_update_trace,
+    LinkTracesToRun: validate_can_update_trace_from_run_id,
+    # Deletes require DELETE on the trace's experiment:
+    DeleteTraces: validate_can_delete_traces_from_experiment_id,
+    DeleteTracesV3: validate_can_delete_traces_from_experiment_id,
     # Routes for model registry
     GetRegisteredModel: validate_can_read_registered_model,
     DeleteRegisteredModel: validate_can_delete_registered_model,
@@ -203,6 +321,12 @@ BEFORE_REQUEST_HANDLERS = {
     GetScorer: validate_can_read_scorer,
     DeleteScorer: validate_can_delete_scorer,
     ListScorerVersions: validate_can_read_scorer,
+    # Routes for prompt optimization jobs (resolved via job_id → experiment_id)
+    CreatePromptOptimizationJob: validate_can_update_experiment,
+    GetPromptOptimizationJob: validate_can_read_prompt_optimization_job,
+    SearchPromptOptimizationJobs: validate_can_read_experiment,
+    DeletePromptOptimizationJob: validate_can_delete_prompt_optimization_job,
+    CancelPromptOptimizationJob: validate_can_update_prompt_optimization_job,
     # Routes for gateway endpoints
     CreateGatewayEndpoint: validate_can_create_gateway,
     GetGatewayEndpoint: validate_can_read_gateway_endpoint,
@@ -230,6 +354,11 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteGatewayEndpointTag: validate_can_update_gateway_endpoint,
 }
 
+# Gateway Budget Policy protos are admin-only.  They are conditionally
+# available (forward-compat), so we add them after the dict is defined.
+for _bp in _BUDGET_POLICY_PROTOS:
+    BEFORE_REQUEST_HANDLERS[_bp] = _deny_non_admin
+
 # `mlflow.server.handlers.get_endpoints()` also includes non-protobuf endpoints like `/graphql`
 # and Gateway discovery routes, whose handlers are *not* our auth validators. We must not treat
 # those as validators (they don't accept `username`), otherwise the hook will crash at runtime.
@@ -250,7 +379,7 @@ BEFORE_REQUEST_VALIDATORS = {
     if handler in _PROTO_VALIDATORS
 }
 
-from mlflow.server.handlers import _add_static_prefix, _get_ajax_path
+from mlflow.server.handlers import _add_static_prefix, _get_ajax_path, _get_rest_path
 
 # Flask routes (not part of Protobuf API)
 GET_ARTIFACT = _add_static_prefix("/get-artifact")
@@ -259,9 +388,35 @@ GET_MODEL_VERSION_ARTIFACT = _add_static_prefix("/model-versions/get-artifact")
 GET_TRACE_ARTIFACT = _get_ajax_path("/mlflow/get-trace-artifact")
 GET_METRIC_HISTORY_BULK = _get_ajax_path("/mlflow/metrics/get-history-bulk")
 GET_METRIC_HISTORY_BULK_INTERVAL = _get_ajax_path("/mlflow/metrics/get-history-bulk-interval")
+GET_METRIC_HISTORY_BULK_INTERVAL_REST = _get_rest_path("/mlflow/metrics/get-history-bulk-interval")
 SEARCH_DATASETS = _get_ajax_path("/mlflow/experiments/search-datasets")
 CREATE_PROMPTLAB_RUN = _get_ajax_path("/mlflow/runs/create-promptlab-run")
 GATEWAY_PROXY = _get_ajax_path("/mlflow/gateway-proxy")
+# The gateway and scorer routes below are served under the 3.0 prefix, not 2.0. Getting the
+# version wrong makes the entry dead: _find_validator matches on the exact path, so the real
+# endpoint falls through unguarded rather than failing loudly. _assert_validator_paths_exist
+# at the bottom of this module pins every constant here to a route MLflow actually registers.
+INVOKE_SCORER = _get_ajax_path("/mlflow/scorer/invoke", version=3)
+GATEWAY_SUPPORTED_PROVIDERS = _get_ajax_path("/mlflow/gateway/supported-providers", version=3)
+GATEWAY_SUPPORTED_MODELS = _get_ajax_path("/mlflow/gateway/supported-models", version=3)
+GATEWAY_PROVIDER_CONFIG = _get_ajax_path("/mlflow/gateway/provider-config", version=3)
+GATEWAY_SECRETS_CONFIG = _get_ajax_path("/mlflow/gateway/secrets/config", version=3)
+
+# Gateway guardrails control content filtering on gateway endpoints. MLflow registers these
+# under both /api and /ajax-api with no authorization of its own; without an entry here they
+# fall through the hook and any authenticated user can create, reconfigure, detach or delete
+# a guardrail in any workspace. Admin-only, matching the treatment of gateway budgets.
+GATEWAY_GUARDRAIL_OPERATIONS = (
+    "create",
+    "get",
+    "list",
+    "delete",
+    "add-to-endpoint",
+    "remove-from-endpoint",
+    "list-for-endpoint",
+    "update-config",
+)
+
 
 # Flask routes (no proto mapping)
 BEFORE_REQUEST_VALIDATORS.update(
@@ -271,13 +426,78 @@ BEFORE_REQUEST_VALIDATORS.update(
         (GET_MODEL_VERSION_ARTIFACT, "GET"): validate_can_read_model_version_artifact,
         (GET_TRACE_ARTIFACT, "GET"): validate_can_read_trace_artifact,
         (GET_METRIC_HISTORY_BULK, "GET"): validate_can_read_metric_history_bulk,
-        (GET_METRIC_HISTORY_BULK_INTERVAL, "GET"): validate_can_read_metric_history_bulk_interval,
+        (
+            GET_METRIC_HISTORY_BULK_INTERVAL,
+            "GET",
+        ): validate_can_read_metric_history_bulk_interval,
+        (
+            GET_METRIC_HISTORY_BULK_INTERVAL_REST,
+            "GET",
+        ): validate_can_read_metric_history_bulk_interval,
         (SEARCH_DATASETS, "POST"): validate_can_search_datasets,
         (CREATE_PROMPTLAB_RUN, "POST"): validate_can_create_promptlab_run,
         (GATEWAY_PROXY, "GET"): validate_gateway_proxy,
         (GATEWAY_PROXY, "POST"): validate_gateway_proxy,
+        # Scorer invocation is authorized on the experiment MLflow's handler acts on, not
+        # on a gateway endpoint — it never reads one (issue #288). MLflow registers this
+        # route POST-only, so there is no GET entry to bind.
+        (INVOKE_SCORER, "POST"): validate_can_invoke_scorer,
+        # Gateway discovery routes use the same gateway proxy permission check
+        (GATEWAY_SUPPORTED_PROVIDERS, "GET"): validate_gateway_proxy,
+        (GATEWAY_SUPPORTED_MODELS, "GET"): validate_gateway_proxy,
+        # Gateway configuration routes are admin-only
+        (GATEWAY_PROVIDER_CONFIG, "GET"): _deny_non_admin,
+        (GATEWAY_SECRETS_CONFIG, "GET"): _deny_non_admin,
     }
 )
+
+# Gateway guardrails: admin-only on every method MLflow serves, under both prefixes.
+BEFORE_REQUEST_VALIDATORS.update(
+    {
+        (path, method): _deny_non_admin
+        for operation in GATEWAY_GUARDRAIL_OPERATIONS
+        for path in (
+            _get_ajax_path(f"/mlflow/gateway/guardrails/{operation}", version=3),
+            _get_rest_path(f"/mlflow/gateway/guardrails/{operation}", version=3),
+        )
+        # MLflow serves these across GET/POST/DELETE/PATCH (update-config is PATCH); cover
+        # every verb rather than the ones in use today, so a new one is denied by default.
+        for method in ("GET", "POST", "PUT", "PATCH", "DELETE")
+    }
+)
+
+
+def _bind_non_proto_route(suffix: str, method: str, validator: Callable[[str], bool]) -> None:
+    """Guard every spelling of a non-proto Flask route that MLflow actually registers.
+
+    These routes have no protobuf message, so they are matched by exact path. MLflow serves
+    several of them under more than one prefix and version, and some under a malformed one
+    (``/api/2.0mlflow/experiments/search-datasets``, missing the slash). Every spelling is
+    reachable, so binding only the expected one leaves the others returning data with no
+    permission check. Enumerating the real routing table avoids having to predict them.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    for rule in mlflow_flask_app.url_map.iter_rules():
+        path = str(rule)
+        if path.endswith(suffix) and method in (rule.methods or set()):
+            BEFORE_REQUEST_VALIDATORS[(path, method)] = validator
+
+
+# Suffixes deliberately omit the leading slash: MLflow registers some of these as
+# "/api/2.0mlflow/..." without it, and those spellings are reachable too.
+for _suffix, _method, _validator in (
+    ("mlflow/experiments/search-datasets", "POST", validate_can_search_datasets),
+    ("mlflow/get-trace-artifact", "GET", validate_can_read_trace_artifact),
+    ("mlflow/metrics/get-history-bulk", "GET", validate_can_read_metric_history_bulk),
+    ("mlflow/metrics/get-history-bulk-interval", "GET", validate_can_read_metric_history_bulk_interval),
+    ("mlflow/upload-artifact", "POST", validate_can_update_run_artifact),
+    ("mlflow/runs/create-promptlab-run", "POST", validate_can_create_promptlab_run),
+    ("mlflow/gateway-proxy", "GET", validate_gateway_proxy),
+    ("mlflow/gateway-proxy", "POST", validate_gateway_proxy),
+):
+    _bind_non_proto_route(_suffix, _method, _validator)
+
 
 LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
     CreateLoggedModel: validate_can_update_experiment,
@@ -302,6 +522,15 @@ def _re_compile_path(path: str) -> re.Pattern:
     return re.compile(re.sub(r"<([^>]+)>", r"([^/]+)", path))
 
 
+# Routes whose path carries a parameter (e.g. /prompt-optimization/jobs/<job_id>) are keyed
+# in BEFORE_REQUEST_VALIDATORS by the placeholder MLflow registers, which never equals a
+# concrete request path. They therefore need regex matching, exactly as workspace and
+# logged-model routes already do. Built after every update() above so none are missed.
+PARAMETERIZED_BEFORE_REQUEST_VALIDATORS = {
+    (_re_compile_path(path), method): validator for (path, method), validator in BEFORE_REQUEST_VALIDATORS.items() if "<" in path
+}
+
+
 LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
     # Paths for logged models contains path parameters (e.g. /mlflow/logged-models/<model_id>)
     (_re_compile_path(http_path), method): handler
@@ -309,35 +538,220 @@ LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
     for method in methods
 }
 
+# Workspace RPC handlers (per decision WSAUTH-A: regex pattern matching like logged models)
+WORKSPACE_BEFORE_REQUEST_HANDLERS = {
+    CreateWorkspace: validate_can_create_workspace,
+    GetWorkspace: validate_can_read_workspace,
+    ListWorkspaces: validate_can_list_workspaces,
+    UpdateWorkspace: validate_can_update_workspace,
+    DeleteWorkspace: validate_can_delete_workspace,
+}
 
-def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]]) -> Optional[Callable[[str], bool]]:
-    if view_args is None:
-        return validate_can_read_experiment_artifact_proxy  # List
+
+def get_workspace_before_request_handler(request_class):
+    return WORKSPACE_BEFORE_REQUEST_HANDLERS.get(request_class)
+
+
+WORKSPACE_BEFORE_REQUEST_VALIDATORS = {
+    (_re_compile_path(http_path), method): handler
+    for http_path, handler, methods in get_endpoints(get_workspace_before_request_handler)
+    for method in methods
+    if handler is not None
+}
+
+
+# ---------------------------------------------------------------------------
+# Workspace creation gating (per WSAUTH-F / WSAUTH-03)
+# ---------------------------------------------------------------------------
+
+_WORKSPACE_GATED_CREATION_PATHS: set[tuple[str, str]] | None = None
+
+
+def _get_workspace_gated_creation_paths() -> set[tuple[str, str]]:
+    """Lazily build the set of (path, method) pairs for workspace-gated creation."""
+    global _WORKSPACE_GATED_CREATION_PATHS
+    if _WORKSPACE_GATED_CREATION_PATHS is None:
+        from mlflow.protos.service_pb2 import CreateExperiment
+        from mlflow.protos.service_pb2 import CreateGatewayEndpoint
+        from mlflow.protos.service_pb2 import CreateGatewayModelDefinition
+        from mlflow.protos.service_pb2 import CreateGatewaySecret
+        from mlflow.protos.model_registry_pb2 import CreateRegisteredModel
+
+        paths = set()
+        gated_creation_handlers = (CreateExperiment, CreateRegisteredModel, CreateGatewayEndpoint, CreateGatewaySecret, CreateGatewayModelDefinition)
+        for http_path, handler, methods in get_endpoints(lambda rc: rc if rc in gated_creation_handlers else None):
+            if handler in gated_creation_handlers:
+                for method in methods:
+                    paths.add((http_path, method))
+        _WORKSPACE_GATED_CREATION_PATHS = paths
+    return _WORKSPACE_GATED_CREATION_PATHS
+
+
+_CREATE_GRANT_PATHS: set[tuple[str, str]] | None = None
+
+
+def _get_create_grant_paths() -> set:
+    """Paths whose after-request handler auto-grants the creator MANAGE (issue #262).
+
+    Lazily derived from after_request's CREATOR_GRANT_REQUEST_CLASSES so the set stays in
+    sync when create endpoints are added. Deferred import avoids any hook import cycle.
+    """
+    global _CREATE_GRANT_PATHS
+    if _CREATE_GRANT_PATHS is None:
+        from mlflow_oidc_auth.hooks.after_request import CREATOR_GRANT_REQUEST_CLASSES
+
+        paths: set[tuple[str, str]] = set()
+        for http_path, handler, methods in get_endpoints(lambda rc: rc if rc in CREATOR_GRANT_REQUEST_CLASSES else None):
+            if handler in CREATOR_GRANT_REQUEST_CLASSES:
+                for method in methods:
+                    paths.add((http_path, method))
+        _CREATE_GRANT_PATHS = paths
+    return _CREATE_GRANT_PATHS
+
+
+def _requires_existing_user(path: str, method: str) -> bool:
+    """True for create endpoints that will grant the caller MANAGE post-commit."""
+    return (path, method) in _get_create_grant_paths()
+
+
+def _is_workspace_gated_creation(path: str, method: str) -> bool:
+    """Check if a request path/method corresponds to a workspace-gated creation endpoint."""
+    return (path, method) in _get_workspace_gated_creation_paths()
+
+
+_ARTIFACT_PROXY_MARKER = "/mlflow-artifacts/"
+
+
+def _build_artifact_proxy_prefixes() -> tuple[str, ...]:
+    """Every prefix under which MLflow serves the artifact proxy.
+
+    MLflow registers the artifact proxy under BOTH ``/api/2.0`` and ``/ajax-api/2.0``
+    (the latter is what the web UI calls), across several route families —
+    ``artifacts``, ``mpu/{create,complete,abort}`` and ``presigned``. Hardcoding one
+    prefix left the other families reaching no authorization check at all, because an
+    unmatched path falls through ``before_request_hook`` and is allowed (issue #283).
+
+    Derived from MLflow's real routing table so a future release that adds another
+    artifact route or prefix is covered automatically.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    prefixes = set()
+    for rule in mlflow_flask_app.url_map.iter_rules():
+        path = str(rule)
+        index = path.find(_ARTIFACT_PROXY_MARKER)
+        if index != -1:
+            prefixes.add(path[: index + len(_ARTIFACT_PROXY_MARKER)])
+    return tuple(sorted(prefixes))
+
+
+_ARTIFACT_PROXY_PREFIXES: tuple[str, ...] = _build_artifact_proxy_prefixes()
+
+if not _ARTIFACT_PROXY_PREFIXES:
+    # A security control must not silently become a no-op: with no prefixes every
+    # artifact request would skip authorization entirely.
+    raise RuntimeError(
+        "mlflow-oidc-auth: could not derive any artifact-proxy prefixes from MLflow's "
+        "routing table, so artifact requests would be unauthorized. Refusing to start "
+        "(issue #283)."
+    )
+
+
+def _artifact_proxy_family(path: str) -> Optional[str]:
+    """Return the artifact route family ('artifacts' / 'mpu' / 'presigned'), or None."""
+    for prefix in _ARTIFACT_PROXY_PREFIXES:
+        if path.startswith(prefix):
+            return path[len(prefix) :].split("/", 1)[0] or None
+    return None
+
+
+def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any]], path: Optional[str] = None) -> Optional[Callable[[str], bool]]:
+    """Pick the validator for an artifact-proxy request by route family and method.
+
+    ``path`` is optional only for backward compatibility with callers that predate the
+    multi-family support; without it the ``artifacts`` family is assumed.
+    """
+    family = _artifact_proxy_family(path) if path is not None else "artifacts"
+
+    # werkzeug registers HEAD alongside every GET rule and routes it to the same
+    # handler, so it is a read. Without this it fell through to "no validator" and was
+    # denied outright — even for a user holding MANAGE.
+    if method == "HEAD":
+        method = "GET"
+
+    if family == "mpu":
+        # create / complete / abort all WRITE to the artifact path.
+        return validate_can_update_experiment_artifact_proxy if method == "POST" else None
+
+    if family == "presigned":
+        # Issues a presigned DOWNLOAD url — a read of the underlying artifact.
+        return validate_can_read_experiment_artifact_proxy if method == "GET" else None
+
+    if family not in (None, "artifacts"):
+        # An artifact family we do not know about. Return no validator so the caller
+        # denies, rather than falling through and granting read (issue #283).
+        return None
 
     return {
-        "GET": validate_can_read_experiment_artifact_proxy,  # Download
+        # Covers both the download route and the argument-less list route; the list
+        # route's experiment id comes from the `path` query parameter.
+        "GET": validate_can_read_experiment_artifact_proxy,
         "PUT": validate_can_update_experiment_artifact_proxy,  # Upload
         "DELETE": validate_can_delete_experiment_artifact_proxy,  # Delete
     }.get(method)
 
 
 def _is_proxy_artifact_path(path: str) -> bool:
-    return path.startswith(f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts/")
+    return path.startswith(_ARTIFACT_PROXY_PREFIXES)
 
 
 def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
     """
     Finds the validator matching the request path and method.
+
+    HEAD is folded onto GET (issue #286). werkzeug auto-registers HEAD on every GET
+    rule and dispatches it to the same view, but every validator here is registered
+    under "GET", so keying the lookup on the literal method left HEAD matching
+    nothing. A None validator is not a deny — it falls through to the unvalidated
+    path — so ``HEAD /get-artifact?path=<victim>`` sailed past the 403 its GET twin
+    receives and returned the response headers, an existence and exact-size oracle
+    over any tenant's data. The same fold is applied in
+    ``dual_spelling_guard._is_proto_route`` and ``_get_proxy_artifact_validator``.
     """
+    method = "GET" if req.method == "HEAD" else req.method
+    if "/mlflow/workspaces" in req.path:
+        # Workspace routes use path parameters (e.g. /mlflow/workspaces/<workspace_name>)
+        validator = next(
+            (v for (pat, m), v in WORKSPACE_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and m == method),
+            None,
+        )
+        # Stash workspace name for after-request cascade delete (like gateway pattern)
+        if validator is not None and method == "DELETE":
+            from mlflow_oidc_auth.validators.workspace import (
+                _extract_workspace_name_from_path,
+            )
+
+            ws_name = _extract_workspace_name_from_path()
+            if ws_name:
+                g._deleting_workspace_name = ws_name
+        return validator
     if "/mlflow/logged-models" in req.path:
         # logged model routes are not registered in the app
         # so we need to check them manually
         return next(
-            (v for (pat, method), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and method == req.method),
+            (v for (pat, m), v in LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.items() if pat.fullmatch(req.path) and m == method),
             None,
         )
-    else:
-        return BEFORE_REQUEST_VALIDATORS.get((req.path, req.method))
+    validator = BEFORE_REQUEST_VALIDATORS.get((req.path, method))
+    if validator is not None:
+        return validator
+    # Fall back to the parameterized keys. Their paths carry a placeholder
+    # ("/prompt-optimization/jobs/<job_id>") which never equals a concrete request path,
+    # so the exact lookup above can never match them.
+    return next(
+        (v for (pat, m), v in PARAMETERIZED_BEFORE_REQUEST_VALIDATORS.items() if m == method and pat.fullmatch(req.path)),
+        None,
+    )
 
 
 def before_request_hook():
@@ -354,16 +768,79 @@ def before_request_hook():
     logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
     validator = _find_validator(request)
     _stash_gateway_context(validator)
+    # Issue #270: reject proto-JSON dual-spelling before any authorization decision.
+    # A body that spells one field two ways (e.g. experiment_id + experimentId) is
+    # ambiguous — protobuf silently keeps the last, letting a single-spelling authz
+    # check be bypassed while MLflow acts on the other value. No legitimate client
+    # sends both, so 400 is always safe. Runs before the admin early-out because the
+    # request is malformed regardless of who sends it.
+    collision = find_dual_spelling_collision(request)
+    if collision is not None:
+        logger.warning(f"Rejecting {request.method} {request.path}: field '{collision}' specified under multiple spellings")
+        return responses.make_bad_request_response({"message": f"Ambiguous request: field '{collision}' was specified under multiple spellings"})
+    # Issue #270: a GET with an empty query string makes MLflow proto-parse the JSON
+    # body instead of the args. Validators that read request.args then authorize
+    # vacuously — without any store lookup — while MLflow serves whatever the body
+    # named. No legitimate client sends a GET body, so reject it.
+    if has_unexpected_get_body(request):
+        logger.warning(f"Rejecting {request.method} {request.path}: GET carries a request body that MLflow would parse")
+        return responses.make_bad_request_response({"message": "Ambiguous request: GET parameters must be sent in the query string, not a request body"})
+    # Issue #262: an authenticated user with no permission-DB record (e.g. API-first via a
+    # bearer token, never logged in through the browser) would have MLflow commit the new
+    # resource while the after-request MANAGE grant fails on the missing user, leaving an
+    # ownerless resource invisible to everyone including its creator. Reject such creates
+    # pre-commit. This runs before the admin early-out because an API-first admin hits the
+    # identical failure. When bearer provisioning (OIDC_PROVISION_ON_BEARER_AUTH) is enabled,
+    # the user is created in auth middleware before this runs, so has_user is already True.
+    if _requires_existing_user(request.path, request.method) and not store.has_user(username):
+        logger.warning(f"Denying {request.method} {request.path} for {username}: no permission record yet, cannot own the created resource (issue #262)")
+        return responses.make_forbidden_response()
     if is_admin:
         return
+    # Workspace creation gating (per WSAUTH-F / WSAUTH-03)
+    if config.MLFLOW_ENABLE_WORKSPACES and _is_workspace_gated_creation(request.path, request.method):
+        from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            get_workspace_permission_cached,
+        )
+
+        # AuthMiddleware already normalized this the way MLflow does, so an empty or
+        # whitespace-only header arrives as None rather than "".
+        workspace = get_request_workspace()
+        # When no workspace context is supplied, MLflow resolves the request to the
+        # default workspace, so the guards must treat it as such rather than skip.
+        effective_workspace = workspace or DEFAULT_WORKSPACE_NAME
+
+        if workspace is None and config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT:
+            logger.warning(f"Denying {request.method} {request.path} for {username}: workspace context is required for creation")
+            return responses.make_forbidden_response()
+        if effective_workspace == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:
+            logger.warning(f"Denying {request.method} {request.path} for {username}: creation in the '{DEFAULT_WORKSPACE_NAME}' workspace is disabled")
+            return responses.make_forbidden_response()
+        if workspace is not None:
+            ws_perm = get_workspace_permission_cached(username, workspace)
+            if ws_perm is None or not ws_perm.can_manage:
+                logger.warning(f"Denying {request.method} {request.path} for {username}: MANAGE required on workspace '{workspace}'")
+                return responses.make_forbidden_response()
     # authorization
     if validator:
         if not validator(username):
             return responses.make_forbidden_response()
     elif _is_proxy_artifact_path(request.path):
-        if validator := _get_proxy_artifact_validator(request.method, request.view_args):
-            if not validator(username):
-                return responses.make_forbidden_response()
+        if request.method == "OPTIONS":
+            # Flask answers OPTIONS itself (provide_automatic_options); it never reaches
+            # an artifact handler and carries no data, so it must not be gated.
+            return
+        validator = _get_proxy_artifact_validator(request.method, request.view_args, request.path)
+        if validator is None:
+            # An artifact route we do not recognise must not be served unchecked — that
+            # is exactly how the mpu/presigned families went ungated (issue #283).
+            logger.warning(f"Denying unrecognised artifact-proxy route {request.method} {request.path}")
+            return responses.make_forbidden_response()
+        if not validator(username):
+            return responses.make_forbidden_response()
 
 
 before_request_hook = catch_mlflow_exception(before_request_hook)
@@ -391,7 +868,10 @@ def _stash_gateway_context(validator) -> None:
     )
 
     # --- Gateway endpoint: update (rename) or delete ---
-    if validator in (validate_can_update_gateway_endpoint, validate_can_delete_gateway_endpoint):
+    if validator in (
+        validate_can_update_gateway_endpoint,
+        validate_can_delete_gateway_endpoint,
+    ):
         data = request.get_json(force=True, silent=True) or {}
         endpoint_id = data.get("endpoint_id")
         if endpoint_id:
@@ -426,3 +906,36 @@ def _stash_gateway_context(validator) -> None:
         if name:
             g._deleting_gateway_model_definition_name = name
         return
+
+
+def find_dead_validator_paths() -> list:
+    """Return validator paths that match no route MLflow actually registers.
+
+    A validator keyed on a path MLflow does not serve is silently dead: ``_find_validator``
+    matches the exact path, so the real endpoint falls through the hook unguarded instead of
+    failing loudly. That is how ``/mlflow/scorer/invoke`` and four gateway routes ended up
+    reachable without a permission check. Covered by a regression test rather than a startup
+    assertion so that importing this module stays side-effect free.
+
+    Static-prefix routes (``/get-artifact``) and the artifact proxy are excluded: they are
+    matched by prefix rather than registered as exact rules.
+
+    A path is dead in either of two ways: MLflow does not register it at all, or it carries a
+    parameter placeholder that the exact-path lookup in ``_find_validator`` can never match.
+    Checking only the first is a false negative — the prompt-optimization job routes were
+    registered *and* unreachable, so a registration-only check reported them healthy.
+    """
+    from mlflow.server import app as mlflow_flask_app
+
+    registered = {str(rule) for rule in mlflow_flask_app.url_map.iter_rules()}
+    reachable_by_regex = {pattern.pattern for pattern, _method in PARAMETERIZED_BEFORE_REQUEST_VALIDATORS}
+
+    dead = set()
+    for path, _method in BEFORE_REQUEST_VALIDATORS:
+        if not path.startswith(("/api/", "/ajax-api/")):
+            continue
+        if path not in registered:
+            dead.add(path)
+        elif "<" in path and _re_compile_path(path).pattern not in reachable_by_regex:
+            dead.add(path)
+    return sorted(dead)

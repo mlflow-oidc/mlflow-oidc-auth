@@ -11,6 +11,12 @@ vi.mock("../context/use-runtime-config", () => ({
   useRuntimeConfig: () => ({ basePath: "/" }),
 }));
 
+vi.mock("./workspace-picker", () => ({
+  WorkspacePicker: () => (
+    <div data-testid="workspace-picker">Workspace Picker</div>
+  ),
+}));
+
 vi.mock("./navigation-data", () => ({
   getNavigationData: (userName: string, basePath: string): NavigationData => {
     // Suppress unused variable warning if needed, but here we can just use it if relevant
@@ -94,5 +100,14 @@ describe("Header", () => {
     fireEvent.click(toggleBtn);
     expect(toggleBtn).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByTestId("mobile-nav")).toHaveTextContent("Open: false");
+  });
+
+  it("renders workspace picker in header", () => {
+    render(
+      <MemoryRouter>
+        <Header />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("workspace-picker")).toBeInTheDocument();
   });
 });

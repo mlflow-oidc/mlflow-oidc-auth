@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { request } from "../../../core/services/api-utils";
+import { extractErrorMessage } from "../../../core/services/http";
 import { getPermissionUrl } from "../utils/permission-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { EditPermissionModal } from "../../users/components/edit-permission-modal";
@@ -168,8 +169,11 @@ export const RegexPermissionsView = ({
       );
       refresh();
       handleModalClose();
-    } catch {
-      showToast("Failed to update permission", "error");
+    } catch (err) {
+      showToast(
+        extractErrorMessage(err, "Failed to update permission"),
+        "error",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -199,8 +203,8 @@ export const RegexPermissionsView = ({
       showToast(`Regex rule "${regex}" has been added`, "success");
       refresh();
       setIsRegexModalOpen(false);
-    } catch {
-      showToast("Failed to add regex rule", "error");
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Failed to add regex rule"), "error");
     } finally {
       setIsSaving(false);
     }
@@ -225,8 +229,11 @@ export const RegexPermissionsView = ({
 
       showToast(`Regex rule has been removed`, "success");
       refresh();
-    } catch {
-      showToast("Failed to remove permission", "error");
+    } catch (err) {
+      showToast(
+        extractErrorMessage(err, "Failed to remove permission"),
+        "error",
+      );
     }
   };
 

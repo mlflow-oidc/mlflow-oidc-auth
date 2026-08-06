@@ -354,6 +354,7 @@ describe("RegexPermissionsView", () => {
       provider: "",
       gen_ai_gateway_enabled: false,
       authenticated: true,
+      workspaces_enabled: false,
     });
     vi.spyOn(httpModule, "http").mockResolvedValue({} as Response);
     render(

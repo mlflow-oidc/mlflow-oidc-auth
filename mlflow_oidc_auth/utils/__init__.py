@@ -22,6 +22,8 @@ from .data_fetching import (
 
 from .permissions import (
     effective_experiment_permission,
+    effective_new_experiment_permission,
+    effective_new_registered_model_permission,
     effective_registered_model_permission,
     effective_prompt_permission,
     effective_scorer_permission,
@@ -79,6 +81,8 @@ __all__ = [
     "fetch_all_gateway_model_definitions",
     # Permissions
     "effective_experiment_permission",
+    "effective_new_experiment_permission",
+    "effective_new_registered_model_permission",
     "effective_registered_model_permission",
     "effective_prompt_permission",
     "effective_scorer_permission",

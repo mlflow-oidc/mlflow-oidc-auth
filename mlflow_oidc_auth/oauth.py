@@ -30,6 +30,26 @@ def _has_required_config() -> bool:
     return bool(config.OIDC_CLIENT_ID and config.OIDC_CLIENT_SECRET and config.OIDC_DISCOVERY_URL)
 
 
+def _build_scope() -> str:
+    """Build the space-delimited OIDC scope string for the authorize/token requests.
+
+    OAuth 2.0 (RFC 6749 §3.3) requires the ``scope`` parameter to be space-delimited.
+    We accept the configured value in comma- or space-separated form (or a mix) and
+    always emit space-delimited scopes, so strict providers like Microsoft Entra ID do
+    not reject the request (issue #238). ``offline_access`` is appended when the
+    refresh-token flow is enabled. Duplicate scopes are collapsed, order preserved.
+    """
+
+    raw = config.OIDC_SCOPE or ""
+    scopes = [s for s in raw.replace(",", " ").split() if s]
+    if config.OIDC_USE_REFRESH_TOKEN and "offline_access" not in scopes:
+        scopes.append("offline_access")
+
+    seen: set[str] = set()
+    unique = [s for s in scopes if not (s in seen or seen.add(s))]
+    return " ".join(unique)
+
+
 def ensure_oidc_client_registered() -> bool:
     """Ensure the 'oidc' client is registered.
 
@@ -50,7 +70,11 @@ def ensure_oidc_client_registered() -> bool:
             client_id=config.OIDC_CLIENT_ID,
             client_secret=config.OIDC_CLIENT_SECRET,
             server_metadata_url=config.OIDC_DISCOVERY_URL,
-            client_kwargs={"scope": config.OIDC_SCOPE},
+            client_kwargs={
+                "scope": _build_scope(),
+                "verify": config.OIDC_VERIFY_SSL,
+                "code_challenge_method": config.OIDC_CODE_CHALLENGE,
+            },
         )
         _oidc_client_registered = True
         return True

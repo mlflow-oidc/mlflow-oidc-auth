@@ -569,7 +569,7 @@ class TestSqlAlchemyStore:
 class TestSqlAlchemyStoreErrorHandling:
     """Test error handling scenarios for database connection failures and exceptions"""
 
-    @patch("mlflow_oidc_auth.sqlalchemy_store.create_sqlalchemy_engine_with_retry")
+    @patch.object(SqlAlchemyStore, "_create_engine")
     def test_init_db_engine_creation_failure(self, mock_create_engine):
         """Test database initialization failure when engine creation fails"""
         mock_create_engine.side_effect = SQLAlchemyError("Database connection failed")
@@ -900,7 +900,7 @@ class TestSqlAlchemyStoreInitialization:
     """Test database initialization and configuration scenarios"""
 
     @patch("mlflow_oidc_auth.sqlalchemy_store.extract_db_type_from_uri")
-    @patch("mlflow_oidc_auth.sqlalchemy_store.create_sqlalchemy_engine_with_retry")
+    @patch.object(SqlAlchemyStore, "_create_engine")
     @patch("mlflow_oidc_auth.sqlalchemy_store.dbutils.migrate_if_needed")
     @patch("mlflow_oidc_auth.sqlalchemy_store.sessionmaker")
     @patch("mlflow_oidc_auth.sqlalchemy_store._get_managed_session_maker")
@@ -968,7 +968,7 @@ class TestSqlAlchemyStoreInitialization:
 
         for uri in test_uris:
             with patch("mlflow_oidc_auth.sqlalchemy_store.extract_db_type_from_uri") as mock_extract:
-                with patch("mlflow_oidc_auth.sqlalchemy_store.create_sqlalchemy_engine_with_retry"):
+                with patch.object(SqlAlchemyStore, "_create_engine"):
                     with patch("mlflow_oidc_auth.sqlalchemy_store.dbutils.migrate_if_needed"):
                         with patch("mlflow_oidc_auth.sqlalchemy_store.sessionmaker"):
                             with patch("mlflow_oidc_auth.sqlalchemy_store._get_managed_session_maker"):

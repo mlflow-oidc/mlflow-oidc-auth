@@ -406,5 +406,105 @@ class TestOAuthSecurity(unittest.TestCase):
         self.assertTrue(hasattr(mlflow_oidc_auth.oauth.oauth, "register"))
 
 
+class TestBuildScope(unittest.TestCase):
+    """``_build_scope`` must always emit space-delimited scopes (RFC 6749 §3.3, issue #238)."""
+
+    def test_comma_scope_is_normalized_to_spaces_when_refresh_disabled(self):
+        """The #238 bug: a comma-separated scope must go out space-delimited, not verbatim."""
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,email,profile", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile")
+
+    def test_space_scope_is_preserved_when_refresh_disabled(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid email profile", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile")
+
+    def test_mixed_and_padded_separators_are_normalized(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", " openid, email profile ,groups ", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile groups")
+
+    def test_appends_offline_access_space_delimited_from_csv_scope(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", True, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,email,profile", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile offline_access")
+
+    def test_appends_offline_access_to_space_separated_scope(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", True, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid email profile", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email profile offline_access")
+
+    def test_does_not_duplicate_offline_access(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", True, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,offline_access,email", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid offline_access email")
+
+    def test_duplicate_scopes_are_collapsed(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "openid,openid email email", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "openid email")
+
+    def test_empty_scope_yields_empty_string(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", False, create=True),
+            patch.object(oauth_mod.config, "OIDC_SCOPE", "", create=True),
+        ):
+            self.assertEqual(oauth_mod._build_scope(), "")
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOidcClientRegistrationKwargs(unittest.TestCase):
+    """PKCE and TLS-verify settings must flow into the registered client kwargs."""
+
+    def test_client_kwargs_include_verify_and_code_challenge(self):
+        from unittest.mock import MagicMock, patch
+
+        import mlflow_oidc_auth.oauth as oauth_mod
+
+        with (
+            patch.object(oauth_mod, "_oidc_client_registered", False),
+            patch.object(oauth_mod, "_has_required_config", return_value=True),
+            patch.object(oauth_mod, "_build_scope", return_value="openid email"),
+            patch.object(oauth_mod.oauth, "register") as mock_register,
+            patch.object(oauth_mod.config, "OIDC_VERIFY_SSL", False),
+            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", "S256"),
+        ):
+            assert oauth_mod.ensure_oidc_client_registered() is True
+            kwargs = mock_register.call_args.kwargs["client_kwargs"]
+            assert kwargs["scope"] == "openid email"
+            assert kwargs["verify"] is False
+            assert kwargs["code_challenge_method"] == "S256"

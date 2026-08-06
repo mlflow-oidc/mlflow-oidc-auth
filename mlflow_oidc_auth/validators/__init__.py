@@ -1,4 +1,5 @@
 from mlflow_oidc_auth.validators.experiment import (
+    validate_can_create_experiment,
     validate_can_delete_experiment,
     validate_can_delete_experiment_artifact_proxy,
     validate_can_manage_experiment,
@@ -11,6 +12,7 @@ from mlflow_oidc_auth.validators.experiment import (
     validate_can_update_experiment_from_experiment_id,
 )
 from mlflow_oidc_auth.validators.registered_model import (
+    validate_can_create_registered_model,
     validate_can_delete_logged_model,
     validate_can_delete_registered_model,
     validate_can_read_logged_model,
@@ -40,6 +42,7 @@ from mlflow_oidc_auth.validators.scorers import (
 
 from mlflow_oidc_auth.validators.trace import (
     validate_can_read_traces_from_experiment_ids,
+    validate_can_read_traces_from_trace_ids,
     validate_can_read_trace,
     validate_can_update_trace_from_experiment_id,
     validate_can_update_trace_from_run_id,
@@ -52,6 +55,7 @@ from mlflow_oidc_auth.validators.stuff import (
     validate_can_read_metric_history_bulk,
     validate_can_search_datasets,
     validate_gateway_proxy,
+    validate_can_invoke_scorer,
     validate_can_create_gateway,
 )
 
@@ -68,10 +72,25 @@ from mlflow_oidc_auth.validators.gateway import (
     validate_can_delete_gateway_model_definition,
 )
 
+from mlflow_oidc_auth.validators.prompt_optimization_job import (
+    validate_can_read_prompt_optimization_job,
+    validate_can_update_prompt_optimization_job,
+    validate_can_delete_prompt_optimization_job,
+)
+
+from mlflow_oidc_auth.validators.workspace import (
+    validate_can_create_workspace,
+    validate_can_read_workspace,
+    validate_can_update_workspace,
+    validate_can_delete_workspace,
+    validate_can_list_workspaces,
+)
+
 __all__ = [
     "validate_can_read_experiment",
     "validate_can_read_experiment_by_name",
     "validate_can_update_experiment",
+    "validate_can_create_experiment",
     "validate_can_delete_experiment",
     "validate_can_manage_experiment",
     "validate_can_read_experiment_artifact_proxy",
@@ -82,6 +101,7 @@ __all__ = [
     "validate_can_read_registered_model",
     "validate_can_update_registered_model",
     "validate_can_manage_registered_model",
+    "validate_can_create_registered_model",
     "validate_can_delete_registered_model",
     "validate_can_delete_logged_model",
     "validate_can_read_logged_model",
@@ -91,6 +111,7 @@ __all__ = [
     "validate_can_delete_run",
     "validate_can_read_metric_history_bulk_interval",
     "validate_can_read_traces_from_experiment_ids",
+    "validate_can_read_traces_from_trace_ids",
     "validate_can_read_trace",
     "validate_can_update_trace_from_experiment_id",
     "validate_can_update_trace_from_run_id",
@@ -110,6 +131,7 @@ __all__ = [
     "validate_can_create_promptlab_run",
     "validate_can_create_gateway",
     "validate_gateway_proxy",
+    "validate_can_invoke_scorer",
     "validate_can_read_gateway_endpoint",
     "validate_can_update_gateway_endpoint",
     "validate_can_delete_gateway_endpoint",
@@ -120,4 +142,12 @@ __all__ = [
     "validate_can_read_gateway_model_definition",
     "validate_can_update_gateway_model_definition",
     "validate_can_delete_gateway_model_definition",
+    "validate_can_create_workspace",
+    "validate_can_read_workspace",
+    "validate_can_update_workspace",
+    "validate_can_delete_workspace",
+    "validate_can_list_workspaces",
+    "validate_can_read_prompt_optimization_job",
+    "validate_can_update_prompt_optimization_job",
+    "validate_can_delete_prompt_optimization_job",
 ]

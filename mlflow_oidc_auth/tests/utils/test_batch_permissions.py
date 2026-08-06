@@ -10,6 +10,7 @@ import pytest
 
 from mlflow_oidc_auth.utils.batch_permissions import (
     UserPermissionContext,
+    _apply_workspace_fallback,
     build_user_permission_context,
     resolve_experiment_permission_from_context,
     resolve_model_permission_from_context,
@@ -853,3 +854,232 @@ class TestFilterManageableFunctions:
         result = filter_manageable_prompts("testuser", [])
 
         assert result == []
+
+
+class TestApplyWorkspaceFallback:
+    """Tests for the _apply_workspace_fallback helper function."""
+
+    def test_returns_original_when_kind_is_not_fallback(self):
+        """Should return original result unchanged when kind is not 'fallback'."""
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import get_permission
+
+        result = PermissionResult(get_permission("READ"), "user")
+        with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            returned = _apply_workspace_fallback(result, "testuser")
+
+        assert returned is result
+        assert returned.kind == "user"
+
+    def test_returns_original_when_workspaces_disabled(self):
+        """Should return original fallback result when workspaces are disabled."""
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import get_permission
+
+        result = PermissionResult(get_permission("READ"), "fallback")
+        with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
+            mock_config.MLFLOW_ENABLE_WORKSPACES = False
+            returned = _apply_workspace_fallback(result, "testuser")
+
+        assert returned is result
+        assert returned.kind == "fallback"
+
+    def test_returns_workspace_kind_when_workspace_permission_exists(self):
+        """Should return workspace permission when fallback + workspaces enabled + ws perm found."""
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import EDIT, get_permission
+
+        result = PermissionResult(get_permission("READ"), "fallback")
+        with (
+            patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config,
+            patch(
+                "mlflow.utils.workspace_context.get_request_workspace",
+                return_value="my-workspace",
+            ),
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                return_value=EDIT,
+            ),
+        ):
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            returned = _apply_workspace_fallback(result, "testuser")
+
+        assert returned.kind == "workspace"
+        assert returned.permission.name == "EDIT"
+
+    def test_returns_workspace_deny_when_no_workspace_permission(self):
+        """Should return workspace-deny with NO_PERMISSIONS when no workspace permission found."""
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import get_permission
+
+        result = PermissionResult(get_permission("READ"), "fallback")
+        with (
+            patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config,
+            patch(
+                "mlflow.utils.workspace_context.get_request_workspace",
+                return_value="restricted-ws",
+            ),
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                return_value=None,
+            ),
+        ):
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            returned = _apply_workspace_fallback(result, "testuser")
+
+        assert returned.kind == "workspace-deny"
+        assert returned.permission.name == "NO_PERMISSIONS"
+
+    def test_returns_original_fallback_when_no_active_workspace(self):
+        """Should return original fallback when workspaces enabled but no active workspace set."""
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import get_permission
+
+        result = PermissionResult(get_permission("READ"), "fallback")
+        with (
+            patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config,
+            patch(
+                "mlflow.utils.workspace_context.get_request_workspace",
+                return_value=None,
+            ),
+        ):
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+            returned = _apply_workspace_fallback(result, "testuser")
+
+        assert returned is result
+        assert returned.kind == "fallback"
+
+
+class TestWorkspaceFallbackIntegration:
+    """Tests for workspace fallback integration in resolve_*_permission_from_context."""
+
+    @pytest.fixture
+    def empty_context(self):
+        """Create a context with no resource-level permissions."""
+        return UserPermissionContext(
+            username="testuser",
+            group_ids=[],
+            user_experiment_permissions={},
+            group_experiment_permissions={},
+            experiment_regex_permissions=[],
+            group_experiment_regex_permissions=[],
+            user_model_permissions={},
+            group_model_permissions={},
+            model_regex_permissions=[],
+            group_model_regex_permissions=[],
+            prompt_regex_permissions=[],
+            group_prompt_regex_permissions=[],
+        )
+
+    def test_experiment_resolver_applies_workspace_fallback(self, empty_context):
+        """resolve_experiment_permission_from_context should apply workspace fallback."""
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        with (
+            patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config,
+            patch(
+                "mlflow.utils.workspace_context.get_request_workspace",
+                return_value="dev-ws",
+            ),
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                return_value=MANAGE,
+            ),
+        ):
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
+            mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+
+            result = resolve_experiment_permission_from_context(empty_context, "exp-1", "experiment-name")
+
+        assert result.kind == "workspace"
+        assert result.permission.name == "MANAGE"
+
+    def test_model_resolver_applies_workspace_fallback(self, empty_context):
+        """resolve_model_permission_from_context should apply workspace fallback."""
+        from mlflow_oidc_auth.permissions import EDIT
+
+        with (
+            patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config,
+            patch(
+                "mlflow.utils.workspace_context.get_request_workspace",
+                return_value="dev-ws",
+            ),
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                return_value=EDIT,
+            ),
+        ):
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
+            mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+
+            result = resolve_model_permission_from_context(empty_context, "model-1")
+
+        assert result.kind == "workspace"
+        assert result.permission.name == "EDIT"
+
+    def test_prompt_resolver_applies_workspace_fallback(self, empty_context):
+        """resolve_prompt_permission_from_context should apply workspace fallback."""
+        from mlflow_oidc_auth.permissions import READ
+
+        with (
+            patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config,
+            patch(
+                "mlflow.utils.workspace_context.get_request_workspace",
+                return_value="prod-ws",
+            ),
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                return_value=READ,
+            ),
+        ):
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
+            mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+
+            result = resolve_prompt_permission_from_context(empty_context, "prompt-1")
+
+        assert result.kind == "workspace"
+        assert result.permission.name == "READ"
+
+    def test_direct_permission_takes_priority_over_workspace(self, empty_context):
+        """Direct user permission should take priority over workspace fallback."""
+        empty_context.user_experiment_permissions["exp-1"] = "MANAGE"
+
+        with (
+            patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config,
+            patch(
+                "mlflow.utils.workspace_context.get_request_workspace",
+                return_value="dev-ws",
+            ),
+        ):
+            mock_config.PERMISSION_SOURCE_ORDER = [
+                "user",
+                "group",
+                "regex",
+                "group-regex",
+            ]
+            mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
+            mock_config.MLFLOW_ENABLE_WORKSPACES = True
+
+            result = resolve_experiment_permission_from_context(empty_context, "exp-1", "experiment-name")
+
+        assert result.kind == "user"
+        assert result.permission.name == "MANAGE"

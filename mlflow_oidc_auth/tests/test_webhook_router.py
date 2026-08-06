@@ -205,3 +205,43 @@ def test_update_webhook_invalid_event_returns_400(client, monkeypatch):
         },
     )
     assert resp.status_code == 422 or resp.status_code == 400
+
+
+class TestModelRegistryStoreRegistryWrapper:
+    """Tests for workspace-aware model registry store selection."""
+
+    def test_get_sqlalchemy_store_uses_workspace_store_when_workspaces_enabled(self, monkeypatch):
+        """When MLFLOW_ENABLE_WORKSPACES is True, _get_sqlalchemy_store returns WorkspaceAwareSqlAlchemyStore."""
+        from unittest.mock import MagicMock, patch
+
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.webhook.config",
+            SimpleNamespace(MLFLOW_ENABLE_WORKSPACES=True),
+        )
+
+        mock_ws_store = MagicMock()
+        with patch(
+            "mlflow.store.model_registry.sqlalchemy_workspace_store.WorkspaceAwareSqlAlchemyStore",
+            return_value=mock_ws_store,
+        ) as mock_cls:
+            result = webhook_module.ModelRegistryStoreRegistryWrapper._get_sqlalchemy_store("sqlite:///test.db")
+            mock_cls.assert_called_once_with("sqlite:///test.db")
+            assert result is mock_ws_store
+
+    def test_get_sqlalchemy_store_uses_plain_store_when_workspaces_disabled(self, monkeypatch):
+        """When MLFLOW_ENABLE_WORKSPACES is False, _get_sqlalchemy_store returns plain SqlAlchemyStore."""
+        from unittest.mock import MagicMock, patch
+
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.routers.webhook.config",
+            SimpleNamespace(MLFLOW_ENABLE_WORKSPACES=False),
+        )
+
+        mock_plain_store = MagicMock()
+        with patch(
+            "mlflow.store.model_registry.sqlalchemy_store.SqlAlchemyStore",
+            return_value=mock_plain_store,
+        ) as mock_cls:
+            result = webhook_module.ModelRegistryStoreRegistryWrapper._get_sqlalchemy_store("sqlite:///test.db")
+            mock_cls.assert_called_once_with("sqlite:///test.db")
+            assert result is mock_plain_store

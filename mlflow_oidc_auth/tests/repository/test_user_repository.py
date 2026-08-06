@@ -187,3 +187,76 @@ def test_authenticate_expired_password(repo, session):
     user.password_expiration = datetime.now() - timedelta(days=1)
     with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user):
         assert repo.authenticate("user", "pw") is False
+
+
+class TestUsernameCaseNormalization:
+    """Usernames are case-insensitive identity keys (issues #219, #145).
+
+    A user created with mixed case (an admin service account with capitals, or an
+    OIDC email returned camelCased) must be reachable and authenticatable under any
+    case. Normalization happens at the repository boundary, so every method folds
+    the username before touching the store.
+    """
+
+    def test_normalize_username_folds_case(self):
+        from mlflow_oidc_auth.repository.user import normalize_username
+
+        assert normalize_username("Xyz_Abc@test.com") == "xyz_abc@test.com"
+        assert normalize_username("SERVICE_ACCOUNT") == "service_account"
+        assert normalize_username("already@lower.com") == "already@lower.com"
+
+    def test_normalize_username_passes_non_strings_through(self):
+        from mlflow_oidc_auth.repository.user import normalize_username
+
+        assert normalize_username(None) is None
+
+    def test_create_stores_lowercased_username(self, repo, session):
+        """#219: an admin-created service account with capitals is stored lowercase."""
+        session.add = MagicMock()
+        session.flush = MagicMock()
+        with (
+            patch("mlflow_oidc_auth.repository.user.SqlUser") as sql_user,
+            patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"),
+            patch("mlflow_oidc_auth.repository.user._validate_username"),
+        ):
+            repo.create("Xyz_Abc", "pw", "Xyz Abc Display")
+            assert sql_user.call_args.kwargs["username"] == "xyz_abc"
+            # The human-readable display name is left untouched.
+            assert sql_user.call_args.kwargs["display_name"] == "Xyz Abc Display"
+
+    def test_get_looks_up_lowercased_username(self, repo, session):
+        session.query.return_value.filter.return_value.one_or_none.return_value = None
+        with pytest.raises(MlflowException) as exc:
+            repo.get("Xyz_Abc")
+        assert "xyz_abc" in str(exc.value)
+        assert "Xyz_Abc" not in str(exc.value)
+
+    def test_authenticate_looks_up_lowercased_username(self, repo, session):
+        """#219: authenticating a mixed-case service account resolves the lowercase row."""
+        user = MagicMock()
+        user.password_hash = "hashed"
+        user.password_expiration = None
+        with (
+            patch("mlflow_oidc_auth.repository.user.get_user", return_value=user) as get_user_mock,
+            patch("mlflow_oidc_auth.repository.user.check_password_hash", return_value=True),
+        ):
+            assert repo.authenticate("Xyz_Abc", "pw") is True
+            assert get_user_mock.call_args.args[1] == "xyz_abc"
+
+    def test_update_normalizes_username(self, repo, session):
+        user = MagicMock()
+        with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user) as get_user_mock:
+            repo.update("Xyz_Abc")
+            assert get_user_mock.call_args.args[1] == "xyz_abc"
+
+    def test_delete_normalizes_username(self, repo, session):
+        user = MagicMock()
+        with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user) as get_user_mock:
+            repo.delete("Xyz_Abc")
+            assert get_user_mock.call_args.args[1] == "xyz_abc"
+
+    def test_exist_returns_bool_for_mixed_case(self, repo, session):
+        session.query.return_value.filter.return_value.first.return_value = MagicMock()
+        assert repo.exist("Xyz_Abc") is True
+        session.query.return_value.filter.return_value.first.return_value = None
+        assert repo.exist("Xyz_Abc") is False

@@ -2,7 +2,10 @@ from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import (
+    RESOURCE_ALREADY_EXISTS,
+    RESOURCE_DOES_NOT_EXIST,
+)
 from mlflow.utils.validation import _validate_username
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only, noload, selectinload
@@ -14,14 +17,36 @@ from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.repository.utils import get_user
 
 
+def normalize_username(username: str) -> str:
+    """Fold a username to its canonical (lowercase) form.
+
+    Usernames are case-insensitive identity keys — emails, or admin-chosen
+    service-account names. OIDC providers may return an email in mixed case
+    (issue #145) and admins may create service accounts with capitals
+    (issue #219). Normalizing to lowercase at the store boundary keeps creation
+    and every lookup (OIDC, basic, bearer, token) consistent, so a user can
+    authenticate regardless of the case they or the IdP present. Only the
+    identity key is folded; the human-readable ``display_name`` is left intact.
+    """
+    return username.lower() if isinstance(username, str) else username
+
+
 class UserRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
 
-    def create(self, username: str, password: str, display_name: str, is_admin: bool = False, is_service_account: bool = False) -> User:
+    def create(
+        self,
+        username: str,
+        password: str,
+        display_name: str,
+        is_admin: bool = False,
+        is_service_account: bool = False,
+    ) -> User:
+        username = normalize_username(username)
         _validate_username(username)
         pwhash = generate_password_hash(password)
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 u = SqlUser(
                     username=username,
@@ -37,6 +62,7 @@ class UserRepository:
                 raise MlflowException(f"User '{username}' already exists: {e}", RESOURCE_ALREADY_EXISTS) from e
 
     def get(self, username: str) -> User:
+        username = normalize_username(username)
         with self._Session() as session:
             u = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
             if u is None:
@@ -57,6 +83,7 @@ class UserRepository:
             MlflowException: If the user does not exist.
         """
 
+        username = normalize_username(username)
         with self._Session() as session:
             u = (
                 session.query(SqlUser)
@@ -98,6 +125,7 @@ class UserRepository:
             )
 
     def exist(self, username: str) -> bool:
+        username = normalize_username(username)
         with self._Session() as session:
             return session.query(SqlUser).filter(SqlUser.username == username).first() is not None
 
@@ -107,6 +135,17 @@ class UserRepository:
             if not all:
                 q = q.filter(SqlUser.is_service_account == is_service_account)
             return [u.to_mlflow_entity() for u in q.all()]
+
+    def list_usernames(self, is_service_account: bool = False) -> List[str]:
+        """Return only usernames without loading any relationships.
+
+        This is much cheaper than ``list()`` because it avoids loading
+        experiment/model/scorer/gateway permission collections and groups
+        for every user row.
+        """
+        with self._Session() as session:
+            rows = session.query(SqlUser.username).filter(SqlUser.is_service_account == is_service_account).all()
+            return [r[0] for r in rows]
 
     def update(
         self,
@@ -118,7 +157,8 @@ class UserRepository:
     ) -> User:
         from werkzeug.security import generate_password_hash
 
-        with self._Session() as session:
+        username = normalize_username(username)
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if password is not None:
                 user.password_hash = generate_password_hash(password)
@@ -132,7 +172,8 @@ class UserRepository:
             return user.to_mlflow_entity()
 
     def delete(self, username: str) -> None:
-        with self._Session() as session:
+        username = normalize_username(username)
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if user is None:
                 raise MlflowException(f"User '{username}' not found.")
@@ -143,33 +184,71 @@ class UserRepository:
             from mlflow_oidc_auth.db.models import (
                 SqlExperimentPermission,
                 SqlExperimentRegexPermission,
+                SqlGatewayEndpointPermission,
+                SqlGatewayEndpointRegexPermission,
+                SqlGatewayModelDefinitionPermission,
+                SqlGatewayModelDefinitionRegexPermission,
+                SqlGatewaySecretPermission,
+                SqlGatewaySecretRegexPermission,
                 SqlRegisteredModelPermission,
                 SqlRegisteredModelRegexPermission,
                 SqlScorerPermission,
                 SqlScorerRegexPermission,
                 SqlUserGroup,
+                SqlWorkspacePermission,
+                SqlWorkspaceRegexPermission,
             )
 
             user_id = user.id
+
+            # Experiment permissions
             session.query(SqlExperimentPermission).filter(SqlExperimentPermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlExperimentRegexPermission).filter(SqlExperimentRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Registered model permissions
             session.query(SqlRegisteredModelPermission).filter(SqlRegisteredModelPermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlRegisteredModelRegexPermission).filter(SqlRegisteredModelRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Scorer permissions
             session.query(SqlScorerPermission).filter(SqlScorerPermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlScorerRegexPermission).filter(SqlScorerRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Gateway endpoint permissions
+            session.query(SqlGatewayEndpointPermission).filter(SqlGatewayEndpointPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlGatewayEndpointRegexPermission).filter(SqlGatewayEndpointRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Gateway secret permissions
+            session.query(SqlGatewaySecretPermission).filter(SqlGatewaySecretPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlGatewaySecretRegexPermission).filter(SqlGatewaySecretRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Gateway model definition permissions
+            session.query(SqlGatewayModelDefinitionPermission).filter(SqlGatewayModelDefinitionPermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlGatewayModelDefinitionRegexPermission).filter(SqlGatewayModelDefinitionRegexPermission.user_id == user_id).delete(
+                synchronize_session=False
+            )
+
+            # Workspace permissions
+            session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.user_id == user_id).delete(synchronize_session=False)
+            session.query(SqlWorkspaceRegexPermission).filter(SqlWorkspaceRegexPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Group memberships
             session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user_id).delete(synchronize_session=False)
 
             session.delete(user)
             session.flush()
 
     def authenticate(self, username: str, password: str) -> bool:
+        username = normalize_username(username)
         with self._Session() as session:
             try:
                 user = get_user(session, username)
-                if user.password_expiration is not None:
-                    if user.password_expiration.tzinfo is None:
-                        user.password_expiration = user.password_expiration.replace(tzinfo=timezone.utc)
-                    if user.password_expiration < datetime.now(timezone.utc):
+                expiration = user.password_expiration
+                if expiration is not None:
+                    # Normalize into a local, so the comparison does not mark the
+                    # persistent user row dirty and flush an UPDATE on every login.
+                    if expiration.tzinfo is None:
+                        expiration = expiration.replace(tzinfo=timezone.utc)
+                    if expiration < datetime.now(timezone.utc):
                         return False
                 return check_password_hash(getattr(user, "password_hash"), password)
             except MlflowException:

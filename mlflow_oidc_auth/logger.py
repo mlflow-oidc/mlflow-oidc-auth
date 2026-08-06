@@ -10,12 +10,17 @@ import os
 from typing import Optional
 
 VALID_LEVELS = {
-    "DEBUG": logging.DEBUG, "INFO": logging.INFO, "WARNING": logging.WARNING,
-    "WARN": logging.WARNING, "ERROR": logging.ERROR, "CRITICAL": logging.CRITICAL
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "WARN": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
 }
 
 # Global logger instance
 _logger: Optional[logging.Logger] = None
+
 
 def get_logger() -> logging.Logger:
     """
@@ -37,9 +42,7 @@ def get_logger() -> logging.Logger:
         if not _logger.handlers:  # type: ignore[attr-defined]
             handler = logging.StreamHandler()
             # use a minimal default formatter similar to uvicorn's default
-            handler.setFormatter(
-                logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-            )
+            handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
             handler.setLevel(logging.INFO)  # Match default; override via env
             _logger.addHandler(handler)
 

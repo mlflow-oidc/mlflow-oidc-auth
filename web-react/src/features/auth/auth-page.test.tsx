@@ -28,6 +28,7 @@ describe("AuthPage", () => {
       uiPath: "/ui",
       authenticated: false,
       gen_ai_gateway_enabled: false,
+      workspaces_enabled: false,
     });
     mockUseAuthErrors.mockReturnValue([]);
   });
@@ -61,7 +62,7 @@ describe("AuthPage", () => {
 
     const currentYear = new Date().getFullYear();
     expect(
-      screen.getByText(new RegExp(`© ${currentYear} mlflow-oidc-auth`)),
+      screen.getByText(new RegExp(`© ${currentYear} Kharkevich Engineering Lab`)),
     ).toBeInTheDocument();
 
     const sponsorLink = screen.getByText("Support the project");

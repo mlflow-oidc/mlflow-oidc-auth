@@ -20,7 +20,7 @@ export type PermissionLevel =
   | "MANAGE"
   | "NO_PERMISSIONS";
 
-export type PermissionKind = "user" | "group" | "fallback" | "service-account";
+export type PermissionKind = "user" | "group" | "regex" | "group-regex" | "fallback" | "workspace" | "workspace-deny" | "service-account";
 
 export type PermissionType =
   | "experiments"
@@ -150,4 +150,49 @@ export type GatewaySecretListItem = {
 export type GatewayModelListItem = {
   name: string;
   source: string;
+};
+
+// Workspace types
+export type WorkspaceListItem = {
+  name: string;
+  description: string;
+  default_artifact_root: string;
+};
+
+export type WorkspaceListResponse = {
+  workspaces: WorkspaceListItem[];
+};
+
+export type WorkspaceUserPermission = {
+  workspace: string;
+  username: string;
+  permission: PermissionLevel;
+};
+
+export type WorkspaceGroupPermission = {
+  workspace: string;
+  group_name: string;
+  permission: PermissionLevel;
+};
+
+export type WorkspaceCrudCreateRequest = {
+  name: string;
+  description?: string;
+  default_artifact_root?: string;
+};
+
+export type WorkspaceCrudUpdateRequest = {
+  description: string;
+  default_artifact_root?: string;
+};
+
+export type WorkspaceCrudResponse = {
+  name: string;
+  description: string;
+  default_artifact_root: string | null;
+};
+
+export type WorkspaceMemberCounts = {
+  users: number;
+  groups: number;
 };

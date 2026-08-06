@@ -20,7 +20,7 @@ class GroupRepository:
         :param group_name: The name of the group to be created.
         :raises MlflowException: If the group already exists.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 grp = SqlGroup(group_name=group_name)
                 session.add(grp)
@@ -33,7 +33,7 @@ class GroupRepository:
         Create multiple groups.
         :param group_names: A list of group names to be created.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             for group_name in group_names:
                 group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).first()
                 if group is None:
@@ -55,7 +55,7 @@ class GroupRepository:
         :param group_name: The name of the group to be deleted.
         :raises MlflowException: If the group does not exist or if multiple groups with the same name exist.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             try:
                 grp = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one()
                 session.delete(grp)
@@ -71,7 +71,7 @@ class GroupRepository:
         :param username: The username of the user to be added.
         :param group_name: The name of the group to which the user will be added.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             grp = get_group(session, group_name)
             link = SqlUserGroup(user_id=user.id, group_id=grp.id)
@@ -84,7 +84,7 @@ class GroupRepository:
         :param username: The username of the user to be removed.
         :param group_name: The name of the group from which the user will be removed.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             grp = get_group(session, group_name)
             ug = session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user.id, SqlUserGroup.group_id == grp.id).one()
@@ -108,23 +108,34 @@ class GroupRepository:
         List all groups for a user.
         :param username: The username of the user.
         :return: A list of group names for the user.
+
+        Resolved in a single JOIN. This runs on every group-scoped permission check,
+        so the round-trips matter more than the (tiny) per-query cost — see issue #253.
         """
         with self._Session() as session:
-            user = get_user(session, username)
-            user_groups_ids = list_user_groups(session, user)
-            user_groups = session.query(SqlGroup).filter(SqlGroup.id.in_([ug.group_id for ug in user_groups_ids])).all()
-            return [ug.group_name for ug in user_groups]
+            rows = (
+                session.query(SqlGroup.group_name)
+                .join(SqlUserGroup, SqlGroup.id == SqlUserGroup.group_id)
+                .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
+                .filter(SqlUser.username == username)
+                .order_by(SqlGroup.id)
+                .all()
+            )
+            return [r[0] for r in rows]
 
     def list_group_ids_for_user(self, username: str) -> List[int]:
         """
         List all group IDs for a user.
         :param username: The username of the user.
         :return: A list of group IDs for the user.
+
+        Deliberately joins user_groups directly rather than through groups: routing via
+        SqlGroup would silently drop membership rows whose group no longer exists, which
+        would change behaviour rather than just the query count.
         """
         with self._Session() as session:
-            user = get_user(session, username)
-            user_groups_ids = list_user_groups(session, user)
-            return [ug.group_id for ug in user_groups_ids]
+            rows = session.query(SqlUserGroup.group_id).join(SqlUser, SqlUser.id == SqlUserGroup.user_id).filter(SqlUser.username == username).all()
+            return [r[0] for r in rows]
 
     def set_groups_for_user(self, username: str, group_names: List[str]) -> None:
         """
@@ -132,7 +143,12 @@ class GroupRepository:
         :param username: The username of the user.
         :param group_names: A list of group names to be set for the user.
         """
-        with self._Session() as session:
+        # Deduplicate while preserving order. Some IdPs (e.g. Microsoft Entra ID)
+        # can emit the same group GUID more than once in the token when a user holds
+        # multiple app roles that are backed by the same security group. Without
+        # deduplication the second INSERT violates the unique_user_group constraint.
+        group_names = list(dict.fromkeys(group_names))
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             user_groups = list_user_groups(session, user)
             for ug in user_groups:

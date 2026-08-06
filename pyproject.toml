@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mlflow-oidc-auth"
 dynamic = ["version"]
-description = "OIDC auth plugin for MLflow"
+description = "OpenID Connect (OIDC) auth plugin for MLflow"
 readme = "README.md"
 keywords = ["mlflow", "oauth2", "oidc"]
 license = "Apache-2.0"
@@ -24,7 +24,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-  "mlflow<4,>=3.10.0",
+  "mlflow<4,>=3.14.0",
   "python-dotenv<2",
   "requests<3,>=2.32.5",
   "sqlalchemy<3,>=2.0.46",
@@ -35,7 +35,8 @@ dependencies = [
   "uvicorn>=0.41.0",
   "fastapi>=0.132.0",
   "asgiref>=3.11.1",
-  "httpx>=0.28.1"
+  "httpx>=0.28.1",
+  "cachetools>=5.5.0"
 ]
 
 [project.optional-dependencies]
@@ -69,6 +70,10 @@ cloud = [
   "azure-keyvault-secrets>=4.10.0",
   "hvac>=2.4.0",
 ]
+# Redis cache backend
+cache = [
+  "redis>=5.0.0,<6",
+]
 
 [[project.maintainers]]
 name = "Alexander Kharkevich"
@@ -90,6 +95,7 @@ oidc-auth = "mlflow_oidc_auth.app:app"
 mlflow_oidc_auth = [
   "db/migrations/alembic.ini",
   "hack/menu.html",
+  "hack/reauth.html",
   "ui/**/*",
 ]
 

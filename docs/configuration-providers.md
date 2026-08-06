@@ -7,16 +7,25 @@ MLflow OIDC Auth Plugin supports pluggable configuration providers for seamless 
 The plugin uses a **chain-of-responsibility pattern** where configuration values are retrieved from multiple sources in priority order. The first provider that returns a value wins.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    ConfigManager                             │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │              Provider Chain (by priority)                ││
-│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌──────────────┐   ││
-│  │  │Secrets  │→│Parameter│→│ K8s     │→│ Environment  │   ││
-│  │  │Manager  │ │ Store   │ │ Secrets │ │ Variables    │   ││
-│  │  └─────────┘ └─────────┘ └─────────┘ └──────────────┘   ││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           ConfigManager                                  │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │                 Provider Chain (by priority)                        │  │
+│  │                                                                    │  │
+│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐   Priority 10 (Secrets)      │  │
+│  │  │  AWS    │ │ Azure   │ │HashiCorp│                               │  │
+│  │  │Secrets  │ │KeyVault │ │ Vault   │                               │  │
+│  │  │Manager  │ │         │ │         │                               │  │
+│  │  └────┬────┘ └────┬────┘ └────┬────┘                               │  │
+│  │       └───────────┼───────────┘                                    │  │
+│  │                   ▼                                                │  │
+│  │  ┌─────────┐ ┌─────────┐ ┌──────────────┐                         │  │
+│  │  │  K8s    │→│  AWS    │→│ Environment  │  Priority 20 → 50 → 1000│  │
+│  │  │ Secrets │ │Parameter│ │  Variables   │                          │  │
+│  │  │         │ │ Store   │ │  (fallback)  │                          │  │
+│  │  └─────────┘ └─────────┘ └──────────────┘                         │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start

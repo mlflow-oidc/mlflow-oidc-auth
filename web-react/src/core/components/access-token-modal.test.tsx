@@ -106,6 +106,7 @@ describe("AccessTokenModal", () => {
       provider: "",
       authenticated: true,
       gen_ai_gateway_enabled: false,
+      workspaces_enabled: false,
     });
     mockHttp.mockResolvedValue({ token: "tok" });
 

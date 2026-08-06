@@ -208,16 +208,22 @@ class TestGatewaySecretValidators:
             assert validate_can_read_gateway_secret("user1") is False
 
     def test_update_gateway_secret_allowed(self):
-        """Test UPDATE when user has permission."""
+        """Test UPDATE resolves the current secret via secret_id (not a request secret_name)."""
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/secrets/update",
             method="POST",
-            json={"secret_name": "my-secret"},
+            json={"secret_id": "sec-123"},
             content_type="application/json",
         ):
-            with patch(
-                "mlflow_oidc_auth.validators.gateway.can_update_gateway_secret",
-                return_value=True,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_secret_name_from_id",
+                    return_value="my-secret",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_update_gateway_secret",
+                    return_value=True,
+                ),
             ):
                 assert validate_can_update_gateway_secret("user1") is True
 
@@ -284,26 +290,36 @@ class TestGatewayModelDefinitionValidators:
                 assert validate_can_read_gateway_model_definition("user1") is True
 
     def test_read_gateway_model_definition_no_name_fallback(self):
-        """Test READ when only ID is available (no name) — allows through per design."""
+        """Test READ when only ID is available (no name) — denies access per fail-closed policy."""
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/get",
             method="GET",
             query_string={"model_definition_id": "some-id"},
         ):
-            # Should return True (fallback) since name can't be extracted
-            assert validate_can_read_gateway_model_definition("user1") is True
+            # Should return False (fail-closed) since name can't be extracted
+            assert validate_can_read_gateway_model_definition("user1") is False
 
-    def test_update_gateway_model_definition_with_name(self):
-        """Test UPDATE when name is available and user has permission."""
+    def test_update_gateway_model_definition_with_id(self):
+        """Test UPDATE resolves the current model definition via model_definition_id.
+
+        The ``name`` field carries the *new* name on a rename, so the check must
+        resolve the current name from the id rather than trust a request ``name``.
+        """
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/update",
             method="POST",
-            json={"name": "my-model-def"},
+            json={"model_definition_id": "md-123", "name": "renamed"},
             content_type="application/json",
         ):
-            with patch(
-                "mlflow_oidc_auth.validators.gateway.can_update_gateway_model_definition",
-                return_value=True,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_model_definition_name_from_id",
+                    return_value="my-model-def",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_update_gateway_model_definition",
+                    return_value=True,
+                ),
             ):
                 assert validate_can_update_gateway_model_definition("user1") is True
 
@@ -312,12 +328,18 @@ class TestGatewayModelDefinitionValidators:
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/update",
             method="POST",
-            json={"name": "my-model-def"},
+            json={"model_definition_id": "md-123"},
             content_type="application/json",
         ):
-            with patch(
-                "mlflow_oidc_auth.validators.gateway.can_update_gateway_model_definition",
-                return_value=False,
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_model_definition_name_from_id",
+                    return_value="my-model-def",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_update_gateway_model_definition",
+                    return_value=False,
+                ),
             ):
                 assert validate_can_update_gateway_model_definition("user1") is False
 
@@ -350,14 +372,14 @@ class TestGatewayModelDefinitionValidators:
                 assert validate_can_delete_gateway_model_definition("user1") is False
 
     def test_delete_gateway_model_definition_no_name_fallback(self):
-        """Test DELETE returns True when no name can be resolved (ID-only)."""
+        """Test DELETE returns False when no name can be resolved (ID-only, fail-closed)."""
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/delete",
             method="POST",
             json={"model_definition_id": "some-id"},
             content_type="application/json",
         ):
-            assert validate_can_delete_gateway_model_definition("user1") is True
+            assert validate_can_delete_gateway_model_definition("user1") is False
 
     def test_read_model_definition_fallback_to_id(self):
         """Test READ falls back to resolving model_definition_id via tracking store."""
@@ -375,3 +397,112 @@ class TestGatewayModelDefinitionValidators:
                     return_value=True,
                 ):
                     assert validate_can_read_gateway_model_definition("user1") is True
+
+
+class TestGatewayCrossFieldBypass:
+    """Regression tests for the #270 cross-field bypass.
+
+    A request that names one resource the caller owns (via ``name``) and another
+    the caller does NOT own (via ``*_id`` that MLflow actually dispatches on) must
+    be denied — the caller has to be authorized on every resource referenced.
+    """
+
+    @staticmethod
+    def _only_owns(owned):
+        def _check(name, _username):
+            return name == owned
+
+        return _check
+
+    def test_read_endpoint_denied_when_id_points_elsewhere(self):
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/get",
+            method="GET",
+            query_string={"name": "own-endpoint", "endpoint_id": "victim-id"},
+        ):
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                    return_value="victim-endpoint",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_read_gateway_endpoint",
+                    side_effect=self._only_owns("own-endpoint"),
+                ),
+            ):
+                assert validate_can_read_gateway_endpoint("attacker") is False
+
+    def test_delete_endpoint_denied_when_id_points_elsewhere(self):
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/delete",
+            method="POST",
+            json={"name": "own-endpoint", "endpoint_id": "victim-id"},
+            content_type="application/json",
+        ):
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                    return_value="victim-endpoint",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_manage_gateway_endpoint",
+                    side_effect=self._only_owns("own-endpoint"),
+                ),
+            ):
+                assert validate_can_delete_gateway_endpoint("attacker") is False
+
+    def test_delete_secret_denied_when_id_points_elsewhere(self):
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/secrets/delete",
+            method="POST",
+            json={"secret_name": "own-secret", "secret_id": "victim-id"},
+            content_type="application/json",
+        ):
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_secret_name_from_id",
+                    return_value="victim-secret",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_manage_gateway_secret",
+                    side_effect=self._only_owns("own-secret"),
+                ),
+            ):
+                assert validate_can_delete_gateway_secret("attacker") is False
+
+    def test_read_model_definition_denied_when_id_points_elsewhere(self):
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/get",
+            method="GET",
+            query_string={"name": "own-md", "model_definition_id": "victim-id"},
+        ):
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_model_definition_name_from_id",
+                    return_value="victim-md",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_read_gateway_model_definition",
+                    side_effect=self._only_owns("own-md"),
+                ),
+            ):
+                assert validate_can_read_gateway_model_definition("attacker") is False
+
+    def test_read_endpoint_allowed_when_both_name_the_same_resource(self):
+        """A legit request that names one resource two ways (name + its own id) still passes."""
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/get",
+            method="GET",
+            query_string={"name": "own-endpoint", "endpoint_id": "own-id"},
+        ):
+            with (
+                patch(
+                    "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                    return_value="own-endpoint",
+                ),
+                patch(
+                    "mlflow_oidc_auth.validators.gateway.can_read_gateway_endpoint",
+                    side_effect=self._only_owns("own-endpoint"),
+                ),
+            ):
+                assert validate_can_read_gateway_endpoint("owner") is True

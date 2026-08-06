@@ -53,12 +53,16 @@
             xhr.send();
         }
 
-        /** Wait for a DOM element to appear, then invoke cb(element). */
-        function waitForElement(selector, cb) {
-            var el = document.querySelector(selector);
+        /** Wait for a menu anchor (settings preferred, docs fallback), then invoke cb(anchor). */
+        function waitForMenuAnchor(cb) {
+            function findAnchor() {
+                return document.querySelector('a[href^="#/settings"]') || document.querySelector('a[href*="mlflow.org/docs/latest/genai/"]');
+            }
+
+            var el = findAnchor();
             if (el) { cb(el); return; }
             var obs = new MutationObserver(function (_, o) {
-                el = document.querySelector(selector);
+                el = findAnchor();
                 if (el) { o.disconnect(); cb(el); }
             });
             obs.observe(document.body, { childList: true, subtree: true });
@@ -67,10 +71,12 @@
         // ── Core ────────────────────────────────────────────────────────
 
         function injectMenu(username, settingsLink) {
-            var settingsLi = settingsLink.parentElement;
-            var container = settingsLi.parentElement;
+            var anchorLi = settingsLink.parentElement;
+            var container = anchorLi.parentElement;
             var anchors = [];
             var textSpans = [];
+            var injectedLis = [];
+            var isReordering = false;
 
             function isSidebarCollapsed() {
                 return !settingsLink.textContent.trim();
@@ -80,7 +86,9 @@
                 var li = document.createElement("li");
                 var a = document.createElement("a");
                 a.href = href;
-                a.className = settingsLink.className;
+                li.setAttribute("data-mlflow-oidc-injected", "true");
+                var styleAnchor = getPreferredAnchorLink() || settingsLink;
+                a.className = styleAnchor.className;
                 a.setAttribute("data-state", "closed");
 
                 // icon
@@ -98,14 +106,35 @@
                 a.appendChild(span);
 
                 li.appendChild(a);
+                injectedLis.push(li);
                 anchors.push(a);
                 textSpans.push(span);
                 return li;
             }
 
+            function getPreferredAnchorLink() {
+                return container.querySelector('a[href^="#/settings"]') || container.querySelector('a[href*="mlflow.org/docs/latest/genai/"]');
+            }
+
+            function reorderInjectedItems() {
+                if (isReordering) return;
+                var preferredAnchor = getPreferredAnchorLink();
+                if (!preferredAnchor || !preferredAnchor.parentElement || preferredAnchor.parentElement.parentElement !== container) return;
+
+                isReordering = true;
+                var insertAfter = preferredAnchor.parentElement;
+                injectedLis.forEach(function (li) {
+                    if (insertAfter.nextSibling !== li) {
+                        container.insertBefore(li, insertAfter.nextSibling);
+                    }
+                    insertAfter = li;
+                });
+                isReordering = false;
+            }
+
             // Build items (insert before nextSibling so order stays correct)
             MENU_ITEMS[0].label = username;
-            var ref = settingsLi.nextSibling;
+            var ref = anchorLi.nextSibling;
             MENU_ITEMS.forEach(function (item) {
                 container.insertBefore(
                     createMenuItem(item.label, item.href, item.icon),
@@ -113,16 +142,25 @@
                 );
             });
 
+            // Ensure order remains stable when sidebar entries change dynamically.
+            reorderInjectedItems();
+
             // Keep in sync with sidebar collapse / expand
             new MutationObserver(function () {
-                var cls = settingsLink.className;
-                var collapsed = !settingsLink.textContent.trim();
+                var styleAnchor = getPreferredAnchorLink() || settingsLink;
+                var cls = styleAnchor.className;
+                var collapsed = !styleAnchor.textContent.trim();
                 anchors.forEach(function (a) { a.className = cls; });
                 textSpans.forEach(function (s) { s.style.display = collapsed ? "none" : ""; });
+                reorderInjectedItems();
             }).observe(settingsLink, {
                 attributes: true, attributeFilter: ["class"],
                 childList: true, characterData: true, subtree: true
             });
+
+            new MutationObserver(function () {
+                reorderInjectedItems();
+            }).observe(container, { childList: true, subtree: true });
         }
 
         // ── Bootstrap ───────────────────────────────────────────────────
@@ -130,8 +168,10 @@
         document.addEventListener("DOMContentLoaded", function () {
             getJSON("api/2.0/mlflow/users/current", function (err, res) {
                 if (err) { console.error("Error fetching username:", err); return; }
-                waitForElement('a[href="#/settings"]', function (settingsLink) {
-                    injectMenu(res.display_name, settingsLink);
+                // Prefer Settings as insertion anchor when present; otherwise
+                // use Docs so menu works before a workspace is selected.
+                waitForMenuAnchor(function (anchorLink) {
+                    injectMenu(res.display_name, anchorLink);
                 });
             });
         });

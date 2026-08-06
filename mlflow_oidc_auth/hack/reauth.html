@@ -1,0 +1,49 @@
+<script>
+    // Forces a full page reload when any fetch / XHR returns 401, so that
+    // expired sessions trigger the AuthMiddleware redirect to the IdP login
+    // flow instead of the SPA rendering empty pages forever.
+    //
+    // React Router intercepts URL-bar Enter as a soft navigation, so without
+    // this hook the user has to manually force-reload after a session expiry.
+    (function () {
+        "use strict";
+
+        var triggered = false;
+        function reauth() {
+            if (triggered) return;
+            triggered = true;
+            // Forward path + search + hash so the post-login callback can
+            // return the user to where they were. MLflow uses hash routing,
+            // so the hash is essential — without it they'd land at the root.
+            var next = window.location.pathname + window.location.search + window.location.hash;
+            var baseHref = (document.querySelector("base") || {}).getAttribute
+                ? document.querySelector("base").getAttribute("href")
+                : "/";
+            baseHref = (baseHref || "/").replace(/\/$/, "");
+            window.location.assign(baseHref + "/login?next=" + encodeURIComponent(next));
+        }
+
+        if (typeof window.fetch === "function") {
+            var origFetch = window.fetch.bind(window);
+            window.fetch = function () {
+                return origFetch.apply(this, arguments).then(function (response) {
+                    if (response && response.status === 401) reauth();
+                    return response;
+                });
+            };
+        }
+
+        if (typeof window.XMLHttpRequest === "function") {
+            // Monkey-patch the prototype rather than replacing the constructor,
+            // so static constants (XMLHttpRequest.DONE, etc.) and any library
+            // assumptions about the class identity are preserved.
+            var origSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.send = function () {
+                this.addEventListener("load", function () {
+                    if (this.status === 401) reauth();
+                });
+                return origSend.apply(this, arguments);
+            };
+        }
+    })();
+</script>

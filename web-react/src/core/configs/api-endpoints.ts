@@ -9,6 +9,9 @@ export const STATIC_API_ENDPOINTS = {
   ALL_GATEWAY_SECRETS: "/api/2.0/mlflow/permissions/gateways/secrets",
   ALL_GATEWAY_MODELS: "/api/2.0/mlflow/permissions/gateways/model-definitions",
 
+  // Workspace management
+  ALL_WORKSPACES: "/api/3.0/mlflow/workspaces",
+
   // User management
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
@@ -195,6 +198,20 @@ export const DYNAMIC_API_ENDPOINTS = {
     patternId: string,
   ) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions-patterns/${encodeURIComponent(patternId)}`,
+
+  // Workspace CRUD
+  WORKSPACE_DETAIL: (workspace: string) =>
+    `/api/3.0/mlflow/workspaces/${encodeURIComponent(workspace)}`,
+
+  // Workspace permission management
+  WORKSPACE_USERS: (workspace: string) =>
+    `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/users`,
+  WORKSPACE_GROUPS: (workspace: string) =>
+    `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/groups`,
+  WORKSPACE_USER: (workspace: string, username: string) =>
+    `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/users/${encodeURIComponent(username)}`,
+  WORKSPACE_GROUP: (workspace: string, groupName: string) =>
+    `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/groups/${encodeURIComponent(groupName)}`,
 
   // Trash management
   RESTORE_EXPERIMENT: (experimentId: string) =>

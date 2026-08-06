@@ -183,6 +183,9 @@ async def test_logout_with_end_session_endpoint(monkeypatch):
     res = await auth_router_mod.logout(req)
     assert isinstance(res, RedirectResponse)
     assert "post_logout_redirect_uri" in res.headers["location"]
+    # client_id must be sent so Keycloak does not reject the logout with
+    # "Missing parameters: id_token_hint".
+    assert "client_id=" in res.headers["location"]
 
 
 @pytest.mark.asyncio

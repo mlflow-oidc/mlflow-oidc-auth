@@ -6,7 +6,7 @@ queries compared to per-item permission lookups.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from mlflow.server.handlers import _get_tracking_store
@@ -22,8 +22,9 @@ from mlflow_oidc_auth.entities import (
 )
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import get_permission
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, compare_permissions, get_permission
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.permissions import EXPERIMENT, PROMPT, REGISTERED_MODEL, record_permission_fallback
 
 logger = get_logger()
 
@@ -45,6 +46,8 @@ class UserPermissionContext:
         group_model_regex_permissions: Ordered list of group model regex permissions.
         prompt_regex_permissions: Ordered list of user's prompt regex permissions.
         group_prompt_regex_permissions: Ordered list of group prompt regex permissions.
+        workspace_permission_memo: Per-context memo of the user's workspace permission,
+            keyed by workspace name. See ``_apply_workspace_fallback``.
     """
 
     username: str
@@ -62,6 +65,40 @@ class UserPermissionContext:
     # Prompt-specific regex permissions
     prompt_regex_permissions: List[RegisteredModelRegexPermission]
     group_prompt_regex_permissions: List[RegisteredModelGroupRegexPermission]
+    # Memo for the workspace fallback. Lifetime is this context object — i.e. one
+    # batch call — so it cannot serve a stale decision across requests.
+    workspace_permission_memo: Dict[str, Optional[object]] = field(default_factory=dict)
+
+
+def _collapse_group_permissions(permissions: List, resource_attr: str) -> Dict[str, str]:
+    """Collapse multiple group grants on one resource to a single permission.
+
+    A user in several groups can hold more than one grant on the same resource. This was
+    previously a last-wins dict comprehension, so the winner was whichever row the
+    database happened to return last — an order SQL does not guarantee without an
+    ORDER BY, and which therefore could differ by backend or query plan.
+
+    Worse, it disagreed with the per-resource path
+    (``BaseGroupPermissionRepository.get_group_permission_for_user_resource``), which
+    folds with ``compare_permissions``. For the same user and data — groups granting
+    MANAGE and READ on one experiment — the per-resource check returned MANAGE while the
+    batch check returned READ. Folding with the same ``compare_permissions`` rule makes
+    the two paths agree and makes the result independent of row order (issue #253).
+
+    NOTE: this deliberately reuses the EXISTING precedence rule rather than defining a
+    new one. ``compare_permissions`` ranks by ``priority``, and NO_PERMISSIONS carries
+    priority 100 — so a NO_PERMISSIONS group grant outranks MANAGE here, exactly as it
+    already does on the per-resource path. Whether that precedence is the right policy
+    for multi-group membership is issue #80, and is intentionally not changed here.
+    """
+    collapsed: Dict[str, str] = {}
+    for perm in permissions:
+        resource_id = getattr(perm, resource_attr)
+        current = collapsed.get(resource_id)
+        # compare_permissions(a, b) is True when b is at least as strong as a.
+        if current is None or compare_permissions(current, perm.permission):
+            collapsed[resource_id] = perm.permission
+    return collapsed
 
 
 def build_user_permission_context(username: str) -> UserPermissionContext:
@@ -85,7 +122,7 @@ def build_user_permission_context(username: str) -> UserPermissionContext:
 
     # Fetch all experiment permissions from user's groups (single query)
     group_exp_perms = store.list_user_groups_experiment_permissions(username)
-    group_experiment_permissions = {p.experiment_id: p.permission for p in group_exp_perms}
+    group_experiment_permissions = _collapse_group_permissions(group_exp_perms, "experiment_id")
 
     # Fetch experiment regex permissions (single query each)
     experiment_regex_permissions = store.list_experiment_regex_permissions(username)
@@ -97,7 +134,7 @@ def build_user_permission_context(username: str) -> UserPermissionContext:
 
     # Fetch all model permissions from user's groups (single query)
     group_model_perms = store.list_user_groups_registered_model_permissions(username)
-    group_model_permissions = {p.name: p.permission for p in group_model_perms}
+    group_model_permissions = _collapse_group_permissions(group_model_perms, "name")
 
     # Fetch model regex permissions (single query each)
     model_regex_permissions = store.list_registered_model_regex_permissions(username)
@@ -160,6 +197,70 @@ def _resolve_permission_from_context(
     return PermissionResult(get_permission(config.DEFAULT_MLFLOW_PERMISSION), "fallback")
 
 
+def _record_if_fallback(result: PermissionResult, resource_type: str, resource_id: str, username: str) -> PermissionResult:
+    """Surface a batch-path fallback the same way the single-resource path does.
+
+    The batch resolvers bypass resolve_permission entirely (that is their point — no DB
+    queries), so without this the listing endpoints would grant access from the configured
+    default with no record of it anywhere (issue #293).
+    """
+    if result.kind == "fallback":
+        record_permission_fallback(resource_type, resource_id, username, result.permission)
+    return result
+
+
+def _apply_workspace_fallback(result: PermissionResult, username: str, ctx: Optional["UserPermissionContext"] = None) -> PermissionResult:
+    """Apply workspace-level permission fallback when no resource-level permission exists.
+
+    When workspaces are enabled and the resource-level resolution returned "fallback"
+    (i.e., no user/group/regex/group-regex permission was found), this function checks
+    whether the user has a workspace-level permission grant for the active workspace.
+
+    This mirrors the workspace fallback logic in ``permissions.resolve_permission()``
+    (WSAUTH-C/WSAUTH-04) but is designed for batch resolution in FastAPI route context
+    where the workspace is available via MLflow's ContextVar (set by WorkspaceContextMiddleware).
+
+    The workspace permission is the same for every resource in a batch, but
+    ``get_workspace_permission_cached`` deliberately does not cache DENIALS — so without
+    a memo a user with no workspace grant paid a full source walk (measured 7 queries) for
+    EVERY resource in the batch, making a listing 15+7N queries instead of a flat 22.
+    Memoizing on ``ctx`` bounds the lifetime to this one batch call, so unlike a
+    cross-request cache it cannot serve a stale authorization decision (issue #253).
+
+    Parameters:
+        result: The PermissionResult from resource-level resolution.
+        username: The username to check workspace permission for.
+        ctx: Optional context supplying the per-batch memo.
+
+    Returns:
+        Original result if no workspace fallback applies, otherwise a workspace-derived result.
+    """
+    if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
+        return result
+
+    from mlflow.utils.workspace_context import (
+        get_request_workspace as mlflow_get_request_workspace,
+    )
+
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    workspace = mlflow_get_request_workspace()
+    if workspace:
+        if ctx is not None and workspace in ctx.workspace_permission_memo:
+            ws_perm = ctx.workspace_permission_memo[workspace]
+        else:
+            ws_perm = get_workspace_permission_cached(username, workspace)
+            if ctx is not None:
+                ctx.workspace_permission_memo[workspace] = ws_perm
+        if ws_perm is not None:
+            logger.debug(f"Batch permission workspace fallback: {ws_perm} for {username}@{workspace}")
+            return PermissionResult(ws_perm, "workspace")
+        logger.debug(f"Batch permission workspace-deny for {username}@{workspace}")
+        return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+
+    return result
+
+
 def _find_regex_permission(regexes: List, name: str) -> Optional[str]:
     """Find the first matching regex permission for a given name.
 
@@ -202,13 +303,15 @@ def resolve_experiment_permission_from_context(
     user_regex = _find_regex_permission(ctx.experiment_regex_permissions, experiment_name)
     group_regex = _find_regex_permission(ctx.group_experiment_regex_permissions, experiment_name)
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    result = _record_if_fallback(result, EXPERIMENT, experiment_id, ctx.username)
+    return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
 def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name: str) -> PermissionResult:
@@ -226,13 +329,15 @@ def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name
     user_regex = _find_regex_permission(ctx.model_regex_permissions, model_name)
     group_regex = _find_regex_permission(ctx.group_model_regex_permissions, model_name)
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    result = _record_if_fallback(result, REGISTERED_MODEL, model_name, ctx.username)
+    return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
 def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_name: str) -> PermissionResult:
@@ -254,13 +359,15 @@ def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_na
     user_regex = _find_regex_permission(ctx.prompt_regex_permissions, prompt_name)
     group_regex = _find_regex_permission(ctx.group_prompt_regex_permissions, prompt_name)
 
-    return _resolve_permission_from_context(
+    result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
         user_direct,
         group_direct,
         user_regex,
         group_regex,
     )
+    result = _record_if_fallback(result, PROMPT, prompt_name, ctx.username)
+    return _apply_workspace_fallback(result, ctx.username, ctx)
 
 
 def batch_resolve_experiment_permissions(

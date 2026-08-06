@@ -15,6 +15,8 @@ from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permission
     GatewayModelDefinitionPermissionGroupRegexRepository,
 )
 
+_BASE = "mlflow_oidc_auth.repository._base"
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -42,23 +44,14 @@ def session_maker(session):
 RESOURCE_CONFIGS = [
     pytest.param(
         GatewayEndpointPermissionGroupRegexRepository,
-        "mlflow_oidc_auth.repository.gateway_endpoint_group_regex_permissions",
-        "_get_group_regex_permission",
-        "SqlGatewayEndpointGroupRegexPermission",
         id="endpoint",
     ),
     pytest.param(
         GatewaySecretPermissionGroupRegexRepository,
-        "mlflow_oidc_auth.repository.gateway_secret_group_regex_permissions",
-        "_get_group_regex_permission",
-        "SqlGatewaySecretGroupRegexPermission",
         id="secret",
     ),
     pytest.param(
         GatewayModelDefinitionPermissionGroupRegexRepository,
-        "mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permissions",
-        "_get_group_regex_permission",
-        "SqlGatewayModelDefinitionGroupRegexPermission",
         id="model_definition",
     ),
 ]
@@ -69,18 +62,18 @@ RESOURCE_CONFIGS = [
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("repo_cls,mod,getter,sql_cls", RESOURCE_CONFIGS)
+@pytest.mark.parametrize("repo_cls", RESOURCE_CONFIGS)
 class TestGetGroupRegexPermission:
     """Tests for _get_group_regex_permission private helper."""
 
-    def test_found(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_found(self, session_maker, session, repo_cls):
         """Test successful lookup returns the row."""
         repo = repo_cls(session_maker)
         perm = MagicMock()
         session.query().filter().one.return_value = perm
         assert repo._get_group_regex_permission(session, 1, 10) == perm
 
-    def test_not_found(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_not_found(self, session_maker, session, repo_cls):
         """Test NoResultFound raises MlflowException."""
         repo = repo_cls(session_maker)
         session.query().filter().one.side_effect = NoResultFound()
@@ -88,7 +81,7 @@ class TestGetGroupRegexPermission:
             repo._get_group_regex_permission(session, 1, 10)
         assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
-    def test_multiple_found(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_multiple_found(self, session_maker, session, repo_cls):
         """Test MultipleResultsFound raises MlflowException."""
         repo = repo_cls(session_maker)
         session.query().filter().one.side_effect = MultipleResultsFound()
@@ -102,35 +95,37 @@ class TestGetGroupRegexPermission:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("repo_cls,mod,getter,sql_cls", RESOURCE_CONFIGS)
+@pytest.mark.parametrize("repo_cls", RESOURCE_CONFIGS)
 class TestGrant:
     """Tests for grant."""
 
-    def test_success(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_success(self, session_maker, session, repo_cls):
         """Test successful grant returns the entity."""
         repo = repo_cls(session_maker)
         group = MagicMock(id=10)
         perm = MagicMock()
         perm.to_mlflow_entity.return_value = "entity"
         with (
-            patch(f"{mod}.get_group", return_value=group),
-            patch(f"{mod}.{sql_cls}", return_value=perm),
-            patch(f"{mod}._validate_permission"),
+            patch(f"{_BASE}.get_group", return_value=group),
+            patch.object(type(repo), "model_class", return_value=perm),
+            patch(f"{_BASE}._validate_permission"),
+            patch(f"{_BASE}.validate_regex"),
         ):
             result = repo.grant("devs", "regex-.*", 1, "READ")
         assert result == "entity"
         session.add.assert_called_once_with(perm)
         session.flush.assert_called_once()
 
-    def test_integrity_error(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_integrity_error(self, session_maker, session, repo_cls):
         """Test IntegrityError raises RESOURCE_ALREADY_EXISTS."""
         repo = repo_cls(session_maker)
         group = MagicMock(id=10)
         session.flush.side_effect = IntegrityError("stmt", "params", "orig")
         with (
-            patch(f"{mod}.get_group", return_value=group),
-            patch(f"{mod}.{sql_cls}", return_value=MagicMock()),
-            patch(f"{mod}._validate_permission"),
+            patch(f"{_BASE}.get_group", return_value=group),
+            patch.object(type(repo), "model_class", return_value=MagicMock()),
+            patch(f"{_BASE}._validate_permission"),
+            patch(f"{_BASE}.validate_regex"),
         ):
             with pytest.raises(MlflowException) as exc:
                 repo.grant("devs", "regex-.*", 1, "READ")
@@ -142,19 +137,19 @@ class TestGrant:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("repo_cls,mod,getter,sql_cls", RESOURCE_CONFIGS)
+@pytest.mark.parametrize("repo_cls", RESOURCE_CONFIGS)
 class TestGet:
     """Tests for get."""
 
-    def test_success(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_success(self, session_maker, session, repo_cls):
         """Test get delegates to private getter and returns entity."""
         repo = repo_cls(session_maker)
         group = MagicMock(id=10)
         perm = MagicMock()
         perm.to_mlflow_entity.return_value = "entity"
         with (
-            patch(f"{mod}.get_group", return_value=group),
-            patch.object(repo, getter, return_value=perm),
+            patch(f"{_BASE}.get_group", return_value=group),
+            patch.object(repo, "_get_group_regex_permission", return_value=perm),
         ):
             assert repo.get(1, "devs") == "entity"
 
@@ -164,18 +159,18 @@ class TestGet:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("repo_cls,mod,getter,sql_cls", RESOURCE_CONFIGS)
+@pytest.mark.parametrize("repo_cls", RESOURCE_CONFIGS)
 class TestListPermissionsForGroup:
     """Tests for list_permissions_for_group."""
 
-    def test_returns_entities(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_returns_entities(self, session_maker, session, repo_cls):
         """Test list returns mapped entities ordered by priority."""
         repo = repo_cls(session_maker)
         group = MagicMock(id=10)
         perm1 = MagicMock()
         perm1.to_mlflow_entity.return_value = "e1"
         session.query().filter().order_by().all.return_value = [perm1]
-        with patch(f"{mod}.get_group", return_value=group):
+        with patch(f"{_BASE}.get_group", return_value=group):
             result = repo.list_permissions_for_group("devs")
         assert result == ["e1"]
 
@@ -185,11 +180,11 @@ class TestListPermissionsForGroup:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("repo_cls,mod,getter,sql_cls", RESOURCE_CONFIGS)
+@pytest.mark.parametrize("repo_cls", RESOURCE_CONFIGS)
 class TestListPermissionsForGroups:
     """Tests for list_permissions_for_groups."""
 
-    def test_returns_entities(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_returns_entities(self, session_maker, session, repo_cls):
         """Test list_permissions_for_groups returns entities for multiple groups."""
         repo = repo_cls(session_maker)
         g1 = MagicMock(id=10)
@@ -199,11 +194,11 @@ class TestListPermissionsForGroups:
         perm2 = MagicMock()
         perm2.to_mlflow_entity.return_value = "e2"
         session.query().filter().order_by().all.return_value = [perm1, perm2]
-        with patch(f"{mod}.get_group", side_effect=[g1, g2]):
+        with patch(f"{_BASE}.get_group", side_effect=[g1, g2]):
             result = repo.list_permissions_for_groups(["devs", "admins"])
         assert result == ["e1", "e2"]
 
-    def test_empty_groups(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_empty_groups(self, session_maker, session, repo_cls):
         """Test with empty group list."""
         repo = repo_cls(session_maker)
         session.query().filter().order_by().all.return_value = []
@@ -216,11 +211,11 @@ class TestListPermissionsForGroups:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("repo_cls,mod,getter,sql_cls", RESOURCE_CONFIGS)
+@pytest.mark.parametrize("repo_cls", RESOURCE_CONFIGS)
 class TestListPermissionsForGroupsIds:
     """Tests for list_permissions_for_groups_ids."""
 
-    def test_returns_entities(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_returns_entities(self, session_maker, session, repo_cls):
         """Test list by group IDs returns mapped entities."""
         repo = repo_cls(session_maker)
         perm1 = MagicMock()
@@ -229,7 +224,7 @@ class TestListPermissionsForGroupsIds:
         result = repo.list_permissions_for_groups_ids([10, 20])
         assert result == ["e1"]
 
-    def test_empty_ids(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_empty_ids(self, session_maker, session, repo_cls):
         """Test with empty IDs list."""
         repo = repo_cls(session_maker)
         session.query().filter().order_by().all.return_value = []
@@ -242,20 +237,21 @@ class TestListPermissionsForGroupsIds:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("repo_cls,mod,getter,sql_cls", RESOURCE_CONFIGS)
+@pytest.mark.parametrize("repo_cls", RESOURCE_CONFIGS)
 class TestUpdate:
     """Tests for update."""
 
-    def test_success(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_success(self, session_maker, session, repo_cls):
         """Test successful update sets priority, permission and commits."""
         repo = repo_cls(session_maker)
         group = MagicMock(id=10)
         perm = MagicMock()
         perm.to_mlflow_entity.return_value = "entity"
         with (
-            patch(f"{mod}.get_group", return_value=group),
-            patch.object(repo, getter, return_value=perm),
-            patch(f"{mod}._validate_permission"),
+            patch(f"{_BASE}.get_group", return_value=group),
+            patch.object(repo, "_get_group_regex_permission", return_value=perm),
+            patch(f"{_BASE}._validate_permission"),
+            patch(f"{_BASE}.validate_regex"),
         ):
             result = repo.update(1, "devs", "new-.*", 5, "MANAGE")
         assert result == "entity"
@@ -269,18 +265,18 @@ class TestUpdate:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("repo_cls,mod,getter,sql_cls", RESOURCE_CONFIGS)
+@pytest.mark.parametrize("repo_cls", RESOURCE_CONFIGS)
 class TestRevoke:
     """Tests for revoke."""
 
-    def test_success(self, session_maker, session, repo_cls, mod, getter, sql_cls):
+    def test_success(self, session_maker, session, repo_cls):
         """Test successful revoke deletes and commits."""
         repo = repo_cls(session_maker)
         group = MagicMock(id=10)
         perm = MagicMock()
         with (
-            patch(f"{mod}.get_group", return_value=group),
-            patch.object(repo, getter, return_value=perm),
+            patch(f"{_BASE}.get_group", return_value=group),
+            patch.object(repo, "_get_group_regex_permission", return_value=perm),
         ):
             assert repo.revoke(1, "devs") is None
         session.delete.assert_called_once_with(perm)

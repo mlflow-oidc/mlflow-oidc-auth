@@ -82,6 +82,22 @@ def test__get_permission_from_experiment_name_not_found():
         mock_get_permission.assert_called_once_with("MANAGE")
 
 
+def test_read_by_name_missing_experiment_proceeds_for_mlflow_404():
+    """Contract lock: read-by-name of a missing experiment must NOT be denied here.
+
+    MLflow returns 404 for a non-existent experiment and the UI depends on that
+    status. If this validator failed closed it would turn the 404 into a 403, so a
+    missing experiment must pass authorization and defer to MLflow. Do not "harden"
+    this into a denial.
+    """
+    with (
+        patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="does-not-exist"),
+        patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
+    ):
+        mock_store.return_value.get_experiment_by_name.return_value = None
+        assert experiment.validate_can_read_experiment_by_name("alice") is True
+
+
 def test__get_experiment_id_from_view_args_match():
     mock_request = MagicMock()
     mock_request.view_args = {"artifact_path": "123/some/path"}
@@ -98,6 +114,7 @@ def test__get_experiment_id_from_view_args_no_match():
 
 def test__get_experiment_id_from_view_args_none():
     mock_request = MagicMock()
+    mock_request.args = {}  # no ?path= query param
     mock_request.view_args = None
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
         assert experiment._get_experiment_id_from_view_args() is None
@@ -249,6 +266,7 @@ def test__get_permission_from_experiment_name_store_exception():
 def test__get_experiment_id_from_view_args_no_view_args():
     """Test when request has no view_args"""
     mock_request = MagicMock()
+    mock_request.args = {}  # no ?path= query param
     mock_request.view_args = {}
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
         assert experiment._get_experiment_id_from_view_args() is None
@@ -257,6 +275,7 @@ def test__get_experiment_id_from_view_args_no_view_args():
 def test__get_experiment_id_from_view_args_no_artifact_path():
     """Test when view_args has no artifact_path"""
     mock_request = MagicMock()
+    mock_request.args = {}  # no ?path= query param
     mock_request.view_args = {"other_param": "value"}
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
         assert experiment._get_experiment_id_from_view_args() is None

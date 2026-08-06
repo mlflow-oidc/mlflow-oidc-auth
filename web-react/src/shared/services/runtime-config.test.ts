@@ -8,6 +8,7 @@ describe("runtime-config", () => {
     provider: "oidc",
     authenticated: true,
     gen_ai_gateway_enabled: false,
+    workspaces_enabled: false,
   };
 
   beforeEach(() => {

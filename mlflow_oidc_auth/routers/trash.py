@@ -13,6 +13,7 @@ from mlflow.store.artifact.artifact_repository_registry import get_artifact_repo
 from mlflow.tracking import _get_store
 from mlflow.utils.time import get_current_time_millis
 
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_experiments
@@ -194,10 +195,17 @@ async def list_deleted_runs(
 async def permanently_delete_all_trashed_entities(
     admin_username: str = Depends(check_admin_permission),
     older_than: Optional[str] = Query(
-        None, description="Remove entities older than the specified time limit (e.g., '1d2h3m4s', '7d'). Float values are supported."
+        None,
+        description="Remove entities older than the specified time limit (e.g., '1d2h3m4s', '7d'). Float values are supported.",
     ),
-    run_ids: Optional[str] = Query(None, description="Comma-separated list of specific run IDs to permanently delete"),
-    experiment_ids: Optional[str] = Query(None, description="Comma-separated list of specific experiment IDs to permanently delete (including all their runs)"),
+    run_ids: Optional[str] = Query(
+        None,
+        description="Comma-separated list of specific run IDs to permanently delete",
+    ),
+    experiment_ids: Optional[str] = Query(
+        None,
+        description="Comma-separated list of specific experiment IDs to permanently delete (including all their runs)",
+    ),
 ) -> JSONResponse:
     """
     Permanently delete entities in the trash.
@@ -233,7 +241,10 @@ async def permanently_delete_all_trashed_entities(
 
         if not hasattr(backend_store, "_hard_delete_run"):
             logger.error("Backend store does not support hard deletion of runs")
-            return JSONResponse(status_code=400, content={"error": "Backend store does not support permanent deletion of runs"})
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Backend store does not support permanent deletion of runs"},
+            )
 
         skip_experiments = False
         if not hasattr(backend_store, "_hard_delete_experiment"):
@@ -279,18 +290,27 @@ async def permanently_delete_all_trashed_entities(
                         experiments.append(exp)
                     except Exception as e:
                         logger.error(f"Could not fetch experiment {exp_id}: {str(e)}")
-                        return JSONResponse(status_code=404, content={"error": f"Experiment {exp_id} not found"})
+                        return JSONResponse(
+                            status_code=404,
+                            content={"error": f"Experiment {exp_id} not found"},
+                        )
 
                 # Ensure experiments are deleted
                 active_experiment_ids = [e.experiment_id for e in experiments if e.lifecycle_stage != LifecycleStage.DELETED]
                 if active_experiment_ids:
-                    return JSONResponse(status_code=400, content={"error": f"Experiments {active_experiment_ids} are not in deleted lifecycle stage"})
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Experiments {active_experiment_ids} are not in deleted lifecycle stage"},
+                    )
 
                 # Check age requirements
                 if older_than:
                     non_old_experiment_ids = [e.experiment_id for e in experiments if e.last_update_time is None or e.last_update_time >= time_threshold]
                     if non_old_experiment_ids:
-                        return JSONResponse(status_code=400, content={"error": f"Experiments {non_old_experiment_ids} are not older than {older_than}"})
+                        return JSONResponse(
+                            status_code=400,
+                            content={"error": f"Experiments {non_old_experiment_ids} are not older than {older_than}"},
+                        )
             else:
                 # Get all deleted experiments
                 filter_string = f"last_update_time < {time_threshold}" if older_than else None
@@ -337,12 +357,22 @@ async def permanently_delete_all_trashed_entities(
 
                 # Validate run is deleted
                 if run.info.lifecycle_stage != LifecycleStage.DELETED:
-                    failed_runs.append({"run_id": run_id, "error": "Run is not in deleted lifecycle stage"})
+                    failed_runs.append(
+                        {
+                            "run_id": run_id,
+                            "error": "Run is not in deleted lifecycle stage",
+                        }
+                    )
                     continue
 
                 # Check age requirement
                 if older_than and run_id not in deleted_run_ids_older_than:
-                    failed_runs.append({"run_id": run_id, "error": f"Run is not older than {older_than}"})
+                    failed_runs.append(
+                        {
+                            "run_id": run_id,
+                            "error": f"Run is not older than {older_than}",
+                        }
+                    )
                     continue
 
                 # Delete artifacts
@@ -393,6 +423,17 @@ async def permanently_delete_all_trashed_entities(
 
         logger.info(f"Admin user '{admin_username}' completed cleanup: " f"{len(deleted_runs)} runs, {len(deleted_experiments)} experiments deleted")
 
+        emit_audit_event(
+            "trash.cleanup",
+            admin_username,
+            resource_type="trash",
+            detail={
+                "deleted_runs_count": len(deleted_runs),
+                "deleted_experiments_count": len(deleted_experiments),
+                "older_than": older_than,
+            },
+        )
+
         return JSONResponse(content=response_data)
 
     except Exception:
@@ -434,6 +475,12 @@ async def restore_experiment(
         backend_store.restore_experiment(experiment_id)
         restored = backend_store.get_experiment(experiment_id)
         logger.info(f"Admin user '{admin_username}' restored experiment {experiment_id}")
+        emit_audit_event(
+            "trash.restore",
+            admin_username,
+            resource_type="experiment",
+            resource_id=experiment_id,
+        )
         return JSONResponse(
             content={
                 "experiment": {
@@ -483,6 +530,12 @@ async def restore_run(
         backend_store.restore_run(run_id)
         restored = backend_store.get_run(run_id)
         logger.info(f"Admin user '{admin_username}' restored run {run_id}")
+        emit_audit_event(
+            "trash.restore",
+            admin_username,
+            resource_type="run",
+            resource_id=run_id,
+        )
         return JSONResponse(
             content={
                 "run": {

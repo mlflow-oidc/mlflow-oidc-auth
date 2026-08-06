@@ -21,12 +21,20 @@ const Sidebar: React.FC<SidebarProps> = ({
   widthClass,
 }) => {
   const isAdmin = currentUser?.is_admin ?? false;
-  const { gen_ai_gateway_enabled: genAiGatewayEnabled } = useRuntimeConfig();
+  const {
+    gen_ai_gateway_enabled: genAiGatewayEnabled,
+    workspaces_enabled: workspacesEnabled,
+  } = useRuntimeConfig();
 
-  const sidebarData = getSidebarData(isAdmin, genAiGatewayEnabled);
+  const sidebarData = getSidebarData(
+    isAdmin,
+    genAiGatewayEnabled,
+    workspacesEnabled,
+  );
 
   const BASE_LINKS_COUNT = 6;
   const AI_LINKS_COUNT = 3;
+  const WORKSPACE_LINKS_COUNT = workspacesEnabled ? 1 : 0;
 
   const baseSidebarClasses =
     "flex-shrink-0 text-sm bg-ui-secondary-bg dark:bg-ui-secondary-bg-dark";
@@ -37,16 +45,23 @@ const Sidebar: React.FC<SidebarProps> = ({
         <nav className="flex flex-col space-y-1 grow p-2">
           {sidebarData.map((link, index) => {
             const isAiStart = genAiGatewayEnabled && index === BASE_LINKS_COUNT;
+            const isWorkspaceStart =
+              workspacesEnabled &&
+              index ===
+                (genAiGatewayEnabled
+                  ? BASE_LINKS_COUNT + AI_LINKS_COUNT
+                  : BASE_LINKS_COUNT);
             const isAdminStart =
               isAdmin &&
               index ===
                 (genAiGatewayEnabled
                   ? BASE_LINKS_COUNT + AI_LINKS_COUNT
-                  : BASE_LINKS_COUNT);
+                  : BASE_LINKS_COUNT) +
+                  WORKSPACE_LINKS_COUNT;
 
             return (
               <React.Fragment key={link.href}>
-                {(isAiStart || isAdminStart) && (
+                {(isAiStart || isWorkspaceStart || isAdminStart) && (
                   <div className="my-3 border-t border-btn-secondary-border dark:border-btn-secondary-border-dark pt-1" />
                 )}
 

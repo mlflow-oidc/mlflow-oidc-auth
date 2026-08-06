@@ -6,7 +6,9 @@ to ensure proper URL construction and request context when the application is
 running behind a proxy.
 """
 
-from typing import Optional
+import ipaddress
+from typing import List, Optional
+
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -16,14 +18,44 @@ from mlflow_oidc_auth.logger import get_logger
 logger = get_logger()
 
 
+def _parse_trusted_proxies(
+    proxy_list: List[str],
+) -> List[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    """Parse a list of CIDR strings into network objects.
+
+    Parameters:
+        proxy_list: List of CIDR notation strings (e.g., ["10.0.0.0/8", "172.16.0.0/12"]).
+            Single IPs (e.g., "10.0.0.1") are treated as /32 (IPv4) or /128 (IPv6).
+
+    Returns:
+        List of parsed network objects.
+    """
+    networks = []
+    for cidr in proxy_list:
+        cidr = cidr.strip()
+        if not cidr:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            logger.warning("Invalid CIDR in TRUSTED_PROXIES, skipping entry")
+    return networks
+
+
 class ProxyHeadersMiddleware(BaseHTTPMiddleware):
     """
     FastAPI middleware for handling proxy headers.
 
     This middleware:
-    1. Processes X-Forwarded-* headers from reverse proxies
-    2. Updates the request scope with correct protocol, host, and path information
-    3. Enables proper URL construction for redirects and callbacks when behind a proxy
+    1. Validates the connecting client IP against TRUSTED_PROXIES (if configured)
+    2. Processes X-Forwarded-* headers from reverse proxies
+    3. Updates the request scope with correct protocol, host, and path information
+    4. Enables proper URL construction for redirects and callbacks when behind a proxy
+
+    When TRUSTED_PROXIES is empty (default), ALL proxy headers are trusted for
+    backward compatibility. When TRUSTED_PROXIES is configured, only requests
+    from IPs within the configured CIDR ranges will have their proxy headers
+    processed.
 
     Common proxy headers handled:
     - X-Forwarded-Proto: Original protocol (http/https)
@@ -35,6 +67,44 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
+        from mlflow_oidc_auth.config import config
+
+        self._trusted_networks = _parse_trusted_proxies(config.TRUSTED_PROXIES)
+
+    def _is_trusted_proxy(self, request: Request) -> bool:
+        """Check if the connecting client IP is from a trusted proxy.
+
+        When TRUSTED_PROXIES is not configured (empty list), all sources are
+        trusted for backward compatibility. When configured, only IPs within
+        the specified CIDR ranges are trusted.
+
+        Parameters:
+            request: FastAPI request object.
+
+        Returns:
+            True if the request comes from a trusted proxy (or no restriction is configured).
+        """
+        if not self._trusted_networks:
+            return True
+
+        client = request.client
+        if client is None:
+            logger.warning("Cannot determine client IP — proxy headers will be ignored")
+            return False
+
+        client_ip_str = client.host
+        try:
+            client_ip = ipaddress.ip_address(client_ip_str)
+        except ValueError:
+            logger.warning(f"Cannot parse client IP '{client_ip_str}' — proxy headers will be ignored")
+            return False
+
+        for network in self._trusted_networks:
+            if client_ip in network:
+                return True
+
+        logger.debug(f"Client IP {client_ip_str} is not in TRUSTED_PROXIES — proxy headers will be ignored")
+        return False
 
     def _get_forwarded_proto(self, request: Request) -> Optional[str]:
         """
@@ -124,6 +194,10 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
         Returns:
             Response from the application
         """
+        # Only process proxy headers from trusted sources
+        if not self._is_trusted_proxy(request):
+            return await call_next(request)
+
         # Extract proxy headers
         forwarded_proto = self._get_forwarded_proto(request)
         forwarded_host = self._get_forwarded_host(request)
@@ -157,7 +231,10 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
                 ]
                 # Update server info in scope
                 default_port = 443 if forwarded_proto == "https" else 80
-                request.scope["server"] = (forwarded_host, forwarded_port or default_port)
+                request.scope["server"] = (
+                    forwarded_host,
+                    forwarded_port or default_port,
+                )
 
         # Set root_path for path prefix handling
         if forwarded_prefix:
