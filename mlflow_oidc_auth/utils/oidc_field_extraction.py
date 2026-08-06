@@ -29,11 +29,12 @@ def extract_field_from_payload(
     Extract a field value from a payload using a configured list of field names.
 
     This function attempts to extract a value from the payload by iterating through
-    the configured field names in order and returning the first non-blank value found.
-    The value must be a string; non-string values (including non-string falsy values
-    like 0 or False) are rejected with an error. A missing, empty, or whitespace-only
-    string is treated as absent, so it falls through to the next configured field
-    instead of being accepted as the extracted value.
+    the configured field names in order and returning the first non-blank value found,
+    stripped of leading/trailing whitespace. The value must be a string; non-string
+    values (including non-string falsy values like 0 or False) are rejected with an
+    error. A missing, empty, or whitespace-only string is treated as absent, so it
+    falls through to the next configured field instead of being accepted as the
+    extracted value.
 
     Parameters:
         payload: Dictionary containing the fields to extract from (e.g., userinfo or token payload)
@@ -60,8 +61,9 @@ def extract_field_from_payload(
             error_msg = f"Invalid OIDC {field_label} field: {field} is not a string"
             logger.error(error_msg)
             return None, error_msg
-        if value.strip():
-            return value, None
+        stripped_value = value.strip()
+        if stripped_value:
+            return stripped_value, None
         # Empty or whitespace-only string: treat as absent, try the next configured field.
 
     # No field found (or every configured field was missing/blank)

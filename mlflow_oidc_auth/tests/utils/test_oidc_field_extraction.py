@@ -90,6 +90,13 @@ class TestExtractFieldFromPayload:
         assert value == "alice"
         assert error is None
 
+    def test_extract_strips_surrounding_whitespace_from_a_valid_value(self):
+        """Test that a valid value with surrounding whitespace is trimmed, not returned raw."""
+        payload = {"email": "  alice  "}
+        value, error = extract_field_from_payload(payload, ["email"], "username")
+        assert value == "alice"
+        assert error is None
+
     def test_extract_all_whitespace_only_values_errors(self):
         """Test that whitespace-only values across every field report an error, not a blank value."""
         payload = {"email": "   ", "preferred_username": "\t"}

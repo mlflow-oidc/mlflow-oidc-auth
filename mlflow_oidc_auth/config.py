@@ -213,28 +213,40 @@ class AppConfig:
         # Run last: these read settings loaded above.
         self._warn_if_resource_creation_restriction_is_inert()
         self._warn_if_default_permission_is_permissive()
-        self._validate_username_field_configured()
+        self._warn_if_username_field_unusable()
 
-    def _validate_username_field_configured(self) -> None:
-        """Refuse to start when OIDC_USERNAME_FIELD or OIDC_DISPLAY_NAME_FIELD is unusable.
+    def _warn_if_username_field_unusable(self) -> None:
+        """Warn at startup when OIDC_USERNAME_FIELD or OIDC_DISPLAY_NAME_FIELD is unusable.
 
         Both are lists of claim names tried in order against the OIDC userinfo/token
-        payload. Unlike the other two checks above — which describe a deployment that
-        still works, just with a looser-than-recommended default — a username field with
-        no usable entry means no field can ever be found, so every OIDC login (and, for
-        OIDC_USERNAME_FIELD, every bearer-token authentication too) fails for every user.
-        That's the same class of "config makes the app unusable" problem SESSION_COOKIE_SAMESITE
-        validation guards against above, so it gets the same treatment: fail fast at startup
-        instead of coming up looking healthy while nobody can actually sign in.
+        payload; a list with no usable entry means no field can ever be found, so every
+        OIDC login (and, for OIDC_USERNAME_FIELD, every bearer-token authentication too)
+        fails for every user. That failure only surfaces on the first real login attempt
+        in production — warn here instead so a typo'd or emptied config value (e.g. from
+        a misconfigured secret provider) is caught before anyone tries to sign in.
+
+        This deliberately warns rather than raises, unlike SESSION_COOKIE_SAMESITE above.
+        AppConfig() is a module-level singleton imported by tooling that has nothing to
+        do with OIDC login (e.g. the Alembic migration environment in
+        db/migrations/env.py), so raising here would take that unrelated tooling down
+        too. It matches the existing precedent for "OIDC is completely unusable" failures
+        elsewhere in this plugin: OIDC_DISCOVERY_URL is validated lazily on first JWKS
+        fetch (auth.py), and a failed OIDC client registration at ASGI lifespan startup
+        (app.py's `lifespan`) only logs a warning and lets the app come up — OIDC-specific
+        breakage is surfaced without ever taking down the whole process.
 
         A value provided only as blank/whitespace entries (e.g. OIDC_USERNAME_FIELD="",
         which config_manager.get_list turns into [""] rather than []) is treated the same
-        as an empty list — both leave no field that could ever match a real claim.
+        as an empty list — both leave no field that could ever match a real claim. A
+        non-string entry (e.g. from a secret provider returning malformed JSON) is treated
+        as unusable rather than raising, since this check exists to warn cleanly, not to
+        validate types — extract_field_from_payload already reports a specific error for
+        a non-string claim value at the point it's actually used.
         """
-        if not any(field.strip() for field in self.OIDC_USERNAME_FIELD):
-            raise ValueError("OIDC_USERNAME_FIELD is empty; no OIDC login or bearer-token authentication would ever be able to resolve a username.")
-        if not any(field.strip() for field in self.OIDC_DISPLAY_NAME_FIELD):
-            raise ValueError("OIDC_DISPLAY_NAME_FIELD is empty; no OIDC login would ever be able to resolve a display name.")
+        if not any(isinstance(field, str) and field.strip() for field in self.OIDC_USERNAME_FIELD):
+            logger.warning("OIDC_USERNAME_FIELD is empty; no OIDC login or bearer-token authentication will be able to resolve a username.")
+        if not any(isinstance(field, str) and field.strip() for field in self.OIDC_DISPLAY_NAME_FIELD):
+            logger.warning("OIDC_DISPLAY_NAME_FIELD is empty; no OIDC login will be able to resolve a display name.")
 
     def _warn_if_default_permission_is_permissive(self) -> None:
         """Announce that an open-by-default deployment will change on the next major.

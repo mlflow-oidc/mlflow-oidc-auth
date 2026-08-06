@@ -123,6 +123,8 @@ class TestAdminElevation:
 
 
 class TestConfigurableDisplayName:
+    """Bearer-token provisioning must honor OIDC_DISPLAY_NAME_FIELD, not a hardcoded 'name' claim."""
+
     def test_provisioning_honors_configured_display_name_field(self, monkeypatch):
         """OIDC_DISPLAY_NAME_FIELD must be respected on bearer provisioning, not just interactive login."""
         monkeypatch.setattr(real_config, "OIDC_DISPLAY_NAME_FIELD", ["full_name"])
@@ -139,6 +141,7 @@ class TestConfigurableDisplayName:
             create_user.assert_called_once_with(username="a@x.com", display_name="Alice Anderson", is_admin=False)
 
     def test_provisioning_falls_back_to_username_when_configured_field_missing(self, monkeypatch):
+        """A present-but-unconfigured field (e.g. 'name') must not be used as a fallback source."""
         monkeypatch.setattr(real_config, "OIDC_DISPLAY_NAME_FIELD", ["full_name"])
         with (
             patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,

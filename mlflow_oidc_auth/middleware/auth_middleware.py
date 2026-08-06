@@ -168,7 +168,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Admin is conferred from a token only when the operator has explicitly opted in.
         is_admin = is_admin_claim and config.OIDC_TRUST_BEARER_GROUP_CLAIMS
-        display_name = extract_display_name(payload, source=BEARER_TOKEN_SOURCE)[0] or username
+        display_name, display_name_error = extract_display_name(payload, source=BEARER_TOKEN_SOURCE)
+        if display_name_error:
+            logger.debug("Bearer provisioning of %s falling back to username as display name: %s", username, display_name_error)
+            display_name = username
         try:
             import mlflow_oidc_auth.user as user_module
 
