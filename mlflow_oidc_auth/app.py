@@ -8,7 +8,7 @@ to the default MLflow server when OIDC authentication is required.
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from mlflow.server import app
 from mlflow.version import VERSION
 from starlette.middleware.sessions import (
@@ -28,7 +28,7 @@ from mlflow_oidc_auth.middleware import (
     add_fastapi_permission_middleware,
 )
 from mlflow_oidc_auth.oauth import ensure_oidc_client_registered
-from mlflow_oidc_auth.routers import get_all_routers
+from mlflow_oidc_auth.routers import ajax_alias_router, get_all_routers
 
 logger = get_logger()
 
@@ -101,6 +101,19 @@ def _seed_default_workspace() -> None:
             logger.info(f"Default workspace '{DEFAULT_WORKSPACE}' created")
     except Exception as e:
         logger.warning(f"Could not seed default workspace: {e}")
+
+
+def _include_router(oidc_app: FastAPI, router: APIRouter) -> None:
+    """Register a router, plus the "/ajax-api" twins of its "/api" routes.
+
+    MLflow's web UI calls "/ajax-api/..." while API clients call "/api/...".
+    Registering both keeps UI-facing endpoints reachable; see
+    `mlflow_oidc_auth.routers.ajax_alias_router`.
+    """
+    oidc_app.include_router(router)
+    alias = ajax_alias_router(router)
+    if alias.routes:
+        oidc_app.include_router(alias)
 
 
 def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
@@ -191,7 +204,7 @@ def create_app() -> FastAPI:
     )
 
     for router in get_all_routers():
-        oidc_app.include_router(router)
+        _include_router(oidc_app, router)
 
     # Inject into MLflow's index.html when the menu links or the re-auth helper
     # are enabled. Both live in the same hack module to keep injection ordering
@@ -219,8 +232,8 @@ def create_app() -> FastAPI:
             workspace_regex_permissions_router,
         )
 
-        oidc_app.include_router(workspace_permissions_router)
-        oidc_app.include_router(workspace_regex_permissions_router)
+        _include_router(oidc_app, workspace_permissions_router)
+        _include_router(oidc_app, workspace_regex_permissions_router)
 
     # ---------------------------------------------------------------------------
     # Include MLflow's FastAPI-native routers (GAP-ARCH-01 fix)
