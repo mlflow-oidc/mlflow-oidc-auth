@@ -51,6 +51,17 @@ OIDC_ADMIN_GROUP_NAME=mlflow-admin
 SECRET_KEY=your-random-secret-key
 ```
 
+If your OIDC provider issues a public client (no client secret), enable PKCE and omit `OIDC_CLIENT_SECRET`:
+
+```bash
+OIDC_DISCOVERY_URL=https://your-idp.example.com/.well-known/openid-configuration
+OIDC_CLIENT_ID=your-client-id
+OIDC_CODE_CHALLENGE=S256
+OIDC_GROUP_NAME=mlflow
+OIDC_ADMIN_GROUP_NAME=mlflow-admin
+SECRET_KEY=your-random-secret-key
+```
+
 ### 3. Run
 
 ```bash

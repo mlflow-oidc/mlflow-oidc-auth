@@ -181,6 +181,32 @@ class TestLoginEndpoint:
         assert exc_info.value.status_code == 500
         assert "Failed to initiate OIDC login" in str(exc_info.value.detail)
 
+    @pytest.mark.asyncio
+    async def test_login_with_pkce_enabled(self, mock_request_with_session, mock_oauth, mock_config):
+        """Login works when PKCE is enabled and no client secret is configured."""
+        request = mock_request_with_session({"oauth_state": None})
+        mock_config.OIDC_CODE_CHALLENGE = "S256"
+        mock_config.OIDC_CLIENT_SECRET = None
+
+        with (
+            patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
+            patch("mlflow_oidc_auth.routers.auth.config", mock_config),
+            patch("mlflow_oidc_auth.routers.auth.get_configured_or_dynamic_redirect_uri") as mock_redirect,
+            patch("secrets.token_urlsafe") as mock_token,
+            patch("mlflow_oidc_auth.routers.auth.is_oidc_configured", return_value=True),
+        ):
+            mock_redirect.return_value = "http://localhost:8000/callback"
+            mock_token.return_value = "test_state_token"
+
+            await login(request)
+
+            assert request.session["oauth_state"] == "test_state_token"
+            mock_oauth.oidc.authorize_redirect.assert_called_once_with(
+                request,
+                redirect_uri="http://localhost:8000/callback",
+                state="test_state_token",
+            )
+
 
 class TestLogoutEndpoint:
     """Test the logout endpoint functionality."""

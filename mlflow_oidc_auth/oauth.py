@@ -27,7 +27,13 @@ def get_oauth() -> OAuth:
 
 
 def _has_required_config() -> bool:
-    return bool(config.OIDC_CLIENT_ID and config.OIDC_CLIENT_SECRET and config.OIDC_DISCOVERY_URL)
+    """Return True when the minimum OIDC configuration is present.
+
+    A client secret is required unless PKCE is enabled (OIDC_CODE_CHALLENGE=S256).
+    """
+    if not config.OIDC_CLIENT_ID or not config.OIDC_DISCOVERY_URL:
+        return False
+    return bool(config.OIDC_CLIENT_SECRET or config.OIDC_CODE_CHALLENGE == "S256")
 
 
 def _build_scope() -> str:
@@ -62,20 +68,32 @@ def ensure_oidc_client_registered() -> bool:
         return True
 
     if not _has_required_config():
+        if config.OIDC_CLIENT_ID and config.OIDC_DISCOVERY_URL:
+            raise ValueError(
+                "OIDC configuration is incomplete: OIDC_CLIENT_SECRET is missing and "
+                "OIDC_CODE_CHALLENGE is not set to 'S256'. Provide a client secret or "
+                "enable PKCE by setting OIDC_CODE_CHALLENGE=S256."
+            )
         return False
 
+    client_kwargs = {
+        "scope": _build_scope(),
+        "verify": config.OIDC_VERIFY_SSL,
+        "code_challenge_method": config.OIDC_CODE_CHALLENGE,
+    }
+
+    registration_kwargs = {
+        "name": "oidc",
+        "client_id": config.OIDC_CLIENT_ID,
+        "server_metadata_url": config.OIDC_DISCOVERY_URL,
+        "client_kwargs": client_kwargs,
+    }
+    # A public client registers without a secret; PKCE authenticates the token request.
+    if config.OIDC_CLIENT_SECRET:
+        registration_kwargs["client_secret"] = config.OIDC_CLIENT_SECRET
+
     try:
-        oauth.register(
-            name="oidc",
-            client_id=config.OIDC_CLIENT_ID,
-            client_secret=config.OIDC_CLIENT_SECRET,
-            server_metadata_url=config.OIDC_DISCOVERY_URL,
-            client_kwargs={
-                "scope": _build_scope(),
-                "verify": config.OIDC_VERIFY_SSL,
-                "code_challenge_method": config.OIDC_CODE_CHALLENGE,
-            },
-        )
+        oauth.register(**registration_kwargs)
         _oidc_client_registered = True
         return True
     except Exception as exc:

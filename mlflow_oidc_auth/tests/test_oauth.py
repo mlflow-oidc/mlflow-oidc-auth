@@ -8,7 +8,8 @@ and OIDC provider integration.
 
 import sys
 import unittest
-from unittest.mock import patch
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 
 class TestOAuthModule(unittest.TestCase):
@@ -47,6 +48,7 @@ class TestOAuthModule(unittest.TestCase):
         self.assertTrue(hasattr(config, "OIDC_CLIENT_SECRET"))
         self.assertTrue(hasattr(config, "OIDC_DISCOVERY_URL"))
         self.assertTrue(hasattr(config, "OIDC_SCOPE"))
+        self.assertTrue(hasattr(config, "OIDC_CODE_CHALLENGE"))
 
     @patch("mlflow_oidc_auth.config.config")
     def test_oauth_with_mocked_config(self, mock_config):
@@ -56,6 +58,7 @@ class TestOAuthModule(unittest.TestCase):
         mock_config.OIDC_CLIENT_SECRET = "test_client_secret"
         mock_config.OIDC_DISCOVERY_URL = "https://example.com/.well-known/openid_configuration"
         mock_config.OIDC_SCOPE = "openid email profile"
+        mock_config.OIDC_CODE_CHALLENGE = None
 
         # Clear the module cache to force re-import with mocked config
         if "mlflow_oidc_auth.oauth" in sys.modules:
@@ -481,6 +484,110 @@ class TestBuildScope(unittest.TestCase):
             patch.object(oauth_mod.config, "OIDC_SCOPE", "", create=True),
         ):
             self.assertEqual(oauth_mod._build_scope(), "")
+
+
+class TestPKCEAndOptionalClientSecret(unittest.TestCase):
+    """Test PKCE support and optional OIDC client secret."""
+
+    @contextmanager
+    def _patch_config(self, oauth_mod, **kwargs):
+        """Patch oauth_mod.config attributes used by OAuth registration."""
+        from contextlib import ExitStack
+
+        defaults = {
+            "OIDC_CLIENT_ID": "test-client-id",
+            "OIDC_CLIENT_SECRET": "test-client-secret",
+            "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
+            "OIDC_SCOPE": "openid,email,profile",
+            "OIDC_USE_REFRESH_TOKEN": False,
+            "OIDC_CODE_CHALLENGE": None,
+        }
+        defaults.update(kwargs)
+        with ExitStack() as stack:
+            for key, value in defaults.items():
+                stack.enter_context(patch.object(oauth_mod.config, key, value, create=True))
+            yield
+
+    def test_registration_succeeds_with_client_secret(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        oauth_mod.reset_oauth()
+        with self._patch_config(oauth_mod):
+            self.assertTrue(oauth_mod.ensure_oidc_client_registered())
+
+    def test_registration_succeeds_with_pkce_and_no_secret(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        oauth_mod.reset_oauth()
+        with self._patch_config(oauth_mod, OIDC_CLIENT_SECRET=None, OIDC_CODE_CHALLENGE="S256"):
+            self.assertTrue(oauth_mod.ensure_oidc_client_registered())
+
+    def test_registration_fails_without_secret_and_without_pkce(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        oauth_mod.reset_oauth()
+        with self._patch_config(oauth_mod, OIDC_CLIENT_SECRET=None, OIDC_CODE_CHALLENGE=None):
+            with self.assertRaises(ValueError) as cm:
+                oauth_mod.ensure_oidc_client_registered()
+            self.assertIn("OIDC_CLIENT_SECRET is missing", str(cm.exception))
+            self.assertIn("OIDC_CODE_CHALLENGE", str(cm.exception))
+
+    def test_client_kwargs_include_code_challenge_method_when_pkce_enabled(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        oauth_mod.reset_oauth()
+        mock_register = MagicMock()
+        with (
+            self._patch_config(oauth_mod, OIDC_CLIENT_SECRET=None, OIDC_CODE_CHALLENGE="S256"),
+            patch.object(oauth_mod.oauth, "register", mock_register),
+        ):
+            oauth_mod.ensure_oidc_client_registered()
+            mock_register.assert_called_once()
+            kwargs = mock_register.call_args.kwargs
+            self.assertEqual(kwargs["client_kwargs"]["code_challenge_method"], "S256")
+            self.assertNotIn("client_secret", kwargs)
+
+    def test_code_challenge_method_is_none_when_pkce_disabled(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        oauth_mod.reset_oauth()
+        mock_register = MagicMock()
+        with (
+            self._patch_config(oauth_mod, OIDC_CODE_CHALLENGE=None),
+            patch.object(oauth_mod.oauth, "register", mock_register),
+        ):
+            oauth_mod.ensure_oidc_client_registered()
+            mock_register.assert_called_once()
+            kwargs = mock_register.call_args.kwargs
+            # Authlib only applies PKCE when the method is truthy, so None disables it.
+            self.assertIsNone(kwargs["client_kwargs"]["code_challenge_method"])
+            self.assertEqual(kwargs["client_secret"], "test-client-secret")
+
+    def test_client_secret_passed_when_present(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        oauth_mod.reset_oauth()
+        mock_register = MagicMock()
+        with (
+            self._patch_config(oauth_mod, OIDC_CLIENT_SECRET="test-secret", OIDC_CODE_CHALLENGE="S256"),
+            patch.object(oauth_mod.oauth, "register", mock_register),
+        ):
+            oauth_mod.ensure_oidc_client_registered()
+            kwargs = mock_register.call_args.kwargs
+            self.assertEqual(kwargs["client_secret"], "test-secret")
+            self.assertEqual(kwargs["client_kwargs"]["code_challenge_method"], "S256")
+
+    def test_has_required_config_allows_pkce_without_secret(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with self._patch_config(oauth_mod, OIDC_CLIENT_SECRET=None, OIDC_CODE_CHALLENGE="S256"):
+            self.assertTrue(oauth_mod._has_required_config())
+
+    def test_has_required_config_rejects_missing_secret_and_pkce(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with self._patch_config(oauth_mod, OIDC_CLIENT_SECRET=None, OIDC_CODE_CHALLENGE=None):
+            self.assertFalse(oauth_mod._has_required_config())
 
 
 if __name__ == "__main__":

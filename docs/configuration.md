@@ -10,7 +10,8 @@ The application is configured through environment variables, `.env` files, or pl
 |----------|------|---------|-------------|
 | `OIDC_DISCOVERY_URL` | String | *Required* | OIDC discovery endpoint URL (e.g., `https://idp.example.com/.well-known/openid-configuration`) |
 | `OIDC_CLIENT_ID` | String | *Required* | Client ID registered with your OIDC provider |
-| `OIDC_CLIENT_SECRET` | String | *Required* | Client secret for your OIDC application |
+| `OIDC_CLIENT_SECRET` | String | *Required unless PKCE* | Client secret for your OIDC application. Can be omitted when `OIDC_CODE_CHALLENGE=S256` |
+| `OIDC_CODE_CHALLENGE` | String | None | PKCE code challenge method. Set to `S256` to enable PKCE for public clients. Omit (or leave empty) to use a confidential client with `OIDC_CLIENT_SECRET` |
 | `OIDC_REDIRECT_URI` | String | Auto-detected | Redirect URI for the OIDC callback (`/callback`). If not set, calculated dynamically from proxy headers, which works correctly behind reverse proxies |
 | `OIDC_SCOPE` | String | `openid,email,profile` | Comma-separated list of OIDC scopes to request |
 | `OIDC_AUDIENCE` | String | None | Expected JWT `aud` claim value (e.g., your client ID or API identifier). When set, bearer tokens are rejected if the `aud` claim doesn't match. Recommended for production to prevent token confusion attacks |
@@ -80,7 +81,6 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 | `OIDC_JWKS_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for the JWKS key set cache. The OIDC provider's signing keys are fetched once and cached for this duration. This is always a local in-process cache (not affected by `CACHE_BACKEND`) because JWKS data is identical across replicas |
 | `OIDC_HTTP_TIMEOUT_SECONDS` | Integer | `10` | Timeout (seconds) applied to OIDC discovery and JWKS HTTP fetches. Set lower for faster failover when the IdP is unreachable; without a timeout a hung IdP can block request threads until the OS-level TCP timeout (~2 minutes), causing cascading auth failures |
 | `OIDC_VERIFY_SSL` | Boolean | `true` | Verify the OIDC provider's TLS certificate on discovery, JWKS, and token requests. Only set to `false` for providers using self-signed certificates in a trusted network |
-| `OIDC_CODE_CHALLENGE` | String | _(none)_ | PKCE code-challenge method. Set to `S256` to enable PKCE on the authorization-code flow; omit to disable |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
 | `CACHE_BACKEND` | String | `local` | Cache backend for permission and workspace caches. Options: `local` (in-process TTL cache) or `redis` (shared Redis instance). Use `redis` for multi-replica deployments where permission changes must propagate immediately across all replicas |
 | `CACHE_REDIS_URL` | String | None | Redis connection URL. Required when `CACHE_BACKEND=redis`. Example: `redis://localhost:6379/0` or `redis://:password@redis-host:6379/1` |
@@ -153,6 +153,16 @@ MLflow natively supports environment variables for server configuration. These a
 OIDC_DISCOVERY_URL=https://your-idp.example.com/.well-known/openid-configuration
 OIDC_CLIENT_ID=mlflow-dev
 OIDC_CLIENT_SECRET=dev-secret
+SECRET_KEY=dev-not-for-production
+```
+
+or for public client (no client secret) where PKCE is required
+
+```bash
+# .env file
+OIDC_DISCOVERY_URL=https://your-idp.example.com/.well-known/openid-configuration
+OIDC_CLIENT_ID=mlflow-dev-public
+OIDC_CODE_CHALLENGE=S256
 SECRET_KEY=dev-not-for-production
 ```
 
