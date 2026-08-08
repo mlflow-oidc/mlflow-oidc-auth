@@ -14,7 +14,11 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from mlflow_oidc_auth.routers import _COPIED_ROUTE_FIELDS, ajax_alias_router
-from mlflow_oidc_auth.routers._prefix import USERS_ROUTER_PREFIX, to_ajax_path
+from mlflow_oidc_auth.routers._prefix import (
+    HEALTH_CHECK_ROUTER_PREFIX,
+    USERS_ROUTER_PREFIX,
+    to_ajax_path,
+)
 
 
 class TestToAjaxPath:
@@ -193,7 +197,20 @@ class TestAliasFidelity:
 
 
 class TestAppRegistration:
-    """The app-level helper must register both prefixes for real routers."""
+    """The app-level helper must register both prefixes for real routers.
+
+    These assert through the app's routing rather than by walking ``app.routes``:
+    FastAPI 0.141 wraps each ``include_router()`` call in an internal router
+    object, so the leaf routes are no longer reachable by inspection. What
+    matters is where a request actually lands, and that holds either way.
+    """
+
+    @staticmethod
+    def _status_for(app: FastAPI, path: str) -> int:
+        # Server exceptions become 500s instead of propagating: these handlers
+        # need an auth context that a bare TestClient request does not set up,
+        # and the question here is only which of them the request reaches.
+        return TestClient(app, raise_server_exceptions=False).get(path).status_code
 
     def test_include_router_registers_both_prefixes(self):
         from mlflow_oidc_auth.app import _include_router
@@ -202,9 +219,12 @@ class TestAppRegistration:
         app = FastAPI()
         _include_router(app, users_router)
 
-        paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
-        assert f"{USERS_ROUTER_PREFIX}/current" in paths
-        assert "/ajax-api/2.0/mlflow/users/current" in paths
+        api_status = self._status_for(app, f"{USERS_ROUTER_PREFIX}/current")
+        ajax_status = self._status_for(app, "/ajax-api/2.0/mlflow/users/current")
+
+        assert api_status != 404, "the canonical /api route should be registered"
+        # Same handler, same outcome - the twin must not 404 or diverge.
+        assert ajax_status == api_status
 
     def test_include_router_skips_an_empty_alias(self):
         from mlflow_oidc_auth.app import _include_router
@@ -213,5 +233,6 @@ class TestAppRegistration:
         app = FastAPI()
         _include_router(app, health_check_router)
 
-        paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
-        assert not any(path.startswith("/ajax-api") for path in paths)
+        assert self._status_for(app, HEALTH_CHECK_ROUTER_PREFIX) != 404
+        # Health checks are not part of the REST surface, so there is no twin.
+        assert self._status_for(app, f"/ajax-api{HEALTH_CHECK_ROUTER_PREFIX}") == 404
