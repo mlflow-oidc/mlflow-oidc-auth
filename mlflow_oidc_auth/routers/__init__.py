@@ -63,6 +63,60 @@ __all__ = [
 ]
 
 
+# Every ``add_api_route`` keyword that describes the route itself rather than
+# where it is mounted. A twin must carry all of them, or it silently behaves
+# differently from its "/api" original - ``response_model_exclude_none``, for
+# one, changes the JSON the UI receives. The remaining keywords are supplied
+# explicitly by ``ajax_alias_router`` (see ``_MOUNT_ROUTE_FIELDS`` in the tests,
+# which asserts the two sets together still cover the whole signature).
+_COPIED_ROUTE_FIELDS = (
+    "response_model",
+    "status_code",
+    "tags",
+    "dependencies",
+    "summary",
+    "description",
+    "response_description",
+    "responses",
+    "deprecated",
+    "operation_id",
+    "response_model_include",
+    "response_model_exclude",
+    "response_model_by_alias",
+    "response_model_exclude_unset",
+    "response_model_exclude_defaults",
+    "response_model_exclude_none",
+    "response_class",
+    "callbacks",
+    "openapi_extra",
+    "generate_unique_id_function",
+    "strict_content_type",
+)
+
+# Suffix appended to a twin's route name so ``url_path_for()`` stays unambiguous.
+AJAX_ROUTE_NAME_SUFFIX = "_ajax"
+
+
+def _copied_route_kwargs(route: APIRoute) -> dict:
+    """Collect the route-describing keywords to carry over to a twin.
+
+    Fields absent from the installed FastAPI version are skipped, so this keeps
+    working across versions that add or drop route options.
+    """
+    kwargs = {}
+    for field in _COPIED_ROUTE_FIELDS:
+        if not hasattr(route, field):
+            continue
+        value = getattr(route, field)
+        # Copy the mutable containers so the twin can never mutate the original.
+        if isinstance(value, list):
+            value = list(value)
+        elif isinstance(value, dict):
+            value = dict(value)
+        kwargs[field] = value
+    return kwargs
+
+
 def ajax_alias_router(router: APIRouter) -> APIRouter:
     """Mirror a router's "/api" routes onto MLflow's "/ajax-api" prefix.
 
@@ -96,18 +150,15 @@ def ajax_alias_router(router: APIRouter) -> APIRouter:
             ajax_path,
             route.endpoint,
             methods=sorted(route.methods),
-            response_model=route.response_model,
-            status_code=route.status_code,
-            dependencies=list(route.dependencies),
-            summary=route.summary,
-            description=route.description,
-            tags=list(route.tags),
-            response_class=route.response_class,
+            # Preserve a custom route class (request/response handling lives
+            # there) instead of falling back to the plain APIRoute.
+            route_class_override=type(route),
             # The canonical "/api" paths are the documented ones; keeping the
             # twins out of the schema avoids listing every endpoint twice. The
             # distinct name keeps url_path_for() unambiguous.
-            name=f"{route.name}_ajax",
+            name=f"{route.name}{AJAX_ROUTE_NAME_SUFFIX}",
             include_in_schema=False,
+            **_copied_route_kwargs(route),
         )
     return alias
 
