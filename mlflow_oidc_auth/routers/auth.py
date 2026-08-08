@@ -18,7 +18,7 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
-from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri
+from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name
 
 from ._prefix import UI_ROUTER_PREFIX
 
@@ -403,7 +403,7 @@ async def callback(request: Request):
         session = request.session
 
         # Process OIDC callback using FastAPI-native implementation
-        email, errors = await _process_oidc_callback_fastapi(request, session)
+        username, errors = await _process_oidc_callback_fastapi(request, session)
 
         if errors:
             # Handle authentication errors
@@ -415,13 +415,13 @@ async def callback(request: Request):
             logger.debug(f"Redirecting to auth error page: {auth_error_url}")
             return RedirectResponse(url=auth_error_url, status_code=302)
 
-        if email:
+        if username:
             # Successful authentication
-            session["username"] = email
+            session["username"] = username
             session["authenticated"] = True
 
-            logger.info(f"User {email} authenticated successfully via OIDC")
-            emit_audit_event("auth.login", actor=email, detail={"method": "oidc"})
+            logger.info(f"User {username} authenticated successfully via OIDC")
+            emit_audit_event("auth.login", actor=username, detail={"method": "oidc"})
 
             # Redirect to UI home page or original destination
             default_redirect = session.pop("redirect_after_login", None)
@@ -484,7 +484,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
         session: SessionManager instance
 
     Returns:
-        Tuple of (email, error_list)
+        Tuple of (username, error_list)
     """
     import html
 
@@ -540,16 +540,18 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             errors.append("No user information received")
             return None, errors
 
-        # Extract user details
-        email = userinfo.get("email") or userinfo.get("preferred_username")
-        display_name = userinfo.get("name")
+        # Extract user details using utility functions
+        username, username_error = extract_username(userinfo)
+        if username_error:
+            errors.append(username_error)
+            return None, errors
 
-        if not email:
-            errors.append("No email provided in OIDC userinfo")
-            return None, errors
-        if not display_name:
-            errors.append("No display name provided in OIDC userinfo")
-            return None, errors
+        # A missing display name doesn't block login — fall back to the username,
+        # matching the bearer-token provisioning path (auth_middleware.py).
+        display_name, display_name_error = extract_display_name(userinfo)
+        if display_name_error:
+            logger.debug("Falling back to username as display name for %s: %s", username, display_name_error)
+            display_name = username
 
         # Handle user and group management
         try:
@@ -580,9 +582,9 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
                 return None, errors
 
             # Create/update user and groups using user_module so monkeypatched functions are used in tests
-            user_module.create_user(username=email.lower(), display_name=display_name, is_admin=is_admin)
+            user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
             user_module.populate_groups(group_names=user_groups)
-            user_module.update_user(username=email.lower(), group_names=user_groups)
+            user_module.update_user(username=username, group_names=user_groups)
 
             # Workspace detection (per D-07, D-08, WSOIDC-01/02/03)
             # Layered approach: plugin first, JWT claim fallback, then auto-assign
@@ -631,7 +633,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
                                 ws_mlflow_store.create_workspace(
                                     MlflowWorkspace(name=ws_name, description=""),
                                 )
-                                logger.info(f"Auto-created workspace '{ws_name}' during OIDC login for user {email}")
+                                logger.info(f"Auto-created workspace '{ws_name}' during OIDC login for user {username}")
                             except Exception as create_err:
                                 # Creation may fail if name is invalid or race condition
                                 logger.warning(f"Failed to auto-create workspace '{ws_name}': {create_err}")
@@ -640,15 +642,15 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
                     try:
                         ws_store.create_workspace_permission(
                             ws_name,
-                            email.lower(),
+                            username,
                             config.OIDC_WORKSPACE_DEFAULT_PERMISSION,
                         )
-                        logger.info(f"Auto-assigned user {email} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}")
+                        logger.info(f"Auto-assigned user {username} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}")
                     except Exception:
                         # Permission already exists — not an error (idempotent)
-                        logger.debug(f"Workspace permission already exists for {email} in '{ws_name}'")
+                        logger.debug(f"Workspace permission already exists for {username} in '{ws_name}'")
 
-            logger.info(f"User {email} successfully processed with groups: {user_groups}")
+            logger.info(f"User {username} successfully processed with groups: {user_groups}")
 
         except Exception as e:
             logger.error(f"User/group management error: {str(e)}")
@@ -657,7 +659,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
 
         _persist_session_auth(session, token_response)
 
-        return email.lower(), []
+        return username, []
 
     except Exception as e:
         logger.error(

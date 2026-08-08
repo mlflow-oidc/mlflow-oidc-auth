@@ -60,7 +60,7 @@ Before starting the server, register a client application with your OIDC provide
 2. **Grant type**: Authorization Code
 3. **Redirect URI**: `https://your-mlflow-host/callback`
 4. **Scopes**: `openid`, `email`, `profile`
-5. **Token claims**: The ID token must include `email` (or `preferred_username`) and `groups`
+5. **Token claims**: The ID token must include `email` (or `preferred_username`) and `groups`. The claim(s) used for the login identity are configurable via `OIDC_USERNAME_FIELD` — see [Configuration Reference](configuration#oidc-authentication)
 
 ### Provider-Specific Notes
 

@@ -78,7 +78,7 @@ Authenticates against the plugin's user database. Used by MLflow CLI/SDK (`mlflo
 Authorization: Bearer <jwt_token>
 ```
 
-Validates the JWT against the OIDC provider's JWKS endpoint. Extracts `email` or `preferred_username` from claims. Handles key rotation by retrying with a fresh JWKS on signature failure. When `OIDC_AUDIENCE` is configured, the `aud` claim is validated to prevent token confusion attacks.
+Validates the JWT against the OIDC provider's JWKS endpoint. Extracts the username from the claims listed in `OIDC_USERNAME_FIELD` (default `email`, then `preferred_username`). Handles key rotation by retrying with a fresh JWKS on signature failure. When `OIDC_AUDIENCE` is configured, the `aud` claim is validated to prevent token confusion attacks.
 
 ### 3. Session Cookie (Fallback)
 
