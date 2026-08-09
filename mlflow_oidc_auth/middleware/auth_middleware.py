@@ -18,6 +18,7 @@ from starlette.types import ASGIApp
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.routers._prefix import API_PATH_PREFIXES
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
@@ -401,7 +402,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.info(f"Authentication failed for {path}: {error_msg}")
             # Treat certain non-/api routes as API-style endpoints (no redirects)
             # so callers get an HTTP error instead of a redirected 200.
-            if path.startswith("/api"):
+            # "/ajax-api" is the same REST surface under the prefix the web UI
+            # calls; it must 401 rather than redirect, just like "/api".
+            if path.startswith(API_PATH_PREFIXES):
                 return JSONResponse(status_code=401, content={"detail": "Authentication required"})
             if path.startswith("/oidc/trash"):
                 return JSONResponse(
