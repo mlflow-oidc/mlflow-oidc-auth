@@ -34,7 +34,7 @@
 - FastAPI >=0.132.0 - Primary ASGI application framework (`pyproject.toml`, `mlflow_oidc_auth/app.py`)
 - Flask <4 - MLflow's built-in web framework, mounted as WSGI under FastAPI (`mlflow_oidc_auth/app.py`)
 - Starlette - Underlying ASGI framework (via FastAPI), session middleware (`starlette.middleware.sessions`)
-- MLflow >=3.10.0, <4 - ML experiment tracking server; this project is an auth plugin (`pyproject.toml`)
+- MLflow >=3.14.0, <4 - ML experiment tracking server; this project is an auth plugin (`pyproject.toml`)
 
 **Frontend:**
 - React 19.1 - UI framework (`web-react/package.json`)
@@ -62,7 +62,7 @@
 ## Key Dependencies
 
 **Critical Runtime (Python):**
-- `mlflow` >=3.10.0, <4 - Core tracking server this plugin extends (`pyproject.toml`)
+- `mlflow` >=3.14.0, <4 - Core tracking server this plugin extends (`pyproject.toml`)
 - `fastapi` >=0.132.0 - ASGI web framework for auth routes (`pyproject.toml`)
 - `uvicorn` >=0.41.0 - ASGI server (`pyproject.toml`)
 - `authlib` <2 - OIDC/OAuth2 client library, JWT validation (`mlflow_oidc_auth/oauth.py`, `mlflow_oidc_auth/auth.py`)

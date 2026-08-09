@@ -9,3 +9,4 @@
 - [Admin UI](admin-ui)
 - [API Reference](api-reference)
 - [Development and Contribution](development)
+- [Agentic Development](agentic-development)

@@ -238,7 +238,9 @@ mlflow-oidc-auth/
 ├── Dockerfile                      # Container build
 ├── docker-compose.yml              # Local dev environment
 ├── .github/                        # GitHub Actions CI/CD workflows
-└── .planning/                      # GSD planning documents
+├── .planning/                      # Codebase reference + historical records (see .planning/README.md)
+├── AGENTS.md                       # Agent instructions — source of truth
+└── .claude/                        # Enforced agent guardrails, subagents, commands
 ```
 
 ## Directory Purposes
@@ -439,8 +441,13 @@ mlflow-oidc-auth/
 - Committed: No (in .gitignore)
 
 **`.planning/`:**
-- Purpose: GSD planning and analysis documents
-- Generated: By GSD tooling
+- Purpose: Codebase reference (`codebase/`) plus historical milestone records. Not the roadmap — see `.planning/README.md`
+- Generated: Originally by tooling; now maintained by hand
+- Committed: Yes
+
+**`AGENTS.md` / `.claude/`:**
+- Purpose: AI agent instructions and enforced guardrails. `AGENTS.md` is the source of truth; see `docs/agentic-development.md`
+- Generated: No (manually maintained)
 - Committed: Yes
 
 **`.github/`:**
