@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mlflow_oidc_auth.config import config as real_config
 from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
 
 
@@ -151,6 +152,41 @@ class TestAdminElevation:
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
             create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=True)
+
+
+class TestConfigurableDisplayName:
+    """Bearer-token provisioning must honor OIDC_DISPLAY_NAME_FIELD, not a hardcoded 'name' claim."""
+
+    def test_provisioning_honors_configured_display_name_field(self, monkeypatch):
+        """OIDC_DISPLAY_NAME_FIELD must be respected on bearer provisioning, not just interactive login."""
+        monkeypatch.setattr(real_config, "OIDC_DISPLAY_NAME_FIELD", ["full_name"])
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+        ):
+            _cfg(cfg)
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice", "full_name": "Alice Anderson"})
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice Anderson", is_admin=False)
+
+    def test_provisioning_falls_back_to_username_when_configured_field_missing(self, monkeypatch):
+        """A present-but-unconfigured field (e.g. 'name') must not be used as a fallback source."""
+        monkeypatch.setattr(real_config, "OIDC_DISPLAY_NAME_FIELD", ["full_name"])
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+        ):
+            _cfg(cfg)
+            store.has_user.return_value = False
+            # "name" is present but not the configured field, so it must not be used.
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice"})
+            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False)
 
 
 class TestRobustness:

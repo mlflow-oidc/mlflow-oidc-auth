@@ -18,9 +18,11 @@ from starlette.types import ASGIApp
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.routers._prefix import API_PATH_PREFIXES
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.groups import matches_group_patterns, normalize_group_values
+from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
 
 logger = get_logger()
 
@@ -167,7 +169,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Admin is conferred from a token only when the operator has explicitly opted in.
         is_admin = is_admin_claim and config.OIDC_TRUST_BEARER_GROUP_CLAIMS
-        display_name = payload.get("name") or username
+        display_name, display_name_error = extract_display_name(payload, source=BEARER_TOKEN_SOURCE)
+        if display_name_error:
+            logger.debug("Bearer provisioning of %s falling back to username as display name: %s", username, display_name_error)
+            display_name = username
         try:
             import mlflow_oidc_auth.user as user_module
 
@@ -193,14 +198,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             token = auth_header.split(" ", 1)[1]
             # Validate token and extract user info
             payload = validate_token(token)
-            username = payload.get("email") or payload.get("preferred_username")
-            if username:
-                username = username.lower()
-                self._maybe_provision_bearer_user(username, token, payload)
-                logger.debug(f"User {username} authenticated via bearer token")
-                return True, username, ""
-            else:
-                return False, None, "Invalid token payload"
+
+            # Extract username from configured fields. extract_username guarantees a
+            # non-empty, normalized username whenever it returns no error.
+            username, error_msg = extract_username(payload, source=BEARER_TOKEN_SOURCE)
+            if error_msg:
+                return False, None, error_msg
+
+            self._maybe_provision_bearer_user(username, token, payload)
+            logger.debug(f"User {username} authenticated via bearer token")
+            return True, username, ""
         except Exception as e:
             logger.warning("Bearer auth error: %s: %s", type(e).__name__, e)
             logger.debug("Bearer auth error traceback", exc_info=True)
@@ -395,7 +402,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.info(f"Authentication failed for {path}: {error_msg}")
             # Treat certain non-/api routes as API-style endpoints (no redirects)
             # so callers get an HTTP error instead of a redirected 200.
-            if path.startswith("/api"):
+            # "/ajax-api" is the same REST surface under the prefix the web UI
+            # calls; it must 401 rather than redirect, just like "/api".
+            if path.startswith(API_PATH_PREFIXES):
                 return JSONResponse(status_code=401, content={"detail": "Authentication required"})
             if path.startswith("/oidc/trash"):
                 return JSONResponse(

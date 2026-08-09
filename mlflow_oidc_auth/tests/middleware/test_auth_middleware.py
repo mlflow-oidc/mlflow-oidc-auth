@@ -196,7 +196,7 @@ class TestAuthMiddleware:
 
             assert success is False
             assert username is None
-            assert error == "Invalid token payload"
+            assert error == "No username provided in bearer token payload"
 
     @pytest.mark.asyncio
     async def test_authenticate_bearer_token_invalid_token(self, auth_middleware, mock_validate_token):
@@ -628,6 +628,29 @@ class TestAuthMiddleware:
                 path="/some-app-route/data.js",
                 session={},
                 headers={"sec-fetch-dest": "script"},
+            )
+
+            response = await auth_middleware.dispatch(request, lambda r: pytest.fail("should not be called"))
+
+            assert response.status_code == 401
+            assert b"Authentication required" in response.body
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("prefix", ["/api", "/ajax-api"])
+    async def test_dispatch_unauthenticated_rest_path_returns_401(self, prefix, auth_middleware, create_mock_request, mock_config):
+        """Both REST prefixes are API surfaces and must 401 rather than redirect.
+
+        The plugin serves its endpoints under "/ajax-api" too (that's the prefix
+        MLflow's UI calls), so an unauthenticated call there must not be handed
+        a 302 to the login page.
+        """
+        mock_config.AUTOMATIC_LOGIN_REDIRECT = True
+
+        with patch("mlflow_oidc_auth.middleware.auth_middleware.config", mock_config):
+            request = create_mock_request(
+                path=f"{prefix}/2.0/mlflow/users/current",
+                session={},
+                headers={"sec-fetch-dest": "document"},
             )
 
             response = await auth_middleware.dispatch(request, lambda r: pytest.fail("should not be called"))

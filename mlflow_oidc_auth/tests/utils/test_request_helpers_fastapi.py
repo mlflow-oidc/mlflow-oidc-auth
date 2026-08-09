@@ -200,6 +200,19 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
         asyncio.run(test_async())
 
     @patch("mlflow_oidc_auth.utils.request_helpers_fastapi.validate_token")
+    def test_get_username_from_bearer_token_uses_preferred_username_fallback(self, mock_validate_token):
+        """Test that the preferred_username fallback (via extract_username) still works here."""
+
+        async def test_async():
+            mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test_token")
+            mock_validate_token.return_value = {"preferred_username": "User.Name"}
+
+            result = await get_username_from_bearer_token(mock_credentials)
+            self.assertEqual(result, "user.name")  # normalized to lowercase
+
+        asyncio.run(test_async())
+
+    @patch("mlflow_oidc_auth.utils.request_helpers_fastapi.validate_token")
     def test_get_username_from_bearer_token_validation_error(self, mock_validate_token):
         """Test username extraction when token validation fails."""
 
