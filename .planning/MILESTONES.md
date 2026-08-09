@@ -1,5 +1,11 @@
 # Milestones
 
+> **Historical.** This describes the workspace milestone (2026-03), planned under a tool no
+> longer wired into this repository. It is kept as a record, not as current direction.
+> Current roadmap: GitHub issues, starting from
+> [epic #304](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/304). See
+> [`.planning/README.md`](README.md).
+
 ## v1.0 Workspace Support (Shipped: 2026-03-24)
 
 **Phases completed:** 4 phases, 10 plans, 19 tasks

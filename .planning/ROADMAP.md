@@ -1,5 +1,11 @@
 # Roadmap: MLflow OIDC Auth — Workspace Support
 
+> **Historical.** This describes the workspace milestone (2026-03), planned under a tool no
+> longer wired into this repository. It is kept as a record, not as current direction.
+> Current roadmap: GitHub issues, starting from
+> [epic #304](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/304). See
+> [`.planning/README.md`](README.md).
+
 ## Milestones
 
 - ✅ **v1.0 Workspace Support** — Phases 1-4 (shipped 2026-03-23)

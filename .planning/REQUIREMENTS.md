@@ -1,5 +1,11 @@
 # Requirements: MLflow OIDC Auth — Workspace Management
 
+> **Historical.** This describes the workspace milestone (2026-03), planned under a tool no
+> longer wired into this repository. It is kept as a record, not as current direction.
+> Current roadmap: GitHub issues, starting from
+> [epic #304](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/304). See
+> [`.planning/README.md`](README.md).
+
 **Defined:** 2026-03-24
 **Core Value:** Multi-tenant resource isolation — organizations must be able to share an MLflow instance while each tenant sees only their own experiments, models, and resources, with no accidental data leakage between tenants.
 

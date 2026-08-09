@@ -1,5 +1,11 @@
 # MLflow OIDC Auth — Organization Support
 
+> **Superseded framing.** This frames the project around the workspace/organization milestone
+> (2026-03). The constraints and core value below still hold, but the current direction and
+> roadmap live in GitHub issues, starting from
+> [epic #304](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/304). For what an agent
+> should read first, see [`AGENTS.md`](../AGENTS.md) and [`.planning/README.md`](README.md).
+
 ## What This Is
 
 An MLflow authentication and authorization plugin (mlflow-oidc-auth) that adds OIDC-based login, RBAC with users/groups, per-resource permission management, and multi-tenant workspace isolation to MLflow tracking servers. Workspace support enables resource isolation across teams or external organizations sharing a single MLflow instance, with feature-flag-gated opt-in behavior and zero impact on existing deployments.

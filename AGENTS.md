@@ -53,7 +53,11 @@ Identity crosses the boundary as an `AuthContext` placed in the ASGI scope, copi
 
 Deeper reference lives in [`.planning/codebase/`](.planning/codebase/) — `ARCHITECTURE.md`,
 `STRUCTURE.md`, `CONVENTIONS.md`, `TESTING.md`, `INTEGRATIONS.md`, `CONCERNS.md`. Read the one
-you need; don't read all of them by default.
+you need; don't read all of them by default. Where any of them disagrees with this file, this
+file wins and the other should be corrected.
+
+`.planning/` also holds historical milestone records — see [`.planning/README.md`](.planning/README.md)
+for what is live and what is not. It is **not** the roadmap; the roadmap is GitHub issues.
 
 ## Rules that are not negotiable
 
