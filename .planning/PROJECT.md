@@ -107,7 +107,7 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 - Priority-aware regex matching with tie-break by most permissive
 - `cachetools>=5.5.0` pinned as direct dependency
 
-**Tech stack:** Python 3.12 / FastAPI / Flask / SQLAlchemy 2 backend, React 19 / TypeScript / Vite frontend. MLflow >=3.10.0 required for workspace protobuf RPCs.
+**Tech stack:** Python 3.12 / FastAPI / Flask / SQLAlchemy 2 backend, React 19 / TypeScript / Vite frontend. MLflow >=3.14.0 required (supported floor per `pyproject.toml`); workspace protobuf RPCs originated in 3.10.
 
 **Known gaps:**
 - ENTITY-02 (GatewayBudgetPolicy) deferred — protos not present in MLflow 3.10.1
@@ -118,7 +118,7 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 
 ## Constraints
 
-- **Compatibility**: Must target MLflow >=3.10.0 — org features require 3.10 baseline
+- **Compatibility**: Must target MLflow >=3.14.0 — org/workspace features originated in 3.10, but 3.14.0 is the supported floor declared in `pyproject.toml`
 - **Production impact**: Existing deployments unaffected when workspaces disabled (feature flag default)
 - **Tech stack**: Python/FastAPI/Flask/SQLAlchemy backend, React/TypeScript frontend — no new frameworks
 - **Plugin boundary**: Can only control auth/authz — cannot modify MLflow core behavior
