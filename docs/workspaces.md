@@ -261,3 +261,21 @@ Workspace lifecycle is handled by MLflow's native workspace API. The auth plugin
 | DELETE | `/api/3.0/mlflow/permissions/workspaces/regex/group/{id}` | Delete group regex permission |
 
 See the full [API Reference](api-reference) for request/response schemas.
+
+## Limitations and non-goals
+
+These are deliberate exclusions, not gaps. They are listed so you can plan around them rather
+than discover them.
+
+| Not supported | Why |
+|---|---|
+| Workspace hierarchy / nesting | MLflow's workspace model is flat. Nesting would make permission resolution exponentially more complex for a case MLflow itself does not represent. |
+| Moving a resource between workspaces | Not supported by MLflow — an experiment or model must be recreated in the target workspace. |
+| Per-workspace redefinition of RBAC levels | `READ` / `USE` / `EDIT` / `MANAGE` mean the same thing everywhere. Per-workspace semantics would make a permission audit unreadable. |
+| Per-workspace artifact store management in the UI | An MLflow core responsibility. `default_artifact_root` is set at creation time only. |
+| Workspace templates | Set up each workspace explicitly, or script it against the API. |
+| Workspace usage analytics | Not an authorization concern — use MLflow's own UI. |
+| Cross-instance workspace federation | This plugin secures a single MLflow instance. |
+
+Workspace CRUD always proxies through the MLflow API rather than writing to MLflow's store
+directly, so MLflow's own validation and constraints continue to apply.

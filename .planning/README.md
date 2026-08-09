@@ -33,7 +33,14 @@ what was built and why. Do not read them as current direction, and do not add to
 
 | File | Status |
 |---|---|
-| `PROJECT.md` | Workspace milestone framing. Historical. |
-| `ROADMAP.md` | Workspace phases 1–8. Phases 7–8 shown as open were descoped, not scheduled. |
-| `MILESTONES.md` | Record of what v1.0 workspace support shipped. Historical. |
-| `REQUIREMENTS.md` | v1.1 workspace management requirements. Historical. |
+| `PROJECT.md` | Workspace milestone framing. Superseded; constraints still hold. |
+| `ROADMAP.md` | Workspace phases 1–8, all shipped. Historical. |
+
+`MILESTONES.md` and `REQUIREMENTS.md` were removed once every requirement in them was verified
+shipped. What was worth keeping moved out rather than being deleted:
+
+- the workspace non-goals table → [`docs/workspaces.md`](../docs/workspaces.md#limitations-and-non-goals)
+- `PERMISSION_REGISTRY` and the base permission repositories → `codebase/ARCHITECTURE.md`
+- the two deferred UI enhancements → [issue #332](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/332)
+
+Release history lives in git and in GitHub Releases; it does not need a second copy here.

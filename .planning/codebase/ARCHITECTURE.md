@@ -163,6 +163,19 @@
 
 ## Key Abstractions
 
+**PERMISSION_REGISTRY:**
+- Purpose: Single registry mapping a resource type to the builder that produces its permission
+  sources, replacing what used to be per-resource copies of the same resolution logic
+- Definition: `mlflow_oidc_auth/utils/permissions.py` (registry at ~line 287, dispatched in
+  `resolve_permission()`)
+- Pattern: Adding a resource type means adding a builder here, not another copy of the chain
+
+**Base permission repositories:**
+- Purpose: Generic CRUD shared by every permission table, so the ~28 permission repositories are
+  thin subclasses rather than duplicated implementations
+- Definition: `mlflow_oidc_auth/repository/_base.py` — user, group, regex and group-regex variants
+- Pattern: A new permission table subclasses the matching base; overriding CRUD is a smell
+
 **Permission:**
 - Purpose: Represents an access level for a resource
 - Definition: `mlflow_oidc_auth/permissions.py`

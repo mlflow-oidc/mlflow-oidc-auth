@@ -9,7 +9,7 @@
 ## Milestones
 
 - ✅ **v1.0 Workspace Support** — Phases 1-4 (shipped 2026-03-23)
-- 🚧 **v1.1 Workspace Management** — Phases 5-8 (in progress)
+- ✅ **v1.1 Workspace Management** — Phases 5-8 (shipped)
 
 ## Phases
 
@@ -23,14 +23,14 @@
 
 </details>
 
-### 🚧 v1.1 Workspace Management (In Progress)
+### ✅ v1.1 Workspace Management (Shipped)
 
 **Milestone Goal:** Add full workspace lifecycle management — CRUD proxy, regex permissions, workspace-scoped search filtering, admin UI with global picker.
 
 - [x] **Phase 5: Regex Workspace Permissions** - Pattern-based workspace access rules with cache integration (completed 2026-03-24)
 - [x] **Phase 6: Workspace CRUD Backend** - FastAPI proxy to MLflow workspace API with permission cascade and OIDC auto-create (completed 2026-03-24)
-- [ ] **Phase 7: Workspace-Scoped Search Filtering** - Security-critical after_request hooks preventing cross-tenant data leakage
-- [ ] **Phase 8: Workspace Management UI & Global Picker** - Admin CRUD forms, member counts, bulk ops, header dropdown with search and keyboard shortcut
+- [x] **Phase 7: Workspace-Scoped Search Filtering** - Security-critical after_request hooks preventing cross-tenant data leakage
+- [x] **Phase 8: Workspace Management UI & Global Picker** - Admin CRUD forms, member counts, bulk ops, header dropdown with search and keyboard shortcut
 
 ## Phase Details
 
