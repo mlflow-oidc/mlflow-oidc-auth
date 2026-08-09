@@ -37,8 +37,10 @@ had the content. And it mandated a workflow (`/gsd:quick`, `/gsd:debug`, `/gsd:e
 whose commands are not in this repository, so an agent following its instructions was told to run
 things that do not exist.
 
-`.planning/codebase/` survives as deep reference. `.planning/ROADMAP.md` and `MILESTONES.md`
-describe the shipped workspace milestone and are historical, not current direction.
+`.planning/codebase/` survives as deep reference. The milestone planning documents
+(`ROADMAP.md`, `MILESTONES.md`, `REQUIREMENTS.md`) were removed after every requirement in them
+was verified shipped — see [`.planning/README.md`](../.planning/README.md) for where the parts
+worth keeping went. The roadmap is GitHub issues.
 
 ---
 
