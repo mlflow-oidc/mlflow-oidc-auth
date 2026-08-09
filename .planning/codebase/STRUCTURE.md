@@ -238,7 +238,9 @@ mlflow-oidc-auth/
 ├── Dockerfile                      # Container build
 ├── docker-compose.yml              # Local dev environment
 ├── .github/                        # GitHub Actions CI/CD workflows
-└── .planning/                      # GSD planning documents
+├── .planning/                      # Codebase reference + historical records (see .planning/README.md)
+├── AGENTS.md                       # Agent instructions — source of truth
+└── .claude/                        # Enforced agent guardrails, subagents, commands
 ```
 
 ## Directory Purposes

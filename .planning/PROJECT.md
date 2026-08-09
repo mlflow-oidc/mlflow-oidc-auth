@@ -154,20 +154,14 @@ Multi-tenant resource isolation — organizations must be able to share an MLflo
 
 ## Evolution
 
-This document evolves at phase transitions and milestone boundaries.
+This document no longer evolves. It captured the workspace/organization milestone under a
+planning tool that is no longer wired into this repository; the `/gsd-transition` and
+`/gsd-complete-milestone` commands it used to reference do not exist here.
 
-**After each phase transition** (via `/gsd-transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
-
-**After each milestone** (via `/gsd-complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
+Current direction is tracked in GitHub issues — see
+[epic #304](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/304) — with work defined by
+[`.github/ISSUE_TEMPLATE/agent-task.yml`](../.github/ISSUE_TEMPLATE/agent-task.yml). What an
+agent should read first is [`AGENTS.md`](../AGENTS.md).
 
 ---
 *Last updated: 2026-03-24 after v1.1 Phase 8 (Workspace Management UI & Global Picker) complete — Milestone v1.1 Workspace Management COMPLETE*
