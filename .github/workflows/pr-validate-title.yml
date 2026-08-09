@@ -19,9 +19,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          # Keep in sync with the pattern in commit-message-check.yml, which already
+          # accepts these. "perf" is a release type: the angular preset that
+          # @semantic-release/commit-analyzer defaults to maps it to a patch release and
+          # gives it its own "Performance Improvements" changelog section.
           types: |
             fix
             feat
+            perf
             docs
             ci
             chore
