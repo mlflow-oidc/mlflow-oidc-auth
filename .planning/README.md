@@ -1,17 +1,14 @@
 # `.planning/`
 
-Long-form reference and historical planning records. **This directory is not the roadmap.**
+Deep reference on the codebase. **This directory is not the roadmap and holds no plans.**
 
-Current direction lives in GitHub issues. The active roadmap is
+Current direction lives in GitHub issues — the active roadmap is
 [epic #304 — enterprise identity](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/304).
 Work is defined by [`.github/ISSUE_TEMPLATE/agent-task.yml`](../.github/ISSUE_TEMPLATE/agent-task.yml),
 whose acceptance criteria are runnable commands. See
 [`docs/agentic-development.md`](../docs/agentic-development.md).
 
-## Live reference
-
-`codebase/` — deep reference on the codebase, linked from [`AGENTS.md`](../AGENTS.md). Read the
-one you need; do not load all of them by default.
+## What is here
 
 | File | Covers |
 |---|---|
@@ -22,29 +19,34 @@ one you need; do not load all of them by default.
 | `codebase/INTEGRATIONS.md` | MLflow, identity providers, secret backends |
 | `codebase/CONCERNS.md` | Known rough edges |
 
-`AGENTS.md` is the summary an agent reads first. These are what it consults when the summary is
-not enough. Where the two disagree, `AGENTS.md` wins and the file here should be corrected.
+[`AGENTS.md`](../AGENTS.md) is the summary an agent reads first. These are what it consults when
+the summary is not enough. **Where the two disagree, `AGENTS.md` wins** and the file here should
+be corrected.
 
-## Historical
+## What was removed, and where it went
 
-These describe the **workspace milestone**, planned and shipped March 2026 under a previous
-planning tool (GSD) that is no longer wired into this repository. They are kept as a record of
-what was built and why. Do not read them as current direction, and do not add to them.
+This directory used to also hold milestone planning documents — `PROJECT.md`, `ROADMAP.md`,
+`MILESTONES.md` and `REQUIREMENTS.md` — produced by a planning tool no longer wired into this
+repository. They were removed once every requirement in them was verified shipped against the
+code. The parts worth keeping moved out rather than being deleted:
 
-`PROJECT.md` is the only one left — the workspace/organization milestone framing. Superseded as
-direction, but its core value and constraints still hold.
+| Content | Now lives in |
+|---|---|
+| Project constraints and core value | [`AGENTS.md`](../AGENTS.md) → *Constraints* |
+| Workspace non-goals | [`docs/workspaces.md`](../docs/workspaces.md) → *Limitations and non-goals* |
+| `PERMISSION_REGISTRY`, base permission repositories | `codebase/ARCHITECTURE.md` → *Key Abstractions* |
+| Two deferred workspace UI enhancements | [issue #332](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/332) |
 
-`ROADMAP.md`, `MILESTONES.md` and `REQUIREMENTS.md` were removed once every requirement in them
-was verified shipped against the code. What was worth keeping moved out rather than being
-deleted:
+Nothing was salvaged from `ROADMAP.md`. Its enforcement behaviour is documented more completely
+in `docs/workspaces.md` (which also covers trash and webhook scoping), its phase entries
+referenced `NN-NN-PLAN.md` files that are not in this repository, and its success criteria cited
+a `GRANT_DEFAULT_WORKSPACE_ACCESS` setting that does not exist in the code.
 
-- the workspace non-goals table → [`docs/workspaces.md`](../docs/workspaces.md#limitations-and-non-goals)
-- `PERMISSION_REGISTRY` and the base permission repositories → `codebase/ARCHITECTURE.md`
-- the two deferred UI enhancements → [issue #332](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/332)
+Everything else was process residue: phase counts, traceability tables, and a v1.0 accomplishments
+list. Release history lives in git and in GitHub Releases and does not need a second copy here.
 
-Nothing was salvaged from `ROADMAP.md`: its enforcement behaviour is documented more completely
-in [`docs/workspaces.md`](../docs/workspaces.md) (which also covers trash and webhook scoping),
-its phase plans referenced `NN-NN-PLAN.md` files that are not in this repository, and it cited a
-`GRANT_DEFAULT_WORKSPACE_ACCESS` setting that does not exist in the code.
+## The rule going forward
 
-Release history lives in git and in GitHub Releases; it does not need a second copy here.
+Do not add planning state here. A plan belongs in a GitHub issue where its acceptance criteria can
+be checked; reference material belongs in `codebase/` or `docs/`. A second roadmap that nobody
+updates is how the previous set of files ended up simultaneously complete and wrong.

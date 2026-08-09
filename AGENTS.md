@@ -59,6 +59,26 @@ file wins and the other should be corrected.
 `.planning/` also holds historical milestone records — see [`.planning/README.md`](.planning/README.md)
 for what is live and what is not. It is **not** the roadmap; the roadmap is GitHub issues.
 
+## Constraints
+
+What the project is for, and what it cannot do about it. These bound the design space; the rules
+below say how to behave inside it.
+
+**Core value: multi-tenant isolation.** Organizations share one MLflow instance and each tenant
+must see only its own experiments, models and resources. Cross-tenant leakage is the failure mode
+this plugin exists to prevent — a list endpoint that forgets to filter is as bad as a missing
+permission check.
+
+| Constraint | What it means in practice |
+|---|---|
+| **Plugin boundary** | This controls auth and authz only. MLflow core behavior cannot be changed — if a fix requires it, the answer is a workaround here or an upstream issue there. |
+| **MLflow floor `>=3.14.0`** | Declared in `pyproject.toml`. Workspace/organization features originated in 3.10; 3.14.0 is the supported floor. |
+| **Upstream workspace API is unstable** | The workspace RPCs this plugin proxies were recorded during the workspace milestone as `PUBLIC_UNDOCUMENTED` — not part of MLflow's committed public surface, so they can change in a minor release. Re-verify against the pinned MLflow before relying on one; treat a break there as expected, not exceptional. |
+| **Workspace lifecycle is not ours** | Workspace CRUD proxies to MLflow's `/api/3.0/mlflow/workspaces`. Never write to MLflow's store directly — that skips its validation and constraints. |
+| **Workspaces are opt-in** | `MLFLOW_ENABLE_WORKSPACES` defaults to false and gates all workspace behavior. An existing deployment that changes no configuration must be unaffected by anything you do here. |
+| **No new frameworks** | Python / FastAPI / Flask / SQLAlchemy backend, React / TypeScript / Vite frontend. |
+| **`MANAGE` is delegable** | `MANAGE` on a workspace is enough to update or delete it — this is deliberately not admin-only. Any change to workspace authorization has to keep that true. |
+
 ## Rules that are not negotiable
 
 1. **Store singleton.** `from mlflow_oidc_auth.store import store`. Never construct a second store.

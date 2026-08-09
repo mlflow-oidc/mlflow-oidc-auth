@@ -38,9 +38,10 @@ whose commands are not in this repository, so an agent following its instruction
 things that do not exist.
 
 `.planning/codebase/` survives as deep reference. The milestone planning documents
-(`ROADMAP.md`, `MILESTONES.md`, `REQUIREMENTS.md`) were removed after every requirement in them
-was verified shipped — see [`.planning/README.md`](../.planning/README.md) for where the parts
-worth keeping went. The roadmap is GitHub issues.
+(`PROJECT.md`, `ROADMAP.md`, `MILESTONES.md`, `REQUIREMENTS.md`) were removed after every
+requirement in them was verified shipped against the code — see
+[`.planning/README.md`](../.planning/README.md) for where the parts worth keeping went. The
+roadmap is GitHub issues; project constraints are in `AGENTS.md`.
 
 ---
 
