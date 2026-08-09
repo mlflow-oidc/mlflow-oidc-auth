@@ -34,7 +34,6 @@ import pytest
 from authlib.jose import JsonWebKey, jwt
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from sqlalchemy import event
 from starlette.middleware.sessions import SessionMiddleware
 
 import mlflow_oidc_auth.auth as auth_module

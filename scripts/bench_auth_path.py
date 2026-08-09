@@ -203,7 +203,6 @@ def _prime_jwks() -> Callable[[str], str]:
 
 
 def _measure(
-    client,
     request: Callable[[], Any],
     counter: QueryCounter,
     iterations: int,
@@ -295,7 +294,7 @@ def _run_matrix(
                         "basic": lambda: client.get(PROTECTED_PATH, headers={"Authorization": f"Basic {basic}"}),
                     }
                     for scenario in scenarios:
-                        result = _measure(client, requests[scenario], counter, iterations, warmup)
+                        result = _measure(requests[scenario], counter, iterations, warmup)
                         result.update(db=db_label, users=n_users, groups_per_user=n_groups, scenario=scenario)
                         rows.append(result)
                         print(
