@@ -110,8 +110,11 @@ permission check.
   it by hand.
 - The permission cache (`PERMISSION_CACHE_TTL_SECONDS`) means permission changes are not
   instantly visible. Invalidate explicitly rather than waiting out the TTL.
-- Every authenticated request already performs a DB round trip in `AuthMiddleware.dispatch`.
-  Adding another one is a real regression — check before you add a query to that path.
+- Every authenticated request already performs a DB round trip in `AuthMiddleware.dispatch` —
+  measured at **2 statements** (3 for basic auth, 0 for unprotected prefixes). That is a budget,
+  not a description: see [`docs/performance-baseline.md`](docs/performance-baseline.md), enforced
+  by `mlflow_oidc_auth/tests/perf/test_auth_path_baseline.py`. Adding a query to that path is a
+  real regression — fit new per-request data into the existing statements, or cache it.
 
 ---
 
