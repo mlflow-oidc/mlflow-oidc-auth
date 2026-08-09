@@ -35,6 +35,13 @@ from mlflow_oidc_auth.repository.utils import get_user
 #
 # This is intentionally a constant, not configuration. It is a property of what we store, not a
 # deployment choice, and the failure mode of setting it wrong is silent.
+#
+# The entropy premise is not self-enforcing: ``generate_token()`` lives in another module, and
+# shortening it or narrowing its alphabet would make this cost factor indefensible without
+# anything here changing. ``TestTokenEntropyPremise`` in
+# ``tests/repository/test_user_token_hashing.py`` pins the token's length, alphabet and resulting
+# entropy, so that change fails a test instead of passing quietly. If one of those tests has to
+# be updated, this constant has to be re-justified in the same diff.
 TOKEN_HASH_METHOD = "pbkdf2:sha256:1000"
 
 

@@ -151,6 +151,58 @@ class TestExpiryStillEnforced:
         assert store.authenticate_user("expold@example.com", TOKEN) is False
 
 
+class TestTokenEntropyPremise:
+    """The premise ``TOKEN_HASH_METHOD`` rests on, pinned so it cannot erode silently.
+
+    A cost factor of 1000 PBKDF2 iterations is only defensible because the secret being
+    hashed is high-entropy. That property lives in ``generate_token()``, in a different
+    module, with nothing previously connecting the two: shortening the token for usability
+    would quietly make every stored hash brute-forceable, and no test would fail.
+
+    These are the tests that fail instead. If one of them breaks, ``TOKEN_HASH_METHOD``
+    has to be re-justified in the same diff, not discovered later.
+    """
+
+    MIN_ENTROPY_BITS = 128
+
+    def test_token_length_is_pinned(self):
+        from mlflow_oidc_auth.user import generate_token
+
+        assert len(generate_token()) == 24
+
+    def test_token_alphabet_is_pinned(self):
+        """Narrowing the alphabet lowers entropy just as shortening the token does."""
+        import string
+
+        from mlflow_oidc_auth.user import generate_token
+
+        expected = set(string.ascii_letters + string.digits)
+        # Enough samples that a dropped character class shows up rather than passing by luck.
+        seen = set("".join(generate_token() for _ in range(200)))
+
+        assert seen <= expected, f"token uses characters outside the expected alphabet: {sorted(seen - expected)}"
+        assert seen == expected, f"token alphabet appears narrowed; never observed: {sorted(expected - seen)}"
+
+    def test_token_entropy_clears_the_bar_the_hash_cost_assumes(self):
+        """The number that justifies TOKEN_HASH_METHOD, asserted rather than asserted-in-prose."""
+        import math
+        import string
+
+        from mlflow_oidc_auth.user import generate_token
+
+        bits = len(generate_token()) * math.log2(len(set(string.ascii_letters + string.digits)))
+
+        assert bits >= self.MIN_ENTROPY_BITS, f"token entropy {bits:.1f} bits is below the {self.MIN_ENTROPY_BITS}-bit floor that {TOKEN_HASH_METHOD} assumes"
+
+    def test_tokens_are_not_repeated(self):
+        """A deterministic or poorly seeded generator would defeat the entropy argument."""
+        from mlflow_oidc_auth.user import generate_token
+
+        tokens = [generate_token() for _ in range(500)]
+
+        assert len(set(tokens)) == len(tokens)
+
+
 class TestHashProperties:
     """Properties the chosen method must keep, independent of its cost factor."""
 
