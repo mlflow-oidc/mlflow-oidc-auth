@@ -86,6 +86,10 @@ Denial paths, asserted in `test_auth_path_baseline.py`:
 Median / p95 milliseconds per request at the ASGI boundary. Both databases are local, so
 these understate a production round trip; they are recorded for orientation, not as a contract.
 
+> The `basic` column is the **T0** measurement, taken before #336 changed how token secrets are
+> hashed. It now costs ~2.8 ms rather than ~50 ms for any secret written after that change; see
+> the findings below. The other three columns are unaffected.
+
 | db | users | groups/user | unprotected | session | bearer | basic |
 |---|---:|---:|---|---|---|---|
 | sqlite | 1 | 0 | 0.41 / 0.48 | 1.09 / 1.28 | 1.28 / 1.74 | 48.91 / 51.23 |
@@ -141,12 +145,23 @@ groups per user adds roughly 1 ms to a session request (~1.3 ms -> ~2.4 ms on SQ
 materialization inside the second query, not extra round trips. Growing from 1 to 500 users
 changes nothing measurable, as the unique index on `users.username` predicts.
 
-**Basic auth is ~25x more expensive than session or bearer, and it is not the database.** A
-basic-auth request costs ~50 ms against both databases, of which a directly measured
-**48.2 ms is `check_password_hash`** — Werkzeug's `scrypt:32768:8:1`, deliberately expensive by
-design. The 3 SQL statements are noise beside it. This is out of scope for the baseline and is
-noted here so it is not mistaken for a database problem: any future work on basic-auth latency
-belongs in password-hash policy or a verified-credential cache, not in query reduction.
+**Basic auth was ~25x more expensive than session or bearer, and it was not the database.** At
+T0 a basic-auth request cost ~50 ms against both databases, of which a directly measured
+**48.2 ms was `check_password_hash`** — Werkzeug's `scrypt:32768:8:1`. The 3 SQL statements were
+noise beside it.
+
+This was fixed in #336, after the baseline was taken. Nothing in this plugin stores a
+human-chosen password: every value in `users.password_hash` comes from `generate_token()`
+(24 characters, 62-character alphabet, ~143 bits of entropy), and no endpoint accepts an
+operator-supplied one. A memory-hard KDF exists to make brute-forcing *low-entropy* passwords
+expensive, so against 143 bits it bought nothing. New hashes use
+`pbkdf2:sha256:1000` (`TOKEN_HASH_METHOD` in `repository/user.py`), taking a basic-auth request
+from **50.98 ms to 2.81 ms median** — into the same range as session and bearer — at an unchanged
+3 statements.
+
+Hashes written before that change keep verifying under their original method and are never
+re-hashed in place, so a deployment that upgrades and rotates nothing still pays the old ~50 ms
+until its tokens are rotated. Measure that path with `--hash-method scrypt:32768:8:1`.
 
 ## Caveats
 
