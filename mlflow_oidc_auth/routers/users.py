@@ -115,7 +115,9 @@ async def create_access_token(
         if user is None:
             raise HTTPException(status_code=404, detail=f"User {target_username} not found")
 
-        # Generate new token and update user
+        # Generate new token and update user. The new token carries exactly the expiration
+        # requested here; it never inherits the previous token's (issue #338).
+        previous_expiration = user.password_expiration
         new_token = generate_token()
         store.update_user(username=target_username, password=new_token, password_expiration=expiration)
         emit_audit_event(
@@ -123,6 +125,13 @@ async def create_access_token(
             actor=current_username,
             resource_type="user",
             resource_id=target_username,
+            detail={
+                "expiration": expiration.isoformat() if expiration else None,
+                # Rotating without an expiration replaces an expiring token with one that does
+                # not expire. That is a deliberate widening of the credential's lifetime, so it
+                # is recorded rather than left silent.
+                "expiration_cleared": previous_expiration is not None and expiration is None,
+            },
         )
 
         return JSONResponse(

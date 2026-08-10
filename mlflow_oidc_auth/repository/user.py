@@ -180,9 +180,43 @@ class UserRepository:
         username: str,
         password: Optional[str] = None,
         password_expiration: Optional[datetime] = None,
-        is_admin: Optional[bool] = False,
-        is_service_account: Optional[bool] = False,
+        is_admin: Optional[bool] = None,
+        is_service_account: Optional[bool] = None,
     ) -> User:
+        """Update the supplied fields of a user, leaving omitted ones untouched.
+
+        ``None`` means "not supplied" for every parameter but one: the corresponding column is
+        left as it is. The defaults for the two flags previously read ``False`` while the guards
+        below tested for ``None``, so a caller that omitted them silently cleared ``is_admin``
+        and ``is_service_account`` instead of preserving them (issue #338).
+
+        The exception is ``password_expiration``, because expiry is a property of the *secret*
+        rather than of the user:
+
+        * When ``password`` is supplied, the secret is being replaced, so it gets a fresh
+          lifetime — exactly the one passed in, with ``None`` meaning "does not expire". The
+          previous value is never inherited. Inheriting it meant that rotating an already-expired
+          token produced a new token that was rejected on its first use, because ``authenticate``
+          checks expiry before comparing the hash.
+        * When ``password`` is not supplied, the expiry is only changed if one was passed.
+
+        A consequence worth stating: an expiry cannot be cleared without also rotating the
+        secret. That is deliberate — extending the life of a credential that has already been
+        issued should require issuing a new one.
+
+        Parameters:
+            username: Identity key of the user to update.
+            password: New secret. Hashed with :data:`TOKEN_HASH_METHOD`.
+            password_expiration: Expiry for the stored secret. See the semantics above.
+            is_admin: New administrator flag.
+            is_service_account: New service-account flag.
+
+        Returns:
+            User: The updated user entity.
+
+        Raises:
+            MlflowException: If the user does not exist.
+        """
         from werkzeug.security import generate_password_hash
 
         username = normalize_username(username)
@@ -190,7 +224,9 @@ class UserRepository:
             user = get_user(session, username)
             if password is not None:
                 user.password_hash = generate_password_hash(password, method=TOKEN_HASH_METHOD)
-            if password_expiration is not None:
+                # A new secret gets the lifetime it was issued with, never the old one's.
+                user.password_expiration = password_expiration
+            elif password_expiration is not None:
                 user.password_expiration = password_expiration
             if is_admin is not None:
                 user.is_admin = is_admin
