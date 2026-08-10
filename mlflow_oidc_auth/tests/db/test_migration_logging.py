@@ -18,7 +18,6 @@ import logging
 import pytest
 
 import mlflow_oidc_auth.audit as audit_module
-from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.logger import get_logger
 
 
@@ -105,11 +104,11 @@ class TestAuditTrailSurvives:
     def test_audit_events_are_written_after_migrations_run(self, audit_output, tmp_path):
         from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
 
-        emit_audit_event("test.before", actor="probe", resource_type="user", resource_id="u1")
+        audit_module.emit_audit_event("test.before", actor="probe", resource_type="user", resource_id="u1")
 
         SqlAlchemyStore().init_db(f"sqlite:///{tmp_path / 'auth.db'}")
 
-        emit_audit_event("test.after", actor="probe", resource_type="user", resource_id="u1")
+        audit_module.emit_audit_event("test.after", actor="probe", resource_type="user", resource_id="u1")
 
         written = audit_output.getvalue()
         assert "test.before" in written, "precondition: auditing is on and capturing"
