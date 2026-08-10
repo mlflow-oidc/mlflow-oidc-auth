@@ -20,9 +20,6 @@ All three sit behind ``AuthMiddleware``, which `app.py` adds before mounting Fla
 one denial covers them — but that is a structural claim, and this file is the evidence.
 """
 
-import tempfile
-from pathlib import Path
-
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
