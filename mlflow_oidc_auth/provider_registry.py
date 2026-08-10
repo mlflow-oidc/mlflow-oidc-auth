@@ -52,6 +52,31 @@ IDENTITY_BINDINGS = ("subject", "email")
 # replayed as an HMAC secret and any caller can mint a valid token.
 HMAC_ALGORITHMS = ("HS256", "HS384", "HS512")
 
+# Asymmetric algorithms this plugin can actually verify: signatures are checked against keys
+# fetched from the provider's JWKS.
+ASYMMETRIC_ALGORITHMS = (
+    "RS256",
+    "RS384",
+    "RS512",
+    "PS256",
+    "PS384",
+    "PS512",
+    "ES256",
+    "ES384",
+    "ES512",
+    "EdDSA",
+)
+
+# Canonical spelling by uppercase name, so "rs256" and "eddsa" resolve to "RS256" and "EdDSA".
+# Storing the canonical form matters: a consumer comparing against "RS256" would otherwise miss
+# a provider configured as "rs256", and silently fall through to whatever its own default is.
+_CANONICAL_ALGORITHMS = {algorithm.upper(): algorithm for algorithm in ASYMMETRIC_ALGORITHMS + HMAC_ALGORITHMS}
+
+# ``alg: none`` means the token carries no signature at all. Rejected by name and with its own
+# message because it is the single most dangerous value this field can take, and because it is
+# easy to arrive at innocently by copying an example.
+NONE_ALGORITHM = "NONE"
+
 DEFAULT_ALGORITHMS = ("RS256",)
 
 
@@ -99,13 +124,16 @@ class ProviderConfig:
     discovery_url: Optional[str] = None
     client_id: Optional[str] = None
 
-    def uses_jwks(self) -> bool:
-        """Whether this provider verifies signatures against a fetched key set.
+    def has_own_key_source(self) -> bool:
+        """Whether this entry names its own JWKS source rather than inheriting the flat one.
 
-        True for anything with a discovery document or an issuer to discover from. That is
-        what makes an HMAC algorithm dangerous here rather than merely unusual.
+        Reports only what the entry says. It is deliberately *not* used to decide whether an
+        algorithm is safe: an entry naming no source still resolves keys somehow — from the
+        deployment-wide ``OIDC_DISCOVERY_URL`` — so gating the algorithm checks on this was
+        evadable by simply omitting two optional fields. Algorithms are validated on their own
+        merits instead (see :func:`_validate_algorithms`).
         """
-        return bool(self.discovery_url or self.issuer) and self.type in ("oidc", "k8s")
+        return bool(self.discovery_url or self.issuer)
 
 
 @dataclass
@@ -197,7 +225,9 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             "the provider will assert can claim a local user"
         )
 
-    allowed_algorithms = _as_tuple(entry.get("allowed_algorithms")) or DEFAULT_ALGORITHMS
+    allowed_algorithms, algorithm_errors = _validate_algorithms(entry.get("allowed_algorithms"), label)
+    errors.extend(algorithm_errors)
+
     audience = entry.get("audience")
     issuer = entry.get("issuer")
     discovery_url = entry.get("discovery_url")
@@ -205,13 +235,6 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
 
     if not isinstance(audience, str) or not audience.strip():
         errors.append(f"{label}: 'audience' is required; a token validated with no audience check is valid for every relying party of that issuer")
-
-    hmac_listed = [algorithm for algorithm in allowed_algorithms if algorithm.upper() in HMAC_ALGORITHMS]
-    if hmac_listed and (discovery_url or issuer):
-        errors.append(
-            f"{label}: symmetric algorithm(s) {', '.join(hmac_listed)} cannot be combined with a JWKS source "
-            "(discovery_url/issuer) — that is the algorithm-confusion setup where a public key is replayed as an HMAC secret"
-        )
 
     if provider_type == "saml" and not _saml_extra_installed():
         errors.append(f"{label}: type 'saml' requires the [saml] extra to be installed")
@@ -238,6 +261,57 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         ),
         [],
     )
+
+
+def _validate_algorithms(value: Any, label: str) -> Tuple[Tuple[str, ...], List[str]]:
+    """Resolve ``allowed_algorithms`` to canonical names, rejecting anything unverifiable.
+
+    Three rules, in descending order of how badly they end:
+
+    * ``none`` is rejected outright. It means the token carries no signature, so accepting it
+      lets anyone mint a token for that provider. It is worse than the algorithm-confusion case
+      below, which at least requires a key to confuse.
+    * Symmetric (HMAC) algorithms are rejected outright, not merely when a JWKS source appears
+      on the same entry. This plugin has no symmetric-key verification path at all — signatures
+      are checked against keys fetched from the provider's JWKS — so an HMAC entry cannot work,
+      and the only question is whether it fails safely. Gating on whether the *entry* names a
+      key source was evadable by omitting ``issuer``/``discovery_url`` while the deployment's
+      flat ``OIDC_DISCOVERY_URL`` still supplied one, which is the confusion setup restored.
+      This is stricter than issue #308 asked for, deliberately.
+    * Anything not in the supported set is rejected rather than passed through, so a typo
+      becomes a startup message instead of an algorithm a consumer silently does not honour.
+
+    Returns:
+        ``(algorithms, errors)``. Names are canonically spelled, so a consumer comparing against
+        ``"RS256"`` matches an entry written as ``"rs256"``.
+    """
+    raw = _as_tuple(value)
+    if not raw:
+        return DEFAULT_ALGORITHMS, []
+
+    algorithms: List[str] = []
+    errors: List[str] = []
+    for algorithm in raw:
+        upper = algorithm.upper()
+        if upper == NONE_ALGORITHM:
+            errors.append(f"{label}: algorithm 'none' is never allowed; it means the token carries no signature, so anyone could mint one for this provider")
+            continue
+        if upper in HMAC_ALGORITHMS:
+            errors.append(
+                f"{label}: symmetric algorithm {algorithm!r} is not supported; this plugin verifies signatures against the provider's JWKS, "
+                "and accepting an HMAC algorithm alongside a fetched public key is the algorithm-confusion setup where that key is replayed "
+                "as a shared secret"
+            )
+            continue
+        canonical = _CANONICAL_ALGORITHMS.get(upper)
+        if canonical is None:
+            errors.append(f"{label}: unknown algorithm {algorithm!r}; expected one of {', '.join(ASYMMETRIC_ALGORITHMS)}")
+            continue
+        algorithms.append(canonical)
+
+    if errors:
+        return DEFAULT_ALGORITHMS, errors
+    return tuple(algorithms), []
 
 
 def _validate_admin_source(admin_source: Any, label: str) -> List[str]:
@@ -283,12 +357,37 @@ def _saml_extra_installed() -> bool:
     return False
 
 
-def _parse_entries(raw: str, origin: str) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Parse the JSON payload into a list of entry dicts."""
-    try:
-        parsed = json.loads(raw)
-    except (ValueError, TypeError) as exc:
-        return [], [f"{origin}: could not be parsed as JSON ({exc})"]
+def _is_present(value: Any) -> bool:
+    """Whether a configuration value was actually supplied.
+
+    A blank or whitespace-only string counts as absent, matching how the rest of the config
+    layer treats an unset variable; an empty list or dict does not, because writing one is a
+    deliberate statement that there are no providers.
+    """
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def _parse_entries(raw: Any, origin: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Parse the payload into a list of entry dicts.
+
+    ``raw`` may already be a list or dict rather than a JSON string. Providers in the
+    ``config_providers`` chain are typed ``-> Any``, and the AWS Secrets Manager provider in
+    particular ``json.loads`` its whole secret, so a registry stored as nested JSON — the
+    natural way to write one in a secrets manager — arrives already parsed. Treating that as
+    "not a string, therefore not configured" silently ignored the operator's entire
+    configuration.
+    """
+    if isinstance(raw, (list, dict)):
+        parsed: Any = raw
+    else:
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError) as exc:
+            return [], [f"{origin}: could not be parsed as JSON ({exc})"]
 
     if isinstance(parsed, dict):
         # Tolerate {"providers": [...]}, which is what most people write first.
@@ -349,7 +448,18 @@ def build_provider_registry(config_manager: Any, app_config: Any) -> RegistryLoa
     source = "env"
     origin = "AUTH_PROVIDERS"
 
-    if not (isinstance(raw, str) and raw.strip()):
+    if _is_present(raw) and not isinstance(raw, (str, list, dict)):
+        # Configured, but as something no reading of it can turn into providers. Say so rather
+        # than falling through to legacy as though it had never been set.
+        return RegistryLoadResult(
+            providers=_legacy_providers(app_config),
+            errors=[
+                f"{origin}: expected a JSON array (or an already-parsed list) but got {type(raw).__name__}; " "falling back to the legacy OIDC_* configuration"
+            ],
+            source="legacy",
+        )
+
+    if not _is_present(raw):
         path = config_manager.get("AUTH_PROVIDERS_FILE")
         if isinstance(path, str) and path.strip():
             source = "file"

@@ -177,15 +177,16 @@ class TestValidationRejections:
 
     def test_hmac_algorithm_with_a_jwks_source_is_rejected(self):
         """Algorithm confusion: a public verification key replayed as an HMAC secret lets any
-        caller mint a token the server accepts."""
+        caller mint a token the server accepts. See TestAlgorithmValidation for the stronger
+        rule this became."""
         result = build([valid_entry(allowed_algorithms=["RS256", "HS256"], issuer="https://idp.example.com")])
 
-        self._assert_rejected(result, "algorithm-confusion")
+        self._assert_rejected(result, "symmetric algorithm")
 
     def test_hmac_algorithm_with_a_discovery_url_is_rejected(self):
         result = build([valid_entry(allowed_algorithms=["HS512"], discovery_url="https://idp.example.com/.well-known/openid-configuration")])
 
-        self._assert_rejected(result, "algorithm-confusion")
+        self._assert_rejected(result, "symmetric algorithm")
 
     def test_a_missing_audience_is_rejected(self):
         """A token validated with no audience check is valid for every relying party of that
@@ -235,6 +236,101 @@ class TestValidationRejections:
         self._assert_rejected(build([valid_entry(**{field: value})]), fragment)
 
 
+class TestAlgorithmValidation:
+    """``allowed_algorithms`` decides what a signature check will accept, so an unvalidated
+    value here is the most dangerous field in the entry. Raised in review of #344."""
+
+    def _assert_rejected(self, result, fragment: str):
+        assert result.providers == []
+        assert any(fragment in e for e in result.errors), f"expected an error mentioning {fragment!r}, got {result.errors}"
+
+    @pytest.mark.parametrize("spelling", ["none", "None", "NONE"])
+    def test_alg_none_is_rejected_in_any_spelling(self, spelling):
+        """``alg: none`` means the token carries no signature at all, so anyone can mint one.
+
+        Worse than the algorithm-confusion case the original check covered, and it passed.
+        """
+        result = build([valid_entry(issuer="https://idp.example.com", allowed_algorithms=[spelling])])
+
+        self._assert_rejected(result, "algorithm 'none' is never allowed")
+
+    def test_alg_none_alongside_a_valid_algorithm_is_still_rejected(self):
+        """The whole entry goes, not just the offending value — a provider that accepts RS256
+        *or* nothing accepts nothing."""
+        result = build([valid_entry(allowed_algorithms=["RS256", "none"])])
+
+        self._assert_rejected(result, "algorithm 'none' is never allowed")
+
+    @pytest.mark.parametrize("algorithm", ["HS256", "HS384", "HS512", "hs256"])
+    def test_hmac_algorithms_are_rejected_even_with_no_key_source_on_the_entry(self, algorithm):
+        """Stricter than #308 asked, deliberately.
+
+        Gating on whether the entry named ``issuer``/``discovery_url`` was evadable: omit both
+        and the deployment's flat ``OIDC_DISCOVERY_URL`` still supplies a key set, restoring
+        the confusion setup. This plugin has no symmetric-key verification path, so an HMAC
+        entry cannot work regardless — the only question was whether it failed safely.
+        """
+        entry = valid_entry(allowed_algorithms=[algorithm])
+        entry.pop("issuer", None)
+        entry.pop("discovery_url", None)
+
+        self._assert_rejected(build([entry]), "symmetric algorithm")
+
+    def test_unknown_algorithms_are_rejected(self):
+        """A typo must become a startup message, not an algorithm a consumer quietly ignores."""
+        self._assert_rejected(build([valid_entry(allowed_algorithms=["RS256-ish"])]), "unknown algorithm")
+
+    @pytest.mark.parametrize("written,canonical", [("rs256", "RS256"), ("eddsa", "EdDSA"), ("Es384", "ES384")])
+    def test_algorithms_are_stored_canonically(self, written, canonical):
+        """A consumer comparing against ``"RS256"`` must match an entry written ``"rs256"``,
+        rather than falling through to its own default."""
+        result = build([valid_entry(allowed_algorithms=[written])])
+
+        assert result.providers[0].allowed_algorithms == (canonical,)
+
+    def test_supported_asymmetric_algorithms_are_accepted(self):
+        result = build([valid_entry(allowed_algorithms=["RS256", "PS512", "ES256", "EdDSA"])])
+
+        assert result.providers[0].allowed_algorithms == ("RS256", "PS512", "ES256", "EdDSA")
+
+    def test_an_absent_list_defaults_to_rs256(self):
+        entry = valid_entry()
+        entry.pop("allowed_algorithms", None)
+
+        assert build([entry]).providers[0].allowed_algorithms == DEFAULT_ALGORITHMS
+
+
+class TestAlreadyParsedConfigValues:
+    """``config_providers`` are typed ``-> Any`` and the AWS Secrets Manager provider
+    ``json.loads`` its whole secret, so a registry stored as nested JSON arrives already
+    parsed. Treating that as "not a string, therefore unset" silently discarded it."""
+
+    def test_an_already_parsed_list_is_accepted(self):
+        result = build_provider_registry(FakeConfigManager(AUTH_PROVIDERS=[valid_entry(id="from-secret")]), legacy_app_config())
+
+        assert [p.id for p in result.providers] == ["from-secret"]
+        assert result.errors == []
+
+    def test_an_already_parsed_dict_wrapper_is_accepted(self):
+        result = build_provider_registry(FakeConfigManager(AUTH_PROVIDERS={"providers": [valid_entry(id="wrapped")]}), legacy_app_config())
+
+        assert [p.id for p in result.providers] == ["wrapped"]
+
+    def test_a_value_of_an_unusable_type_is_reported_rather_than_ignored(self):
+        """The silent-fallback failure this class exists to prevent: configured, ignored, and
+        no diagnostic anywhere."""
+        result = build_provider_registry(FakeConfigManager(AUTH_PROVIDERS=42), legacy_app_config())
+
+        assert [p.id for p in result.providers] == [DEFAULT_PROVIDER_ID]
+        assert any("expected a JSON array" in e for e in result.errors)
+
+    def test_an_explicitly_empty_list_is_honoured(self):
+        """Writing ``[]`` says "no providers"; it is not the same as leaving it unset."""
+        result = build_provider_registry(FakeConfigManager(AUTH_PROVIDERS=[]), legacy_app_config())
+
+        assert result.providers == []
+
+
 class TestPartialFailureIsolation:
     def test_a_valid_provider_survives_alongside_an_invalid_one(self):
         """One bad entry must not take the whole registry down with it."""
@@ -277,9 +373,9 @@ class TestProviderConfigShape:
     def test_display_name_defaults_to_the_id(self):
         assert build([valid_entry(id="okta")]).providers[0].display_name == "okta"
 
-    def test_uses_jwks_is_true_only_with_a_key_source(self):
-        assert ProviderConfig(id="x", audience="a", issuer="https://i").uses_jwks() is True
-        assert ProviderConfig(id="x", audience="a").uses_jwks() is False
+    def test_has_own_key_source_reports_only_what_the_entry_says(self):
+        assert ProviderConfig(id="x", audience="a", issuer="https://i").has_own_key_source() is True
+        assert ProviderConfig(id="x", audience="a").has_own_key_source() is False
 
 
 class TestAppConfigIntegration:
