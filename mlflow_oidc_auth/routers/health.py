@@ -110,12 +110,15 @@ async def health_check_startup() -> JSONResponse:
     Returns:
         200 if startup complete, 503 if still initializing or failed.
     """
-    from mlflow_oidc_auth.app import is_oidc_ready
+    from mlflow_oidc_auth.app import get_oidc_provider_status, is_oidc_ready
 
     oidc_ready = is_oidc_ready()
+    # Reported alongside the boolean because "ready" only means at least one provider works.
+    # Without this, a deployment with one broken provider looks entirely healthy (#315).
+    providers = get_oidc_provider_status()
 
     if oidc_ready:
-        return JSONResponse(content={"status": "started", "oidc_initialized": True})
+        return JSONResponse(content={"status": "started", "oidc_initialized": True, "providers": providers})
     else:
         # OIDC not initialized - might be missing config or startup in progress
         # Return 503 so Kubernetes knows startup is not complete
@@ -124,6 +127,7 @@ async def health_check_startup() -> JSONResponse:
             content={
                 "status": "initializing",
                 "oidc_initialized": False,
+                "providers": providers,
                 "message": "OIDC client not yet initialized. Check OIDC configuration.",
             },
         )

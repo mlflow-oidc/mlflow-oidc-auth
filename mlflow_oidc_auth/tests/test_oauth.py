@@ -496,8 +496,12 @@ class TestOidcClientRegistrationKwargs(unittest.TestCase):
         import mlflow_oidc_auth.oauth as oauth_mod
 
         with (
-            patch.object(oauth_mod, "_oidc_client_registered", False),
+            # Registration state is now per provider id rather than one global flag (#315).
+            patch.object(oauth_mod, "_registered", {}),
             patch.object(oauth_mod, "_has_required_config", return_value=True),
+            patch.object(
+                oauth_mod, "_client_settings", return_value={"client_id": "id", "client_secret": "s", "server_metadata_url": "https://idp/.well-known"}
+            ),
             patch.object(oauth_mod, "_build_scope", return_value="openid email"),
             patch.object(oauth_mod.oauth, "register") as mock_register,
             patch.object(oauth_mod.config, "OIDC_VERIFY_SSL", False),

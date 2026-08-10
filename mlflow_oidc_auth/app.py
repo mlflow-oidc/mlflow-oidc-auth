@@ -27,13 +27,18 @@ from mlflow_oidc_auth.middleware import (
     WorkspaceContextMiddleware,
     add_fastapi_permission_middleware,
 )
-from mlflow_oidc_auth.oauth import ensure_oidc_client_registered
+from mlflow_oidc_auth.oauth import ensure_all_clients_registered
 from mlflow_oidc_auth.routers import ajax_alias_router, get_all_routers
 
 logger = get_logger()
 
 # Global flag to track OIDC initialization status for health checks
 _oidc_initialized: bool = False
+# Per-provider registration outcome from startup. ``_oidc_initialized`` answers the readiness
+# question — can this process serve a login at all — which stays True when one of several
+# providers failed, because failing the startup probe would pull the pod from service while it
+# can still authenticate everyone else. This dict is what says *which* ones are broken (#315).
+_oidc_provider_status: dict[str, bool] = {}
 
 
 def is_oidc_ready() -> bool:
@@ -45,6 +50,15 @@ def is_oidc_ready() -> bool:
     return _oidc_initialized
 
 
+def get_oidc_provider_status() -> dict[str, bool]:
+    """Per-provider registration outcome from startup.
+
+    ``is_oidc_ready()`` alone cannot express a partial failure, and with several providers a
+    partial failure is an expected state rather than an exceptional one.
+    """
+    return dict(_oidc_provider_status)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """FastAPI lifespan context manager for startup/shutdown events.
@@ -53,16 +67,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     This is critical for multi-replica deployments where any replica may receive
     /callback or /logout requests that require the OIDC client to be registered.
     """
-    global _oidc_initialized
+    global _oidc_initialized, _oidc_provider_status
 
     # Startup: Register OIDC client
     logger.info("Starting MLflow OIDC Auth Plugin...")
-    if ensure_oidc_client_registered():
+    # Every provider is registered independently, so one that is misconfigured or whose
+    # discovery document is unreachable does not disable login for the others (#315).
+    results = ensure_all_clients_registered()
+    _oidc_provider_status = results
+    registered = [provider_id for provider_id, ok in results.items() if ok]
+    failed = [provider_id for provider_id, ok in results.items() if not ok]
+
+    if registered:
         _oidc_initialized = True
-        logger.info("OIDC client successfully registered at startup")
-    else:
+        logger.info("OIDC client(s) successfully registered at startup: %s", ", ".join(sorted(registered)))
+    if failed:
         logger.warning(
-            "OIDC client registration failed at startup. "
+            "OIDC client registration failed at startup for: %s. "
+            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL, "
+            "or OIDC_CLIENT_SECRET_<PROVIDER_ID> for an additional provider). "
+            "Those providers will not be available until configuration is corrected.",
+            ", ".join(sorted(failed)),
+        )
+    if not results:
+        logger.warning(
+            "No OIDC client was registered at startup. "
             "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL). "
             "OIDC authentication will not be available until configuration is corrected."
         )
