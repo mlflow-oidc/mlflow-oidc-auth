@@ -331,6 +331,57 @@ class TestAlreadyParsedConfigValues:
         assert result.providers == []
 
 
+class TestInteractiveFlag:
+    """Whether a provider belongs on the login page is a separate axis from how its credentials
+    are verified.
+
+    A Kubernetes service-account provider verifies tokens exactly as an OIDC one does — JWT
+    against the cluster's JWKS — but a projected token is presented directly as a bearer
+    credential, so there is no flow a browser can start. Without this flag #317 would render a
+    login button for it that cannot complete.
+    """
+
+    def test_oidc_providers_are_interactive_by_default(self):
+        assert build([valid_entry()]).providers[0].interactive is True
+
+    def test_k8s_providers_are_not_interactive_by_default(self):
+        result = build([valid_entry(type="k8s")])
+
+        assert result.providers[0].interactive is False
+        assert result.errors == []
+
+    def test_a_k8s_provider_cannot_be_marked_interactive(self):
+        """Rejected rather than silently corrected: an operator who asked for a login button
+        expects one, and a silently-dropped flag is a worse surprise than a startup message."""
+        result = build([valid_entry(type="k8s", interactive=True)])
+
+        assert result.providers == []
+        assert any("no browser login flow" in e for e in result.errors)
+
+    def test_an_oidc_provider_may_opt_out_of_the_login_page(self):
+        """A machine-to-machine OIDC issuer is a real configuration: tokens are accepted, but
+        nobody should be offered a button for it."""
+        result = build([valid_entry(interactive=False)])
+
+        assert result.providers[0].interactive is False
+
+    def test_a_non_boolean_interactive_is_rejected(self):
+        result = build([valid_entry(interactive="yes")])
+
+        assert result.providers == []
+        assert any("'interactive' must be true or false" in e for e in result.errors)
+
+    def test_the_login_page_sees_only_interactive_providers(self):
+        result = build([valid_entry(id="okta"), valid_entry(id="cluster", type="k8s")])
+
+        assert [p.id for p in result.providers] == ["okta", "cluster"]
+        assert [p.id for p in result.interactive_providers()] == ["okta"]
+
+    def test_the_legacy_provider_is_interactive(self):
+        """Today's single provider is a browser login provider, and must stay on the page."""
+        assert build().providers[0].interactive is True
+
+
 class TestPartialFailureIsolation:
     def test_a_valid_provider_survives_alongside_an_invalid_one(self):
         """One bad entry must not take the whole registry down with it."""

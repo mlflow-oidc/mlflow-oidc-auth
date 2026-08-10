@@ -40,6 +40,14 @@ logger = get_logger()
 DEFAULT_PROVIDER_ID = "default"
 
 PROVIDER_TYPES = ("oidc", "saml", "k8s")
+
+# Provider types that can carry a browser login flow. ``k8s`` cannot: a projected
+# service-account token is presented directly as a bearer credential — there is no
+# authorization endpoint to redirect a human to, no consent, and no callback. This is a
+# different axis from ``type``, which describes how a credential is *verified*: a k8s provider
+# verifies tokens the same way an OIDC one does (JWT against the cluster's JWKS), it just can
+# never appear on a login page.
+INTERACTIVE_BY_DEFAULT = {"oidc": True, "saml": True, "k8s": False}
 PROVISIONING_MODES = ("jit", "scim", "none")
 GROUP_SYNC_MODES = ("none", "first_login", "every_login")
 GROUP_SYNC_STRATEGIES = ("additive", "authoritative")
@@ -98,6 +106,12 @@ class ProviderConfig:
         group_sync_mode: ``authoritative`` replaces local membership with the claim,
             ``additive`` only adds.
         admin_source: Where administrator status may come from. Never ``scim``.
+        interactive: Whether this provider can carry a browser login flow, and so whether it
+            belongs on the login page (#317, #330). Independent of ``type``, which describes how
+            a credential is *verified*: a ``k8s`` provider verifies tokens exactly as an
+            ``oidc`` one does, but a projected service-account token is presented directly as a
+            bearer credential — there is no authorization endpoint to redirect to. Defaults
+            from the type and cannot be set True for a type that has no browser flow.
         identity_binding: Which token field identifies the user.
         allowed_email_domains: Required when binding on ``email``; an email-bound provider
             with no domain restriction lets anyone who can prove any address take an account.
@@ -117,6 +131,7 @@ class ProviderConfig:
     group_sync_mode: str = "authoritative"
     admin_source: str = "claims"
     identity_binding: str = "subject"
+    interactive: bool = True
     allowed_email_domains: Tuple[str, ...] = ()
     allowed_algorithms: Tuple[str, ...] = DEFAULT_ALGORITHMS
     audience: Optional[str] = None
@@ -149,6 +164,15 @@ class RegistryLoadResult:
     providers: List[ProviderConfig] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     source: str = "legacy"
+
+    def interactive_providers(self) -> List[ProviderConfig]:
+        """Providers that belong on the login page.
+
+        What #317 renders one button per. Excludes machine-only providers such as a Kubernetes
+        service-account issuer, which verifies tokens like any other OIDC provider but has no
+        flow a browser can start.
+        """
+        return [provider for provider in self.providers if provider.interactive]
 
     def by_id(self, provider_id: str) -> Optional[ProviderConfig]:
         """Return the provider with ``provider_id``, or None."""
@@ -218,6 +242,18 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
     if identity_binding not in IDENTITY_BINDINGS:
         errors.append(f"{label}: unknown identity_binding {identity_binding!r}; expected one of {', '.join(IDENTITY_BINDINGS)}")
 
+    interactive_default = INTERACTIVE_BY_DEFAULT.get(provider_type, True)
+    interactive = entry.get("interactive", interactive_default)
+    if not isinstance(interactive, bool):
+        errors.append(f"{label}: 'interactive' must be true or false, got {interactive!r}")
+    elif interactive and not interactive_default:
+        # Rejected rather than silently corrected: an operator who asked for this expects a
+        # login button, and #317 would render one that cannot complete a flow.
+        errors.append(
+            f"{label}: type {provider_type!r} has no browser login flow, so 'interactive' cannot be true; "
+            "its credentials are presented directly as bearer tokens"
+        )
+
     allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
     if identity_binding == "email" and not allowed_email_domains:
         errors.append(
@@ -252,6 +288,7 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             group_sync_mode=group_sync_mode,
             admin_source=entry.get("admin_source", "claims"),
             identity_binding=identity_binding,
+            interactive=bool(interactive),
             allowed_email_domains=allowed_email_domains,
             allowed_algorithms=allowed_algorithms,
             audience=audience.strip(),
