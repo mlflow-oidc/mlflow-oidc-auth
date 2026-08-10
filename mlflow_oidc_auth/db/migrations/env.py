@@ -11,9 +11,27 @@ from mlflow_oidc_auth.db.models._base import Base
 config = context.config
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+#
+# Two guards, both for issue #342. ``fileConfig`` defaults to ``disable_existing_loggers=True``,
+# which sets ``.disabled`` on every logger that already exists:
+#
+# * This plugin applies migrations from inside the running server, on first access to the store
+#   singleton — which is the first authenticated request. By then the application logger, the
+#   audit logger and uvicorn's own loggers all exist, and all of them were being silenced for
+#   the life of the process. The audit trail in particular recorded nothing at all: events were
+#   still constructed, then dropped by a disabled logger, with no error and no visible gap.
+# * A library has no business reconfiguring the logging of the process that embeds it. The
+#   ``.ini``'s logging sections exist for the ``alembic`` CLI, where Alembic owns the process.
+#
+# So: skip it entirely when embedded, and even under the CLI leave existing loggers alone.
+#
+# "Embedded" is signalled explicitly by ``db/utils.py::_get_alembic_config``, which every
+# in-process caller goes through. Inferring it from something incidental — the presence of a
+# ``connection`` attribute, say — is how this was missed the first time: ``migrate_if_needed``,
+# the function that actually runs on startup, never sets one.
+_configure_logging = config.attributes.get("configure_logging", True)
+if config.config_file_name is not None and _configure_logging:
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

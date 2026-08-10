@@ -55,17 +55,15 @@ def engine(db_uri):
 
 
 def _alembic_config(engine):
-    """An Alembic config that does not reconfigure this process's logging.
+    """An Alembic config for the embedded path, the way ``db/utils.py`` builds one.
 
-    ``env.py`` calls ``logging.config.fileConfig()``, which defaults to
-    ``disable_existing_loggers=True`` and therefore silences every logger created before it
-    runs. That is survivable once at application startup, but these tests invoke Alembic dozens
-    of times mid-session, and the collateral damage is unrelated tests losing their ``caplog``
-    records. Clearing the filename makes ``env.py`` skip the call.
+    These tests used to clear ``config_file_name`` here, because ``env.py`` called
+    ``fileConfig()`` with its ``disable_existing_loggers=True`` default and silenced loggers
+    created earlier in the session — unrelated tests lost their ``caplog`` records. ``env.py``
+    now skips that whenever Alembic is embedded (#342), so the workaround is gone and the tests
+    exercise the same configuration the application uses.
     """
-    cfg = _get_alembic_config(engine.url.render_as_string(hide_password=False))
-    cfg.config_file_name = None
-    return cfg
+    return _get_alembic_config(engine.url.render_as_string(hide_password=False))
 
 
 def _upgrade(engine, revision: str) -> None:
