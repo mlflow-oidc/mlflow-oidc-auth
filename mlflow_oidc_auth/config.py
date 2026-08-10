@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 from mlflow_oidc_auth.config_providers import config_manager
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.provider_registry import build_provider_registry
 
 load_dotenv()  # take environment variables from .env.
 logger = get_logger()
@@ -210,11 +211,19 @@ class AppConfig:
         # API documentation settings
         self.ENABLE_API_DOCS = config_manager.get_bool("ENABLE_API_DOCS", default=False)
 
+        # Identity provider registry (issue #308). Built from AUTH_PROVIDERS /
+        # AUTH_PROVIDERS_FILE, falling back to a single "default" provider synthesised from the
+        # flat OIDC_* values above — so a deployment that sets neither behaves exactly as it
+        # does today. Nothing consumes this yet; the flat variables remain authoritative.
+        # Must run after the OIDC_* block, which it reads.
+        self.AUTH_PROVIDERS = build_provider_registry(config_manager, self)
+
         # Run last: these read settings loaded above.
         self._warn_if_resource_creation_restriction_is_inert()
         self._warn_if_default_permission_is_permissive()
         self._warn_if_username_field_unusable()
         self._warn_if_group_name_unusable()
+        self._warn_if_provider_registry_invalid()
 
     @staticmethod
     def _has_usable_entry(field_list) -> bool:
@@ -231,6 +240,23 @@ class AppConfig:
             return any(isinstance(field, str) and field.strip() for field in field_list)
         except TypeError:
             return False
+
+    def _warn_if_provider_registry_invalid(self) -> None:
+        """Report registry entries that were rejected at startup (issue #308).
+
+        Warns rather than raises, for the same reason as the checks around it: ``AppConfig`` is
+        a module-level singleton imported by tooling with nothing to do with login, and taking
+        Alembic down over a malformed provider it never reads would be worse than the
+        misconfiguration. Rejected entries are already absent from the registry, so nothing
+        unvalidated is reachable — this only makes the reason visible.
+
+        Logged at WARNING per entry: an operator who wrote a provider and cannot use it needs
+        the specific reason, and each of these is a security-relevant rejection (a missing
+        audience, an admin source that would allow privilege escalation, an email binding with
+        no domain restriction), not a formatting nit.
+        """
+        for message in self.AUTH_PROVIDERS.errors:
+            logger.warning("Identity provider registry: %s", message)
 
     def _warn_if_username_field_unusable(self) -> None:
         """Warn at startup when OIDC_USERNAME_FIELD or OIDC_DISPLAY_NAME_FIELD is unusable.
