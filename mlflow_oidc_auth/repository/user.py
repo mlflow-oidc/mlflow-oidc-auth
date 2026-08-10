@@ -3,6 +3,7 @@ from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
+    INVALID_STATE,
     RESOURCE_ALREADY_EXISTS,
     RESOURCE_DOES_NOT_EXIST,
 )
@@ -62,6 +63,38 @@ def normalize_username(username: str) -> str:
 class UserRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
+
+    @staticmethod
+    def _assert_not_last_active_admin(session, user, action: str) -> None:
+        """Refuse an operation that would leave the deployment with no active administrator.
+
+        Enforced here rather than in the routers so that every caller inherits it — the admin
+        API, a future SCIM sync, the reconcile job in #319 and anything else that reaches the
+        store. A check in one router is a check the next caller forgets.
+
+        Recovery from a full admin lockout cannot be done from inside the system: with no active
+        admin nobody can restore one over HTTP. The way back is the break-glass CLI
+        (``mlflow-oidc-auth db restore-admin``), which needs database access. That asymmetry —
+        cheap to prevent, expensive to undo — is why this refuses rather than warns.
+
+        Args:
+            session: The open session, so the count sees this transaction's own changes.
+            user: The ``SqlUser`` about to be removed, deactivated or demoted.
+            action: Verb for the error message.
+
+        Raises:
+            MlflowException: If ``user`` is the only remaining active administrator.
+        """
+        if not (user.is_admin and user.active):
+            # Not an active admin, so removing them cannot change the count.
+            return
+        remaining = session.query(SqlUser).filter(SqlUser.is_admin.is_(True), SqlUser.active.is_(True), SqlUser.id != user.id).count()
+        if remaining == 0:
+            raise MlflowException(
+                f"refusing to {action} '{user.username}': they are the only active administrator, and doing so would "
+                "leave the deployment with none. Grant admin to another active user first.",
+                INVALID_STATE,
+            )
 
     def create(
         self,
@@ -151,6 +184,8 @@ class UserRepository:
                 password_expiration=u.password_expiration,
                 is_admin=u.is_admin,
                 is_service_account=u.is_service_account,
+                active=u.active,
+                managed_by=u.managed_by,
                 experiment_permissions=[],
                 registered_model_permissions=[],
                 scorer_permissions=[],
@@ -187,6 +222,8 @@ class UserRepository:
         password_expiration: Optional[datetime] = None,
         is_admin: Optional[bool] = None,
         is_service_account: Optional[bool] = None,
+        active: Optional[bool] = None,
+        managed_by: Optional[str] = None,
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
@@ -215,12 +252,16 @@ class UserRepository:
             password_expiration: Expiry for the stored secret. See the semantics above.
             is_admin: New administrator flag.
             is_service_account: New service-account flag.
+            active: Whether the account may authenticate. Setting it False is how a directory
+                deprovisions a user (issue #311).
+            managed_by: Which source owns this row.
 
         Returns:
             User: The updated user entity.
 
         Raises:
-            MlflowException: If the user does not exist.
+            MlflowException: If the user does not exist, or if the change would leave the
+                deployment with no active administrator.
         """
         from werkzeug.security import generate_password_hash
 
@@ -233,10 +274,21 @@ class UserRepository:
                 user.password_expiration = password_expiration
             elif password_expiration is not None:
                 user.password_expiration = password_expiration
+            # Deactivating or demoting the last active admin locks everyone out just as surely
+            # as deleting them, so both go through the same guard — checked before the change
+            # is applied, since afterwards the user would no longer count as an active admin
+            # and the query would happily report zero.
+            if active is False or is_admin is False:
+                self._assert_not_last_active_admin(session, user, "deactivate" if active is False else "demote")
+
             if is_admin is not None:
                 user.is_admin = is_admin
             if is_service_account is not None:
                 user.is_service_account = is_service_account
+            if active is not None:
+                user.active = active
+            if managed_by is not None:
+                user.managed_by = managed_by
             session.flush()
             return user.to_mlflow_entity()
 
@@ -246,6 +298,8 @@ class UserRepository:
             user = get_user(session, username)
             if user is None:
                 raise MlflowException(f"User '{username}' not found.")
+
+            self._assert_not_last_active_admin(session, user, "delete")
 
             # Delete dependent rows first.
             # Without this, SQLAlchemy may try to NULL-out non-nullable FKs
