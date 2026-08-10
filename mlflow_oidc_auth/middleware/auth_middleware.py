@@ -19,12 +19,28 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.routers._prefix import API_PATH_PREFIXES
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
+
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
 
 logger = get_logger()
+
+# Why an authenticated-looking request was turned away. Reported separately because a deleted
+# account and a deactivated one are different operational events, and an operator reading the
+# audit log should not have to guess which happened (issue #306).
+DENIAL_UNKNOWN_USER = "unknown_user"
+DENIAL_INACTIVE = "inactive"
+DENIAL_LOOKUP_ERROR = "lookup_error"
+
+DENIAL_AUDIT_EVENTS = {
+    DENIAL_UNKNOWN_USER: "auth.denied_unknown_user",
+    DENIAL_INACTIVE: "auth.denied_inactive",
+    DENIAL_LOOKUP_ERROR: "auth.denied_lookup_error",
+}
 
 
 def normalize_workspace_header(raw_workspace: Optional[str]) -> Optional[str]:
@@ -315,30 +331,45 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """
         return self._get_user_auth_state(username)[0]
 
-    def _get_user_auth_state(self, username: str) -> Tuple[bool, bool]:
-        """Read the two facts the auth path needs about a user, in one lookup.
+    def _get_user_auth_state(self, username: str) -> Tuple[bool, bool, str]:
+        """Read the facts the auth path needs about a user, in one lookup.
 
-        Both come off the profile row that is already fetched on every authenticated request,
-        so ``active`` costs nothing: it is in the ``load_only`` list added by #333, and the
+        All come off the profile row that is already fetched on every authenticated request, so
+        ``active`` costs nothing: it is in the ``load_only`` list added by #333, and the
         per-request statement count stays at the #305 budget of 2.
 
         Args:
             username: Username to check
 
         Returns:
-            ``(is_admin, is_active)``. On any failure — including the user no longer existing —
-            returns ``(False, False)``: an account that cannot be read is not an account that
-            may authenticate. Erring the other way would let a lookup error grant access, which
-            is the fallback this repository forbids.
+            ``(is_admin, is_active, denial_reason)``. ``denial_reason`` is ``""`` when the user
+            may authenticate, and otherwise names why not, so the caller can report a deleted
+            account differently from a deactivated one (issue #306).
+
+            Any failure yields ``(False, False, ...)``: an account that cannot be read is not an
+            account that may authenticate. Erring the other way would let a lookup error grant
+            access, which is the fallback this repository forbids.
         """
         try:
             user = store.get_user_profile(username)
-            if not user:
-                return False, False
-            return bool(user.is_admin), bool(user.active)
+        except MlflowException as e:
+            if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+                # Routine, not exceptional: the account was deleted while its signed cookie was
+                # still valid. The browser will keep presenting it until the cookie expires, so
+                # logging this at ERROR would fill the log with something nobody can act on.
+                logger.info("Denying %s: the account no longer exists", username)
+                return False, False, DENIAL_UNKNOWN_USER
+            logger.error("Error reading auth state for %s: %s", username, e)
+            return False, False, DENIAL_LOOKUP_ERROR
         except Exception as e:
-            logger.error(f"Error reading auth state for {username}: {e}")
-            return False, False
+            logger.error("Error reading auth state for %s: %s", username, e)
+            return False, False, DENIAL_LOOKUP_ERROR
+
+        if not user:
+            return False, False, DENIAL_UNKNOWN_USER
+        if not user.active:
+            return bool(user.is_admin), False, DENIAL_INACTIVE
+        return bool(user.is_admin), True, ""
 
     async def _handle_auth_redirect(self, request: Request) -> Response:
         """
@@ -398,7 +429,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         is_authenticated, username, error_msg = await self._authenticate_user(request)
 
         if is_authenticated and username:
-            is_admin, is_active = self._get_user_auth_state(username)
+            is_admin, is_active, denial_reason = self._get_user_auth_state(username)
 
             # A deprovisioned user holds a signed cookie or a valid token that has not expired
             # yet, so credentials alone still check out. Directories deactivate rather than
@@ -406,9 +437,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # deprovisioned account actually lands in — it has to be denied here, on every
             # path, rather than left to downstream permission checks (issue #311).
             if not is_active:
-                logger.info("Authentication denied for inactive user %s on %s", username, path)
+                logger.info("Authentication denied for %s on %s (%s)", username, path, denial_reason)
                 emit_audit_event(
-                    "auth.denied_inactive",
+                    DENIAL_AUDIT_EVENTS.get(denial_reason, DENIAL_AUDIT_EVENTS[DENIAL_LOOKUP_ERROR]),
                     actor=username,
                     resource_type="user",
                     resource_id=username,
