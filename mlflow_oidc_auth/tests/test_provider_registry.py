@@ -9,6 +9,7 @@ one of these checks by accident is a provider someone can authenticate through u
 the operator did not write.
 """
 
+import importlib
 import json
 from types import SimpleNamespace
 
@@ -20,6 +21,12 @@ from mlflow_oidc_auth.provider_registry import (
     ProviderConfig,
     build_provider_registry,
 )
+
+# Force the AppConfig singleton into existence now, from the real environment. ``config.py``
+# builds it at module import, so a test that imports it *while* holding a patched
+# AUTH_PROVIDERS would bake that patched value in for every test that runs afterwards — the
+# kind of order-dependent pollution these tests exist to catch elsewhere.
+importlib.import_module("mlflow_oidc_auth.config")
 
 
 class FakeConfigManager:
@@ -380,6 +387,81 @@ class TestInteractiveFlag:
     def test_the_legacy_provider_is_interactive(self):
         """Today's single provider is a browser login provider, and must stay on the page."""
         assert build().providers[0].interactive is True
+
+
+class TestFieldTypesAreValidated:
+    """JSON can put a list or object in any field, and this module must report that rather than
+    raise.
+
+    ``AppConfig`` is instantiated at import time, so an exception here does not degrade login —
+    it stops the plugin and Alembic from importing at all. That is the opposite of what dropping
+    invalid entries is for, and it is what a bare ``dict.get`` on an unvalidated value did.
+    Raised in review of #344.
+    """
+
+    @pytest.mark.parametrize("field", ["type", "display_name", "provisioning", "admin_source", "identity_binding", "audience", "issuer", "client_id"])
+    @pytest.mark.parametrize("bad_value", [["a"], {"a": 1}, 5])
+    def test_a_non_string_scalar_field_is_rejected_without_raising(self, field, bad_value):
+        result = build([valid_entry(**{field: bad_value})])
+
+        assert result.providers == []
+        assert any(f"'{field}' must be a string" in e for e in result.errors), result.errors
+
+    @pytest.mark.parametrize("field", ["allowed_algorithms", "allowed_email_domains"])
+    def test_a_list_field_of_the_wrong_type_is_rejected(self, field):
+        result = build([valid_entry(**{field: 5})])
+
+        assert result.providers == []
+        assert any("must be a string or a list of strings" in e for e in result.errors)
+
+    def test_the_error_names_the_field_not_our_data_structure(self):
+        """``'type' must be a string, got list`` points at the operator's mistake;
+        ``unhashable type: 'list'`` points at our dictionary."""
+        result = build([valid_entry(type=["oidc"])])
+
+        assert any("'type' must be a string, got list" in e for e in result.errors)
+
+    def test_importing_config_survives_a_malformed_entry(self, monkeypatch):
+        """The blast radius that made this more than a validation gap.
+
+        ``config = AppConfig()`` is module-level, so a raise here takes down every importer,
+        including Alembic's migration environment — which never reads a provider.
+        """
+        monkeypatch.setenv("AUTH_PROVIDERS", json.dumps([valid_entry(type=["oidc"])]))
+        from mlflow_oidc_auth.config import AppConfig
+
+        app_config = AppConfig()
+
+        assert app_config.AUTH_PROVIDERS.providers == []
+        assert any("must be a string" in e for e in app_config.AUTH_PROVIDERS.errors)
+
+
+class TestAlgorithmsPresentButUnusable:
+    """Silently discarding a configured value leaves nothing to debug from — the same failure
+    that was fixed one level up for ``AUTH_PROVIDERS`` itself."""
+
+    def test_an_empty_algorithm_list_is_reported(self):
+        result = build([valid_entry(allowed_algorithms=[])])
+
+        assert result.providers == []
+        assert any("lists no algorithm" in e for e in result.errors)
+
+    def test_a_list_with_a_non_string_member_is_reported(self):
+        result = build([valid_entry(allowed_algorithms=["RS256", 5])])
+
+        assert result.providers == []
+        assert any("must contain only strings" in e for e in result.errors)
+
+    def test_an_absent_list_is_still_a_silent_default(self):
+        """Absent is not the same as unusable: omitting the field is the documented way to
+        accept RS256, and must stay quiet."""
+        entry = valid_entry()
+        entry.pop("allowed_algorithms", None)
+
+        result = build([entry])
+
+        assert result.providers[0].allowed_algorithms == DEFAULT_ALGORITHMS
+        assert result.errors == []
 
 
 class TestPartialFailureIsolation:

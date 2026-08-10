@@ -220,6 +220,11 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         # wrong one.
         return None, [f"{label}: duplicate id"]
 
+    # Before anything else touches these values. See _validate_field_types.
+    type_errors = _validate_field_types(entry, label)
+    if type_errors:
+        return None, type_errors
+
     provider_type = entry.get("type", "oidc")
     if provider_type not in PROVIDER_TYPES:
         errors.append(f"{label}: unknown type {provider_type!r}; expected one of {', '.join(PROVIDER_TYPES)}")
@@ -300,6 +305,49 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
     )
 
 
+# Entry fields that must be strings when present. Checked up front, before any of them is used
+# as a dict key or has a string method called on it: JSON can put a list or object in any of
+# these, and this module must report that rather than raise. ``AppConfig`` is instantiated at
+# import time, so an exception here does not degrade login — it stops the plugin and Alembic
+# from importing at all, which is the opposite of what dropping invalid entries is for.
+_STRING_FIELDS = (
+    "type",
+    "display_name",
+    "provisioning",
+    "group_sync",
+    "group_sync_mode",
+    "admin_source",
+    "identity_binding",
+    "audience",
+    "issuer",
+    "discovery_url",
+    "client_id",
+)
+
+# Fields that may be a single string or a list of them.
+_LIST_FIELDS = ("allowed_email_domains", "allowed_algorithms")
+
+
+def _validate_field_types(entry: Dict[str, Any], label: str) -> List[str]:
+    """Check that every field is the shape the rest of validation assumes.
+
+    Runs before any other check and short-circuits it, so no later line can call ``.strip()`` on
+    a list or use one as a dict key. Reporting the wrong type is also more useful to an operator
+    than the downstream symptom: ``'type' must be a string, got list`` points at the mistake,
+    whereas ``unhashable type: 'list'`` points at our dictionary.
+    """
+    errors = []
+    for key in _STRING_FIELDS:
+        value = entry.get(key)
+        if value is not None and not isinstance(value, str):
+            errors.append(f"{label}: '{key}' must be a string, got {type(value).__name__}")
+    for key in _LIST_FIELDS:
+        value = entry.get(key)
+        if value is not None and not isinstance(value, (str, list, tuple)):
+            errors.append(f"{label}: '{key}' must be a string or a list of strings, got {type(value).__name__}")
+    return errors
+
+
 def _validate_algorithms(value: Any, label: str) -> Tuple[Tuple[str, ...], List[str]]:
     """Resolve ``allowed_algorithms`` to canonical names, rejecting anything unverifiable.
 
@@ -322,9 +370,21 @@ def _validate_algorithms(value: Any, label: str) -> Tuple[Tuple[str, ...], List[
         ``(algorithms, errors)``. Names are canonically spelled, so a consumer comparing against
         ``"RS256"`` matches an entry written as ``"rs256"``.
     """
+    if value is None:
+        return DEFAULT_ALGORITHMS, []
+
+    # Present but unusable is reported rather than quietly defaulted. Falling back to RS256 is
+    # the safe direction, but an operator who believes they narrowed or widened the accepted
+    # set needs to find out that they did not — silently discarding a configured value leaves
+    # nothing to debug from.
+    items = [value] if isinstance(value, str) else list(value)
+    non_strings = [item for item in items if not isinstance(item, str)]
+    if non_strings:
+        return DEFAULT_ALGORITHMS, [f"{label}: 'allowed_algorithms' must contain only strings; got {type(non_strings[0]).__name__}"]
+
     raw = _as_tuple(value)
     if not raw:
-        return DEFAULT_ALGORITHMS, []
+        return DEFAULT_ALGORITHMS, [f"{label}: 'allowed_algorithms' is set but lists no algorithm; omit it to accept the default {DEFAULT_ALGORITHMS[0]}"]
 
     algorithms: List[str] = []
     errors: List[str] = []
