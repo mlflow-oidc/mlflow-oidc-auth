@@ -353,6 +353,37 @@ class SqlAlchemyStore:
         is_admin: Optional[bool] = None,
         is_service_account: Optional[bool] = None,
     ) -> User:
+        """Update the supplied fields of a user, leaving omitted ones untouched.
+
+        ``None`` means "not supplied" for every parameter but one: the corresponding column is
+        left as it is.
+
+        The exception is ``password_expiration``, because expiry is a property of the *secret*
+        rather than of the user. **Supplying a ``password`` also replaces the expiration** with
+        exactly the value passed in, and ``None`` there means "does not expire" rather than
+        "leave it alone" — a rotated secret never inherits the previous one's lifetime. When no
+        ``password`` is supplied, the expiry changes only if one was passed.
+
+        The practical consequence, which the signature alone does not convey: calling
+        ``update_user(username=u, password=new_secret)`` on a user whose token currently expires
+        will leave them with one that never expires. Pass the expiration explicitly to keep one.
+
+        See :meth:`mlflow_oidc_auth.repository.user.UserRepository.update` for the reasoning
+        (issue #338).
+
+        Parameters:
+            username: Identity key of the user to update.
+            password: New secret. Also resets the expiration, per above.
+            password_expiration: Expiry for the stored secret. See the semantics above.
+            is_admin: New administrator flag.
+            is_service_account: New service-account flag.
+
+        Returns:
+            User: The updated user entity.
+
+        Raises:
+            MlflowException: If the user does not exist.
+        """
         return self.user_repo.update(
             username=username,
             password=password,
