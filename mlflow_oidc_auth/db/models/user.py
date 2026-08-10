@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mlflow_oidc_auth.db.models._base import Base
@@ -22,6 +23,16 @@ class SqlUser(Base):
     password_expiration: Mapped[datetime] = mapped_column(nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Phase 0 lifecycle columns (issue #333). Schema only — nothing enforces ``active`` or
+    # honours ``managed_by`` yet; that is #311 and #319 respectively.
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), default=True)
+    managed_by: Mapped[str] = mapped_column(String(255), nullable=False, server_default="manual", default="manual")
+    external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Nullable at the DB level: they are added to an existing table, and SQLite refuses
+    # ADD COLUMN with a non-constant default once the table has rows. The migration backfills
+    # existing rows; ``default`` populates new ones.
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(), nullable=True, default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(), nullable=True, default=func.now(), onupdate=func.now())
     experiment_permissions: Mapped[list["SqlExperimentPermission"]] = relationship("SqlExperimentPermission", backref="users")
     registered_model_permissions: Mapped[list["SqlRegisteredModelPermission"]] = relationship("SqlRegisteredModelPermission", backref="users")
     scorer_permissions: Mapped[list["SqlScorerPermission"]] = relationship("SqlScorerPermission", backref="users")
@@ -35,6 +46,9 @@ class SqlUser(Base):
         secondary="user_groups",
         back_populates="users",
     )
+    # Unique index rather than constraint: repeated NULLs are allowed on both backends, which
+    # is what "unique when present" means for an optional external identifier.
+    __table_args__ = (Index("ix_users_external_id", "external_id", unique=True),)
 
     def to_mlflow_entity(self):
         return User(
@@ -59,7 +73,17 @@ class SqlGroup(Base):
     __tablename__ = "groups"
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     group_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    __table_args__ = (UniqueConstraint("group_name"),)
+    # Phase 0 lifecycle columns (issue #333); see SqlUser for why they carry no behaviour yet.
+    external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Nullable at the DB level: they are added to an existing table, and SQLite refuses
+    # ADD COLUMN with a non-constant default once the table has rows. The migration backfills
+    # existing rows; ``default`` populates new ones.
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(), nullable=True, default=func.now())
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(), nullable=True, default=func.now(), onupdate=func.now())
+    __table_args__ = (
+        UniqueConstraint("group_name"),
+        Index("ix_groups_external_id", "external_id", unique=True),
+    )
     users: Mapped[list["SqlUser"]] = relationship(
         "SqlUser",
         secondary="user_groups",
@@ -78,6 +102,8 @@ class SqlUserGroup(Base):
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
+    # Whether this membership was set by an admin or derived from a provider claim (issue #333).
+    managed_by: Mapped[str] = mapped_column(String(255), nullable=False, server_default="manual", default="manual")
     __table_args__ = (UniqueConstraint("user_id", "group_id", name="unique_user_group"),)
 
     def to_mlflow_entity(self):

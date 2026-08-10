@@ -16,6 +16,23 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    services:
+      # Migrations must be verified on PostgreSQL as well as SQLite (#333). Without a server
+      # here those tests skip, and "tested on both backends" quietly stops being true.
+      # Local to the runner, trust auth, no secrets involved.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: mlflow_oidc
+          POSTGRES_PASSWORD: mlflow_oidc
+          POSTGRES_DB: mlflow_oidc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -38,6 +55,8 @@ jobs:
         with:
           python-version: 3.12
       - name: Run tests
+        env:
+          MLFLOW_OIDC_TEST_POSTGRES_URI: postgresql+psycopg2://mlflow_oidc:mlflow_oidc@localhost:5432/mlflow_oidc_test
         run: |
           python -m pip install --upgrade pip
           pip install tox
