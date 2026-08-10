@@ -86,6 +86,23 @@ def _secret_env_key(provider_id: str) -> str:
     return "OIDC_CLIENT_SECRET_" + re.sub(r"[^A-Z0-9]+", "_", provider_id.upper())
 
 
+def _colliding_secret_keys() -> Dict[str, list]:
+    """Provider ids that would share a client-secret key, grouped by that key.
+
+    ``_secret_env_key`` collapses runs of non-alphanumeric characters, so ``okta-eu`` and
+    ``okta_eu`` — both legal, distinct registry ids — resolve to the same variable. Registering
+    either would give one provider the other's client secret, and the failure would surface as
+    an opaque ``invalid_client`` from the IdP rather than as a configuration error.
+
+    Detected rather than silently resolved: with no way to tell which provider the operator
+    meant, refusing both is the only answer that cannot cross-wire a credential.
+    """
+    by_key: Dict[str, list] = {}
+    for provider in config.AUTH_PROVIDERS.providers:
+        by_key.setdefault(_secret_env_key(provider.id), []).append(provider.id)
+    return {key: ids for key, ids in by_key.items() if len(ids) > 1}
+
+
 def _client_secret_for(provider_id: str) -> Optional[str]:
     """Resolve a provider's client secret through the config chain."""
 
@@ -117,15 +134,30 @@ def _build_scope() -> str:
 def _client_settings(provider_id: str) -> Optional[Dict[str, Optional[str]]]:
     """Gather what authlib needs to register ``provider_id``, or None if it cannot be built.
 
-    The default provider falls back to the flat ``OIDC_*`` variables when the registry has no
-    entry for it, so a deployment that configures an explicit registry without a ``default``
-    entry still behaves exactly as it does today.
+    The default provider falls back to the flat ``OIDC_*`` variables only when no registry was
+    configured at all, so a legacy deployment is unaffected while an explicit registry that
+    omits an OIDC provider is honoured rather than overridden.
     """
+
+    colliding = _colliding_secret_keys()
+    for key, ids in colliding.items():
+        if provider_id in ids:
+            logger.error(
+                "Providers %s all resolve to the same client-secret key %s; refusing to register any of them, "
+                "because one would be given another's credential. Rename them so their ids differ by more than punctuation.",
+                ", ".join(sorted(ids)),
+                key,
+            )
+            return None
 
     provider = config.AUTH_PROVIDERS.by_id(provider_id)
 
     if provider is None:
-        if provider_id != DEFAULT_PROVIDER_ID or not _has_required_config():
+        # Falling back to the flat OIDC_* variables is only correct when no registry was
+        # configured at all. If the operator wrote a registry that omits an OIDC provider, that
+        # omission *is* the configuration — leftover OIDC_* variables from before the migration
+        # must not resurrect a browser login path they removed.
+        if provider_id != DEFAULT_PROVIDER_ID or config.AUTH_PROVIDERS.source != "legacy" or not _has_required_config():
             return None
         return {
             "client_id": config.OIDC_CLIENT_ID,
@@ -202,8 +234,10 @@ def ensure_all_clients_registered() -> Dict[str, bool]:
         if provider.type != "oidc":
             continue
         results[provider.id] = ensure_client_registered(provider.id)
-    if not results and _has_required_config():
-        # No registry entries at all, but flat configuration is present: keep the legacy client.
+    if not results and config.AUTH_PROVIDERS.source == "legacy" and _has_required_config():
+        # No registry configured at all, but flat configuration is present: keep the legacy
+        # client. Gated on the registry being the legacy shim rather than merely holding no
+        # OIDC entry, so an explicit registry that omits one is honoured (#347 review).
         results[DEFAULT_PROVIDER_ID] = ensure_client_registered(DEFAULT_PROVIDER_ID)
     return results
 

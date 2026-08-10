@@ -12,6 +12,7 @@ What these tests defend:
 * secrets come from the config chain, never from the registry JSON.
 """
 
+from contextlib import ExitStack
 from unittest.mock import patch
 
 import pytest
@@ -58,10 +59,14 @@ class TestLegacyDeploymentIsUnchanged:
         assert oauth_mod.client_name("okta") == "okta"
 
     def test_flat_config_alone_still_registers(self):
-        """No registry entry at all, just the flat OIDC_* variables — exactly today's
-        deployment."""
+        """No registry configured, just the flat OIDC_* variables — exactly today's deployment.
+
+        ``source="legacy"`` is what "no registry configured" looks like; an *empty* registry with
+        ``source="env"`` means the operator wrote one and left it empty, which is a different
+        statement and is covered by TestAnExplicitRegistryIsNotOverridden.
+        """
         with (
-            with_registry(),
+            patch.object(oauth_mod.config, "AUTH_PROVIDERS", RegistryLoadResult(providers=[], source="legacy")),
             patch.object(oauth_mod.config, "OIDC_CLIENT_ID", "id"),
             patch.object(oauth_mod.config, "OIDC_CLIENT_SECRET", "secret"),
             patch.object(oauth_mod.config, "OIDC_DISCOVERY_URL", "https://idp.example.com/.well-known/openid-configuration"),
@@ -183,6 +188,102 @@ class TestSecretsComeFromTheConfigChain:
         """Guards the design decision rather than an outcome: if someone later adds a
         ``client_secret`` field to ProviderConfig, this is where it should be noticed."""
         assert not hasattr(provider("okta"), "client_secret")
+
+
+class TestAnExplicitRegistryIsNotOverridden:
+    """The registry is the operator's statement of which providers exist.
+
+    Leftover ``OIDC_*`` variables are the normal state after migrating to a registry, and must
+    not resurrect a browser login path the operator removed. Raised in review of #347.
+    """
+
+    def _flat_config(self, stack: ExitStack) -> None:
+        """Leftover flat variables, as they sit in the environment after a registry migration."""
+        stack.enter_context(patch.object(oauth_mod.config, "OIDC_CLIENT_ID", "legacy-id"))
+        stack.enter_context(patch.object(oauth_mod.config, "OIDC_CLIENT_SECRET", "legacy-secret"))
+        stack.enter_context(patch.object(oauth_mod.config, "OIDC_DISCOVERY_URL", "https://old-idp.example.com/.well-known/openid-configuration"))
+
+    def test_a_registry_with_no_oidc_provider_does_not_get_the_legacy_client(self):
+        """Machine-only deployment: a k8s provider and nothing else. The old flat variables are
+        still in the environment, and must stay inert."""
+        k8s = ProviderConfig(id="cluster", type="k8s", audience="a", interactive=False)
+        with ExitStack() as stack:
+            stack.enter_context(with_registry(k8s))
+            self._flat_config(stack)
+
+            results = oauth_mod.ensure_all_clients_registered()
+
+            assert results == {}
+            assert oauth_mod.get_client() is None
+            assert getattr(oauth_mod.oauth, "oidc", None) is None
+
+    def test_the_same_holds_for_a_direct_registration_call(self):
+        """``is_oidc_configured()`` reaches this path without going through
+        ``ensure_all_clients_registered``, so gating only the latter would leave the hole open."""
+        k8s = ProviderConfig(id="cluster", type="k8s", audience="a", interactive=False)
+        with ExitStack() as stack:
+            stack.enter_context(with_registry(k8s))
+            self._flat_config(stack)
+
+            assert oauth_mod.ensure_oidc_client_registered() is False
+            assert oauth_mod.is_oidc_configured() is False
+
+    def test_an_explicitly_empty_registry_does_not_get_the_legacy_client(self):
+        with ExitStack() as stack:
+            stack.enter_context(with_registry())
+            self._flat_config(stack)
+
+            assert oauth_mod.ensure_all_clients_registered() == {}
+
+    def test_a_legacy_deployment_still_gets_it(self):
+        """source='legacy' means no registry was configured at all — the case the fallback is
+        actually for."""
+        registry = RegistryLoadResult(providers=[], source="legacy")
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(oauth_mod.config, "AUTH_PROVIDERS", registry))
+            self._flat_config(stack)
+
+            assert oauth_mod.ensure_all_clients_registered() == {DEFAULT_PROVIDER_ID: True}
+
+
+class TestCollidingSecretKeys:
+    """Two legal ids resolving to one secret key would cross-wire credentials.
+
+    The failure would surface as an opaque ``invalid_client`` from the IdP rather than as a
+    configuration error. Raised in review of #347.
+    """
+
+    def test_colliding_providers_are_both_refused(self):
+        """Refused rather than resolved: with no way to tell which provider the operator meant,
+        registering either one risks giving it the other's secret."""
+        with (
+            with_registry(provider("okta-eu"), provider("okta_eu")),
+            with_secrets(OIDC_CLIENT_SECRET_OKTA_EU="shared"),
+        ):
+            results = oauth_mod.ensure_all_clients_registered()
+
+        assert results == {"okta-eu": False, "okta_eu": False}
+        assert oauth_mod.get_client("okta-eu") is None
+        assert oauth_mod.get_client("okta_eu") is None
+
+    def test_a_non_colliding_provider_alongside_them_still_registers(self):
+        """One bad pair must not disable an unrelated provider."""
+        with (
+            with_registry(provider("okta-eu"), provider("okta_eu"), provider("entra")),
+            with_secrets(OIDC_CLIENT_SECRET_OKTA_EU="shared", OIDC_CLIENT_SECRET_ENTRA="s"),
+        ):
+            results = oauth_mod.ensure_all_clients_registered()
+
+        assert results == {"okta-eu": False, "okta_eu": False, "entra": True}
+
+    @pytest.mark.parametrize("second_id", ["okta_eu", "okta.eu", "okta--eu"])
+    def test_punctuation_variants_all_collide(self, second_id):
+        with with_registry(provider("okta-eu"), provider(second_id)), with_secrets():
+            assert set(oauth_mod._colliding_secret_keys()) == {"OIDC_CLIENT_SECRET_OKTA_EU"}
+
+    def test_distinct_ids_do_not_collide(self):
+        with with_registry(provider("okta"), provider("entra")), with_secrets():
+            assert oauth_mod._colliding_secret_keys() == {}
 
 
 class TestReset:

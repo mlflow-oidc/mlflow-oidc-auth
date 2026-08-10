@@ -34,6 +34,11 @@ logger = get_logger()
 
 # Global flag to track OIDC initialization status for health checks
 _oidc_initialized: bool = False
+# Per-provider registration outcome from startup. ``_oidc_initialized`` answers the readiness
+# question — can this process serve a login at all — which stays True when one of several
+# providers failed, because failing the startup probe would pull the pod from service while it
+# can still authenticate everyone else. This dict is what says *which* ones are broken (#315).
+_oidc_provider_status: dict[str, bool] = {}
 
 
 def is_oidc_ready() -> bool:
@@ -45,6 +50,15 @@ def is_oidc_ready() -> bool:
     return _oidc_initialized
 
 
+def get_oidc_provider_status() -> dict[str, bool]:
+    """Per-provider registration outcome from startup.
+
+    ``is_oidc_ready()`` alone cannot express a partial failure, and with several providers a
+    partial failure is an expected state rather than an exceptional one.
+    """
+    return dict(_oidc_provider_status)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """FastAPI lifespan context manager for startup/shutdown events.
@@ -53,13 +67,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     This is critical for multi-replica deployments where any replica may receive
     /callback or /logout requests that require the OIDC client to be registered.
     """
-    global _oidc_initialized
+    global _oidc_initialized, _oidc_provider_status
 
     # Startup: Register OIDC client
     logger.info("Starting MLflow OIDC Auth Plugin...")
     # Every provider is registered independently, so one that is misconfigured or whose
     # discovery document is unreachable does not disable login for the others (#315).
     results = ensure_all_clients_registered()
+    _oidc_provider_status = results
     registered = [provider_id for provider_id, ok in results.items() if ok]
     failed = [provider_id for provider_id, ok in results.items() if not ok]
 
