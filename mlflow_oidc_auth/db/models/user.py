@@ -59,6 +59,8 @@ class SqlUser(Base):
             password_expiration=self.password_expiration,
             is_admin=self.is_admin,
             is_service_account=self.is_service_account,
+            active=self.active,
+            managed_by=self.managed_by,
             experiment_permissions=[p.to_mlflow_entity() for p in self.experiment_permissions],
             registered_model_permissions=[p.to_mlflow_entity() for p in self.registered_model_permissions],
             scorer_permissions=[p.to_mlflow_entity() for p in self.scorer_permissions],

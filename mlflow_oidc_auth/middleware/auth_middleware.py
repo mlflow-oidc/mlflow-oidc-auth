@@ -19,6 +19,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.routers._prefix import API_PATH_PREFIXES
+from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
@@ -312,12 +313,32 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             True if user is admin, False otherwise
         """
+        return self._get_user_auth_state(username)[0]
+
+    def _get_user_auth_state(self, username: str) -> Tuple[bool, bool]:
+        """Read the two facts the auth path needs about a user, in one lookup.
+
+        Both come off the profile row that is already fetched on every authenticated request,
+        so ``active`` costs nothing: it is in the ``load_only`` list added by #333, and the
+        per-request statement count stays at the #305 budget of 2.
+
+        Args:
+            username: Username to check
+
+        Returns:
+            ``(is_admin, is_active)``. On any failure — including the user no longer existing —
+            returns ``(False, False)``: an account that cannot be read is not an account that
+            may authenticate. Erring the other way would let a lookup error grant access, which
+            is the fallback this repository forbids.
+        """
         try:
             user = store.get_user_profile(username)
-            return user.is_admin if user else False
+            if not user:
+                return False, False
+            return bool(user.is_admin), bool(user.active)
         except Exception as e:
-            logger.error(f"Error checking admin status for {username}: {e}")
-            return False
+            logger.error(f"Error reading auth state for {username}: {e}")
+            return False, False
 
     async def _handle_auth_redirect(self, request: Request) -> Response:
         """
@@ -377,9 +398,27 @@ class AuthMiddleware(BaseHTTPMiddleware):
         is_authenticated, username, error_msg = await self._authenticate_user(request)
 
         if is_authenticated and username:
+            is_admin, is_active = self._get_user_auth_state(username)
+
+            # A deprovisioned user holds a signed cookie or a valid token that has not expired
+            # yet, so credentials alone still check out. Directories deactivate rather than
+            # delete (Entra sends PATCH active:false), which makes this the state a
+            # deprovisioned account actually lands in — it has to be denied here, on every
+            # path, rather than left to downstream permission checks (issue #311).
+            if not is_active:
+                logger.info("Authentication denied for inactive user %s on %s", username, path)
+                emit_audit_event(
+                    "auth.denied_inactive",
+                    actor=username,
+                    resource_type="user",
+                    resource_id=username,
+                    status="denied",
+                )
+                return await self._deny(request, path)
+
             # Set user context in request state for downstream middleware/handlers
             request.state.username = username
-            request.state.is_admin = self._get_user_admin_status(username)
+            request.state.is_admin = is_admin
 
             # ROBUST: Store user info in ASGI scope for WSGI compatibility
             # This ensures Flask RBAC middleware can access user information reliably
@@ -400,24 +439,40 @@ class AuthMiddleware(BaseHTTPMiddleware):
         else:
             # Authentication failed - for API routes return 401 JSON, else redirect to login
             logger.info(f"Authentication failed for {path}: {error_msg}")
-            # Treat certain non-/api routes as API-style endpoints (no redirects)
-            # so callers get an HTTP error instead of a redirected 200.
-            # "/ajax-api" is the same REST surface under the prefix the web UI
-            # calls; it must 401 rather than redirect, just like "/api".
-            if path.startswith(API_PATH_PREFIXES):
-                return JSONResponse(status_code=401, content={"detail": "Authentication required"})
-            if path.startswith("/oidc/trash"):
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "Administrator privileges required for this operation"},
-                )
-            # Only redirect top-level navigation requests. Subresource fetches
-            # (chunks, fetch/XHR, telemetry) must get 401 — otherwise the
-            # browser silently follows the 302 and hands HTML to the JS chunk
-            # loader / JSON.parse, breaking the SPA mid-session.
-            if not self._is_document_request(request):
-                return JSONResponse(status_code=401, content={"detail": "Authentication required"})
-            return await self._handle_auth_redirect(request)
+            return await self._deny(request, path)
+
+    async def _deny(self, request: Request, path: str) -> Response:
+        """Turn an unauthenticated request away.
+
+        Shared by "no valid credentials" and "credentials belong to an inactive user" so the
+        two are indistinguishable to the caller: an inactive account must not be detectable by
+        the shape of its rejection.
+
+        Args:
+            request: FastAPI request object
+            path: Request path, already extracted by the caller
+
+        Returns:
+            A 401, a 403 or a redirect, depending on the surface.
+        """
+        # Treat certain non-/api routes as API-style endpoints (no redirects)
+        # so callers get an HTTP error instead of a redirected 200.
+        # "/ajax-api" is the same REST surface under the prefix the web UI
+        # calls; it must 401 rather than redirect, just like "/api".
+        if path.startswith(API_PATH_PREFIXES):
+            return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+        if path.startswith("/oidc/trash"):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Administrator privileges required for this operation"},
+            )
+        # Only redirect top-level navigation requests. Subresource fetches
+        # (chunks, fetch/XHR, telemetry) must get 401 — otherwise the
+        # browser silently follows the 302 and hands HTML to the JS chunk
+        # loader / JSON.parse, breaking the SPA mid-session.
+        if not self._is_document_request(request):
+            return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+        return await self._handle_auth_redirect(request)
 
     @staticmethod
     def _is_document_request(request: Request) -> bool:

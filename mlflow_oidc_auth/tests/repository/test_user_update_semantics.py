@@ -167,6 +167,10 @@ class TestOmittedFlagsArePreserved:
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{Path(tempfile.mkdtemp()) / 'auth.db'}")
         s.create_user("dem@example.com", TOKEN, "Dem User", is_admin=True, is_service_account=True)
+        # A second active admin, so demotion is not blocked by the last-active-admin invariant
+        # (#311). The point here is that an explicit False still applies, not that the store
+        # will let a deployment strand itself without an administrator.
+        s.create_user("other-admin@example.com", TOKEN, "Other Admin", is_admin=True)
 
         s.update_user(username="dem@example.com", **{flag: False})
 

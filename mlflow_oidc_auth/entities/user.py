@@ -50,8 +50,13 @@ class User:
         gateway_model_definition_permissions=None,
         gateway_secret_permissions=None,
         groups=None,
+        active: bool = True,
+        managed_by: str = "manual",
     ):
         # Provide sensible defaults so tests can construct User with partial data.
+        # ``active`` defaults True and ``managed_by`` to "manual" to match the #333 backfill:
+        # a User built without them describes a normal, locally managed, enabled account, so no
+        # existing construction site silently produces a disabled one.
         self._id = id_
         self._username = username
         self._password_hash = password_hash
@@ -66,6 +71,8 @@ class User:
         self._gateway_secret_permissions = gateway_secret_permissions or []
         self._display_name = display_name
         self._groups = groups or []
+        self._active = active
+        self._managed_by = managed_by
 
     @property
     def id(self):
@@ -162,6 +169,20 @@ class User:
     @property
     def groups(self):
         return self._groups
+
+    @property
+    def active(self) -> bool:
+        """Whether the account may authenticate.
+
+        Entra and other directories deprovision with ``PATCH active:false`` rather than a
+        delete, so this is the state a deprovisioned user lands in (issue #311).
+        """
+        return self._active
+
+    @property
+    def managed_by(self) -> str:
+        """Which source owns this row — ``manual``, ``scim`` or ``oidc:<provider_id>``."""
+        return self._managed_by
 
     @groups.setter
     def groups(self, groups):

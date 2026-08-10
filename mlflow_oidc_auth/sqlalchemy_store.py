@@ -354,6 +354,8 @@ class SqlAlchemyStore:
         password_expiration: Optional[datetime] = None,
         is_admin: Optional[bool] = None,
         is_service_account: Optional[bool] = None,
+        active: Optional[bool] = None,
+        managed_by: Optional[str] = None,
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
@@ -392,6 +394,8 @@ class SqlAlchemyStore:
             password_expiration=password_expiration,
             is_admin=is_admin,
             is_service_account=is_service_account,
+            active=active,
+            managed_by=managed_by,
         )
 
     def delete_user(self, username: str):
