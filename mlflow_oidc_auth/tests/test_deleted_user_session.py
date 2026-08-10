@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 from flask import Flask
 from starlette.middleware.sessions import SessionMiddleware
 
+import mlflow_oidc_auth.middleware.auth_middleware as auth_middleware_module
 import mlflow_oidc_auth.store as store_module
 from mlflow_oidc_auth.middleware import AuthAwareWSGIMiddleware, AuthMiddleware
 
@@ -37,6 +38,19 @@ LOGIN = "/login/probe"
 FASTAPI_ROUTE = "/oidc/api/probe"
 FLASK_ROUTE = "/api/2.0/mlflow/experiments/probe"
 GRAPHQL_ROUTE = "/graphql"
+
+
+@pytest.fixture(autouse=True)
+def clear_denial_audit_throttle():
+    """Reset the module-level denial-audit window between tests.
+
+    It is deliberately process-wide state, so without this a denial recorded by one test
+    suppresses the audit event another test asserts on — and the failure looks like a missing
+    event rather than leftover state.
+    """
+    auth_middleware_module._denial_audit_seen.clear()
+    yield
+    auth_middleware_module._denial_audit_seen.clear()
 
 
 @pytest.fixture
@@ -164,6 +178,112 @@ class TestDeletedUserIsDeniedOnEverySurface:
         store.create_user("gone@example.com", PASSWORD, "Gone Again")
 
         assert client.get(FASTAPI_ROUTE).status_code == 200
+
+
+class TestDenialAuditIsThrottled:
+    """A revoked cookie keeps arriving, and one audit event per request would let a single stale
+    session bury the forensic record — or let someone holding such a cookie dilute it on purpose.
+    Raised in review of #348.
+    """
+
+    def _deny_repeatedly(self, store, client, monkeypatch, username, times):
+        events = []
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event",
+            lambda event, **kwargs: events.append((event, kwargs)),
+        )
+        client.get(LOGIN, params={"username": username})
+        store.delete_user(username)
+        for _ in range(times):
+            assert client.get(FASTAPI_ROUTE).status_code == 401
+        return events
+
+    def test_repeated_denials_audit_once(self, store, client, monkeypatch):
+        store.create_user("gone@example.com", PASSWORD, "Gone")
+        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+
+        events = self._deny_repeatedly(store, client, monkeypatch, "gone@example.com", times=25)
+
+        assert len(events) == 1, f"expected one audit event for 25 denials, got {len(events)}"
+
+    def test_every_request_is_still_denied(self, store, client, monkeypatch):
+        """Throttling the record must never throttle the decision."""
+        store.create_user("gone@example.com", PASSWORD, "Gone")
+        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        self._deny_repeatedly(store, client, monkeypatch, "gone@example.com", times=5)
+
+        assert client.get(FASTAPI_ROUTE).status_code == 401
+
+    def test_a_different_user_is_audited_separately(self, store, client, monkeypatch):
+        """Suppression is per (username, reason); one noisy session must not hide another."""
+        events = []
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event",
+            lambda event, **kwargs: events.append((event, kwargs)),
+        )
+        for name in ("a@example.com", "b@example.com"):
+            store.create_user(name, PASSWORD, name)
+        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+
+        for name in ("a@example.com", "b@example.com"):
+            client.get(LOGIN, params={"username": name})
+            store.delete_user(name)
+            client.get(FASTAPI_ROUTE)
+            client.get(FASTAPI_ROUTE)
+
+        assert sorted(kwargs["actor"] for _, kwargs in events) == ["a@example.com", "b@example.com"]
+
+    def test_a_different_reason_for_the_same_user_is_audited_separately(self, store, client, monkeypatch):
+        """Deactivated then deleted is two distinct events about one account."""
+        from sqlalchemy import text
+
+        events = []
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event",
+            lambda event, **kwargs: events.append(event),
+        )
+        store.create_user("x@example.com", PASSWORD, "X")
+        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        client.get(LOGIN, params={"username": "x@example.com"})
+
+        with store.engine.begin() as conn:
+            conn.execute(text("UPDATE users SET active = 0 WHERE username = 'x@example.com'"))
+        client.get(FASTAPI_ROUTE)
+        store.delete_user("x@example.com")
+        client.get(FASTAPI_ROUTE)
+
+        assert events == ["auth.denied_inactive", "auth.denied_unknown_user"]
+
+    def test_the_throttle_cache_is_bounded(self):
+        """An attacker rotating usernames must not grow this without limit; evicting only ever
+        costs a duplicate audit entry, never a missed denial."""
+        assert auth_middleware_module._denial_audit_seen.maxsize <= 4096
+
+
+class TestAdminStatusShim:
+    def test_an_inactive_admin_is_not_reported_as_admin(self, store):
+        """A method named "is this an admin" must not answer True for an account being turned
+        away — these are exactly the deprovisioned admins #311 exists to shut out."""
+        from sqlalchemy import text
+
+        middleware = AuthMiddleware.__new__(AuthMiddleware)
+        store.create_user("adm@example.com", PASSWORD, "Adm", is_admin=True)
+        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        assert middleware._get_user_admin_status("adm@example.com") is True
+
+        with store.engine.begin() as conn:
+            conn.execute(text("UPDATE users SET active = 0 WHERE username = 'adm@example.com'"))
+
+        assert middleware._get_user_admin_status("adm@example.com") is False
+
+    def test_a_deleted_admin_is_not_reported_as_admin(self, store):
+        middleware = AuthMiddleware.__new__(AuthMiddleware)
+        store.create_user("adm@example.com", PASSWORD, "Adm", is_admin=True)
+        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+
+        store.delete_user("adm@example.com")
+
+        assert middleware._get_user_admin_status("adm@example.com") is False
 
 
 class TestDenialIsReportedAsDeletion:

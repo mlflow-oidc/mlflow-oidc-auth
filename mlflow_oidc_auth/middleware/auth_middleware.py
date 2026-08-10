@@ -8,8 +8,10 @@ Authorization (what the user can do) is handled by RBACMiddleware.
 
 from typing import Optional, Tuple
 import base64
+import threading
 import time
 
+from cachetools import TTLCache
 from fastapi import Request, Response
 from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -41,6 +43,34 @@ DENIAL_AUDIT_EVENTS = {
     DENIAL_INACTIVE: "auth.denied_inactive",
     DENIAL_LOOKUP_ERROR: "auth.denied_lookup_error",
 }
+
+# A revoked-but-unexpired cookie keeps arriving: a browser tab left open on the SPA issues
+# subresource fetches, polls and telemetry until the cookie expires, and each one is denied. One
+# audit event per request would let a single stale session write thousands of identical entries,
+# burying real events — and would let anyone holding such a cookie dilute the forensic record
+# deliberately. So the *first* denial for a (username, reason) is recorded and repeats within the
+# window are suppressed; the denial itself still happens every time and is still visible in the
+# request log.
+#
+# Bounded as well as time-limited: an attacker rotating usernames must not be able to grow this
+# without limit. Eviction only costs a duplicate audit entry, never a missed denial.
+DENIAL_AUDIT_WINDOW_SECONDS = 60
+_denial_audit_seen: TTLCache = TTLCache(maxsize=1024, ttl=DENIAL_AUDIT_WINDOW_SECONDS)
+_denial_audit_lock = threading.Lock()
+
+
+def _should_audit_denial(username: str, reason: str) -> bool:
+    """Whether this denial is the first of its kind within the window.
+
+    Thread-safe: several ASGI worker threads can be denying the same stale session at once, and
+    ``TTLCache`` is not itself synchronised.
+    """
+    key = (username, reason)
+    with _denial_audit_lock:
+        if key in _denial_audit_seen:
+            return False
+        _denial_audit_seen[key] = True
+        return True
 
 
 def normalize_workspace_header(raw_workspace: Optional[str]) -> Optional[str]:
@@ -327,9 +357,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             username: Username to check
 
         Returns:
-            True if user is admin, False otherwise
+            True only if the user is an administrator **and** may authenticate. A deactivated or
+            deleted admin returns False: the raw flag is preserved inside
+            :meth:`_get_user_auth_state` so the denial path can report accurately, but a method
+            named "is this an admin" must never answer True for an account that is being turned
+            away (issue #306 review).
         """
-        return self._get_user_auth_state(username)[0]
+        is_admin, is_active, _ = self._get_user_auth_state(username)
+        return is_admin and is_active
 
     def _get_user_auth_state(self, username: str) -> Tuple[bool, bool, str]:
         """Read the facts the auth path needs about a user, in one lookup.
@@ -357,7 +392,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # Routine, not exceptional: the account was deleted while its signed cookie was
                 # still valid. The browser will keep presenting it until the cookie expires, so
                 # logging this at ERROR would fill the log with something nobody can act on.
-                logger.info("Denying %s: the account no longer exists", username)
+                # Not logged here at all — ``dispatch`` logs the denial once, with the path and
+                # the reason, and two lines per request is twice the volume for one event.
                 return False, False, DENIAL_UNKNOWN_USER
             logger.error("Error reading auth state for %s: %s", username, e)
             return False, False, DENIAL_LOOKUP_ERROR
@@ -438,13 +474,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # path, rather than left to downstream permission checks (issue #311).
             if not is_active:
                 logger.info("Authentication denied for %s on %s (%s)", username, path, denial_reason)
-                emit_audit_event(
-                    DENIAL_AUDIT_EVENTS.get(denial_reason, DENIAL_AUDIT_EVENTS[DENIAL_LOOKUP_ERROR]),
-                    actor=username,
-                    resource_type="user",
-                    resource_id=username,
-                    status="denied",
-                )
+                if _should_audit_denial(username, denial_reason):
+                    emit_audit_event(
+                        DENIAL_AUDIT_EVENTS.get(denial_reason, DENIAL_AUDIT_EVENTS[DENIAL_LOOKUP_ERROR]),
+                        actor=username,
+                        resource_type="user",
+                        resource_id=username,
+                        status="denied",
+                    )
                 return await self._deny(request, path)
 
             # Set user context in request state for downstream middleware/handlers
