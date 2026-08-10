@@ -62,6 +62,7 @@ from mlflow_oidc_auth.repository import (
     GatewayModelDefinitionGroupPermissionRepository,
     GatewayModelDefinitionPermissionGroupRegexRepository,
     UserRepository,
+    UserIdentityRepository,
     WorkspacePermissionRepository,
     WorkspaceGroupPermissionRepository,
 )
@@ -82,6 +83,7 @@ class SqlAlchemyStore:
         SessionMaker = sessionmaker(bind=self.engine)
         self.ManagedSessionMaker = _get_managed_session_maker(SessionMaker, self.db_type)
         self.user_repo = UserRepository(self.ManagedSessionMaker)
+        self.user_identity_repo = UserIdentityRepository(self.ManagedSessionMaker)
         self.experiment_repo = ExperimentPermissionRepository(self.ManagedSessionMaker)
         self.experiment_group_repo = ExperimentPermissionGroupRepository(self.ManagedSessionMaker)
         self.group_repo = GroupRepository(self.ManagedSessionMaker)
