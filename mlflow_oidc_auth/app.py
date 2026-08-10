@@ -27,7 +27,7 @@ from mlflow_oidc_auth.middleware import (
     WorkspaceContextMiddleware,
     add_fastapi_permission_middleware,
 )
-from mlflow_oidc_auth.oauth import ensure_oidc_client_registered
+from mlflow_oidc_auth.oauth import ensure_all_clients_registered
 from mlflow_oidc_auth.routers import ajax_alias_router, get_all_routers
 
 logger = get_logger()
@@ -57,12 +57,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Startup: Register OIDC client
     logger.info("Starting MLflow OIDC Auth Plugin...")
-    if ensure_oidc_client_registered():
+    # Every provider is registered independently, so one that is misconfigured or whose
+    # discovery document is unreachable does not disable login for the others (#315).
+    results = ensure_all_clients_registered()
+    registered = [provider_id for provider_id, ok in results.items() if ok]
+    failed = [provider_id for provider_id, ok in results.items() if not ok]
+
+    if registered:
         _oidc_initialized = True
-        logger.info("OIDC client successfully registered at startup")
-    else:
+        logger.info("OIDC client(s) successfully registered at startup: %s", ", ".join(sorted(registered)))
+    if failed:
         logger.warning(
-            "OIDC client registration failed at startup. "
+            "OIDC client registration failed at startup for: %s. "
+            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL, "
+            "or OIDC_CLIENT_SECRET_<PROVIDER_ID> for an additional provider). "
+            "Those providers will not be available until configuration is corrected.",
+            ", ".join(sorted(failed)),
+        )
+    if not results:
+        logger.warning(
+            "No OIDC client was registered at startup. "
             "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL). "
             "OIDC authentication will not be available until configuration is corrected."
         )
