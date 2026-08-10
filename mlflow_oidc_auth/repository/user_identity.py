@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlUser, SqlUserIdentity
@@ -55,19 +55,31 @@ class UserIdentityRepository:
             rows = session.query(SqlUserIdentity.provider_id).join(SqlUser, SqlUserIdentity.user_id == SqlUser.id).filter(SqlUser.username == username).all()
             return [row[0] for row in rows]
 
-    def link(self, provider_id: str, subject: str, username: str) -> bool:
+    def link(self, provider_id: str, subject: str, username: str, *, allow_additional_provider: bool = False) -> bool:
         """Bind ``(provider_id, subject)`` to an existing user.
 
         Idempotent: re-linking an identity that already points at this user is a no-op rather
         than an error, so a repeated login does not fail on the unique constraint.
 
+        **Refuses by default to add a second provider to a user another provider already owns.**
+        That rule is also applied when resolving (:mod:`mlflow_oidc_auth.identity_resolution`),
+        but checking it only there left it advisory: this repository is public on the store, so
+        any caller reaching it directly bypassed the check, and even a correct caller had a
+        window between resolving and writing in which a concurrent login could bind a different
+        provider. Enforcing it at the write closes both.
+
+        ``allow_additional_provider`` exists for the deliberate account-linking case — a person
+        who genuinely holds identities at two IdPs — so that becomes an explicit decision at the
+        call site rather than something that happens by omission.
+
         Returns:
             True when a new row was written, False when the binding already existed.
 
         Raises:
-            MlflowException: If the user does not exist, or if the pair is already bound to a
-                *different* user. The latter is an attempted takeover and must never be
-                silently re-pointed.
+            MlflowException: If the user does not exist, if the pair is already bound to a
+                *different* user, or if another provider already owns this user and
+                ``allow_additional_provider`` was not set. The middle case is an attempted
+                takeover and must never be silently re-pointed.
 
                 MlflowException rather than a bare ValueError because the managed session
                 wraps every other exception into one anyway — raising it directly keeps the
@@ -84,6 +96,17 @@ class UserIdentityRepository:
                 if existing.user_id != user.id:
                     raise MlflowException(f"identity ({provider_id}, {subject}) is already bound to a different user", RESOURCE_ALREADY_EXISTS)
                 return False
+
+            if not allow_additional_provider:
+                foreign = (
+                    session.query(SqlUserIdentity.provider_id).filter(SqlUserIdentity.user_id == user.id, SqlUserIdentity.provider_id != provider_id).first()
+                )
+                if foreign is not None:
+                    raise MlflowException(
+                        f"user '{username}' is already bound to provider '{foreign[0]}'; refusing to bind provider "
+                        f"'{provider_id}' as well. Pass allow_additional_provider=True to link deliberately.",
+                        INVALID_STATE,
+                    )
 
             session.add(SqlUserIdentity(provider_id=provider_id, subject=subject, user_id=user.id))
             session.flush()

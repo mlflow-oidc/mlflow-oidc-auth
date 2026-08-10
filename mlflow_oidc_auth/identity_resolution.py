@@ -88,6 +88,15 @@ def _email_from_claims(claims: Dict[str, Any]) -> Optional[str]:
     return email or None
 
 
+def _email_is_verified(claims: Dict[str, Any]) -> bool:
+    """Whether the provider states it has verified the address, strictly.
+
+    Only a literal ``True`` counts. Absent, null, ``"true"`` and every other truthy stand-in are
+    treated as unverified, because this decides whether an address may name an account.
+    """
+    return claims.get("email_verified") is True
+
+
 def _domain_of(email: str) -> Optional[str]:
     """Return the domain part of ``email``, or None when it is not a single usable address.
 
@@ -113,6 +122,7 @@ def resolve_identity(
     claims: Dict[str, Any],
     identity_repo,
     user_lookup,
+    username: Optional[str] = None,
 ) -> IdentityDecision:
     """Decide which local user, if any, an external identity reaches.
 
@@ -124,6 +134,10 @@ def resolve_identity(
         user_lookup: Callable ``(username) -> bool`` answering whether a local user exists.
             Injected rather than taken from the store singleton so this stays a pure decision
             that tests can drive without a database.
+        username: The username the caller derived from the claims using the deployment's
+            configured field list. Optional, but supplying it is what lets email binding notice
+            that this deployment does not name accounts by email — in which case it refuses
+            rather than silently creating a duplicate.
 
     Returns:
         IdentityDecision: What the caller should do. Check ``resolution`` — never read
@@ -140,7 +154,7 @@ def resolve_identity(
         return IdentityDecision(Resolution.MATCHED, username=existing, reason="identity already bound")
 
     if provider.identity_binding == "email":
-        return _resolve_by_email(provider, subject, claims, identity_repo, user_lookup)
+        return _resolve_by_email(provider, subject, claims, identity_repo, user_lookup, username)
 
     # subject binding: an unknown (provider, subject) is a new principal, full stop. It is never
     # matched to an existing user by anything the token says about them.
@@ -153,11 +167,18 @@ def _resolve_by_email(
     claims: Dict[str, Any],
     identity_repo,
     user_lookup,
+    username: Optional[str],
 ) -> IdentityDecision:
     """Link by email, but only within the domains this provider is trusted for."""
     email = _email_from_claims(claims)
     if not email:
         return _refuse(provider, subject, "identity_binding is 'email' but the claims carry no usable email")
+
+    if not _email_is_verified(claims):
+        # An unverified address proves nothing. Refused rather than falling through to CREATE:
+        # creating an account named for an unverified address is pre-registration takeover —
+        # claim the name first, and the real owner logs into the attacker's account later.
+        return _refuse(provider, subject, "the provider did not assert email_verified for this address")
 
     domain = _domain_of(email)
     if not domain:
@@ -170,7 +191,20 @@ def _resolve_by_email(
         # account for a domain the operator never authorised this provider to speak for.
         return _refuse(provider, subject, f"provider is not authorised for email domain {domain!r}")
 
-    username = normalize_username(email)
+    # The account is named by the email, and only by the email. Authorising a domain says the
+    # provider may speak for addresses there; it does not license naming some *other* account.
+    # Without this, a caller deriving usernames from another claim could present a verified
+    # address of its own alongside somebody else's username and reach their account.
+    email_username = normalize_username(email)
+    if username is not None and normalize_username(username) != email_username:
+        return _refuse(
+            provider,
+            subject,
+            f"identity_binding 'email' names accounts by their email address, but this deployment derived the username "
+            f"{username!r} from other claims; configure identity_binding 'subject' for this provider instead",
+        )
+
+    username = email_username
     if not user_lookup(username):
         return IdentityDecision(Resolution.CREATE, reason="no local user for this authorised email")
 
