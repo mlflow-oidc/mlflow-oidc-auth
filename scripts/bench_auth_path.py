@@ -139,12 +139,17 @@ def _build_app(store) -> Any:
     return app
 
 
-def _seed(store, n_users: int, n_groups: int) -> List[str]:
+def _seed(store, n_users: int, n_groups: int, hash_method: Optional[str] = None) -> List[str]:
     """Bulk-insert ``n_users`` users each belonging to ``n_groups`` groups.
 
     Uses Core inserts rather than the store API: seeding 500 users x 200 groups through
     the ORM takes minutes and none of it is what we are measuring. The password hash is
     computed once and reused, so the basic-auth scenario still verifies a real hash.
+
+    ``hash_method`` defaults to the repository's ``TOKEN_HASH_METHOD`` so the seeded rows
+    match what the plugin actually writes. Passing an older method (for example
+    ``scrypt:32768:8:1``) measures the cost a deployment still pays for hashes written
+    before #336 — those keep verifying under their original method until rotated.
 
     Returns:
         The seeded usernames.
@@ -153,8 +158,9 @@ def _seed(store, n_users: int, n_groups: int) -> List[str]:
     from werkzeug.security import generate_password_hash
 
     from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
+    from mlflow_oidc_auth.repository.user import TOKEN_HASH_METHOD
 
-    pwhash = generate_password_hash(BENCH_PASSWORD)
+    pwhash = generate_password_hash(BENCH_PASSWORD, method=hash_method or TOKEN_HASH_METHOD)
     usernames = [f"bench{i}@example.com" for i in range(n_users)]
     group_names = [f"bench-group-{i}" for i in range(n_groups)]
 
@@ -249,6 +255,7 @@ def _run_matrix(
     scenarios: Iterable[str],
     iterations: int,
     warmup: int,
+    hash_method: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Run every (users, groups, scenario) combination against one database."""
     from fastapi.testclient import TestClient
@@ -265,7 +272,7 @@ def _run_matrix(
             store.init_db(db_uri)
             _reset_rows(store)
 
-            usernames = _seed(store, n_users, n_groups)
+            usernames = _seed(store, n_users, n_groups, hash_method)
             # The middleware resolves through the module-level store singleton, so point
             # it at this freshly seeded store rather than constructing a second one.
             _bind_singleton(store)
@@ -354,6 +361,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--scenarios", nargs="+", default=list(SCENARIOS), choices=list(SCENARIOS))
     parser.add_argument("--iterations", type=int, default=200)
     parser.add_argument("--warmup", type=int, default=20)
+    parser.add_argument(
+        "--hash-method",
+        default=None,
+        help="Werkzeug hash method for seeded secrets. Default: the repository's TOKEN_HASH_METHOD. "
+        "Pass scrypt:32768:8:1 to measure hashes written before #336.",
+    )
     parser.add_argument("--json", dest="json_path", default=None, help="Also write raw measurements here.")
     args = parser.parse_args(argv)
 
@@ -376,6 +389,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         scenarios=args.scenarios,
         iterations=args.iterations,
         warmup=args.warmup,
+        hash_method=args.hash_method,
     )
 
     print(_to_markdown(rows))

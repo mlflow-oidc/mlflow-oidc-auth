@@ -16,6 +16,34 @@ from mlflow_oidc_auth.db.models import SqlGroup, SqlUser
 from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.repository.utils import get_user
 
+# Hash method for secrets stored in ``users.password_hash`` (issue #336).
+#
+# Nothing in this plugin stores a human-chosen password. Every value written here comes from
+# ``mlflow_oidc_auth.user.generate_token()`` — 24 characters drawn by ``secrets.choice`` from a
+# 62-character alphabet, about 143 bits of entropy — and no endpoint accepts an operator-supplied
+# password. A memory-hard KDF exists to make brute-forcing *low-entropy* human passwords
+# expensive; against 143 bits there is nothing to brute-force, so the ~48 ms that Werkzeug's
+# default scrypt costs bought no security while being paid on every basic-authenticated request.
+# Verification drops from ~47 ms to ~0.08 ms.
+#
+# Migration is handled by Werkzeug itself: the method is encoded in the stored hash and
+# ``check_password_hash`` dispatches on it, so hashes written before this change keep verifying
+# under scrypt, unchanged. Only newly written hashes use this method — a secret moves over when
+# its token is rotated. Existing hashes are deliberately never re-hashed in place: a stored
+# secret cannot be distinguished from a hypothetical operator-set password, and silently
+# re-hashing one at this cost factor would weaken it.
+#
+# This is intentionally a constant, not configuration. It is a property of what we store, not a
+# deployment choice, and the failure mode of setting it wrong is silent.
+#
+# The entropy premise is not self-enforcing: ``generate_token()`` lives in another module, and
+# shortening it or narrowing its alphabet would make this cost factor indefensible without
+# anything here changing. ``TestTokenEntropyPremise`` in
+# ``tests/repository/test_user_token_hashing.py`` pins the token's length, alphabet and resulting
+# entropy, so that change fails a test instead of passing quietly. If one of those tests has to
+# be updated, this constant has to be re-justified in the same diff.
+TOKEN_HASH_METHOD = "pbkdf2:sha256:1000"
+
 
 def normalize_username(username: str) -> str:
     """Fold a username to its canonical (lowercase) form.
@@ -45,7 +73,7 @@ class UserRepository:
     ) -> User:
         username = normalize_username(username)
         _validate_username(username)
-        pwhash = generate_password_hash(password)
+        pwhash = generate_password_hash(password, method=TOKEN_HASH_METHOD)
         with self._Session(read_only=False) as session:
             try:
                 u = SqlUser(
@@ -161,7 +189,7 @@ class UserRepository:
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if password is not None:
-                user.password_hash = generate_password_hash(password)
+                user.password_hash = generate_password_hash(password, method=TOKEN_HASH_METHOD)
             if password_expiration is not None:
                 user.password_expiration = password_expiration
             if is_admin is not None:
