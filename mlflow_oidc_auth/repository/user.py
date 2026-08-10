@@ -123,6 +123,11 @@ class UserRepository:
                         SqlUser.password_expiration,
                         SqlUser.is_admin,
                         SqlUser.is_service_account,
+                        # Widening the existing select rather than adding a query: this row is
+                        # already fetched on every authenticated request, so #311 and #319 get
+                        # these for free and the #305 budget of 2 statements is unchanged.
+                        SqlUser.active,
+                        SqlUser.managed_by,
                     ),
                     selectinload(SqlUser.groups).load_only(SqlGroup.id, SqlGroup.group_name),
                     noload(SqlUser.experiment_permissions),
