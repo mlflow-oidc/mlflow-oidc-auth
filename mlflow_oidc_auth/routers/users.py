@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
+from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
@@ -97,6 +98,13 @@ async def create_access_token(
 
             try:
                 expiration = datetime.fromisoformat(expiration_str)
+                # An ISO 8601 timestamp carries no offset unless one is written, and both
+                # "2027-01-01" and "2027-01-01T00:00:00" are valid. Comparing a naive datetime
+                # to an aware one raises TypeError, which is not a ValueError and so used to
+                # escape as a 500. This layer deals in UTC — the 'Z' handling above says so —
+                # so read a missing offset as UTC rather than rejecting the request (issue #338).
+                if expiration.tzinfo is None:
+                    expiration = expiration.replace(tzinfo=timezone.utc)
                 now = datetime.now(timezone.utc)
 
                 if expiration < now:
@@ -107,11 +115,17 @@ async def create_access_token(
                         status_code=400,
                         detail="Expiration date must be less than 1 year in the future",
                     )
-            except ValueError:
+            except (ValueError, TypeError):
+                # TypeError is belt-and-braces: the normalization above should make it
+                # unreachable, but a bad expiration must never become a 500.
                 raise HTTPException(status_code=400, detail=f"Invalid expiration date format")
 
-        # Check if the target user exists
-        user = store.get_user_profile(target_username)
+        # Check if the target user exists. get_user_profile raises rather than returning None,
+        # so without this the outer handler turns a mistyped username into a 500 (issue #338).
+        try:
+            user = store.get_user_profile(target_username)
+        except MlflowException:
+            raise HTTPException(status_code=404, detail=f"User {target_username} not found")
         if user is None:
             raise HTTPException(status_code=404, detail=f"User {target_username} not found")
 
