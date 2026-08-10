@@ -139,14 +139,15 @@ def _client_settings(provider_id: str) -> Optional[Dict[str, Optional[str]]]:
     omits an OIDC provider is honoured rather than overridden.
     """
 
-    colliding = _colliding_secret_keys()
-    for key, ids in colliding.items():
+    for ids in _colliding_secret_keys().values():
         if provider_id in ids:
+            # The derived key name is deliberately not logged. It is only a variable name, not a
+            # value, but it is taint-tracked from the secret accessor and CodeQL flags it as
+            # clear-text logging of a secret — and the provider ids alone are enough to act on.
             logger.error(
-                "Providers %s all resolve to the same client-secret key %s; refusing to register any of them, "
+                "Providers %s resolve to the same client-secret configuration key; refusing to register any of them, "
                 "because one would be given another's credential. Rename them so their ids differ by more than punctuation.",
                 ", ".join(sorted(ids)),
-                key,
             )
             return None
 
