@@ -43,15 +43,23 @@ async def get_username_from_session(request: Request) -> Optional[str]:
         if hasattr(request.state, "username"):
             logger.debug(f"Request state username value: {request.state.username}")
 
-    # Fallback to session for backward compatibility
+    # Fallback to the server-side session. Since #310 the cookie carries only an opaque id, so
+    # the username comes from the row it names — never from the cookie itself, which is what
+    # made a session impossible to revoke.
     try:
+        from mlflow_oidc_auth.store import store
+
         session = request.session
-        username = session.get("username")
-        if username:
-            logger.debug(f"Username from session: {username}")
-            return username
+        resolved = store.resolve_auth_session(session.get("session_id", ""))
+        # ``resolve`` reports the account's active flag rather than filtering on it, so the
+        # middleware can tell "no session" from "deactivated user" and audit the latter. This
+        # helper has no such need and must not treat a deactivated user as authenticated —
+        # ``is_authenticated`` is a dependency of an endpoint on an unprotected prefix.
+        if resolved and resolved.is_active:
+            logger.debug(f"Username from session: {resolved.username}")
+            return resolved.username
         else:
-            logger.debug("No username found in session")
+            logger.debug("No usable session found")
     except Exception as e:
         logger.debug(f"Error accessing session: {e}")
 

@@ -15,10 +15,15 @@ The budget, measured by ``scripts/bench_auth_path.py`` and recorded in
 scenario         SQL statements
 ===============  ===================
 unprotected      0
-session          2
+session          1
 bearer           2
 basic            3
 ===============  ===================
+
+The session path was 2 until #310 moved sessions server-side: resolving the cookie's opaque id
+joins ``auth_sessions`` to ``users`` and returns the session's validity together with the admin
+and active flags, so the request that used to cost a lookup *and* a profile read now costs one
+statement. Lower is allowed; it simply has to be acknowledged here rather than drift.
 
 **No task may raise these numbers.** A change that needs more per-request data must fit
 it into the existing statements (widen the ``load_only``) or cache it — not add a query.
@@ -28,6 +33,7 @@ See ``conftest.py`` for why round-trips, not query cost, are the metric.
 
 import base64
 import time
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 import pytest
@@ -122,7 +128,8 @@ def client(bound_store):
     async def login(request: Request, username: str):
         # "/login" is an unprotected prefix, so this runs without authentication and
         # mints the same session the OIDC callback would.
-        request.session["username"] = username
+        # Mirrors the OIDC callback since #310: the cookie carries only an opaque session id.
+        request.session["session_id"] = store_module.store.create_auth_session(username, expires_at=datetime.now(timezone.utc) + timedelta(hours=8))
         return {"ok": True}
 
     app.add_middleware(AuthMiddleware)
@@ -156,18 +163,19 @@ class TestAuthPathQueryBudget:
 
         assert counts == [0, 0, 0], counter.report()
 
-    def test_session_authenticated_request_issues_two_queries(self, client, counter, auth_user):
-        """The browser path: session lookup is free, the admin check costs 2 statements.
+    def test_session_authenticated_request_issues_one_query(self, client, counter, auth_user):
+        """The browser path costs a single statement since #310.
 
-        Issue #305 claimed ``_get_user_admin_status`` issues 2 uncached queries on every
-        authenticated request. This is that claim, pinned: ``get_profile`` emits a
-        ``load_only`` select on ``users`` plus a ``selectinload`` for ``groups``.
+        Resolving the opaque session id joins ``auth_sessions`` to ``users``, so the session's
+        validity and the user's admin and active flags all come back together. The two-statement
+        profile read this used to perform — the ``load_only`` select plus a ``selectinload`` for
+        groups the auth path never used — is gone from this path.
         """
         client.get(LOGIN_PATH, params={"username": auth_user})
 
         counts = _count_requests(counter, lambda: client.get(PROTECTED_PATH))
 
-        assert counts == [2, 2, 2], counter.report()
+        assert counts == [1, 1, 1], counter.report()
 
     def test_bearer_authenticated_request_issues_two_queries(self, client, counter, auth_user, bearer_token):
         """The API path: with provisioning off (the default), only the admin check runs."""

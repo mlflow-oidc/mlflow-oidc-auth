@@ -20,6 +20,17 @@ from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
 class TestAuthMiddleware:
     """Test suite for AuthMiddleware functionality."""
 
+    @pytest.fixture(autouse=True)
+    def _default_store(self, mock_store, monkeypatch):
+        """Point the middleware at the mock store by default.
+
+        Session authentication resolves the cookie's opaque id through the store (#310), so a
+        test that does not patch it would otherwise reach the real lazy singleton and try to
+        open a database. Tests that patch the store explicitly still win inside their own
+        ``with`` block.
+        """
+        monkeypatch.setattr("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store)
+
     @pytest.fixture
     def auth_middleware(self, test_fastapi_app):
         """Create AuthMiddleware instance for testing."""
@@ -235,7 +246,7 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_authenticate_session_success(self, auth_middleware, create_mock_request):
         """Test successful session authentication."""
-        request = create_mock_request(session={"username": "user@example.com"})
+        request = create_mock_request(session={"session_id": "sid-user"})
 
         success, username, error = await auth_middleware._authenticate_session(request)
 
@@ -297,7 +308,7 @@ class TestAuthMiddleware:
     async def test_authenticate_session_unexpired_passes_through(self, auth_middleware, create_mock_request):
         """A session with a future ``expires_at`` is allowed without touching the IdP."""
         future = 9999999999  # year 2286
-        request = create_mock_request(session={"username": "user@example.com", "expires_at": future})
+        request = create_mock_request(session={"session_id": "sid-user", "expires_at": future})
 
         success, username, error = await auth_middleware._authenticate_session(request)
 
@@ -310,7 +321,7 @@ class TestAuthMiddleware:
         """Expired sessions without a refresh token are cleared and rejected."""
         from mlflow_oidc_auth.middleware import auth_middleware as middleware_mod
 
-        session = {"username": "user@example.com", "expires_at": 100}  # 1970, well past
+        session = {"session_id": "sid-user", "expires_at": 100}  # 1970, well past
 
         # Patch refresh helper to confirm no successful refresh path
         from unittest.mock import AsyncMock, patch as _patch
@@ -333,7 +344,7 @@ class TestAuthMiddleware:
         from mlflow_oidc_auth.middleware import auth_middleware as middleware_mod
 
         session = {
-            "username": "user@example.com",
+            "session_id": "sid-user",
             "expires_at": 100,
             "refresh_token": "rt-123",
         }
@@ -361,7 +372,7 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_authenticate_session_no_expires_at_unchanged(self, auth_middleware, create_mock_request):
         """Sessions predating this feature (no ``expires_at``) keep working."""
-        request = create_mock_request(session={"username": "user@example.com"})
+        request = create_mock_request(session={"session_id": "sid-user"})
 
         success, username, error = await auth_middleware._authenticate_session(request)
 
@@ -402,12 +413,12 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_authenticate_user_session_fallback(self, auth_middleware, create_mock_request):
         """Test that session auth is used when no header auth is present."""
-        request = create_mock_request(session={"username": "session_user@example.com"})
+        request = create_mock_request(session={"session_id": "sid-user"})
 
         success, username, error = await auth_middleware._authenticate_user(request)
 
         assert success is True
-        assert username == "session_user@example.com"
+        assert username == "user@example.com"
         assert error == ""
 
     @pytest.mark.asyncio
@@ -507,7 +518,7 @@ class TestAuthMiddleware:
     async def test_dispatch_authenticated_user(self, auth_middleware, create_mock_request, mock_store):
         """Test dispatch for authenticated user sets request state correctly."""
         with patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store):
-            request = create_mock_request(path="/protected", session={"username": "user@example.com"})
+            request = create_mock_request(path="/protected", session={"session_id": "sid-user"})
 
             # Mock call_next
             async def mock_call_next(req):
@@ -531,7 +542,7 @@ class TestAuthMiddleware:
     async def test_dispatch_authenticated_admin(self, auth_middleware, create_mock_request, mock_store):
         """Test dispatch for authenticated admin user sets admin status correctly."""
         with patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store):
-            request = create_mock_request(path="/protected", session={"username": "admin@example.com"})
+            request = create_mock_request(path="/protected", session={"session_id": "sid-admin"})
 
             # Mock call_next
             async def mock_call_next(req):
@@ -768,7 +779,7 @@ class TestAuthMiddleware:
             patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
             patch("mlflow_oidc_auth.middleware.auth_middleware.logger", mock_logger),
         ):
-            request = create_mock_request(path="/protected", session={"username": "user@example.com"})
+            request = create_mock_request(path="/protected", session={"session_id": "sid-user"})
 
             # Mock call_next
             async def mock_call_next(req):
@@ -840,7 +851,7 @@ class TestAuthMiddleware:
         """Test that request state is properly isolated between requests."""
         with patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store):
             # First request
-            request1 = create_mock_request(path="/protected", session={"username": "user@example.com"})
+            request1 = create_mock_request(path="/protected", session={"session_id": "sid-user"})
 
             # Mock call_next
             async def mock_call_next(req):
@@ -849,7 +860,7 @@ class TestAuthMiddleware:
             await auth_middleware.dispatch(request1, mock_call_next)
 
             # Second request with different user
-            request2 = create_mock_request(path="/protected", session={"username": "admin@example.com"})
+            request2 = create_mock_request(path="/protected", session={"session_id": "sid-admin"})
 
             await auth_middleware.dispatch(request2, mock_call_next)
 
@@ -864,7 +875,7 @@ class TestAuthMiddleware:
     async def test_dispatch_asgi_scope_injection(self, auth_middleware, create_mock_request, mock_store):
         """Test that ASGI scope is properly injected for WSGI compatibility."""
         with patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store):
-            request = create_mock_request(path="/protected", session={"username": "admin@example.com"})
+            request = create_mock_request(path="/protected", session={"session_id": "sid-admin"})
 
             # Verify scope doesn't have auth info initially
             assert "mlflow_oidc_auth" not in request.scope

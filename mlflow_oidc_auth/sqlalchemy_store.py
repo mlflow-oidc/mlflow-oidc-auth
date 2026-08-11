@@ -63,6 +63,7 @@ from mlflow_oidc_auth.repository import (
     GatewayModelDefinitionPermissionGroupRegexRepository,
     UserRepository,
     UserIdentityRepository,
+    AuthSessionRepository,
     WorkspacePermissionRepository,
     WorkspaceGroupPermissionRepository,
 )
@@ -84,6 +85,7 @@ class SqlAlchemyStore:
         self.ManagedSessionMaker = _get_managed_session_maker(SessionMaker, self.db_type)
         self.user_repo = UserRepository(self.ManagedSessionMaker)
         self.user_identity_repo = UserIdentityRepository(self.ManagedSessionMaker)
+        self.auth_session_repo = AuthSessionRepository(self.ManagedSessionMaker)
         self.experiment_repo = ExperimentPermissionRepository(self.ManagedSessionMaker)
         self.experiment_group_repo = ExperimentPermissionGroupRepository(self.ManagedSessionMaker)
         self.group_repo = GroupRepository(self.ManagedSessionMaker)
@@ -324,6 +326,22 @@ class SqlAlchemyStore:
         is_service_account=False,
     ):
         return self.user_repo.create(username, password, display_name, is_admin, is_service_account)
+
+    def create_auth_session(self, username: str, expires_at, provider_id: Optional[str] = None) -> str:
+        """Open a server-side session and return its opaque id (issue #310)."""
+        return self.auth_session_repo.create(username, expires_at, provider_id)
+
+    def resolve_auth_session(self, session_id: str):
+        """Resolve a session id to its user in one statement, or None if it is not honoured."""
+        return self.auth_session_repo.resolve(session_id)
+
+    def revoke_auth_session(self, session_id: str) -> bool:
+        """Revoke one session. True if it was live until now."""
+        return self.auth_session_repo.revoke(session_id)
+
+    def revoke_all_auth_sessions(self, username: str) -> int:
+        """Revoke every live session for a user. Returns how many were revoked."""
+        return self.auth_session_repo.revoke_all_for_user(username)
 
     def has_user(self, username: str) -> bool:
         return self.user_repo.exist(username)

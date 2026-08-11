@@ -12,6 +12,8 @@ the three are tested together because they are one safety story.
 import base64
 import time
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from authlib.jose import JsonWebKey, jwt
 from click.testing import CliRunner
@@ -77,7 +79,9 @@ def client(bound_store):
 
     @app.get(LOGIN)
     async def login(request: Request, username: str):
-        request.session["username"] = username
+        # Mirrors the OIDC callback: the cookie carries only an opaque session id, and the row
+        # it names is what can be revoked (#310).
+        request.session["session_id"] = store_module.store.create_auth_session(username, expires_at=datetime.now(timezone.utc) + timedelta(hours=8))
         return {"ok": True}
 
     app.add_middleware(AuthMiddleware)
@@ -161,9 +165,9 @@ class TestInactiveUserIsDeniedOnEveryAuthPath:
 
 
 class TestInactiveDenialCostsNoExtraQuery:
-    def test_the_statement_count_is_unchanged(self, store, client):
-        """``active`` rides along in the ``load_only`` list #333 added, so the #305 budget of 2
-        statements per authenticated request still holds."""
+    def test_the_statement_count_is_one(self, store, client):
+        """``active`` comes back from the session join itself since #310, so the check costs
+        nothing and the session path is a single statement."""
         from sqlalchemy import event
 
         store.create_user("q@example.com", PASSWORD, "Q")
@@ -182,7 +186,7 @@ class TestInactiveDenialCostsNoExtraQuery:
         finally:
             event.remove(store.engine, "before_cursor_execute", listener)
 
-        assert len(statements) == 2, statements
+        assert len(statements) == 1, statements
 
 
 class TestLastActiveAdminInvariant:

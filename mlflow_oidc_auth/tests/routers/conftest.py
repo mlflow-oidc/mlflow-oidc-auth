@@ -70,6 +70,11 @@ def mock_store():
     """Mock the store module with comprehensive user and permission data."""
     store_mock = MagicMock()
 
+    # Server-side sessions (#310). A bare MagicMock return would be *truthy*, so a request with
+    # no cookie would resolve to a mock "session" and look authenticated. Default to no session;
+    # a test that wants one sets this explicitly.
+    store_mock.resolve_auth_session.return_value = None
+
     # Mock users
     admin_user = User(
         id_=1,

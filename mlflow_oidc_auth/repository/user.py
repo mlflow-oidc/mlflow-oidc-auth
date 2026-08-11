@@ -13,9 +13,32 @@ from sqlalchemy.orm import load_only, noload, selectinload
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from mlflow_oidc_auth.db.models import SqlGroup, SqlUser
+from mlflow_oidc_auth.db.models import SqlAuthSession, SqlGroup, SqlUser
 from mlflow_oidc_auth.entities import User
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.repository.utils import get_user
+
+logger = get_logger()
+
+
+def _audit_sessions_revoked(username: str, count: int, reason: str) -> None:
+    """Record that a user's live sessions were ended.
+
+    Emitted from the repository rather than a router so every caller is covered — the admin API
+    today, a SCIM sync later. This is the event an operator looks for when asking whether a
+    deprovisioned account still had access: before server-side sessions there was nothing to
+    revoke, so there was nothing to record (#310).
+    """
+    from mlflow_oidc_auth.audit import emit_audit_event
+
+    emit_audit_event(
+        "session.revoked",
+        actor=username,
+        resource_type="user",
+        resource_id=username,
+        detail={"sessions": count, "reason": reason},
+    )
+
 
 # Hash method for secrets stored in ``users.password_hash`` (issue #336).
 #
@@ -266,6 +289,7 @@ class UserRepository:
         from werkzeug.security import generate_password_hash
 
         username = normalize_username(username)
+        sessions_revoked = 0
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if password is not None:
@@ -287,13 +311,34 @@ class UserRepository:
                 user.is_service_account = is_service_account
             if active is not None:
                 user.active = active
+                if active is False:
+                    # Deprovisioning that leaves live sessions running is cosmetic — the whole
+                    # point of #310. Revoked here rather than in the router so every caller
+                    # inherits it, including a future SCIM sync (#324).
+                    revoked = (
+                        session.query(SqlAuthSession)
+                        .filter(SqlAuthSession.user_id == user.id, SqlAuthSession.revoked_at.is_(None))
+                        .update({SqlAuthSession.revoked_at: datetime.now(timezone.utc).replace(tzinfo=None)}, synchronize_session=False)
+                    )
+                    if revoked:
+                        logger.info("Deactivating %s revoked %d live session(s)", username, revoked)
+                        # Recorded, not emitted: an audit line written inside the transaction
+                        # would claim the sessions were revoked even if the commit then failed,
+                        # and that claim is exactly what an operator relies on.
+                        sessions_revoked = revoked
             if managed_by is not None:
                 user.managed_by = managed_by
             session.flush()
-            return user.to_mlflow_entity()
+            entity = user.to_mlflow_entity()
+
+        # Past the ``with``: the transaction has committed, so the event is true when written.
+        if sessions_revoked:
+            _audit_sessions_revoked(username, sessions_revoked, "user_deactivated")
+        return entity
 
     def delete(self, username: str) -> None:
         username = normalize_username(username)
+        deleted_sessions = 0
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if user is None:
@@ -317,6 +362,7 @@ class UserRepository:
                 SqlRegisteredModelRegexPermission,
                 SqlScorerPermission,
                 SqlScorerRegexPermission,
+                SqlAuthSession,
                 SqlUserGroup,
                 SqlUserIdentity,
                 SqlWorkspacePermission,
@@ -324,6 +370,12 @@ class UserRepository:
             )
 
             user_id = user.id
+
+            # Server-side sessions (#310). Same foreign-key requirement as the identities below:
+            # a user holding a live session could not otherwise be deleted at all.
+            live_sessions = session.query(SqlAuthSession).filter(SqlAuthSession.user_id == user_id, SqlAuthSession.revoked_at.is_(None)).count()
+            session.query(SqlAuthSession).filter(SqlAuthSession.user_id == user_id).delete(synchronize_session=False)
+            deleted_sessions = live_sessions
 
             # External identities (#309/#333). The Phase 0 backfill gave *every* pre-existing
             # user a row here, so without this every account that predates that migration is
@@ -365,6 +417,10 @@ class UserRepository:
 
             session.delete(user)
             session.flush()
+
+        # Emitted after the commit, for the same reason as in ``update``.
+        if deleted_sessions:
+            _audit_sessions_revoked(username, deleted_sessions, "user_deleted")
 
     def authenticate(self, username: str, password: str) -> bool:
         username = normalize_username(username)

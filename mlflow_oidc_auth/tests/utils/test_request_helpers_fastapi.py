@@ -6,6 +6,7 @@ including parameter extraction, authentication, and user information retrieval.
 """
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 import asyncio
 
@@ -46,6 +47,24 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
 
         asyncio.run(test_async())
 
+    def test_get_username_from_session_ignores_a_deactivated_user(self):
+        """``resolve`` reports the active flag rather than filtering on it, so the middleware can
+        audit "deactivated" separately. This helper feeds ``is_authenticated``, which is a
+        dependency of an endpoint on an unprotected prefix, and must apply the check itself."""
+
+        async def test_async():
+            mock_request = MagicMock(spec=Request)
+            mock_request.state = MagicMock()
+            mock_request.state.username = None
+            mock_request.session = {"session_id": "sid-inactive"}
+
+            with patch("mlflow_oidc_auth.store.store") as mock_store:
+                mock_store.resolve_auth_session.return_value = SimpleNamespace(username="gone@example.com", is_active=False)
+                result = await get_username_from_session(mock_request)
+            self.assertIsNone(result)
+
+        asyncio.run(test_async())
+
     def test_get_username_from_session_with_session_fallback(self):
         """Test username extraction from session fallback."""
 
@@ -53,9 +72,11 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
             mock_request = MagicMock(spec=Request)
             mock_request.state = MagicMock()
             mock_request.state.username = None
-            mock_request.session = {"username": "session_user"}
+            mock_request.session = {"session_id": "sid-1"}
 
-            result = await get_username_from_session(mock_request)
+            with patch("mlflow_oidc_auth.store.store") as mock_store:
+                mock_store.resolve_auth_session.return_value = SimpleNamespace(username="session_user", is_active=True)
+                result = await get_username_from_session(mock_request)
             self.assertEqual(result, "session_user")
 
         asyncio.run(test_async())
@@ -83,9 +104,11 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
             # Remove username attribute
             if hasattr(mock_request.state, "username"):
                 delattr(mock_request.state, "username")
-            mock_request.session = {"username": "session_user"}
+            mock_request.session = {"session_id": "sid-1"}
 
-            result = await get_username_from_session(mock_request)
+            with patch("mlflow_oidc_auth.store.store") as mock_store:
+                mock_store.resolve_auth_session.return_value = SimpleNamespace(username="session_user", is_active=True)
+                result = await get_username_from_session(mock_request)
             self.assertEqual(result, "session_user")
 
         asyncio.run(test_async())
