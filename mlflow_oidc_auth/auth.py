@@ -1,15 +1,29 @@
 import threading
 
 import requests
-from authlib.jose import jwt
+from authlib.jose import JsonWebToken
 from authlib.jose.errors import BadSignatureError
 from cachetools import TTLCache
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.provider_registry import ASYMMETRIC_ALGORITHMS
 from mlflow_oidc_auth.user import create_user, populate_groups, update_user
 
 logger = get_logger()
+
+# Signing algorithms accepted when validating a token.
+#
+# Passed explicitly so the algorithm is chosen by *us*, never by the token's own header. A JWT
+# names its algorithm in an unauthenticated header, so a decoder that trusts that field lets the
+# presenter decide how — or whether — their token is verified. RFC 8725 §3.1 is explicit that the
+# set must be pinned by the verifier.
+#
+# The same asymmetric set the provider registry accepts (#308): signatures are checked against
+# keys fetched from the provider's JWKS, so a symmetric algorithm has no legitimate use here and
+# an unsigned token none at all.
+_ACCEPTED_ALGORITHMS = list(ASYMMETRIC_ALGORITHMS)
+_jwt = JsonWebToken(_ACCEPTED_ALGORITHMS)
 
 # JWKS cache: single-entry TTL cache shared across all token validations.
 # TTL is configured via OIDC_JWKS_CACHE_TTL_SECONDS (default 300s).
@@ -94,14 +108,14 @@ def validate_token(token: str):
     claims_options = _get_claims_options()
     try:
         jwks = _get_oidc_jwks()
-        payload = jwt.decode(token, jwks, claims_options=claims_options)
+        payload = _jwt.decode(token, jwks, claims_options=claims_options)
         payload.validate()
         return payload
     except BadSignatureError as e:
         logger.error("Token validation failed with bad signature: %s", str(e))
         # Force-refresh JWKS and retry once. This handles key rotation.
         jwks = _get_oidc_jwks(force_refresh=True)
-        payload = jwt.decode(token, jwks, claims_options=claims_options)
+        payload = _jwt.decode(token, jwks, claims_options=claims_options)
         payload.validate()
         return payload
     except Exception as e:

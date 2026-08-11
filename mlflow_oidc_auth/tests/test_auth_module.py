@@ -90,7 +90,7 @@ def test_validate_token_success(monkeypatch):
         assert jwks == {"keys": []}
         return payload
 
-    monkeypatch.setattr(auth.jwt, "decode", fake_decode)
+    monkeypatch.setattr(auth._jwt, "decode", fake_decode)
 
     result = auth.validate_token("tok")
     assert result is payload
@@ -109,7 +109,7 @@ def test_validate_token_bad_signature_retries(monkeypatch):
             raise BadSignatureError("bad sig")
         return payload
 
-    monkeypatch.setattr(auth.jwt, "decode", fake_decode)
+    monkeypatch.setattr(auth._jwt, "decode", fake_decode)
 
     result = auth.validate_token("tok")
     assert result is payload
@@ -123,7 +123,7 @@ def test_validate_token_other_exception_propagates(monkeypatch):
     def fake_decode(token, jwks, claims_options=None):
         raise ValueError("boom")
 
-    monkeypatch.setattr(auth.jwt, "decode", fake_decode)
+    monkeypatch.setattr(auth._jwt, "decode", fake_decode)
 
     with pytest.raises(ValueError):
         auth.validate_token("tok")
