@@ -141,7 +141,7 @@ class AppConfig:
         self.OIDC_USERNAME_FIELD = config_manager.get_list("OIDC_USERNAME_FIELD", default=["email", "preferred_username"])
         self.OIDC_DISPLAY_NAME_FIELD = config_manager.get_list("OIDC_DISPLAY_NAME_FIELD", default=["name"])
 
-        # Group settings
+        # Group settings. OIDC_GROUP_NAME accepts exact names or shell-style patterns.
         self.OIDC_GROUP_NAME = config_manager.get_list("OIDC_GROUP_NAME", default=["mlflow"])
         self.OIDC_ADMIN_GROUP_NAME = config_manager.get_list("OIDC_ADMIN_GROUP_NAME", default=["mlflow-admin"])
         self.OIDC_GROUP_DETECTION_PLUGIN = config_manager.get("OIDC_GROUP_DETECTION_PLUGIN")

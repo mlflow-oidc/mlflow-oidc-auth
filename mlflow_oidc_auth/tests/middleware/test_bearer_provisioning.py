@@ -77,6 +77,20 @@ class TestAuthorizationGate:
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["some-other-group"]})
             create_user.assert_not_called()
 
+    @pytest.mark.parametrize("groups", [None, [""]])
+    def test_missing_or_empty_groups_fail_closed(self, groups):
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+        ):
+            _cfg(cfg, OIDC_GROUP_NAME=["*"])
+            store.has_user.return_value = False
+
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": groups})
+
+            create_user.assert_not_called()
+
     def test_allowed_group_member_provisioned_non_admin(self):
         with (
             patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
@@ -91,6 +105,24 @@ class TestAuthorizationGate:
             create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False)
             populate_groups.assert_called_once_with(group_names=["mlflow-users"])
             update_user.assert_called_once_with(username="a@x.com", group_names=["mlflow-users"])
+
+    def test_group_pattern_member_is_provisioned(self):
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups") as populate_groups,
+            patch("mlflow_oidc_auth.user.update_user") as update_user,
+        ):
+            _cfg(cfg, OIDC_GROUP_NAME=["mlflow-*"])
+            store.has_user.return_value = False
+            groups = ["mlflow-new-team", "shared-data-platform"]
+
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": groups, "name": "Alice"})
+
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False)
+            populate_groups.assert_called_once_with(group_names=groups)
+            update_user.assert_called_once_with(username="a@x.com", group_names=groups)
 
 
 class TestAdminElevation:

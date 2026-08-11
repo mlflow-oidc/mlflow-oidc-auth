@@ -27,6 +27,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.groups import matches_group_patterns, normalize_group_values
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
 
 logger = get_logger()
@@ -200,8 +201,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token)
             else:
                 user_groups = payload.get(config.OIDC_GROUPS_ATTRIBUTE, [])
-            if isinstance(user_groups, str):
-                user_groups = [user_groups]
+            user_groups = normalize_group_values(user_groups)
         except Exception as e:
             logger.warning("Failed to read groups for bearer provisioning of %s: %s", username, type(e).__name__)
             return
@@ -210,7 +210,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # admin-group or allowed-group member. Otherwise do NOT provision — a bearer token must
         # never be able to create an account that interactive login would reject.
         is_admin_claim = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
-        if not is_admin_claim and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+        if not is_admin_claim and not matches_group_patterns(user_groups, config.OIDC_GROUP_NAME):
             logger.info("Bearer user %s is in no authorized group; not provisioning (parity with interactive login)", username)
             return
 
