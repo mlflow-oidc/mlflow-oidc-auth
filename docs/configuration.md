@@ -113,19 +113,48 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 
 ## Sessions
 
-The plugin uses Starlette's built-in cookie-based sessions:
+Browser sessions are **server-side**: a row in the `auth_sessions` table of the auth database.
+The cookie carries only an opaque identifier, so a session can be ended by the server rather
+than merely forgotten by the browser.
 
-- Session data is stored client-side in a **signed cookie** (not encrypted — do not store secrets in sessions)
-- No server-side session backend (Redis, database) is required
-- The cookie is signed with `SECRET_KEY` — all replicas **must** share the same key
-- Sessions survive server restarts only if `SECRET_KEY` is explicitly configured
+- The identifier is resolved against the database on **every** request, uncached, so revoking a
+  session takes effect on the next request — no TTL to wait out
+- Deactivating or deleting a user revokes their live sessions immediately, and records a
+  `session.revoked` audit event
+- Logging out revokes the row. If revocation fails, logout returns **503** rather than
+  reporting success, because a cleared cookie does not end a session that is still live
+- The cookie is still signed with `SECRET_KEY` — all replicas **must** share the same key, and
+  it must be set explicitly for sessions to survive a restart
+- The cookie is signed but **not** encrypted; nothing secret belongs in it
+
+**Session expiry is absolute, not rolling.** A session's lifetime is fixed at login to
+`SESSION_COOKIE_MAX_AGE_SECONDS` (two weeks by default) and is not extended by activity, so a
+continuously active user re-authenticates with the identity provider every two weeks. The
+browser cookie's own `Max-Age` is refreshed on each response, but the server-side row is what
+decides, and it is not. Lower the value to shorten the window; there is no setting that makes
+it rolling.
+
+**Sessions are not swept automatically.** Every login inserts a row and an expired one is simply
+refused, so the table grows until an operator prunes it:
+
+```bash
+mlflow-oidc db prune-sessions --url postgresql://user:pass@host/auth_db
+```
+
+Add `--dry-run` to see the count without deleting. Revoked-but-unexpired rows are kept until
+their expiry, so "was this session revoked, and when?" stays answerable. Running it from cron is
+the expected deployment.
+
+**Upgrading:** the session format changed in this release. Cookies issued by an earlier version
+no longer authenticate — they carried the username directly, which is exactly what could not be
+revoked — so every user logs in again once after the upgrade. No configuration change is needed.
 
 Additional session cookie settings:
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `SESSION_COOKIE_NAME` | String | `session` | Session cookie name |
-| `SESSION_COOKIE_MAX_AGE_SECONDS` | Integer | `1209600` (2 weeks) | Session expiry time in seconds, if set to `0` then the cookie will last as long as the browser session |
+| `SESSION_COOKIE_MAX_AGE_SECONDS` | Integer | `1209600` (2 weeks) | Absolute session lifetime in seconds, fixed at login and not extended by activity. `0` makes the *cookie* last only as long as the browser session; the server-side session still expires after two weeks |
 | `SESSION_COOKIE_SAMESITE` | String | `lax` | SameSite flag prevents the browser from sending session cookie along with cross-site requests |
 | `SESSION_COOKIE_SECURE` | Boolean | `false` | Indicate that the "Secure" flag should be set (can be used with HTTPS only), set this to `true` in production to ensure the session cookie is only sent over HTTPS |
 

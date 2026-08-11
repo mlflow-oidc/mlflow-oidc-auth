@@ -669,6 +669,41 @@ class TestSessionHandoverOnReLogin:
         assert req.session["session_id"] == "sid-second"
 
     @pytest.mark.asyncio
+    async def test_the_previous_users_refresh_token_is_not_inherited(self, monkeypatch):
+        """The finding this ordering exists for.
+
+        ``_persist_session_auth`` keeps an existing refresh token when the new token response
+        carries none, so retiring the old login *after* the exchange would hand the next user
+        the previous user's grant — their session would then outlive their own IdP session and
+        die with someone else's.
+        """
+        monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+        seen = {}
+
+        async def _proc(request, session):
+            # Stands in for the token exchange: records what the previous login left behind,
+            # then persists a token response that carries no refresh token of its own.
+            seen["at_exchange"] = dict(session)
+            auth_router_mod._persist_session_auth(session, {"expires_at": 4102444800})
+            return "second@example.com", []
+
+        monkeypatch.setattr(auth_router_mod, "_process_oidc_callback_fastapi", _proc)
+        monkeypatch.setattr(auth_router_mod, "_open_server_session", lambda username: "sid-second")
+        monkeypatch.setattr(auth_router_mod.store, "revoke_auth_session", lambda sid: True)
+        monkeypatch.setattr(config, "OIDC_USE_REFRESH_TOKEN", True)
+
+        req = DummyRequest()
+        req.session["session_id"] = "sid-first"
+        req.session["refresh_token"] = "rt-first"
+        req.session["expires_at"] = 100
+
+        await auth_router_mod.callback(req)
+
+        assert "refresh_token" not in seen["at_exchange"], "the exchange must not see the previous login's token"
+        assert "refresh_token" not in req.session
+        assert req.session["session_id"] == "sid-second"
+
+    @pytest.mark.asyncio
     async def test_a_failure_to_open_a_session_clears_the_cookie(self, monkeypatch):
         monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
 
@@ -711,6 +746,48 @@ class TestLogoutSurfacesRevocationFailure:
             await auth_router_mod.logout(req)
 
         assert excinfo.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_the_session_id_survives_a_failed_revocation(self, monkeypatch):
+        """So the 503's advice to retry is advice the user can act on.
+
+        Clearing the cookie first would delete the only copy of the session id: the retry would
+        find nothing to revoke, take the success path, and leave the session live.
+        """
+
+        def _boom(session_id):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(auth_router_mod.store, "revoke_auth_session", _boom)
+
+        req = DummyRequest()
+        req.session["session_id"] = "sid-live"
+
+        with pytest.raises(HTTPException):
+            await auth_router_mod.logout(req)
+
+        assert req.session.get("session_id") == "sid-live"
+
+    @pytest.mark.asyncio
+    async def test_the_failure_is_audited_as_a_failure(self, monkeypatch):
+        """A denied outcome recorded with the default status "success" is invisible to the
+        query an operator actually runs."""
+        events = []
+        monkeypatch.setattr(auth_router_mod, "emit_audit_event", lambda event, **kwargs: events.append((event, kwargs)))
+
+        def _boom(session_id):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(auth_router_mod.store, "revoke_auth_session", _boom)
+
+        req = DummyRequest()
+        req.session["session_id"] = "sid-live"
+
+        with pytest.raises(HTTPException):
+            await auth_router_mod.logout(req)
+
+        assert [e for e, _ in events] == ["auth.logout_failed"]
+        assert events[0][1]["status"] == "denied"
 
     @pytest.mark.asyncio
     async def test_a_successful_logout_revokes_the_row(self, monkeypatch):
