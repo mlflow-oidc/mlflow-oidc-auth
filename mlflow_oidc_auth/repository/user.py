@@ -318,11 +318,17 @@ class UserRepository:
                 SqlScorerPermission,
                 SqlScorerRegexPermission,
                 SqlUserGroup,
+                SqlUserIdentity,
                 SqlWorkspacePermission,
                 SqlWorkspaceRegexPermission,
             )
 
             user_id = user.id
+
+            # External identities (#309/#333). The Phase 0 backfill gave *every* pre-existing
+            # user a row here, so without this every account that predates that migration is
+            # undeletable: the FK on user_identities.user_id refuses the DELETE.
+            session.query(SqlUserIdentity).filter(SqlUserIdentity.user_id == user_id).delete(synchronize_session=False)
 
             # Experiment permissions
             session.query(SqlExperimentPermission).filter(SqlExperimentPermission.user_id == user_id).delete(synchronize_session=False)
