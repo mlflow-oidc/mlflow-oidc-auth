@@ -126,7 +126,7 @@ class TestValidateToken:
 
     @patch("mlflow_oidc_auth.auth.config")
     @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
-    @patch("mlflow_oidc_auth.auth.jwt.decode")
+    @patch("mlflow_oidc_auth.auth._jwt.decode")
     def test_validate_token_success(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test successful token validation without audience configured"""
         mock_config.OIDC_AUDIENCE = None
@@ -144,7 +144,7 @@ class TestValidateToken:
 
     @patch("mlflow_oidc_auth.auth.config")
     @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
-    @patch("mlflow_oidc_auth.auth.jwt.decode")
+    @patch("mlflow_oidc_auth.auth._jwt.decode")
     def test_validate_token_with_audience(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test token validation passes audience claims_options when OIDC_AUDIENCE is configured"""
         mock_config.OIDC_AUDIENCE = "my-mlflow-app"
@@ -163,7 +163,7 @@ class TestValidateToken:
 
     @patch("mlflow_oidc_auth.auth.config")
     @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
-    @patch("mlflow_oidc_auth.auth.jwt.decode")
+    @patch("mlflow_oidc_auth.auth._jwt.decode")
     def test_validate_token_bad_signature_then_success(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test token validation with bad signature that succeeds after JWKS refresh"""
         mock_config.OIDC_AUDIENCE = None
@@ -182,7 +182,7 @@ class TestValidateToken:
 
     @patch("mlflow_oidc_auth.auth.config")
     @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
-    @patch("mlflow_oidc_auth.auth.jwt.decode")
+    @patch("mlflow_oidc_auth.auth._jwt.decode")
     def test_validate_token_bad_signature_after_refresh(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test token validation that fails even after JWKS refresh"""
         mock_config.OIDC_AUDIENCE = None
@@ -200,7 +200,7 @@ class TestValidateToken:
 
     @patch("mlflow_oidc_auth.auth.config")
     @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
-    @patch("mlflow_oidc_auth.auth.jwt.decode")
+    @patch("mlflow_oidc_auth.auth._jwt.decode")
     def test_validate_token_unexpected_error_after_refresh(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test token validation with unexpected error after JWKS refresh"""
         mock_config.OIDC_AUDIENCE = None
@@ -218,7 +218,7 @@ class TestValidateToken:
 
     @patch("mlflow_oidc_auth.auth.config")
     @patch("mlflow_oidc_auth.auth._get_oidc_jwks")
-    @patch("mlflow_oidc_auth.auth.jwt.decode")
+    @patch("mlflow_oidc_auth.auth._jwt.decode")
     def test_validate_token_bad_signature_retry_with_audience(self, mock_jwt_decode, mock_get_oidc_jwks, mock_config):
         """Test bad signature retry also passes audience claims_options"""
         mock_config.OIDC_AUDIENCE = "my-mlflow-app"
