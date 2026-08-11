@@ -9,7 +9,6 @@ The general case is the one worth guarding: any table with a foreign key to ``us
 covered, or the delete fails at the database rather than in code anyone reads.
 """
 
-
 import pytest
 from mlflow.exceptions import MlflowException
 from sqlalchemy import inspect
