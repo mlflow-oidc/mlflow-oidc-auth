@@ -9,8 +9,6 @@ The general case is the one worth guarding: any table with a foreign key to ``us
 covered, or the delete fails at the database rather than in code anyone reads.
 """
 
-import tempfile
-from pathlib import Path
 
 import pytest
 from mlflow.exceptions import MlflowException
