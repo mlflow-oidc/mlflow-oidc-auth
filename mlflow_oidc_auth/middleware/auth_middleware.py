@@ -129,7 +129,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # navigation will redirect through the IdP for re-auth.
             "/static-files",
         )
-        return path.startswith(unprotected_prefixes)
+        # Matched exactly rather than by prefix. A login page has to read this before anyone has
+        # signed in — it is the list of buttons to draw — but "/providers" as a prefix would
+        # silently unprotect any later route whose path merely began with it.
+        unprotected_exact = ("/providers",)
+        return path in unprotected_exact or path.startswith(unprotected_prefixes)
 
     async def _authenticate_basic_auth(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
         """
