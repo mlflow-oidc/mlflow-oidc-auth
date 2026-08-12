@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import json
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -71,14 +72,31 @@ class Issuer:
         claims.update(overrides)
         return claims
 
-    def mint(self, claims: Optional[dict] = None, *, kid: Optional[str] = None, algorithm: str = "RS256", **overrides) -> str:
+    def mint(
+        self,
+        claims: Optional[dict] = None,
+        *,
+        kid: Optional[str] = None,
+        algorithm: str = "RS256",
+        extra_header: Optional[dict] = None,
+        **overrides,
+    ) -> str:
         """Sign a genuine token with this issuer's key.
 
-        ``kid`` can be overridden to point at another issuer's key while this one does the
-        signing — the ``kid``-confusion case.
+        ``kid`` and ``extra_header`` are part of the *signed* header, which is what makes the
+        header-confusion cases real: an attacker mints with their own key and names whatever
+        ``kid``, ``jku`` or ``x5u`` they like, and the signature is genuine under their key.
+        Editing a header after signing would instead produce a token that fails signature
+        verification outright, which tests nothing about how the header is treated.
+
+        ``overrides`` apply on top of ``claims`` when both are given, rather than being dropped
+        — a silently ignored ``aud=...`` would mint a token without the property its test names.
         """
         header = {"alg": algorithm, "kid": kid or self.kid}
-        payload = claims if claims is not None else self.claims(**overrides)
+        if extra_header:
+            header.update(extra_header)
+        payload = dict(claims) if claims is not None else self.claims()
+        payload.update(overrides)
         return jwt.encode(header, payload, self._private).decode("utf-8")
 
 
@@ -103,17 +121,26 @@ def hmac_token(claims: dict, kid: str, secret: bytes, algorithm: str = "HS256") 
     return (header + b"." + payload + b"." + signature).decode()
 
 
-def tamper(token: str, **header_overrides) -> str:
-    """Rewrite a token's header, leaving the signature it was minted with in place.
+#: Failures that mean the *test* is broken, not that the defence worked. A rejection case that
+#: ends in one of these proves nothing: the token never reached the property under test.
+PROGRAMMING_ERRORS = (AttributeError, TypeError, NameError, ImportError, IndexError, KeyError)
 
-    The header is not covered by the signature in the sense that matters here: an attacker can
-    rewrite it freely and the verifier must not believe any of it.
+
+@contextmanager
+def rejects():
+    """Assert the block refuses the token, and that it refuses it for a defensible reason.
+
+    ``pytest.raises(Exception)`` is too coarse here: it accepts an ``AttributeError`` from a typo
+    in the test as readily as a considered rejection, which is how a case can look like a guard
+    while guarding nothing.
     """
-    header_b64, payload_b64, signature_b64 = token.split(".")
-    padded = header_b64 + "=" * (-len(header_b64) % 4)
-    header = json.loads(base64.urlsafe_b64decode(padded))
-    header.update(header_overrides)
-    return ".".join([b64(json.dumps(header).encode()).decode(), payload_b64, signature_b64])
+    try:
+        yield
+    except PROGRAMMING_ERRORS as exc:
+        raise AssertionError(f"the case failed for a reason unrelated to the defence: {exc!r}") from exc
+    except Exception:
+        return
+    raise AssertionError("the token was accepted")
 
 
 class TokenAdversarySuite:
@@ -130,7 +157,7 @@ class TokenAdversarySuite:
         assert verify(trusted.mint()) is not None
 
     def test_an_unsigned_token_is_rejected(self, verify, trusted):
-        with pytest.raises(Exception):
+        with rejects():
             verify(unsigned_token(trusted.claims()))
 
     def test_a_token_signed_by_a_foreign_issuer_is_rejected(self, verify, foreign):
@@ -140,21 +167,26 @@ class TokenAdversarySuite:
         provider this one does not trust. Nothing about the token itself is wrong; only its
         origin is, which is why signature validity alone can never be the test.
         """
-        with pytest.raises(Exception):
+        with rejects():
             verify(foreign.mint())
 
     def test_a_foreign_token_wearing_the_trusted_kid_is_rejected(self, verify, trusted, foreign):
         """``kid`` confusion: the header points at a key the verifier trusts, the signature does
-        not come from it. Believing the header would be believing the attacker."""
-        forged = tamper(foreign.mint(), kid=trusted.kid)
+        not come from it. Believing the header would be believing the attacker.
 
-        with pytest.raises(Exception):
+        Minted with the attacker's key *and* the trusted ``kid`` in the signed header, so the
+        signature is genuine under the attacker's key. A token whose header was edited after
+        signing would fail signature verification outright and prove nothing about ``kid``.
+        """
+        forged = foreign.mint(kid=trusted.kid)
+
+        with rejects():
             verify(forged)
 
     def test_a_token_naming_an_unknown_kid_is_rejected(self, verify, foreign, trusted):
-        forged = tamper(foreign.mint(), kid="a-key-that-was-never-published")
+        forged = foreign.mint(kid="a-key-that-was-never-published")
 
-        with pytest.raises(Exception):
+        with rejects():
             verify(forged)
 
     def test_the_trusted_public_key_is_not_an_hmac_secret(self, verify, trusted):
@@ -172,20 +204,22 @@ class TokenAdversarySuite:
         """
         public_pem = trusted.key.as_pem(is_private=False) if hasattr(trusted.key, "as_pem") else json.dumps(trusted.jwks["keys"][0]).encode()
 
-        with pytest.raises(Exception):
+        with rejects():
             verify(hmac_token(trusted.claims(), trusted.kid, public_pem))
 
     def test_an_expired_token_is_rejected(self, verify, trusted):
         now = int(time.time())
 
-        with pytest.raises(Exception):
+        with rejects():
             verify(trusted.mint(iat=now - 7200, exp=now - 3600))
 
     def test_an_attacker_supplied_key_url_is_not_honoured(self, verify, foreign, trusted):
         """``jku``/``x5u`` naming the attacker's own key set. Fetching it would both trust the
         attacker's keys and turn the verifier into an SSRF gadget."""
         for header in ("jku", "x5u"):
-            forged = tamper(foreign.mint(), **{header: "https://attacker.invalid/keys.json", "kid": foreign.kid})
+            # In the signed header, so the signature is genuine under the attacker's key and the
+            # only question left is whether the verifier follows the URL.
+            forged = foreign.mint(extra_header={header: "https://attacker.invalid/keys.json"})
 
-            with pytest.raises(Exception):
+            with rejects():
                 verify(forged)

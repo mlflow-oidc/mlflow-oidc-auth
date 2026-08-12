@@ -76,6 +76,21 @@ class TestStrippedIssuer:
         assert "iss" in str(excinfo.value)
 
 
+class TestARepeatedParameter:
+    """``?iss=honest&iss=attacker``. A caller reading the query string with ``getlist`` — the
+    natural way to notice a duplicate — hands this a list, and it has to answer with the error
+    the caller is catching rather than an ``AttributeError`` that escapes past it."""
+
+    @pytest.mark.parametrize("returned", [[HONEST, ATTACKER], [ATTACKER], [], ("a", "b"), 42, {"iss": HONEST}])
+    def test_a_non_string_iss_is_refused_as_a_mismatch(self, returned):
+        with pytest.raises(IssuerMismatchError):
+            validate_response_issuer(returned, HONEST, iss_parameter_supported=True)
+
+    def test_it_is_refused_whatever_the_metadata_says(self):
+        with pytest.raises(IssuerMismatchError):
+            validate_response_issuer([HONEST], HONEST, iss_parameter_supported=False)
+
+
 class TestProvidersThatDoNotImplementRFC9207:
     """Refusing these would break logins that work today, to defend against an attack that needs
     a second authorization server to exist."""
@@ -106,7 +121,19 @@ class TestTheDecisionIsTotal:
 
     @pytest.mark.parametrize(
         "returned",
-        [None, "", " ", HONEST, ATTACKER, "not-a-url", "https://honest.idp.invalid#fragment", "https://honest.idp.invalid?a=b"],
+        [
+            None,
+            "",
+            " ",
+            HONEST,
+            ATTACKER,
+            "not-a-url",
+            "https://honest.idp.invalid#fragment",
+            "https://honest.idp.invalid?a=b",
+            [HONEST],
+            [HONEST, ATTACKER],
+            42,
+        ],
     )
     @pytest.mark.parametrize("supported", [True, False])
     def test_every_shape_of_response_is_either_accepted_or_refused(self, returned, supported):
@@ -119,7 +146,11 @@ class TestTheDecisionIsTotal:
         # The rule, stated independently of the implementation: a response is accepted only if it
         # names the expected issuer exactly, or names no issuer at all against a provider that
         # never sends one. "No issuer at all" covers absent, empty and whitespace alike.
-        identifies_an_issuer = bool(returned and returned.strip())
+        identifies_an_issuer = isinstance(returned, str) and bool(returned.strip())
+        if returned is not None and not isinstance(returned, str):
+            # Not an issuer and not "no issuer" either: unattributable, so never accepted.
+            assert accepted is False
+            return
         expected_to_be_accepted = (identifies_an_issuer and returned == HONEST) or (not identifies_an_issuer and not supported)
 
         assert accepted is expected_to_be_accepted

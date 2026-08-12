@@ -24,7 +24,7 @@ import mlflow_oidc_auth.auth as auth_module
 import mlflow_oidc_auth.store as store_module
 from mlflow_oidc_auth.middleware import AuthMiddleware
 
-from .suite import Issuer, TokenAdversarySuite, tamper, unsigned_token
+from .suite import Issuer, TokenAdversarySuite, rejects, unsigned_token
 
 PROTECTED = "/oidc/api/whoami"
 USERNAME = "adversary-suite@example.com"
@@ -68,14 +68,14 @@ class TestAudienceConfusion:
     """
 
     def test_a_token_for_another_audience_is_rejected(self, verify, trusted):
-        with pytest.raises(Exception):
+        with rejects():
             verify(trusted.mint(aud="a-different-application"))
 
     def test_a_token_with_no_audience_is_rejected(self, verify, trusted):
         claims = trusted.claims()
         claims.pop("aud")
 
-        with pytest.raises(Exception):
+        with rejects():
             verify(trusted.mint(claims))
 
     def test_the_expected_audience_among_several_is_accepted(self, verify, trusted):
@@ -83,7 +83,7 @@ class TestAudienceConfusion:
         assert verify(trusted.mint(aud=[trusted.audience, "another-app"])) is not None
 
     def test_an_audience_list_without_ours_is_rejected(self, verify, trusted):
-        with pytest.raises(Exception):
+        with rejects():
             verify(trusted.mint(aud=["another-app", "a-third-app"]))
 
 
@@ -91,14 +91,14 @@ class TestIssuerConfusion:
     def test_a_token_from_another_issuer_is_rejected(self, verify, foreign, trusted):
         """Even when it names the right audience — the case that matters once two providers can
         both mint tokens for this deployment's audience."""
-        with pytest.raises(Exception):
+        with rejects():
             verify(foreign.mint(aud=trusted.audience))
 
     def test_a_token_with_no_issuer_is_rejected(self, verify, trusted):
         claims = trusted.claims()
         claims.pop("iss")
 
-        with pytest.raises(Exception):
+        with rejects():
             verify(trusted.mint(claims))
 
     def test_a_lookalike_issuer_is_rejected(self, verify, trusted):
@@ -110,7 +110,7 @@ class TestIssuerConfusion:
             trusted.iss.replace("https", "http"),
             trusted.iss.upper(),
         ):
-            with pytest.raises(Exception):
+            with rejects():
                 verify(trusted.mint(iss=lookalike))
 
 
@@ -132,17 +132,17 @@ class TestTheUnpinnedDefault:
     def test_the_signature_is_still_the_floor(self, verify_unpinned, foreign):
         """Unpinned does not mean unverified: a token this deployment's keys did not sign is
         still refused, whatever it claims."""
-        with pytest.raises(Exception):
+        with rejects():
             verify_unpinned(foreign.mint())
 
     def test_an_unsigned_token_is_still_refused(self, verify_unpinned, trusted):
-        with pytest.raises(Exception):
+        with rejects():
             verify_unpinned(unsigned_token(trusted.claims()))
 
     def test_an_expired_token_is_still_refused(self, verify_unpinned, trusted):
         now = int(time.time())
 
-        with pytest.raises(Exception):
+        with rejects():
             verify_unpinned(trusted.mint(iat=now - 7200, exp=now - 3600))
 
     def test_but_any_issuer_and_audience_are_accepted(self, verify_unpinned, trusted):
@@ -209,7 +209,9 @@ class TestEndToEndThroughTheMiddleware:
         assert response.json().get("username") is None
 
     def test_a_kid_swapped_token_does_not(self, client, trusted, foreign):
-        response = self._get(client, tamper(foreign.mint(email=USERNAME), kid=trusted.kid))
+        """Minted with the attacker's key and the trusted ``kid`` in the signed header, so the
+        signature is genuine under that key — the header is the only thing vouching for it."""
+        response = self._get(client, foreign.mint(email=USERNAME, kid=trusted.kid))
 
         assert response.status_code == 401
 

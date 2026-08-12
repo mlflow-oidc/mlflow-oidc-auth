@@ -39,7 +39,8 @@ def validate_response_issuer(
     """Check the ``iss`` of an authorization response against the issuer that started it.
 
     Parameters:
-        returned_iss: The ``iss`` query parameter on the callback, or None when absent.
+        returned_iss: The ``iss`` query parameter on the callback, or None when absent. A value
+            that is not a string — a list, from a repeated parameter — is refused.
         expected_iss: The issuer recorded when the login began. None when the deployment has no
             record of it — which is every deployment before #316 gives transactions a home.
         iss_parameter_supported: Whether the provider's discovery metadata advertises
@@ -67,6 +68,16 @@ def validate_response_issuer(
     if expected_iss is None:
         return
 
+    # A query string can repeat a parameter — ``?iss=honest&iss=attacker`` — so a caller reading
+    # it with ``getlist`` hands this a list. Refused as the documented error rather than left to
+    # raise ``AttributeError`` on the ``.strip()`` below: that would escape a caller catching
+    # only ``IssuerMismatchError``, turning the mix-up defence into an unhandled 500.
+    if returned_iss is not None and not isinstance(returned_iss, str):
+        raise IssuerMismatchError(
+            f"The authorization response carried a non-string 'iss' ({type(returned_iss).__name__}); a response that "
+            "names more than one issuer, or none in a readable form, cannot be attributed to one."
+        )
+
     # ``?iss=`` arrives as an empty string and ``?iss=%20`` as whitespace; neither identifies an
     # issuer, so both are the *missing* case rather than a mismatch. Deciding them differently
     # would mean a provider that emits an empty parameter is refused while one that omits it
@@ -86,6 +97,5 @@ def validate_response_issuer(
 
     if returned_iss != expected_iss:
         raise IssuerMismatchError(
-            f"The authorization response was issued by {returned_iss!r}, but this login was started with "
-            f"{expected_iss!r}. Refusing to exchange the code."
+            f"The authorization response was issued by {returned_iss!r}, but this login was started with " f"{expected_iss!r}. Refusing to exchange the code."
         )
