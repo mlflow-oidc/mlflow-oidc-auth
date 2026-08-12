@@ -9,16 +9,18 @@ import time
 from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from authlib.jose.errors import BadSignatureError
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.audit import emit_audit_event
+from mlflow_oidc_auth.authorization_response import IssuerMismatchError, validate_response_issuer
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.oauth import PKCEUnsupportedError, assert_pkce_supported, is_oidc_configured, oauth
+from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
+from mlflow_oidc_auth.oauth import PKCEUnsupportedError, assert_pkce_supported, get_client, is_oidc_configured, oauth
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name
 
@@ -39,6 +41,7 @@ auth_router = APIRouter(
 
 CALLBACK = "/callback"
 LOGIN = "/login"
+PROVIDERS = "/providers"
 LOGOUT = "/logout"
 AUTH_STATUS = "/auth/status"
 
@@ -67,15 +70,21 @@ async def _refresh_oidc_jwks() -> None:
         logger.warning(f"Failed to refresh OIDC JWKS after bad signature: {exc}")
 
 
-async def _call_authorize_access_token(request: Request) -> Optional[dict[str, Any]]:
-    """Invoke authorize_access_token while supporting sync or async implementations."""
+async def _call_authorize_access_token(request: Request, provider_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Invoke authorize_access_token while supporting sync or async implementations.
 
-    token_call = oauth.oidc.authorize_access_token(request)  # type: ignore
+    The exchange goes to the token endpoint of the provider the attempt started at — never one
+    derived from the response, which is the other half of the RFC 9207 defence.
+    """
+
+    client = (get_client(provider_id) if provider_id else None) or oauth.oidc
+    token_call = client.authorize_access_token(request)  # type: ignore
     return await _maybe_await(token_call)
 
 
 async def _authorize_access_token_with_key_refresh(
     request: Request,
+    provider_id: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
     """Exchange the code for tokens; on failure refresh the JWKS and raise what actually went wrong.
 
@@ -100,7 +109,7 @@ async def _authorize_access_token_with_key_refresh(
     """
 
     try:
-        return await _call_authorize_access_token(request)
+        return await _call_authorize_access_token(request, provider_id)
     except BadSignatureError as exc:
         logger.warning("OIDC token exchange failed with bad signature: %s", exc)
         # Most likely a rotated signing key. Refresh so the next login is not affected too.
@@ -203,13 +212,33 @@ def _persist_session_auth(session, token_response: dict[str, Any]) -> None:
         session.pop("refresh_token", None)
 
 
+async def _iss_parameter_supported(provider) -> bool:
+    """Whether the provider advertises ``authorization_response_iss_parameter_supported``.
+
+    RFC 9207 is recent and plenty of deployed servers do not implement it, so a missing ``iss``
+    is only fatal when the provider says it always sends one. Discovery being unreachable reads
+    as "does not advertise": this decides how strict to be about a *missing* parameter, and a
+    mismatch is refused either way.
+    """
+    client = get_client(provider.id)
+    loader = getattr(client, "load_server_metadata", None)
+    if loader is None:
+        return False
+    try:
+        metadata = await loader() or {}
+    except Exception as exc:
+        logger.debug("Could not load metadata for the RFC 9207 check on '%s': %s", provider.id, exc)
+        return False
+    return bool(metadata.get("authorization_response_iss_parameter_supported"))
+
+
 def _sanitize_next(value: Optional[str]) -> Optional[str]:
     """Validate a ``next`` redirect target. Only same-origin relative paths are
     accepted to prevent open-redirect attacks. Returns None on rejection.
 
     Accepts: ``/users``, ``/oidc/ui/groups``, ``/#/experiments/0``.
-    Rejects: ``http://evil``, ``//evil``, ``javascript:...``, anything not starting
-    with a single ``/``.
+    Rejects: ``http://evil``, ``//evil``, ``javascript:...``, ``/\\evil.com``,
+    ``/<tab>/evil.com``, and anything not starting with a single ``/``.
     """
 
     if not value:
@@ -220,7 +249,18 @@ def _sanitize_next(value: Optional[str]) -> Optional[str]:
         return None
     if value.startswith("//"):  # protocol-relative URL — would escape origin
         return None
-    if "\n" in value or "\r" in value:  # header-injection guard
+    # Browsers do not read this the way a prefix check does. WHATWG parsing treats ``\`` as ``/``
+    # for special schemes, so ``/\evil.com`` navigates to https://evil.com/, and leading C0
+    # controls are stripped before parsing, so ``/%09/evil.com`` becomes ``//evil.com``. Both
+    # start with a single ``/`` and would otherwise be accepted — and land the victim on an
+    # attacker's page immediately after authenticating, which is the ideal phishing moment.
+    if "\\" in value:
+        return None
+    if any(character in value for character in "\x00\t\n\r\x0b\x0c"):
+        return None
+
+    parsed = urlparse(value)
+    if parsed.scheme or parsed.netloc:
         return None
     return value
 
@@ -247,8 +287,71 @@ def _build_ui_url(request: Request, path: str, query_params: Optional[dict] = No
     return url
 
 
+def _interactive_provider(provider_id: str):
+    """The provider a browser login may use, or None.
+
+    Only interactive providers are reachable here. A Kubernetes service-account issuer verifies
+    tokens exactly as an OIDC provider does but has no authorization endpoint to redirect to, so
+    naming it in a login URL must be a 404 rather than a broken redirect.
+    """
+    for provider in config.AUTH_PROVIDERS.interactive_providers():
+        if provider.id == provider_id:
+            return provider
+    return None
+
+
+@auth_router.get(PROVIDERS)
+async def providers(request: Request):
+    """List the providers a browser may log in with (#317's login picker reads this).
+
+    Deliberately unauthenticated and deliberately thin: an id, a label and a login URL. It is
+    reachable before anyone has logged in — that is its purpose — so it carries nothing beyond
+    what a login page has to render, and nothing about how a provider is configured.
+    """
+    return JSONResponse(
+        content={
+            "providers": [
+                {
+                    "id": provider.id,
+                    "display_name": provider.display_name or provider.id,
+                    "type": provider.type,
+                    "login_url": _absolute_path(request, f"{LOGIN}/{provider.id}"),
+                }
+                for provider in config.AUTH_PROVIDERS.interactive_providers()
+            ]
+        }
+    )
+
+
+def _absolute_path(request: Request, path: str) -> str:
+    """Join ``path`` onto the deployment's base URL, honouring any prefix."""
+    return str(request.base_url).rstrip("/") + path
+
+
+@auth_router.get(f"{LOGIN}/{{provider_id}}")
+async def login_with_provider(request: Request, provider_id: str):
+    """Begin a login against a named provider (#316).
+
+    The legacy ``/login`` is this with ``default``, so redirect URIs already registered at
+    customers' IdPs keep working.
+    """
+    if _interactive_provider(provider_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown identity provider")
+    return await _begin_login(request, provider_id)
+
+
 @auth_router.get(LOGIN)
 async def login(request: Request):
+    """The legacy login, which is the ``default`` provider's.
+
+    ``provider_id`` is deliberately not a parameter of this handler: FastAPI would expose it as a
+    *query* parameter, and `?provider_id=` would then reach the flow without passing the
+    interactive-provider check that the path-scoped route applies.
+    """
+    return await _begin_login(request, DEFAULT_PROVIDER_ID)
+
+
+async def _begin_login(request: Request, provider_id: str):
     """
     Initiate OIDC login flow.
 
@@ -264,8 +367,8 @@ async def login(request: Request):
 
     try:
         # Check if OIDC is properly configured before proceeding
-        if not is_oidc_configured():
-            logger.error("OIDC is not properly configured")
+        if not is_oidc_configured(provider_id):
+            logger.error("OIDC is not properly configured for provider '%s'", provider_id)
             raise HTTPException(
                 status_code=500,
                 detail="OIDC authentication not available - configuration error",
@@ -274,43 +377,54 @@ async def login(request: Request):
         # Get session for storing OAuth state (using Starlette's built-in session)
         session = request.session
 
-        # Generate OAuth state for CSRF protection
-        oauth_state = secrets.token_urlsafe(32)
-        session["oauth_state"] = oauth_state
-
-        # Capture an optional ?next= return target so the callback can return
-        # the user to where they were before the session expired. Validated to
-        # be a same-origin relative path; anything else is dropped silently.
+        # Capture an optional ?next= return target so the callback can return the user to where
+        # they were before the session expired. Validated to be a same-origin relative path;
+        # anything else is dropped silently.
         next_target = _sanitize_next(request.query_params.get("next"))
-        if next_target:
-            session["redirect_after_login"] = next_target
+
+        # The CSRF state, and everything this attempt needs to remember, is a row rather than a
+        # cookie key (#316). One key held one attempt, so a second tab overwrote the first and
+        # whichever came back second failed a check it should have passed — and nothing recorded
+        # *which* provider had been asked, which is the question RFC 9207 exists to answer.
+        oauth_state = store.create_auth_state(provider_id, redirect_after_login=next_target)
 
         # Get redirect URI (configured or dynamic). Use a safe fallback if dynamic calculation fails
         try:
+            # The default provider keeps the legacy callback path: redirect URIs already
+            # registered at customers' IdPs must not break. Every other provider gets its own,
+            # which is what lets the callback know who is answering before it reads anything.
+            callback_path = CALLBACK if provider_id == DEFAULT_PROVIDER_ID else f"{CALLBACK}/{provider_id}"
             redirect_url = get_configured_or_dynamic_redirect_uri(
                 request=request,
-                callback_path=CALLBACK,
-                configured_uri=config.OIDC_REDIRECT_URI,
+                callback_path=callback_path,
+                configured_uri=config.OIDC_REDIRECT_URI if provider_id == DEFAULT_PROVIDER_ID else None,
             )
         except Exception as e:
             logger.warning(f"Failed to get dynamic redirect URI: {e}")
             # Fallback to base_url + callback when request.url or other internals are not available in tests
             base = str(getattr(request, "base_url", "http://localhost:8000"))
-            redirect_url = base.rstrip("/") + CALLBACK
+            redirect_url = base.rstrip("/") + (CALLBACK if provider_id == DEFAULT_PROVIDER_ID else f"{CALLBACK}/{provider_id}")
 
         logger.debug(f"OIDC redirect URL: {redirect_url}")
 
+        # ``default`` resolves to the legacy ``oauth.oidc`` client, so a deployment that never
+        # adopted the registry keeps the client it already had.
+        client = get_client(provider_id) or (oauth.oidc if provider_id == DEFAULT_PROVIDER_ID else None)
+        if client is None:
+            logger.error("No registered OAuth client for provider '%s'", provider_id)
+            raise HTTPException(status_code=500, detail="OIDC authentication not available")
+
         # Redirect to OIDC provider
         try:
-            if not hasattr(oauth.oidc, "authorize_redirect"):
+            if not hasattr(client, "authorize_redirect"):
                 logger.error("OIDC client authorize_redirect method not available")
                 raise HTTPException(status_code=500, detail="OIDC authentication not available")
 
             # PKCE is on by default (#312). Checked here so a provider that cannot do it says so
             # in one sentence, rather than as an unexplained ``invalid_grant`` at the exchange.
-            await assert_pkce_supported(oauth.oidc)
+            await assert_pkce_supported(client, provider_id)
 
-            return await oauth.oidc.authorize_redirect(  # type: ignore
+            return await client.authorize_redirect(  # type: ignore
                 request,
                 redirect_uri=redirect_url,
                 state=oauth_state,
@@ -467,8 +581,29 @@ async def logout(request: Request):
         return RedirectResponse(url=auth_url, status_code=302)
 
 
+@auth_router.get(f"{CALLBACK}/{{provider_id}}")
+async def callback_for_provider(request: Request, provider_id: str):
+    """Complete a login that began at ``/login/{provider_id}`` (#316).
+
+    A separate path per provider so an authorization response cannot be delivered to a provider
+    it did not come from — the first thing a mix-up attack tries.
+    """
+    if _interactive_provider(provider_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown identity provider")
+    return await _complete_login(request, provider_id)
+
+
 @auth_router.get(CALLBACK)
 async def callback(request: Request):
+    """The legacy callback, for a login that began at ``/login``.
+
+    As with ``login``, the provider is not a query parameter — it comes from the path or not at
+    all, so the 404 gate on the scoped route cannot be stepped around.
+    """
+    return await _complete_login(request, None)
+
+
+async def _complete_login(request: Request, provider_id: Optional[str]):
     """
     Handle OIDC callback after authentication.
 
@@ -486,8 +621,8 @@ async def callback(request: Request):
     try:
         # Ensure OIDC client is registered (critical for multi-replica deployments)
         # This handles the case where callback hits a replica that hasn't registered the client yet
-        if not is_oidc_configured():
-            logger.error("OIDC is not properly configured when processing callback")
+        if not is_oidc_configured(provider_id or DEFAULT_PROVIDER_ID):
+            logger.error("OIDC is not properly configured when processing the callback for '%s'", provider_id or DEFAULT_PROVIDER_ID)
             auth_error_url = _build_ui_url(
                 request,
                 "/auth",
@@ -498,13 +633,11 @@ async def callback(request: Request):
         # Get session (using Starlette's built-in session)
         session = request.session
 
-        # A new login supersedes whatever this browser was carrying, and must not inherit any of
-        # it. This runs before the exchange because the exchange writes into the same cookie.
-        # ``oauth_state`` and ``redirect_after_login`` belong to *this* login and are untouched.
-        _retire_previous_login(session)
-
-        # Process OIDC callback using FastAPI-native implementation
-        username, errors = await _process_oidc_callback_fastapi(request, session)
+        # Process OIDC callback using FastAPI-native implementation. The state check inside is
+        # what makes this callback attributable to a login this browser started; nothing
+        # destructive may happen before it, or an unauthenticated cross-site GET to /callback
+        # would log the victim out on demand.
+        username, errors = await _process_oidc_callback_fastapi(request, session, provider_id=provider_id)
 
         if errors:
             # Handle authentication errors
@@ -595,13 +728,15 @@ async def auth_status(request: Request):
         raise HTTPException(status_code=500, detail="Failed to get authentication status")
 
 
-async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Optional[str], list[str]]:
+async def _process_oidc_callback_fastapi(request: Request, session, provider_id: Optional[str] = None) -> tuple[Optional[str], list[str]]:
     """
     Process the OIDC callback logic using FastAPI-native implementation.
 
     Args:
         request: FastAPI request object
         session: SessionManager instance
+        provider_id: The provider whose callback path this is, when it is a scoped one. The
+            attempt has to have been started at the same provider.
 
     Returns:
         Tuple of (username, error_list)
@@ -620,18 +755,56 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             errors.append(f"{safe_desc}")
         return None, errors
 
-    # State check for CSRF protection
+    # The attempt this callback belongs to. Consuming the row *is* the CSRF check: an unknown,
+    # already-used or expired state finds nothing, so a replayed authorization response — from a
+    # browser history entry, a proxy log, an attacker who captured the redirect — is refused
+    # rather than exchanged a second time (#316).
     state = request.query_params.get("state")
-    stored_state = session.get("oauth_state")
-    if not stored_state:
-        errors.append("Missing OAuth state in session")
-        return None, errors
-    if state != stored_state:
+    attempt = store.consume_auth_state(state or "")
+    if attempt is None:
         errors.append("Invalid state parameter")
         return None, errors
 
-    # Clear the OAuth state after validation
-    session.pop("oauth_state", None)
+    provider = config.AUTH_PROVIDERS.by_id(attempt.provider_id)
+    if provider is None:
+        # The provider was reconfigured or removed while this login was in flight. Refusing is
+        # the only safe answer: there is no policy left to apply to the response.
+        logger.error("Login attempt named provider '%s', which is no longer configured", attempt.provider_id)
+        errors.append("Identity provider is no longer configured")
+        return None, errors
+
+    if provider_id is not None and provider.id != provider_id:
+        # The response arrived at another provider's callback path. Nothing about a mix-up needs
+        # to be subtle: an attempt started at one provider cannot be completed at another's URL.
+        logger.error("Login attempt for provider '%s' arrived at the callback for '%s'", provider.id, provider_id)
+        errors.append("Invalid state parameter")
+        return None, errors
+
+    # RFC 9207: the response must say which issuer sent it, and it must be the one this
+    # transaction began with. An authorization response is otherwise unattributable — code and
+    # state look identical whichever authorization server produced them — which is the whole
+    # mix-up attack.
+    try:
+        validate_response_issuer(
+            request.query_params.getlist("iss") if hasattr(request.query_params, "getlist") else request.query_params.get("iss"),
+            provider.issuer,
+            iss_parameter_supported=await _iss_parameter_supported(provider),
+        )
+    except IssuerMismatchError as exc:
+        logger.error("Refusing an authorization response for provider '%s': %s", provider.id, exc)
+        errors.append("Authorization response came from an unexpected issuer")
+        return None, errors
+
+    session["redirect_after_login"] = attempt.redirect_after_login or session.get("redirect_after_login")
+
+    # A new login supersedes whatever this browser was carrying, and must not inherit any of it:
+    # _persist_session_auth below keeps an existing refresh token when the new response has none,
+    # so anything left here would be inherited by the next user (#351).
+    #
+    # Both halves of the placement matter. After the state check, because retiring a session for
+    # a callback that turned out to be forged would be a drive-by logout any page could trigger.
+    # Before the exchange, because the exchange writes this login's tokens into the same cookie.
+    _retire_previous_login(session)
 
     # Get authorization code
     code = request.query_params.get("code")
@@ -641,11 +814,11 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
 
     try:
         # Exchange authorization code for tokens
-        if not hasattr(oauth.oidc, "authorize_access_token"):
+        if not hasattr(get_client(provider.id) or oauth.oidc, "authorize_access_token"):
             errors.append("OIDC configuration error: OAuth client not properly initialized.")
             return None, errors
 
-        token_response = await _authorize_access_token_with_key_refresh(request)
+        token_response = await _authorize_access_token_with_key_refresh(request, provider.id)
 
         if not token_response:
             errors.append("Failed to exchange authorization code")

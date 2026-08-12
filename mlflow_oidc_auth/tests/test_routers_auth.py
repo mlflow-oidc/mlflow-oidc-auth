@@ -75,7 +75,7 @@ async def test_a_bad_signature_refreshes_the_keys_and_reports_itself(monkeypatch
     """
     calls = {"count": 0}
 
-    async def _fake(request):
+    async def _fake(request, provider_id=None):
         calls["count"] += 1
         raise BadSignatureError("bad")
 
@@ -99,7 +99,7 @@ async def test_a_bad_signature_refreshes_the_keys_and_reports_itself(monkeypatch
 async def test_the_original_error_is_what_propagates(monkeypatch):
     """Not a substitute error produced by a doomed second attempt."""
 
-    async def _fake(request):
+    async def _fake(request, provider_id=None):
         raise ValueError("invalid_grant: PKCE verification failed")
 
     monkeypatch.setattr(auth_router_mod, "_call_authorize_access_token", _fake)
@@ -130,7 +130,7 @@ def test_build_ui_url_with_and_without_query():
 
 @pytest.mark.asyncio
 async def test_login_not_configured(monkeypatch):
-    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: False)
+    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: False)
     req = DummyRequest()
 
     with pytest.raises(HTTPException) as ex:
@@ -140,7 +140,7 @@ async def test_login_not_configured(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_login_authorize_redirect_success(monkeypatch):
-    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: True)
 
     async def fake_authorize_redirect(request, redirect_uri=None, state=None):
         return RedirectResponse(url=redirect_uri)
@@ -160,15 +160,24 @@ async def test_login_authorize_redirect_success(monkeypatch):
         lambda request, callback_path, configured_uri: "http://cb",
     )
 
+    created = {}
+    monkeypatch.setattr(
+        auth_router_mod.store,
+        "create_auth_state",
+        lambda provider_id, **kwargs: created.setdefault("state", "state-token") or "state-token",
+        raising=False,
+    )
+    monkeypatch.setattr(auth_router_mod, "get_client", lambda provider_id=None: auth_router_mod.oauth.oidc, raising=False)
+
     req = DummyRequest()
     res = await auth_router_mod.login(req)
     assert isinstance(res, RedirectResponse)
-    assert "oauth_state" in req.session
+    assert created["state"], "the attempt is a row now, not a cookie key"
 
 
 @pytest.mark.asyncio
 async def test_login_no_authorize_redirect_raises(monkeypatch):
-    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: True)
 
     # ensure oidc client present and remove authorize_redirect
     import types
@@ -235,7 +244,7 @@ async def test_logout_exception_clears_session(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_callback_not_configured(monkeypatch):
-    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: False)
+    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: False)
     req = DummyRequest()
 
     res = await auth_router_mod.callback(req)
@@ -245,9 +254,9 @@ async def test_callback_not_configured(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_callback_process_errors_redirect(monkeypatch):
-    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: True)
 
-    async def _fake_proc(request, session):
+    async def _fake_proc(request, session, provider_id=None):
         return None, ["err"]
 
     monkeypatch.setattr(auth_router_mod, "_process_oidc_callback_fastapi", _fake_proc)
@@ -260,10 +269,10 @@ async def test_callback_process_errors_redirect(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_callback_success_redirects(monkeypatch):
-    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: True)
 
     # return email and no errors
-    async def _fake_proc2(request, session):
+    async def _fake_proc2(request, session, provider_id=None):
         return "User@Example.COM", []
 
     monkeypatch.setattr(auth_router_mod, "_process_oidc_callback_fastapi", _fake_proc2)
@@ -287,9 +296,9 @@ async def test_callback_success_redirects(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_callback_auth_failed_without_errors(monkeypatch):
-    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: True)
 
-    async def _fake_proc3(request, session):
+    async def _fake_proc3(request, session, provider_id=None):
         return None, []
 
     monkeypatch.setattr(auth_router_mod, "_process_oidc_callback_fastapi", _fake_proc3)
@@ -342,17 +351,19 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
     req.query_params = {}
     session = {}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
-    assert "Missing OAuth state" in errors[0]
+    # "Missing" and "wrong" are one answer now: the row is the check, and an absent state and a
+    # forged one both fail to find one. Telling them apart would tell an attacker which they had.
+    assert "Invalid state parameter" in errors[0]
 
-    # invalid state
-    req.query_params = {"state": "x"}
-    session = {"oauth_state": "y"}
+    # a state with no attempt behind it — unknown, already used, or expired
+    req.query_params = {"state": "unknown-state"}
+    session = {}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
     assert "Invalid state" in errors[0]
 
     # no code
     req.query_params = {"state": "ok"}
-    session = {"oauth_state": "ok"}
+    session = {}
     email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
     assert "No authorization code" in errors[0]
 
@@ -560,7 +571,7 @@ async def test_call_authorize_access_token_sync_implementation(monkeypatch):
 async def test_a_successful_exchange_does_not_refresh_the_keys(monkeypatch):
     calls = {"count": 0}
 
-    async def _succeed(request):
+    async def _succeed(request, provider_id=None):
         calls["count"] += 1
         return {"access_token": "x"}
 
@@ -582,7 +593,7 @@ async def test_a_successful_exchange_does_not_refresh_the_keys(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_login_fallback_redirect_uri_on_error(monkeypatch):
-    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+    monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: True)
 
     # make the redirect helper raise so the fallback path is used
     async def fake_authorize_redirect(request, redirect_uri=None, state=None):
@@ -655,91 +666,74 @@ async def test_process_oidc_callback_final_except(monkeypatch):
 class TestSessionHandoverOnReLogin:
     """Two logins in the same browser must not leave the first user's session id in the cookie.
 
-    Found by security review of #310: the callback writes the new login's refresh token into the
-    cookie *before* opening the session row. If opening it then failed and the old ``session_id``
-    were still there, the browser would stay authenticated as the previous user and go on
-    refreshing that session with the new user's IdP grant.
+    Driven through ``_process_oidc_callback_fastapi`` rather than around it: since #316 the
+    handover happens between the state check and the token exchange, and both halves of that
+    placement are load-bearing. After the check, because retiring a session for a callback that
+    turns out to be forged is a drive-by logout. Before the exchange, because
+    ``_persist_session_auth`` keeps an existing refresh token when the new response carries none,
+    so anything left in the cookie is inherited by the next user.
     """
+
+    @staticmethod
+    def _exchange(monkeypatch, seen, token_response):
+        async def _fake(request, provider_id=None):
+            seen["at_exchange"] = dict(request.session)
+            return token_response
+
+        monkeypatch.setattr(auth_router_mod, "_authorize_access_token_with_key_refresh", _fake)
+        # A client has to exist for the exchange to be attempted at all.
+        monkeypatch.setattr(auth_router_mod, "get_client", lambda provider_id=None: types.SimpleNamespace(authorize_access_token=_fake), raising=False)
 
     @pytest.mark.asyncio
     async def test_the_previous_session_is_revoked_and_replaced(self, monkeypatch):
-        monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
-
-        async def _proc(request, session):
-            return "second@example.com", []
-
-        monkeypatch.setattr(auth_router_mod, "_process_oidc_callback_fastapi", _proc)
-        monkeypatch.setattr(auth_router_mod, "_open_server_session", lambda username: "sid-second")
         revoked = []
         monkeypatch.setattr(auth_router_mod.store, "revoke_auth_session", lambda sid: revoked.append(sid) or True)
+        self._exchange(monkeypatch, {}, None)  # the exchange itself may fail; the handover is what matters
 
         req = DummyRequest()
         req.session["session_id"] = "sid-first"
+        req.query_params = {"state": "state-1", "code": "c"}
 
-        await auth_router_mod.callback(req)
+        await auth_router_mod._process_oidc_callback_fastapi(req, req.session)
 
         assert revoked == ["sid-first"]
-        assert req.session["session_id"] == "sid-second"
+        assert "session_id" not in req.session
 
     @pytest.mark.asyncio
     async def test_the_previous_users_refresh_token_is_not_inherited(self, monkeypatch):
-        """The finding this ordering exists for.
-
-        ``_persist_session_auth`` keeps an existing refresh token when the new token response
-        carries none, so retiring the old login *after* the exchange would hand the next user
-        the previous user's grant — their session would then outlive their own IdP session and
-        die with someone else's.
-        """
-        monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+        """The finding this ordering exists for: a token response with no refresh token of its
+        own would otherwise keep the previous user's."""
         seen = {}
-
-        async def _proc(request, session):
-            # Stands in for the token exchange: records what the previous login left behind,
-            # then persists a token response that carries no refresh token of its own.
-            seen["at_exchange"] = dict(session)
-            auth_router_mod._persist_session_auth(session, {"expires_at": 4102444800})
-            return "second@example.com", []
-
-        monkeypatch.setattr(auth_router_mod, "_process_oidc_callback_fastapi", _proc)
-        monkeypatch.setattr(auth_router_mod, "_open_server_session", lambda username: "sid-second")
         monkeypatch.setattr(auth_router_mod.store, "revoke_auth_session", lambda sid: True)
-        monkeypatch.setattr(config, "OIDC_USE_REFRESH_TOKEN", True)
+        self._exchange(monkeypatch, seen, None)
 
         req = DummyRequest()
         req.session["session_id"] = "sid-first"
         req.session["refresh_token"] = "rt-first"
         req.session["expires_at"] = 100
+        req.query_params = {"state": "state-1", "code": "c"}
 
-        await auth_router_mod.callback(req)
+        await auth_router_mod._process_oidc_callback_fastapi(req, req.session)
 
         assert "refresh_token" not in seen["at_exchange"], "the exchange must not see the previous login's token"
         assert "refresh_token" not in req.session
-        assert req.session["session_id"] == "sid-second"
 
     @pytest.mark.asyncio
-    async def test_a_failure_to_open_a_session_clears_the_cookie(self, monkeypatch):
-        monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
-
-        async def _proc(request, session):
-            return "second@example.com", []
-
-        monkeypatch.setattr(auth_router_mod, "_process_oidc_callback_fastapi", _proc)
-
-        def _boom(username):
-            raise RuntimeError("database is down")
-
-        monkeypatch.setattr(auth_router_mod, "_open_server_session", _boom)
-        monkeypatch.setattr(auth_router_mod.store, "revoke_auth_session", lambda sid: True)
+    async def test_a_forged_callback_cannot_force_a_logout(self, monkeypatch):
+        """An unauthenticated cross-site GET to the callback must not end a live session: the
+        state check comes first, and nothing destructive happens before it."""
+        revoked = []
+        monkeypatch.setattr(auth_router_mod.store, "revoke_auth_session", lambda sid: revoked.append(sid) or True)
 
         req = DummyRequest()
-        req.session["session_id"] = "sid-first"
-        req.session["refresh_token"] = "rt-second"  # written by _persist_session_auth already
+        req.session["session_id"] = "sid-live"
+        req.query_params = {"state": "unknown-state", "code": "c"}
 
-        res = await auth_router_mod.callback(req)
+        _, errors = await auth_router_mod._process_oidc_callback_fastapi(req, req.session)
 
-        assert isinstance(res, RedirectResponse)
-        assert "session_error" in res.headers["location"]
-        assert req.session == {}, "a failed login must not leave any credential in the cookie"
+        assert errors == ["Invalid state parameter"]
+        assert revoked == [], "a forged callback revoked a live session"
+        assert req.session["session_id"] == "sid-live"
 
 
 class TestLogoutSurfacesRevocationFailure:
@@ -815,3 +809,35 @@ class TestLogoutSurfacesRevocationFailure:
 
         assert revoked == ["sid-live"]
         assert isinstance(res, RedirectResponse)
+
+
+@pytest.fixture(autouse=True)
+def in_flight_login_attempt(monkeypatch):
+    """Answer the callback's state lookup with a live attempt (#316).
+
+    The CSRF state moved out of the cookie and into an ``auth_state`` row, so a callback test
+    that seeds ``session["oauth_state"]`` no longer describes anything. This stands in for the
+    row: any non-empty ``state`` resolves to an attempt at the ``default`` provider, which is
+    what these cases were always about — the user-management half of the callback.
+
+    The state machinery itself is tested directly in ``test_auth_state.py`` and
+    ``test_provider_login.py``.
+    """
+    import mlflow_oidc_auth.routers.auth as auth_router_mod
+    from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+    from mlflow_oidc_auth.repository.auth_state import AuthAttempt
+
+    monkeypatch.setattr(
+        auth_router_mod.store,
+        "consume_auth_state",
+        # "unknown-state" stands for a state with no attempt behind it: unknown, already used,
+        # or expired. Everything else resolves, so a case can exercise the rest of the callback.
+        lambda state: None if not state or state == "unknown-state" else AuthAttempt(state=state, provider_id="default"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod.config,
+        "AUTH_PROVIDERS",
+        RegistryLoadResult(providers=[ProviderConfig(id="default", type="oidc", audience="mlflow")], errors=[], source="legacy"),
+        raising=False,
+    )

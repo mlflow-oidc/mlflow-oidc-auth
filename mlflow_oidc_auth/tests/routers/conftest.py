@@ -298,6 +298,17 @@ def mock_config():
     config_mock.OIDC_GROUP_NAME = ["user-group", "test-group"]
     config_mock.OIDC_GEN_AI_GATEWAY_ENABLED = False
     config_mock.MLFLOW_ENABLE_WORKSPACES = False
+
+    # A real registry, not a MagicMock: since #316 the callback looks the provider up here and
+    # then uses its id and issuer. A mock would hand those paths a MagicMock where a string is
+    # required, which fails in ways that say nothing about the case under test.
+    from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+
+    config_mock.AUTH_PROVIDERS = RegistryLoadResult(
+        providers=[ProviderConfig(id="default", type="oidc", display_name="Test Provider", audience="mlflow")],
+        errors=[],
+        source="legacy",
+    )
     return config_mock
 
 

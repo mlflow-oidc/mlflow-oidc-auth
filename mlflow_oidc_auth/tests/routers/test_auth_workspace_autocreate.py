@@ -31,6 +31,11 @@ class TestOidcWorkspaceAutoCreate:
         config_mock.OIDC_WORKSPACE_DETECTION_PLUGIN = plugin
         config_mock.OIDC_WORKSPACE_CLAIM_NAME = claim
         config_mock.OIDC_WORKSPACE_DEFAULT_PERMISSION = "READ"
+        # A real registry: the callback looks the provider up here since #316 and then uses its
+        # id, which a MagicMock cannot stand in for.
+        from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+
+        config_mock.AUTH_PROVIDERS = RegistryLoadResult(providers=[ProviderConfig(id="default", type="oidc", audience="mlflow")], errors=[], source="legacy")
         config_mock.OIDC_GROUP_DETECTION_PLUGIN = None
         config_mock.OIDC_GROUPS_ATTRIBUTE = "groups"
         config_mock.OIDC_ADMIN_GROUP_NAME = ["admin-group"]
@@ -224,3 +229,24 @@ class TestOidcWorkspaceAutoCreate:
 
         assert email == "user@example.com"
         assert errors == []
+
+
+@pytest.fixture(autouse=True)
+def in_flight_login_attempt(monkeypatch):
+    """Stand in for the ``auth_state`` row the callback consumes (#316)."""
+    import mlflow_oidc_auth.routers.auth as auth_router_mod
+    from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+    from mlflow_oidc_auth.repository.auth_state import AuthAttempt
+
+    monkeypatch.setattr(
+        auth_router_mod.store,
+        "consume_auth_state",
+        lambda state: AuthAttempt(state=state, provider_id="default") if state else None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod.config,
+        "AUTH_PROVIDERS",
+        RegistryLoadResult(providers=[ProviderConfig(id="default", type="oidc", audience="mlflow")], errors=[], source="legacy"),
+        raising=False,
+    )

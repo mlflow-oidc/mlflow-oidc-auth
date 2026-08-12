@@ -380,8 +380,14 @@ class TestInteractiveFlag:
     login button for it that cannot complete.
     """
 
-    def test_oidc_providers_are_interactive_by_default(self):
-        assert build([valid_entry()]).providers[0].interactive is True
+    def test_the_default_provider_is_interactive(self):
+        """The type's default is interactive, and the ``default`` provider keeps it.
+
+        A *second* OIDC provider has its browser login held back until identity resolution
+        becomes per-provider (#318) — it remains a token provider. That is asserted in
+        ``test_provider_login.py``.
+        """
+        assert build([valid_entry(id=DEFAULT_PROVIDER_ID)]).providers[0].interactive is True
 
     def test_k8s_providers_are_not_interactive_by_default(self):
         result = build([valid_entry(type="k8s")])
@@ -414,7 +420,9 @@ class TestInteractiveFlag:
         result = build([valid_entry(id="okta"), valid_entry(id="cluster", type="k8s")])
 
         assert [p.id for p in result.providers] == ["okta", "cluster"]
-        assert [p.id for p in result.interactive_providers()] == ["okta"]
+        # ``okta`` is a second provider, so its browser login is held back until identity
+        # becomes per-provider (#318) — it is still a token provider.
+        assert [p.id for p in result.interactive_providers()] == []
 
     def test_the_legacy_provider_is_interactive(self):
         """Today's single provider is a browser login provider, and must stay on the page."""

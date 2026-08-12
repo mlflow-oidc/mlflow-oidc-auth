@@ -64,6 +64,7 @@ from mlflow_oidc_auth.repository import (
     UserRepository,
     UserIdentityRepository,
     AuthSessionRepository,
+    AuthStateRepository,
     WorkspacePermissionRepository,
     WorkspaceGroupPermissionRepository,
 )
@@ -86,6 +87,7 @@ class SqlAlchemyStore:
         self.user_repo = UserRepository(self.ManagedSessionMaker)
         self.user_identity_repo = UserIdentityRepository(self.ManagedSessionMaker)
         self.auth_session_repo = AuthSessionRepository(self.ManagedSessionMaker)
+        self.auth_state_repo = AuthStateRepository(self.ManagedSessionMaker)
         self.experiment_repo = ExperimentPermissionRepository(self.ManagedSessionMaker)
         self.experiment_group_repo = ExperimentPermissionGroupRepository(self.ManagedSessionMaker)
         self.group_repo = GroupRepository(self.ManagedSessionMaker)
@@ -330,6 +332,14 @@ class SqlAlchemyStore:
     def create_auth_session(self, username: str, expires_at, provider_id: Optional[str] = None) -> str:
         """Open a server-side session and return its opaque id (issue #310)."""
         return self.auth_session_repo.create(username, expires_at, provider_id)
+
+    def create_auth_state(self, provider_id: str, **kwargs) -> str:
+        """Start a login attempt and return its ``state`` (issue #316)."""
+        return self.auth_state_repo.create(provider_id, **kwargs)
+
+    def consume_auth_state(self, state: str):
+        """Take the login attempt named by ``state``, removing it. None if there is none."""
+        return self.auth_state_repo.consume(state)
 
     def resolve_auth_session(self, session_id: str):
         """Resolve a session id to its user in one statement, or None if it is not honoured."""
