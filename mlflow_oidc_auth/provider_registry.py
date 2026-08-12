@@ -51,6 +51,10 @@ INTERACTIVE_BY_DEFAULT = {"oidc": True, "saml": True, "k8s": False}
 PROVISIONING_MODES = ("jit", "scim", "none")
 GROUP_SYNC_MODES = ("none", "first_login", "every_login")
 GROUP_SYNC_STRATEGIES = ("additive", "authoritative")
+# Provider types whose credentials are bearer tokens verified against a JWKS. They carry the
+# extra requirements in _validate: an issuer to pin, and a key source of their own.
+TOKEN_PROVIDER_TYPES = ("oidc", "k8s")
+
 # "scim" is deliberately absent — see _validate_admin_source.
 ADMIN_SOURCES = ("claims", "none")
 IDENTITY_BINDINGS = ("subject", "email")
@@ -276,6 +280,35 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
 
     if not isinstance(audience, str) or not audience.strip():
         errors.append(f"{label}: 'audience' is required; a token validated with no audience check is valid for every relying party of that issuer")
+
+    if provider_type in TOKEN_PROVIDER_TYPES:
+        # Both required for the same reason ``audience`` is, and both became load-bearing when
+        # validation went per-provider (#313).
+        #
+        # Without ``issuer`` nothing pins ``iss``, so every tenant of a shared key set is
+        # accepted: an Entra ``common`` endpoint, a multi-tenant Keycloak realm and a cluster
+        # issuer fronting several namespaces all publish one JWKS for many issuers, and a token
+        # from any of them carries a valid signature. The attacker needs only their own tenant.
+        #
+        # Without ``discovery_url`` the provider inherits the deployment-wide key source and its
+        # single-entry cache, so two such providers share one cache slot: a rotation refresh for
+        # one evicts the other's keys, and an unauthenticated caller sending bad signatures can
+        # hold that slot permanently cold. Naming a source keeps each provider's keys its own.
+        if not isinstance(issuer, str) or not issuer.strip():
+            errors.append(
+                f"{label}: 'issuer' is required for a '{provider_type}' provider; without it no 'iss' check is performed and "
+                "every issuer sharing that key set is accepted"
+            )
+        # Scoped to OIDC deliberately. A cluster's keys usually come from the API server's
+        # ``/openid/v1/jwks``, reached with the in-cluster service account and CA bundle rather
+        # than through a public discovery document, and legacy service-account tokens have no
+        # discovery document at all. #314 is where that provider learns how it sources keys, and
+        # it can state its own rule then — no k8s provider can be configured before it lands.
+        if provider_type == "oidc" and (not isinstance(discovery_url, str) or not discovery_url.strip()):
+            errors.append(
+                f"{label}: 'discovery_url' is required for an 'oidc' provider; without it the provider shares the "
+                "deployment-wide key cache with every other provider that omits one"
+            )
 
     if provider_type == "saml" and not _saml_extra_installed():
         errors.append(f"{label}: type 'saml' requires the [saml] extra to be installed")
@@ -518,12 +551,38 @@ def _legacy_entry(app_config: Any) -> Dict[str, Any]:
         "group_sync_mode": "authoritative",
         "admin_source": "claims",
         "identity_binding": "subject",
-        "allowed_algorithms": list(DEFAULT_ALGORITHMS),
+        # The set the synthesised provider is built with below — the whole asymmetric set, which
+        # is what validation accepted before it became per-provider.
+        "allowed_algorithms": list(ASYMMETRIC_ALGORITHMS),
         "audience": getattr(app_config, "OIDC_AUDIENCE", None),
         "issuer": getattr(app_config, "OIDC_ISSUER", None),
         "discovery_url": getattr(app_config, "OIDC_DISCOVERY_URL", None),
         "client_id": getattr(app_config, "OIDC_CLIENT_ID", None),
     }
+
+
+def _reject_duplicate_issuers(providers: List[ProviderConfig]) -> Tuple[List[ProviderConfig], List[str]]:
+    """Drop every provider after the first that claims a given issuer.
+
+    Token validation selects a provider by exact ``iss`` match and takes the first hit, so two
+    entries claiming one issuer means the second's policy — its audience, its binding, its group
+    rules — is never applied, and no error says so. Rejecting the later entries makes the
+    collision visible instead of resolving it by configuration order.
+    """
+    kept: List[ProviderConfig] = []
+    errors: List[str] = []
+    seen: Dict[str, str] = {}
+    for provider in providers:
+        if provider.issuer and provider.issuer in seen:
+            errors.append(
+                f"provider '{provider.id}': issuer {provider.issuer!r} is already claimed by provider '{seen[provider.issuer]}'; "
+                "a token can only be validated under one policy, so the later entry is ignored"
+            )
+            continue
+        if provider.issuer:
+            seen[provider.issuer] = provider.id
+        kept.append(provider)
+    return kept, errors
 
 
 def build_provider_registry(config_manager: Any, app_config: Any) -> RegistryLoadResult:
@@ -613,6 +672,9 @@ def build_provider_registry(config_manager: Any, app_config: Any) -> RegistryLoa
         seen_ids.add(provider.id)
         providers.append(provider)
 
+    providers, issuer_errors = _reject_duplicate_issuers(providers)
+    errors.extend(issuer_errors)
+
     return RegistryLoadResult(providers=providers, errors=errors, source=source)
 
 
@@ -648,7 +710,14 @@ def _legacy_providers(app_config: Any) -> List[ProviderConfig]:
             group_sync_mode="authoritative",
             admin_source="claims",
             identity_binding="subject",
-            allowed_algorithms=DEFAULT_ALGORITHMS,
+            # The full asymmetric set, not DEFAULT_ALGORITHMS. Before the registry existed, token
+            # validation accepted every asymmetric algorithm, so a deployment whose IdP signs with
+            # ES256 or RS512 — Auth0, several Okta and Keycloak configurations, Kubernetes — is
+            # working today. Narrowing that here would lock them out on upgrade with no
+            # configuration change of their own, which is the one thing the synthesised entry
+            # exists to prevent. An *explicitly* configured entry still defaults to RS256: there
+            # the operator is writing the policy, and can widen it deliberately.
+            allowed_algorithms=ASYMMETRIC_ALGORITHMS,
             audience=audience.strip() if isinstance(audience, str) and audience.strip() else None,
             issuer=entry["issuer"],
             discovery_url=entry["discovery_url"],

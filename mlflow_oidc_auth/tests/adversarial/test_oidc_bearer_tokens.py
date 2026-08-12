@@ -46,11 +46,36 @@ def foreign():
     return Issuer(name="foreign", iss="https://foreign.idp.invalid", audience="some-other-app")
 
 
+def registry_of(*providers, source="env"):
+    """A registry result holding exactly these providers.
+
+    Since #313 the issuer and audience a token is held to come from the matched provider, not
+    from the flat ``OIDC_*`` variables, so configuring a case means configuring a registry.
+    """
+    from mlflow_oidc_auth.provider_registry import RegistryLoadResult
+
+    return RegistryLoadResult(providers=list(providers), errors=[], source=source)
+
+
+def provider_for(trusted_issuer: Issuer, provider_id: str = "default", **overrides):
+    """A registry entry that trusts ``issuer``'s keys, issuer identifier and audience."""
+    from mlflow_oidc_auth.provider_registry import ASYMMETRIC_ALGORITHMS, ProviderConfig
+
+    fields = {
+        "id": provider_id,
+        "type": "oidc",
+        "allowed_algorithms": ASYMMETRIC_ALGORITHMS,
+        "audience": trusted_issuer.audience,
+        "issuer": trusted_issuer.iss,
+    }
+    fields.update(overrides)
+    return ProviderConfig(**fields)
+
+
 @pytest.fixture
 def verify(trusted, monkeypatch):
     """``validate_token`` with the trusted issuer's keys, issuer and audience pinned."""
-    monkeypatch.setattr(auth_module.config, "OIDC_ISSUER", trusted.iss)
-    monkeypatch.setattr(auth_module.config, "OIDC_AUDIENCE", trusted.audience)
+    monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry_of(provider_for(trusted)))
     monkeypatch.setattr(auth_module, "_get_oidc_jwks", lambda force_refresh=False: trusted.jwks)
     return auth_module.validate_token
 
@@ -124,8 +149,12 @@ class TestTheUnpinnedDefault:
 
     @pytest.fixture
     def verify_unpinned(self, trusted, monkeypatch):
-        monkeypatch.setattr(auth_module.config, "OIDC_ISSUER", None)
-        monkeypatch.setattr(auth_module.config, "OIDC_AUDIENCE", None)
+        """The synthesised ``default`` provider of a deployment that set neither variable."""
+        monkeypatch.setattr(
+            auth_module.config,
+            "AUTH_PROVIDERS",
+            registry_of(provider_for(trusted, audience=None, issuer=None), source="legacy"),
+        )
         monkeypatch.setattr(auth_module, "_get_oidc_jwks", lambda force_refresh=False: trusted.jwks)
         return auth_module.validate_token
 
@@ -173,8 +202,7 @@ class TestEndToEndThroughTheMiddleware:
         previous = object.__getattribute__(store_module.store, "_instance")
         object.__setattr__(store_module.store, "_instance", store)
 
-        monkeypatch.setattr(auth_module.config, "OIDC_ISSUER", trusted.iss)
-        monkeypatch.setattr(auth_module.config, "OIDC_AUDIENCE", trusted.audience)
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry_of(provider_for(trusted)))
         monkeypatch.setattr(auth_module, "_get_oidc_jwks", lambda force_refresh=False: trusted.jwks)
 
         app = FastAPI()

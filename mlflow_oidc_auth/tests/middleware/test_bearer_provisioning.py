@@ -1,11 +1,32 @@
 """Layer 2 of the #262 fix: opt-in, hardened auto-provisioning on bearer authentication."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from mlflow_oidc_auth.config import config as real_config
 from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
+
+
+@pytest.fixture(autouse=True)
+def provider_carries_the_configured_scoping(monkeypatch):
+    """Resolve the token's provider from whatever scoping the test configured.
+
+    Since #313 the provisioning gate asks the provider that validated the token whether it pins
+    an audience and an issuer, rather than reading the flat variables — those no longer describe
+    what was enforced. These tests describe a single-provider deployment, where the synthesised
+    provider carries exactly those flat values, so resolution mirrors them and every case keeps
+    meaning what it did.
+    """
+    import mlflow_oidc_auth.auth as auth_module
+    import mlflow_oidc_auth.middleware.auth_middleware as middleware_module
+
+    def resolve(token):
+        cfg = middleware_module.config
+        return SimpleNamespace(id="default", audience=cfg.OIDC_AUDIENCE, issuer=cfg.OIDC_ISSUER)
+
+    monkeypatch.setattr(auth_module, "resolve_token_provider", resolve)
 
 
 def _mw():
