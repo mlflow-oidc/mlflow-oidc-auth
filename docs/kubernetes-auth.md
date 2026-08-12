@@ -51,7 +51,9 @@ interchangeable:
   for another application is otherwise a valid MLflow credential.
 - **`issuer`** — without it nothing checks `iss`, so any issuer whose keys you happen to trust is
   accepted.
-- **`namespace_allowlist`** — this is the whole authorization decision. A service-account token
+- **`namespace_allowlist`** — this is the whole authorization decision, and each entry must be a
+  real Kubernetes namespace (a DNS label). `Team-A` or `team_a` are refused at load rather than
+  accepted and silently never matched. A service-account token
   carries **no groups claim**, so the group gate that guards OIDC bearer provisioning cannot
   apply. An empty list means *nobody*, never everybody: otherwise every pod in the cluster that
   can read its own projected token becomes an MLflow user the moment you configure the provider.
@@ -143,6 +145,12 @@ A service account that authenticates from an allowlisted namespace is provisione
 
 Grant permissions to the `k8s:<namespace>` group and every service account in that namespace
 inherits them.
+
+Provisioning happens on first authentication and needs no extra flag:
+`OIDC_PROVISION_ON_BEARER_AUTH` gates provisioning from an *OIDC* token, where the alternative is
+trusting whatever groups an arbitrary token from the corporate IdP carries. Here the opt-in is
+already narrower and explicit — a provider you configured, and a namespace you named in its
+allowlist.
 
 Administrator rights are never conferred from a cluster token. There is no claim a cluster could
 assert that should make something an MLflow administrator, and `OIDC_TRUST_BEARER_GROUP_CLAIMS`

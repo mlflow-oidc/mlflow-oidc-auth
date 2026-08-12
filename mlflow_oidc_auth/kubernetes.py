@@ -90,8 +90,14 @@ class ServiceAccount:
         return GROUP_TEMPLATE.format(namespace=self.namespace)
 
 
-def _valid_label(value: str) -> bool:
-    return bool(value) and len(value) <= MAX_LABEL_LENGTH and bool(DNS_LABEL.match(value))
+def valid_dns_label(value: Any) -> bool:
+    """Whether ``value`` is a Kubernetes object name.
+
+    Shared with the registry deliberately: an allowlist entry is compared against a namespace
+    that came through :func:`parse_service_account`, so the two must agree on what a namespace
+    can look like or an entry silently never matches.
+    """
+    return isinstance(value, str) and bool(value) and len(value) <= MAX_LABEL_LENGTH and bool(DNS_LABEL.match(value))
 
 
 def parse_service_account(subject: Any) -> ServiceAccount:
@@ -120,7 +126,7 @@ def parse_service_account(subject: Any) -> ServiceAccount:
         raise ServiceAccountError("token subject is not 'system:serviceaccount:<namespace>:<name>'")
 
     namespace, name = match.group("namespace"), match.group("name")
-    if not _valid_label(namespace) or not _valid_label(name):
+    if not valid_dns_label(namespace) or not valid_dns_label(name):
         raise ServiceAccountError("service-account namespace and name must be DNS labels")
 
     return ServiceAccount(namespace=namespace, name=name)

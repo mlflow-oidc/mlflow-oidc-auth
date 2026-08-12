@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import threading
 
@@ -161,7 +162,21 @@ def _get_provider_jwks(provider, force_refresh: bool = False) -> dict:
     # mode that works when the API server is unreachable from wherever MLflow runs, and the only
     # one with no network in the authentication path at all.
     if getattr(provider, "jwks_inline", None):
-        return load_inline_jwks(provider.jwks_inline)
+        # Parsed once and kept, rather than re-read on every request. It is immutable
+        # configuration, and this is the mode whose whole point is that it does no work in the
+        # authentication path.
+        # Keyed on the material as well as the id: two key sets configured under one provider id
+        # — a rotation, or a second deployment reusing the id — must not serve each other's keys.
+        cache_key = (provider.id, "jwks_inline", hashlib.sha256(str(provider.jwks_inline).encode()).hexdigest())
+        with _provider_jwks_lock:
+            cached = _provider_jwks_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        parsed = load_inline_jwks(provider.jwks_inline)
+        with _provider_jwks_lock:
+            _provider_jwks_cache[cache_key] = parsed
+        return parsed
 
     # A known key-set URL, for a cluster whose discovery document is not anonymously readable —
     # the common case, since system:service-account-issuer-discovery is rarely bound to

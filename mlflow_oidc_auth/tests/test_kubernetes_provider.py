@@ -167,6 +167,29 @@ class TestProvisioningAServiceAccount:
         assert create_user.call_args.kwargs["is_admin"] is False
         populate_groups.assert_called_once_with(group_names=["k8s:team-a"])
 
+    def test_the_oidc_provisioning_flag_is_not_a_hidden_prerequisite(self):
+        """OIDC_PROVISION_ON_BEARER_AUTH gates provisioning from an *OIDC* token, where the
+        alternative is trusting whatever groups an arbitrary corporate token carries.
+
+        Here the opt-in already exists and is narrower — a provider the operator configured and a
+        namespace they named in its allowlist. Requiring the OIDC flag as well would mean the
+        documented setup authenticates the token and then returns 401 as an unknown user, with
+        nothing pointing at why.
+        """
+        payload = {"sub": "system:serviceaccount:team-a:trainer"}
+
+        with (
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+        ):
+            cfg.OIDC_PROVISION_ON_BEARER_AUTH = False
+            store.has_user.return_value = False
+            allowed, username, _ = AuthMiddleware(app=MagicMock())._authenticate_service_account("tok", payload, self._provider())
+
+        assert allowed is True
+        create_user.assert_called_once()
+
     def test_an_unlisted_namespace_is_refused_outright(self):
         """Not merely "not provisioned": the request does not authenticate at all, so an account
         that was provisioned before the namespace was removed from the list loses access too."""
@@ -299,6 +322,20 @@ class TestTheRegistryRefusesAnUnusableClusterProvider:
         result = self._build(self._entry(namespace_allowlist=[]))
 
         assert result.providers == []
+
+    @pytest.mark.parametrize("namespace", ["Team-A", "team_a", "system:serviceaccount:team-a", "team a", "a" * 64])
+    def test_an_allowlist_entry_that_could_never_match_is_refused(self, namespace):
+        """Worse than a rejected entry: it passes validation and then silently denies every pod
+        in the namespace the operator meant to allow."""
+        result = self._build(self._entry(namespace_allowlist=[namespace]))
+
+        assert result.providers == []
+        assert any("never match" in error for error in result.errors)
+
+    def test_a_real_namespace_is_accepted(self):
+        result = self._build(self._entry(namespace_allowlist=["team-a", "kube-system", "ml-1"]))
+
+        assert result.providers[0].namespace_allowlist == ("team-a", "kube-system", "ml-1")
 
     def test_no_key_source_at_all_is_refused(self):
         entry = self._entry()

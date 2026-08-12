@@ -32,7 +32,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from mlflow_oidc_auth.kubernetes import load_inline_jwks
+from mlflow_oidc_auth.kubernetes import load_inline_jwks, valid_dns_label
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
@@ -516,11 +516,23 @@ def _validate_kubernetes(entry: Dict[str, Any], label: str) -> List[str]:
         except ValueError as exc:
             errors.append(f"{label}: {exc}")
 
-    if not _as_tuple(entry.get("namespace_allowlist")):
+    allowlist = _as_tuple(entry.get("namespace_allowlist"))
+    if not allowlist:
         errors.append(
             f"{label}: 'namespace_allowlist' is required for a 'k8s' provider; a service-account token carries no group "
             "claim, so without it every pod in the cluster that can read its own token becomes a user"
         )
+
+    # An entry no namespace could ever equal is worse than a rejected one: it passes validation
+    # and then silently denies every pod in the namespace the operator meant to allow. Kubernetes
+    # namespaces are DNS labels, so anything else — 'Team-A', 'team_a', a whole
+    # 'system:serviceaccount:...' subject — can only ever fail to match.
+    for namespace in allowlist:
+        if not valid_dns_label(namespace):
+            errors.append(
+                f"{label}: namespace_allowlist entry {namespace!r} is not a Kubernetes namespace (a DNS label: lowercase "
+                "alphanumerics and '-', up to 63 characters), so it can never match a real token"
+            )
 
     return errors
 

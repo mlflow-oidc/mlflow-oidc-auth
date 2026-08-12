@@ -208,10 +208,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return
 
-        # A Kubernetes service account is not a person and has no groups claim, so the gate
-        # below cannot apply to it (#314). Its own policy is the namespace allowlist.
+        # A Kubernetes service account never reaches here: _authenticate_bearer_token sends it
+        # to _authenticate_service_account instead, which applies its own policy (#314). Guarded
+        # rather than assumed, because the two resolve the provider independently.
         if provider.type == "k8s":
-            self._provision_service_account(username, payload, provider)
+            logger.debug("Not provisioning %s here; a service account is handled on its own path", username)
             return
 
         # Derive groups from the token, mirroring the login flow's group resolution.
@@ -316,9 +317,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         deliberately does not reach this path: it opts into trusting a *directory's* group names,
         which is a different statement from trusting a namespace.
         """
-        if not config.OIDC_PROVISION_ON_BEARER_AUTH:
-            return
-
+        # ``OIDC_PROVISION_ON_BEARER_AUTH`` is deliberately *not* consulted. That flag is the
+        # opt-in for provisioning from an OIDC token, where the alternative is trusting whatever
+        # groups an arbitrary token from the corporate IdP carries. Here the opt-in already
+        # exists and is narrower: a provider the operator configured, and a namespace they named
+        # in its allowlist. Requiring a second, OIDC-named flag as well would mean the documented
+        # setup returns 401 for a valid token with nothing pointing at why.
         username = account.username
         try:
             if store.has_user(username):
