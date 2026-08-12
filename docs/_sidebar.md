@@ -2,6 +2,7 @@
 - [Home](/)
 - [Installation](installation)
 - [Configuration](configuration)
+- [Kubernetes Service Accounts](kubernetes-auth)
 - [Configuration Providers](configuration-providers)
 - [Permissions](permissions)
 - [Workspaces](workspaces)

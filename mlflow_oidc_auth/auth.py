@@ -7,7 +7,10 @@ from authlib.jose import JsonWebToken
 from authlib.jose.errors import BadSignatureError
 from cachetools import TTLCache
 
+from typing import Optional
+
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.kubernetes import in_cluster_credentials, load_inline_jwks
 from mlflow_oidc_auth.logger import get_logger
 
 # TOKEN_PROVIDER_TYPES is imported rather than restated: the registry uses it to decide which
@@ -78,7 +81,18 @@ def _get_oidc_jwks(force_refresh: bool = False) -> dict:
     )
 
 
-def _load_jwks(discovery_url: str, *, cache: TTLCache, lock: threading.Lock, cache_key, force_refresh: bool, label: str) -> dict:
+def _load_jwks(
+    url: str,
+    *,
+    cache: TTLCache,
+    lock: threading.Lock,
+    cache_key,
+    force_refresh: bool,
+    label: str,
+    direct: bool = False,
+    verify=None,
+    auth_token: Optional[str] = None,
+) -> dict:
     """Discovery-then-JWKS fetch, cached in ``cache`` under ``cache_key``.
 
     One implementation for both callers on purpose. They differ only in which cache the result
@@ -97,15 +111,27 @@ def _load_jwks(discovery_url: str, *, cache: TTLCache, lock: threading.Lock, cac
     # essential: without them a hung IdP holds request threads until the OS-level TCP timeout
     # (~2 minutes), and authentication failures cascade.
     timeout = config.OIDC_HTTP_TIMEOUT_SECONDS
+    if verify is None:
+        verify = config.OIDC_VERIFY_SSL
+    # Only sent when there is one: the API server needs the pod's credential, a public IdP must
+    # never be handed it, and the ordinary call keeps its exact shape.
+    extra = {"headers": {"Authorization": f"Bearer {auth_token}"}} if auth_token else {}
     try:
-        logger.debug("Fetching OIDC discovery metadata for %s", label)
-        metadata = requests.get(discovery_url, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
-        jwks_uri = metadata.get("jwks_uri")
-        if not jwks_uri:
-            raise ValueError(f"No jwks_uri found in OIDC discovery metadata for {label}")
+        if direct:
+            # ``url`` is already the key set — a cluster that does not serve discovery anonymously
+            # but whose JWKS endpoint is known (#314).
+            jwks_uri = url
+        else:
+            logger.debug("Fetching OIDC discovery metadata for %s", label)
+            metadata = requests.get(url, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
+            jwks_uri = metadata.get("jwks_uri")
+            if not jwks_uri:
+                raise ValueError(f"No jwks_uri found in OIDC discovery metadata for {label}")
 
         logger.debug("Fetching JWKS from %s", jwks_uri)
-        jwks = requests.get(jwks_uri, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
+        # Redirects are not followed on either fetch: this decides which signatures are valid,
+        # so a 302 must be a visible configuration error rather than a silent change of source.
+        jwks = requests.get(jwks_uri, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
     except requests.exceptions.RequestException as e:
         logger.error("Failed to fetch JWKS for %s: %s", label, e)
         raise
@@ -131,6 +157,31 @@ def _get_provider_jwks(provider, force_refresh: bool = False) -> dict:
     Returns:
         The JWKS payload.
     """
+    # A cluster's keys may be written into configuration rather than fetched (#314): the only
+    # mode that works when the API server is unreachable from wherever MLflow runs, and the only
+    # one with no network in the authentication path at all.
+    if getattr(provider, "jwks_inline", None):
+        return load_inline_jwks(provider.jwks_inline)
+
+    # A known key-set URL, for a cluster whose discovery document is not anonymously readable —
+    # the common case, since system:service-account-issuer-discovery is rarely bound to
+    # system:unauthenticated.
+    if getattr(provider, "jwks_uri", None):
+        return _load_jwks(
+            provider.jwks_uri,
+            cache=_provider_jwks_cache,
+            lock=_provider_jwks_lock,
+            cache_key=(provider.id, provider.jwks_uri),
+            force_refresh=force_refresh,
+            label=f"provider {provider.id}",
+            direct=True,
+            verify=_verify_for(provider),
+            # The only path that presents the pod's own credential: this URL comes from the
+            # operator's configuration. It is deliberately not sent on the discovery path, where
+            # the second request goes to whatever host the discovery *body* names.
+            auth_token=_in_cluster_token(provider),
+        )
+
     if not provider.discovery_url:
         # A provider that names no source of its own inherits the deployment-wide one. Only the
         # synthesised legacy provider can be in this state, and only when OIDC_DISCOVERY_URL is
@@ -146,7 +197,51 @@ def _get_provider_jwks(provider, force_refresh: bool = False) -> dict:
         cache_key=(provider.id, provider.discovery_url),
         force_refresh=force_refresh,
         label=f"provider {provider.id}",
+        verify=_verify_for(provider),
     )
+
+
+def _verify_for(provider):
+    """TLS verification for this provider's key fetch.
+
+    A cluster's API server presents a certificate signed by the cluster CA, which no public trust
+    store knows, so a CA bundle is a *stricter* setting than the default rather than a looser one
+    — it names the single authority allowed to sign, instead of every public root.
+    """
+    ca_bundle = getattr(provider, "ca_bundle_path", None)
+    if ca_bundle:
+        return ca_bundle
+    if getattr(provider, "in_cluster", False):
+        _, ca = in_cluster_credentials()
+        if ca:
+            return ca
+        # Never fall through to the global flag here. OIDC_VERIFY_SSL is commonly set False to
+        # work around a private-CA IdP, and inheriting it would mean fetching a cluster's signing
+        # keys — and presenting the pod's credential — over an unverified connection. Whoever can
+        # answer for the API server's address would then choose which tokens are valid.
+        raise ValueError(
+            f"Provider '{provider.id}' fetches keys in-cluster but no CA bundle is available: mount "
+            "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt or set 'ca_bundle_path'"
+        )
+    return config.OIDC_VERIFY_SSL
+
+
+def _in_cluster_token(provider):
+    """The pod's own service-account token, when this provider fetches from the API server.
+
+    Kubernetes does not serve ``/openid/v1/jwks`` anonymously on most clusters, so the fetch has
+    to authenticate as something — and the pod already holds a credential for exactly this.
+    """
+    if not getattr(provider, "in_cluster", False):
+        return None
+    token, _ = in_cluster_credentials()
+    if token is None:
+        logger.warning(
+            "Provider '%s' is configured with in_cluster key fetching, but no service-account token is mounted; "
+            "MLflow does not appear to be running in a cluster",
+            provider.id,
+        )
+    return token
 
 
 def _unverified_issuer(token: str) -> str | None:

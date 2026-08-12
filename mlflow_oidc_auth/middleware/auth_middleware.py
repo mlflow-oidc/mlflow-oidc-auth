@@ -208,6 +208,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return
 
+        # A Kubernetes service account is not a person and has no groups claim, so the gate
+        # below cannot apply to it (#314). Its own policy is the namespace allowlist.
+        if provider.type == "k8s":
+            self._provision_service_account(username, payload, provider)
+            return
+
         # Derive groups from the token, mirroring the login flow's group resolution.
         try:
             if config.OIDC_GROUP_DETECTION_PLUGIN:
@@ -247,6 +253,100 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # A concurrent first request may have inserted the row (unique constraint) — benign.
             logger.warning("Bearer provisioning of %s did not complete (may already exist): %s", username, type(e).__name__)
 
+    @staticmethod
+    def _provider_for(token: str):
+        """The provider that validated ``token``, or None if it cannot be identified."""
+        try:
+            from mlflow_oidc_auth.auth import resolve_token_provider
+
+            return resolve_token_provider(token)
+        except Exception as e:
+            logger.debug("Could not identify the provider for a bearer token: %s", type(e).__name__)
+            return None
+
+    def _authenticate_service_account(self, token: str, payload, provider) -> Tuple[bool, Optional[str], str]:
+        """Authenticate a Kubernetes service account (#314).
+
+        The namespace allowlist is checked **here, on every request**, not only when the user
+        record is created. Checking it at provisioning alone would mean removing a namespace from
+        the list revoked nothing: every service account that had authenticated once would keep
+        its user row, its group and its permissions, while kubelet went on renewing its token. It
+        is a tuple membership test against configuration already in memory, so enforcing it per
+        request costs no query and no round trip.
+        """
+        from mlflow_oidc_auth.kubernetes import ServiceAccountError, namespace_is_allowed, parse_service_account
+
+        try:
+            account = parse_service_account(payload.get("sub"))
+        except ServiceAccountError as e:
+            logger.warning("Rejecting a token from provider '%s': %s", provider.id, e)
+            return False, None, "Invalid service account token"
+
+        if not namespace_is_allowed(account.namespace, provider.namespace_allowlist):
+            logger.info(
+                "Service account %s/%s presented a valid token, but its namespace is not in provider '%s' namespace_allowlist",
+                account.namespace,
+                account.name,
+                provider.id,
+            )
+            if _should_audit_denial(account.username, "namespace_not_allowed"):
+                emit_audit_event(
+                    "auth.denied_namespace",
+                    actor=account.username,
+                    resource_type="user",
+                    resource_id=account.username,
+                    detail={"provider": provider.id, "namespace": account.namespace},
+                    status="denied",
+                )
+            return False, None, "Service account namespace is not allowed"
+
+        self._provision_service_account(account, provider)
+        logger.debug("Service account %s authenticated via bearer token", account.username)
+        return True, account.username, ""
+
+    def _provision_service_account(self, account, provider) -> None:
+        """Create the user record for a Kubernetes service account (#314).
+
+        Called only after :meth:`_authenticate_service_account` has allowed the namespace, so
+        this is the record-keeping half: the authorization decision lives on the request path,
+        where it is re-made every time rather than frozen into a row.
+
+        The account is always non-admin. There is no claim a cluster could assert that should
+        confer administrator rights on an MLflow deployment, and ``OIDC_TRUST_BEARER_GROUP_CLAIMS``
+        deliberately does not reach this path: it opts into trusting a *directory's* group names,
+        which is a different statement from trusting a namespace.
+        """
+        if not config.OIDC_PROVISION_ON_BEARER_AUTH:
+            return
+
+        username = account.username
+        try:
+            if store.has_user(username):
+                return
+        except Exception as e:
+            logger.warning("Provisioning skipped; has_user check failed for %s: %s", username, type(e).__name__)
+            return
+
+        group = account.group
+        display_name = f"{account.namespace}/{account.name} (service account)"
+        try:
+            import mlflow_oidc_auth.user as user_module
+
+            user_module.create_user(username=username, display_name=display_name, is_admin=False, is_service_account=True)
+            user_module.populate_groups(group_names=[group])
+            user_module.update_user(username=username, group_names=[group])
+            logger.info("Provisioned service account %s from namespace %s", username, account.namespace)
+            emit_audit_event(
+                "user.provisioned",
+                actor=username,
+                resource_type="user",
+                resource_id=username,
+                detail={"provider": provider.id, "namespace": account.namespace, "service_account": account.name, "is_service_account": True},
+            )
+        except Exception as e:
+            # A concurrent first request may have inserted the row — benign.
+            logger.warning("Provisioning of service account %s did not complete (may already exist): %s", username, type(e).__name__)
+
     async def _authenticate_bearer_token(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
         """
         Authenticate using bearer token.
@@ -261,6 +361,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             token = auth_header.split(" ", 1)[1]
             # Validate token and extract user info
             payload = validate_token(token)
+
+            provider = self._provider_for(token)
+
+            if provider is not None and provider.type == "k8s":
+                # A service-account token names itself in ``sub`` and carries no email or
+                # preferred_username, so the OIDC username fields do not apply to it (#314). The
+                # identity is derived here rather than from OIDC_USERNAME_FIELD: a global field
+                # list that had to include ``sub`` to make this work would also change how every
+                # other provider's tokens are named.
+                return self._authenticate_service_account(token, payload, provider)
 
             # Extract username from configured fields. extract_username guarantees a
             # non-empty, normalized username whenever it returns no error.

@@ -40,8 +40,8 @@ class TestGetOidcJwks:
         result = _get_oidc_jwks()
 
         assert mock_requests.get.call_count == 2
-        mock_requests.get.assert_any_call("https://example.com/.well-known/openid_configuration", timeout=10, verify=True)
-        mock_requests.get.assert_any_call("https://example.com/jwks", timeout=10, verify=True)
+        mock_requests.get.assert_any_call("https://example.com/.well-known/openid_configuration", timeout=10, verify=True, allow_redirects=False)
+        mock_requests.get.assert_any_call("https://example.com/jwks", timeout=10, verify=True, allow_redirects=False)
         assert result == {"keys": [{"kty": "RSA", "kid": "test"}]}
 
     @patch("mlflow_oidc_auth.auth.requests")

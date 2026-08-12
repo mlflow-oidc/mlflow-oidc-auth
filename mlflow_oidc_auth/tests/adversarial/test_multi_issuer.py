@@ -11,6 +11,8 @@ The suite in ``suite.py`` runs twice here, once per provider, which is the accep
 that a new provider inherits the cases rather than restating them.
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 import mlflow_oidc_auth.auth as auth_module
@@ -163,7 +165,7 @@ class TestKeyRotationIsPerIssuer:
         auth_module._provider_jwks_cache.clear()
         fetched = []
 
-        def fake_get(url, timeout=None, verify=None):
+        def fake_get(url, timeout=None, verify=None, **kwargs):
             fetched.append(url)
 
             class Response:
@@ -291,7 +293,7 @@ class TestTheSingleProviderDeploymentFetchesKeysTheSameWay:
 
         fetched = []
 
-        def fake_get(url, timeout=None, verify=None):
+        def fake_get(url, timeout=None, verify=None, **kwargs):
             fetched.append(url)
 
             class Response:
@@ -307,3 +309,110 @@ class TestTheSingleProviderDeploymentFetchesKeysTheSameWay:
         auth_module._get_provider_jwks(entra_provider, force_refresh=True)
 
         assert auth_module._provider_jwks_cache.get(("k8s", "https://k8s.invalid/.well-known/openid-configuration")) == kubernetes.jwks
+
+
+class TestAClusterProviderValidatesLikeAnyOther:
+    """#314's cluster provider inherits #313's routing, so what needs proving here is that its
+    *keys* reach the decoder in each reachability mode, and that a cluster token cannot be spent
+    at the human-login provider's audience."""
+
+    @pytest.fixture
+    def cluster(self):
+        return Issuer(name="cluster", iss="https://kubernetes.default.svc", audience="mlflow-api")
+
+    @pytest.fixture
+    def with_inline_keys(self, cluster, entra, monkeypatch):
+        """The mode with no network at all: the cluster's JWKS written into configuration."""
+        import json as _json
+
+        registry = registry_of(
+            provider_for(entra, provider_id="entra"),
+            provider_for(cluster, provider_id="cluster", type="k8s", interactive=False, jwks_inline=_json.dumps(cluster.jwks)),
+        )
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry)
+        monkeypatch.setattr(auth_module, "_get_oidc_jwks", lambda force_refresh=False: entra.jwks)
+        monkeypatch.setattr(
+            auth_module.requests,
+            "get",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("inline keys must not be fetched")),
+        )
+        return auth_module.validate_token
+
+    def test_a_cluster_token_validates_from_inline_keys(self, with_inline_keys, cluster):
+        assert with_inline_keys(cluster.mint(sub="system:serviceaccount:team-a:trainer"))["iss"] == cluster.iss
+
+    def test_no_request_is_made_for_inline_keys(self, with_inline_keys, cluster):
+        """The point of the mode: it works when the API server is unreachable from here."""
+        with_inline_keys(cluster.mint())
+
+    def test_a_cluster_token_is_refused_at_the_human_providers_audience(self, with_inline_keys, cluster, entra):
+        """The acceptance criterion. A pod's token must not be spendable as a person."""
+        with pytest.raises(Exception):
+            with_inline_keys(cluster.mint(aud=entra.audience))
+
+    def test_a_human_token_is_refused_at_the_clusters_audience(self, with_inline_keys, cluster, entra):
+        with pytest.raises(Exception):
+            with_inline_keys(entra.mint(aud=cluster.audience))
+
+    def test_the_clusters_keys_do_not_verify_the_human_providers_tokens(self, with_inline_keys, cluster, entra):
+        with pytest.raises(Exception):
+            with_inline_keys(cluster.mint(iss=entra.iss, aud=entra.audience))
+
+    def test_a_known_jwks_uri_is_fetched_directly(self, cluster, entra, monkeypatch):
+        """The common cluster case: discovery is not anonymously readable, but the key-set URL
+        is known. It must be fetched as the key set, not treated as a discovery document."""
+        registry = registry_of(
+            provider_for(entra, provider_id="entra"),
+            provider_for(cluster, provider_id="cluster", type="k8s", interactive=False, jwks_uri="https://api.cluster.invalid/openid/v1/jwks"),
+        )
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry)
+        auth_module._provider_jwks_cache.clear()
+        fetched = []
+
+        def fake_get(url, timeout=None, verify=None, **kwargs):
+            fetched.append(url)
+            return SimpleNamespace(json=lambda: cluster.jwks)
+
+        monkeypatch.setattr(auth_module.requests, "get", fake_get)
+
+        assert auth_module.validate_token(cluster.mint())["iss"] == cluster.iss
+        assert fetched == ["https://api.cluster.invalid/openid/v1/jwks"], "the key-set URL must not be treated as a discovery document"
+
+    def test_in_cluster_fetching_presents_the_pods_own_credential(self, cluster, entra, monkeypatch, tmp_path):
+        """The API server does not serve /openid/v1/jwks anonymously on most clusters, so the
+        fetch has to authenticate — as the pod, using the credential it already holds."""
+        token_file = tmp_path / "token"
+        token_file.write_text("pod-service-account-token")
+        ca_file = tmp_path / "ca.crt"
+        ca_file.write_text("--- CA ---")
+
+        monkeypatch.setattr(
+            auth_module,
+            "in_cluster_credentials",
+            lambda *a, **k: ("pod-service-account-token", str(ca_file)),
+        )
+        registry = registry_of(
+            provider_for(entra, provider_id="entra"),
+            provider_for(
+                cluster,
+                provider_id="cluster",
+                type="k8s",
+                interactive=False,
+                in_cluster=True,
+                jwks_uri="https://api.cluster.invalid/openid/v1/jwks",
+            ),
+        )
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry)
+        auth_module._provider_jwks_cache.clear()
+        seen = {}
+
+        def fake_get(url, timeout=None, verify=None, **kwargs):
+            seen["verify"] = verify
+            seen["headers"] = kwargs.get("headers")
+            return SimpleNamespace(json=lambda: cluster.jwks)
+
+        monkeypatch.setattr(auth_module.requests, "get", fake_get)
+
+        assert auth_module.validate_token(cluster.mint())["iss"] == cluster.iss
+        assert seen["headers"] == {"Authorization": "Bearer pod-service-account-token"}
+        assert seen["verify"] == str(ca_file), "the cluster CA pins the API server, rather than trusting every public root"
