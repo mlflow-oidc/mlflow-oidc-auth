@@ -284,30 +284,6 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             f"{label}: type {provider_type!r} has no browser login flow, so 'interactive' cannot be true; "
             "its credentials are presented directly as bearer tokens"
         )
-    elif interactive and provider_id != DEFAULT_PROVIDER_ID:
-        # Coerced off rather than rejected: the entry is still a perfectly good *token* provider
-        # (#313, #314), and only the browser flow is unsafe. Rejecting it outright would take
-        # bearer authentication down with it.
-        interactive = False
-        # #316 gave every provider its own login and callback and defended the mix-up attack,
-        # but everything *after* the token exchange is still deployment-global: the username
-        # field, the groups attribute and the admin group come from flat configuration, and the
-        # user row is not namespaced by provider. A second interactive provider on that footing
-        # is account takeover, not a feature — a contractor tenant asserting
-        # ``email: alice@corp.com`` lands on Alice's account, and a group named as the admin
-        # group confers administrator rights across the deployment.
-        #
-        # #318 is what makes provisioning, identity binding and admin source per-provider. Until
-        # it lands this is refused, rather than shipped and documented as a caveat.
-        logger.warning(
-            "%s: 'interactive' is not yet supported for a provider other than %r, and has been turned off for it. Browser "
-            "login still resolves identity and administrator status from deployment-wide configuration, so a second "
-            "interactive provider could claim accounts belonging to the first. Bearer tokens from this provider are "
-            "unaffected; see #318.",
-            label,
-            DEFAULT_PROVIDER_ID,
-        )
-
     allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
     if identity_binding == "email" and not allowed_email_domains:
         errors.append(
@@ -380,7 +356,11 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             provisioning=provisioning,
             group_sync=group_sync,
             group_sync_mode=group_sync_mode,
-            admin_source=entry.get("admin_source", "claims"),
+            # Defaults to ``none`` for anything but the deployment's own provider: the admin
+            # group name is deployment-wide, so a partner tenant that happens to name a group
+            # the same thing would otherwise confer administrator rights across the deployment.
+            # The operator opts in per provider, deliberately.
+            admin_source=entry.get("admin_source", "claims" if provider_id == DEFAULT_PROVIDER_ID else "none"),
             identity_binding=identity_binding,
             interactive=bool(interactive),
             allowed_email_domains=allowed_email_domains,

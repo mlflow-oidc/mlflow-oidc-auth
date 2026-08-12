@@ -17,6 +17,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.authorization_response import IssuerMismatchError, validate_response_issuer
+from mlflow_oidc_auth.identity_resolution import IdentityDecision, Resolution, resolve_identity
+from mlflow_oidc_auth.provisioning_policy import admin_from_claims, apply_provisioning_policy, groups_to_apply
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
@@ -230,6 +232,20 @@ async def _iss_parameter_supported(provider) -> bool:
         logger.debug("Could not load metadata for the RFC 9207 check on '%s': %s", provider.id, exc)
         return False
     return bool(metadata.get("authorization_response_iss_parameter_supported"))
+
+
+def _current_groups(username: str) -> Optional[list]:
+    """The user's groups as stored, for an additive sync, or None when they cannot be read.
+
+    None rather than an empty list: an additive sync that reads an unreadable membership as empty
+    writes only the claimed groups, which *deletes* everything managed elsewhere — the exact
+    thing the additive mode exists to prevent.
+    """
+    try:
+        return list(store.get_groups_for_user(username))
+    except Exception as exc:
+        logger.warning("Could not read current groups for %s: %s", username, exc)
+        return None
 
 
 def _sanitize_next(value: Optional[str]) -> Optional[str]:
@@ -867,17 +883,119 @@ async def _process_oidc_callback_fastapi(request: Request, session, provider_id:
 
             logger.debug(f"User groups: {user_groups}")
 
-            # Check authorization
-            # Determine admin and allowed groups
-            is_admin = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
+            # Whether this provider may confer administrator rights at all, and whether these
+            # claims do (#318). ``admin_source: none`` is the answer for a partner tenant whose
+            # group names you do not control; the admin group name itself stays server-side.
+            is_admin = admin_from_claims(provider, user_groups, config.OIDC_ADMIN_GROUP_NAME)
             if not is_admin and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
                 errors.append("User is not allowed to login")
                 return None, errors
 
-            # Create/update user and groups using user_module so monkeypatched functions are used in tests
-            user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
-            user_module.populate_groups(group_names=user_groups)
-            user_module.update_user(username=username, group_names=user_groups)
+            # Which local user this identity reaches (#309), and whether this provider may bring
+            # it into existence (#318). Together these are what make a second provider safe: an
+            # unknown (provider, subject) is a *new* principal, never matched to an existing
+            # account by anything the token says about them, and a name already taken by another
+            # identity is refused rather than claimed.
+            subject = userinfo.get("sub")
+            if not isinstance(subject, str) or not subject.strip():
+                if provider.id == DEFAULT_PROVIDER_ID:
+                    # Today's behaviour, preserved. The single-provider login has never read
+                    # ``sub`` — it names accounts from the configured claim fields — and a
+                    # provider whose userinfo omits it (non-conformant, but deployed) would
+                    # otherwise stop working on upgrade. There is nothing to confuse it with:
+                    # one provider means one identity space.
+                    logger.debug("No subject in userinfo for the default provider; using the derived username")
+                    subject = None
+                else:
+                    logger.warning("Provider '%s' asserted no subject; refusing", provider.id)
+                    errors.append("This account cannot be used to sign in here")
+                    return None, errors
+
+            def _providers_bound_to(name: str) -> list:
+                try:
+                    return list(store.user_identity_repo.list_providers_for_username(name))
+                except Exception as lookup_error:
+                    # Fail closed: an unknown binding set must not read as "bound to nobody",
+                    # which is what would let a provider adopt someone else's account.
+                    logger.warning("Could not read bound providers for %s: %s", name, lookup_error)
+                    return ["<unknown>"]
+
+            if subject is None:
+                # The default provider whose userinfo carries no subject — non-conformant, but
+                # deployed, and it worked before. The username is the identity, as it always was.
+                decision = IdentityDecision(Resolution.CREATE, reason="no subject asserted")
+            else:
+                decision = resolve_identity(
+                    provider,
+                    subject,
+                    userinfo,
+                    store.user_identity_repo,
+                    user_lookup=store.has_user,
+                    username=username,
+                )
+
+            outcome = apply_provisioning_policy(
+                provider,
+                decision,
+                derived_username=username,
+                user_exists=store.has_user,
+                providers_bound_to=_providers_bound_to,
+            )
+            if not outcome.allowed:
+                logger.warning("Refusing login via provider '%s': %s", provider.id, outcome.reason)
+                emit_audit_event(
+                    "auth.identity_refused",
+                    actor=username,
+                    resource_type="user",
+                    resource_id=username,
+                    detail={"provider": provider.id, "reason": outcome.reason},
+                    status="denied",
+                )
+                errors.append("This account cannot be used to sign in here")
+                return None, errors
+
+            username = outcome.username or username
+
+            if outcome.create or provider.admin_source == "claims":
+                # ``create_user`` updates an existing row, so this is also how administrator
+                # status is *revoked*: losing the admin group has always demoted the user at
+                # their next login, and a provider allowed to grant admin must be allowed to take
+                # it away. A provider with ``admin_source: none`` says nothing either way, so it
+                # neither promotes nor demotes.
+                user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
+
+            # Bind the identity so the next login matches on it rather than on a claim.
+            #
+            # A failure here fails the login. Continuing would leave a user row with no binding,
+            # so every later login for this subject would take the create path, find the name
+            # taken and be refused — a permanent lockout from one transient error. It also means
+            # a login racing another provider's is refused rather than quietly issued a session
+            # for an account it does not own.
+            if subject:
+                try:
+                    store.user_identity_repo.link(provider.id, subject.strip(), username)
+                except Exception as link_error:
+                    logger.error("Could not bind identity for %s at provider '%s': %s", username, provider.id, link_error)
+                    emit_audit_event(
+                        "auth.identity_bind_failed",
+                        actor=username,
+                        resource_type="user",
+                        resource_id=username,
+                        detail={"provider": provider.id},
+                        status="denied",
+                    )
+                    errors.append("Could not complete sign-in for this account")
+                    return None, errors
+
+            groups = groups_to_apply(
+                provider,
+                user_groups,
+                _current_groups(username),
+                is_new_user=outcome.create,
+            )
+            if groups is not None:
+                user_module.populate_groups(group_names=groups)
+                user_module.update_user(username=username, group_names=groups)
 
             # Workspace detection (per D-07, D-08, WSOIDC-01/02/03)
             # Layered approach: plugin first, JWT claim fallback, then auto-assign

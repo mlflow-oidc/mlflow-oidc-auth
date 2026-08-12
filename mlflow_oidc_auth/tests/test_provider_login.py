@@ -311,16 +311,12 @@ class TestTheProviderCannotComeFromTheQueryString:
         assert "provider_id" not in inspect.signature(auth_router_mod.callback).parameters
 
 
-class TestASecondInteractiveProviderIsRefusedForNow:
-    """#316 gives every provider a login route and defends the mix-up attack. What it does not
-    give is per-provider identity: the username field, the groups attribute and the admin group
-    are still read from deployment-wide configuration, and the user row is not namespaced by
-    provider.
+class TestASecondProviderCanNowLogIn:
+    """#318 landed with this branch, so the hold-back is gone.
 
-    A second interactive provider on top of that is account takeover, not a feature — a
-    contractor tenant asserting ``email: alice@corp.com`` would land on Alice's account. #318 is
-    what makes provisioning and identity binding per-provider; until then this is refused at
-    load rather than shipped.
+    What makes it safe is not the login route — it is that an unbound identity from a second
+    provider is a *new* principal (#309) and cannot take a username someone else already answers
+    to (#318). Those are asserted in ``test_provisioning_policy.py``; this is the plumbing.
     """
 
     @staticmethod
@@ -358,48 +354,17 @@ class TestASecondInteractiveProviderIsRefusedForNow:
         entry.update(overrides)
         return entry
 
-    def test_a_second_provider_gets_no_login_button(self, caplog):
-        """Coerced off rather than rejected: the entry is still a usable *token* provider, and
-        only the browser flow is unsafe."""
-        with caplog.at_level("WARNING"):
-            result = self._build([self._entry(interactive=True)])
+    def test_a_second_provider_is_interactive(self):
+        result = self._build([self._entry(interactive=True)])
 
         assert [provider.id for provider in result.providers] == ["okta"]
-        assert result.providers[0].interactive is False
-        assert result.interactive_providers() == []
-        assert any("#318" in record.getMessage() for record in caplog.records)
+        assert result.providers[0].interactive is True
+        assert [provider.id for provider in result.interactive_providers()] == ["okta"]
 
-    def test_the_same_provider_is_fine_for_bearer_tokens(self):
-        """Only the browser flow is gated: a token from this issuer is validated per-provider
-        already (#313), and none of the identity questions arise."""
+    def test_a_provider_can_still_be_bearer_only(self):
         result = self._build([self._entry(interactive=False)])
 
-        assert [provider.id for provider in result.providers] == ["okta"]
-
-    def test_the_default_provider_is_unaffected(self):
-        assert build_default().providers[0].interactive is True
-
-
-def build_default():
-    from types import SimpleNamespace as NS
-
-    from mlflow_oidc_auth.provider_registry import build_provider_registry
-
-    class Manager:
-        @staticmethod
-        def get(key, default=None):
-            return default
-
-    return build_provider_registry(
-        Manager(),
-        NS(
-            OIDC_PROVIDER_DISPLAY_NAME="Login with OIDC",
-            OIDC_AUDIENCE=None,
-            OIDC_ISSUER=None,
-            OIDC_DISCOVERY_URL="https://idp.example.com/.well-known/openid-configuration",
-            OIDC_CLIENT_ID="client",
-        ),
-    )
+        assert result.interactive_providers() == []
 
 
 class TestTheReturnTargetCannotLeaveTheOrigin:
@@ -416,3 +381,102 @@ class TestTheReturnTargetCannotLeaveTheOrigin:
     @pytest.mark.parametrize("target", ["/users", "/oidc/ui/groups", "/#/experiments/0", "/a?b=c"])
     def test_real_paths_survive(self, target):
         assert auth_router_mod._sanitize_next(target) == target
+
+
+class TestAnExistingUserCanStillLogIn:
+    """The path every user of every upgraded deployment takes, driven through the callback
+    itself rather than the policy function.
+
+    The unit tests for adoption live in ``test_provisioning_policy.py``; this is here because the
+    callback fixtures elsewhere patch ``has_user`` to False, so the existing-user branch was
+    never exercised end to end — which is exactly how a change that locked out every existing
+    user passed a green suite.
+    """
+
+    @pytest.fixture
+    def existing_user_callback(self, monkeypatch):
+        registry = RegistryLoadResult(
+            providers=[ProviderConfig(id="default", type="oidc", audience="mlflow", issuer=ENTRA)],
+            errors=[],
+            source="legacy",
+        )
+        monkeypatch.setattr(auth_router_mod.config, "AUTH_PROVIDERS", registry, raising=False)
+        monkeypatch.setattr(auth_router_mod.config, "OIDC_GROUP_DETECTION_PLUGIN", None, raising=False)
+        monkeypatch.setattr(auth_router_mod.config, "OIDC_GROUPS_ATTRIBUTE", "groups", raising=False)
+        monkeypatch.setattr(auth_router_mod.config, "OIDC_GROUP_NAME", ["mlflow"], raising=False)
+        monkeypatch.setattr(auth_router_mod.config, "OIDC_ADMIN_GROUP_NAME", ["mlflow-admin"], raising=False)
+        monkeypatch.setattr(auth_router_mod.config, "MLFLOW_ENABLE_WORKSPACES", False, raising=False)
+        monkeypatch.setattr(
+            auth_router_mod.store,
+            "consume_auth_state",
+            lambda state: AuthAttempt(state=state, provider_id="default"),
+            raising=False,
+        )
+
+        class _Identities:
+            """The state the Phase 0 backfill leaves: a legacy row keyed on the username."""
+
+            def __init__(self):
+                self.bound = {("default", "alice@corp.com"): "alice@corp.com"}
+                self.links = []
+
+            def get_username_by_identity(self, provider_id, subject):
+                return self.bound.get((provider_id, subject))
+
+            def list_providers_for_username(self, username):
+                return [provider for (provider, _), name in self.bound.items() if name == username]
+
+            def link(self, provider_id, subject, username, **kwargs):
+                self.links.append((provider_id, subject, username))
+                self.bound[(provider_id, subject)] = username
+                return True
+
+        identities = _Identities()
+        monkeypatch.setattr(auth_router_mod.store, "user_identity_repo", identities, raising=False)
+        monkeypatch.setattr(auth_router_mod.store, "has_user", lambda username: username == "alice@corp.com", raising=False)
+        monkeypatch.setattr(auth_router_mod.store, "get_groups_for_user", lambda username: ["mlflow"], raising=False)
+
+        created = []
+        monkeypatch.setattr("mlflow_oidc_auth.user.create_user", lambda **kwargs: created.append(kwargs))
+        monkeypatch.setattr("mlflow_oidc_auth.user.populate_groups", lambda **kwargs: None)
+        monkeypatch.setattr("mlflow_oidc_auth.user.update_user", lambda **kwargs: None)
+
+        async def _exchange(request, provider_id=None):
+            return {
+                "access_token": "at",
+                "userinfo": {"sub": "auth0|6f3a", "email": "alice@corp.com", "name": "Alice", "groups": ["mlflow"]},
+            }
+
+        monkeypatch.setattr(auth_router_mod, "_authorize_access_token_with_key_refresh", _exchange)
+        monkeypatch.setattr(auth_router_mod, "get_client", lambda provider_id=None: SimpleNamespace(authorize_access_token=_exchange), raising=False)
+        monkeypatch.setattr(auth_router_mod, "_iss_parameter_supported", _no_iss)
+        return identities, created
+
+    @pytest.mark.asyncio
+    async def test_a_pre_existing_user_signs_in_and_is_adopted(self, existing_user_callback):
+        """A real ``sub`` is not a username, so the backfilled row does not match it. The account
+        is adopted rather than refused, and the real subject is bound for next time."""
+        identities, _ = existing_user_callback
+        request = DummyRequest(state="state-1", code="c")
+
+        username, errors = await auth_router_mod._process_oidc_callback_fastapi(request, request.session)
+
+        assert errors == []
+        assert username == "alice@corp.com"
+        assert ("default", "auth0|6f3a", "alice@corp.com") in identities.links
+
+    @pytest.mark.asyncio
+    async def test_the_second_login_matches_on_the_bound_identity(self, existing_user_callback):
+        identities, _ = existing_user_callback
+        first = DummyRequest(state="state-1", code="c")
+        await auth_router_mod._process_oidc_callback_fastapi(first, first.session)
+
+        second = DummyRequest(state="state-1", code="c")
+        username, errors = await auth_router_mod._process_oidc_callback_fastapi(second, second.session)
+
+        assert errors == []
+        assert username == "alice@corp.com"
+
+
+async def _no_iss(provider):
+    return False

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+
 @pytest.fixture
 def store(tmp_path):
     from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore

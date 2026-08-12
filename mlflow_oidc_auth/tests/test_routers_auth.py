@@ -841,3 +841,21 @@ def in_flight_login_attempt(monkeypatch):
         RegistryLoadResult(providers=[ProviderConfig(id="default", type="oidc", audience="mlflow")], errors=[], source="legacy"),
         raising=False,
     )
+
+    # Identity resolution and provisioning policy (#318) run inside the callback now, so the
+    # store has to answer two questions: is this username taken, and is this identity bound.
+    # A fresh principal at a jit provider — which is what these cases describe.
+    class _Identities:
+        def __init__(self):
+            self.bound = {}
+
+        def get_username_by_identity(self, provider_id, subject):
+            return self.bound.get((provider_id, subject))
+
+        def link(self, provider_id, subject, username, **kwargs):
+            self.bound[(provider_id, subject)] = username
+            return True
+
+    monkeypatch.setattr(auth_router_mod.store, "user_identity_repo", _Identities(), raising=False)
+    monkeypatch.setattr(auth_router_mod.store, "has_user", lambda username: False, raising=False)
+    monkeypatch.setattr(auth_router_mod.store, "get_groups_for_user", lambda username: [], raising=False)

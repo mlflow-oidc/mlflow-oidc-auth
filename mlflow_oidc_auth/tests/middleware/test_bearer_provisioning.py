@@ -26,7 +26,10 @@ def provider_carries_the_configured_scoping(monkeypatch):
         cfg = middleware_module.config
         # ``type`` matters since #314: a k8s provider takes the service-account path instead of
         # the group gate these cases describe.
-        return SimpleNamespace(id="default", type="oidc", audience=cfg.OIDC_AUDIENCE, issuer=cfg.OIDC_ISSUER)
+        # ``admin_source`` matters since #318: a provider that may not assert administrator
+        # status cannot mint one through this path either. These cases describe the deployment's
+        # own provider, which may.
+        return SimpleNamespace(id="default", type="oidc", admin_source="claims", audience=cfg.OIDC_AUDIENCE, issuer=cfg.OIDC_ISSUER)
 
     monkeypatch.setattr(auth_module, "resolve_token_provider", resolve)
 
@@ -207,3 +210,30 @@ class TestRobustness:
             store.has_user.return_value = False
             # must not raise
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"]})
+
+
+class TestTheProviderMustBeAllowedToConferAdmin:
+    """#318: ``OIDC_TRUST_BEARER_GROUP_CLAIMS`` says the operator trusts group claims; the
+    provider's ``admin_source`` says whether *this* provider's claims may say "administrator"."""
+
+    def test_a_provider_with_no_admin_source_cannot_mint_an_admin(self, monkeypatch):
+        import mlflow_oidc_auth.auth as auth_module
+
+        monkeypatch.setattr(
+            auth_module,
+            "resolve_token_provider",
+            lambda token: SimpleNamespace(id="partner", type="oidc", admin_source="none", audience="mlflow", issuer="https://partner.invalid"),
+        )
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+        ):
+            _cfg(cfg, OIDC_TRUST_BEARER_GROUP_CLAIMS=True)
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
+
+        assert create_user.call_args.kwargs["is_admin"] is False
