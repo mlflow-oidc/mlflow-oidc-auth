@@ -57,7 +57,7 @@ class TestCreateUser:
 
         assert result == (False, "User alice (ID: 1) already exists")
         mock_store.get_user_profile.assert_called_once_with("alice")
-        mock_store.update_user.assert_called_once_with(username="alice", is_admin=False, is_service_account=False)
+        mock_store.update_user.assert_called_once_with(username="alice", is_admin=False, is_service_account=False, written_by=None, admin_override=False)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_already_exists_with_admin_flag(self, mock_store):
@@ -70,7 +70,7 @@ class TestCreateUser:
 
         assert result == (False, "User alice (ID: 1) already exists")
         mock_store.get_user_profile.assert_called_once_with("alice")
-        mock_store.update_user.assert_called_once_with(username="alice", is_admin=True, is_service_account=False)
+        mock_store.update_user.assert_called_once_with(username="alice", is_admin=True, is_service_account=False, written_by=None, admin_override=False)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_already_exists_with_service_account_flag(self, mock_store):
@@ -83,7 +83,7 @@ class TestCreateUser:
 
         assert result == (False, "User charlie (ID: 3) already exists")
         mock_store.get_user_profile.assert_called_once_with("charlie")
-        mock_store.update_user.assert_called_once_with(username="charlie", is_admin=False, is_service_account=True)
+        mock_store.update_user.assert_called_once_with(username="charlie", is_admin=False, is_service_account=True, written_by=None, admin_override=False)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_create_user_already_exists_with_both_flags(self, mock_store):
@@ -96,7 +96,7 @@ class TestCreateUser:
 
         assert result == (False, "User dave (ID: 4) already exists")
         mock_store.get_user_profile.assert_called_once_with("dave")
-        mock_store.update_user.assert_called_once_with(username="dave", is_admin=True, is_service_account=True)
+        mock_store.update_user.assert_called_once_with(username="dave", is_admin=True, is_service_account=True, written_by=None, admin_override=False)
 
     @patch("mlflow_oidc_auth.user.generate_token", return_value="test_password_123")
     @patch("mlflow_oidc_auth.user.store")
@@ -343,7 +343,7 @@ def test_create_user_already_exists(mock_store):
     result = user.create_user("alice", "Alice", is_admin=True)
     assert result == (False, f"User alice (ID: 1) already exists")
     mock_store.get_user_profile.assert_called_once_with("alice")
-    mock_store.update_user.assert_called_once_with(username="alice", is_admin=True, is_service_account=False)
+    mock_store.update_user.assert_called_once_with(username="alice", is_admin=True, is_service_account=False, written_by=None, admin_override=False)
 
 
 @patch("mlflow_oidc_auth.user.MlflowException", Exception)

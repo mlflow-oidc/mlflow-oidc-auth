@@ -107,3 +107,160 @@ def prune_sessions(url: str, dry_run: bool) -> None:
         click.echo(f"deleted {expired} expired session(s)")
     finally:
         engine.dispose()
+
+
+@commands.command(name="reconcile-ownership")
+@click.option("--url", required=True, help="Database URL, e.g. sqlite:///auth.db")
+@click.option("--set-owner", required=True, help="The managed_by value to write, e.g. 'manual' or 'scim'.")
+@click.option("--from-owner", default=None, help="Only rows currently owned by this. Omit to match any owner.")
+@click.option("--username", default=None, help="Only this user. Omit for every matching row.")
+@click.option("--apply", "apply_changes", is_flag=True, help="Actually write. Without it, nothing is changed.")
+@click.option("--all", "all_rows", is_flag=True, help="Required to match every row: without a filter this rewrites the whole user table.")
+@click.option("--journal", default=None, help="Where to record prior ownership, so a mistaken run can be rolled back.")
+def reconcile_ownership(url: str, set_owner: str, from_owner: str, username: str, apply_changes: bool, all_rows: bool, journal: str) -> None:
+    """Change which source owns user rows (issue #319).
+
+    **Dry run unless ``--apply`` is given**, and it never runs implicitly — not at startup, not
+    on a configuration change, not as a side effect of anything. Grafana shipped a silent runtime
+    branch that reset existing users ([grafana#73752](https://github.com/grafana/grafana/issues/73752));
+    the lesson is that ownership changes are an operator action with a diff they read first.
+
+    The diff a dry run prints is the diff an apply performs: both come from the same query, so
+    what you approve is what runs.
+
+    With ``--journal`` the prior ownership of every changed row is written to a JSON file before
+    anything is modified, and ``restore-ownership`` puts it back.
+
+    This is also the repair path when a source is turned off: point ``--from-owner`` at it and
+    ``--set-owner`` at ``manual``, and the rows it used to own become editable again.
+    """
+    import json as _json
+    import re as _re
+    from datetime import datetime, timezone
+
+    from mlflow_oidc_auth.db.models import SqlUser
+
+    # An owner string no source will ever present is worse than a rejected one: under 'enforce'
+    # every writer then conflicts with it forever, and the operator was usually in the middle of
+    # repairing a lockout when they typed it.
+    if not _re.fullmatch(r"manual|scim|oidc:[A-Za-z0-9._-]+", set_owner or ""):
+        raise click.ClickException(f"--set-owner {set_owner!r} is not an owner any source presents. Expected 'manual', 'scim', or 'oidc:<provider-id>'.")
+
+    if not from_owner and not username and not all_rows:
+        raise click.ClickException("refusing to re-own every user row without --all. Narrow it with --from-owner or --username, or pass --all deliberately.")
+
+    engine = sqlalchemy.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            query = sqlalchemy.select(SqlUser.username, SqlUser.managed_by)
+            if from_owner:
+                query = query.where(SqlUser.managed_by == from_owner)
+            if username:
+                # Stored normalized, so a targeted repair typed in display capitalisation would
+                # otherwise match nothing and report "ownership is already fine".
+                query = query.where(SqlUser.username == username.strip().lower())
+            rows = [row for row in conn.execute(query).fetchall() if (row.managed_by or "manual") != set_owner]
+
+            if not rows:
+                click.echo("no rows to change")
+                return
+
+            for row in rows:
+                click.echo(f"{row.username}: {row.managed_by or 'manual'} -> {set_owner}")
+
+            if not apply_changes:
+                click.echo(f"\n{len(rows)} row(s) would change. Re-run with --apply to write them.")
+                return
+
+            if journal:
+                # 'x' rather than 'w': two runs pointed at one path would otherwise leave only
+                # the second recoverable, and the first run's prior ownership gone.
+                with open(journal, "x", encoding="utf-8") as handle:
+                    _json.dump(
+                        {
+                            "recorded_at": datetime.now(timezone.utc).isoformat(),
+                            "set_owner": set_owner,
+                            "previous": [{"username": row.username, "managed_by": row.managed_by} for row in rows],
+                        },
+                        handle,
+                        indent=2,
+                    )
+                click.echo(f"prior ownership recorded in {journal}")
+
+            for row in rows:
+                conn.execute(sqlalchemy.update(SqlUser).where(SqlUser.username == row.username).values(managed_by=set_owner))
+
+        emit_ownership_audit("user.ownership_reconciled", set_owner, [row.username for row in rows])
+        click.echo(f"\nchanged {len(rows)} row(s)")
+    finally:
+        engine.dispose()
+
+
+@commands.command(name="restore-ownership")
+@click.option("--url", required=True, help="Database URL, e.g. sqlite:///auth.db")
+@click.option("--journal", required=True, help="A journal written by reconcile-ownership --apply --journal.")
+@click.option("--apply", "apply_changes", is_flag=True, help="Actually write. Without it, nothing is changed.")
+def restore_ownership(url: str, journal: str, apply_changes: bool) -> None:
+    """Put ownership back the way a journalled reconciliation found it (issue #319).
+
+    Reversibility is the point: a reconciliation that turns out to have been wrong is otherwise
+    a hand-written UPDATE against production, from someone who has just learned they should not
+    be trusted with hand-written UPDATEs against production.
+    """
+    import json as _json
+
+    from mlflow_oidc_auth.db.models import SqlUser
+
+    with open(journal, "r", encoding="utf-8") as handle:
+        recorded = _json.load(handle)
+
+    previous = recorded.get("previous") or []
+    if not previous:
+        click.echo("journal records no changes")
+        return
+
+    engine = sqlalchemy.create_engine(url)
+    try:
+        for entry in previous:
+            click.echo(f"{entry['username']}: -> {entry['managed_by'] or 'manual'}")
+
+        if not apply_changes:
+            click.echo(f"\n{len(previous)} row(s) would be restored. Re-run with --apply to write them.")
+            return
+
+        restored = 0
+        skipped = []
+        with engine.begin() as conn:
+            for entry in previous:
+                # Only rows that still hold what the reconcile wrote. A row re-owned since then
+                # is somebody's newer decision, and silently reverting it would be a second,
+                # unjournalled loss.
+                result = conn.execute(
+                    sqlalchemy.update(SqlUser)
+                    .where(SqlUser.username == entry["username"], SqlUser.managed_by == recorded.get("set_owner"))
+                    .values(managed_by=entry["managed_by"])
+                )
+                if result.rowcount:
+                    restored += int(result.rowcount)
+                else:
+                    skipped.append(entry["username"])
+
+        emit_ownership_audit("user.ownership_restored", recorded.get("set_owner"), [entry["username"] for entry in previous])
+        click.echo(f"\nrestored {restored} row(s)")
+        if skipped:
+            click.echo(f"left alone (changed since the journal was written): {', '.join(skipped)}")
+    finally:
+        engine.dispose()
+
+
+def emit_ownership_audit(event: str, owner, usernames) -> None:
+    """Record a bulk ownership change. Out of band by nature, so it belongs in the audit log."""
+    from mlflow_oidc_auth.audit import emit_audit_event
+
+    emit_audit_event(
+        event,
+        actor="cli",
+        resource_type="user",
+        resource_id=",".join(usernames[:20]) + ("..." if len(usernames) > 20 else ""),
+        detail={"owner": owner, "count": len(usernames)},
+    )

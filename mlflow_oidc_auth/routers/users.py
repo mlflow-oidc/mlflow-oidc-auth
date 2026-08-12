@@ -133,7 +133,9 @@ async def create_access_token(
         # requested here; it never inherits the previous token's (issue #338).
         previous_expiration = user.password_expiration
         new_token = generate_token()
-        store.update_user(username=target_username, password=new_token, password_expiration=expiration)
+        # An administrator acting through the admin API is break glass by definition: they must
+        # be able to repair a row a directory owns, and the attempt is audited either way (#319).
+        store.update_user(username=target_username, password=new_token, password_expiration=expiration, written_by="manual", admin_override=True)
         emit_audit_event(
             "user.token_rotate",
             actor=current_username,

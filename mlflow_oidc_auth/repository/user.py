@@ -3,6 +3,7 @@ from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
+    INVALID_PARAMETER_VALUE,
     INVALID_STATE,
     RESOURCE_ALREADY_EXISTS,
     RESOURCE_DOES_NOT_EXIST,
@@ -16,9 +17,30 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from mlflow_oidc_auth.db.models import SqlAuthSession, SqlGroup, SqlUser
 from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.ownership import evaluate_write
 from mlflow_oidc_auth.repository.utils import get_user
 
 logger = get_logger()
+
+
+def _audit_ownership_conflict(username: str, decision, written_by: Optional[str], *, allowed: bool) -> None:
+    """Record a write that crossed ownership.
+
+    Emitted in ``report`` mode as well as ``enforce`` — that is what ``report`` is *for*: the
+    same event, with ``status`` saying whether it was permitted, so an operator can count what
+    enforcement would refuse before enabling it.
+    """
+    from mlflow_oidc_auth.audit import emit_audit_event
+
+    emit_audit_event(
+        "user.ownership_conflict",
+        actor=written_by or "manual",
+        resource_type="user",
+        resource_id=username,
+        detail={"owner": decision.owner, "written_by": written_by or "manual", "reason": decision.reason, "permitted": allowed},
+        status="success" if allowed else "denied",
+    )
 
 
 def _audit_sessions_revoked(username: str, count: int, reason: str) -> None:
@@ -247,6 +269,8 @@ class UserRepository:
         is_service_account: Optional[bool] = None,
         active: Optional[bool] = None,
         managed_by: Optional[str] = None,
+        written_by: Optional[str] = None,
+        admin_override: bool = False,
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
@@ -278,6 +302,10 @@ class UserRepository:
             active: Whether the account may authenticate. Setting it False is how a directory
                 deprovisions a user (issue #311).
             managed_by: Which source owns this row.
+            written_by: Which source is performing this write, for the ownership guard (#319).
+                None means an unattributed internal write, treated as ``manual``.
+            admin_override: Whether an administrator asked for this explicitly. Break glass:
+                always permitted, always audited.
 
         Returns:
             User: The updated user entity.
@@ -290,8 +318,33 @@ class UserRepository:
 
         username = normalize_username(username)
         sessions_revoked = 0
+        permitted_conflict = None
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
+            # A write from one source must not silently overwrite a row another source owns.
+            # Evaluated before anything is changed, so ``enforce`` refuses rather than
+            # half-applies, and ``report`` records the conflict without altering the outcome.
+            decision = evaluate_write(
+                getattr(user, "managed_by", None),
+                written_by,
+                enforcement=config.MANAGED_BY_ENFORCEMENT,
+                admin_override=admin_override,
+            )
+            if decision.conflict and not decision.allowed:
+                # Refusals are recorded immediately: nothing was written, so there is no commit
+                # for the record to outlive.
+                _audit_ownership_conflict(username, decision, written_by, allowed=False)
+            elif decision.conflict:
+                # A permitted conflict is recorded *after* the commit, further down. Written
+                # here it would claim a cross-source write that a later rollback undid — and
+                # this event is the one thing an operator reads to decide whether to enforce.
+                permitted_conflict = decision
+            if not decision.allowed:
+                raise MlflowException(
+                    f"User '{username}' is managed by {decision.owner!r} and cannot be changed by {written_by or 'manual'!r}.",
+                    INVALID_PARAMETER_VALUE,
+                )
+
             if password is not None:
                 user.password_hash = generate_password_hash(password, method=TOKEN_HASH_METHOD)
                 # A new secret gets the lifetime it was issued with, never the old one's.
@@ -331,7 +384,9 @@ class UserRepository:
             session.flush()
             entity = user.to_mlflow_entity()
 
-        # Past the ``with``: the transaction has committed, so the event is true when written.
+        # Past the ``with``: the transaction has committed, so the events are true when written.
+        if permitted_conflict is not None:
+            _audit_ownership_conflict(username, permitted_conflict, written_by, allowed=True)
         if sessions_revoked:
             _audit_sessions_revoked(username, sessions_revoked, "user_deactivated")
         return entity

@@ -298,6 +298,8 @@ class TestSqlAlchemyStore:
             is_service_account=False,
             active=None,
             managed_by=None,
+            written_by=None,
+            admin_override=False,
         )
         assert result == mock_user
 

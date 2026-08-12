@@ -1001,7 +1001,7 @@ async def _process_oidc_callback_fastapi(request: Request, session, provider_id:
                 # their next login, and a provider allowed to grant admin must be allowed to take
                 # it away. A provider with ``admin_source: none`` says nothing either way, so it
                 # neither promotes nor demotes.
-                user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
+                user_module.create_user(username=username, display_name=display_name, is_admin=is_admin, written_by=f"oidc:{provider.id}")
 
             # Bind the identity so the next login matches on it rather than on a claim.
             #
