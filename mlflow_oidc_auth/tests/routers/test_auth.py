@@ -463,24 +463,20 @@ class TestProcessOIDCCallbackFastAPI:
         mock_user_management,
         caplog,
     ):
-        """Retry token exchange after JWKS refresh when the provider rotates signing keys."""
+        """A rotated signing key refreshes the JWKS, so the *next* login works.
+
+        This login does not: it used to assert that a second exchange succeeded, which authlib
+        can never do. It removes the per-attempt state — the PKCE verifier, the nonce, the
+        redirect URI — from the session before sending the token request, so a second call
+        raises ``MismatchingStateError``, and the authorization code is single-use anyway. The
+        retry only ever replaced the real error with a misleading one.
+        """
 
         caplog.set_level("DEBUG", logger="uvicorn")
         request = mock_request_with_session({"oauth_state": "test_state"})
         request.query_params = {"state": "test_state", "code": "auth_code_123"}
 
-        mock_oauth.oidc.authorize_access_token.side_effect = [
-            BadSignatureError("bad signature"),
-            {
-                "access_token": "token",
-                "id_token": "id_token",
-                "userinfo": {
-                    "email": "test@example.com",
-                    "name": "Test User",
-                    "groups": ["test-group"],
-                },
-            },
-        ]
+        mock_oauth.oidc.authorize_access_token.side_effect = BadSignatureError("bad signature")
         mock_oauth.oidc.fetch_jwk_set = AsyncMock()
 
         with (
@@ -489,11 +485,10 @@ class TestProcessOIDCCallbackFastAPI:
         ):
             email, errors = await _process_oidc_callback_fastapi(request, request.session)
 
-        assert errors == [], f"{caplog.text} call_count={mock_oauth.oidc.authorize_access_token.call_count}"
-        assert email == "test@example.com"
-        assert "OIDC token exchange error" not in caplog.text
+        assert email is None
+        assert errors, "the login fails; what recovers is the one after it"
         mock_oauth.oidc.fetch_jwk_set.assert_awaited_once_with(force=True)
-        assert mock_oauth.oidc.authorize_access_token.call_count == 2
+        assert mock_oauth.oidc.authorize_access_token.call_count == 1, "a second attempt cannot succeed and must not be made"
 
     @pytest.mark.asyncio
     async def test_process_callback_oidc_error(self, mock_request_with_session):

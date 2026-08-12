@@ -41,6 +41,11 @@ logger = get_logger()
 # being renamed to "default" — a rename would be a breaking change for no benefit.
 LEGACY_CLIENT_NAME = "oidc"
 
+
+class PKCEUnsupportedError(Exception):
+    """The provider advertises PKCE methods and the configured one is not among them (#312)."""
+
+
 oauth: OAuth = OAuth()
 
 # Registration state per provider id. A one-shot global flag could not express "provider A is
@@ -68,6 +73,54 @@ def get_client(provider_id: str = DEFAULT_PROVIDER_ID):
     """Return the registered client for ``provider_id``, or None if it is not registered."""
 
     return getattr(oauth, client_name(provider_id), None)
+
+
+async def assert_pkce_supported(client, provider_id: str = DEFAULT_PROVIDER_ID) -> None:
+    """Fail the login *before* the redirect if the provider cannot do the configured PKCE method.
+
+    PKCE is on by default since #312. A provider that does not support it usually ignores the
+    extra parameters and then rejects the token exchange with a bare ``invalid_grant`` — an
+    error that says nothing about PKCE and sends the operator looking at client secrets and
+    redirect URIs instead. This turns that into one sentence naming the variable to change.
+
+    Only an *explicit* contradiction fails: RFC 8414 makes ``code_challenge_methods_supported``
+    optional, and plenty of providers support PKCE without advertising it, so an absent field is
+    not evidence of anything and is allowed through.
+
+    Parameters:
+        client: The registered authlib client for this provider.
+        provider_id: Registry id, used only in the message.
+
+    Raises:
+        PKCEUnsupportedError: If the provider advertises its supported methods and the
+            configured one is not among them.
+    """
+    method = config.OIDC_CODE_CHALLENGE
+    if not method or client is None:
+        return
+
+    loader = getattr(client, "load_server_metadata", None)
+    if loader is None:
+        return
+
+    try:
+        metadata = await loader()
+    except Exception as exc:
+        # Discovery being unreachable is a different failure, reported by the code that needs
+        # the metadata for real. Never let this check be the thing that breaks a login.
+        logger.debug("Could not load server metadata for PKCE check on '%s': %s", provider_id, exc)
+        return
+
+    supported = (metadata or {}).get("code_challenge_methods_supported")
+    if not supported or not isinstance(supported, (list, tuple, set)):
+        return
+
+    if method not in supported:
+        raise PKCEUnsupportedError(
+            f"Provider '{provider_id}' does not support the configured PKCE method {method!r} "
+            f"(it advertises: {', '.join(str(m) for m in supported) or 'none'}). "
+            f"Set OIDC_CODE_CHALLENGE to a supported method, or to 'none' to disable PKCE for this deployment."
+        )
 
 
 def _has_required_config() -> bool:

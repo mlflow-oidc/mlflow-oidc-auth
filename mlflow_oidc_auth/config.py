@@ -17,6 +17,7 @@ See config_providers/ for detailed configuration of each provider.
 """
 
 import secrets
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -131,8 +132,16 @@ class AppConfig:
         # TLS verification for OIDC discovery/JWKS and the token endpoint. Default True;
         # only disable for providers with self-signed certs in trusted networks.
         self.OIDC_VERIFY_SSL = config_manager.get_bool("OIDC_VERIFY_SSL", default=True)
-        # PKCE code challenge method (e.g. "S256"). None disables PKCE.
-        self.OIDC_CODE_CHALLENGE = config_manager.get("OIDC_CODE_CHALLENGE", None)
+        # PKCE (RFC 7636), on by default since #312. Binding the authorization code to a
+        # per-attempt secret is what stops a code intercepted from a redirect — through a
+        # browser log, a proxy, a shared machine — from being redeemed by anyone else.
+        #
+        # Opt out with any of the disabling words below, for a provider that rejects the extra
+        # parameters. An unrecognised value warns and falls back to S256 rather than taking the
+        # process down — this module is imported by migration tooling that has no interest in
+        # login, and the secure direction is the safe one to fall back to.
+        _code_challenge = config_manager.get("OIDC_CODE_CHALLENGE", "S256")
+        self.OIDC_CODE_CHALLENGE = self._parse_code_challenge(_code_challenge)
 
         # Permission cache settings
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
@@ -224,6 +233,87 @@ class AppConfig:
         self._warn_if_username_field_unusable()
         self._warn_if_group_name_unusable()
         self._warn_if_provider_registry_invalid()
+
+    #: Values that turn PKCE off. Both the words and the boolean spellings, because operators
+    #: reach for whichever their config tooling already uses and a rejected value stops the
+    #: server from starting.
+    CODE_CHALLENGE_DISABLED_VALUES = frozenset({"", "none", "off", "false", "no", "disabled", "0"})
+
+    #: Values that mean "leave it on", accepted for the same reason.
+    CODE_CHALLENGE_ENABLED_VALUES = frozenset({"true", "yes", "on", "enabled", "1"})
+
+    #: The only method that can actually be applied. RFC 7636 also defines ``plain``, but authlib
+    #: emits a challenge for S256 alone ("only S256 is supported" — ``authlib/oauth2/client.py``),
+    #: so a client configured for ``plain`` sends a request with *no* code_challenge at all.
+    #: Accepting it would report PKCE as enabled while nothing was bound to the code.
+    CODE_CHALLENGE_METHODS = ("S256",)
+
+    @classmethod
+    def _parse_code_challenge(cls, value) -> Optional[str]:
+        """Normalize ``OIDC_CODE_CHALLENGE`` into a method name, or None to disable PKCE.
+
+        Parameters:
+            value: The configured value. ``None`` means "not set", which now means S256 rather
+                than off (issue #312).
+
+        Accepted: ``S256`` and the affirmative words for on; the disabling words for off. Every
+        other value — a typo, or ``plain``, which earlier versions accepted and did nothing
+        useful with — falls back to ``S256`` with a warning naming the value.
+
+        **Falls back rather than raising**, deliberately. ``AppConfig`` is a module-level
+        singleton imported by tooling that has nothing to do with login: raising here stops
+        ``mlflow-oidc db upgrade`` and every other entry point, so a stale value in a Helm chart
+        would block the very upgrade that introduced the check. The fallback is the secure
+        direction — PKCE ends up on — and the warning is what the operator acts on. This matches
+        the treatment of the other unusable-configuration cases in this class.
+
+        Returns:
+            ``"S256"``, or None when PKCE is explicitly disabled.
+        """
+        if value is None:
+            return "S256"
+
+        normalized = str(value).strip()
+        lowered = normalized.lower()
+
+        if lowered in cls.CODE_CHALLENGE_DISABLED_VALUES:
+            # Said out loud, because an environment variable that is *set but empty* lands here
+            # too — a Helm value that rendered blank, or a compose file with a trailing "=".
+            # Without this, a deployment silently runs without PKCE while the docs say it is on
+            # by default, and nothing anywhere reports the difference.
+            logger.warning(
+                "PKCE is disabled (OIDC_CODE_CHALLENGE=%r). Authorization codes will not be bound to the login "
+                "attempt that requested them. Unset the variable to restore the S256 default.",
+                normalized,
+            )
+            return None
+
+        if lowered in cls.CODE_CHALLENGE_ENABLED_VALUES:
+            return "S256"
+
+        for method in cls.CODE_CHALLENGE_METHODS:
+            if lowered == method.lower():
+                return method
+
+        if lowered == "plain":
+            # Accepted by earlier versions, so a live deployment may be carrying it. It never
+            # did anything: authlib emits a challenge for S256 only, so 'plain' produced an
+            # authorization request with no challenge at all.
+            logger.warning(
+                "OIDC_CODE_CHALLENGE=plain is not supported and has been ignored; using S256. The pinned authlib "
+                "emits a code challenge for S256 only, so 'plain' sent no challenge at all and gave no PKCE "
+                "protection. Set OIDC_CODE_CHALLENGE=none if this provider cannot do PKCE."
+            )
+            return "S256"
+
+        logger.warning(
+            "Unrecognised OIDC_CODE_CHALLENGE value %r; using S256. Expected %s (or one of %s) to enable PKCE, " "or one of %s to disable it.",
+            normalized,
+            ", ".join(cls.CODE_CHALLENGE_METHODS),
+            ", ".join(sorted(cls.CODE_CHALLENGE_ENABLED_VALUES)),
+            ", ".join(sorted(v for v in cls.CODE_CHALLENGE_DISABLED_VALUES if v)),
+        )
+        return "S256"
 
     @staticmethod
     def _has_usable_entry(field_list) -> bool:

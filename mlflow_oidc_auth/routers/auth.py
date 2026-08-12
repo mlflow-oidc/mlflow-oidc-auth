@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
+from mlflow_oidc_auth.oauth import PKCEUnsupportedError, assert_pkce_supported, is_oidc_configured, oauth
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name
 
@@ -74,38 +74,42 @@ async def _call_authorize_access_token(request: Request) -> Optional[dict[str, A
     return await _maybe_await(token_call)
 
 
-async def _authorize_access_token_with_retry(
+async def _authorize_access_token_with_key_refresh(
     request: Request,
 ) -> Optional[dict[str, Any]]:
-    """Exchange code for tokens, retrying once after a JWKS refresh on any validation failure."""
+    """Exchange the code for tokens; on failure refresh the JWKS and raise what actually went wrong.
 
-    last_error: Optional[Exception] = None
+    This used to retry the exchange once. **The retry could never succeed**, and it destroyed the
+    diagnosis of every failure it touched: authlib removes the per-attempt state from the session
+    — the PKCE verifier, the nonce, the redirect URI — *before* it sends the token request
+    (``starlette_client/apps.py``: ``clear_state_data`` then ``fetch_access_token``). A second
+    call therefore finds nothing, raises ``MismatchingStateError``, and that error replaced the
+    real one, so a provider rejecting the exchange with ``invalid_grant`` was reported to the
+    operator as a CSRF state mismatch. The authorization code is single-use in any case, so even
+    with the state intact the provider would refuse the second attempt.
 
-    for attempt in range(2):
-        try:
-            return await _call_authorize_access_token(request)
-        except BadSignatureError as exc:
-            last_error = exc
-            logger.warning(
-                "OIDC token exchange attempt %d failed with bad signature: %s",
-                attempt + 1,
-                exc,
-            )
-            if attempt == 0:
-                await _refresh_oidc_jwks()
-                continue
-            break
-        except Exception as exc:
-            last_error = exc
-            logger.warning("OIDC token exchange attempt %d failed: %s", attempt + 1, exc)
-            if attempt == 0:
-                await _refresh_oidc_jwks()
-                continue
-            break
+    The JWKS refresh is kept and still does its job: a signing key rotated mid-session is picked
+    up so the **next** login works, rather than every login failing until the cache expires. What
+    is gone is the pretence that this attempt can be salvaged.
 
-    if last_error:
-        raise last_error
-    return None
+    Returns:
+        The token response, or None if authlib returned nothing.
+
+    Raises:
+        Exception: Whatever the exchange raised, unchanged.
+    """
+
+    try:
+        return await _call_authorize_access_token(request)
+    except BadSignatureError as exc:
+        logger.warning("OIDC token exchange failed with bad signature: %s", exc)
+        # Most likely a rotated signing key. Refresh so the next login is not affected too.
+        await _refresh_oidc_jwks()
+        raise
+    except Exception as exc:
+        logger.warning("OIDC token exchange failed: %s", exc)
+        await _refresh_oidc_jwks()
+        raise
 
 
 async def refresh_session_with_idp(session) -> bool:
@@ -302,6 +306,10 @@ async def login(request: Request):
                 logger.error("OIDC client authorize_redirect method not available")
                 raise HTTPException(status_code=500, detail="OIDC authentication not available")
 
+            # PKCE is on by default (#312). Checked here so a provider that cannot do it says so
+            # in one sentence, rather than as an unexplained ``invalid_grant`` at the exchange.
+            await assert_pkce_supported(oauth.oidc)
+
             return await oauth.oidc.authorize_redirect(  # type: ignore
                 request,
                 redirect_uri=redirect_url,
@@ -309,6 +317,13 @@ async def login(request: Request):
             )
         except HTTPException:
             raise
+        except PKCEUnsupportedError as e:
+            # The full sentence — provider id, the methods it advertises, the variable to change
+            # — goes to the log, where the operator is. ``/login`` is unauthenticated, and every
+            # other failure on this route answers with a fixed string; naming an internal
+            # registry id to an anonymous caller would be the one exception.
+            logger.error("%s", e)
+            raise HTTPException(status_code=500, detail="OIDC login is misconfigured; see the server logs")
         except Exception as e:
             logger.error(f"Failed to initiate OAuth redirect: {e}")
             raise HTTPException(status_code=500, detail="Failed to initiate OIDC login")
@@ -630,7 +645,7 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             errors.append("OIDC configuration error: OAuth client not properly initialized.")
             return None, errors
 
-        token_response = await _authorize_access_token_with_retry(request)
+        token_response = await _authorize_access_token_with_key_refresh(request)
 
         if not token_response:
             errors.append("Failed to exchange authorization code")
@@ -773,5 +788,17 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             type(e).__name__,
             str(e),
         )
+        # PKCE is on by default (#312), and a provider that silently ignored the challenge at
+        # the authorization endpoint rejects the exchange here with a bare ``invalid_grant``
+        # that names nothing. The pre-redirect check catches providers that *advertise* their
+        # methods; this covers the ones that advertise nothing, so the log still points at the
+        # one setting worth trying.
+        if config.OIDC_CODE_CHALLENGE and "invalid_grant" in str(e).lower():
+            logger.error(
+                "The token exchange was rejected with invalid_grant while PKCE is enabled (OIDC_CODE_CHALLENGE=%s). "
+                "If this provider does not support PKCE, set OIDC_CODE_CHALLENGE=none. Otherwise the usual causes are "
+                "a reused authorization code, an expired code, or a redirect_uri that differs from the one registered.",
+                config.OIDC_CODE_CHALLENGE,
+            )
         errors.append("Failed to process authentication response")
         return None, errors
