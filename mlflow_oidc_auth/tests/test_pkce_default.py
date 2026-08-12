@@ -69,17 +69,22 @@ class TestTheDefault:
         make."""
         assert AppConfig._parse_code_challenge(value) == "S256"
 
-    def test_plain_is_refused_because_authlib_would_send_no_challenge_at_all(self):
+    def test_plain_is_ignored_in_favour_of_s256(self, caplog):
         """RFC 7636 defines ``plain``, but authlib emits a challenge for S256 only ("only S256
-        is supported", ``authlib/oauth2/client.py``). A client configured for ``plain`` sends an
-        authorization request with no ``code_challenge`` — so accepting it would report PKCE as
-        enabled while nothing was bound to the code. Worse than refusing it."""
-        with pytest.raises(ValueError) as excinfo:
-            AppConfig._parse_code_challenge("plain")
+        is supported", ``authlib/oauth2/client.py``), so a client configured for ``plain`` sends
+        an authorization request with no ``code_challenge`` at all.
 
-        message = str(excinfo.value)
-        assert "S256" in message
-        assert "none" in message
+        Earlier versions accepted the value, so a live deployment may be carrying it — which is
+        why this warns and uses S256 rather than refusing to start. Honouring it would report
+        PKCE as enabled while nothing was bound to the code; refusing it would turn a stale Helm
+        value into an outage on upgrade."""
+        with caplog.at_level("WARNING"):
+            assert AppConfig._parse_code_challenge("plain") == "S256"
+
+        warning = " ".join(record.getMessage() for record in caplog.records)
+        assert "plain" in warning
+        assert "S256" in warning
+        assert "none" in warning, "and how to disable PKCE deliberately"
 
 
 class TestTheOptOut:
@@ -96,16 +101,24 @@ class TestTheOptOut:
 
         assert any("PKCE is disabled" in record.getMessage() for record in caplog.records)
 
-    def test_a_typo_is_rejected_rather_than_sent_to_the_provider(self):
-        """``S265`` would otherwise reach the authorization request as a challenge method no
-        provider has heard of, failing the login with nothing pointing at the configuration."""
-        with pytest.raises(ValueError) as excinfo:
-            AppConfig._parse_code_challenge("S265")
+    def test_a_typo_warns_and_falls_back_to_s256(self, caplog):
+        """``S265`` must not reach the authorization request as a challenge method no provider
+        has heard of. It must also not stop the process: this module is imported by migration
+        tooling, so raising would block ``mlflow-oidc db upgrade`` too. Falling back to S256 is
+        the secure direction, and the warning is what the operator acts on."""
+        with caplog.at_level("WARNING"):
+            assert AppConfig._parse_code_challenge("S265") == "S256"
 
-        message = str(excinfo.value)
-        assert "S265" in message
-        assert "S256" in message, "the error has to name the value the operator wants"
-        assert "none" in message, "and the way to turn it off"
+        warning = " ".join(record.getMessage() for record in caplog.records)
+        assert "S265" in warning, "the warning has to name the value that was ignored"
+        assert "S256" in warning
+        assert "none" in warning, "and the way to turn it off"
+
+    def test_nothing_in_this_setting_can_stop_the_process(self):
+        """The property behind the two tests above, stated once: ``AppConfig`` is imported by
+        tooling with nothing to do with login, so no value of this variable may raise."""
+        for value in ["plain", "S265", "", "  ", "none", "true", "1", 0, True, None, ["S256"]]:
+            assert AppConfig._parse_code_challenge(value) in ("S256", None)
 
 
 class TestUnsupportedProviderIsReportedClearly:
@@ -228,7 +241,13 @@ class TestTheErrorReachesTheUser:
     @pytest.mark.asyncio
     async def test_an_invalid_grant_exchange_failure_names_pkce(self, monkeypatch, caplog):
         """For providers that support nothing and advertise nothing: the pre-redirect check
-        cannot see them, so the exchange failure is where the hint has to appear."""
+        cannot see them, so the exchange failure is where the hint has to appear.
+
+        The exchange is stubbed at ``_call_authorize_access_token`` — one level *below* the
+        wrapper — so the wrapper's own error handling is part of what this exercises. Stubbing
+        the wrapper instead is what previously hid the fact that it replaced ``invalid_grant``
+        with a state-mismatch error and made this hint unreachable.
+        """
         import mlflow_oidc_auth.routers.auth as auth_router_mod
 
         monkeypatch.setattr(auth_router_mod.config, "OIDC_CODE_CHALLENGE", "S256")
@@ -236,7 +255,11 @@ class TestTheErrorReachesTheUser:
         async def _boom(request):
             raise RuntimeError("invalid_grant: PKCE verification failed")
 
-        monkeypatch.setattr(auth_router_mod, "_authorize_access_token_with_retry", _boom)
+        async def _no_refresh():
+            return None
+
+        monkeypatch.setattr(auth_router_mod, "_call_authorize_access_token", _boom)
+        monkeypatch.setattr(auth_router_mod, "_refresh_oidc_jwks", _no_refresh)
         monkeypatch.setattr(auth_router_mod.oauth, "oidc", SimpleNamespace(authorize_access_token=_boom), raising=False)
 
         class DummyRequest:

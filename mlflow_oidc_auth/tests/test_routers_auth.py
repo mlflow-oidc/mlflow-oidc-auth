@@ -64,14 +64,20 @@ async def test_call_authorize_access_token_sync(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_authorize_access_token_with_retry_bad_sig_then_success(monkeypatch):
+async def test_a_bad_signature_refreshes_the_keys_and_reports_itself(monkeypatch):
+    """The exchange is attempted once, and the error the caller sees is the real one.
+
+    This used to retry, and the retry was tested by making the second call succeed — which
+    authlib can never do. It removes the per-attempt state from the session before it sends the
+    token request, so a second call raises ``MismatchingStateError`` and *that* became the
+    reported error. The JWKS refresh stays: it is what lets the next login survive a rotated
+    signing key.
+    """
     calls = {"count": 0}
 
     async def _fake(request):
         calls["count"] += 1
-        if calls["count"] == 1:
-            raise BadSignatureError("bad")
-        return {"access_token": "a"}
+        raise BadSignatureError("bad")
 
     monkeypatch.setattr(auth_router_mod, "_call_authorize_access_token", _fake)
 
@@ -82,22 +88,32 @@ async def test_authorize_access_token_with_retry_bad_sig_then_success(monkeypatc
 
     monkeypatch.setattr(auth_router_mod, "_refresh_oidc_jwks", _refresh)
 
-    res = await auth_router_mod._authorize_access_token_with_retry(DummyRequest())
-    assert res == {"access_token": "a"}
-    assert refreshed["count"] == 1
+    with pytest.raises(BadSignatureError):
+        await auth_router_mod._authorize_access_token_with_key_refresh(DummyRequest())
+
+    assert calls["count"] == 1, "a second attempt cannot succeed and must not be made"
+    assert refreshed["count"] == 1, "the keys are still refreshed, for the next login"
 
 
 @pytest.mark.asyncio
-async def test_authorize_access_token_with_retry_failure_raises(monkeypatch):
+async def test_the_original_error_is_what_propagates(monkeypatch):
+    """Not a substitute error produced by a doomed second attempt."""
+
     async def _fake(request):
-        raise ValueError("boom")
+        raise ValueError("invalid_grant: PKCE verification failed")
 
     monkeypatch.setattr(auth_router_mod, "_call_authorize_access_token", _fake)
+
+    async def _refresh():
+        return None
+
+    monkeypatch.setattr(auth_router_mod, "_refresh_oidc_jwks", _refresh)
     import types
 
     monkeypatch.setattr(auth_router_mod.oauth, "oidc", types.SimpleNamespace(), raising=False)
-    with pytest.raises(ValueError):
-        await auth_router_mod._authorize_access_token_with_retry(DummyRequest())
+
+    with pytest.raises(ValueError, match="invalid_grant"):
+        await auth_router_mod._authorize_access_token_with_key_refresh(DummyRequest())
 
 
 def test_build_ui_url_with_and_without_query():
@@ -541,19 +557,14 @@ async def test_call_authorize_access_token_sync_implementation(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_authorize_access_token_retry_on_exception_then_success(monkeypatch):
+async def test_a_successful_exchange_does_not_refresh_the_keys(monkeypatch):
     calls = {"count": 0}
 
-    async def call_then_success(request):
+    async def _succeed(request):
         calls["count"] += 1
-        if calls["count"] == 1:
-            raise ValueError("boom")
         return {"access_token": "x"}
 
-    monkeypatch.setattr(auth_router_mod, "_call_authorize_access_token", call_then_success)
-    import types
-
-    monkeypatch.setattr(auth_router_mod.oauth, "oidc", types.SimpleNamespace(), raising=False)
+    monkeypatch.setattr(auth_router_mod, "_call_authorize_access_token", _succeed)
 
     refreshed = {"count": 0}
 
@@ -562,9 +573,11 @@ async def test_authorize_access_token_retry_on_exception_then_success(monkeypatc
 
     monkeypatch.setattr(auth_router_mod, "_refresh_oidc_jwks", _refresh)
 
-    res = await auth_router_mod._authorize_access_token_with_retry(DummyRequest())
+    res = await auth_router_mod._authorize_access_token_with_key_refresh(DummyRequest())
+
     assert res == {"access_token": "x"}
-    assert refreshed["count"] == 1
+    assert calls["count"] == 1
+    assert refreshed["count"] == 0
 
 
 @pytest.mark.asyncio

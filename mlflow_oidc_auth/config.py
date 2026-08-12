@@ -137,8 +137,9 @@ class AppConfig:
         # browser log, a proxy, a shared machine — from being redeemed by anyone else.
         #
         # Opt out with any of the disabling words below, for a provider that rejects the extra
-        # parameters. Anything else is rejected here rather than silently producing an
-        # authorization request the provider will refuse.
+        # parameters. An unrecognised value warns and falls back to S256 rather than taking the
+        # process down — this module is imported by migration tooling that has no interest in
+        # login, and the secure direction is the safe one to fall back to.
         _code_challenge = config_manager.get("OIDC_CODE_CHALLENGE", "S256")
         self.OIDC_CODE_CHALLENGE = self._parse_code_challenge(_code_challenge)
 
@@ -255,14 +256,19 @@ class AppConfig:
             value: The configured value. ``None`` means "not set", which now means S256 rather
                 than off (issue #312).
 
-        Returns:
-            ``"S256"``, ``"plain"``, or None when PKCE is disabled.
+        Accepted: ``S256`` and the affirmative words for on; the disabling words for off. Every
+        other value — a typo, or ``plain``, which earlier versions accepted and did nothing
+        useful with — falls back to ``S256`` with a warning naming the value.
 
-        Raises:
-            ValueError: If the value is neither a known method nor a disabling word. A typo like
-                ``S265`` would otherwise be handed to the provider as a challenge method it has
-                never heard of, and the login would fail at the redirect with nothing pointing
-                back at the configuration.
+        **Falls back rather than raising**, deliberately. ``AppConfig`` is a module-level
+        singleton imported by tooling that has nothing to do with login: raising here stops
+        ``mlflow-oidc db upgrade`` and every other entry point, so a stale value in a Helm chart
+        would block the very upgrade that introduced the check. The fallback is the secure
+        direction — PKCE ends up on — and the warning is what the operator acts on. This matches
+        the treatment of the other unusable-configuration cases in this class.
+
+        Returns:
+            ``"S256"``, or None when PKCE is explicitly disabled.
         """
         if value is None:
             return "S256"
@@ -290,18 +296,24 @@ class AppConfig:
                 return method
 
         if lowered == "plain":
-            raise ValueError(
-                "OIDC_CODE_CHALLENGE=plain is not supported: the pinned authlib emits a code challenge for S256 "
-                "only, so a client configured for 'plain' sends no challenge at all and has no PKCE protection. "
-                "Use S256, or 'none' to disable PKCE deliberately."
+            # Accepted by earlier versions, so a live deployment may be carrying it. It never
+            # did anything: authlib emits a challenge for S256 only, so 'plain' produced an
+            # authorization request with no challenge at all.
+            logger.warning(
+                "OIDC_CODE_CHALLENGE=plain is not supported and has been ignored; using S256. The pinned authlib "
+                "emits a code challenge for S256 only, so 'plain' sent no challenge at all and gave no PKCE "
+                "protection. Set OIDC_CODE_CHALLENGE=none if this provider cannot do PKCE."
             )
+            return "S256"
 
-        raise ValueError(
-            f"Invalid OIDC_CODE_CHALLENGE value: {value!r}. "
-            f"Expected {', '.join(cls.CODE_CHALLENGE_METHODS)} (or one of "
-            f"{', '.join(sorted(cls.CODE_CHALLENGE_ENABLED_VALUES))}) to enable PKCE, or one of "
-            f"{', '.join(sorted(v for v in cls.CODE_CHALLENGE_DISABLED_VALUES if v))} to disable it."
+        logger.warning(
+            "Unrecognised OIDC_CODE_CHALLENGE value %r; using S256. Expected %s (or one of %s) to enable PKCE, " "or one of %s to disable it.",
+            normalized,
+            ", ".join(cls.CODE_CHALLENGE_METHODS),
+            ", ".join(sorted(cls.CODE_CHALLENGE_ENABLED_VALUES)),
+            ", ".join(sorted(v for v in cls.CODE_CHALLENGE_DISABLED_VALUES if v)),
         )
+        return "S256"
 
     @staticmethod
     def _has_usable_entry(field_list) -> bool:

@@ -80,7 +80,7 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 | `OIDC_JWKS_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for the JWKS key set cache. The OIDC provider's signing keys are fetched once and cached for this duration. This is always a local in-process cache (not affected by `CACHE_BACKEND`) because JWKS data is identical across replicas |
 | `OIDC_HTTP_TIMEOUT_SECONDS` | Integer | `10` | Timeout (seconds) applied to OIDC discovery and JWKS HTTP fetches. Set lower for faster failover when the IdP is unreachable; without a timeout a hung IdP can block request threads until the OS-level TCP timeout (~2 minutes), causing cascading auth failures |
 | `OIDC_VERIFY_SSL` | Boolean | `true` | Verify the OIDC provider's TLS certificate on discovery, JWKS, and token requests. Only set to `false` for providers using self-signed certificates in a trusted network |
-| `OIDC_CODE_CHALLENGE` | String | `S256` | PKCE code-challenge method for the authorization-code flow. `S256` (or `true`/`yes`/`on`/`1`), or `none`/`off`/`false`/`no`/`0` to disable. An unrecognised value is rejected at startup. See [PKCE](#pkce) |
+| `OIDC_CODE_CHALLENGE` | String | `S256` | PKCE code-challenge method for the authorization-code flow. `S256` (or `true`/`yes`/`on`/`1`), or `none`/`off`/`false`/`no`/`0` to disable. An unrecognised value warns and falls back to `S256`. See [PKCE](#pkce) |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
 | `CACHE_BACKEND` | String | `local` | Cache backend for permission and workspace caches. Options: `local` (in-process TTL cache) or `redis` (shared Redis instance). Use `redis` for multi-replica deployments where permission changes must propagate immediately across all replicas |
 | `CACHE_REDIS_URL` | String | None | Redis connection URL. Required when `CACHE_BACKEND=redis`. Example: `redis://localhost:6379/0` or `redis://:password@redis-host:6379/1` |
@@ -132,9 +132,12 @@ OIDC_CODE_CHALLENGE=none
 
 `none`, `off`, `false`, `no`, `disabled`, `0` and an empty value all disable it, and doing so
 logs a warning at startup — so a variable that renders blank from a Helm value or a compose file
-cannot quietly turn PKCE off. `true`, `yes`, `on`, `enabled` and `1` all mean `S256`. Any other
-value is refused at startup rather than being sent to the provider as a challenge method it has
-never heard of.
+cannot quietly turn PKCE off. `true`, `yes`, `on`, `enabled` and `1` all mean `S256`.
+
+Any other value warns and falls back to `S256`, rather than being sent to the provider as a
+challenge method it has never heard of. It falls back rather than refusing to start because this
+configuration is read by the migration tooling too — a stale value would otherwise block
+`mlflow-oidc db upgrade`, which is the upgrade this change asks you to perform.
 
 **How a provider that cannot do PKCE reports itself:**
 
@@ -145,10 +148,11 @@ never heard of.
   login proceeds, and a rejected token exchange logs an `invalid_grant` line that names
   `OIDC_CODE_CHALLENGE=none` as the thing to try.
 
-`plain` is **not** accepted. RFC 7636 defines it, but the pinned authlib emits a challenge for
-`S256` only, so a client configured for `plain` would send an authorization request with no
-challenge at all — reporting PKCE as enabled while nothing was bound to the code. For a provider
-that offers only `plain`, disable PKCE explicitly rather than appearing to have it.
+`plain` is **ignored, with a warning, in favour of `S256`**. RFC 7636 defines it, but the pinned
+authlib emits a challenge for `S256` only, so a client configured for `plain` sends an
+authorization request with no challenge at all — it reported PKCE as enabled while nothing was
+bound to the code. If you have `OIDC_CODE_CHALLENGE=plain` set today, it was doing nothing; for
+a provider that genuinely offers only `plain`, set `none` so the state is explicit.
 
 > **Note:** with PKCE enabled, authlib logs the per-attempt code verifier at `DEBUG`. It is
 > single-use and short-lived, but `LOG_LEVEL=DEBUG` is not a good idea in production for this
