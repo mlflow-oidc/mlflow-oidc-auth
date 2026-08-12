@@ -955,7 +955,7 @@ def in_flight_login_attempt(monkeypatch):
     The state machinery itself is tested directly in ``test_auth_state.py`` and
     ``test_provider_login.py``.
     """
-    import mlflow_oidc_auth.routers.auth as auth_router_mod
+    from mlflow_oidc_auth.routers import auth as auth_router_mod
     from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
     from mlflow_oidc_auth.repository.auth_state import AuthAttempt
 
@@ -994,7 +994,7 @@ def in_flight_login_attempt(monkeypatch):
 @pytest.fixture
 def created_states(monkeypatch):
     """Record the login attempts ``login`` starts, in place of the old cookie key."""
-    import mlflow_oidc_auth.routers.auth as auth_router_mod
+    from mlflow_oidc_auth.routers import auth as auth_router_mod
 
     recorded = []
 
@@ -1009,6 +1009,6 @@ def created_states(monkeypatch):
 @pytest.fixture
 def no_attempt(monkeypatch):
     """No in-flight attempt matches — an unknown, replayed or expired state."""
-    import mlflow_oidc_auth.routers.auth as auth_router_mod
+    from mlflow_oidc_auth.routers import auth as auth_router_mod
 
     monkeypatch.setattr(auth_router_mod.store, "consume_auth_state", lambda state: None, raising=False)

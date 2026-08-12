@@ -4,8 +4,6 @@ The state used to be one ``oauth_state`` key in the cookie, which cannot hold tw
 cannot say which provider started one. Both are what these cases pin.
 """
 
-from datetime import datetime, timedelta, timezone
-
 import pytest
 
 
