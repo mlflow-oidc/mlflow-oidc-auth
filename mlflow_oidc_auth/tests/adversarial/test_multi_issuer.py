@@ -231,3 +231,79 @@ class TestTheSuiteAppliesToEveryProvider:
         @pytest.fixture
         def verify(self, both):
             return both
+
+
+class TestTheSingleProviderDeploymentFetchesKeysTheSameWay:
+    """The path a real single-provider deployment takes, which the fixtures elsewhere skip.
+
+    Those fixtures build a provider with no ``discovery_url``, so they exercise the inherited
+    ``_get_oidc_jwks`` branch. A deployment that sets ``OIDC_DISCOVERY_URL`` — every real one —
+    gets a synthesised provider that *carries* it, and so takes the per-provider branch instead.
+    Both now run one implementation; these cases hold that, so a fix to key fetching cannot
+    apply to the branch under test and miss the branch in production.
+    """
+
+    def test_the_synthesised_provider_carries_the_configured_discovery_url(self):
+        """The fact the coverage gap turned on."""
+        from types import SimpleNamespace
+
+        from mlflow_oidc_auth.provider_registry import build_provider_registry
+
+        class Manager:
+            @staticmethod
+            def get(key, default=None):
+                return default
+
+        app_config = SimpleNamespace(
+            OIDC_PROVIDER_DISPLAY_NAME="Login with OIDC",
+            OIDC_AUDIENCE=None,
+            OIDC_ISSUER=None,
+            OIDC_DISCOVERY_URL="https://idp.example.com/.well-known/openid-configuration",
+            OIDC_CLIENT_ID="client",
+        )
+
+        provider = build_provider_registry(Manager(), app_config).providers[0]
+
+        assert provider.discovery_url == "https://idp.example.com/.well-known/openid-configuration"
+
+    def test_both_branches_run_the_same_fetch(self, entra, monkeypatch):
+        """Whichever cache the result lands in, the work is done by ``_load_jwks``."""
+        calls = []
+        monkeypatch.setattr(auth_module, "_load_jwks", lambda url, **kwargs: calls.append((url, kwargs["cache_key"])) or entra.jwks)
+        monkeypatch.setattr(auth_module.config, "OIDC_DISCOVERY_URL", "https://flat.example.com/.well-known/openid-configuration")
+
+        inherited = provider_for(entra, provider_id="default")
+        own_source = provider_for(entra, provider_id="default", discovery_url="https://own.example.com/.well-known/openid-configuration")
+
+        assert auth_module._get_provider_jwks(inherited) == entra.jwks
+        assert auth_module._get_provider_jwks(own_source) == entra.jwks
+
+        assert [url for url, _ in calls] == [
+            "https://flat.example.com/.well-known/openid-configuration",
+            "https://own.example.com/.well-known/openid-configuration",
+        ]
+        assert calls[0][1] == auth_module._JWKS_CACHE_KEY
+        assert calls[1][1] == ("default", "https://own.example.com/.well-known/openid-configuration")
+
+    def test_a_provider_with_its_own_source_still_refreshes_only_itself(self, entra, kubernetes, monkeypatch):
+        auth_module._provider_jwks_cache.clear()
+        auth_module._provider_jwks_cache[("k8s", "https://k8s.invalid/.well-known/openid-configuration")] = kubernetes.jwks
+
+        fetched = []
+
+        def fake_get(url, timeout=None, verify=None):
+            fetched.append(url)
+
+            class Response:
+                @staticmethod
+                def json():
+                    return {"jwks_uri": "https://entra.invalid/keys"} if "openid-configuration" in url else entra.jwks
+
+            return Response()
+
+        monkeypatch.setattr(auth_module.requests, "get", fake_get)
+        entra_provider = provider_for(entra, provider_id="entra", discovery_url="https://entra.invalid/.well-known/openid-configuration")
+
+        auth_module._get_provider_jwks(entra_provider, force_refresh=True)
+
+        assert auth_module._provider_jwks_cache.get(("k8s", "https://k8s.invalid/.well-known/openid-configuration")) == kubernetes.jwks

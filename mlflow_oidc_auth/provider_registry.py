@@ -299,9 +299,14 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
                 f"{label}: 'issuer' is required for a '{provider_type}' provider; without it no 'iss' check is performed and "
                 "every issuer sharing that key set is accepted"
             )
-        if not isinstance(discovery_url, str) or not discovery_url.strip():
+        # Scoped to OIDC deliberately. A cluster's keys usually come from the API server's
+        # ``/openid/v1/jwks``, reached with the in-cluster service account and CA bundle rather
+        # than through a public discovery document, and legacy service-account tokens have no
+        # discovery document at all. #314 is where that provider learns how it sources keys, and
+        # it can state its own rule then — no k8s provider can be configured before it lands.
+        if provider_type == "oidc" and (not isinstance(discovery_url, str) or not discovery_url.strip()):
             errors.append(
-                f"{label}: 'discovery_url' is required for a '{provider_type}' provider; without it the provider shares the "
+                f"{label}: 'discovery_url' is required for an 'oidc' provider; without it the provider shares the "
                 "deployment-wide key cache with every other provider that omits one"
             )
 

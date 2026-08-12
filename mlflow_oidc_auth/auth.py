@@ -9,11 +9,12 @@ from cachetools import TTLCache
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.provider_registry import ASYMMETRIC_ALGORITHMS
 
-# Provider types whose credentials are bearer tokens verified against a JWKS. SAML asserts
-# identity through a browser POST instead, so it never resolves a token here.
-TOKEN_PROVIDER_TYPES = ("oidc", "k8s")
+# TOKEN_PROVIDER_TYPES is imported rather than restated: the registry uses it to decide which
+# providers must pin an issuer and a key source, and this module uses it to decide which may
+# validate a token. Two copies could disagree, and the dangerous direction is silent — a type
+# routed here but never required there is a provider with no ``iss`` check.
+from mlflow_oidc_auth.provider_registry import ASYMMETRIC_ALGORITHMS, TOKEN_PROVIDER_TYPES
 from mlflow_oidc_auth.user import create_user, populate_groups, update_user
 
 logger = get_logger()
@@ -28,8 +29,11 @@ logger = get_logger()
 # The same asymmetric set the provider registry accepts (#308): signatures are checked against
 # keys fetched from the provider's JWKS, so a symmetric algorithm has no legitimate use here and
 # an unsigned token none at all.
+# The ceiling. A provider's own ``allowed_algorithms`` narrows within this set (see
+# :func:`_jwt_for`); nothing widens it. There is deliberately no module-level decoder built from
+# it any more — one would look like the live verifier while every validation used a per-provider
+# decoder instead, so a change made here would appear to take effect and would not.
 _ACCEPTED_ALGORITHMS = list(ASYMMETRIC_ALGORITHMS)
-_jwt = JsonWebToken(_ACCEPTED_ALGORITHMS)
 
 # JWKS cache for the deployment-wide ``OIDC_DISCOVERY_URL``. TTL from
 # OIDC_JWKS_CACHE_TTL_SECONDS (default 300s). Thread-safe via a lock, since multiple ASGI
@@ -64,33 +68,50 @@ def _get_oidc_jwks(force_refresh: bool = False) -> dict:
     if config.OIDC_DISCOVERY_URL is None:
         raise ValueError("OIDC_DISCOVERY_URL is not set in the configuration")
 
-    with _jwks_cache_lock:
-        if force_refresh:
-            _jwks_cache.pop(_JWKS_CACHE_KEY, None)
+    return _load_jwks(
+        config.OIDC_DISCOVERY_URL,
+        cache=_jwks_cache,
+        lock=_jwks_cache_lock,
+        cache_key=_JWKS_CACHE_KEY,
+        force_refresh=force_refresh,
+        label="the configured OIDC provider",
+    )
 
-        cached = _jwks_cache.get(_JWKS_CACHE_KEY)
+
+def _load_jwks(discovery_url: str, *, cache: TTLCache, lock: threading.Lock, cache_key, force_refresh: bool, label: str) -> dict:
+    """Discovery-then-JWKS fetch, cached in ``cache`` under ``cache_key``.
+
+    One implementation for both callers on purpose. They differ only in which cache the result
+    lands in, and a deployment silently takes one or the other depending on whether its provider
+    names a key source — so two implementations would mean a fix applied to the branch under
+    test having no effect on the branch a real deployment runs.
+    """
+    with lock:
+        if force_refresh:
+            cache.pop(cache_key, None)
+        cached = cache.get(cache_key)
         if cached is not None:
             return cached
 
-    # Fetch outside the lock to avoid blocking other threads during HTTP I/O.
-    # Timeouts are essential: without them, a hung IdP can block request threads
-    # until the OS-level TCP timeout (~2 minutes), causing cascading auth failures.
+    # Fetched outside the lock, so HTTP I/O does not block other threads. Timeouts are
+    # essential: without them a hung IdP holds request threads until the OS-level TCP timeout
+    # (~2 minutes), and authentication failures cascade.
     timeout = config.OIDC_HTTP_TIMEOUT_SECONDS
     try:
-        logger.debug("Fetching OIDC discovery metadata")
-        metadata = requests.get(config.OIDC_DISCOVERY_URL, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
+        logger.debug("Fetching OIDC discovery metadata for %s", label)
+        metadata = requests.get(discovery_url, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
         jwks_uri = metadata.get("jwks_uri")
         if not jwks_uri:
-            raise ValueError("No jwks_uri found in OIDC discovery metadata")
+            raise ValueError(f"No jwks_uri found in OIDC discovery metadata for {label}")
 
         logger.debug("Fetching JWKS from %s", jwks_uri)
         jwks = requests.get(jwks_uri, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
     except requests.exceptions.RequestException as e:
-        logger.error("Failed to fetch OIDC JWKS: %s", e)
+        logger.error("Failed to fetch JWKS for %s: %s", label, e)
         raise
 
-    with _jwks_cache_lock:
-        _jwks_cache[_JWKS_CACHE_KEY] = jwks
+    with lock:
+        cache[cache_key] = jwks
 
     return jwks
 
@@ -111,39 +132,21 @@ def _get_provider_jwks(provider, force_refresh: bool = False) -> dict:
         The JWKS payload.
     """
     if not provider.discovery_url:
-        # Only the synthesised legacy provider reaches this: the registry requires a token
-        # provider to name its own key source, precisely so that two providers cannot share the
-        # single-entry cache below and evict each other's keys on every refresh.
+        # A provider that names no source of its own inherits the deployment-wide one. Only the
+        # synthesised legacy provider can be in this state, and only when OIDC_DISCOVERY_URL is
+        # itself unset — with it set, that provider carries it and takes the cache below.
         return _get_oidc_jwks(force_refresh=force_refresh)
 
     # Keyed on the source as well as the id, so repointing a provider at a different IdP does
     # not keep serving the previous one's keys for the rest of the TTL.
-    cache_key = (provider.id, provider.discovery_url)
-    with _provider_jwks_lock:
-        if force_refresh:
-            _provider_jwks_cache.pop(cache_key, None)
-        cached = _provider_jwks_cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-    timeout = config.OIDC_HTTP_TIMEOUT_SECONDS
-    try:
-        logger.debug("Fetching OIDC discovery metadata for provider %s", provider.id)
-        metadata = requests.get(provider.discovery_url, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
-        jwks_uri = metadata.get("jwks_uri")
-        if not jwks_uri:
-            raise ValueError(f"No jwks_uri in discovery metadata for provider '{provider.id}'")
-
-        logger.debug("Fetching JWKS for provider %s", provider.id)
-        jwks = requests.get(jwks_uri, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
-    except requests.exceptions.RequestException as e:
-        logger.error("Failed to fetch JWKS for provider %s: %s", provider.id, e)
-        raise
-
-    with _provider_jwks_lock:
-        _provider_jwks_cache[cache_key] = jwks
-
-    return jwks
+    return _load_jwks(
+        provider.discovery_url,
+        cache=_provider_jwks_cache,
+        lock=_provider_jwks_lock,
+        cache_key=(provider.id, provider.discovery_url),
+        force_refresh=force_refresh,
+        label=f"provider {provider.id}",
+    )
 
 
 def _unverified_issuer(token: str) -> str | None:
@@ -228,7 +231,7 @@ def _jwt_for(provider) -> JsonWebToken:
     agree on an algorithm set, and the registry already refuses a symmetric one — so whatever is
     here is asymmetric, and the token's own header still chooses nothing.
     """
-    algorithms = [algorithm for algorithm in provider.allowed_algorithms if algorithm in ASYMMETRIC_ALGORITHMS]
+    algorithms = [algorithm for algorithm in provider.allowed_algorithms if algorithm in _ACCEPTED_ALGORITHMS]
     if not algorithms:
         raise ValueError(f"Provider '{provider.id}' has no usable signing algorithm")
     return JsonWebToken(algorithms)
