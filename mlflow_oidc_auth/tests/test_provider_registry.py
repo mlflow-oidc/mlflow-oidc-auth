@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from mlflow_oidc_auth.provider_registry import (
+    ASYMMETRIC_ALGORITHMS,
     DEFAULT_ALGORITHMS,
     DEFAULT_PROVIDER_ID,
     ProviderConfig,
@@ -53,8 +54,22 @@ def legacy_app_config(**overrides) -> SimpleNamespace:
 
 
 def valid_entry(**overrides) -> dict:
-    """A minimal entry that passes every check, for tests that break one thing at a time."""
-    entry = {"id": "okta", "type": "oidc", "audience": "mlflow"}
+    """A minimal entry that passes every check, for tests that break one thing at a time.
+
+    ``issuer`` and ``discovery_url`` are part of the minimum for a token-validating provider
+    since #313: without the first nothing pins ``iss``, and without the second the provider
+    shares the deployment-wide key cache with every other provider that omits one.
+    """
+    provider_id = overrides.get("id", "okta")
+    entry = {
+        "id": provider_id,
+        "type": "oidc",
+        "audience": "mlflow",
+        # Derived from the id: two entries in one registry must not accidentally share an
+        # issuer, which is now rejected — a token can only be validated under one policy.
+        "issuer": f"https://{provider_id}.example.com",
+        "discovery_url": f"https://{provider_id}.example.com/.well-known/openid-configuration",
+    }
     entry.update(overrides)
     return entry
 
@@ -85,7 +100,20 @@ class TestLegacyBackCompat:
         assert provider.group_sync_mode == "authoritative"
         assert provider.admin_source == "claims"
         assert provider.identity_binding == "subject"
-        assert provider.allowed_algorithms == DEFAULT_ALGORITHMS
+
+    def test_the_default_provider_accepts_every_asymmetric_algorithm(self):
+        """Not ``DEFAULT_ALGORITHMS`` — that is the default for an entry an operator *writes*.
+
+        Before per-provider validation (#313), token validation accepted the whole asymmetric
+        set, so a deployment whose IdP signs with ES256 or RS512 is working today. Narrowing the
+        synthesised entry to RS256 would lock those deployments out on upgrade without them
+        changing any configuration, which is the one thing this entry exists to prevent.
+        """
+        provider = build().providers[0]
+
+        assert provider.allowed_algorithms == ASYMMETRIC_ALGORITHMS
+        assert "RS256" in provider.allowed_algorithms
+        assert not any(algorithm.startswith("HS") for algorithm in provider.allowed_algorithms)
 
     def test_the_default_provider_carries_the_flat_oidc_values(self):
         provider = build(app_config=legacy_app_config(OIDC_AUDIENCE="aud-1", OIDC_ISSUER="https://idp.example.com")).providers[0]
@@ -529,3 +557,81 @@ class TestAppConfigIntegration:
             app_config._warn_if_provider_registry_invalid()
 
         assert any("something is wrong" in r.message for r in caplog.records)
+
+
+class TestATokenProviderMustPinItsOwnIssuerAndKeys:
+    """Both became load-bearing when validation went per-provider (#313).
+
+    Before that, a registry entry was configuration nothing authenticated against, so an
+    optional field was harmless. Now the entry *is* the policy a bearer token is judged by.
+    """
+
+    def test_an_entry_without_an_issuer_is_rejected(self):
+        """Without it nothing pins ``iss``, so every issuer sharing that key set is accepted.
+
+        The realistic shape is a multi-tenant endpoint — Entra's ``common``, a shared Keycloak
+        realm, a cluster issuer fronting several namespaces — where one JWKS serves many
+        issuers. An attacker with their own tenant on that endpoint holds a token with a valid
+        signature and the right audience; only ``iss`` distinguishes it.
+        """
+        entry = valid_entry()
+        entry.pop("issuer")
+
+        result = build([entry])
+
+        assert result.providers == []
+        assert any("issuer" in error and "iss" in error for error in result.errors)
+
+    @pytest.mark.parametrize("blank", [None, "", "   "])
+    def test_a_blank_issuer_is_rejected(self, blank):
+        result = build([valid_entry(issuer=blank)])
+
+        assert result.providers == []
+
+    def test_an_entry_without_a_discovery_url_is_rejected(self):
+        """Without one it inherits the deployment-wide key source and its single-entry cache, so
+        two such providers evict each other's keys on every rotation refresh."""
+        entry = valid_entry()
+        entry.pop("discovery_url")
+
+        result = build([entry])
+
+        assert result.providers == []
+        assert any("discovery_url" in error for error in result.errors)
+
+    def test_a_saml_provider_needs_neither(self):
+        """The requirement is about validating bearer tokens against a key set. SAML asserts
+        identity through a browser POST and never resolves a token here."""
+        entry = {"id": "corp-saml", "type": "saml", "audience": "mlflow"}
+
+        result = build([entry])
+
+        # Rejected only if the [saml] extra is missing — never for the token-provider fields.
+        assert not any("issuer" in error or "discovery_url" in error for error in result.errors)
+
+    def test_the_legacy_provider_is_unaffected(self):
+        """It is synthesised from flat variables that may legitimately be unset, and it is the
+        one provider that must keep working with no configuration change at all."""
+        provider = build().providers[0]
+
+        assert provider.id == DEFAULT_PROVIDER_ID
+        assert provider.issuer is None
+
+
+class TestTwoProvidersCannotClaimOneIssuer:
+    """Validation takes the first exact ``iss`` match, so a duplicate means the second entry's
+    policy — its audience, binding and group rules — is silently never applied."""
+
+    def test_the_later_entry_is_rejected(self):
+        first = valid_entry(id="first", issuer="https://shared.example.com")
+        second = valid_entry(id="second", issuer="https://shared.example.com")
+
+        result = build([first, second])
+
+        assert [provider.id for provider in result.providers] == ["first"]
+        assert any("already claimed" in error for error in result.errors)
+
+    def test_distinct_issuers_both_survive(self):
+        result = build([valid_entry(id="first"), valid_entry(id="second")])
+
+        assert [provider.id for provider in result.providers] == ["first", "second"]

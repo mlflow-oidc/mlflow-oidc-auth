@@ -185,9 +185,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return
 
         # Hardening: never provision from a token that is not scoped by both aud and iss.
-        if not (config.OIDC_AUDIENCE and config.OIDC_ISSUER):
+        #
+        # Asked of the provider that actually validated the token, not of the flat variables
+        # (#313). Those two no longer describe what was enforced: a registry-configured provider
+        # carries its own audience and issuer, so reading the flat pair would both credit
+        # scoping that was never applied — leftover variables from before the registry — and
+        # deny provisioning to a registry-only deployment that pins both properly.
+        try:
+            from mlflow_oidc_auth.auth import resolve_token_provider
+
+            provider = resolve_token_provider(token)
+        except Exception as e:
+            logger.warning("Provisioning skipped; could not identify the provider for %s: %s", username, type(e).__name__)
+            return
+
+        if not (provider.audience and provider.issuer):
             logger.warning(
-                "OIDC_PROVISION_ON_BEARER_AUTH is set but OIDC_AUDIENCE/OIDC_ISSUER are not both configured; refusing to provision %s from an under-scoped token",
+                "OIDC_PROVISION_ON_BEARER_AUTH is set but provider '%s' pins %s; refusing to provision %s from an under-scoped token",
+                provider.id,
+                "no audience" if not provider.audience else "no issuer",
                 username,
             )
             return
