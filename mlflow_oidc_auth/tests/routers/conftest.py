@@ -70,6 +70,13 @@ def mock_store():
     """Mock the store module with comprehensive user and permission data."""
     store_mock = MagicMock()
 
+    # Server-side sessions (#310). A bare MagicMock return would be *truthy*, so a request with
+    # no cookie would resolve to a mock "session" and look authenticated. Default to no session;
+    # a test that wants one sets this explicitly.
+    store_mock.resolve_auth_session.return_value = None
+    store_mock.create_auth_session.return_value = "sid-mock"
+    store_mock.revoke_auth_session.return_value = True
+
     # Mock users
     admin_user = User(
         id_=1,
@@ -354,6 +361,11 @@ def _patch_router_stores(mock_store):
     patches = [
         patch("mlflow_oidc_auth.store.store", mock_store),
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
+        # The auth router binds ``store`` at import, so patching the singleton does not reach it.
+        # Without this the OIDC callback opens a *real* session row against whatever database
+        # the lazy singleton last pointed at — which passes in isolation and fails when the
+        # whole suite shares a process.
+        patch("mlflow_oidc_auth.routers.auth.store", mock_store),
         patch("mlflow_oidc_auth.utils.batch_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store),

@@ -45,6 +45,10 @@ class SqlAuthSession(Base):
     ``session_id`` is an opaque 256-bit value chosen by the application; the column is sized for
     either common encoding. ``encrypted_tokens`` holds provider token material that the
     application encrypts before it ever reaches this column.
+
+    Rows are **not** swept automatically: one is inserted per login and an expired one is simply
+    refused by ``AuthSessionRepository.resolve``. Deleting them is an operator action —
+    ``mlflow-oidc db prune-sessions`` — because a deployment may want the history retained.
     """
 
     __tablename__ = "auth_sessions"

@@ -72,3 +72,38 @@ def restore_admin(url: str, username: str) -> None:
         )
     finally:
         engine.dispose()
+
+
+@commands.command(name="prune-sessions")
+@click.option("--url", required=True, help="Database URL, e.g. sqlite:///auth.db")
+@click.option("--dry-run", is_flag=True, help="Report how many rows would be deleted, and delete nothing.")
+def prune_sessions(url: str, dry_run: bool) -> None:
+    """Delete expired server-side sessions (issue #310).
+
+    Housekeeping, not correctness: an expired session already fails to resolve, so leaving the
+    rows in place is safe but unbounded — every login inserts one and nothing else removes them.
+    A deployment with a few hundred logins a day accumulates six figures of dead rows in a year.
+
+    Revoked-but-unexpired sessions are kept until their expiry, so that "was this session
+    revoked, and when?" stays answerable for the lifetime the session would have had.
+
+    Run it from cron, or by hand. It is safe to run concurrently with a live server.
+    """
+    from datetime import datetime, timezone
+
+    from mlflow_oidc_auth.db.models import SqlAuthSession
+
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None)
+    engine = sqlalchemy.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            expired = conn.execute(
+                sqlalchemy.select(sqlalchemy.func.count()).select_from(SqlAuthSession).where(SqlAuthSession.expires_at <= cutoff)
+            ).scalar_one()
+            if dry_run:
+                click.echo(f"{expired} expired session(s) would be deleted")
+                return
+            conn.execute(sqlalchemy.delete(SqlAuthSession).where(SqlAuthSession.expires_at <= cutoff))
+        click.echo(f"deleted {expired} expired session(s)")
+    finally:
+        engine.dispose()

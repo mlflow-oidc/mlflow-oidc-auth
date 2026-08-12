@@ -7,6 +7,7 @@ This router handles OIDC authentication flows including login, logout, and callb
 import secrets
 import time
 from collections.abc import Awaitable
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlencode
 
@@ -18,11 +19,18 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
+from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name
 
 from ._prefix import UI_ROUTER_PREFIX
 
 logger = get_logger()
+
+# Lifetime for a server-side session when the cookie itself carries no expiry. A cookie with no
+# max_age lasts until the browser closes, which is unbounded from the server's point of view — and
+# a row that never expires is a row that can never be swept (#310).
+DEFAULT_SESSION_LIFETIME_SECONDS = 14 * 24 * 60 * 60
+
 
 auth_router = APIRouter(
     tags=["auth"],
@@ -313,6 +321,47 @@ async def login(request: Request):
         raise HTTPException(status_code=500, detail="Failed to initiate OIDC login")
 
 
+# Everything a completed login leaves in the cookie. All of it belongs to the user who logged
+# in, so all of it has to go when a different login starts in the same browser.
+_LOGIN_SESSION_KEYS = ("session_id", "username", "authenticated", "refresh_token", "expires_at")
+
+
+def _retire_previous_login(session) -> None:
+    """Drop — and revoke — whatever login this browser was already carrying.
+
+    Called before the token exchange, not after. ``_persist_session_auth`` deliberately keeps an
+    existing ``refresh_token`` when the new token response carries none (many IdPs only emit one
+    on the first exchange), so anything still here when the exchange runs is inherited by the
+    next user: their session would then be refreshed with the previous user's grant, and would
+    die when *that* user was deprovisioned rather than when they were.
+
+    The old session is revoked outright rather than merely forgotten. Its id is leaving the
+    cookie either way, so nothing the user can still reach is being taken from them — and if
+    this login fails, a session belonging to whoever was here before should not survive it.
+    """
+    previous_session_id = session.pop("session_id", None)
+    for key in _LOGIN_SESSION_KEYS:
+        session.pop(key, None)
+
+    if previous_session_id:
+        try:
+            store.revoke_auth_session(previous_session_id)
+        except Exception as exc:  # best effort: the cookie no longer names it regardless
+            logger.warning("Could not revoke the previous session on re-login: %s", exc)
+
+
+def _open_server_session(username: str) -> str:
+    """Open a server-side session for ``username`` and return its opaque id.
+
+    The row's lifetime mirrors the cookie's, so a session cannot outlive the credential that
+    carries it, and an unbounded cookie still yields a bounded row — one that never expires
+    could never be swept.
+    """
+    max_age = config.SESSION_COOKIE_MAX_AGE_SECONDS or DEFAULT_SESSION_LIFETIME_SECONDS
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=max_age)
+    return store.create_auth_session(username, expires_at=expires_at)
+
+
 @auth_router.get(LOGOUT)
 async def logout(request: Request):
     """
@@ -331,7 +380,36 @@ async def logout(request: Request):
     try:
         # Get and clear session (using Starlette's built-in session)
         session = request.session
-        username = session.get("username")
+        # request.state is set by AuthMiddleware for an authenticated request; read it
+        # defensively so logout never fails on the way out.
+        username = getattr(getattr(request, "state", None), "username", None)
+        session_id = session.get("session_id")
+
+        if session_id:
+            # Revoke the row, not just the cookie: clearing the cookie alone left the session
+            # usable by anyone who had already copied it (#310).
+            #
+            # A failure here is not cosmetic and must not be swallowed by the handler's outer
+            # ``except``: the cookie is gone from *this* browser, but the session stays live for
+            # its full lifetime, and telling the user they are logged out when a copied cookie
+            # still works is the worst of both. Surface it.
+            #
+            # Revoked *before* the cookie is cleared. Clearing first would delete the only copy
+            # of the session id the browser has, so the 503 below would ask the user to retry
+            # something they can no longer do: the retry would find no id, take the success
+            # path, and leave the session live for its full lifetime.
+            try:
+                store.revoke_auth_session(session_id)
+            except Exception as exc:
+                logger.error("Logout could not revoke session for %s: %s", username or "<unknown>", exc)
+                emit_audit_event(
+                    "auth.logout_failed",
+                    actor=username or "<unknown>",
+                    detail={"reason": "revocation_failed"},
+                    status="denied",
+                )
+                raise HTTPException(status_code=503, detail="Logout failed: the session could not be revoked. Please try again.")
+
         session.clear()
 
         if username:
@@ -364,6 +442,9 @@ async def logout(request: Request):
         auth_url = _build_ui_url(request, "/auth")
         return RedirectResponse(url=auth_url, status_code=302)
 
+    except HTTPException:
+        # Revocation failure. The user must be told, not redirected to a page that implies success.
+        raise
     except Exception as e:
         logger.error(f"Error during logout: {e}")
         # Still clear session even if redirect fails - redirect to auth page
@@ -402,6 +483,11 @@ async def callback(request: Request):
         # Get session (using Starlette's built-in session)
         session = request.session
 
+        # A new login supersedes whatever this browser was carrying, and must not inherit any of
+        # it. This runs before the exchange because the exchange writes into the same cookie.
+        # ``oauth_state`` and ``redirect_after_login`` belong to *this* login and are untouched.
+        _retire_previous_login(session)
+
         # Process OIDC callback using FastAPI-native implementation
         username, errors = await _process_oidc_callback_fastapi(request, session)
 
@@ -416,8 +502,21 @@ async def callback(request: Request):
             return RedirectResponse(url=auth_error_url, status_code=302)
 
         if username:
-            # Successful authentication
-            session["username"] = username
+            # Successful authentication. The cookie carries an opaque session id; the row it
+            # names is what can be revoked (#310). ``username`` is no longer written to the
+            # cookie — authenticating from it is precisely what could not be revoked.
+            # Any previous login was already retired before the exchange, so nothing in this
+            # cookie belongs to anyone else by the time the new session id is written.
+            try:
+                session["session_id"] = _open_server_session(username)
+            except Exception as exc:
+                # The user is provisioned earlier in this callback, so this should not happen —
+                # but a login that cannot open a session must fail as a login, not as a stack
+                # trace. The cookie is cleared so the failure cannot leave the browser holding a
+                # half-authenticated state or another user's credentials.
+                logger.error("Could not open a session for %s: %s", username, exc)
+                session.clear()
+                return RedirectResponse(url=_build_ui_url(request, "/auth", {"error": "session_error"}), status_code=302)
             session["authenticated"] = True
 
             logger.info(f"User {username} authenticated successfully via OIDC")
@@ -459,7 +558,13 @@ async def auth_status(request: Request):
     """
     try:
         session = request.session
-        username = session.get("username")
+        # Resolve the opaque session id rather than reading a username from the cookie (#310).
+        # A query here is fine: this is a status endpoint, not the per-request auth path.
+        resolved = store.resolve_auth_session(session.get("session_id", ""))
+        # ``resolve`` reports the active flag rather than filtering on it, so the middleware can
+        # audit "deactivated" separately. Here a deactivated account is simply not authenticated
+        # — reporting otherwise would render a logged-in UI that 401s on its first API call.
+        username = resolved.username if resolved and resolved.is_active else None
         is_authenticated = bool(username)
 
         return JSONResponse(

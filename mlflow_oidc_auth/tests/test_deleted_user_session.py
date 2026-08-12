@@ -20,6 +20,8 @@ All three sit behind ``AuthMiddleware``, which `app.py` adds before mounting Fla
 one denial covers them — but that is a structural claim, and this file is the evidence.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -92,7 +94,7 @@ def client(store):
 
     @api.get(LOGIN)
     async def login(request: Request, username: str):
-        request.session["username"] = username
+        request.session["session_id"] = store_module.store.create_auth_session(username, expires_at=datetime.now(timezone.utc) + timedelta(hours=8))
         return {"ok": True}
 
     api.add_middleware(AuthMiddleware)
@@ -164,10 +166,13 @@ class TestDeletedUserIsDeniedOnEverySurface:
         assert response.status_code == 401
         assert response.json().get("username") is None
 
-    def test_recreating_the_user_restores_access(self, store, client):
-        """The cookie was never invalidated — only the account state changed — so a same-named
-        account restores access. Worth pinning: it is the behaviour a server-side session store
-        (#310) would change, and #310 should know it is changing it deliberately.
+    def test_recreating_the_user_does_not_revive_the_old_session(self, store, client):
+        """The acceptance criterion #310 exists for.
+
+        Before server-side sessions the cookie was never invalidated — only the account state
+        changed — so an account recreated with the same username silently restored access to a
+        session that belonged to the deleted one. The session is now a row, deleted with its
+        user, and the cookie names something that no longer exists.
         """
         store.create_user("gone@example.com", PASSWORD, "Gone")
         store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
@@ -177,7 +182,7 @@ class TestDeletedUserIsDeniedOnEverySurface:
 
         store.create_user("gone@example.com", PASSWORD, "Gone Again")
 
-        assert client.get(FASTAPI_ROUTE).status_code == 200
+        assert client.get(FASTAPI_ROUTE).status_code == 401
 
 
 class TestDenialAuditIsThrottled:
@@ -187,13 +192,23 @@ class TestDenialAuditIsThrottled:
     """
 
     def _deny_repeatedly(self, store, client, monkeypatch, username, times):
+        """Log in, deactivate out-of-band, then hammer a protected route.
+
+        Deactivation rather than deletion: a deleted user's session row goes with them, so the
+        request is simply unauthenticated and never reaches the denial path. An inactive user
+        still resolves — the join finds the row and reports ``active=False`` — which is the case
+        the denial audit exists for.
+        """
+        from sqlalchemy import text
+
         events = []
         monkeypatch.setattr(
             "mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event",
             lambda event, **kwargs: events.append((event, kwargs)),
         )
         client.get(LOGIN, params={"username": username})
-        store.delete_user(username)
+        with store.engine.begin() as conn:
+            conn.execute(text("UPDATE users SET active = 0 WHERE username = :u"), {"u": username})
         for _ in range(times):
             assert client.get(FASTAPI_ROUTE).status_code == 401
         return events
@@ -225,9 +240,12 @@ class TestDenialAuditIsThrottled:
             store.create_user(name, PASSWORD, name)
         store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
 
+        from sqlalchemy import text
+
         for name in ("a@example.com", "b@example.com"):
             client.get(LOGIN, params={"username": name})
-            store.delete_user(name)
+            with store.engine.begin() as conn:
+                conn.execute(text("UPDATE users SET active = 0 WHERE username = :u"), {"u": name})
             client.get(FASTAPI_ROUTE)
             client.get(FASTAPI_ROUTE)
 
@@ -249,10 +267,10 @@ class TestDenialAuditIsThrottled:
         with store.engine.begin() as conn:
             conn.execute(text("UPDATE users SET active = 0 WHERE username = 'x@example.com'"))
         client.get(FASTAPI_ROUTE)
-        store.delete_user("x@example.com")
         client.get(FASTAPI_ROUTE)
 
-        assert events == ["auth.denied_inactive", "auth.denied_unknown_user"]
+        # One event for the inactive account, not one per request.
+        assert events == ["auth.denied_inactive"]
 
     def test_the_throttle_cache_is_bounded(self):
         """An attacker rotating usernames must not grow this without limit; evicting only ever
@@ -290,22 +308,53 @@ class TestDenialIsReportedAsDeletion:
     """A deleted user is not an inactive one, and an operator reading the log should not have to
     guess which happened."""
 
-    def test_the_audit_event_names_deletion(self, store, client, monkeypatch):
+    def test_a_deleted_users_session_is_revoked_rather_than_denied(self, store, client, monkeypatch):
+        """Deletion ends the session at the source.
+
+        Before #310 a deleted user kept presenting a valid cookie and was turned away on every
+        request; the audit event recorded each refusal. The session row now goes with the user,
+        so there is one ``session.revoked`` event at deletion instead of an endless stream of
+        denials — the same information, recorded once, at the moment it happened.
+        """
         events = []
+        # The repository imports ``emit_audit_event`` inside the function, so the patch has to
+        # land on the audit module itself — patching the repository's namespace would silently
+        # create an attribute nothing reads.
         monkeypatch.setattr(
-            "mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event",
+            "mlflow_oidc_auth.audit.emit_audit_event",
             lambda event, **kwargs: events.append((event, kwargs)),
         )
         store.create_user("gone@example.com", PASSWORD, "Gone")
         store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
         client.get(LOGIN, params={"username": "gone@example.com"})
+
         store.delete_user("gone@example.com")
+
+        assert client.get(FASTAPI_ROUTE).status_code == 401
+        revoked = [kwargs for event, kwargs in events if event == "session.revoked"]
+        assert len(revoked) == 1, f"expected one session.revoked event, got {[e for e, _ in events]}"
+        assert revoked[0]["actor"] == "gone@example.com"
+        assert revoked[0]["detail"]["reason"] == "user_deleted"
+        assert revoked[0]["detail"]["sessions"] == 1
+
+    def test_the_inactive_denial_is_still_named(self, store, client, monkeypatch):
+        events = []
+        monkeypatch.setattr(
+            "mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event",
+            lambda event, **kwargs: events.append((event, kwargs)),
+        )
+        from sqlalchemy import text
+
+        store.create_user("off@example.com", PASSWORD, "Off")
+        client.get(LOGIN, params={"username": "off@example.com"})
+        with store.engine.begin() as conn:
+            conn.execute(text("UPDATE users SET active = 0 WHERE username = 'off@example.com'"))
 
         client.get(FASTAPI_ROUTE)
 
         assert events, "a denial must be audited"
         event, kwargs = events[0]
-        assert event == "auth.denied_unknown_user"
+        assert event == "auth.denied_inactive"
         assert kwargs["status"] == "denied"
 
     def test_an_inactive_user_is_still_reported_as_inactive(self, store, client, monkeypatch):

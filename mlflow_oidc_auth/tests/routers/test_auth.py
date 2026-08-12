@@ -7,6 +7,8 @@ and auth status with various scenarios including success, failure, and edge case
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from types import SimpleNamespace
+
 import pytest
 from authlib.jose.errors import BadSignatureError
 from fastapi import HTTPException
@@ -270,7 +272,10 @@ class TestCallbackEndpoint:
             result = await callback(request)
 
             # Verify session was updated
-            assert request.session["username"] == "test@example.com"
+            # The cookie carries an opaque session id, not the username: authenticating from a
+            # cookie-carried username is exactly what could not be revoked (#310).
+            assert "username" not in request.session
+            assert request.session["session_id"]
             assert request.session["authenticated"] is True
 
             # Verify redirect to home page
@@ -372,9 +377,11 @@ class TestAuthStatusEndpoint:
     @pytest.mark.asyncio
     async def test_auth_status_authenticated(self, mock_request_with_session, mock_config):
         """Test auth status for authenticated user."""
-        request = mock_request_with_session({"username": "test@example.com", "authenticated": True})
+        # Since #310 the cookie carries only an opaque session id; the username comes from the row.
+        request = mock_request_with_session({"session_id": "sid-test"})
 
-        with patch("mlflow_oidc_auth.routers.auth.config", mock_config):
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config), patch("mlflow_oidc_auth.routers.auth.store") as mock_store:
+            mock_store.resolve_auth_session.return_value = SimpleNamespace(username="test@example.com", is_admin=False, is_active=True)
             result = await auth_status(request)
 
             assert isinstance(result, JSONResponse)
@@ -382,6 +389,21 @@ class TestAuthStatusEndpoint:
             assert '"authenticated":true' in content
             assert '"username":"test@example.com"' in content
             assert '"provider":"Test Provider"' in content
+
+    @pytest.mark.asyncio
+    async def test_auth_status_deactivated_user_is_not_authenticated(self, mock_request_with_session, mock_config):
+        """``resolve`` reports the active flag rather than filtering on it, so the endpoint has
+        to apply the check — otherwise the SPA renders a logged-in shell for an account every
+        API call will 401."""
+        request = mock_request_with_session({"session_id": "sid-inactive"})
+
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config), patch("mlflow_oidc_auth.routers.auth.store") as mock_store:
+            mock_store.resolve_auth_session.return_value = SimpleNamespace(username="gone@example.com", is_admin=False, is_active=False)
+            result = await auth_status(request)
+
+            content = result.body.decode()
+            assert '"authenticated":false' in content
+            assert '"username":null' in content
 
     @pytest.mark.asyncio
     async def test_auth_status_unauthenticated(self, mock_request_with_session, mock_config):

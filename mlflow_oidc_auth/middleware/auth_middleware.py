@@ -280,9 +280,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if hasattr(request, "session"):
                 try:
                     session = request.session
-                    username = session.get("username")
-                    if not username:
+                    session_id = session.get("session_id")
+                    if not session_id:
+                        # No server-side session id. A cookie predating #310 lands here and is
+                        # treated as unauthenticated, which is the deliberate upgrade path: the
+                        # old format carried the username itself, so honouring it would keep
+                        # exactly the sessions that cannot be revoked.
                         return False, None, "No session authentication"
+
+                    resolved = store.resolve_auth_session(session_id)
+                    if resolved is None:
+                        # Unknown, revoked or expired — indistinguishable on purpose.
+                        session.clear()
+                        return False, None, "Session not recognised"
+
+                    username = resolved.username
+                    # Stash the resolved row so dispatch does not look the user up again. The
+                    # join already returned admin and active, so the session path costs one
+                    # statement rather than two (#305 budget).
+                    request.state.resolved_session = resolved
 
                     if self._is_session_expired(session):
                         # Try a silent refresh first; only force re-login if it fails.
@@ -465,7 +481,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         is_authenticated, username, error_msg = await self._authenticate_user(request)
 
         if is_authenticated and username:
-            is_admin, is_active, denial_reason = self._get_user_auth_state(username)
+            resolved = getattr(request.state, "resolved_session", None)
+            if resolved is not None:
+                # Already read, in the same statement that validated the session.
+                is_admin, is_active = resolved.is_admin, resolved.is_active
+                denial_reason = "" if is_active else DENIAL_INACTIVE
+            else:
+                is_admin, is_active, denial_reason = self._get_user_auth_state(username)
 
             # A deprovisioned user holds a signed cookie or a valid token that has not expired
             # yet, so credentials alone still check out. Directories deactivate rather than
