@@ -79,9 +79,27 @@ async def _call_authorize_access_token(request: Request, provider_id: Optional[s
     derived from the response, which is the other half of the RFC 9207 defence.
     """
 
-    client = (get_client(provider_id) if provider_id else None) or oauth.oidc
+    client = _client_for_exchange(provider_id)
     token_call = client.authorize_access_token(request)  # type: ignore
     return await _maybe_await(token_call)
+
+
+def _client_for_exchange(provider_id: Optional[str]):
+    """The client whose token endpoint an authorization code may be exchanged at.
+
+    A named provider resolves to its own client or to nothing. Falling back to ``oauth.oidc``
+    would post a code minted by one issuer to another issuer's token endpoint, with that other
+    issuer's client id — handing one IdP a credential belonging to a different one, which is the
+    confusion the rest of this flow exists to prevent.
+    """
+    if provider_id and provider_id != DEFAULT_PROVIDER_ID:
+        client = get_client(provider_id)
+        if client is None:
+            raise RuntimeError(f"No registered OAuth client for provider '{provider_id}'")
+        return client
+    # ``default`` keeps resolving to the legacy client, for a deployment that never adopted the
+    # registry.
+    return get_client(DEFAULT_PROVIDER_ID) or oauth.oidc
 
 
 async def _authorize_access_token_with_key_refresh(
@@ -340,7 +358,18 @@ async def providers(request: Request):
 
 
 def _absolute_path(request: Request, path: str) -> str:
-    """Join ``path`` onto the deployment's base URL, honouring any prefix."""
+    """Join ``path`` onto the deployment's own base URL.
+
+    Prefers the configured redirect URI's origin over ``request.base_url``, which is the ``Host``
+    header. These URLs are the buttons a login page offers, on an unauthenticated and cacheable
+    endpoint: one poisoned response would otherwise send every later visitor to an attacker's
+    host to authenticate.
+    """
+    configured = getattr(config, "OIDC_REDIRECT_URI", None)
+    if configured:
+        parsed = urlparse(configured)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}{path}"
     return str(request.base_url).rstrip("/") + path
 
 
@@ -789,10 +818,13 @@ async def _process_oidc_callback_fastapi(request: Request, session, provider_id:
         errors.append("Identity provider is no longer configured")
         return None, errors
 
-    if provider_id is not None and provider.id != provider_id:
-        # The response arrived at another provider's callback path. Nothing about a mix-up needs
-        # to be subtle: an attempt started at one provider cannot be completed at another's URL.
-        logger.error("Login attempt for provider '%s' arrived at the callback for '%s'", provider.id, provider_id)
+    # The response has to arrive at the callback belonging to the provider the attempt started
+    # at. ``provider_id`` is None on the legacy unscoped path, which belongs to ``default`` — not
+    # to "whoever asks". Treating None as "no opinion" would let anyone who can deliver a
+    # response to the unscoped URL opt out of the path check entirely.
+    expected_callback_provider = provider_id if provider_id is not None else DEFAULT_PROVIDER_ID
+    if provider.id != expected_callback_provider:
+        logger.error("Login attempt for provider '%s' arrived at the callback for '%s'", provider.id, expected_callback_provider)
         errors.append("Invalid state parameter")
         return None, errors
 
@@ -830,7 +862,14 @@ async def _process_oidc_callback_fastapi(request: Request, session, provider_id:
 
     try:
         # Exchange authorization code for tokens
-        if not hasattr(get_client(provider.id) or oauth.oidc, "authorize_access_token"):
+        try:
+            exchange_client = _client_for_exchange(provider.id)
+        except RuntimeError as client_error:
+            logger.error("%s", client_error)
+            errors.append("OIDC configuration error: OAuth client not properly initialized.")
+            return None, errors
+
+        if not hasattr(exchange_client, "authorize_access_token"):
             errors.append("OIDC configuration error: OAuth client not properly initialized.")
             return None, errors
 

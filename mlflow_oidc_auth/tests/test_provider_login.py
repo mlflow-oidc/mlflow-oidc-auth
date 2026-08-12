@@ -153,7 +153,9 @@ class TestTheMixUpDefence:
     """The attack: an authorization response from one server delivered to a client that is
     waiting for another."""
 
-    async def _callback(self, request, provider_id=None):
+    async def _callback(self, request, provider_id="entra"):
+        """Arrives at the callback of the provider the attempt started at, unless a case says
+        otherwise — the path check comes first, and these cases are about ``iss``."""
         return await auth_router_mod._process_oidc_callback_fastapi(request, {}, provider_id=provider_id)
 
     @pytest.mark.asyncio
@@ -480,3 +482,107 @@ class TestAnExistingUserCanStillLogIn:
 
 async def _no_iss(provider):
     return False
+
+
+class TestTheLegacyCallbackBelongsToTheDefaultProvider:
+    """``/callback`` is not "whoever asks" — it is the ``default`` provider's URL.
+
+    Treating an unscoped path as having no opinion about the provider would let anyone able to
+    deliver an authorization response there opt out of the path check entirely, which is one of
+    the three mix-up defences.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_second_providers_response_is_refused_at_the_legacy_callback(self, two_providers, attempt_at, advertises_iss):
+        attempt_at("entra")
+        advertises_iss(False)
+
+        _, errors = await auth_router_mod._process_oidc_callback_fastapi(DummyRequest(state="state-1", code="c"), {}, provider_id=None)
+
+        assert errors == ["Invalid state parameter"]
+
+    @pytest.mark.asyncio
+    async def test_the_default_providers_response_is_accepted_there(self, monkeypatch, attempt_at, advertises_iss):
+        monkeypatch.setattr(
+            auth_router_mod.config,
+            "AUTH_PROVIDERS",
+            RegistryLoadResult(providers=[ProviderConfig(id="default", type="oidc", audience="mlflow", issuer=ENTRA)], errors=[], source="legacy"),
+            raising=False,
+        )
+        attempt_at("default")
+        advertises_iss(False)
+
+        _, errors = await auth_router_mod._process_oidc_callback_fastapi(DummyRequest(state="state-1", code="c"), {}, provider_id=None)
+
+        assert "Invalid state parameter" not in errors
+
+    @pytest.mark.asyncio
+    async def test_login_at_the_default_provider_uses_the_legacy_callback_path(self, monkeypatch):
+        """Its redirect URI is the one already registered at the operator's IdP, whichever route
+        started the login."""
+        monkeypatch.setattr(
+            auth_router_mod.config,
+            "AUTH_PROVIDERS",
+            RegistryLoadResult(providers=[ProviderConfig(id="default", type="oidc", audience="mlflow", issuer=ENTRA)], errors=[], source="legacy"),
+            raising=False,
+        )
+        paths = []
+        monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: True)
+        monkeypatch.setattr(auth_router_mod.store, "create_auth_state", lambda provider_id, **kwargs: "state-1", raising=False)
+        monkeypatch.setattr(auth_router_mod, "assert_pkce_supported", _noop)
+        monkeypatch.setattr(auth_router_mod, "get_client", lambda provider_id=None: SimpleNamespace(authorize_redirect=_redirect), raising=False)
+        monkeypatch.setattr(
+            auth_router_mod,
+            "get_configured_or_dynamic_redirect_uri",
+            lambda request, callback_path, configured_uri=None: paths.append(callback_path) or "http://cb",
+        )
+
+        await auth_router_mod.login_with_provider(DummyRequest(), "default")
+
+        assert paths == ["/callback"]
+
+
+class TestTheExchangeNeverBorrowsAnotherProvidersClient:
+    """An authorization code minted by one issuer must never be posted to another's token
+    endpoint — that hands one IdP a credential belonging to a different one."""
+
+    @pytest.mark.asyncio
+    async def test_a_named_provider_with_no_client_fails(self, monkeypatch):
+        monkeypatch.setattr(auth_router_mod, "get_client", lambda provider_id=None: None, raising=False)
+
+        with pytest.raises(RuntimeError, match="partner"):
+            auth_router_mod._client_for_exchange("partner")
+
+    @pytest.mark.asyncio
+    async def test_the_default_provider_still_resolves_to_the_legacy_client(self, monkeypatch):
+        legacy = SimpleNamespace(authorize_access_token=_redirect)
+        monkeypatch.setattr(auth_router_mod, "get_client", lambda provider_id=None: None, raising=False)
+        monkeypatch.setattr(auth_router_mod.oauth, "oidc", legacy, raising=False)
+
+        assert auth_router_mod._client_for_exchange("default") is legacy
+
+
+class TestTheLoginUrlsDoNotComeFromTheHostHeader:
+    """They are the buttons a login page offers, on an unauthenticated, cacheable endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_the_configured_origin_wins(self, two_providers, monkeypatch):
+        import json
+
+        monkeypatch.setattr(auth_router_mod.config, "OIDC_REDIRECT_URI", "https://mlflow.corp.example/callback", raising=False)
+        request = DummyRequest()
+        request.base_url = "http://evil.example"
+
+        listed = json.loads((await auth_router_mod.providers(request)).body)["providers"]
+
+        assert listed[0]["login_url"] == "https://mlflow.corp.example/login/entra"
+
+    @pytest.mark.asyncio
+    async def test_it_falls_back_to_the_request_when_nothing_is_configured(self, two_providers, monkeypatch):
+        import json
+
+        monkeypatch.setattr(auth_router_mod.config, "OIDC_REDIRECT_URI", None, raising=False)
+
+        listed = json.loads((await auth_router_mod.providers(DummyRequest())).body)["providers"]
+
+        assert listed[0]["login_url"] == "http://testserver/login/entra"
