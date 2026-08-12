@@ -22,6 +22,7 @@ from mlflow_oidc_auth.repository.registered_model_permission_group import (
 )
 from mlflow_oidc_auth.repository.user import UserRepository
 from mlflow_oidc_auth.repository.auth_session import AuthSessionRepository
+from mlflow_oidc_auth.repository.auth_state import AuthStateRepository
 from mlflow_oidc_auth.repository.user_identity import UserIdentityRepository
 from mlflow_oidc_auth.repository.experiment_permission_regex import (
     ExperimentPermissionRegexRepository,
@@ -113,6 +114,7 @@ __all__ = [
     "UserRepository",
     "UserIdentityRepository",
     "AuthSessionRepository",
+    "AuthStateRepository",
     "ExperimentPermissionRegexRepository",
     "ExperimentPermissionGroupRegexRepository",
     "RegisteredModelPermissionRegexRepository",

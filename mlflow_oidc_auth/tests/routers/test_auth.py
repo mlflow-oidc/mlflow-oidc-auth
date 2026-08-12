@@ -86,7 +86,7 @@ class TestLoginEndpoint:
     """Test the login endpoint functionality."""
 
     @pytest.mark.asyncio
-    async def test_login_success(self, mock_request_with_session, mock_oauth, mock_config):
+    async def test_login_success(self, mock_request_with_session, mock_oauth, mock_config, created_states):
         """Test successful login initiation."""
         request = mock_request_with_session({"oauth_state": None})
 
@@ -103,7 +103,9 @@ class TestLoginEndpoint:
             await login(request)
 
             # Verify state was set in session
-            assert request.session["oauth_state"] == "test_state_token"
+            # The attempt is a row now, not a cookie key: what login must do is start one and
+            # send its state to the provider (#316).
+            assert created_states, "login must record an attempt"
 
             # Verify OAuth redirect was called
             mock_oauth.oidc.authorize_redirect.assert_called_once_with(
@@ -113,7 +115,7 @@ class TestLoginEndpoint:
             )
 
     @pytest.mark.asyncio
-    async def test_login_captures_safe_next_param(self, mock_request_with_session, mock_oauth, mock_config):
+    async def test_login_captures_safe_next_param(self, mock_request_with_session, mock_oauth, mock_config, created_states):
         """``/login?next=<relative-path>`` is stored so the callback can return there."""
         request = mock_request_with_session({"oauth_state": None})
         request.query_params = {"next": "/oidc/ui/groups"}
@@ -127,7 +129,9 @@ class TestLoginEndpoint:
             mock_redirect.return_value = "http://localhost:8000/callback"
             await login(request)
 
-        assert request.session["redirect_after_login"] == "/oidc/ui/groups"
+        # The return target travels with the attempt, not in the cookie: a second tab starting
+        # its own login would otherwise overwrite where the first one meant to come back to.
+        assert created_states[-1]["redirect_after_login"] == "/oidc/ui/groups"
 
     @pytest.mark.asyncio
     async def test_login_drops_unsafe_next_param(self, mock_request_with_session, mock_oauth, mock_config):
@@ -507,7 +511,7 @@ class TestProcessOIDCCallbackFastAPI:
         assert "User denied access" in errors[1]
 
     @pytest.mark.asyncio
-    async def test_process_callback_missing_state(self, mock_request_with_session):
+    async def test_process_callback_missing_state(self, mock_request_with_session, no_attempt):
         """Test callback processing with missing OAuth state."""
         request = mock_request_with_session({})  # No oauth_state in session
         request.query_params = {"state": "test_state", "code": "auth_code_123"}
@@ -516,10 +520,12 @@ class TestProcessOIDCCallbackFastAPI:
 
         assert email is None
         assert len(errors) == 1
-        assert "Missing OAuth state in session" in errors[0]
+        # "Missing" and "wrong" give the same answer now — the row is the check, and telling
+        # them apart would tell an attacker which of the two they had.
+        assert "Invalid state parameter" in errors[0]
 
     @pytest.mark.asyncio
-    async def test_process_callback_invalid_state(self, mock_request_with_session):
+    async def test_process_callback_invalid_state(self, mock_request_with_session, no_attempt):
         """Test callback processing with invalid OAuth state."""
         request = mock_request_with_session({"oauth_state": "correct_state"})
         request.query_params = {"state": "wrong_state", "code": "auth_code_123"}
@@ -935,3 +941,74 @@ class TestSanitizeNext:
         assert _sanitize_next(None) is None
         assert _sanitize_next("") is None
         assert _sanitize_next("no-leading-slash") is None
+
+
+@pytest.fixture(autouse=True)
+def in_flight_login_attempt(monkeypatch):
+    """Answer the callback's state lookup with a live attempt (#316).
+
+    The CSRF state moved out of the cookie and into an ``auth_state`` row, so a callback test
+    that seeds ``session["oauth_state"]`` no longer describes anything. This stands in for the
+    row: any non-empty ``state`` resolves to an attempt at the ``default`` provider, which is
+    what these cases were always about — the user-management half of the callback.
+
+    The state machinery itself is tested directly in ``test_auth_state.py`` and
+    ``test_provider_login.py``.
+    """
+    from mlflow_oidc_auth.routers import auth as auth_router_mod
+    from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+    from mlflow_oidc_auth.repository.auth_state import AuthAttempt
+
+    monkeypatch.setattr(
+        auth_router_mod.store,
+        "consume_auth_state",
+        lambda state: AuthAttempt(state=state, provider_id="default") if state else None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        auth_router_mod.config,
+        "AUTH_PROVIDERS",
+        RegistryLoadResult(providers=[ProviderConfig(id="default", type="oidc", audience="mlflow")], errors=[], source="legacy"),
+        raising=False,
+    )
+
+    # Identity resolution and provisioning policy (#318) run inside the callback now, so the
+    # store has to answer two questions: is this username taken, and is this identity bound.
+    # A fresh principal at a jit provider — which is what these cases describe.
+    class _Identities:
+        def __init__(self):
+            self.bound = {}
+
+        def get_username_by_identity(self, provider_id, subject):
+            return self.bound.get((provider_id, subject))
+
+        def link(self, provider_id, subject, username, **kwargs):
+            self.bound[(provider_id, subject)] = username
+            return True
+
+    monkeypatch.setattr(auth_router_mod.store, "user_identity_repo", _Identities(), raising=False)
+    monkeypatch.setattr(auth_router_mod.store, "has_user", lambda username: False, raising=False)
+    monkeypatch.setattr(auth_router_mod.store, "get_groups_for_user", lambda username: [], raising=False)
+
+
+@pytest.fixture
+def created_states(monkeypatch):
+    """Record the login attempts ``login`` starts, in place of the old cookie key."""
+    from mlflow_oidc_auth.routers import auth as auth_router_mod
+
+    recorded = []
+
+    def create(provider_id, **kwargs):
+        recorded.append({"provider_id": provider_id, **kwargs})
+        return "test_state_token"
+
+    monkeypatch.setattr(auth_router_mod.store, "create_auth_state", create, raising=False)
+    return recorded
+
+
+@pytest.fixture
+def no_attempt(monkeypatch):
+    """No in-flight attempt matches — an unknown, replayed or expired state."""
+    from mlflow_oidc_auth.routers import auth as auth_router_mod
+
+    monkeypatch.setattr(auth_router_mod.store, "consume_auth_state", lambda state: None, raising=False)

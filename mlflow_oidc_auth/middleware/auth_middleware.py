@@ -237,8 +237,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.info("Bearer user %s is in no authorized group; not provisioning (parity with interactive login)", username)
             return
 
-        # Admin is conferred from a token only when the operator has explicitly opted in.
-        is_admin = is_admin_claim and config.OIDC_TRUST_BEARER_GROUP_CLAIMS
+        # Admin is conferred from a token only when the operator has explicitly opted in *and*
+        # the asserting provider is allowed to say so (#318). Without the second half, a provider
+        # configured ``admin_source: none`` — the answer for a tenant whose group names you do
+        # not control — could still mint administrators through this path.
+        from mlflow_oidc_auth.provisioning_policy import admin_from_claims
+
+        is_admin = is_admin_claim and config.OIDC_TRUST_BEARER_GROUP_CLAIMS and admin_from_claims(provider, user_groups, config.OIDC_ADMIN_GROUP_NAME)
         display_name, display_name_error = extract_display_name(payload, source=BEARER_TOKEN_SOURCE)
         if display_name_error:
             logger.debug("Bearer provisioning of %s falling back to username as display name: %s", username, display_name_error)

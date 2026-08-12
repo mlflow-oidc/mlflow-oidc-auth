@@ -217,7 +217,7 @@ class TestTheErrorReachesTheUser:
             # imported here may not be the one its ``except`` clause names.
             raise auth_router_mod.PKCEUnsupportedError("Provider 'default' does not support the configured PKCE method 'S256'. Set OIDC_CODE_CHALLENGE to ...")
 
-        monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda: True)
+        monkeypatch.setattr(auth_router_mod, "is_oidc_configured", lambda provider_id=None: True)
         monkeypatch.setattr(auth_router_mod, "assert_pkce_supported", _unsupported)
         # A registered client has to exist, or login fails earlier for an unrelated reason.
         monkeypatch.setattr(auth_router_mod.oauth, "oidc", SimpleNamespace(authorize_redirect=_never_called), raising=False)
@@ -258,7 +258,17 @@ class TestTheErrorReachesTheUser:
         async def _no_refresh():
             return None
 
+        from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+        from mlflow_oidc_auth.repository.auth_state import AuthAttempt
+
         monkeypatch.setattr(auth_router_mod, "_call_authorize_access_token", _boom)
+        monkeypatch.setattr(auth_router_mod.store, "consume_auth_state", lambda state: AuthAttempt(state=state, provider_id="default"), raising=False)
+        monkeypatch.setattr(
+            auth_router_mod.config,
+            "AUTH_PROVIDERS",
+            RegistryLoadResult(providers=[ProviderConfig(id="default", type="oidc", audience="mlflow")], errors=[], source="legacy"),
+            raising=False,
+        )
         monkeypatch.setattr(auth_router_mod, "_refresh_oidc_jwks", _no_refresh)
         monkeypatch.setattr(auth_router_mod.oauth, "oidc", SimpleNamespace(authorize_access_token=_boom), raising=False)
 

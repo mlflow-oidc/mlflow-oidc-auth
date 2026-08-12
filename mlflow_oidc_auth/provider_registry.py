@@ -284,7 +284,6 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             f"{label}: type {provider_type!r} has no browser login flow, so 'interactive' cannot be true; "
             "its credentials are presented directly as bearer tokens"
         )
-
     allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
     if identity_binding == "email" and not allowed_email_domains:
         errors.append(
@@ -357,7 +356,11 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             provisioning=provisioning,
             group_sync=group_sync,
             group_sync_mode=group_sync_mode,
-            admin_source=entry.get("admin_source", "claims"),
+            # Defaults to ``none`` for anything but the deployment's own provider: the admin
+            # group name is deployment-wide, so a partner tenant that happens to name a group
+            # the same thing would otherwise confer administrator rights across the deployment.
+            # The operator opts in per provider, deliberately.
+            admin_source=entry.get("admin_source", "claims" if provider_id == DEFAULT_PROVIDER_ID else "none"),
             identity_binding=identity_binding,
             interactive=bool(interactive),
             allowed_email_domains=allowed_email_domains,
