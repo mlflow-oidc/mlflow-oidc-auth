@@ -24,7 +24,9 @@ def provider_carries_the_configured_scoping(monkeypatch):
 
     def resolve(token):
         cfg = middleware_module.config
-        return SimpleNamespace(id="default", audience=cfg.OIDC_AUDIENCE, issuer=cfg.OIDC_ISSUER)
+        # ``type`` matters since #314: a k8s provider takes the service-account path instead of
+        # the group gate these cases describe.
+        return SimpleNamespace(id="default", type="oidc", audience=cfg.OIDC_AUDIENCE, issuer=cfg.OIDC_ISSUER)
 
     monkeypatch.setattr(auth_module, "resolve_token_provider", resolve)
 

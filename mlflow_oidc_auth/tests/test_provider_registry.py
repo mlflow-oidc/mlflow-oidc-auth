@@ -71,6 +71,10 @@ def valid_entry(**overrides) -> dict:
         "discovery_url": f"https://{provider_id}.example.com/.well-known/openid-configuration",
     }
     entry.update(overrides)
+    if entry.get("type") == "k8s":
+        # A cluster provider carries two more requirements (#314): somewhere to get keys, and a
+        # namespace allowlist, since a service-account token has no groups claim to gate on.
+        entry.setdefault("namespace_allowlist", ["team-a"])
     return entry
 
 

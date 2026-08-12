@@ -32,6 +32,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from mlflow_oidc_auth.kubernetes import load_inline_jwks, valid_dns_label
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
@@ -54,6 +55,11 @@ GROUP_SYNC_STRATEGIES = ("additive", "authoritative")
 # Provider types whose credentials are bearer tokens verified against a JWKS. They carry the
 # extra requirements in _validate: an issuer to pin, and a key source of their own.
 TOKEN_PROVIDER_TYPES = ("oidc", "k8s")
+
+# Fields that only a Kubernetes provider may carry. They decide where signing keys come from and
+# what credential is presented to fetch them, so on any other type they are refused rather than
+# ignored (#314).
+KUBERNETES_ONLY_FIELDS = ("jwks_inline", "jwks_uri", "in_cluster", "ca_bundle_path", "namespace_allowlist")
 
 # "scim" is deliberately absent — see _validate_admin_source.
 ADMIN_SOURCES = ("claims", "none")
@@ -125,6 +131,14 @@ class ProviderConfig:
         issuer: Expected ``iss``, when known.
         discovery_url: OIDC discovery document, for ``oidc`` providers.
         client_id: OAuth client id, for ``oidc`` providers.
+        jwks_inline: Key set written into configuration, for a cluster whose JWKS cannot be
+            fetched. The only mode that needs no network at all.
+        jwks_uri: Key set URL, when it is known and discovery is not readable.
+        ca_bundle_path: CA bundle for fetching from the cluster's API server.
+        in_cluster: Fetch keys from the API server using the pod's own service-account token.
+        namespace_allowlist: Namespaces whose service accounts may be provisioned. Empty means
+            none — a service-account token carries no group claim, so nothing else narrows who
+            may become a user.
     """
 
     id: str
@@ -142,6 +156,14 @@ class ProviderConfig:
     issuer: Optional[str] = None
     discovery_url: Optional[str] = None
     client_id: Optional[str] = None
+    # Kubernetes service-account providers (#314). A cluster's JWKS is often not anonymously
+    # readable and often unreachable from wherever MLflow runs, so the keys can come from
+    # discovery, from configuration, or from the API server using the pod's own credentials.
+    jwks_inline: Optional[str] = None
+    jwks_uri: Optional[str] = None
+    ca_bundle_path: Optional[str] = None
+    in_cluster: bool = False
+    namespace_allowlist: Tuple[str, ...] = ()
 
     def has_own_key_source(self) -> bool:
         """Whether this entry names its own JWKS source rather than inheriting the flat one.
@@ -304,6 +326,17 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         # than through a public discovery document, and legacy service-account tokens have no
         # discovery document at all. #314 is where that provider learns how it sources keys, and
         # it can state its own rule then — no k8s provider can be configured before it lands.
+        if provider_type == "k8s":
+            errors.extend(_validate_kubernetes(entry, label))
+        else:
+            # These four change how keys are fetched, and _get_provider_jwks consults them before
+            # discovery_url. On an OIDC entry a pasted 'jwks_inline' would silently pin the keys
+            # forever — a revoked signing key would keep verifying tokens — and 'in_cluster' would
+            # send the pod's Kubernetes credential to a public IdP's endpoints.
+            for field in KUBERNETES_ONLY_FIELDS:
+                if entry.get(field):
+                    errors.append(f"{label}: '{field}' applies only to a 'k8s' provider, not to '{provider_type}'")
+
         if provider_type == "oidc" and (not isinstance(discovery_url, str) or not discovery_url.strip()):
             errors.append(
                 f"{label}: 'discovery_url' is required for an 'oidc' provider; without it the provider shares the "
@@ -330,6 +363,13 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             allowed_email_domains=allowed_email_domains,
             allowed_algorithms=allowed_algorithms,
             audience=audience.strip(),
+            jwks_inline=entry.get("jwks_inline") if isinstance(entry.get("jwks_inline"), (str, dict)) else None,
+            jwks_uri=entry.get("jwks_uri").strip() if isinstance(entry.get("jwks_uri"), str) and entry.get("jwks_uri").strip() else None,
+            ca_bundle_path=(
+                entry.get("ca_bundle_path").strip() if isinstance(entry.get("ca_bundle_path"), str) and entry.get("ca_bundle_path").strip() else None
+            ),
+            in_cluster=bool(entry.get("in_cluster", False)),
+            namespace_allowlist=_as_tuple(entry.get("namespace_allowlist")),
             issuer=issuer.strip() if isinstance(issuer, str) else None,
             discovery_url=discovery_url.strip() if isinstance(discovery_url, str) else None,
             client_id=client_id.strip() if isinstance(client_id, str) else None,
@@ -442,6 +482,59 @@ def _validate_algorithms(value: Any, label: str) -> Tuple[Tuple[str, ...], List[
     if errors:
         return DEFAULT_ALGORITHMS, errors
     return tuple(algorithms), []
+
+
+def _validate_kubernetes(entry: Dict[str, Any], label: str) -> List[str]:
+    """Checks that only apply to a Kubernetes service-account provider (#314).
+
+    Two, both of which are the difference between a usable provider and an open door:
+
+    * **Some key source.** Unlike an OIDC provider, a cluster's discovery document is usually not
+      anonymously readable, so ``discovery_url`` alone is not assumed — but *something* has to
+      say where the keys come from, or the provider can never verify a signature.
+    * **A namespace allowlist.** Service-account tokens carry no groups claim, so the group gate
+      that guards OIDC bearer provisioning cannot apply to them. Without an allowlist every pod
+      in the cluster that can read its own projected token becomes an MLflow user.
+    """
+    errors: List[str] = []
+
+    sources = [
+        bool(entry.get("discovery_url")),
+        bool(entry.get("jwks_inline")),
+        bool(entry.get("jwks_uri")),
+        bool(entry.get("in_cluster")),
+    ]
+    if not any(sources):
+        errors.append(
+            f"{label}: a 'k8s' provider needs a key source — one of 'discovery_url', 'jwks_uri', 'jwks_inline' or "
+            "'in_cluster' — because a cluster's discovery document is usually not readable anonymously"
+        )
+
+    if entry.get("jwks_inline"):
+        try:
+            load_inline_jwks(entry["jwks_inline"])
+        except ValueError as exc:
+            errors.append(f"{label}: {exc}")
+
+    allowlist = _as_tuple(entry.get("namespace_allowlist"))
+    if not allowlist:
+        errors.append(
+            f"{label}: 'namespace_allowlist' is required for a 'k8s' provider; a service-account token carries no group "
+            "claim, so without it every pod in the cluster that can read its own token becomes a user"
+        )
+
+    # An entry no namespace could ever equal is worse than a rejected one: it passes validation
+    # and then silently denies every pod in the namespace the operator meant to allow. Kubernetes
+    # namespaces are DNS labels, so anything else — 'Team-A', 'team_a', a whole
+    # 'system:serviceaccount:...' subject — can only ever fail to match.
+    for namespace in allowlist:
+        if not valid_dns_label(namespace):
+            errors.append(
+                f"{label}: namespace_allowlist entry {namespace!r} is not a Kubernetes namespace (a DNS label: lowercase "
+                "alphanumerics and '-', up to 63 characters), so it can never match a real token"
+            )
+
+    return errors
 
 
 def _validate_admin_source(admin_source: Any, label: str) -> List[str]:
