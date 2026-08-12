@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 
 from mlflow_oidc_auth.config_providers import config_manager
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.ownership import parse_enforcement
 from mlflow_oidc_auth.provider_registry import build_provider_registry
 
 load_dotenv()  # take environment variables from .env.
@@ -144,6 +145,12 @@ class AppConfig:
         self.OIDC_CODE_CHALLENGE = self._parse_code_challenge(_code_challenge)
 
         # Permission cache settings
+        # Whether a write from one source may overwrite a row another source owns (#319).
+        # ``report`` by default and deliberately: the guard's failure mode is lockout, so the
+        # telemetry ships a release before the enforcement and an operator can look at their own
+        # traffic before turning it on.
+        self.MANAGED_BY_ENFORCEMENT = parse_enforcement(config_manager.get("MANAGED_BY_ENFORCEMENT", "report"))
+
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
 
         # username source

@@ -81,6 +81,7 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 | `OIDC_HTTP_TIMEOUT_SECONDS` | Integer | `10` | Timeout (seconds) applied to OIDC discovery and JWKS HTTP fetches. Set lower for faster failover when the IdP is unreachable; without a timeout a hung IdP can block request threads until the OS-level TCP timeout (~2 minutes), causing cascading auth failures |
 | `OIDC_VERIFY_SSL` | Boolean | `true` | Verify the OIDC provider's TLS certificate on discovery, JWKS, and token requests. Only set to `false` for providers using self-signed certificates in a trusted network |
 | `OIDC_CODE_CHALLENGE` | String | `S256` | PKCE code-challenge method for the authorization-code flow. `S256` (or `true`/`yes`/`on`/`1`), or `none`/`off`/`false`/`no`/`0` to disable. An unrecognised value warns and falls back to `S256`. See [PKCE](#pkce) |
+| `MANAGED_BY_ENFORCEMENT` | String | `report` | What happens when one source writes a row another owns: `off`, `report` (audit only) or `enforce`. See [Row ownership](#row-ownership) |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
 | `CACHE_BACKEND` | String | `local` | Cache backend for permission and workspace caches. Options: `local` (in-process TTL cache) or `redis` (shared Redis instance). Use `redis` for multi-replica deployments where permission changes must propagate immediately across all replicas |
 | `CACHE_REDIS_URL` | String | None | Redis connection URL. Required when `CACHE_BACKEND=redis`. Example: `redis://localhost:6379/0` or `redis://:password@redis-host:6379/1` |
@@ -110,6 +111,59 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 |----------|------|---------|-------------|
 | `LOG_LEVEL` | String | `INFO` | Application log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
 | `LOGGING_LOGGER_NAME` | String | `uvicorn` | Logger name to configure. Defaults to the uvicorn logger for FastAPI compatibility |
+
+## Row ownership
+
+`managed_by` records which source a user row belongs to — `manual`, `scim`, or
+`oidc:<provider>`. `MANAGED_BY_ENFORCEMENT` decides what happens when a *different* source tries
+to write it:
+
+| Value | Behaviour |
+|---|---|
+| `off` | No evaluation at all |
+| `report` | **Default.** The conflict is audited as `user.ownership_conflict`, and the write proceeds |
+| `enforce` | The write is refused |
+
+It defaults to `report` on purpose. The failure mode of a write guard is lockout, and lockout
+cannot be repaired from inside a system that has just refused the write that would repair it —
+so the telemetry exists a release before the enforcement does. Run on `report`, look at what
+`user.ownership_conflict` events you actually get, then move to `enforce`.
+
+An administrator action is permitted in every mode and always audited. That is deliberate: an
+operator who cannot fix ownership without database access has been locked out by the thing that
+was supposed to protect them. There are two ways to do it:
+
+```bash
+# From the API, as an administrator — the decommissioned-directory case
+curl -X PATCH "$MLFLOW/api/2.0/mlflow/users/ownership" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"username": "alice@corp.example", "managed_by": "manual"}'
+```
+
+or in bulk with the CLI below, for an operator who has a shell.
+
+### Changing ownership
+
+Ownership never changes implicitly — not at startup, not when a provider's configuration
+changes, not as a side effect of a login. It is an operator action with a diff you read first:
+
+```bash
+mlflow-oidc db reconcile-ownership --url "$DB" --from-owner scim --set-owner manual
+```
+
+That prints the diff and changes nothing. Add `--apply` to write it, and `--journal FILE` to
+record the prior ownership of every row it touches:
+
+```bash
+mlflow-oidc db reconcile-ownership --url "$DB" --from-owner scim --set-owner manual --apply --journal /tmp/ownership.json
+mlflow-oidc db restore-ownership --url "$DB" --journal /tmp/ownership.json --apply
+```
+
+The dry-run diff and the applied diff come from the same query, so what you approve is what
+runs. `restore-ownership` is also a dry run without `--apply`.
+
+**This is the repair path when a source is turned off.** Point `--from-owner` at it and
+`--set-owner` at `manual`, and the rows it used to own become editable again.
 
 ## PKCE
 

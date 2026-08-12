@@ -634,7 +634,9 @@ class TestProcessOIDCCallbackFastAPI:
 
             assert username == "test@example.com"
             assert errors == []
-            mock_user_management["create_user"].assert_called_once_with(username="test@example.com", display_name="test@example.com", is_admin=False)
+            mock_user_management["create_user"].assert_called_once_with(
+                username="test@example.com", display_name="test@example.com", is_admin=False, written_by="oidc:default"
+            )
 
     @pytest.mark.asyncio
     async def test_process_callback_unauthorized_user(self, mock_request_with_session, mock_oauth, mock_config):

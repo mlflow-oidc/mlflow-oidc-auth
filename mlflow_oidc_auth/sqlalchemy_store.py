@@ -384,6 +384,8 @@ class SqlAlchemyStore:
         is_service_account: Optional[bool] = None,
         active: Optional[bool] = None,
         managed_by: Optional[str] = None,
+        written_by: Optional[str] = None,
+        admin_override: bool = False,
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
@@ -424,6 +426,8 @@ class SqlAlchemyStore:
             is_service_account=is_service_account,
             active=active,
             managed_by=managed_by,
+            written_by=written_by,
+            admin_override=admin_override,
         )
 
     def delete_user(self, username: str):
