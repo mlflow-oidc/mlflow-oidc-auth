@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.oauth import is_oidc_configured, oauth
+from mlflow_oidc_auth.oauth import PKCEUnsupportedError, assert_pkce_supported, is_oidc_configured, oauth
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name
 
@@ -302,6 +302,10 @@ async def login(request: Request):
                 logger.error("OIDC client authorize_redirect method not available")
                 raise HTTPException(status_code=500, detail="OIDC authentication not available")
 
+            # PKCE is on by default (#312). Checked here so a provider that cannot do it says so
+            # in one sentence, rather than as an unexplained ``invalid_grant`` at the exchange.
+            await assert_pkce_supported(oauth.oidc)
+
             return await oauth.oidc.authorize_redirect(  # type: ignore
                 request,
                 redirect_uri=redirect_url,
@@ -309,6 +313,13 @@ async def login(request: Request):
             )
         except HTTPException:
             raise
+        except PKCEUnsupportedError as e:
+            # The full sentence — provider id, the methods it advertises, the variable to change
+            # — goes to the log, where the operator is. ``/login`` is unauthenticated, and every
+            # other failure on this route answers with a fixed string; naming an internal
+            # registry id to an anonymous caller would be the one exception.
+            logger.error("%s", e)
+            raise HTTPException(status_code=500, detail="OIDC login is misconfigured; see the server logs")
         except Exception as e:
             logger.error(f"Failed to initiate OAuth redirect: {e}")
             raise HTTPException(status_code=500, detail="Failed to initiate OIDC login")
@@ -773,5 +784,17 @@ async def _process_oidc_callback_fastapi(request: Request, session) -> tuple[Opt
             type(e).__name__,
             str(e),
         )
+        # PKCE is on by default (#312), and a provider that silently ignored the challenge at
+        # the authorization endpoint rejects the exchange here with a bare ``invalid_grant``
+        # that names nothing. The pre-redirect check catches providers that *advertise* their
+        # methods; this covers the ones that advertise nothing, so the log still points at the
+        # one setting worth trying.
+        if config.OIDC_CODE_CHALLENGE and "invalid_grant" in str(e).lower():
+            logger.error(
+                "The token exchange was rejected with invalid_grant while PKCE is enabled (OIDC_CODE_CHALLENGE=%s). "
+                "If this provider does not support PKCE, set OIDC_CODE_CHALLENGE=none. Otherwise the usual causes are "
+                "a reused authorization code, an expired code, or a redirect_uri that differs from the one registered.",
+                config.OIDC_CODE_CHALLENGE,
+            )
         errors.append("Failed to process authentication response")
         return None, errors

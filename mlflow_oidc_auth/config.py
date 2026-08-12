@@ -17,6 +17,7 @@ See config_providers/ for detailed configuration of each provider.
 """
 
 import secrets
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -131,8 +132,15 @@ class AppConfig:
         # TLS verification for OIDC discovery/JWKS and the token endpoint. Default True;
         # only disable for providers with self-signed certs in trusted networks.
         self.OIDC_VERIFY_SSL = config_manager.get_bool("OIDC_VERIFY_SSL", default=True)
-        # PKCE code challenge method (e.g. "S256"). None disables PKCE.
-        self.OIDC_CODE_CHALLENGE = config_manager.get("OIDC_CODE_CHALLENGE", None)
+        # PKCE (RFC 7636), on by default since #312. Binding the authorization code to a
+        # per-attempt secret is what stops a code intercepted from a redirect — through a
+        # browser log, a proxy, a shared machine — from being redeemed by anyone else.
+        #
+        # Opt out with any of the disabling words below, for a provider that rejects the extra
+        # parameters. Anything else is rejected here rather than silently producing an
+        # authorization request the provider will refuse.
+        _code_challenge = config_manager.get("OIDC_CODE_CHALLENGE", "S256")
+        self.OIDC_CODE_CHALLENGE = self._parse_code_challenge(_code_challenge)
 
         # Permission cache settings
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
@@ -224,6 +232,76 @@ class AppConfig:
         self._warn_if_username_field_unusable()
         self._warn_if_group_name_unusable()
         self._warn_if_provider_registry_invalid()
+
+    #: Values that turn PKCE off. Both the words and the boolean spellings, because operators
+    #: reach for whichever their config tooling already uses and a rejected value stops the
+    #: server from starting.
+    CODE_CHALLENGE_DISABLED_VALUES = frozenset({"", "none", "off", "false", "no", "disabled", "0"})
+
+    #: Values that mean "leave it on", accepted for the same reason.
+    CODE_CHALLENGE_ENABLED_VALUES = frozenset({"true", "yes", "on", "enabled", "1"})
+
+    #: The only method that can actually be applied. RFC 7636 also defines ``plain``, but authlib
+    #: emits a challenge for S256 alone ("only S256 is supported" — ``authlib/oauth2/client.py``),
+    #: so a client configured for ``plain`` sends a request with *no* code_challenge at all.
+    #: Accepting it would report PKCE as enabled while nothing was bound to the code.
+    CODE_CHALLENGE_METHODS = ("S256",)
+
+    @classmethod
+    def _parse_code_challenge(cls, value) -> Optional[str]:
+        """Normalize ``OIDC_CODE_CHALLENGE`` into a method name, or None to disable PKCE.
+
+        Parameters:
+            value: The configured value. ``None`` means "not set", which now means S256 rather
+                than off (issue #312).
+
+        Returns:
+            ``"S256"``, ``"plain"``, or None when PKCE is disabled.
+
+        Raises:
+            ValueError: If the value is neither a known method nor a disabling word. A typo like
+                ``S265`` would otherwise be handed to the provider as a challenge method it has
+                never heard of, and the login would fail at the redirect with nothing pointing
+                back at the configuration.
+        """
+        if value is None:
+            return "S256"
+
+        normalized = str(value).strip()
+        lowered = normalized.lower()
+
+        if lowered in cls.CODE_CHALLENGE_DISABLED_VALUES:
+            # Said out loud, because an environment variable that is *set but empty* lands here
+            # too — a Helm value that rendered blank, or a compose file with a trailing "=".
+            # Without this, a deployment silently runs without PKCE while the docs say it is on
+            # by default, and nothing anywhere reports the difference.
+            logger.warning(
+                "PKCE is disabled (OIDC_CODE_CHALLENGE=%r). Authorization codes will not be bound to the login "
+                "attempt that requested them. Unset the variable to restore the S256 default.",
+                normalized,
+            )
+            return None
+
+        if lowered in cls.CODE_CHALLENGE_ENABLED_VALUES:
+            return "S256"
+
+        for method in cls.CODE_CHALLENGE_METHODS:
+            if lowered == method.lower():
+                return method
+
+        if lowered == "plain":
+            raise ValueError(
+                "OIDC_CODE_CHALLENGE=plain is not supported: the pinned authlib emits a code challenge for S256 "
+                "only, so a client configured for 'plain' sends no challenge at all and has no PKCE protection. "
+                "Use S256, or 'none' to disable PKCE deliberately."
+            )
+
+        raise ValueError(
+            f"Invalid OIDC_CODE_CHALLENGE value: {value!r}. "
+            f"Expected {', '.join(cls.CODE_CHALLENGE_METHODS)} (or one of "
+            f"{', '.join(sorted(cls.CODE_CHALLENGE_ENABLED_VALUES))}) to enable PKCE, or one of "
+            f"{', '.join(sorted(v for v in cls.CODE_CHALLENGE_DISABLED_VALUES if v))} to disable it."
+        )
 
     @staticmethod
     def _has_usable_entry(field_list) -> bool:
