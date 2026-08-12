@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 import { useProviders } from "./use-providers";
@@ -59,5 +59,32 @@ describe("useProviders", () => {
     const { result } = renderHook(() => useProviders("/api"));
 
     expect(result.current).toEqual({ providers: [], loading: true });
+  });
+
+  it("gives up on a request that hangs", async () => {
+    // A proxy that accepts /providers and then holds the connection open. The login button is
+    // gated on `loading`, so without a timeout the page would offer nothing to click, ever.
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(new Error("aborted")),
+            );
+          }),
+      ),
+    );
+
+    const { result } = renderHook(() => useProviders("/api"));
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(result.current).toEqual({ providers: [], loading: false });
+    vi.useRealTimers();
   });
 });

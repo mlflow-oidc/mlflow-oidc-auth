@@ -57,14 +57,19 @@ export async function fetchProviders(
  * that browsers resolve off-origin. That is exactly what the server emits, and it means no
  * response to this endpoint can point a login button at another host, whatever produced it.
  *
- * The `typeof` checks are not ceremony: these values go into an attribute and a React key, and
- * a non-string would be stringified rather than rejected.
+ * The `typeof` checks are not ceremony. `id` and `login_url` become an attribute and a React
+ * key, where a non-string would be stringified rather than rejected — but `display_name` is
+ * rendered as a React *child*, and an object there throws during render and takes the whole
+ * login page down with it. Absent is fine: the label falls back to `id`.
  */
 function isRenderable(provider: IdentityProvider): boolean {
   return (
     Boolean(provider) &&
     typeof provider.id === "string" &&
     provider.id.length > 0 &&
+    (provider.display_name === undefined ||
+      provider.display_name === null ||
+      typeof provider.display_name === "string") &&
     typeof provider.login_url === "string" &&
     provider.login_url.startsWith("/") &&
     !provider.login_url.startsWith("//")

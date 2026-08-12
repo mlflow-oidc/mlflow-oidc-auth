@@ -120,6 +120,50 @@ describe("fetchProviders", () => {
     await expect(fetchProviders("/api")).resolves.toEqual([]);
   });
 
+  it("drops an entry whose label is not text", async () => {
+    // `display_name` is rendered as a React child, so an object there throws during render and
+    // takes the login page down. Dropping the entry leaves a page that still works.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          ok({
+            providers: [
+              {
+                id: "entra",
+                display_name: { en: "Entra ID" },
+                type: "oidc",
+                login_url: "/login/entra",
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    await expect(fetchProviders("/api")).resolves.toEqual([]);
+  });
+
+  it("keeps an entry with no label at all", async () => {
+    // The picker falls back to the id, so a missing label is a button with words on it.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          ok({
+            providers: [
+              { id: "entra", type: "oidc", login_url: "/login/entra" },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const providers = await fetchProviders("/api");
+
+    expect(providers.map((provider) => provider.id)).toEqual(["entra"]);
+  });
+
   it("drops entries whose fields are not strings", async () => {
     vi.stubGlobal(
       "fetch",

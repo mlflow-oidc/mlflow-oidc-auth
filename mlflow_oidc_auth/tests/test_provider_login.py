@@ -605,6 +605,29 @@ class TestTheLoginUrlsDoNotComeFromTheHostHeader:
         assert listed[0]["login_url"] == "/mlflow/login/entra"
 
     @pytest.mark.asyncio
+    async def test_a_protocol_relative_prefix_is_discarded(self, two_providers):
+        """``root_path`` is not always the mount — ``X-Forwarded-Prefix`` also sets it.
+
+        ``//evil.example`` starts with a slash, so it survives the proxy middleware's
+        normalisation, and concatenating it would produce a protocol-relative URL that a browser
+        resolves off-origin. A discarded prefix is a broken link; an honoured one is a login
+        somewhere else.
+        """
+        import json
+
+        listed = json.loads((await auth_router_mod.providers(DummyRequest(root_path="//evil.example"))).body)["providers"]
+
+        assert all(entry["login_url"] == f"/login/{entry['id']}" for entry in listed)
+
+    @pytest.mark.asyncio
+    async def test_a_prefix_that_is_not_a_path_is_discarded(self, two_providers):
+        import json
+
+        listed = json.loads((await auth_router_mod.providers(DummyRequest(root_path="evil.example"))).body)["providers"]
+
+        assert all(entry["login_url"].startswith("/login/") for entry in listed)
+
+    @pytest.mark.asyncio
     async def test_the_response_is_not_cacheable(self, two_providers):
         response = await auth_router_mod.providers(DummyRequest())
 

@@ -371,10 +371,18 @@ def _login_path(request: Request, path: str) -> str:
     is an origin an attacker can choose. A path is same-origin by construction and needs no
     configuration to be correct.
 
-    ``root_path`` is included so a deployment mounted under a prefix gets a URL that resolves;
-    Starlette sets it from the mount, not from a header.
+    ``root_path`` is included so a deployment mounted under a prefix gets a URL that resolves.
+    It is dropped when it does not look like a path, because it is not always the mount:
+    ``ProxyHeadersMiddleware`` also sets it from ``X-Forwarded-Prefix``, which is trusted from
+    any client while ``TRUSTED_PROXIES`` is empty. A value beginning with ``//`` would otherwise
+    make this return a protocol-relative URL — ``//evil.example/login/entra`` is off-origin the
+    moment a browser resolves it, which is the one thing this function promises cannot happen.
+    A prefix that has to be discarded means a broken link, not a login somewhere else.
     """
-    return f"{request.scope.get('root_path', '').rstrip('/')}{path}"
+    root_path = request.scope.get("root_path", "") or ""
+    if not root_path.startswith("/") or root_path.startswith("//"):
+        root_path = ""
+    return f"{root_path.rstrip('/')}{path}"
 
 
 @auth_router.get(f"{LOGIN}/{{provider_id}}")
