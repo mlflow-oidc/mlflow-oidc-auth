@@ -349,28 +349,32 @@ async def providers(request: Request):
                     "id": provider.id,
                     "display_name": provider.display_name or provider.id,
                     "type": provider.type,
-                    "login_url": _absolute_path(request, f"{LOGIN}/{provider.id}"),
+                    "login_url": _login_path(request, f"{LOGIN}/{provider.id}"),
                 }
                 for provider in config.AUTH_PROVIDERS.interactive_providers()
             ]
-        }
+        },
+        # Unauthenticated, and the browser turns each entry into a button it will navigate to.
+        # A shared cache in front of the deployment must not be able to hand one visitor's
+        # response to another.
+        headers={"Cache-Control": "no-store"},
     )
 
 
-def _absolute_path(request: Request, path: str) -> str:
-    """Join ``path`` onto the deployment's own base URL.
+def _login_path(request: Request, path: str) -> str:
+    """Build the login URL for a provider as a path on this deployment.
 
-    Prefers the configured redirect URI's origin over ``request.base_url``, which is the ``Host``
-    header. These URLs are the buttons a login page offers, on an unauthenticated and cacheable
-    endpoint: one poisoned response would otherwise send every later visitor to an attacker's
-    host to authenticate.
+    Deliberately origin-less. The alternative — an absolute URL — has to get its origin from
+    somewhere, and the only candidate available per-request is the ``Host`` header, which any
+    client can set and which a proxy can forward from any client. These strings become the
+    ``href`` of the sign-in button on an unauthenticated page, so an origin taken from a request
+    is an origin an attacker can choose. A path is same-origin by construction and needs no
+    configuration to be correct.
+
+    ``root_path`` is included so a deployment mounted under a prefix gets a URL that resolves;
+    Starlette sets it from the mount, not from a header.
     """
-    configured = getattr(config, "OIDC_REDIRECT_URI", None)
-    if configured:
-        parsed = urlparse(configured)
-        if parsed.scheme and parsed.netloc:
-            return f"{parsed.scheme}://{parsed.netloc}{path}"
-    return str(request.base_url).rstrip("/") + path
+    return f"{request.scope.get('root_path', '').rstrip('/')}{path}"
 
 
 @auth_router.get(f"{LOGIN}/{{provider_id}}")

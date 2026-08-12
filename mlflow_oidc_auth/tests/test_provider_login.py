@@ -26,10 +26,11 @@ OKTA = "https://okta.invalid"
 
 
 class DummyRequest:
-    def __init__(self, **query):
+    def __init__(self, root_path="", **query):
         self.session = {}
         self.base_url = "http://testserver"
         self.query_params = _Query(query)
+        self.scope = {"root_path": root_path}
 
 
 class _Query(dict):
@@ -563,10 +564,14 @@ class TestTheExchangeNeverBorrowsAnotherProvidersClient:
 
 
 class TestTheLoginUrlsDoNotComeFromTheHostHeader:
-    """They are the buttons a login page offers, on an unauthenticated, cacheable endpoint."""
+    """They are the buttons a login page offers, on an unauthenticated endpoint.
+
+    They carry no origin at all. An absolute URL would have to take its origin from the request,
+    and the request's origin is the ``Host`` header — which the client sets.
+    """
 
     @pytest.mark.asyncio
-    async def test_the_configured_origin_wins(self, two_providers, monkeypatch):
+    async def test_the_login_url_is_a_path_with_no_origin(self, two_providers, monkeypatch):
         import json
 
         monkeypatch.setattr(auth_router_mod.config, "OIDC_REDIRECT_URI", "https://mlflow.corp.example/callback", raising=False)
@@ -575,14 +580,32 @@ class TestTheLoginUrlsDoNotComeFromTheHostHeader:
 
         listed = json.loads((await auth_router_mod.providers(request)).body)["providers"]
 
-        assert listed[0]["login_url"] == "https://mlflow.corp.example/login/entra"
+        assert listed[0]["login_url"] == "/login/entra"
 
     @pytest.mark.asyncio
-    async def test_it_falls_back_to_the_request_when_nothing_is_configured(self, two_providers, monkeypatch):
+    async def test_a_hostile_host_header_cannot_reach_the_button(self, two_providers, monkeypatch):
         import json
 
         monkeypatch.setattr(auth_router_mod.config, "OIDC_REDIRECT_URI", None, raising=False)
+        request = DummyRequest()
+        request.base_url = "http://evil.example"
 
-        listed = json.loads((await auth_router_mod.providers(DummyRequest())).body)["providers"]
+        listed = json.loads((await auth_router_mod.providers(request)).body)["providers"]
 
-        assert listed[0]["login_url"] == "http://testserver/login/entra"
+        assert all("evil.example" not in entry["login_url"] for entry in listed)
+        assert all(entry["login_url"].startswith("/") for entry in listed)
+
+    @pytest.mark.asyncio
+    async def test_a_mounted_deployment_keeps_its_prefix(self, two_providers):
+        """``root_path`` comes from the mount, not from a header, so it is safe to include."""
+        import json
+
+        listed = json.loads((await auth_router_mod.providers(DummyRequest(root_path="/mlflow"))).body)["providers"]
+
+        assert listed[0]["login_url"] == "/mlflow/login/entra"
+
+    @pytest.mark.asyncio
+    async def test_the_response_is_not_cacheable(self, two_providers):
+        response = await auth_router_mod.providers(DummyRequest())
+
+        assert response.headers["cache-control"] == "no-store"
