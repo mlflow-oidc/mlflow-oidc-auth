@@ -25,7 +25,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Optional
 
-import pytest
 from authlib.jose import JsonWebKey, jwt
 
 
@@ -121,9 +120,15 @@ def hmac_token(claims: dict, kid: str, secret: bytes, algorithm: str = "HS256") 
     return (header + b"." + payload + b"." + signature).decode()
 
 
-#: Failures that mean the *test* is broken, not that the defence worked. A rejection case that
-#: ends in one of these proves nothing: the token never reached the property under test.
-PROGRAMMING_ERRORS = (AttributeError, TypeError, NameError, ImportError, IndexError, KeyError)
+#: Failures that mean the *test* is broken, or that a guard inside it fired — not that the
+#: defence worked. A rejection case ending in one of these proves nothing: either the token never
+#: reached the property under test, or something the case was watching for actually happened.
+#:
+#: ``AssertionError`` is here for the second reason. A guard that signals a violation by
+#: asserting — the monkeypatched ``requests.get`` that fires if validation dereferences an
+#: attacker-supplied ``jku``, below — would otherwise be swallowed as "the token was rejected",
+#: reporting an SSRF as a pass.
+PROGRAMMING_ERRORS = (AssertionError, AttributeError, TypeError, NameError, ImportError, IndexError, KeyError)
 
 
 @contextmanager
@@ -213,9 +218,23 @@ class TokenAdversarySuite:
         with rejects():
             verify(trusted.mint(iat=now - 7200, exp=now - 3600))
 
-    def test_an_attacker_supplied_key_url_is_not_honoured(self, verify, foreign, trusted):
-        """``jku``/``x5u`` naming the attacker's own key set. Fetching it would both trust the
-        attacker's keys and turn the verifier into an SSRF gadget."""
+    def test_an_attacker_supplied_key_url_is_not_honoured(self, verify, foreign, trusted, monkeypatch):
+        """``jku``/``x5u`` naming the attacker's own key set.
+
+        Rejection is not enough on its own: a verifier that dereferences the URL, finds no usable
+        key and *then* rejects has still made an outbound request to an attacker-chosen host on
+        every unauthenticated request, which is the SSRF half of the problem. So the fetch is
+        guarded as well — the guard raises ``AssertionError``, which ``rejects()`` surfaces
+        rather than counting as a refusal.
+        """
+        import requests
+
+        def explode(*args, **kwargs):  # pragma: no cover - the point is that it is not reached
+            raise AssertionError(f"validation fetched an attacker-supplied URL: {args} {kwargs}")
+
+        monkeypatch.setattr(requests, "get", explode, raising=False)
+        monkeypatch.setattr(requests, "request", explode, raising=False)
+
         for header in ("jku", "x5u"):
             # In the signed header, so the signature is genuine under the attacker's key and the
             # only question left is whether the verifier follows the URL.

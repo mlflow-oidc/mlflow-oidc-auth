@@ -78,17 +78,40 @@ class TestStrippedIssuer:
 
 class TestARepeatedParameter:
     """``?iss=honest&iss=attacker``. A caller reading the query string with ``getlist`` — the
-    natural way to notice a duplicate — hands this a list, and it has to answer with the error
-    the caller is catching rather than an ``AttributeError`` that escapes past it."""
+    natural way to notice a duplicate — hands this a sequence, and the *length* decides.
 
-    @pytest.mark.parametrize("returned", [[HONEST, ATTACKER], [ATTACKER], [], ("a", "b"), 42, {"iss": HONEST}])
-    def test_a_non_string_iss_is_refused_as_a_mismatch(self, returned):
+    Deciding on the type instead would refuse the empty list that every provider omitting ``iss``
+    produces, and break every login against it.
+    """
+
+    @pytest.mark.parametrize("returned", [[HONEST, ATTACKER], [ATTACKER, HONEST], (HONEST, HONEST), [HONEST, HONEST]])
+    def test_more_than_one_issuer_is_refused(self, returned):
+        """Two values name two issuers, so the response can be attributed to neither — including
+        when both happen to be the expected one, since the caller cannot tell which the provider
+        meant."""
         with pytest.raises(IssuerMismatchError):
             validate_response_issuer(returned, HONEST, iss_parameter_supported=True)
 
-    def test_it_is_refused_whatever_the_metadata_says(self):
+    def test_a_single_value_is_the_ordinary_case(self):
+        validate_response_issuer([HONEST], HONEST, iss_parameter_supported=True)
+        validate_response_issuer((HONEST,), HONEST, iss_parameter_supported=False)
+
+    def test_a_single_wrong_value_is_still_a_mismatch(self):
         with pytest.raises(IssuerMismatchError):
-            validate_response_issuer([HONEST], HONEST, iss_parameter_supported=False)
+            validate_response_issuer([ATTACKER], HONEST, iss_parameter_supported=True)
+
+    def test_an_empty_sequence_is_the_absent_case(self):
+        """What ``getlist`` returns when the parameter is not there at all. Refusing it would
+        break every login to a provider that has not implemented RFC 9207."""
+        validate_response_issuer([], HONEST, iss_parameter_supported=False)
+
+        with pytest.raises(IssuerMismatchError):
+            validate_response_issuer([], HONEST, iss_parameter_supported=True)
+
+    @pytest.mark.parametrize("returned", [42, {"iss": HONEST}, object()])
+    def test_a_value_that_is_neither_a_string_nor_a_sequence_is_refused(self, returned):
+        with pytest.raises(IssuerMismatchError):
+            validate_response_issuer(returned, HONEST, iss_parameter_supported=True)
 
 
 class TestProvidersThatDoNotImplementRFC9207:
@@ -132,6 +155,8 @@ class TestTheDecisionIsTotal:
             "https://honest.idp.invalid?a=b",
             [HONEST],
             [HONEST, ATTACKER],
+            [],
+            (HONEST,),
             42,
         ],
     )
@@ -146,11 +171,18 @@ class TestTheDecisionIsTotal:
         # The rule, stated independently of the implementation: a response is accepted only if it
         # names the expected issuer exactly, or names no issuer at all against a provider that
         # never sends one. "No issuer at all" covers absent, empty and whitespace alike.
-        identifies_an_issuer = isinstance(returned, str) and bool(returned.strip())
-        if returned is not None and not isinstance(returned, str):
-            # Not an issuer and not "no issuer" either: unattributable, so never accepted.
+        # A sequence is decided by its length before anything else: none is the absent case, one
+        # is that element, more than one is unattributable.
+        if isinstance(returned, (list, tuple)):
+            if len(returned) > 1:
+                assert accepted is False
+                return
+            returned = returned[0] if returned else None
+        elif returned is not None and not isinstance(returned, str):
             assert accepted is False
             return
+
+        identifies_an_issuer = isinstance(returned, str) and bool(returned.strip())
         expected_to_be_accepted = (identifies_an_issuer and returned == HONEST) or (not identifies_an_issuer and not supported)
 
         assert accepted is expected_to_be_accepted

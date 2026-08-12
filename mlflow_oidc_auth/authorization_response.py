@@ -39,8 +39,9 @@ def validate_response_issuer(
     """Check the ``iss`` of an authorization response against the issuer that started it.
 
     Parameters:
-        returned_iss: The ``iss`` query parameter on the callback, or None when absent. A value
-            that is not a string — a list, from a repeated parameter — is refused.
+        returned_iss: The ``iss`` query parameter on the callback, or None when absent. A
+            sequence is accepted for callers reading the query string with ``getlist``: empty is
+            the absent case, one element is that element, and more than one is refused.
         expected_iss: The issuer recorded when the login began. None when the deployment has no
             record of it — which is every deployment before #316 gives transactions a home.
         iss_parameter_supported: Whether the provider's discovery metadata advertises
@@ -68,14 +69,28 @@ def validate_response_issuer(
     if expected_iss is None:
         return
 
-    # A query string can repeat a parameter — ``?iss=honest&iss=attacker`` — so a caller reading
-    # it with ``getlist`` hands this a list. Refused as the documented error rather than left to
-    # raise ``AttributeError`` on the ``.strip()`` below: that would escape a caller catching
-    # only ``IssuerMismatchError``, turning the mix-up defence into an unhandled 500.
+    # A caller reading the query string with ``getlist`` — the only way to notice a repeated
+    # ``?iss=honest&iss=attacker`` — hands this a sequence, and its *length* is what decides:
+    # none means the parameter was absent, one is the ordinary case, and two or more is a
+    # response that names several issuers and so can be attributed to none of them. Deciding on
+    # the type instead would refuse the empty list every provider that omits ``iss`` produces,
+    # and break every login against it.
+    if isinstance(returned_iss, (list, tuple)):
+        if len(returned_iss) > 1:
+            raise IssuerMismatchError(
+                f"The authorization response carried {len(returned_iss)} 'iss' parameters; a response naming more "
+                "than one issuer cannot be attributed to any of them."
+            )
+        returned_iss = returned_iss[0] if returned_iss else None
+
+    # Anything else that is not a string is not an issuer and not the absence of one. Refused as
+    # the documented error rather than left to raise ``AttributeError`` on the ``.strip()``
+    # below, which would escape a caller catching only ``IssuerMismatchError`` and turn the
+    # mix-up defence into an unhandled 500.
     if returned_iss is not None and not isinstance(returned_iss, str):
         raise IssuerMismatchError(
-            f"The authorization response carried a non-string 'iss' ({type(returned_iss).__name__}); a response that "
-            "names more than one issuer, or none in a readable form, cannot be attributed to one."
+            f"The authorization response carried an 'iss' that is not a string ({type(returned_iss).__name__}); "
+            "it cannot be compared with the issuer this login started with."
         )
 
     # ``?iss=`` arrives as an empty string and ``?iss=%20`` as whitespace; neither identifies an
