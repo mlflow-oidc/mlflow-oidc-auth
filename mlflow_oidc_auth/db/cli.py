@@ -174,8 +174,13 @@ def reconcile_ownership(url: str, set_owner: str, from_owner: str, username: str
 
             if journal:
                 # 'x' rather than 'w': two runs pointed at one path would otherwise leave only
-                # the second recoverable, and the first run's prior ownership gone.
-                with open(journal, "x", encoding="utf-8") as handle:
+                # the second recoverable, and the first run's prior ownership gone. Reported as
+                # an operator error, because this command is read during a repair.
+                try:
+                    handle = open(journal, "x", encoding="utf-8")
+                except FileExistsError:
+                    raise click.ClickException(f"{journal} already exists, and overwriting it would discard the prior run's rollback. Choose another path.")
+                with handle:
                     _json.dump(
                         {
                             "recorded_at": datetime.now(timezone.utc).isoformat(),

@@ -21,8 +21,9 @@ outage from the other direction. So enforcement has three states and defaults to
     The refusal is real.
 
 **The break-glass rule.** An explicit administrator action is always permitted, in every mode,
-and is always audited. An operator who cannot repair ownership from the admin UI has only the
-database left, and a guard that produces that state has failed at its job rather than done it.
+and is always audited: ``PATCH /api/2.0/mlflow/users/ownership`` hands a row to another source,
+and ``mlflow-oidc db reconcile-ownership`` does it in bulk. A guard whose only recovery needs
+database access has produced the state it exists to prevent.
 """
 
 from dataclasses import dataclass

@@ -130,7 +130,17 @@ so the telemetry exists a release before the enforcement does. Run on `report`, 
 `user.ownership_conflict` events you actually get, then move to `enforce`.
 
 An administrator action is permitted in every mode and always audited. That is deliberate: an
-operator who cannot fix ownership from the admin UI is left with the database.
+operator who cannot fix ownership without database access has been locked out by the thing that
+was supposed to protect them. There are two ways to do it:
+
+```bash
+# From the API, as an administrator — the decommissioned-directory case
+curl -X PATCH "$MLFLOW/api/2.0/mlflow/users/ownership" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"username": "alice@corp.example", "managed_by": "manual"}'
+```
+
+or in bulk with the CLI below, for an operator who has a shell.
 
 ### Changing ownership
 

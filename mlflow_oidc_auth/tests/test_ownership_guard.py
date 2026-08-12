@@ -16,6 +16,9 @@ from click.testing import CliRunner
 
 from mlflow_oidc_auth.db.cli import commands
 from mlflow_oidc_auth.ownership import Enforcement, evaluate_write, parse_enforcement
+from mlflow_oidc_auth.routers._prefix import USERS_ROUTER_PREFIX
+
+OWNERSHIP_ROUTE = f"{USERS_ROUTER_PREFIX}/ownership"
 
 PASSWORD = "ownership-token"  # not a credential: only ever seeded into a tmp_path database
 
@@ -417,3 +420,83 @@ class TestTheReconcileCommandRefusesFootguns:
         assert result.exit_code == 0, result.output
         assert store.get_user_profile("a@example.com").managed_by == "oidc:entra", "a newer decision was reverted"
         assert "left alone" in result.output
+
+
+class TestRepairFromTheAdminApi:
+    """The break-glass path an operator can actually reach.
+
+    A guard whose only recovery needs shell and database access has produced the state it exists
+    to prevent, so the promise in the module docstring has to be backed by a route.
+    """
+
+    @pytest.fixture
+    def client(self, tmp_path, monkeypatch):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        import mlflow_oidc_auth.routers.users as users_router
+        import mlflow_oidc_auth.repository.user as user_repo
+        from mlflow_oidc_auth.dependencies import check_admin_permission
+        from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+
+        store = SqlAlchemyStore()
+        store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("locked@example.com", PASSWORD, "Locked Out", is_admin=True)
+        store.user_repo.update("locked@example.com", managed_by="scim")
+
+        monkeypatch.setattr(users_router, "store", store)
+        monkeypatch.setattr(user_repo.config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
+
+        app = FastAPI()
+        app.include_router(users_router.users_router)
+        app.dependency_overrides[check_admin_permission] = lambda: "keeper@example.com"
+
+        with TestClient(app) as test_client:
+            yield test_client, store
+        store.engine.dispose()
+
+    def test_an_administrator_can_hand_a_row_back_to_manual(self, client):
+        """The decommissioned-directory case, without touching the database."""
+        test_client, store = client
+
+        response = test_client.patch(OWNERSHIP_ROUTE, json={"username": "locked@example.com", "managed_by": "manual"})
+
+        assert response.status_code == 200, response.text
+        assert response.json()["previous"] == "scim"
+        assert store.get_user_profile("locked@example.com").managed_by == "manual"
+
+    def test_and_the_row_is_writable_again_afterwards(self, client):
+        test_client, store = client
+        test_client.patch(OWNERSHIP_ROUTE, json={"username": "locked@example.com", "managed_by": "manual"})
+
+        store.update_user(username="locked@example.com", is_admin=True, written_by="oidc:entra")
+
+        assert store.get_user_profile("locked@example.com").is_admin is True
+
+    @pytest.mark.parametrize("owner", ["scmi", "", "SCIM", "oidc:", "'; drop table users; --"])
+    def test_an_owner_no_source_presents_is_refused(self, client, owner):
+        test_client, store = client
+
+        response = test_client.patch(OWNERSHIP_ROUTE, json={"username": "locked@example.com", "managed_by": owner})
+
+        assert response.status_code == 400
+        assert store.get_user_profile("locked@example.com").managed_by == "scim"
+
+    def test_an_unknown_user_is_404(self, client):
+        test_client, _ = client
+
+        response = test_client.patch(OWNERSHIP_ROUTE, json={"username": "nobody@example.com", "managed_by": "manual"})
+
+        assert response.status_code == 404
+
+    def test_the_change_is_audited_with_the_administrator(self, client, monkeypatch):
+        test_client, _ = client
+        events = []
+        monkeypatch.setattr("mlflow_oidc_auth.routers.users.emit_audit_event", lambda event, **kwargs: events.append((event, kwargs)))
+
+        test_client.patch(OWNERSHIP_ROUTE, json={"username": "locked@example.com", "managed_by": "manual"})
+
+        assert [event for event, _ in events] == ["user.ownership_set"]
+        assert events[0][1]["actor"] == "keeper@example.com"
+        assert events[0][1]["detail"] == {"from": "scim", "to": "manual"}

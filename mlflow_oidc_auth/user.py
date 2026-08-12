@@ -4,6 +4,7 @@ import string
 from typing import Optional
 
 from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 
 from mlflow_oidc_auth.store import store
 
@@ -40,9 +41,12 @@ def create_user(
         )
         return False, f"User {user.username} (ID: {user.id}) already exists"
     except MlflowException as exc:
-        if "is managed by" in str(exc):
-            # An ownership refusal is not "this user does not exist" — creating them instead
-            # would report RESOURCE_ALREADY_EXISTS and bury the real reason.
+        # Only "there is no such user" means "go create them". Every other refusal — an
+        # ownership conflict (#319), the last-active-admin guard, a validation error — is a real
+        # answer, and falling through to create would re-report it as RESOURCE_ALREADY_EXISTS
+        # with the actual reason left in the log. Keyed on the error code rather than the
+        # message, so rewording an exception cannot quietly restore that.
+        if exc.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
             raise
         password = generate_token()
         user = store.create_user(

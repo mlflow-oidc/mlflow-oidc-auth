@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -34,6 +35,7 @@ users_router = APIRouter(
 
 USERS_ROOT = ""
 CREATE_ACCESS_TOKEN = "/access-token"
+USER_OWNERSHIP = "/ownership"
 CURRENT_USER = "/current"
 USERNAME = "/{username}"
 
@@ -272,6 +274,59 @@ async def create_new_user(
     except Exception as e:
         logger.error(f"Error creating user: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create user")
+
+
+@users_router.patch(
+    USER_OWNERSHIP,
+    summary="Change which source owns a user",
+    description="Sets a user's managed_by. Admins only. This is the break-glass path when a directory is decommissioned.",
+)
+async def set_user_ownership(
+    username: str = Body(..., description="The user whose ownership is being changed"),
+    managed_by: str = Body(..., description="The new owner: 'manual', 'scim', or 'oidc:<provider-id>'"),
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """Hand a user row to a different source (issue #319).
+
+    The guard's whole failure mode is lockout, and lockout is only survivable if an
+    administrator can undo it *without* database access. That is what this is: an explicit,
+    audited administrator write, permitted in every enforcement mode.
+
+    The common case is a directory being decommissioned — its rows are set back to ``manual``
+    and become editable again. ``mlflow-oidc db reconcile-ownership`` does the same thing in
+    bulk, for an operator who does have a shell.
+
+    Parameters:
+        username: The user whose ownership is being changed.
+        managed_by: The new owner.
+        admin_username: The authenticated administrator (injected).
+
+    Returns:
+        JSONResponse: What changed.
+
+    Raises:
+        HTTPException: 400 if the owner is not one a source presents, 404 if there is no such
+            user.
+    """
+    if not re.fullmatch(r"manual|scim|oidc:[A-Za-z0-9._-]+", managed_by or ""):
+        raise HTTPException(status_code=400, detail="managed_by must be 'manual', 'scim', or 'oidc:<provider-id>'")
+
+    try:
+        store.get_user_profile(username)
+    except MlflowException:
+        raise HTTPException(status_code=404, detail=f"User {username} not found")
+
+    previous = store.get_user_profile(username).managed_by
+    store.update_user(username=username, managed_by=managed_by, written_by="manual", admin_override=True)
+    emit_audit_event(
+        "user.ownership_set",
+        actor=admin_username,
+        resource_type="user",
+        resource_id=username,
+        detail={"from": previous, "to": managed_by},
+    )
+    logger.info("Administrator %s set ownership of %s from %s to %s", admin_username, username, previous, managed_by)
+    return JSONResponse(content={"username": username, "managed_by": managed_by, "previous": previous}, status_code=200)
 
 
 @users_router.delete(
