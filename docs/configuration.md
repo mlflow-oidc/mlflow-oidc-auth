@@ -10,7 +10,7 @@ The application is configured through environment variables, `.env` files, or pl
 |----------|------|---------|-------------|
 | `OIDC_DISCOVERY_URL` | String | *Required* | OIDC discovery endpoint URL (e.g., `https://idp.example.com/.well-known/openid-configuration`) |
 | `OIDC_CLIENT_ID` | String | *Required* | Client ID registered with your OIDC provider |
-| `OIDC_CLIENT_SECRET` | String | *Required* | Client secret for your OIDC application |
+| `OIDC_CLIENT_SECRET` | String | *Required unless PKCE* | Client secret for your OIDC application. Omit it for a public client, which PKCE authenticates instead — see [PKCE](#pkce) |
 | `OIDC_REDIRECT_URI` | String | Auto-detected | Redirect URI for the OIDC callback (`/callback`). If not set, calculated dynamically from proxy headers, which works correctly behind reverse proxies |
 | `OIDC_SCOPE` | String | `openid,email,profile` | Comma-separated list of OIDC scopes to request |
 | `OIDC_AUDIENCE` | String | None | Expected JWT `aud` claim value (e.g., your client ID or API identifier). When set, bearer tokens are rejected if the `aud` claim doesn't match. Recommended for production to prevent token confusion attacks |
@@ -212,6 +212,20 @@ a provider that genuinely offers only `plain`, set `none` so the state is explic
 > single-use and short-lived, but `LOG_LEVEL=DEBUG` is not a good idea in production for this
 > reason among others.
 
+### Public clients
+
+A **public client** is one the provider issues without a client secret, because there is nowhere
+to keep one. Leave `OIDC_CLIENT_SECRET` unset and the client registers without it; PKCE is then
+what authenticates the token exchange.
+
+The secret is not merely optional in that case — it is left out of the registration entirely. An
+empty-but-present secret would make authlib send a blank credential to the token endpoint, which
+providers reject as `invalid_client`.
+
+The two cannot both be missing. A provider configured with neither a client secret nor PKCE has
+nothing to authenticate its token request with, so it is refused at registration with a log line
+naming it, and the other providers carry on.
+
 ## Sessions
 
 Browser sessions are **server-side**: a row in the `auth_sessions` table of the auth database.
@@ -283,6 +297,16 @@ MLflow natively supports environment variables for server configuration. These a
 OIDC_DISCOVERY_URL=https://your-idp.example.com/.well-known/openid-configuration
 OIDC_CLIENT_ID=mlflow-dev
 OIDC_CLIENT_SECRET=dev-secret
+SECRET_KEY=dev-not-for-production
+```
+
+or, for a public client that has no client secret — PKCE is what authenticates the token
+exchange, and it is on by default:
+
+```bash
+# .env file
+OIDC_DISCOVERY_URL=https://your-idp.example.com/.well-known/openid-configuration
+OIDC_CLIENT_ID=mlflow-dev-public
 SECRET_KEY=dev-not-for-production
 ```
 
