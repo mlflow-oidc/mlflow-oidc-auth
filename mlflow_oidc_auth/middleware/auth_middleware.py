@@ -7,9 +7,11 @@ Authorization (what the user can do) is handled by RBACMiddleware.
 """
 
 from typing import Optional, Tuple
+import asyncio
 import base64
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from cachetools import TTLCache
 from fastapi import Request, Response
@@ -30,6 +32,19 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
 
 logger = get_logger()
+
+# Basic auth used to run synchronously on the ASGI event loop, which limited each worker to one
+# database/hash verification at a time while also blocking every unrelated request (issue #244).
+# The single-thread executor keeps that per-process concurrency bound when offloading: legacy
+# scrypt hashes are CPU-intensive, and an unauthenticated caller must not be able to fan out
+# enough concurrent verifications to exhaust the database pool.
+_BASIC_AUTH_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlflow-oidc-basic-auth")
+
+
+def _authenticate_basic_auth_sync(username: str, password: str) -> bool:
+    """Resolve the lazy store and verify one basic-auth credential in a worker thread."""
+    return store.authenticate_user(username, password)
+
 
 # Why an authenticated-looking request was turned away. Reported separately because a deleted
 # account and a deactivated one are different operational events, and an operator reading the
@@ -147,8 +162,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
             username, password = decoded_credentials.split(":", 1)
 
-            # Authenticate against store
-            if store.authenticate_user(username.lower(), password):
+            # Store initialization, SQLAlchemy, and password verification are synchronous. Keep
+            # them off the ASGI event loop; the dedicated executor preserves the previous
+            # one-verification-per-process bound.
+            if await asyncio.get_running_loop().run_in_executor(
+                _BASIC_AUTH_EXECUTOR,
+                _authenticate_basic_auth_sync,
+                username.lower(),
+                password,
+            ):
                 logger.debug(f"User {username} authenticated via basic auth")
                 return True, username.lower(), ""
             else:

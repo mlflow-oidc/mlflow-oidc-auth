@@ -9,11 +9,14 @@ This module tests authentication middleware behavior including:
 - ASGI scope injection for WSGI compatibility
 """
 
+import threading
+
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi import Response
 from fastapi.responses import RedirectResponse
 
+from mlflow_oidc_auth.middleware import auth_middleware as middleware_module
 from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
 
 
@@ -114,6 +117,31 @@ class TestAuthMiddleware:
             assert username is None
             assert error == "Invalid basic auth credentials"
             mock_store.authenticate_user.assert_called_once_with("invalid", "invalid")
+
+    @pytest.mark.asyncio
+    async def test_authenticate_basic_auth_offloads_store_lookup(self, auth_middleware, mock_store):
+        """The synchronous database/hash path must run on the worker thread, not the event loop."""
+        verifying_threads = []
+
+        def record_thread(username, password):
+            verifying_threads.append(threading.current_thread())
+            return True
+
+        mock_store.authenticate_user.side_effect = record_thread
+        with patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store):
+            auth_header = "Basic YWRtaW5AZXhhbXBsZS5jb206YWRtaW5fcGFzcw=="
+
+            success, username, error = await auth_middleware._authenticate_basic_auth(auth_header)
+
+        assert success is True
+        assert username == "admin@example.com"
+        assert error == ""
+        mock_store.authenticate_user.assert_called_once_with("admin@example.com", "admin_pass")
+        assert len(verifying_threads) == 1
+        assert verifying_threads[0] is not threading.current_thread()
+        assert verifying_threads[0].name.startswith("mlflow-oidc-basic-auth")
+        # max_workers=1 is the security bound: one credential verification per process at a time.
+        assert middleware_module._BASIC_AUTH_EXECUTOR._max_workers == 1
 
     @pytest.mark.asyncio
     async def test_authenticate_basic_auth_malformed_header(self, auth_middleware, mock_store):
