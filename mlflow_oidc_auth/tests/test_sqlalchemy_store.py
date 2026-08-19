@@ -227,7 +227,7 @@ class TestSqlAlchemyStore:
     def test_create_user(self, mock_store: SqlAlchemyStore):
         mock_user = create_test_user("testuser", "Test User", False, False)
         mock_store.user_repo.create.return_value = mock_user
-        result = mock_store.create_user("testuser", "Test User", False, False)
+        result = mock_store.create_user(username="testuser", display_name="Test User", is_admin=False, is_service_account=False)
         mock_store.user_repo.create.assert_called_once_with("testuser", "Test User", False, False)
         assert result == mock_user
 

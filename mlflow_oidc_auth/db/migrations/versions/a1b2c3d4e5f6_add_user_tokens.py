@@ -1,7 +1,7 @@
 """add user tokens
 
 Revision ID: a1b2c3d4e5f6
-Revises: 3c3272527ade
+Revises: 9c0d1e2f3456
 Create Date: 2026-01-21 12:00:00.000000
 
 """
@@ -15,7 +15,7 @@ from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
 
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f6"
-down_revision = "8a9b0c1de234"
+down_revision = "9c0d1e2f3456"
 branch_labels = None
 depends_on = None
 
@@ -88,19 +88,31 @@ def upgrade() -> None:
                 username VARCHAR(255) UNIQUE,
                 display_name VARCHAR(255) NOT NULL,
                 is_admin BOOLEAN DEFAULT 0,
-                is_service_account BOOLEAN DEFAULT 0
+                is_service_account BOOLEAN DEFAULT 0,
+                active BOOLEAN NOT NULL DEFAULT 1,
+                managed_by VARCHAR(255) NOT NULL DEFAULT 'manual',
+                external_id VARCHAR(255),
+                created_at DATETIME,
+                updated_at DATETIME
             )
             """)
 
         # Copy data to the new table
         op.execute("""
-            INSERT INTO users_new (id, username, display_name, is_admin, is_service_account)
-            SELECT id, username, display_name, is_admin, is_service_account FROM users
+            INSERT INTO users_new (
+                id, username, display_name, is_admin, is_service_account,
+                active, managed_by, external_id, created_at, updated_at
+            )
+            SELECT
+                id, username, display_name, is_admin, is_service_account,
+                active, managed_by, external_id, created_at, updated_at
+            FROM users
             """)
 
         # Drop the old table and rename the new one
         op.execute("DROP TABLE users")
         op.execute("ALTER TABLE users_new RENAME TO users")
+        op.create_index("ix_users_external_id", "users", ["external_id"], unique=True)
     else:
         # For other databases (PostgreSQL, MySQL), use standard ALTER TABLE
         op.drop_column("users", "password_hash")
@@ -130,14 +142,25 @@ def downgrade() -> None:
                 password_hash VARCHAR(255) NOT NULL DEFAULT '',
                 password_expiration DATETIME,
                 is_admin BOOLEAN DEFAULT 0,
-                is_service_account BOOLEAN DEFAULT 0
+                is_service_account BOOLEAN DEFAULT 0,
+                active BOOLEAN NOT NULL DEFAULT 1,
+                managed_by VARCHAR(255) NOT NULL DEFAULT 'manual',
+                external_id VARCHAR(255),
+                created_at DATETIME,
+                updated_at DATETIME
             )
             """)
 
         # Copy data back
         op.execute("""
-            INSERT INTO users_new (id, username, display_name, is_admin, is_service_account, password_hash)
-            SELECT id, username, display_name, is_admin, is_service_account, '' FROM users
+            INSERT INTO users_new (
+                id, username, display_name, is_admin, is_service_account, password_hash,
+                active, managed_by, external_id, created_at, updated_at
+            )
+            SELECT
+                id, username, display_name, is_admin, is_service_account, '',
+                active, managed_by, external_id, created_at, updated_at
+            FROM users
             """)
 
         # Update password_hash and password_expiration from user_tokens where name='default'
@@ -150,6 +173,7 @@ def downgrade() -> None:
         # Drop the old table and rename the new one
         op.execute("DROP TABLE users")
         op.execute("ALTER TABLE users_new RENAME TO users")
+        op.create_index("ix_users_external_id", "users", ["external_id"], unique=True)
     else:
         # For other databases, add columns back
         op.add_column("users", sa.Column("password_hash", sa.String(length=255), nullable=False, server_default=""))

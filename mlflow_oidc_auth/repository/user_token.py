@@ -12,6 +12,7 @@ from mlflow_oidc_auth.entities import UserToken
 from mlflow_oidc_auth.repository.utils import get_user
 
 T = TypeVar("T")
+TOKEN_HASH_METHOD = "pbkdf2:sha256:1000"
 
 
 class UserTokenRepository:
@@ -39,8 +40,8 @@ class UserTokenRepository:
         Raises:
             MlflowException: If a token with the same name already exists for this user.
         """
-        token_hash = generate_password_hash(token)
-        with self._Session() as session:
+        token_hash = generate_password_hash(token, method=TOKEN_HASH_METHOD)
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             try:
                 sql_token = SqlUserToken(
@@ -107,7 +108,7 @@ class UserTokenRepository:
         Raises:
             MlflowException: If the token doesn't exist or doesn't belong to the user.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             token = session.query(SqlUserToken).filter(SqlUserToken.id == token_id, SqlUserToken.user_id == user.id).one_or_none()
             if token is None:
@@ -127,7 +128,7 @@ class UserTokenRepository:
         Returns:
             The number of tokens deleted.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             user = get_user(session, username)
             count = session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id).delete(synchronize_session=False)
             session.flush()
@@ -146,14 +147,10 @@ class UserTokenRepository:
         Returns:
             A tuple of (user, token) if authentication succeeds, None otherwise.
         """
-        user = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
-        if user is None:
-            return None
-
-        tokens = session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id).all()
+        rows = session.query(SqlUser, SqlUserToken).join(SqlUserToken, SqlUserToken.user_id == SqlUser.id).filter(SqlUser.username == username.lower()).all()
         now = datetime.now(timezone.utc)
 
-        for token in tokens:
+        for user, token in rows:
             # Skip expired tokens
             expires_at = token.expires_at
             if expires_at.tzinfo is None:
@@ -182,7 +179,7 @@ class UserTokenRepository:
         Returns:
             True if authentication succeeds, False otherwise.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             result = self._verify_token_and_get_user(session, username, password)
             return result is not None
 
@@ -192,11 +189,24 @@ class UserTokenRepository:
         Args:
             token_id: The token ID to update.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             token = session.query(SqlUserToken).filter(SqlUserToken.id == token_id).one_or_none()
             if token is not None:
                 token.last_used_at = datetime.now(timezone.utc)
                 session.flush()
+
+    def update_expiration(self, username: str, name: str, expires_at: datetime) -> UserToken:
+        with self._Session(read_only=False) as session:
+            user = get_user(session, username)
+            token = session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id, SqlUserToken.name == name).one_or_none()
+            if token is None:
+                raise MlflowException(
+                    f"Token with name '{name}' not found for user '{username}'",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+            token.expires_at = expires_at
+            session.flush()
+            return token.to_mlflow_entity()
 
     def get_user_id_from_token(self, username: str, password: str) -> Optional[int]:
         """Get the user ID if the token authenticates successfully.
@@ -210,7 +220,7 @@ class UserTokenRepository:
         Returns:
             The user ID if authentication succeeds, None otherwise.
         """
-        with self._Session() as session:
+        with self._Session(read_only=False) as session:
             result = self._verify_token_and_get_user(session, username, password)
             if result is not None:
                 user, _ = result

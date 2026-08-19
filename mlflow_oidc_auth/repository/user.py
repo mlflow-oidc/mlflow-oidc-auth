@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
 from mlflow.exceptions import MlflowException
@@ -18,6 +19,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.ownership import evaluate_write
 from mlflow_oidc_auth.repository.utils import get_user
+from mlflow_oidc_auth.repository.user_token import TOKEN_HASH_METHOD
 
 logger = get_logger()
 
@@ -109,6 +111,7 @@ class UserRepository:
                 "leave the deployment with none. Grant admin to another active user first.",
                 INVALID_STATE,
             )
+
     def create(
         self,
         username: str,

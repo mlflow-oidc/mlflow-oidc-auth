@@ -1,5 +1,5 @@
 import functools
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import sqlalchemy
@@ -11,6 +11,7 @@ from mlflow.utils.uri import extract_db_type_from_uri
 from sqlalchemy.orm import sessionmaker
 
 from mlflow_oidc_auth.db import utils as dbutils
+from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
 from mlflow_oidc_auth.entities import (
     ExperimentGroupRegexPermission,
     ExperimentPermission,
@@ -334,10 +335,30 @@ class SqlAlchemyStore:
 
     def authenticate_user_token(self, username: str, token: str) -> bool:
         """Alias for authenticate_user for clarity in token-based auth contexts."""
-        return self.user_token_repo.authenticate(username, token)
+        return self.user_token_repo.authenticate(username=username, password=token)
 
-    def create_user(self, username: str, display_name: str, is_admin: bool = False, is_service_account=False):
-        return self.user_repo.create(username, display_name, is_admin, is_service_account)
+    def create_user(
+        self,
+        username: str,
+        password: Optional[str] = None,
+        display_name: Optional[str] = None,
+        is_admin: bool = False,
+        is_service_account: bool = False,
+    ) -> User:
+        # New callers pass display_name by keyword; retain the established positional store API
+        # while credentials move from users.password_hash into user_tokens.
+        if display_name is None:
+            display_name = password
+            password = None
+        user = self.user_repo.create(username, display_name, is_admin, is_service_account)
+        if password is not None:
+            self.create_user_token(
+                username=username,
+                name=DEFAULT_TOKEN_NAME,
+                token=password,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=365),
+            )
+        return user
 
     def create_auth_session(self, username: str, expires_at, provider_id: Optional[str] = None) -> str:
         """Open a server-side session and return its opaque id (issue #310)."""
@@ -388,6 +409,8 @@ class SqlAlchemyStore:
     def update_user(
         self,
         username: str,
+        password: Optional[str] = None,
+        password_expiration: Optional[datetime] = None,
         is_admin: Optional[bool] = None,
         is_service_account: Optional[bool] = None,
         active: Optional[bool] = None,
@@ -397,26 +420,13 @@ class SqlAlchemyStore:
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
-        ``None`` means "not supplied" for every parameter but one: the corresponding column is
-        left as it is.
-
-        The exception is ``password_expiration``, because expiry is a property of the *secret*
-        rather than of the user. **Supplying a ``password`` also replaces the expiration** with
-        exactly the value passed in, and ``None`` there means "does not expire" rather than
-        "leave it alone" — a rotated secret never inherits the previous one's lifetime. When no
-        ``password`` is supplied, the expiry changes only if one was passed.
-
-        The practical consequence, which the signature alone does not convey: calling
-        ``update_user(username=u, password=new_secret)`` on a user whose token currently expires
-        will leave them with one that never expires. Pass the expiration explicitly to keep one.
+        ``None`` means "not supplied": the corresponding column is left as it is.
 
         See :meth:`mlflow_oidc_auth.repository.user.UserRepository.update` for the reasoning
         (issue #338).
 
         Parameters:
             username: Identity key of the user to update.
-            password: New secret. Also resets the expiration, per above.
-            password_expiration: Expiry for the stored secret. See the semantics above.
             is_admin: New administrator flag.
             is_service_account: New service-account flag.
 
@@ -426,7 +436,7 @@ class SqlAlchemyStore:
         Raises:
             MlflowException: If the user does not exist.
         """
-        return self.user_repo.update(
+        user = self.user_repo.update(
             username=username,
             is_admin=is_admin,
             is_service_account=is_service_account,
@@ -435,6 +445,20 @@ class SqlAlchemyStore:
             written_by=written_by,
             admin_override=admin_override,
         )
+        if password is not None:
+            for token in self.list_user_tokens(username):
+                if token.name == DEFAULT_TOKEN_NAME:
+                    self.delete_user_token(token.id, username)
+                    break
+            self.create_user_token(
+                username=username,
+                name=DEFAULT_TOKEN_NAME,
+                token=password,
+                expires_at=password_expiration or datetime.now(timezone.utc) + timedelta(days=365),
+            )
+        elif password_expiration is not None:
+            self.user_token_repo.update_expiration(username, DEFAULT_TOKEN_NAME, password_expiration)
+        return user
 
     def delete_user(self, username: str):
         return self.user_repo.delete(username)
@@ -786,9 +810,6 @@ class SqlAlchemyStore:
 
     def delete_gateway_secret_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_secret_repo.revoke_permission(gateway_name, username)
-
-    def authenticate_user_token(self, username: str, token: str) -> bool:
-        return self.user_token_repo.authenticate(username=username, password=token)
 
     def wipe_gateway_secret_permissions(self, gateway_name: str) -> None:
         """Delete all user and group permissions for a gateway secret."""

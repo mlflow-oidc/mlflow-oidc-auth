@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -113,7 +114,7 @@ def mock_store():
     def _get_user_profile(username: str):
         result = store_mock.get_user(username)
         if result is None:
-            raise MlflowException(f"User '{username}' not found")
+            raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
         return result
 
     store_mock.get_user_profile.side_effect = _get_user_profile

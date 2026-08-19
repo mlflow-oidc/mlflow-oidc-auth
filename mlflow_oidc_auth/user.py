@@ -59,8 +59,6 @@ def create_user(
             display_name=display_name,
             is_admin=is_admin,
             is_service_account=is_service_account,
-            written_by=written_by,
-            admin_override=admin_override,
         )
 
         # Create the token in the tokens table (this is what's used for authentication)
