@@ -36,6 +36,10 @@ def repo(session_maker):
     return UserTokenRepository(session_maker)
 
 
+def set_auth_rows(session, rows):
+    session.query.return_value.join.return_value.filter.return_value.all.return_value = rows
+
+
 class TestCreateToken:
     """Tests for UserTokenRepository.create()"""
 
@@ -207,8 +211,7 @@ class TestAuthenticate:
         mock_token.token_hash = "hashed_password"
         mock_token.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token]
+        set_auth_rows(session, [(mock_user, mock_token)])
 
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", return_value=True):
             result = repo.authenticate("testuser", "raw_token")
@@ -218,7 +221,7 @@ class TestAuthenticate:
 
     def test_authenticate_user_not_found(self, repo, session):
         """Test authentication fails when user doesn't exist."""
-        session.query().filter().one_or_none.return_value = None
+        set_auth_rows(session, [])
 
         result = repo.authenticate("nonexistent", "token")
 
@@ -233,8 +236,7 @@ class TestAuthenticate:
         mock_token.token_hash = "hashed_password"
         mock_token.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token]
+        set_auth_rows(session, [(mock_user, mock_token)])
 
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", return_value=False):
             result = repo.authenticate("testuser", "wrong_token")
@@ -251,8 +253,7 @@ class TestAuthenticate:
         # Token expired yesterday
         mock_token.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token]
+        set_auth_rows(session, [(mock_user, mock_token)])
 
         # Even with correct password hash, should fail due to expiration
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", return_value=True):
@@ -265,8 +266,7 @@ class TestAuthenticate:
         mock_user = MagicMock()
         mock_user.id = 1
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = []
+        set_auth_rows(session, [])
 
         result = repo.authenticate("testuser", "token")
 
@@ -284,8 +284,7 @@ class TestAuthenticate:
         naive_future = datetime(2099, 1, 1, 12, 0, 0)  # Far future, no tzinfo
         mock_token.expires_at = naive_future
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token]
+        set_auth_rows(session, [(mock_user, mock_token)])
 
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", return_value=True):
             result = repo.authenticate("testuser", "token")
@@ -305,8 +304,7 @@ class TestAuthenticate:
         mock_token2.token_hash = "hash2"
         mock_token2.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token1, mock_token2]
+        set_auth_rows(session, [(mock_user, mock_token1), (mock_user, mock_token2)])
 
         # First token matches
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", side_effect=[True, False]):
@@ -327,8 +325,7 @@ class TestAuthenticate:
         mock_token2.token_hash = "hash2"
         mock_token2.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token1, mock_token2]
+        set_auth_rows(session, [(mock_user, mock_token1), (mock_user, mock_token2)])
 
         # Second token matches
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", side_effect=[False, True]):
@@ -372,8 +369,7 @@ class TestGetUserIdFromToken:
         mock_token.token_hash = "hashed"
         mock_token.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token]
+        set_auth_rows(session, [(mock_user, mock_token)])
 
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", return_value=True):
             result = repo.get_user_id_from_token("testuser", "token")
@@ -382,7 +378,7 @@ class TestGetUserIdFromToken:
 
     def test_get_user_id_user_not_found(self, repo, session):
         """Test get_user_id_from_token returns None when user not found."""
-        session.query().filter().one_or_none.return_value = None
+        set_auth_rows(session, [])
 
         result = repo.get_user_id_from_token("nonexistent", "token")
 
@@ -397,8 +393,7 @@ class TestGetUserIdFromToken:
         mock_token.token_hash = "hashed"
         mock_token.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token]
+        set_auth_rows(session, [(mock_user, mock_token)])
 
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", return_value=False):
             result = repo.get_user_id_from_token("testuser", "wrong_token")
@@ -414,8 +409,7 @@ class TestGetUserIdFromToken:
         mock_token.token_hash = "hashed"
         mock_token.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
 
-        session.query().filter().one_or_none.return_value = mock_user
-        session.query().filter().all.return_value = [mock_token]
+        set_auth_rows(session, [(mock_user, mock_token)])
 
         with patch("mlflow_oidc_auth.repository.user_token.check_password_hash", return_value=True):
             result = repo.get_user_id_from_token("testuser", "token")

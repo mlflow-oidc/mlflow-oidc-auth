@@ -128,6 +128,8 @@ def test_delete_non_existent_user(repo, session):
             repo.delete("non_existent_user")
         session.delete.assert_not_called()
         session.flush.assert_not_called()
+
+
 class TestUsernameCaseNormalization:
     """Usernames are case-insensitive identity keys (issues #219, #145).
 
