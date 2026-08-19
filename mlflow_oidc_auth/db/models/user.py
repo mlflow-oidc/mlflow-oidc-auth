@@ -1,10 +1,13 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mlflow_oidc_auth.db.models._base import Base
+
+if TYPE_CHECKING:
+    from mlflow_oidc_auth.db.models.user_token import SqlUserToken
 from mlflow_oidc_auth.db.models.experiment import SqlExperimentPermission
 from mlflow_oidc_auth.db.models.gateway_endpoint import SqlGatewayEndpointPermission
 from mlflow_oidc_auth.db.models.gateway_model_definition import SqlGatewayModelDefinitionPermission
@@ -19,8 +22,6 @@ class SqlUser(Base):
     id: Mapped[int] = mapped_column(Integer(), primary_key=True)
     username: Mapped[str] = mapped_column(String(255), unique=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_expiration: Mapped[datetime] = mapped_column(nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_service_account: Mapped[bool] = mapped_column(Boolean, default=False)
     # Phase 0 lifecycle columns (issue #333). Schema only — nothing enforces ``active`` or
@@ -49,14 +50,13 @@ class SqlUser(Base):
     # Unique index rather than constraint: repeated NULLs are allowed on both backends, which
     # is what "unique when present" means for an optional external identifier.
     __table_args__ = (Index("ix_users_external_id", "external_id", unique=True),)
+    tokens: Mapped[list["SqlUserToken"]] = relationship("SqlUserToken", back_populates="user")
 
     def to_mlflow_entity(self):
         return User(
             id_=self.id,
             username=self.username,
             display_name=self.display_name,
-            password_hash=self.password_hash,
-            password_expiration=self.password_expiration,
             is_admin=self.is_admin,
             is_service_account=self.is_service_account,
             active=self.active,

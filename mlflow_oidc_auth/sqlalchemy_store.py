@@ -1,5 +1,5 @@
 import functools
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import sqlalchemy
@@ -11,6 +11,7 @@ from mlflow.utils.uri import extract_db_type_from_uri
 from sqlalchemy.orm import sessionmaker
 
 from mlflow_oidc_auth.db import utils as dbutils
+from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
 from mlflow_oidc_auth.entities import (
     ExperimentGroupRegexPermission,
     ExperimentPermission,
@@ -22,6 +23,7 @@ from mlflow_oidc_auth.entities import (
     ScorerPermission,
     ScorerRegexPermission,
     User,
+    UserToken,
     WorkspaceGroupPermission,
     WorkspaceGroupRegexPermission,
     WorkspacePermission,
@@ -65,6 +67,7 @@ from mlflow_oidc_auth.repository import (
     UserIdentityRepository,
     AuthSessionRepository,
     AuthStateRepository,
+    UserTokenRepository,
     WorkspacePermissionRepository,
     WorkspaceGroupPermissionRepository,
 )
@@ -122,6 +125,9 @@ class SqlAlchemyStore:
         self.gateway_model_definition_group_repo = GatewayModelDefinitionGroupPermissionRepository(self.ManagedSessionMaker)
         self.gateway_model_definition_regex_repo = GatewayModelDefinitionPermissionRegexRepository(self.ManagedSessionMaker)
         self.gateway_model_definition_group_regex_repo = GatewayModelDefinitionPermissionGroupRegexRepository(self.ManagedSessionMaker)
+
+        # User tokens
+        self.user_token_repo = UserTokenRepository(self.ManagedSessionMaker)
 
         # Workspace permissions
         self.workspace_permission_repo = WorkspacePermissionRepository(self.ManagedSessionMaker)
@@ -317,17 +323,42 @@ class SqlAlchemyStore:
         return self.scorer_group_regex_repo.revoke(id=id, group_name=group_name)
 
     def authenticate_user(self, username: str, password: str) -> bool:
-        return self.user_repo.authenticate(username, password)
+        """Authenticate a user via the tokens table.
+
+        Checks the provided token against all non-expired tokens for the user.
+        Updates last_used_at timestamp on successful authentication.
+
+        Note: Legacy password_hash tokens are migrated to the tokens table
+        during database migration, so all authentication goes through this path.
+        """
+        return self.user_token_repo.authenticate(username, password)
+
+    def authenticate_user_token(self, username: str, token: str) -> bool:
+        """Alias for authenticate_user for clarity in token-based auth contexts."""
+        return self.user_token_repo.authenticate(username=username, password=token)
 
     def create_user(
         self,
         username: str,
-        password: str,
-        display_name: str,
+        password: Optional[str] = None,
+        display_name: Optional[str] = None,
         is_admin: bool = False,
-        is_service_account=False,
-    ):
-        return self.user_repo.create(username, password, display_name, is_admin, is_service_account)
+        is_service_account: bool = False,
+    ) -> User:
+        # New callers pass display_name by keyword; retain the established positional store API
+        # while credentials move from users.password_hash into user_tokens.
+        if display_name is None:
+            display_name = password
+            password = None
+        user = self.user_repo.create(username, display_name, is_admin, is_service_account)
+        if password is not None:
+            self.create_user_token(
+                username=username,
+                name=DEFAULT_TOKEN_NAME,
+                token=password,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=365),
+            )
+        return user
 
     def create_auth_session(self, username: str, expires_at, provider_id: Optional[str] = None) -> str:
         """Open a server-side session and return its opaque id (issue #310)."""
@@ -389,26 +420,13 @@ class SqlAlchemyStore:
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
-        ``None`` means "not supplied" for every parameter but one: the corresponding column is
-        left as it is.
-
-        The exception is ``password_expiration``, because expiry is a property of the *secret*
-        rather than of the user. **Supplying a ``password`` also replaces the expiration** with
-        exactly the value passed in, and ``None`` there means "does not expire" rather than
-        "leave it alone" — a rotated secret never inherits the previous one's lifetime. When no
-        ``password`` is supplied, the expiry changes only if one was passed.
-
-        The practical consequence, which the signature alone does not convey: calling
-        ``update_user(username=u, password=new_secret)`` on a user whose token currently expires
-        will leave them with one that never expires. Pass the expiration explicitly to keep one.
+        ``None`` means "not supplied": the corresponding column is left as it is.
 
         See :meth:`mlflow_oidc_auth.repository.user.UserRepository.update` for the reasoning
         (issue #338).
 
         Parameters:
             username: Identity key of the user to update.
-            password: New secret. Also resets the expiration, per above.
-            password_expiration: Expiry for the stored secret. See the semantics above.
             is_admin: New administrator flag.
             is_service_account: New service-account flag.
 
@@ -418,10 +436,8 @@ class SqlAlchemyStore:
         Raises:
             MlflowException: If the user does not exist.
         """
-        return self.user_repo.update(
+        user = self.user_repo.update(
             username=username,
-            password=password,
-            password_expiration=password_expiration,
             is_admin=is_admin,
             is_service_account=is_service_account,
             active=active,
@@ -429,9 +445,45 @@ class SqlAlchemyStore:
             written_by=written_by,
             admin_override=admin_override,
         )
+        if password is not None:
+            for token in self.list_user_tokens(username):
+                if token.name == DEFAULT_TOKEN_NAME:
+                    self.delete_user_token(token.id, username)
+                    break
+            self.create_user_token(
+                username=username,
+                name=DEFAULT_TOKEN_NAME,
+                token=password,
+                expires_at=password_expiration or datetime.now(timezone.utc) + timedelta(days=365),
+            )
+        elif password_expiration is not None:
+            self.user_token_repo.update_expiration(username, DEFAULT_TOKEN_NAME, password_expiration)
+        return user
 
     def delete_user(self, username: str):
         return self.user_repo.delete(username)
+
+    # User Token methods
+    def create_user_token(
+        self,
+        username: str,
+        name: str,
+        token: str,
+        expires_at: datetime,
+    ) -> UserToken:
+        return self.user_token_repo.create(username, name, token, expires_at)
+
+    def list_user_tokens(self, username: str) -> List[UserToken]:
+        return self.user_token_repo.list_for_user(username)
+
+    def get_user_token(self, token_id: int, username: str) -> UserToken:
+        return self.user_token_repo.get(token_id, username)
+
+    def delete_user_token(self, token_id: int, username: str) -> None:
+        return self.user_token_repo.delete(token_id, username)
+
+    def delete_all_user_tokens(self, username: str) -> int:
+        return self.user_token_repo.delete_all_for_user(username)
 
     def create_experiment_permission(self, experiment_id: str, username: str, permission: str) -> ExperimentPermission:
         return self.experiment_repo.grant_permission(experiment_id, username, permission)

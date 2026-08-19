@@ -65,7 +65,7 @@ class TestNaiveExpirationIsAccepted:
         result = await _rotate(store, expiration_str=expiration_str)
 
         assert result.status_code == 200
-        stored = store.update_user.call_args[1]["password_expiration"]
+        stored = store.create_user_token.call_args.kwargs["expires_at"]
         assert stored is not None
         assert stored.tzinfo is not None, "expiration must be normalized to an aware datetime"
 
@@ -76,7 +76,7 @@ class TestNaiveExpirationIsAccepted:
 
         await _rotate(store, expiration_str=naive.isoformat())
 
-        stored = store.update_user.call_args[1]["password_expiration"]
+        stored = store.create_user_token.call_args.kwargs["expires_at"]
         assert stored == naive.replace(tzinfo=timezone.utc)
 
     @pytest.mark.asyncio
@@ -87,7 +87,7 @@ class TestNaiveExpirationIsAccepted:
 
         await _rotate(store, expiration_str=aware.isoformat())
 
-        stored = store.update_user.call_args[1]["password_expiration"]
+        stored = store.create_user_token.call_args.kwargs["expires_at"]
         assert stored.utcoffset() == timedelta(hours=5)
         assert stored == aware
 
