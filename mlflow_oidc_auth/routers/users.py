@@ -429,7 +429,7 @@ def _token_to_response(token) -> UserTokenResponse:
     return UserTokenResponse(
         id=token.id,
         name=token.name,
-        created_at=token.created_at.isoformat() if token.created_at else None,
+        created_at=token.created_at.isoformat(),
         expires_at=token.expires_at.isoformat(),
         last_used_at=token.last_used_at.isoformat() if token.last_used_at else None,
     )

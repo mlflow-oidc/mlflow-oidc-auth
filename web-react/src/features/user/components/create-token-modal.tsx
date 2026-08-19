@@ -12,15 +12,21 @@ interface CreateTokenModalProps {
   onTokenCreated: () => void;
 }
 
+const toLocalDateInputValue = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
 export const CreateTokenModal: React.FC<CreateTokenModalProps> = ({
   isOpen,
   onClose,
   onTokenCreated,
 }) => {
-  const today = new Date().toISOString().split("T")[0];
-  const maxDate = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
-    .toISOString()
-    .split("T")[0];
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const latestExpiration = new Date(now);
+  latestExpiration.setDate(latestExpiration.getDate() + 365);
+  const minDate = toLocalDateInputValue(tomorrow);
+  const maxDate = toLocalDateInputValue(latestExpiration);
 
   const [tokenName, setTokenName] = useState<string>("");
   const [expirationDate, setExpirationDate] = useState<string>(maxDate);
@@ -52,7 +58,7 @@ export const CreateTokenModal: React.FC<CreateTokenModalProps> = ({
     setAccessToken("");
 
     try {
-      const expirationDateObject = new Date(expirationDate);
+      const expirationDateObject = new Date(`${expirationDate}T23:59:59.999`);
       const response = await createUserToken({
         name: tokenName.trim(),
         expiration: expirationDateObject.toISOString(),
@@ -118,7 +124,7 @@ export const CreateTokenModal: React.FC<CreateTokenModalProps> = ({
           type="date"
           value={expirationDate}
           onChange={(e) => setExpirationDate(e.target.value)}
-          min={today}
+          min={minDate}
           max={maxDate}
           required
           disabled={!!accessToken}

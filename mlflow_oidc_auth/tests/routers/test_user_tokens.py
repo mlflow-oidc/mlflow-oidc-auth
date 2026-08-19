@@ -146,6 +146,13 @@ class TestTokenToResponse:
         result = _token_to_response(mock_token)
         assert result.last_used_at is None
 
+    def test_rejects_missing_created_at(self, mock_token):
+        """Database and response contracts both require a creation timestamp."""
+        mock_token.created_at = None
+
+        with pytest.raises(AttributeError):
+            _token_to_response(mock_token)
+
 
 # =============================================================================
 # Tests for Current User Token Endpoints

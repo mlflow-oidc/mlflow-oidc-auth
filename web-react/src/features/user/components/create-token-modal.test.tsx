@@ -75,10 +75,21 @@ describe("CreateTokenModal", () => {
       renderModal();
       const expirationInput =
         screen.getByLabelText<HTMLInputElement>(/Expiration Date/i);
-      const maxDate = new Date(new Date().setFullYear(new Date().getFullYear() + 1))
-        .toISOString()
-        .split("T")[0];
-      expect(expirationInput.value).toBe(maxDate);
+      const latestExpiration = new Date();
+      latestExpiration.setDate(latestExpiration.getDate() + 365);
+      const expected = `${latestExpiration.getFullYear()}-${String(latestExpiration.getMonth() + 1).padStart(2, "0")}-${String(latestExpiration.getDate()).padStart(2, "0")}`;
+      expect(expirationInput.value).toBe(expected);
+      expect(expirationInput.max).toBe(expected);
+    });
+
+    it("uses tomorrow in local time as the minimum expiration date", () => {
+      renderModal();
+      const expirationInput =
+        screen.getByLabelText<HTMLInputElement>(/Expiration Date/i);
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const expected = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+      expect(expirationInput.min).toBe(expected);
     });
   });
 
@@ -131,7 +142,11 @@ describe("CreateTokenModal", () => {
           expiration: string;
         };
         expect(callArgs.name).toBe("test-token");
-        expect(callArgs.expiration).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+        const expirationInput =
+          screen.getByLabelText<HTMLInputElement>(/Expiration Date/i);
+        expect(callArgs.expiration).toBe(
+          new Date(`${expirationInput.value}T23:59:59.999`).toISOString(),
+        );
       });
     });
 
