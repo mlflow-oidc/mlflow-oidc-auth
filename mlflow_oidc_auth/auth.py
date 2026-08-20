@@ -341,6 +341,9 @@ def _claims_options_for(provider) -> dict | None:
         options["aud"] = {"essential": True, "value": provider.audience}
     if provider.issuer:
         options["iss"] = {"essential": True, "value": provider.issuer}
+    if provider.type == "spiffe":
+        options["sub"] = {"essential": True}
+        options["exp"] = {"essential": True}
     return options or None
 
 
@@ -552,6 +555,20 @@ class _TokenDecoder:
         return _ValidatedClaims(claims, verified.headers(), claims_options)
 
 
+def _applicable_jwks(provider, jwks: dict) -> dict:
+    """Restrict SPIFFE validation to keys explicitly marked for JWT-SVID use."""
+    if provider.type != "spiffe":
+        return jwks
+    keys = jwks.get("keys") if isinstance(jwks, dict) else None
+    applicable = [key for key in keys or [] if isinstance(key, dict) and key.get("use") == "jwt-svid"]
+    if not applicable:
+        raise ValueError(f"Provider '{provider.id}' published no key with use 'jwt-svid'")
+    # JOSE libraries understand the standard ``sig`` value, while SPIFFE deliberately defines
+    # ``jwt-svid``. Select on that exact value first, then remove only the metadata from copies
+    # offered to the decoder.
+    return {"keys": [{name: value for name, value in key.items() if name != "use"} for key in applicable]}
+
+
 def _jwt_for(provider) -> _TokenDecoder:
     """A decoder pinned to this provider's accepted algorithms.
 
@@ -585,14 +602,14 @@ def validate_token(token: str):
     decoder = _jwt_for(provider)
 
     try:
-        jwks = _get_provider_jwks(provider)
+        jwks = _applicable_jwks(provider, _get_provider_jwks(provider))
         payload = decoder.decode(token, jwks, claims_options=claims_options)
         payload.validate()
         return payload
     except BadSignatureError as e:
         logger.error("Token validation failed with bad signature for provider %s: %s", provider.id, str(e))
         # Refresh *this* provider's keys and retry once, for key rotation.
-        jwks = _get_provider_jwks(provider, force_refresh=True)
+        jwks = _applicable_jwks(provider, _get_provider_jwks(provider, force_refresh=True))
         payload = decoder.decode(token, jwks, claims_options=claims_options)
         payload.validate()
         return payload

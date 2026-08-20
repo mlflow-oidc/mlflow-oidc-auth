@@ -34,13 +34,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from mlflow_oidc_auth.kubernetes import load_inline_jwks, valid_dns_label
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.spiffe import valid_trust_domain, validate_spiffe_allowlist
 
 logger = get_logger()
 
 # The provider id synthesised from the flat OIDC_* variables.
 DEFAULT_PROVIDER_ID = "default"
 
-PROVIDER_TYPES = ("oidc", "saml", "k8s")
+PROVIDER_TYPES = ("oidc", "saml", "k8s", "spiffe")
 
 # Provider types that can carry a browser login flow. ``k8s`` cannot: a projected
 # service-account token is presented directly as a bearer credential — there is no
@@ -48,18 +49,19 @@ PROVIDER_TYPES = ("oidc", "saml", "k8s")
 # different axis from ``type``, which describes how a credential is *verified*: a k8s provider
 # verifies tokens the same way an OIDC one does (JWT against the cluster's JWKS), it just can
 # never appear on a login page.
-INTERACTIVE_BY_DEFAULT = {"oidc": True, "saml": True, "k8s": False}
+INTERACTIVE_BY_DEFAULT = {"oidc": True, "saml": True, "k8s": False, "spiffe": False}
 PROVISIONING_MODES = ("jit", "scim", "none")
 GROUP_SYNC_MODES = ("none", "first_login", "every_login")
 GROUP_SYNC_STRATEGIES = ("additive", "authoritative")
 # Provider types whose credentials are bearer tokens verified against a JWKS. They carry the
 # extra requirements in _validate: an issuer to pin, and a key source of their own.
-TOKEN_PROVIDER_TYPES = ("oidc", "k8s")
+TOKEN_PROVIDER_TYPES = ("oidc", "k8s", "spiffe")
 
 # Fields that only a Kubernetes provider may carry. They decide where signing keys come from and
 # what credential is presented to fetch them, so on any other type they are refused rather than
 # ignored (#314).
 KUBERNETES_ONLY_FIELDS = ("jwks_inline", "jwks_uri", "in_cluster", "ca_bundle_path", "namespace_allowlist")
+SPIFFE_ONLY_FIELDS = ("trust_domain", "spiffe_id_allowlist")
 
 # Fields that only a SAML provider may carry (#328, #329). They name the IdP, the certificate its
 # assertions are verified with, and the key this service signs with — so on any other type they
@@ -259,6 +261,8 @@ class ProviderConfig:
     want_response_signed: bool = False
     clock_skew_seconds: int = DEFAULT_SAML_CLOCK_SKEW_SECONDS
     sign_requests: bool = False
+    trust_domain: Optional[str] = None
+    spiffe_id_allowlist: Tuple[str, ...] = ()
 
     def has_own_key_source(self) -> bool:
         """Whether this entry names its own JWKS source rather than inheriting the flat one.
@@ -354,7 +358,7 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
     if provisioning not in PROVISIONING_MODES:
         errors.append(f"{label}: unknown provisioning {provisioning!r}; expected one of {', '.join(PROVISIONING_MODES)}")
 
-    group_sync = entry.get("group_sync", "every_login")
+    group_sync = entry.get("group_sync", "none" if provider_type == "spiffe" else "every_login")
     if group_sync not in GROUP_SYNC_MODES:
         errors.append(f"{label}: unknown group_sync {group_sync!r}; expected one of {', '.join(GROUP_SYNC_MODES)}")
 
@@ -362,11 +366,22 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
     if group_sync_mode not in GROUP_SYNC_STRATEGIES:
         errors.append(f"{label}: unknown group_sync_mode {group_sync_mode!r}; expected one of {', '.join(GROUP_SYNC_STRATEGIES)}")
 
-    errors.extend(_validate_admin_source(entry.get("admin_source", "claims"), label))
+    admin_source = entry.get("admin_source", "none" if provider_type == "spiffe" else "claims")
+    errors.extend(_validate_admin_source(admin_source, label))
 
     identity_binding = entry.get("identity_binding", "subject")
     if identity_binding not in IDENTITY_BINDINGS:
         errors.append(f"{label}: unknown identity_binding {identity_binding!r}; expected one of {', '.join(IDENTITY_BINDINGS)}")
+
+    if provider_type == "spiffe":
+        if provisioning != "jit":
+            errors.append(f"{label}: a 'spiffe' provider must use provisioning 'jit'")
+        if group_sync != "none":
+            errors.append(f"{label}: a 'spiffe' provider cannot synchronize arbitrary JWT group claims; set group_sync to 'none'")
+        if admin_source != "none":
+            errors.append(f"{label}: a 'spiffe' provider cannot derive administrator status from claims; set admin_source to 'none'")
+        if identity_binding != "subject":
+            errors.append(f"{label}: a 'spiffe' provider must bind identity to the JWT-SVID 'sub' claim")
 
     interactive_default = INTERACTIVE_BY_DEFAULT.get(provider_type, True)
     interactive = entry.get("interactive", interactive_default)
@@ -455,6 +470,11 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         # it can state its own rule then — no k8s provider can be configured before it lands.
         if provider_type == "k8s":
             errors.extend(_validate_kubernetes(entry, label))
+        elif provider_type == "spiffe":
+            errors.extend(_validate_spiffe(entry, label))
+            for field in KUBERNETES_ONLY_FIELDS:
+                if entry.get(field):
+                    errors.append(f"{label}: '{field}' applies only to a 'k8s' provider, not to 'spiffe'")
         else:
             # These four change how keys are fetched, and _get_provider_jwks consults them before
             # discovery_url. On an OIDC entry a pasted 'jwks_inline' would silently pin the keys
@@ -464,9 +484,14 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
                 if entry.get(field):
                     errors.append(f"{label}: '{field}' applies only to a 'k8s' provider, not to '{provider_type}'")
 
-        if provider_type == "oidc" and (not isinstance(discovery_url, str) or not discovery_url.strip()):
+        if provider_type != "spiffe":
+            for field in SPIFFE_ONLY_FIELDS:
+                if entry.get(field):
+                    errors.append(f"{label}: '{field}' applies only to a 'spiffe' provider, not to '{provider_type}'")
+
+        if provider_type in ("oidc", "spiffe") and (not isinstance(discovery_url, str) or not discovery_url.strip()):
             errors.append(
-                f"{label}: 'discovery_url' is required for an 'oidc' provider; without it the provider shares the "
+                f"{label}: 'discovery_url' is required for a '{provider_type}' provider; without it the provider shares the "
                 "deployment-wide key cache with every other provider that omits one"
             )
 
@@ -499,7 +524,7 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             # group name is deployment-wide, so a partner tenant that happens to name a group
             # the same thing would otherwise confer administrator rights across the deployment.
             # The operator opts in per provider, deliberately.
-            admin_source=entry.get("admin_source", "claims" if provider_id == DEFAULT_PROVIDER_ID else "none"),
+            admin_source=admin_source if provider_type == "spiffe" else entry.get("admin_source", "claims" if provider_id == DEFAULT_PROVIDER_ID else "none"),
             identity_binding=identity_binding,
             interactive=bool(interactive),
             allowed_email_domains=allowed_email_domains,
@@ -515,6 +540,8 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             in_cluster=entry.get("in_cluster", False) is True,
             namespace_allowlist=_as_tuple(entry.get("namespace_allowlist")),
             allow_tokens_without_expiry=allow_tokens_without_expiry,
+            trust_domain=entry.get("trust_domain").strip() if isinstance(entry.get("trust_domain"), str) else None,
+            spiffe_id_allowlist=_as_tuple(entry.get("spiffe_id_allowlist")),
             issuer=issuer.strip() if isinstance(issuer, str) else None,
             discovery_url=discovery_url.strip() if isinstance(discovery_url, str) else None,
             client_id=client_id.strip() if isinstance(client_id, str) else None,
@@ -543,10 +570,11 @@ _STRING_FIELDS = (
     "issuer",
     "discovery_url",
     "client_id",
+    "trust_domain",
 )
 
 # Fields that may be a single string or a list of them.
-_LIST_FIELDS = ("allowed_email_domains", "allowed_algorithms")
+_LIST_FIELDS = ("allowed_email_domains", "allowed_algorithms", "namespace_allowlist", "spiffe_id_allowlist")
 
 
 def _validate_field_types(entry: Dict[str, Any], label: str) -> List[str]:
@@ -689,6 +717,23 @@ def _validate_kubernetes(entry: Dict[str, Any], label: str) -> List[str]:
                 "alphanumerics and '-', up to 63 characters), so it can never match a real token"
             )
 
+    return errors
+
+
+def _validate_spiffe(entry: Dict[str, Any], label: str) -> List[str]:
+    """Checks that only apply to a SPIFFE JWT-SVID provider."""
+    errors: List[str] = []
+    trust_domain = entry.get("trust_domain")
+    if not valid_trust_domain(trust_domain):
+        errors.append(f"{label}: 'trust_domain' is required and must be a canonical SPIFFE trust domain")
+        return errors
+
+    allowlist = _as_tuple(entry.get("spiffe_id_allowlist"))
+    if not allowlist:
+        errors.append(f"{label}: 'spiffe_id_allowlist' must contain at least one exact SPIFFE ID")
+        return errors
+
+    errors.extend(f"{label}: {error}" for error in validate_spiffe_allowlist(allowlist, trust_domain))
     return errors
 
 
@@ -1131,27 +1176,34 @@ def _legacy_entry(app_config: Any) -> Dict[str, Any]:
     }
 
 
-def _reject_duplicate_issuers(providers: List[ProviderConfig]) -> Tuple[List[ProviderConfig], List[str]]:
-    """Drop every provider after the first that claims a given issuer.
+def _reject_duplicate_issuers(providers: List[ProviderConfig], entries: Optional[List[Dict[str, Any]]] = None) -> Tuple[List[ProviderConfig], List[str]]:
+    """Drop every provider that shares its issuer with another entry.
 
-    Token validation selects a provider by exact ``iss`` match and takes the first hit, so two
-    entries claiming one issuer means the second's policy — its audience, its binding, its group
-    rules — is never applied, and no error says so. Rejecting the later entries makes the
-    collision visible instead of resolving it by configuration order.
+    Keeping either entry would resolve a security policy collision by configuration order. In
+    particular, an OIDC entry retained ahead of a SPIFFE entry would bypass the latter's exact
+    workload allowlist for any key and audience the two entries shared.
     """
-    kept: List[ProviderConfig] = []
+    declarations: List[Tuple[str, str]] = []
+    if entries is None:
+        declarations = [(provider.id, provider.issuer) for provider in providers if provider.issuer]
+    else:
+        for index, entry in enumerate(entries):
+            issuer = entry.get("issuer")
+            if isinstance(issuer, str) and issuer.strip():
+                provider_id = entry.get("id")
+                label = provider_id.strip() if isinstance(provider_id, str) and provider_id.strip() else f"provider[{index}]"
+                declarations.append((label, issuer.strip()))
+
+    counts: Dict[str, int] = {}
+    for _, issuer in declarations:
+        counts[issuer] = counts.get(issuer, 0) + 1
+
+    duplicates = {issuer for issuer, count in counts.items() if count > 1}
+    kept = [provider for provider in providers if not provider.issuer or provider.issuer not in duplicates]
     errors: List[str] = []
-    seen: Dict[str, str] = {}
-    for provider in providers:
-        if provider.issuer and provider.issuer in seen:
-            errors.append(
-                f"provider '{provider.id}': issuer {provider.issuer!r} is already claimed by provider '{seen[provider.issuer]}'; "
-                "a token can only be validated under one policy, so the later entry is ignored"
-            )
-            continue
-        if provider.issuer:
-            seen[provider.issuer] = provider.id
-        kept.append(provider)
+    for issuer in sorted(duplicates):
+        ids = sorted(provider_id for provider_id, declared_issuer in declarations if declared_issuer == issuer)
+        errors.append(f"issuer {issuer!r} is claimed by providers {', '.join(ids)}; every provider using it is ignored because token policy would be ambiguous")
     return kept, errors
 
 
@@ -1248,7 +1300,7 @@ def build_provider_registry(config_manager: Any, app_config: Any) -> RegistryLoa
                 provider.id,
             )
 
-    providers, issuer_errors = _reject_duplicate_issuers(providers)
+    providers, issuer_errors = _reject_duplicate_issuers(providers, entries)
     errors.extend(issuer_errors)
 
     return RegistryLoadResult(providers=providers, errors=errors, source=source)

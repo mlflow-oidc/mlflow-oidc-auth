@@ -5,6 +5,7 @@
 - [Programmatic Access](programmatic-access)
 - [Kubernetes Service Accounts](kubernetes-auth)
 - [SAML Authentication](saml-auth)
+- [SPIFFE Workload Identities](spiffe-auth)
 - [Configuration Providers](configuration-providers)
 - [Permissions](permissions)
 - [Workspaces](workspaces)

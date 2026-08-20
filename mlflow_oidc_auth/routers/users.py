@@ -116,6 +116,19 @@ def _require_user(username: str) -> str:
     return user.username
 
 
+def _ensure_local_tokens_allowed(username: str) -> str:
+    """Return the stored username unless the account must use workload credentials."""
+    try:
+        profile = store.get_user_profile(username)
+    except MlflowException:
+        profile = None
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"User {username} not found")
+    if isinstance(profile.managed_by, str) and profile.managed_by.startswith("spiffe:"):
+        raise HTTPException(status_code=403, detail="SPIFFE workload identities cannot create local access tokens")
+    return profile.username
+
+
 @users_router.patch(
     CREATE_ACCESS_TOKEN,
     summary="Create user access token",
@@ -172,7 +185,7 @@ async def create_access_token(
 
     # get_user_profile raises rather than returning None; a mistyped username is a 404, not a 500
     # (issue #338).
-    target_username = _require_user(target_username)
+    target_username = _ensure_local_tokens_allowed(target_username)
     try:
         record, plaintext, replaced = store.replace_user_token(target_username, DEFAULT_TOKEN_NAME, expiration, created_by=current_username)
     except MlflowException as e:
@@ -201,10 +214,9 @@ async def create_access_token(
         headers={"Cache-Control": "no-store"},
     )
 
-
 def _issue_token(target_username: str, token_request: CreateUserTokenRequest, actor: str) -> JSONResponse:
     expiration = _parse_expiration(token_request.expiration)
-    target_username = _require_user(target_username)
+    target_username = _ensure_local_tokens_allowed(target_username)
     try:
         record, plaintext = store.create_user_token(target_username, token_request.name, expiration, created_by=actor)
     except MlflowException as e:

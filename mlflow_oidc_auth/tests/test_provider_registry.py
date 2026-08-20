@@ -675,17 +675,16 @@ class TestATokenProviderMustPinItsOwnIssuerAndKeys:
 
 
 class TestTwoProvidersCannotClaimOneIssuer:
-    """Validation takes the first exact ``iss`` match, so a duplicate means the second entry's
-    policy — its audience, binding and group rules — is silently never applied."""
+    """A duplicate issuer is ambiguous, so neither policy may remain active."""
 
-    def test_the_later_entry_is_rejected(self):
+    def test_every_entry_with_the_duplicate_issuer_is_rejected(self):
         first = valid_entry(id="first", issuer="https://shared.example.com")
         second = valid_entry(id="second", issuer="https://shared.example.com")
 
         result = build([first, second])
 
-        assert [provider.id for provider in result.providers] == ["first"]
-        assert any("already claimed" in error for error in result.errors)
+        assert result.providers == []
+        assert any("every provider using it is ignored" in error for error in result.errors)
 
     def test_distinct_issuers_both_survive(self):
         result = build([valid_entry(id="first"), valid_entry(id="second")])

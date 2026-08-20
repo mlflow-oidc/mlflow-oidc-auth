@@ -80,11 +80,13 @@ def _auth_method(request: Request, workload_bearer: bool = False) -> str:
 DENIAL_UNKNOWN_USER = "unknown_user"
 DENIAL_INACTIVE = "inactive"
 DENIAL_LOOKUP_ERROR = "lookup_error"
+DENIAL_IDENTITY_MISMATCH = "identity_mismatch"
 
 DENIAL_AUDIT_EVENTS = {
     DENIAL_UNKNOWN_USER: "auth.denied_unknown_user",
     DENIAL_INACTIVE: "auth.denied_inactive",
     DENIAL_LOOKUP_ERROR: "auth.denied_lookup_error",
+    DENIAL_IDENTITY_MISMATCH: "auth.denied_identity_mismatch",
 }
 
 # A revoked-but-unexpired cookie keeps arriving: a browser tab left open on the SPA issues
@@ -396,7 +398,46 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # A concurrent first request may have inserted the row — benign.
             logger.warning("Provisioning of service account %s did not complete (may already exist): %s", username, type(e).__name__)
 
-    async def _authenticate_bearer_token(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
+    def _authenticate_spiffe_workload(self, payload, provider, request: Optional[Request] = None) -> Tuple[bool, Optional[str], str]:
+        """Authenticate an allowlisted SPIFFE JWT-SVID workload identity."""
+        from mlflow_oidc_auth.spiffe import SpiffeIdError, SpiffeTrustDomainError, parse_spiffe_id, spiffe_id_is_allowed
+
+        subject = payload.get("sub")
+        try:
+            identity = parse_spiffe_id(subject, provider.trust_domain)
+        except SpiffeTrustDomainError:
+            actor = subject if isinstance(subject, str) else "unknown-spiffe-workload"
+            if _should_audit_denial(actor, "trust_domain_mismatch"):
+                emit_audit_event(
+                    "auth.denied_spiffe_trust_domain",
+                    actor=actor,
+                    resource_type="identity_provider",
+                    resource_id=provider.id,
+                    status="denied",
+                )
+            return False, None, "SPIFFE trust domain is not allowed"
+        except SpiffeIdError as exc:
+            logger.warning("Rejecting malformed SPIFFE ID from provider '%s': %s", provider.id, exc)
+            return False, None, "Invalid SPIFFE ID"
+
+        if not spiffe_id_is_allowed(identity.spiffe_id, provider.spiffe_id_allowlist):
+            if _should_audit_denial(identity.spiffe_id, "spiffe_id_not_allowed"):
+                emit_audit_event(
+                    "auth.denied_spiffe_id",
+                    actor=identity.spiffe_id,
+                    resource_type="identity_provider",
+                    resource_id=provider.id,
+                    detail={"spiffe_id": identity.spiffe_id},
+                    status="denied",
+                )
+            return False, None, "SPIFFE ID is not allowed"
+
+        if request is not None:
+            request.state.spiffe_workload = (identity, provider)
+        logger.debug("SPIFFE workload %s authenticated via bearer token", identity.username)
+        return True, identity.username, ""
+
+    async def _authenticate_bearer_token(self, auth_header: str, request: Optional[Request] = None) -> Tuple[bool, Optional[str], str]:
         """
         Authenticate using bearer token.
 
@@ -425,6 +466,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # other provider's tokens are named.
                 _WORKLOAD_BEARER.set(True)
                 return self._authenticate_service_account(token, payload, provider)
+
+            if provider is not None and provider.type == "spiffe":
+                return self._authenticate_spiffe_workload(payload, provider, request)
 
             # Extract username from configured fields. extract_username guarantees a
             # non-empty, normalized username whenever it returns no error.
@@ -571,7 +615,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Try bearer token authentication
         if auth_header and auth_header.startswith("Bearer "):
-            return await self._authenticate_bearer_token(auth_header)
+            return await self._authenticate_bearer_token(auth_header, request)
 
         # Try session-based authentication
         return await self._authenticate_session(request)
@@ -593,7 +637,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         is_admin, is_active, _ = self._get_user_auth_state(username)
         return is_admin and is_active
 
-    def _get_user_auth_state(self, username: str) -> Tuple[bool, bool, str]:
+    def _get_user_auth_state(self, username: str, expected_owner: Optional[str] = None) -> Tuple[bool, bool, str]:
         """Read the facts the auth path needs about a user, in one lookup.
 
         All come off the profile row that is already fetched on every authenticated request, so
@@ -630,9 +674,42 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if not user:
             return False, False, DENIAL_UNKNOWN_USER
+        if isinstance(user.managed_by, str) and user.managed_by.startswith("spiffe:") and not expected_owner:
+            # SPIFFE access is valid only while a fresh JWT-SVID passes the current allowlist.
+            # A local token or session has no SPIFFE context and must not become a durable bypass.
+            return False, False, DENIAL_IDENTITY_MISMATCH
+        if expected_owner and (user.managed_by != expected_owner or not user.is_service_account):
+            logger.warning("Workload identity %s collided with a local account not owned by %s", username, expected_owner)
+            return False, False, DENIAL_IDENTITY_MISMATCH
         if not user.active:
             return bool(user.is_admin), False, DENIAL_INACTIVE
-        return bool(user.is_admin), True, ""
+        return (False if expected_owner else bool(user.is_admin)), True, ""
+
+    @staticmethod
+    def _provision_spiffe_workload(identity, provider) -> None:
+        """Provision a SPIFFE identity once, without minting local credentials."""
+        owner = f"spiffe:{provider.id}"
+        try:
+            store.provision_workload_identity(
+                username=identity.username,
+                display_name=identity.spiffe_id,
+                provider_id=provider.id,
+                subject=identity.spiffe_id,
+                managed_by=owner,
+            )
+        except Exception as exc:
+            # A concurrent request may have created the same row. The profile lookup immediately
+            # after this decides whether the durable row is the expected workload or a collision.
+            logger.debug("SPIFFE workload provisioning did not insert a row: %s", type(exc).__name__)
+            return
+
+        emit_audit_event(
+            "user.provisioned",
+            actor=identity.spiffe_id,
+            resource_type="user",
+            resource_id=identity.username,
+            detail={"provider": provider.id, "external_identity": identity.spiffe_id, "is_service_account": True},
+        )
 
     async def _handle_auth_redirect(self, request: Request) -> Response:
         """
@@ -703,10 +780,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             resolved = getattr(request.state, "resolved_session", None)
             if resolved is not None:
                 # Already read, in the same statement that validated the session.
-                is_admin, is_active = resolved.is_admin, resolved.is_active
-                denial_reason = "" if is_active else DENIAL_INACTIVE
+                if isinstance(resolved.managed_by, str) and resolved.managed_by.startswith("spiffe:"):
+                    is_admin, is_active, denial_reason = False, False, DENIAL_IDENTITY_MISMATCH
+                else:
+                    is_admin, is_active = resolved.is_admin, resolved.is_active
+                    denial_reason = "" if is_active else DENIAL_INACTIVE
             else:
-                is_admin, is_active, denial_reason = self._get_user_auth_state(username)
+                workload = getattr(request.state, "spiffe_workload", None)
+                expected_owner = f"spiffe:{workload[1].id}" if workload else None
+                is_admin, is_active, denial_reason = self._get_user_auth_state(username, expected_owner)
+                if workload and denial_reason == DENIAL_UNKNOWN_USER:
+                    self._provision_spiffe_workload(*workload)
+                    is_admin, is_active, denial_reason = self._get_user_auth_state(username, expected_owner)
 
             # A deprovisioned user holds a signed cookie or a valid token that has not expired
             # yet, so credentials alone still check out. Directories deactivate rather than

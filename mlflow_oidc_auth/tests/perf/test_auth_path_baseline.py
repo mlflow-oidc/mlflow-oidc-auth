@@ -47,6 +47,8 @@ from starlette.middleware.sessions import SessionMiddleware
 import mlflow_oidc_auth.auth as auth_module
 import mlflow_oidc_auth.store as store_module
 from mlflow_oidc_auth.middleware import AuthMiddleware
+from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+from mlflow_oidc_auth.spiffe import parse_spiffe_id
 
 from .conftest import QueryCounter
 
@@ -189,6 +191,44 @@ class TestAuthPathQueryBudget:
     def test_bearer_authenticated_request_issues_two_queries(self, client, counter, auth_user, bearer_token):
         """The API path: with provisioning off (the default), only the admin check runs."""
         token = bearer_token(auth_user)
+
+        counts = _count_requests(counter, lambda: client.get(PROTECTED_PATH, headers={"Authorization": f"Bearer {token}"}))
+
+        assert counts == [2, 2, 2], counter.report()
+
+    def test_spiffe_workload_steady_state_issues_two_queries(self, client, counter, bound_store, monkeypatch):
+        """Allowlist checks and deterministic identity mapping add no steady-state query."""
+        spiffe_id = "spiffe://prokube.internal/ns/ml-team/sa/training-pipeline"
+        identity = parse_spiffe_id(spiffe_id, "prokube.internal")
+        provider = ProviderConfig(
+            id="spire",
+            type="spiffe",
+            interactive=False,
+            provisioning="jit",
+            group_sync="none",
+            admin_source="none",
+            issuer="https://spire.invalid",
+            discovery_url="https://spire.invalid/.well-known/openid-configuration",
+            audience="mlflow-api",
+            trust_domain="prokube.internal",
+            spiffe_id_allowlist=(spiffe_id,),
+        )
+        bound_store.provision_workload_identity(identity.username, spiffe_id, provider.id, spiffe_id, "spiffe:spire")
+
+        key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
+        private = key.as_dict(is_private=True)
+        public = key.as_dict(is_private=False)
+        kid = public.get("kid") or key.thumbprint()
+        private["kid"] = public["kid"] = kid
+        public["use"] = "jwt-svid"
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", RegistryLoadResult(providers=[provider], source="env"))
+        monkeypatch.setattr(auth_module, "_get_provider_jwks", lambda selected, force_refresh=False: {"keys": [public]})
+        now = int(time.time())
+        token = jwt.encode(
+            {"alg": "RS256", "kid": kid},
+            {"iss": provider.issuer, "aud": provider.audience, "sub": spiffe_id, "iat": now, "exp": now + 300},
+            private,
+        ).decode()
 
         counts = _count_requests(counter, lambda: client.get(PROTECTED_PATH, headers={"Authorization": f"Bearer {token}"}))
 
