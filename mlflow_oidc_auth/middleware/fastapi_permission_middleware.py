@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse, PlainTextResponse
 
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 
@@ -128,6 +129,9 @@ def _get_otel_validator(path: str) -> Callable[[str, Request], Awaitable[bool]] 
             logger.warning("OTel validator: missing X-Mlflow-Experiment-Id header")
             return False
 
+        auth_context = request.scope.get(AUTH_CONTEXT_KEY)
+        if isinstance(auth_context, AuthContext) and auth_context.workspace:
+            return effective_experiment_permission(experiment_id, username, workspace=auth_context.workspace).permission.can_update
         return effective_experiment_permission(experiment_id, username).permission.can_update
 
     return validator

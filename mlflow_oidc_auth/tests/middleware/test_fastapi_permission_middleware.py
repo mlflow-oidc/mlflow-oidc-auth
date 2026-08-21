@@ -12,6 +12,8 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from starlette.responses import PlainTextResponse
 
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
+
 # ---------------------------------------------------------------------------
 # Unit tests: _extract_gateway_endpoint_name
 # ---------------------------------------------------------------------------
@@ -236,10 +238,17 @@ class TestOtelValidator:
         validator = self._get_otel_validator("/v1/traces")
         request = MagicMock(spec=Request)
         request.headers = {"x-mlflow-experiment-id": "42"}
+        request.scope = {
+            AUTH_CONTEXT_KEY: AuthContext(
+                username="user@example.com",
+                is_admin=False,
+                workspace="team-ws",
+            )
+        }
 
         result = await validator("user@example.com", request)
         assert result is True
-        mock_perm.assert_called_once_with("42", "user@example.com")
+        mock_perm.assert_called_once_with("42", "user@example.com", workspace="team-ws")
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.utils.effective_experiment_permission")
@@ -252,9 +261,17 @@ class TestOtelValidator:
         validator = self._get_otel_validator("/v1/traces")
         request = MagicMock(spec=Request)
         request.headers = {"x-mlflow-experiment-id": "42"}
+        request.scope = {
+            AUTH_CONTEXT_KEY: AuthContext(
+                username="user@example.com",
+                is_admin=False,
+                workspace="team-ws",
+            )
+        }
 
         result = await validator("user@example.com", request)
         assert result is False
+        mock_perm.assert_called_once_with("42", "user@example.com", workspace="team-ws")
 
     @pytest.mark.asyncio
     async def test_otel_missing_experiment_header(self):

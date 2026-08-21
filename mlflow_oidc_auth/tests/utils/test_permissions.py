@@ -547,6 +547,39 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
         self.assertEqual(result.permission, EDIT)
 
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_explicit_workspace_returns_workspace_permission(self, mock_resolver):
+        """FastAPI callers can supply workspace context without a Flask request."""
+        from mlflow_oidc_auth.permissions import EDIT, READ
+
+        mock_builder = MagicMock(return_value={"user": MagicMock()})
+        mock_resolver.return_value = PermissionResult(READ, "fallback")
+
+        with patch.dict(
+            "mlflow_oidc_auth.utils.permissions.PERMISSION_REGISTRY",
+            {"experiment": mock_builder},
+        ):
+            with patch("mlflow_oidc_auth.utils.permissions.config") as mock_config:
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                with patch(
+                    "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                    return_value=None,
+                ):
+                    with patch(
+                        "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                        return_value=EDIT,
+                    ) as mock_cache:
+                        result = resolve_permission(
+                            "experiment",
+                            "exp-fastapi",
+                            "user1",
+                            workspace="team-ws",
+                        )
+
+        self.assertEqual(result.kind, "workspace")
+        self.assertEqual(result.permission, EDIT)
+        mock_cache.assert_called_once_with("user1", "team-ws")
+
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
     def test_workspace_edit_fallback_allows_experiment_update_but_not_manage(self, mock_resolver):
         """Workspace EDIT fallback grants update capability for existing experiments but not manage."""
         from mlflow_oidc_auth.permissions import EDIT, READ

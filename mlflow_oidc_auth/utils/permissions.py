@@ -57,7 +57,7 @@ def _get_permission_cache() -> CacheBackend:
 _NO_WORKSPACE_CACHE_MARKER = "::no-workspace"
 
 
-def _get_cache_workspace() -> str | None:
+def _get_cache_workspace(workspace: str | None = None) -> str | None:
     """Return the workspace component of the cache key, or None when workspaces are off.
 
     This must describe what ``resolve_permission`` actually *did*, not what MLflow would
@@ -71,11 +71,14 @@ def _get_cache_workspace() -> str | None:
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return None
 
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    if workspace is None:
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
 
-    # None also covers resolution outside a Flask request context, which likewise skips
-    # the workspace branch below and so belongs in the same bucket.
-    return get_request_workspace() or _NO_WORKSPACE_CACHE_MARKER
+        workspace = get_request_workspace()
+
+    # None also covers resolution outside a request context, which likewise skips the
+    # workspace branch below and so belongs in the same bucket.
+    return workspace or _NO_WORKSPACE_CACHE_MARKER
 
 
 def _make_cache_key(resource_type: str, resource_id: str, username: str, workspace: str | None = None) -> str:
@@ -295,7 +298,7 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
 }
 
 
-def _apply_workspace_fallback(result: PermissionResult, username: str) -> PermissionResult:
+def _apply_workspace_fallback(result: PermissionResult, username: str, workspace: str | None = None) -> PermissionResult:
     """Defer a generic ``fallback`` result to the user's workspace permission.
 
     Per WSAUTH-C/WSAUTH-04: when workspaces are enabled and no resource-level
@@ -309,10 +312,12 @@ def _apply_workspace_fallback(result: PermissionResult, username: str) -> Permis
     if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
         return result
 
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
     from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
-    workspace = get_request_workspace()
+    if workspace is None:
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+
+        workspace = get_request_workspace()
     if not workspace:
         return result
     ws_perm = get_workspace_permission_cached(username, workspace)
@@ -407,14 +412,14 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
         )
 
 
-def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs) -> PermissionResult:
+def resolve_permission(resource_type: str, resource_id: str, username: str, workspace: str | None = None, **kwargs) -> PermissionResult:
     """Single entry point for all permission resolution. Per D-01 (REFAC-01).
 
-    Results are cached with a short TTL to avoid repeated DB lookups on
-    every request. The cache key is ``resource_type:resource_id:username``.
+    Results are cached with a short TTL to avoid repeated DB lookups on every
+    request. Workspace-enabled lookups include the workspace in the cache key.
     """
     cache = _get_permission_cache()
-    cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace())
+    cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace(workspace))
 
     cached = cache.get(cache_key)
     if cached is not None:
@@ -423,7 +428,7 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     builder = PERMISSION_REGISTRY[resource_type]
     sources_config = builder(resource_id, username, **kwargs)
     result = get_permission_from_store_or_default(sources_config)
-    result = _apply_workspace_fallback(result, username)
+    result = _apply_workspace_fallback(result, username, workspace) if workspace is not None else _apply_workspace_fallback(result, username)
 
     # Recorded here rather than where the fallback is constructed, because this is the
     # only layer that knows WHICH resource and user it was for. Checked after the
@@ -436,17 +441,17 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
 
 
 # ---------------------------------------------------------------------------
-# Public API — thin wrappers (unchanged signatures)
+# Public API — thin wrappers
 # ---------------------------------------------------------------------------
 
 
-def effective_experiment_permission(experiment_id: str, user: str) -> PermissionResult:
+def effective_experiment_permission(experiment_id: str, user: str, workspace: str | None = None) -> PermissionResult:
     """
     Attempts to get permission from store based on configured sources,
     and returns default permission if no record is found.
     Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
     """
-    return resolve_permission(EXPERIMENT, experiment_id, user)
+    return resolve_permission(EXPERIMENT, experiment_id, user, workspace=workspace)
 
 
 def effective_registered_model_permission(model_name: str, user: str) -> PermissionResult:
