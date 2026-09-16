@@ -136,21 +136,28 @@ def test__get_permission_from_experiment_id_artifact_proxy_with_id():
 
 
 def test__get_permission_from_experiment_id_artifact_proxy_no_id():
-    dummy_perm = DummyPermission(can_read=True)
+    """An artifact-proxy path that names no experiment must DENY, not fall back (#289).
+
+    This used to return config.DEFAULT_MLFLOW_PERMISSION, which ships as MANAGE — so an
+    unresolvable path meant "allow", and DELETE /mlflow-artifacts/artifacts/. wiped every
+    experiment's artifacts. The assertion is made with the permissive default configured,
+    so it fails if the fallback returns: under NO_PERMISSIONS (what the test .env sets) a
+    deny assertion would pass either way and prove nothing.
+    """
+    from flask import Flask
+
+    probe = Flask(__name__)
+    # A request naming no artifact path at all is the root listing, which is root-scoped.
     with (
-        patch(
-            "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
-            return_value=None,
-        ),
-        patch("mlflow_oidc_auth.validators.experiment.config") as mock_config,
-        patch(
-            "mlflow_oidc_auth.validators.experiment.get_permission",
-            return_value=dummy_perm,
-        ),
+        probe.test_request_context("/api/2.0/mlflow-artifacts/artifacts", method="GET"),
+        patch.object(experiment.config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE"),
     ):
-        mock_config.DEFAULT_MLFLOW_PERMISSION = "default"
         perm = experiment._get_permission_from_experiment_id_artifact_proxy("alice")
-        assert perm.can_read is True
+
+    assert perm.can_read is False
+    assert perm.can_update is False
+    assert perm.can_delete is False
+    assert perm.can_manage is False
 
 
 def test_validate_can_read_experiment():

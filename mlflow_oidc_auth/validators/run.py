@@ -2,7 +2,7 @@ from mlflow.server.handlers import _get_tracking_store
 from flask import request
 
 from mlflow_oidc_auth.permissions import Permission
-from mlflow_oidc_auth.utils import effective_experiment_permission, get_request_param
+from mlflow_oidc_auth.utils import effective_experiment_permission, get_request_param, get_run_id
 
 
 def _permission_for_run(run_id: str, username: str) -> Permission:
@@ -75,3 +75,21 @@ def validate_can_read_metric_history_bulk_interval(username: str) -> bool:
         if not effective_experiment_permission(experiment_id, username).permission.can_read:
             return False
     return True
+
+
+def validate_can_create_presigned_upload_url(username: str) -> bool:
+    """Authorize POST /mlflow/artifacts/presigned-upload-url (issue #289).
+
+    This route reached NO validator at all: it carries no "/mlflow-artifacts/" marker, so
+    _is_proxy_artifact_path was False, and no proto handler was registered for it, so
+    _find_validator returned None — and a None validator is not a deny, it falls through
+    and is served. That made it a cross-tenant WRITE primitive: MLflow's
+    _create_presigned_upload_url takes a caller-supplied run_id, looks up that run's
+    artifact_uri, and mints a presigned cloud-storage upload URL for it. Any authenticated
+    user could obtain write access to any other tenant's artifact storage.
+
+    It is a proto route (CreatePresignedUploadUrl), so the run id is read via get_run_id,
+    which resolves from the exact source MLflow proto-parses. Minting an upload URL is a
+    write, so UPDATE on the owning experiment is required.
+    """
+    return _permission_for_run(get_run_id(), username).can_update
