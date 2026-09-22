@@ -12,6 +12,7 @@ import {
   faKey,
   faHexagonNodesBolt,
   faBuilding,
+  faPlug,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const getSidebarData = (
@@ -99,6 +100,12 @@ export const getSidebarData = (
         href: "/webhooks",
         isInternalLink: true,
         icon: faWrench,
+      },
+      {
+        label: "SCIM",
+        href: "/scim",
+        isInternalLink: true,
+        icon: faPlug,
       },
     ];
 

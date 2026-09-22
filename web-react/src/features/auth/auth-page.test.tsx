@@ -93,6 +93,14 @@ describe("AuthPage", () => {
   });
 });
 
+// Shared by every describe block below that exercises the provider list.
+const provider = (id: string, displayName: string) => ({
+  id,
+  display_name: displayName,
+  type: "oidc",
+  login_url: `/api/login/${id}`,
+});
+
 describe("AuthPage provider picker (#317)", () => {
   beforeEach(() => {
     mockUseRuntimeConfig.mockReturnValue({
@@ -106,13 +114,6 @@ describe("AuthPage provider picker (#317)", () => {
     mockUseAuthErrors.mockReturnValue([]);
     mockUseProviders.mockReturnValue({ providers: [], loading: false });
     window.history.replaceState({}, "", "/");
-  });
-
-  const provider = (id: string, displayName: string) => ({
-    id,
-    display_name: displayName,
-    type: "oidc",
-    login_url: `/api/login/${id}`,
   });
 
   it("renders the page it always has when no providers are reported", () => {
@@ -235,5 +236,54 @@ describe("AuthPage provider picker (#317)", () => {
       "User is not allowed to login",
     );
     expect(screen.getByRole("link", { name: "Entra ID" })).toBeInTheDocument();
+  });
+});
+
+describe("AuthPage SAML hint (#330)", () => {
+  beforeEach(() => {
+    mockUseRuntimeConfig.mockReturnValue({
+      provider: "Sign in with OIDC",
+      basePath: "/api",
+      uiPath: "/ui",
+      authenticated: false,
+      gen_ai_gateway_enabled: false,
+      workspaces_enabled: false,
+    });
+    mockUseAuthErrors.mockReturnValue([]);
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("shows a muted SAML hint under the button for a single SAML provider", () => {
+    mockUseProviders.mockReturnValue({
+      providers: [
+        {
+          id: "corp",
+          display_name: "Corporate SSO",
+          type: "saml",
+          login_url: "/api/login/corp",
+        },
+      ],
+      loading: false,
+    });
+
+    render(<AuthPage />);
+
+    expect(
+      screen.getByRole("link", { name: "Corporate SSO" }),
+    ).toHaveAttribute("href", "/api/login/corp");
+    expect(screen.getByTestId("provider-kind-corp")).toHaveTextContent(
+      "SAML",
+    );
+  });
+
+  it("shows no SAML hint for a single OIDC provider", () => {
+    mockUseProviders.mockReturnValue({
+      providers: [provider("default", "Login with OIDC")],
+      loading: false,
+    });
+
+    render(<AuthPage />);
+
+    expect(screen.queryByText("SAML")).not.toBeInTheDocument();
   });
 });

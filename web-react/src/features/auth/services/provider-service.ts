@@ -4,14 +4,25 @@
  * Reads the endpoint #316 added. It is deliberately unauthenticated and deliberately thin — an
  * id, a label, a type and a login URL — because it is fetched before anyone has signed in.
  *
- * Nothing here knows what an OIDC provider is. `type` is carried through and used only for a
- * label, so the SAML providers in #330 appear without this file changing.
+ * `type` is carried through unvalidated and used only for a label. This file itself stays
+ * agnostic to what kind of provider it is fetching, so the SAML providers in #330 appear without
+ * this file changing.
  */
+
+/**
+ * The kinds of provider the picker knows to label (#330). The `| string` keeps any other value
+ * — a type this file has never heard of — assignable and rendering exactly as it does today,
+ * with no kind label. ESLint's `no-redundant-type-constituents` flags the literals as redundant
+ * with `string`; that is true for assignability and is the point here (unknown types still
+ * type-check), while the literals stay for readability and editor autocomplete at call sites.
+ */
+// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+export type ProviderType = "oidc" | "saml" | string;
 
 export type IdentityProvider = {
   id: string;
   display_name: string;
-  type: string;
+  type: ProviderType;
   login_url: string;
 };
 

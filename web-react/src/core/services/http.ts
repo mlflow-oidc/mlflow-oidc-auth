@@ -65,8 +65,13 @@ export function extractErrorMessage(
         const body = JSON.parse(match[1]) as {
           message?: string;
           error_code?: string;
+          detail?: string;
         };
         if (body.message) return body.message;
+        // Plain FastAPI HTTPException responses use {"detail": "..."} rather
+        // than the {"message": ...} shape emitted by the MlflowException
+        // handler — fall back to it so 4xx refusals still surface verbatim.
+        if (typeof body.detail === "string") return body.detail;
       } catch {
         // Response body was not JSON — use the raw text after "HTTP NNN: "
         return match[1];

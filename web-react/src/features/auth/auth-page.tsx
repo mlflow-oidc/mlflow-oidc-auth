@@ -39,6 +39,12 @@ export const AuthPage = () => {
     providers.length === 1
       ? providers[0].display_name || providers[0].id
       : config.provider;
+  // Same muted hint the picker shows for a SAML entry (#330), so a single-provider deployment
+  // gets it too rather than only deployments with several providers to choose between.
+  const singleSamlProvider =
+    providers.length === 1 && providers[0].type === "saml"
+      ? providers[0]
+      : null;
 
   const currentYear = new Date().getFullYear();
 
@@ -101,11 +107,21 @@ export const AuthPage = () => {
               {buttonText}
             </Button>
           ) : singleProvider ? (
-            <a href={loginHref} className="w-full">
-              <Button variant="primary" className="w-full py-2 text-base">
-                {buttonText}
-              </Button>
-            </a>
+            <>
+              <a href={loginHref} className="w-full">
+                <Button variant="primary" className="w-full py-2 text-base">
+                  {buttonText}
+                </Button>
+              </a>
+              {singleSamlProvider && (
+                <span
+                  data-testid={`provider-kind-${singleSamlProvider.id}`}
+                  className="text-xs text-ui-text/50 dark:text-ui-text-dark/50 mt-1"
+                >
+                  SAML
+                </span>
+              )}
+            </>
           ) : (
             <ProviderPicker providers={providers} next={nextTarget} />
           )}

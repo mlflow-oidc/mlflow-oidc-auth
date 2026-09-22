@@ -1,0 +1,168 @@
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import ScimPage from "./scim-page";
+import * as useScimTokensModule from "./hooks/use-scim-tokens";
+import * as useToastModule from "../../shared/components/toast/use-toast";
+import * as scimTokenService from "./services/scim-token-service";
+import type { ScimToken, ScimTokenWithSecret } from "../../shared/types/scim";
+
+vi.mock("./hooks/use-scim-tokens");
+vi.mock("../../shared/components/toast/use-toast");
+vi.mock("./services/scim-token-service");
+
+vi.mock("../../shared/context/use-runtime-config", () => ({
+  useRuntimeConfig: () => ({
+    basePath: "/base",
+    uiPath: "/ui",
+    provider: "oidc",
+    authenticated: true,
+    gen_ai_gateway_enabled: false,
+    workspaces_enabled: false,
+  }),
+}));
+
+describe("ScimPage", () => {
+  const activeToken: ScimToken = {
+    id: 1,
+    name: "Entra ID",
+    token_prefix: "scim_abcd",
+    created_at: "2026-01-01T00:00:00Z",
+    created_by: "admin",
+    last_used_at: "2026-02-01T00:00:00Z",
+    expires_at: null,
+    revoked_at: null,
+  };
+
+  const revokedToken: ScimToken = {
+    id: 2,
+    name: "Okta",
+    token_prefix: "scim_wxyz",
+    created_at: "2026-01-01T00:00:00Z",
+    created_by: "admin",
+    last_used_at: null,
+    expires_at: null,
+    revoked_at: "2026-03-01T00:00:00Z",
+  };
+
+  const mockShowToast = vi.fn();
+  const mockRefresh = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(useScimTokensModule, "useScimTokens").mockReturnValue({
+      tokens: [activeToken, revokedToken],
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    vi.spyOn(useToastModule, "useToast").mockReturnValue({
+      showToast: mockShowToast,
+      removeToast: vi.fn(),
+    } as unknown as ReturnType<typeof useToastModule.useToast>);
+  });
+
+  it("renders the provisioning endpoint and the tokens table", () => {
+    render(<ScimPage />);
+    expect(screen.getByText("Provisioning endpoint")).toBeInTheDocument();
+    expect(
+      screen.getByText(`${window.location.origin}/base/scim/v2`),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Entra ID")).toBeInTheDocument();
+    expect(screen.getByText("Okta")).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("Revoked")).toBeInTheDocument();
+  });
+
+  it("creates a token and shows the plaintext exactly once", async () => {
+    const created: ScimTokenWithSecret = {
+      ...activeToken,
+      id: 3,
+      name: "New Token",
+      token: "scim_plaintext_value",
+    };
+    vi.spyOn(scimTokenService, "createScimToken").mockResolvedValue(created);
+
+    render(<ScimPage />);
+    fireEvent.click(screen.getByText("Create token"));
+
+    const nameInput = screen.getByLabelText(/Name\*/i);
+    fireEvent.change(nameInput, { target: { value: "New Token" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(scimTokenService.createScimToken).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "New Token" }),
+      );
+    });
+
+    expect(
+      await screen.findByDisplayValue("scim_plaintext_value"),
+    ).toBeInTheDocument();
+    expect(mockRefresh).toHaveBeenCalled();
+
+    // The plaintext appears exactly once on the page.
+    expect(
+      screen.getAllByDisplayValue("scim_plaintext_value"),
+    ).toHaveLength(1);
+  });
+
+  it("rotates a token after confirmation and refreshes the list", async () => {
+    const rotated: ScimTokenWithSecret = {
+      ...activeToken,
+      token: "scim_rotated_value",
+    };
+    vi.spyOn(scimTokenService, "rotateScimToken").mockResolvedValue(rotated);
+
+    render(<ScimPage />);
+    const rotateButtons = screen.getAllByTitle("Rotate");
+    fireEvent.click(rotateButtons[0]);
+
+    expect(screen.getByText("Rotate SCIM token")).toBeInTheDocument();
+    expect(screen.getByText(/overlap window/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rotate token" }));
+
+    await waitFor(() => {
+      expect(scimTokenService.rotateScimToken).toHaveBeenCalledWith(
+        activeToken.id,
+      );
+      expect(mockRefresh).toHaveBeenCalled();
+    });
+
+    expect(
+      await screen.findByDisplayValue("scim_rotated_value"),
+    ).toBeInTheDocument();
+  });
+
+  it("revokes a token after confirmation", async () => {
+    vi.spyOn(scimTokenService, "revokeScimToken").mockResolvedValue({
+      ...activeToken,
+      revoked_at: "2026-04-01T00:00:00Z",
+    });
+
+    render(<ScimPage />);
+    const revokeButtons = screen.getAllByTitle("Revoke");
+    fireEvent.click(revokeButtons[0]);
+
+    expect(screen.getByText("Revoke SCIM token")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke token" }));
+
+    await waitFor(() => {
+      expect(scimTokenService.revokeScimToken).toHaveBeenCalledWith(
+        activeToken.id,
+      );
+      expect(mockRefresh).toHaveBeenCalled();
+    });
+  });
+
+  it("disables Rotate and Revoke actions for an already-revoked token", () => {
+    render(<ScimPage />);
+    const rotateButtons = screen.getAllByTitle("Rotate");
+    const revokeButtons = screen.getAllByTitle("Revoke");
+
+    // Second row corresponds to the revoked token.
+    expect(rotateButtons[1]).toBeDisabled();
+    expect(revokeButtons[1]).toBeDisabled();
+  });
+});

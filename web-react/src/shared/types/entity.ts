@@ -13,6 +13,12 @@ export type ModelListItem = {
 
 export type PromptListItem = ModelListItem;
 
+export type GroupDetails = {
+  group_name: string;
+  external_id: string | null;
+  member_count: number;
+};
+
 export type PermissionLevel =
   | "READ"
   | "USE"
