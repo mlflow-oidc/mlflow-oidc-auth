@@ -1269,7 +1269,7 @@ def _provision_login(
                     username,
                     config.OIDC_WORKSPACE_DEFAULT_PERMISSION,
                 )
-                logger.info(f"Auto-assigned user {username} to workspace '{ws_name}' with {config.OIDC_WORKSPACE_DEFAULT_PERMISSION}")
+                logger.info("Auto-assigned user %s to workspace %r with the configured default permission", username, ws_name)
             except Exception:
                 # Permission already exists — not an error (idempotent)
                 logger.debug(f"Workspace permission already exists for {username} in '{ws_name}'")
