@@ -13,6 +13,7 @@ from mlflow_oidc_auth.models.experiment import (
 )
 from mlflow_oidc_auth.models.gateway import GatewayPermission, GatewayRegexCreate
 from mlflow_oidc_auth.models.group import (
+    CreateGroupRequest,
     GroupExperimentPermission,
     GroupExperimentPermissionItem,
     GroupExperimentRegexPermissionItem,
@@ -86,6 +87,7 @@ __all__ = [
     "ExperimentPermissionSummary",
     "ExperimentSummary",
     "ExperimentRegexPermission",
+    "CreateGroupRequest",
     "GroupUser",
     "GroupExperimentPermission",
     "GroupListResponse",

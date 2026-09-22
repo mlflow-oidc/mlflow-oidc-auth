@@ -239,7 +239,17 @@ Base path: `/api/2.0/mlflow/permissions/groups`
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/2.0/mlflow/permissions/groups` | Authenticated | List all groups |
+| POST | `/api/2.0/mlflow/permissions/groups` | Admin | Create a group |
 | GET | `/api/2.0/mlflow/permissions/groups/{group_name}/users` | Admin | List group members |
+
+**`POST /api/2.0/mlflow/permissions/groups` request:**
+```json
+{
+  "group_name": "data-team"
+}
+```
+
+Groups are otherwise created from the identity provider claims when a member signs in, so a group cannot be granted permissions before its first login. Creating a group up front lifts that ordering constraint for automated provisioning. The call is idempotent: it returns `201` when the group is created and `200` when it already exists.
 
 ### Group Direct Permissions
 
@@ -262,7 +272,7 @@ Same CRUD pattern as user permissions, but scoped to groups:
 | PATCH | `/{group_name}/{resource-type}-patterns/{id}` | Admin | Update pattern permission |
 | DELETE | `/{group_name}/{resource-type}-patterns/{id}` | Admin | Delete pattern permission |
 
-**Total: 69 group permission endpoints** (2 group-level + 7 resource types x ~9.5 operations each)
+**Total: 70 group permission endpoints** (3 group-level + 7 resource types x ~9.5 operations each)
 
 ---
 
