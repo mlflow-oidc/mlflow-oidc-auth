@@ -7,15 +7,38 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import DarkModeToggle from "../../shared/components/dark-mode-toggle";
+import { useProviders } from "./hooks/use-providers";
+import { withNextTarget } from "./services/provider-service";
+import { ProviderPicker } from "./components/provider-picker";
 
 export const AuthPage = () => {
   const config = useRuntimeConfig();
 
-  const buttonText = config.provider;
-  const loginHref = `${config.basePath}/login`;
-
   const errors = useAuthErrors();
   const hasErrors = errors.length > 0;
+
+  // Carried through to whichever provider is chosen. Not validated here: the server does that
+  // (`_sanitize_next`), and a second implementation would be a second thing to keep correct.
+  const nextTarget = new URLSearchParams(window.location.search).get("next");
+
+  const { providers, loading } = useProviders(config.basePath);
+
+  // One provider is the shape almost every deployment has, and it must look exactly as it did
+  // before this page learned about several: one button, the configured label, no chrome. That
+  // also covers a server too old to serve /providers, which reports none.
+  const singleProvider = providers.length <= 1;
+  const loginHref = withNextTarget(
+    providers.length === 1
+      ? providers[0].login_url
+      : `${config.basePath}/login`,
+    nextTarget,
+  );
+  // Same fallback chain the picker uses: a provider configured without a label still gets a
+  // button with words on it rather than an empty one.
+  const buttonText =
+    providers.length === 1
+      ? providers[0].display_name || providers[0].id
+      : config.provider;
 
   const currentYear = new Date().getFullYear();
 
@@ -63,11 +86,29 @@ export const AuthPage = () => {
             </div>
           )}
 
-          <a href={loginHref} className="w-full">
-            <Button variant="primary" className="w-full py-2 text-base">
+          {loading ? (
+            // Deliberately not a live link. The fallback button says "sign in with <the default
+            // provider>", and until the list arrives that may not be the provider this user
+            // belongs to — a click landing in the 300ms before it does would start a login
+            // against the wrong IdP, and with provisioning on, create an account there.
+            <Button
+              variant="primary"
+              className="w-full py-2 text-base"
+              disabled
+              aria-busy="true"
+              data-testid="providers-loading"
+            >
               {buttonText}
             </Button>
-          </a>
+          ) : singleProvider ? (
+            <a href={loginHref} className="w-full">
+              <Button variant="primary" className="w-full py-2 text-base">
+                {buttonText}
+              </Button>
+            </a>
+          ) : (
+            <ProviderPicker providers={providers} next={nextTarget} />
+          )}
         </div>
       </div>
 
