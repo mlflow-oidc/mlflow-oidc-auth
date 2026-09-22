@@ -8,6 +8,7 @@ experiment, model, and prompt permissions at the group level.
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
+from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.audit import emit_audit_event
@@ -58,6 +59,8 @@ group_permissions_router = APIRouter(
 )
 
 LIST_GROUPS = ""
+# Matched before the "/{group_name:path}/..." routes only because none of them is a bare name.
+LIST_GROUP_DETAILS = "/details"
 
 GROUP_EXPERIMENT_PERMISSIONS = "/{group_name:path}/experiments"
 GROUP_EXPERIMENT_PERMISSION_DETAIL = "/{group_name:path}/experiments/{experiment_id}"
@@ -139,6 +142,28 @@ async def list_groups(username: str = Depends(get_username)) -> GroupListRespons
     except Exception as e:
         logger.error(f"Error listing groups: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve groups")
+
+
+@group_permissions_router.get(
+    LIST_GROUP_DETAILS,
+    summary="List groups with details",
+    description="Lists groups with their external id and member count. Admins only.",
+    tags=["groups"],
+)
+async def list_group_details(admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    """List groups as objects, for the admin UI (issue #320).
+
+    ``GET /groups`` keeps returning a bare ``string[]``. Groups have no ``managed_by`` of their
+    own — ownership is recorded per membership — so none is reported.
+
+    Returns:
+        JSONResponse: ``[{"group_name", "external_id", "member_count"}]``, ordered by name.
+    """
+    try:
+        return JSONResponse(content=store.list_group_details())
+    except Exception as e:
+        logger.error(f"Error listing group details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve groups")
 
 
 @group_permissions_router.get(

@@ -367,6 +367,105 @@ Base path: `/api/3.0/mlflow/permissions/workspaces/regex`
 
 ---
 
+## SCIM
+
+SCIM 2.0 provisioning and the lifecycle endpoints the admin UI uses. See
+[SCIM Provisioning](scim) for behaviour.
+
+### SCIM 2.0 endpoint
+
+Base path: `/scim/v2`. It accepts **only** a SCIM bearer token (`Authorization: Bearer scim_...`).
+Sessions, user tokens and OIDC tokens are refused with `401` and `WWW-Authenticate: Bearer`.
+Repeated failures from one client IP get `429`. A write the ownership guard refuses gets
+`409 mutability`.
+Responses use `application/scim+json`, and errors use the RFC 7644 error schema.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/scim/v2/ServiceProviderConfig` | Capabilities |
+| GET | `/scim/v2/ResourceTypes`, `/scim/v2/ResourceTypes/User` | Resource types |
+| GET | `/scim/v2/Schemas`, `/scim/v2/Schemas/{urn}` | User schema |
+| GET | `/scim/v2/Users` | List users; `filter=userName eq "..."` or `externalId eq "..."`, `startIndex`, `count` |
+| POST | `/scim/v2/Users` | Provision a user |
+| GET | `/scim/v2/Users/{id}` | Get a user (`id` is the username; an `externalId` also resolves) |
+| PUT | `/scim/v2/Users/{id}` | Replace a user |
+| PATCH | `/scim/v2/Users/{id}` | Modify a user; `active: false` deprovisions |
+| DELETE | `/scim/v2/Users/{id}` | Hard-delete a user |
+
+### SCIM token administration
+
+Base path: `/api/2.0/mlflow/scim/tokens`. All endpoints are admin-only.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/2.0/mlflow/scim/tokens` | List tokens (no hashes, no plaintexts) |
+| POST | `/api/2.0/mlflow/scim/tokens` | Issue a token. Body `{"name": str, "expires_at": ISO-8601?}`. Returns `201` with `token` (plaintext, shown once) |
+| POST | `/api/2.0/mlflow/scim/tokens/{id}/rotate` | Issue a replacement (`201`, with `token` and `replaces`); the old token expires after the overlap window |
+| DELETE | `/api/2.0/mlflow/scim/tokens/{id}` | Revoke immediately |
+
+Token object:
+
+```json
+{
+  "id": 1,
+  "name": "entra-prod",
+  "token_prefix": "3f9a0c1b",
+  "created_at": "2026-09-22T10:00:00+00:00",
+  "created_by": "admin@example.com",
+  "last_used_at": "2026-09-22T10:05:00+00:00",
+  "expires_at": null,
+  "revoked_at": null,
+  "active": true
+}
+```
+
+### User and group lifecycle state
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/2.0/mlflow/users/details` | Admin | Users with lifecycle state. Optional `service=true\|false` filter; omit it for both |
+| PATCH | `/api/2.0/mlflow/users/{username}/active` | Admin | Deactivate or reactivate a user |
+| GET | `/api/2.0/mlflow/permissions/groups/details` | Admin | Groups with external id and member count |
+
+`GET /api/2.0/mlflow/users` and `GET /api/2.0/mlflow/permissions/groups` are unchanged and still
+return `string[]`.
+
+**`GET /api/2.0/mlflow/users/details` response** (ordered by creation). `PATCH .../active`
+returns one such object:
+```json
+[
+  {
+    "username": "alice@example.com",
+    "display_name": "Alice",
+    "is_admin": false,
+    "is_service_account": false,
+    "active": true,
+    "managed_by": "scim"
+  }
+]
+```
+
+**`PATCH /api/2.0/mlflow/users/{username}/active` request:**
+```json
+{"active": false, "admin_override": false}
+```
+
+`admin_override` is the break-glass flag for a user whose row another source owns under
+`MANAGED_BY_ENFORCEMENT=enforce`. The override is always audited. Responses:
+
+- `404` if there is no such user.
+- `409` if the ownership guard refuses the change, or it would leave no active administrator.
+- `403` if the caller is not an administrator.
+
+**`GET /api/2.0/mlflow/permissions/groups/details` response** (ordered by name):
+```json
+[{"group_name": "data-team", "external_id": null, "member_count": 3}]
+```
+
+Groups have no `managed_by` of their own; ownership is recorded per membership.
+
+---
+
 ## Admin UI
 
 | Method | Path | Auth | Purpose |
