@@ -19,9 +19,3 @@ This file exists only for Claude Code specifics.
   `/verify` to run the full self-validation gate, `/spec-issue` to turn a rough idea into a
   self-contained, self-validating issue.
 - **Process**: [`docs/agentic-development.md`](docs/agentic-development.md).
-
-## Deep reference
-
-`.planning/codebase/` holds the long-form generated reference: `ARCHITECTURE.md`,
-`STRUCTURE.md`, `CONVENTIONS.md`, `TESTING.md`, `INTEGRATIONS.md`, `CONCERNS.md`. Read the one
-you need for the task at hand rather than loading all of them.
