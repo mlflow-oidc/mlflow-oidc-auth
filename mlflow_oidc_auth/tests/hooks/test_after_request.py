@@ -734,7 +734,7 @@ def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge)
 
 def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_bridge):
     """Test _filter_search_logged_models when no pagination is needed"""
-    mock_response.json = {"models": []}
+    mock_response.json = {"models": [{"info": {"experiment_id": "exp_1"}}], "next_page_token": "token123"}
 
     # Mock request message
     mock_request_message = MagicMock()
