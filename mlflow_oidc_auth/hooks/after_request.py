@@ -1,3 +1,4 @@
+from typing import Any
 from flask import Response, g, has_app_context, request
 from mlflow.protos.model_registry_pb2 import (
     CreateRegisteredModel,
@@ -366,6 +367,63 @@ def _filter_search_model_versions(resp: Response):
     resp.data = message_to_json(response_message)
 
 
+def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws_map: dict[str, str | None]) -> bool:
+    """Report whether the already-decoded response body can be passed through untouched.
+
+    Rewriting the body costs a `parse_dict` into protobuf plus a full re-serialisation
+    at the end of the filter, and a page of logged models carries every metric value of
+    every model on it, so together those two steps cost more than the tracking server
+    spent producing the body in the first place. When no model has to be removed, and
+    the tracking server reported no further page to top the current one up from, the
+    body it produced is already the correct answer.
+
+    Answering from the raw JSON keeps that check cheap. This returns True only when
+    every model has been positively confirmed visible; anything unexpected in the
+    payload returns False and leaves the filtering below to do its work.
+
+    ``payload`` is ``resp.json`` decoded once by the caller — werkzeug does not cache
+    ``Response.get_json``, and the body is large. Workspace lookups performed here are
+    recorded in ``exp_ws_map`` so the full filter can reuse them instead of repeating
+    the store round-trips when this returns False.
+    """
+    if not isinstance(payload, dict):
+        return False
+
+    # A further page means the filter below may need to top this one up, and it can
+    # only do that through the protobuf path.
+    if payload.get("next_page_token"):
+        return False
+
+    models = payload.get("models")
+    if models is None:
+        return True
+    if not isinstance(models, list):
+        return False
+
+    workspaces_enabled = bool(config.MLFLOW_ENABLE_WORKSPACES)
+    for model in models:
+        if not isinstance(model, dict):
+            return False
+        info = model.get("info")
+        if not isinstance(info, dict):
+            return False
+        experiment_id = info.get("experiment_id")
+        if not isinstance(experiment_id, str):
+            return False
+        if not _cached_can_read_experiment(experiment_id, username):
+            return False
+        if workspaces_enabled:
+            if experiment_id not in exp_ws_map:
+                try:
+                    exp_ws_map[experiment_id] = _get_tracking_store().get_experiment(experiment_id).workspace
+                except Exception:
+                    exp_ws_map[experiment_id] = None
+            if not _can_access_workspace(username, exp_ws_map[experiment_id]):
+                return False
+
+    return True
+
+
 def _filter_search_logged_models(resp: Response) -> None:
     """
     Filter out unreadable logged models from the search results.
@@ -373,19 +431,24 @@ def _filter_search_logged_models(resp: Response) -> None:
     if get_fastapi_admin_status():
         return
 
-    response_message = SearchLoggedModels.Response()  # type: ignore
-    parse_dict(resp.json, response_message)
-    request_message = _get_request_message(SearchLoggedModels())
-
     username = get_fastapi_username()
+    payload = resp.json
+    exp_ws_map: dict[str, str | None] = {}
+
+    if _search_logged_models_needs_no_filtering(payload, username, exp_ws_map):
+        return
+
+    response_message = SearchLoggedModels.Response()  # type: ignore
+    parse_dict(payload, response_message)
+    request_message = _get_request_message(SearchLoggedModels())
 
     # Remove unreadable models from the current response page.
     for m in list(response_message.models):
         if not _cached_can_read_experiment(m.info.experiment_id, username):
             response_message.models.remove(m)
 
-    # Filter by workspace permission (WSSEC-03)
-    exp_ws_map: dict[str, str | None] = {}
+    # Filter by workspace permission (WSSEC-03); exp_ws_map may already hold lookups
+    # made by the shortcut above.
     if config.MLFLOW_ENABLE_WORKSPACES:
         tracking_store_ws = _get_tracking_store()
         for m in list(response_message.models):
