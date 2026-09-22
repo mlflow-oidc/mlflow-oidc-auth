@@ -9,7 +9,7 @@ a ContextVar fallback allows the same bridge functions to work when the
 FastAPI permission middleware sets the AuthContext before running validators.
 """
 
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
@@ -19,14 +19,26 @@ logger = get_logger()
 _auth_context_var: ContextVar[AuthContext | None] = ContextVar("_auth_context_var", default=None)
 
 
-def set_auth_context(ctx: AuthContext) -> None:
-    """Set AuthContext in the ContextVar for non-Flask contexts (FastAPI-native routes)."""
-    _auth_context_var.set(ctx)
+def set_auth_context(ctx: AuthContext) -> Token:
+    """Set AuthContext in the ContextVar for non-Flask contexts (FastAPI-native routes).
+
+    Returns:
+        The token to hand back to :func:`clear_auth_context` so the previous value is restored.
+    """
+    return _auth_context_var.set(ctx)
 
 
-def clear_auth_context() -> None:
-    """Clear the ContextVar after request processing."""
-    _auth_context_var.set(None)
+def clear_auth_context(token: Token | None = None) -> None:
+    """Clear the ContextVar after request processing.
+
+    Parameters:
+        token: The token returned by :func:`set_auth_context`. When given, the variable is
+            restored to whatever it held before that call; without it the variable is blanked.
+    """
+    if token is not None:
+        _auth_context_var.reset(token)
+    else:
+        _auth_context_var.set(None)
 
 
 def get_auth_context() -> AuthContext:

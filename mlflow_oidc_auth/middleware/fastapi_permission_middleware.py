@@ -238,8 +238,7 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         # (e.g. _apply_workspace_fallback) can resolve the workspace even
         # though these routes never enter Flask
         auth_context = request.scope.get(AUTH_CONTEXT_KEY)
-        if isinstance(auth_context, AuthContext):
-            set_auth_context(auth_context)
+        auth_context_token = set_auth_context(auth_context) if isinstance(auth_context, AuthContext) else None
 
         # Run the validator
         try:
@@ -255,6 +254,7 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
                 status_code=403,
             )
         finally:
-            clear_auth_context()
+            if auth_context_token is not None:
+                clear_auth_context(auth_context_token)
 
         return await call_next(request)
