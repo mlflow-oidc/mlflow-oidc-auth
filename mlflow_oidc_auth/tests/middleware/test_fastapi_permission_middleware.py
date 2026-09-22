@@ -338,7 +338,7 @@ class TestMCPServerRegistryValidator:
 # ---------------------------------------------------------------------------
 
 
-def _create_app_with_auth(username=None, is_admin=False):
+def _create_app_with_auth(username=None, is_admin=False, workspace=None):
     """Create a test FastAPI app with auth context and permission middleware.
 
     Starlette ``@app.middleware("http")`` uses LIFO ordering: the last middleware
@@ -346,6 +346,7 @@ def _create_app_with_auth(username=None, is_admin=False):
     permission middleware FIRST, then the auth-context middleware, so that
     auth context is set before the permission middleware reads it.
     """
+    from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
     from mlflow_oidc_auth.middleware.fastapi_permission_middleware import (
         add_fastapi_permission_middleware,
     )
@@ -358,7 +359,12 @@ def _create_app_with_auth(username=None, is_admin=False):
 
     @app.get("/v1/traces")
     async def otel_traces():
-        return {"traces": []}
+        # Report whether the bridge ContextVar is still set once the route handler runs.
+        # The permission middleware must clear it before ``call_next``; asserting this
+        # from the TestClient thread would always see ``None`` and prove nothing.
+        from mlflow_oidc_auth.bridge.user import _auth_context_var
+
+        return {"traces": [], "auth_context_var_set": _auth_context_var.get() is not None}
 
     @app.get("/ajax-api/3.0/jobs")
     async def list_jobs():
@@ -382,6 +388,7 @@ def _create_app_with_auth(username=None, is_admin=False):
         async def inject_auth_context(request: Request, call_next):
             request.state.username = username
             request.state.is_admin = is_admin
+            request.scope[AUTH_CONTEXT_KEY] = AuthContext(username=username, is_admin=is_admin, workspace=workspace)
             return await call_next(request)
 
     return app
@@ -528,4 +535,171 @@ class TestFastapiPermissionMiddlewareIntegration:
         app = _create_app_with_auth(username="user@example.com", is_admin=False)
         client = TestClient(app)
         response = client.get("/gateway/my-ep/mlflow/invocations")
+        assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: AuthContext ContextVar bridging for workspace resolution
+# ---------------------------------------------------------------------------
+
+
+class TestAuthContextBridging:
+    """Test that the middleware bridges AuthContext via ContextVar for FastAPI-native routes."""
+
+    @patch("mlflow_oidc_auth.utils.effective_experiment_permission")
+    def test_otel_validator_receives_workspace_via_contextvar(self, mock_perm):
+        """Workspace is available via get_request_workspace during OTel validation."""
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+
+        captured_workspace = {}
+
+        def capture_workspace(experiment_id, username):
+            captured_workspace["value"] = get_request_workspace()
+            result = MagicMock()
+            result.permission.can_update = True
+            return result
+
+        mock_perm.side_effect = capture_workspace
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-ws")
+        client = TestClient(app)
+        response = client.get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 200
+        assert captured_workspace["value"] == "team-ws"
+
+    @patch("mlflow_oidc_auth.utils.effective_experiment_permission")
+    def test_contextvar_cleared_before_route_handler(self, mock_perm):
+        """The ContextVar is cleared before ``call_next``, so the route handler never sees it.
+
+        Asserted from inside the app: the TestClient thread has its own context and
+        would read ``None`` regardless.
+        """
+        mock_result = MagicMock()
+        mock_result.permission.can_update = True
+        mock_perm.return_value = mock_result
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-ws")
+        client = TestClient(app)
+        response = client.get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 200
+        assert response.json()["auth_context_var_set"] is False
+
+    @patch("mlflow_oidc_auth.utils.effective_experiment_permission")
+    def test_contextvar_cleared_on_validator_exception(self, mock_perm):
+        """ContextVar is cleared when the validator raises, observed from the app's own context."""
+        from mlflow_oidc_auth.bridge.user import _auth_context_var, clear_auth_context
+
+        mock_perm.side_effect = RuntimeError("boom")
+        seen_after_clear = {}
+
+        def spy_clear(token=None):
+            clear_auth_context(token)
+            seen_after_clear["value"] = _auth_context_var.get()
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-ws")
+        client = TestClient(app)
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.clear_auth_context", side_effect=spy_clear):
+            response = client.get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 403
+        assert seen_after_clear == {"value": None}
+
+    @patch("mlflow_oidc_auth.utils.effective_experiment_permission")
+    def test_no_workspace_header_contextvar_has_none_workspace(self, mock_perm):
+        """Without a workspace header, the bridged AuthContext reports workspace=None."""
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+
+        captured_workspace = {}
+
+        def capture_workspace(experiment_id, username):
+            captured_workspace["value"] = get_request_workspace()
+            result = MagicMock()
+            result.permission.can_update = True
+            return result
+
+        mock_perm.side_effect = capture_workspace
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace=None)
+        client = TestClient(app)
+        response = client.get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 200
+        assert captured_workspace["value"] is None
+
+
+# ---------------------------------------------------------------------------
+# Issue #369 end to end: workspace-level grants must reach FastAPI-native routes
+# ---------------------------------------------------------------------------
+
+
+class TestWorkspaceFallbackEndToEnd:
+    """Drive the real ``effective_experiment_permission`` / ``_apply_workspace_fallback`` path.
+
+    Only the store lookups are stubbed: the resource-level lookup finds nothing
+    (a ``fallback`` result), and the workspace permission comes from a dict.
+    """
+
+    @staticmethod
+    def _workspace_env(workspace_grants: dict):
+        from contextlib import ExitStack
+
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        stack = ExitStack()
+        stack.enter_context(patch.object(perms.config, "MLFLOW_ENABLE_WORKSPACES", True))
+        stack.enter_context(patch.object(perms, "get_permission_from_store_or_default", return_value=PermissionResult(NO_PERMISSIONS, "fallback")))
+        stack.enter_context(
+            patch(
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                side_effect=lambda username, workspace: workspace_grants.get((username, workspace)),
+            )
+        )
+        perms._get_permission_cache().clear()
+        return stack
+
+    def test_workspace_manage_grants_update_on_otel_route(self):
+        """A user whose only grant is workspace MANAGE may post traces to that workspace (issue #369)."""
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-ws")
+        with self._workspace_env({("user@example.com", "team-ws"): MANAGE}):
+            response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 200
+
+    def test_no_workspace_grant_is_denied_on_otel_route(self):
+        """Negative path: the same request against a workspace the user has no grant on is 403."""
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="other-ws")
+        with self._workspace_env({("user@example.com", "team-ws"): MANAGE}):
+            response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 403
+
+    def test_read_only_workspace_grant_is_denied_on_otel_route(self):
+        """Negative path: workspace READ does not satisfy the UPDATE the OTel validator requires."""
+        from mlflow_oidc_auth.permissions import READ
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-ws")
+        with self._workspace_env({("user@example.com", "team-ws"): READ}):
+            response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 403
+
+    def test_without_the_bridge_the_workspace_grant_is_invisible(self):
+        """Regression guard: with the ContextVar bridging disabled the grant cannot be seen and the request is 403."""
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-ws")
+        with (
+            self._workspace_env({("user@example.com", "team-ws"): MANAGE}),
+            patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.set_auth_context", return_value=None),
+        ):
+            response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
         assert response.status_code == 403

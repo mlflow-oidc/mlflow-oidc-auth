@@ -19,6 +19,8 @@ from typing import Any
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse, PlainTextResponse
 
+from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 
@@ -232,6 +234,12 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         if is_admin:
             return await call_next(request)
 
+        # Bridge AuthContext into ContextVar so downstream permission code
+        # (e.g. _apply_workspace_fallback) can resolve the workspace even
+        # though these routes never enter Flask
+        auth_context = request.scope.get(AUTH_CONTEXT_KEY)
+        auth_context_token = set_auth_context(auth_context) if isinstance(auth_context, AuthContext) else None
+
         # Run the validator
         try:
             if not await validator(username, request):
@@ -245,5 +253,8 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
                 "Permission denied",
                 status_code=403,
             )
+        finally:
+            if auth_context_token is not None:
+                clear_auth_context(auth_context_token)
 
         return await call_next(request)
