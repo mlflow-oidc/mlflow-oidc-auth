@@ -22,7 +22,39 @@ The application is configured through environment variables, `.env` files, or pl
 | `OIDC_USERNAME_FIELD` | String | `email,preferred_username` | Comma-separated list of userinfo/token claim names tried in order to resolve the login identity. The first non-empty string field wins and is lowercased. Use this when your IdP shouldn't be identified by email (e.g. it may be reassigned) or when you want a stable claim like `sub` instead. **Note:** leaving this effectively empty logs a startup warning — no login or bearer-token authentication could ever resolve a username |
 | `OIDC_DISPLAY_NAME_FIELD` | String | `name` | Comma-separated list of userinfo/token claim names tried in order to resolve the human-readable display name shown in the UI. The first non-empty string field wins. **Note:** leaving this effectively empty logs a startup warning — no login could ever resolve a display name |
 | `OIDC_SESSION_EXPIRY_LEEWAY_SECONDS` | Integer | `30` | Clock-skew leeway applied to the IdP-issued token expiry. Sessions are rejected once `now >= expires_at - leeway`, forcing the user back through the OIDC login flow so IdP-side changes (deactivation, group changes, MFA enrollment) take effect within the token's lifetime instead of waiting for the cookie TTL |
-| `OIDC_USE_REFRESH_TOKEN` | Boolean | `false` | When `true`, request `offline_access` and persist the refresh token in the session so expired sessions are silently refreshed against the IdP without forcing a visible login. Disabled by default because many enterprises require additional approval for `offline_access` and because refresh tokens are persisted in the signed (but not encrypted) session cookie |
+| `OIDC_USE_REFRESH_TOKEN` | Boolean | `false` | When `true`, request `offline_access` and persist the refresh token in the session so expired sessions are silently refreshed against the IdP without forcing a visible login. Disabled by default because many enterprises require additional approval for `offline_access`. The refresh token is kept encrypted on the server-side session row, never in the cookie (see [Sessions](#sessions)), and concurrent requests on an expired session exchange it exactly once, so IdPs with refresh-token rotation and reuse detection do not end the session |
+
+### Provider registry fields
+
+Per-provider fields set on an entry in `AUTH_PROVIDERS` / `AUTH_PROVIDERS_FILE` (a JSON array of provider objects). The flat `OIDC_*` variables above describe a single synthesised `default` provider.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `allow_tokens_without_expiry` | Boolean | `false` | Accept a bearer token that carries no `exp` claim. By default every provider — including the synthesised `default` one — refuses such a token, because nothing else would ever make it stop working. Accepted only on token providers (`oidc`, `k8s`); set on `saml` or any other type the entry is refused at load. Must be a JSON boolean (`"true"` is refused). Waives only a *missing* `exp`: a present `exp` in the past, the issuer, the audience and the signature are all still enforced. Setting it logs a warning at startup. Intended for legacy Kubernetes service-account tokens — see [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry) |
+
+### SAML provider fields
+
+Fields for an entry with `"type": "saml"` (requires the `[saml]` extra). They are refused on any other type, and a SAML entry refuses the bearer-token fields (`audience`, `issuer`, `discovery_url`, `client_id`, `allowed_algorithms`, `allow_tokens_without_expiry`, and the Kubernetes key fields) as well as `identity_binding: email`. See [SAML Authentication](saml-auth).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `entity_id` | String | **required** | This SP's entity id. Every assertion must name it in an `AudienceRestriction` |
+| `idp_entity_id` | String | **required** | The IdP's entity id; the `Issuer` of every Response and assertion must equal it |
+| `idp_sso_url` | String (https) | required unless `idp_metadata_url` supplies it | The IdP's HTTP-Redirect SingleSignOnService |
+| `idp_slo_url` | String (https) | None | The IdP's HTTP-Redirect SingleLogoutService. Without it `/logout` ends only the local session and IdP-initiated logout is refused |
+| `idp_x509_cert` | String or list | required unless `idp_metadata_url` supplies it | The IdP's signing certificate(s), PEM or bare base64. A list accepts any of them, for a rotation |
+| `idp_metadata_url` | String (https) | None | IdP metadata, fetched once at startup (10 s timeout, 1 MiB, no redirects) to fill whichever of the certificate and endpoints are not configured. A failed fetch drops the provider |
+| `sp_x509_cert` | String | None | This SP's signing certificate, published in its metadata. Must match the private key |
+| `sp_private_key` | String | None | Unencrypted RSA private key (PEM) for `sp_x509_cert`. Never logged. Mutually exclusive with `sp_private_key_file` |
+| `sp_private_key_file` | String | None | Path to that key, read at startup |
+| `sign_requests` | Boolean | `false` | Sign AuthnRequests, LogoutRequests and LogoutResponses (RSA-SHA256). Requires the SP certificate and key |
+| `want_assertions_signed` | Boolean | `true` | Require the assertion itself to be signed |
+| `want_response_signed` | Boolean | `false` | Require the enclosing Response to be signed. At least one of the two must be `true` |
+| `clock_skew_seconds` | Integer | `60` | Allowance on the assertion's `NotBefore` / `NotOnOrAfter`, 0–300 |
+| `name_id_format` | String | `urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress` | The `NameIDPolicy` format requested |
+| `attribute_username` | String | `email` | Attribute naming the local account; falls back to the NameID |
+| `attribute_groups` | String | `groups` | Attribute carrying group names |
+| `attribute_display_name` | String | `displayName` | Attribute carrying the display name |
 
 ### Group and Access Control
 
@@ -105,6 +137,19 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 | `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache |
 | `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for workspace permission cache entries |
 
+### SCIM
+
+SCIM 2.0 provisioning at `/scim/v2`. It does nothing until an administrator issues a SCIM
+token. See [SCIM Provisioning](scim).
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SCIM_TOKEN_ROTATION_OVERLAP_SECONDS` | Integer | `3600` | How long a rotated SCIM token keeps working next to its replacement |
+| `SCIM_RATE_LIMIT_PER_MINUTE` | Integer | `600` | Requests per minute allowed for each SCIM token, counted **per process** (N replicas allow up to N times this). `0` disables the limit |
+| `SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE` | Integer | `60` | Failed SCIM authentications allowed per client IP per minute before `429`. Counted per process, like the rate limit. `0` disables it |
+| `ORPHAN_FALLBACK_PRINCIPAL` | String | None | Username that receives `MANAGE` on resources a hard-deleted user was the last manager of. When unset, orphans are only reported as `resource.orphaned` audit events |
+| `USER_RETENTION_DAYS` | Integer | `0` | Reserved for a future purge of deactivated users. `0` means never; nothing reads it yet |
+
 ### Logging
 
 | Variable | Type | Default | Description |
@@ -115,8 +160,10 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 ## Row ownership
 
 `managed_by` records which source a user row belongs to — `manual`, `scim`, or
-`oidc:<provider>`. `MANAGED_BY_ENFORCEMENT` decides what happens when a *different* source tries
-to write it:
+`oidc:<provider>`. Today only `manual` and `scim` are ever written: a user created by a first SSO
+sign-in (OIDC or SAML) is `manual`, and providers never claim ownership. The `oidc:<provider>`
+value is reserved for the reconcile CLI and future provider-owned rows. `MANAGED_BY_ENFORCEMENT`
+decides what happens when a *different* source tries to write a row:
 
 | Value | Behaviour |
 |---|---|
@@ -228,6 +275,24 @@ than merely forgotten by the browser.
   it must be set explicitly for sessions to survive a restart
 - The cookie is signed but **not** encrypted; nothing secret belongs in it
 
+**Provider tokens live on the session row, encrypted — not in the cookie.** The IdP-issued expiry,
+the ID token (offered as `id_token_hint` at RP-initiated logout) and, with
+`OIDC_USE_REFRESH_TOKEN`, the refresh token are stored in `auth_sessions.encrypted_tokens`
+(Fernet). The cookie carries only the session id. A silent refresh is **single-flight**: however
+many requests find the session expired at once, one exchanges the refresh token and the rest
+adopt its result, so a rotated refresh token is never replayed. Cookies from an earlier release
+may still carry `refresh_token` / `expires_at`: the refresh token is dropped on the next request
+and never used. For a session opened by an earlier release (its row holds no tokens) the cookie's
+`expires_at` is still honoured as the IdP expiry — once it passes, the user logs in again — and
+is removed at the next login.
+
+**Rotating keys.** Without `SESSION_TOKEN_ENCRYPTION_KEY` the encryption key is derived from
+`SECRET_KEY`, so rotating `SECRET_KEY` makes stored tokens unreadable (it also invalidates every
+cookie signature, so users log in again regardless). A session whose tokens cannot be decrypted
+is treated as expired and sent back through login rather than trusted. Set a dedicated key to
+rotate it independently: list the new key first and keep the old one after it until existing
+sessions have expired.
+
 **Session expiry is absolute, not rolling.** A session's lifetime is fixed at login to
 `SESSION_COOKIE_MAX_AGE_SECONDS` (two weeks by default) and is not extended by activity, so a
 continuously active user re-authenticates with the identity provider every two weeks. The
@@ -242,7 +307,7 @@ refused, so the table grows until an operator prunes it:
 mlflow-oidc db prune-sessions --url postgresql://user:pass@host/auth_db
 ```
 
-Add `--dry-run` to see the count without deleting. Revoked-but-unexpired rows are kept until
+It also deletes expired SAML replay records (`saml_assertions`), which are needed only while their assertion could still validate. Add `--dry-run` to see the count without deleting. Revoked-but-unexpired rows are kept until
 their expiry, so "was this session revoked, and when?" stays answerable. Running it from cron is
 the expected deployment.
 
@@ -255,9 +320,33 @@ Additional session cookie settings:
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `SESSION_COOKIE_NAME` | String | `session` | Session cookie name |
+| `SESSION_TOKEN_ENCRYPTION_KEY` | String | Derived from `SECRET_KEY` | Key encrypting the provider tokens held on each session row. One or more comma-separated urlsafe-base64 32-byte Fernet keys (generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`); the first encrypts, all decrypt. **All replicas must share it.** Unset: derived from `SECRET_KEY` with HKDF-SHA256. A malformed value stops the server at startup (the error names the setting, never the value) rather than falling back |
 | `SESSION_COOKIE_MAX_AGE_SECONDS` | Integer | `1209600` (2 weeks) | Absolute session lifetime in seconds, fixed at login and not extended by activity. `0` makes the *cookie* last only as long as the browser session; the server-side session still expires after two weeks |
 | `SESSION_COOKIE_SAMESITE` | String | `lax` | SameSite flag prevents the browser from sending session cookie along with cross-site requests |
 | `SESSION_COOKIE_SECURE` | Boolean | `false` | Indicate that the "Secure" flag should be set (can be used with HTTPS only), set this to `true` in production to ensure the session cookie is only sent over HTTPS |
+
+## Upgrading to this release
+
+Three behaviour changes ship together in this release. None require a configuration change to
+keep working; each is called out here because it changes what a running deployment does on
+upgrade.
+
+- **Session tokens move off the cookie.** The refresh token, ID token, and IdP expiry that used
+  to live in the signed session cookie now live encrypted on the server-side `auth_sessions` row
+  (see [Sessions](#sessions) and `SESSION_TOKEN_ENCRYPTION_KEY` above). A session opened before
+  the upgrade carries none of this on its row; its cookie's `expires_at` is honoured as an upper
+  bound on the IdP expiry until it passes, at which point the user logs in again as normal and a
+  post-upgrade session is issued with tokens stored server-side. No session is forcibly ended by
+  the upgrade itself.
+- **`exp` is now required on bearer tokens.** Every provider, including the synthesised `default`
+  one, now refuses a bearer token with no `exp` claim. If you rely on tokens without an expiry —
+  most commonly legacy, non-bound Kubernetes service-account tokens — set
+  `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
+  callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
+  [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
+  behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
+  configure a `saml` provider is unaffected — nothing here changes its behaviour.
 
 ## MLflow Server Environment Variables
 
