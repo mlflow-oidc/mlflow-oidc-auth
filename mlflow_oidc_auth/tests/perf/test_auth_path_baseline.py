@@ -201,13 +201,13 @@ class TestAuthPathQueryBudget:
 
         assert counts == [3, 3, 3], counter.report()
 
-    def test_basic_authenticated_request_issues_three_queries(self, client, counter, auth_user):
+    def test_basic_authenticated_request_issues_four_queries(self, client, counter, auth_user):
         """Basic auth pays one extra statement to load the password hash before the admin check."""
         credentials = base64.b64encode(f"{auth_user}:{BENCH_PASSWORD}".encode()).decode()
 
         counts = _count_requests(counter, lambda: client.get(PROTECTED_PATH, headers={"Authorization": f"Basic {credentials}"}))
 
-        assert counts == [3, 3, 3], counter.report()
+        assert counts == [4, 4, 4], counter.report()
 
 
 class TestAuthPathDenialCosts:

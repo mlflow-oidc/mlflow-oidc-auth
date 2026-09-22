@@ -12,7 +12,6 @@ from mlflow.utils.validation import _validate_username
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only, noload, selectinload
 from sqlalchemy.orm import Session
-from werkzeug.security import check_password_hash, generate_password_hash
 
 from mlflow_oidc_auth.db.models import SqlAuthSession, SqlGroup, SqlUser
 from mlflow_oidc_auth.entities import User
@@ -20,6 +19,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.ownership import evaluate_write
 from mlflow_oidc_auth.repository.utils import get_user
+from mlflow_oidc_auth.repository.user_token import TOKEN_HASH_METHOD
 
 logger = get_logger()
 
@@ -60,35 +60,6 @@ def _audit_sessions_revoked(username: str, count: int, reason: str) -> None:
         resource_id=username,
         detail={"sessions": count, "reason": reason},
     )
-
-
-# Hash method for secrets stored in ``users.password_hash`` (issue #336).
-#
-# Nothing in this plugin stores a human-chosen password. Every value written here comes from
-# ``mlflow_oidc_auth.user.generate_token()`` — 24 characters drawn by ``secrets.choice`` from a
-# 62-character alphabet, about 143 bits of entropy — and no endpoint accepts an operator-supplied
-# password. A memory-hard KDF exists to make brute-forcing *low-entropy* human passwords
-# expensive; against 143 bits there is nothing to brute-force, so the ~48 ms that Werkzeug's
-# default scrypt costs bought no security while being paid on every basic-authenticated request.
-# Verification drops from ~47 ms to ~0.08 ms.
-#
-# Migration is handled by Werkzeug itself: the method is encoded in the stored hash and
-# ``check_password_hash`` dispatches on it, so hashes written before this change keep verifying
-# under scrypt, unchanged. Only newly written hashes use this method — a secret moves over when
-# its token is rotated. Existing hashes are deliberately never re-hashed in place: a stored
-# secret cannot be distinguished from a hypothetical operator-set password, and silently
-# re-hashing one at this cost factor would weaken it.
-#
-# This is intentionally a constant, not configuration. It is a property of what we store, not a
-# deployment choice, and the failure mode of setting it wrong is silent.
-#
-# The entropy premise is not self-enforcing: ``generate_token()`` lives in another module, and
-# shortening it or narrowing its alphabet would make this cost factor indefensible without
-# anything here changing. ``TestTokenEntropyPremise`` in
-# ``tests/repository/test_user_token_hashing.py`` pins the token's length, alphabet and resulting
-# entropy, so that change fails a test instead of passing quietly. If one of those tests has to
-# be updated, this constant has to be re-justified in the same diff.
-TOKEN_HASH_METHOD = "pbkdf2:sha256:1000"
 
 
 def normalize_username(username: str) -> str:
@@ -144,19 +115,16 @@ class UserRepository:
     def create(
         self,
         username: str,
-        password: str,
         display_name: str,
         is_admin: bool = False,
         is_service_account: bool = False,
     ) -> User:
         username = normalize_username(username)
         _validate_username(username)
-        pwhash = generate_password_hash(password, method=TOKEN_HASH_METHOD)
         with self._Session(read_only=False) as session:
             try:
                 u = SqlUser(
                     username=username,
-                    password_hash=pwhash,
                     display_name=display_name,
                     is_admin=is_admin,
                     is_service_account=is_service_account,
@@ -198,7 +166,6 @@ class UserRepository:
                         SqlUser.id,
                         SqlUser.username,
                         SqlUser.display_name,
-                        SqlUser.password_expiration,
                         SqlUser.is_admin,
                         SqlUser.is_service_account,
                         # Widening the existing select rather than adding a query: this row is
@@ -225,8 +192,6 @@ class UserRepository:
                 id_=u.id,
                 username=u.username,
                 display_name=u.display_name,
-                password_hash="REDACTED",
-                password_expiration=u.password_expiration,
                 is_admin=u.is_admin,
                 is_service_account=u.is_service_account,
                 active=u.active,
@@ -263,8 +228,6 @@ class UserRepository:
     def update(
         self,
         username: str,
-        password: Optional[str] = None,
-        password_expiration: Optional[datetime] = None,
         is_admin: Optional[bool] = None,
         is_service_account: Optional[bool] = None,
         active: Optional[bool] = None,
@@ -274,29 +237,13 @@ class UserRepository:
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
-        ``None`` means "not supplied" for every parameter but one: the corresponding column is
-        left as it is. The defaults for the two flags previously read ``False`` while the guards
+        ``None`` means "not supplied": the corresponding column is left as it is. The defaults
+        for the two flags previously read ``False`` while the guards
         below tested for ``None``, so a caller that omitted them silently cleared ``is_admin``
         and ``is_service_account`` instead of preserving them (issue #338).
 
-        The exception is ``password_expiration``, because expiry is a property of the *secret*
-        rather than of the user:
-
-        * When ``password`` is supplied, the secret is being replaced, so it gets a fresh
-          lifetime — exactly the one passed in, with ``None`` meaning "does not expire". The
-          previous value is never inherited. Inheriting it meant that rotating an already-expired
-          token produced a new token that was rejected on its first use, because ``authenticate``
-          checks expiry before comparing the hash.
-        * When ``password`` is not supplied, the expiry is only changed if one was passed.
-
-        A consequence worth stating: an expiry cannot be cleared without also rotating the
-        secret. That is deliberate — extending the life of a credential that has already been
-        issued should require issuing a new one.
-
         Parameters:
             username: Identity key of the user to update.
-            password: New secret. Hashed with :data:`TOKEN_HASH_METHOD`.
-            password_expiration: Expiry for the stored secret. See the semantics above.
             is_admin: New administrator flag.
             is_service_account: New service-account flag.
             active: Whether the account may authenticate. Setting it False is how a directory
@@ -314,8 +261,6 @@ class UserRepository:
             MlflowException: If the user does not exist, or if the change would leave the
                 deployment with no active administrator.
         """
-        from werkzeug.security import generate_password_hash
-
         username = normalize_username(username)
         sessions_revoked = 0
         permitted_conflict = None
@@ -345,19 +290,12 @@ class UserRepository:
                     INVALID_PARAMETER_VALUE,
                 )
 
-            if password is not None:
-                user.password_hash = generate_password_hash(password, method=TOKEN_HASH_METHOD)
-                # A new secret gets the lifetime it was issued with, never the old one's.
-                user.password_expiration = password_expiration
-            elif password_expiration is not None:
-                user.password_expiration = password_expiration
             # Deactivating or demoting the last active admin locks everyone out just as surely
             # as deleting them, so both go through the same guard — checked before the change
             # is applied, since afterwards the user would no longer count as an active admin
             # and the query would happily report zero.
             if active is False or is_admin is False:
                 self._assert_not_last_active_admin(session, user, "deactivate" if active is False else "demote")
-
             if is_admin is not None:
                 user.is_admin = is_admin
             if is_service_account is not None:
@@ -420,6 +358,7 @@ class UserRepository:
                 SqlAuthSession,
                 SqlUserGroup,
                 SqlUserIdentity,
+                SqlUserToken,
                 SqlWorkspacePermission,
                 SqlWorkspaceRegexPermission,
             )
@@ -467,29 +406,14 @@ class UserRepository:
             session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlWorkspaceRegexPermission).filter(SqlWorkspaceRegexPermission.user_id == user_id).delete(synchronize_session=False)
 
+            # User tokens
+            session.query(SqlUserToken).filter(SqlUserToken.user_id == user_id).delete(synchronize_session=False)
+
             # Group memberships
             session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user_id).delete(synchronize_session=False)
 
             session.delete(user)
             session.flush()
-
         # Emitted after the commit, for the same reason as in ``update``.
         if deleted_sessions:
             _audit_sessions_revoked(username, deleted_sessions, "user_deleted")
-
-    def authenticate(self, username: str, password: str) -> bool:
-        username = normalize_username(username)
-        with self._Session() as session:
-            try:
-                user = get_user(session, username)
-                expiration = user.password_expiration
-                if expiration is not None:
-                    # Normalize into a local, so the comparison does not mark the
-                    # persistent user row dirty and flush an UPDATE on every login.
-                    if expiration.tzinfo is None:
-                        expiration = expiration.replace(tzinfo=timezone.utc)
-                    if expiration < datetime.now(timezone.utc):
-                        return False
-                return check_password_hash(getattr(user, "password_hash"), password)
-            except MlflowException:
-                return False

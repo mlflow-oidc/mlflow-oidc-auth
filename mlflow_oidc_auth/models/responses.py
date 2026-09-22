@@ -168,5 +168,4 @@ class CurrentUserProfile(BaseModel):
     id: int = Field(..., description="User ID")
     is_admin: bool = Field(..., description="Whether the user is an administrator")
     is_service_account: bool = Field(..., description="Whether the user is a service account")
-    password_expiration: Optional[str] = Field(None, description="Password expiration ISO timestamp")
     username: str = Field(..., description="Username")

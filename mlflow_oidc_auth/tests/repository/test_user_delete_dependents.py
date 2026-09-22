@@ -90,6 +90,7 @@ class TestEveryForeignKeyToUsersIsCovered:
         # than silently passing because nothing populated it.
         known = {
             "user_groups",
+            "user_tokens",
             "user_identities",
             "auth_sessions",
             "experiment_permissions",

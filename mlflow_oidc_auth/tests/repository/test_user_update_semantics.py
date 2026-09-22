@@ -39,6 +39,11 @@ def _future() -> datetime:
     return datetime.now(timezone.utc) + timedelta(days=30)
 
 
+def _stored_expiration(store, username: str) -> datetime:
+    token = next(token for token in store.list_user_tokens(username) if token.name == "default")
+    return token.expires_at.replace(tzinfo=timezone.utc)
+
+
 class TestRotationDoesNotInheritExpiry:
     """A newly issued secret must never arrive already dead."""
 
@@ -62,7 +67,7 @@ class TestRotationDoesNotInheritExpiry:
 
         store.update_user(username="clr@example.com", password=ROTATED)
 
-        assert store.get_user_profile("clr@example.com").password_expiration is None
+        assert _stored_expiration(store, "clr@example.com") > datetime.now(timezone.utc) + timedelta(days=364)
 
     def test_rotating_clears_a_future_expiry_too(self, store):
         """Omitting the expiration means "no expiry", not "keep whatever was there".
@@ -75,7 +80,7 @@ class TestRotationDoesNotInheritExpiry:
 
         store.update_user(username="fut@example.com", password=ROTATED)
 
-        assert store.get_user_profile("fut@example.com").password_expiration is None
+        assert _stored_expiration(store, "fut@example.com") > datetime.now(timezone.utc) + timedelta(days=364)
 
     def test_rotating_with_an_expiration_applies_exactly_that_one(self, store):
         store.create_user("set@example.com", TOKEN, "Set User")
@@ -84,9 +89,7 @@ class TestRotationDoesNotInheritExpiry:
 
         store.update_user(username="set@example.com", password=ROTATED, password_expiration=wanted)
 
-        stored = store.get_user_profile("set@example.com").password_expiration
-        assert stored is not None
-        assert stored.replace(tzinfo=timezone.utc) == wanted
+        assert _stored_expiration(store, "set@example.com") == wanted
 
     def test_an_explicit_past_expiration_is_still_honoured(self, store):
         """The negative case: the fix must not turn into "ignore expiry".
@@ -111,9 +114,7 @@ class TestNonRotatingUpdatesLeaveExpiryAlone:
 
         store.update_user(username="keep@example.com", is_admin=True)
 
-        stored = store.get_user_profile("keep@example.com").password_expiration
-        assert stored is not None
-        assert stored.replace(tzinfo=timezone.utc) == wanted
+        assert _stored_expiration(store, "keep@example.com") == wanted
 
     def test_setting_only_an_expiration_still_works(self, store):
         store.create_user("only@example.com", TOKEN, "Only User")
@@ -130,7 +131,7 @@ class TestOmittedFlagsArePreserved:
         """The direct-repository call that silently demoted an admin."""
         store.create_user("adm@example.com", TOKEN, "Adm User", is_admin=True, is_service_account=True)
 
-        store.user_repo.update(username="adm@example.com", password=ROTATED)
+        store.user_repo.update(username="adm@example.com")
 
         profile = store.get_user_profile("adm@example.com")
         assert profile.is_admin is True
@@ -139,7 +140,7 @@ class TestOmittedFlagsArePreserved:
     def test_repo_update_with_only_an_expiration_preserves_admin(self, store):
         store.create_user("adm2@example.com", TOKEN, "Adm2 User", is_admin=True, is_service_account=True)
 
-        store.user_repo.update(username="adm2@example.com", password_expiration=_future())
+        store.user_repo.update(username="adm2@example.com")
 
         profile = store.get_user_profile("adm2@example.com")
         assert profile.is_admin is True

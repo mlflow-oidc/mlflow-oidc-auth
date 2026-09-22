@@ -24,6 +24,7 @@ from mlflow_oidc_auth.db.utils import _get_alembic_config
 
 PREVIOUS_REVISION = "8a9b0c1de234"
 PHASE0_REVISION = "9c0d1e2f3456"
+CURRENT_HEAD = "a1b2c3d4e5f6"
 
 POSTGRES_URI = os.environ.get("MLFLOW_OIDC_TEST_POSTGRES_URI")
 
@@ -108,7 +109,7 @@ class TestRevisionChain:
         cfg = _get_alembic_config(_sqlite_uri(tmp_path))
         heads = ScriptDirectory.from_config(cfg).get_heads()
 
-        assert heads == [PHASE0_REVISION], f"expected a single head, got {heads}"
+        assert heads == [CURRENT_HEAD], f"expected a single head, got {heads}"
 
     def test_phase0_follows_the_previous_head(self, tmp_path):
         cfg = _get_alembic_config(_sqlite_uri(tmp_path))
@@ -216,7 +217,7 @@ class TestRoundTrip:
         """Migrations must be reversible on both backends."""
         _upgrade(engine, "head")
 
-        _downgrade(engine, "-1")
+        _downgrade(engine, PREVIOUS_REVISION)
 
         inspector = inspect(engine)
         tables = set(inspector.get_table_names())
@@ -255,8 +256,8 @@ class TestExternalIdUniqueness:
         with engine.begin() as conn:
             for name in ["u1@example.com", "u2@example.com"]:
                 conn.execute(
-                    text("INSERT INTO users (username, display_name, password_hash, active, managed_by) VALUES (:u, :u, :h, :a, 'manual')"),
-                    {"u": name, "h": "not-a-real-hash", "a": True},
+                    text("INSERT INTO users (username, display_name, active, managed_by) VALUES (:u, :u, :a, 'manual')"),
+                    {"u": name, "a": True},
                 )
 
         with engine.connect() as conn:
@@ -271,20 +272,19 @@ class TestExternalIdUniqueness:
         with engine.begin() as conn:
             conn.execute(
                 text(
-                    "INSERT INTO users (username, display_name, password_hash, active, managed_by, external_id) "
-                    "VALUES ('e1@example.com', 'e1', :h, :a, 'manual', 'shared-id')"
+                    "INSERT INTO users (username, display_name, active, managed_by, external_id) " "VALUES ('e1@example.com', 'e1', :a, 'manual', 'shared-id')"
                 ),
-                {"h": "not-a-real-hash", "a": True},
+                {"a": True},
             )
 
         with pytest.raises(IntegrityError):
             with engine.begin() as conn:
                 conn.execute(
                     text(
-                        "INSERT INTO users (username, display_name, password_hash, active, managed_by, external_id) "
-                        "VALUES ('e2@example.com', 'e2', :h, :a, 'manual', 'shared-id')"
+                        "INSERT INTO users (username, display_name, active, managed_by, external_id) "
+                        "VALUES ('e2@example.com', 'e2', :a, 'manual', 'shared-id')"
                     ),
-                    {"h": "not-a-real-hash", "a": True},
+                    {"a": True},
                 )
 
 

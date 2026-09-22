@@ -19,9 +19,8 @@ describe("Modal", () => {
         <div>Modal Content</div>
       </Modal>,
     );
-    const dialog = screen.queryByRole("dialog", { hidden: true });
-    expect(dialog).toBeInTheDocument();
-    expect(dialog).not.toHaveAttribute("open");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Modal Content")).not.toBeInTheDocument();
   });
 
   it("calls onClose when pressing Escape", () => {
@@ -32,8 +31,7 @@ describe("Modal", () => {
       </Modal>,
     );
 
-    const dialog = screen.getByRole("dialog");
-    fireEvent(dialog, new Event("cancel"));
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
@@ -45,7 +43,8 @@ describe("Modal", () => {
       </Modal>,
     );
 
-    fireEvent.click(screen.getByRole("dialog"));
+    // Click the backdrop (role="presentation"), not the dialog (which has stopPropagation)
+    fireEvent.click(screen.getByRole("presentation"));
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 

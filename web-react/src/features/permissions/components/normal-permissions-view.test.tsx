@@ -322,7 +322,7 @@ describe("NormalPermissionsView", () => {
                   : type === "ai-models"
                     ? /AI Model/i
                     : /AI Endpoint/i;
-        const select = screen.getByLabelText(labelText);
+        const select = screen.getByRole("combobox", { name: labelText });
         fireEvent.change(select, { target: { value: getExpectedValue(type) } });
 
         const saveButton = screen.getByRole("button", { name: /^Save$/i });

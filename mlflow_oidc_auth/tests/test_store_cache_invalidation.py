@@ -19,6 +19,7 @@ def mock_store():
     """Store with all repositories mocked for isolated testing."""
     store = SqlAlchemyStore()
     store.user_repo = MagicMock()
+    store.user_token_repo = MagicMock()
     store.experiment_repo = MagicMock()
     store.experiment_group_repo = MagicMock()
     store.group_repo = MagicMock()

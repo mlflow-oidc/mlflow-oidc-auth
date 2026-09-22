@@ -85,8 +85,6 @@ class TestGetExperimentUsersEndpoint:
         user1 = User(
             id_=1,
             username="user1@example.com",
-            password_hash="hash1",
-            password_expiration=None,
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
@@ -96,8 +94,6 @@ class TestGetExperimentUsersEndpoint:
         user2 = User(
             id_=2,
             username="service@example.com",
-            password_hash="hash2",
-            password_expiration=None,
             display_name="Service Account",
             is_admin=False,
             is_service_account=True,
@@ -107,8 +103,6 @@ class TestGetExperimentUsersEndpoint:
         user3 = User(
             id_=3,
             username="user3@example.com",
-            password_hash="hash3",
-            password_expiration=None,
             display_name="User 3",
             is_admin=False,
             is_service_account=False,
@@ -139,8 +133,6 @@ class TestGetExperimentUsersEndpoint:
         user1 = User(
             id_=1,
             username="user1@example.com",
-            password_hash="hash1",
-            password_expiration=None,
             display_name="User 1",
             is_admin=False,
             is_service_account=False,
@@ -161,8 +153,6 @@ class TestGetExperimentUsersEndpoint:
         user1 = User(
             id_=1,
             username="user1@example.com",
-            password_hash="hash1",
-            password_expiration=None,
             display_name="User 1",
             is_admin=False,
             is_service_account=False,

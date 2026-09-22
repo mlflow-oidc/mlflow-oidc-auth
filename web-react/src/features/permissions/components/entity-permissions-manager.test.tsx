@@ -135,7 +135,7 @@ describe("EntityPermissionsManager", () => {
 
     expect(screen.getByText(/Grant user permissions/i)).toBeDefined();
 
-    const select = screen.getByLabelText(/User/i);
+    const select = screen.getByRole("combobox", { name: /User/i });
     fireEvent.change(select, { target: { value: "user2" } });
 
     const saveButton = screen.getByRole("button", { name: "Save" });
@@ -157,7 +157,7 @@ describe("EntityPermissionsManager", () => {
       screen.getByText(/Grant service account permissions/i),
     ).toBeDefined();
 
-    const select = screen.getByLabelText(/Service account/i);
+    const select = screen.getByRole("combobox", { name: /Service account/i });
     fireEvent.change(select, { target: { value: "sa1" } });
 
     const saveButton = screen.getByRole("button", { name: "Save" });
@@ -175,7 +175,7 @@ describe("EntityPermissionsManager", () => {
 
     expect(screen.getByText(/Grant group permissions/i)).toBeDefined();
 
-    const select = screen.getByLabelText(/Group/i);
+    const select = screen.getByRole("combobox", { name: /Group/i });
     fireEvent.change(select, { target: { value: "group2" } });
 
     const saveButton = screen.getByRole("button", { name: "Save" });

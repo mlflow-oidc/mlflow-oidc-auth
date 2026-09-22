@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -81,8 +83,6 @@ def mock_store():
     admin_user = User(
         id_=1,
         username="admin@example.com",
-        password_hash="admin_token_hash",
-        password_expiration=None,
         is_admin=True,
         is_service_account=False,
         display_name="Admin User",
@@ -91,8 +91,6 @@ def mock_store():
     regular_user = User(
         id_=2,
         username="user@example.com",
-        password_hash="user_token_hash",
-        password_expiration=None,
         is_admin=False,
         is_service_account=False,
         display_name="Regular User",
@@ -101,8 +99,6 @@ def mock_store():
     service_user = User(
         id_=3,
         username="service@example.com",
-        password_hash="service_token_hash",
-        password_expiration=None,
         is_admin=False,
         is_service_account=True,
         display_name="Service Account",
@@ -116,7 +112,10 @@ def mock_store():
     }.get(username)
 
     def _get_user_profile(username: str):
-        return store_mock.get_user(username)
+        result = store_mock.get_user(username)
+        if result is None:
+            raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
+        return result
 
     store_mock.get_user_profile.side_effect = _get_user_profile
 
@@ -128,7 +127,14 @@ def mock_store():
         "user@example.com",
         "service@example.com",
     ]
-    store_mock.create_user.return_value = True
+    store_mock.create_user.return_value = User(
+        id_=99,
+        username="newuser@example.com",
+        is_admin=False,
+        is_service_account=False,
+        display_name="New User",
+    )
+    store_mock.create_user_token.return_value = MagicMock(id=1, name="default")
     store_mock.update_user.return_value = None
     store_mock.delete_user.return_value = None
 
@@ -677,6 +683,7 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
             "mlflow_oidc_auth.routers.scorers_permissions.check_scorer_manage_permission",
             MagicMock(return_value=None),
         ),
+        patch("mlflow_oidc_auth.user.store", mock_store),
     ]
 
     for p in patches:

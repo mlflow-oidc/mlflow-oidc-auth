@@ -1,6 +1,6 @@
 """Hashing of stored token secrets (issue #336).
 
-``users.password_hash`` never holds a human-chosen password — every value comes from
+``user_tokens.token_hash`` never holds a human-chosen password — every value comes from
 ``generate_token()`` (24 characters, 62-character alphabet, ~143 bits of entropy), and no
 endpoint accepts an operator-supplied one. Werkzeug's default scrypt therefore cost ~48 ms per
 basic-authenticated request to protect something with nothing to brute-force.
@@ -19,7 +19,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from werkzeug.security import generate_password_hash
 
-from mlflow_oidc_auth.repository.user import TOKEN_HASH_METHOD
+from mlflow_oidc_auth.constants import DEFAULT_TOKEN_NAME
+from mlflow_oidc_auth.repository.user_token import TOKEN_HASH_METHOD
 
 LEGACY_METHOD = "scrypt:32768:8:1"
 TOKEN = "aB3dE6gH9jK2mN5pQ8sT1vW4"  # shaped like generate_token() output; only ever in a tmp db
@@ -27,12 +28,16 @@ TOKEN = "aB3dE6gH9jK2mN5pQ8sT1vW4"  # shaped like generate_token() output; only 
 
 def _stored_hash(store, username: str) -> str:
     """Read the raw hash, which ``get_profile`` deliberately redacts."""
-    from mlflow_oidc_auth.db.models import SqlUser
+    from mlflow_oidc_auth.db.models import SqlUser, SqlUserToken
 
     with store.engine.connect() as conn:
-        row = conn.execute(SqlUser.__table__.select().where(SqlUser.__table__.c.username == username)).fetchone()
+        row = conn.execute(
+            SqlUserToken.__table__.select()
+            .join(SqlUser, SqlUserToken.user_id == SqlUser.id)
+            .where(SqlUser.username == username, SqlUserToken.name == DEFAULT_TOKEN_NAME)
+        ).fetchone()
     assert row is not None, f"user {username} not found"
-    return row.password_hash
+    return row.token_hash
 
 
 def _method_of(pwhash: str) -> str:
@@ -52,11 +57,12 @@ def store(tmp_path):
 
 def _write_legacy_hash(store, username: str, secret: str) -> None:
     """Overwrite a user's hash with a scrypt one, simulating a pre-#336 row."""
-    from mlflow_oidc_auth.db.models import SqlUser
+    from mlflow_oidc_auth.db.models import SqlUser, SqlUserToken
 
     legacy = generate_password_hash(secret, method=LEGACY_METHOD)
     with store.engine.begin() as conn:
-        conn.execute(SqlUser.__table__.update().where(SqlUser.__table__.c.username == username).values(password_hash=legacy))
+        user_id = conn.execute(SqlUser.__table__.select().where(SqlUser.username == username)).one().id
+        conn.execute(SqlUserToken.__table__.update().where(SqlUserToken.user_id == user_id, SqlUserToken.name == DEFAULT_TOKEN_NAME).values(token_hash=legacy))
     assert _method_of(_stored_hash(store, username)) == LEGACY_METHOD
 
 
@@ -224,4 +230,4 @@ class TestHashProperties:
 
         profile = store.get_user_profile("prof@example.com")
 
-        assert profile.password_hash == "REDACTED"
+        assert not hasattr(profile, "password_hash")

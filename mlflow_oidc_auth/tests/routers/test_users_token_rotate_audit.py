@@ -1,8 +1,7 @@
 """Audit detail emitted when an access token is rotated (issue #338).
 
-Rotating without an ``expiration`` replaces an expiring token with one that does not expire.
-That widens the credential's lifetime, so it is recorded rather than left silent — these tests
-pin that the signal is actually emitted and is not a constant.
+Tokens always expire. These tests pin that the newly issued expiration is both stored and
+included in the audit event.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -46,8 +45,8 @@ class TestTokenRotateAudit:
         call = await _rotate(store)
 
         assert call[0][0] == "user.token_rotate"
-        assert call[1]["detail"]["expiration_cleared"] is True
-        assert call[1]["detail"]["expiration"] is None
+        assert "expiration_cleared" not in call[1]["detail"]
+        assert call[1]["detail"]["expiration"] is not None
 
     @pytest.mark.asyncio
     async def test_rotating_a_non_expiring_token_is_not_recorded_as_a_widening(self):
@@ -56,7 +55,8 @@ class TestTokenRotateAudit:
 
         call = await _rotate(store)
 
-        assert call[1]["detail"]["expiration_cleared"] is False
+        assert "expiration_cleared" not in call[1]["detail"]
+        assert call[1]["detail"]["expiration"] is not None
 
     @pytest.mark.asyncio
     async def test_rotating_with_an_expiration_is_not_a_widening(self):
@@ -66,7 +66,7 @@ class TestTokenRotateAudit:
 
         call = await _rotate(store, CreateAccessTokenRequest(expiration=wanted.isoformat()))
 
-        assert call[1]["detail"]["expiration_cleared"] is False
+        assert "expiration_cleared" not in call[1]["detail"]
         assert call[1]["detail"]["expiration"] is not None
 
     @pytest.mark.asyncio
@@ -76,4 +76,5 @@ class TestTokenRotateAudit:
 
         await _rotate(store)
 
-        assert store.update_user.call_args[1]["password_expiration"] is None
+        stored = store.create_user_token.call_args.kwargs["expires_at"]
+        assert stored > datetime.now(timezone.utc) + timedelta(days=364)
