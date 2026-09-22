@@ -37,16 +37,8 @@ yarn build          # outputs into ../mlflow_oidc_auth/ui/
 ## Architecture in one screen
 
 Hybrid **FastAPI (ASGI) + Flask (WSGI)**. FastAPI owns auth and the permission API; MLflow's own
-Flask app is mounted underneath it and keeps working unchanged.
-
-```
-FastAPI app
-  ├─ ProxyHeadersMiddleware → AuthMiddleware → SessionMiddleware
-  ├─ /oidc/* routers  (auth, permissions, users, groups, UI, health)
-  └─ AuthAwareWSGIMiddleware → Flask MLflow app
-                                 ├─ before_request hooks → validators  (authorization)
-                                 └─ after_request hooks  (grant-on-create, search filtering, cascades)
-```
+Flask app is mounted underneath it and keeps working unchanged. Middleware order and mounting
+live in `app.py`; Flask-side authorization is in `hooks/before_request.py` and `hooks/after_request.py`.
 
 Identity crosses the boundary as an `AuthContext` placed in the ASGI scope, copied into the WSGI
 `environ`, and read inside Flask by `bridge/user.py`.
@@ -124,38 +116,16 @@ permission check.
 
 A task is done when **every acceptance criterion is a command that was actually run and passed**.
 If a criterion cannot be expressed as a command, it is an opinion, not a criterion — rewrite it.
-
-Before claiming completion, run and report:
-
-```bash
-pre-commit run --all-files
-pytest mlflow_oidc_auth/tests/          # or the targeted subset, stated explicitly
-cd web-react && yarn test && yarn lint  # only if frontend files changed
-```
-
-Report failures with their output. Never report "done" for work that is partially done — say
-what landed, what did not, and why.
-
-### Self-validation before you finish
-
-- [ ] Every acceptance criterion in the issue is checked, with the command and its result.
-- [ ] New auth/authz behavior has a **negative** test — proving the denial path, not just the
-      happy path.
-- [ ] Migrations run forward *and* backward.
-- [ ] No secret, token, or credential appears in code, tests, fixtures, or logs.
-- [ ] The change does not add a query to the per-request auth path (or says why it must).
-- [ ] Scope matches the issue. Unrelated improvements go in a separate issue, not this diff.
+Run `/verify` before claiming completion — it runs the gates and the non-command checks (negative
+tests for authz, reversible migrations, no secrets, no new auth-path query, scope). Report failures
+with their output. Never report "done" for work that is partially done — say what landed, what
+did not, and why.
 
 ### Delegating to subagents
 
 Fan out when the work is genuinely parallel — mapping several subsystems, reviewing several
-dimensions, or verifying independent findings. Use `.claude/agents/`:
-
-| Agent | Use it for | Can write? |
-|---|---|---|
-| `codebase-explorer` | "where is X handled", broad reads across many files | No |
-| `security-reviewer` | auth/authz threat review of a diff | No |
-| `finding-verifier` | adversarially refute a claimed bug before it is reported | No |
+dimensions, or verifying independent findings. Use the agents in `.claude/agents/` — each file's
+`description` says what it is for.
 
 All three are read-only by design. A researcher that cannot write cannot accidentally "fix"
 something while looking at it. Give each subagent a self-contained prompt — it does not inherit
