@@ -146,7 +146,7 @@ def app_server(keycloak: Keycloak, auth_db: AuthDatabase, tmp_path_factory) -> I
             sys.executable,
             "-c",
             "import sys; from sqlalchemy import create_engine; from mlflow_oidc_auth.db.utils import migrate_if_needed; "
-            "migrate_if_needed(create_engine(sys.argv[1]), 'head')",
+            + "migrate_if_needed(create_engine(sys.argv[1]), 'head')",
             auth_db.uri,
         ],
         env,
@@ -184,7 +184,7 @@ def app_server(keycloak: Keycloak, auth_db: AuthDatabase, tmp_path_factory) -> I
                 if httpx.get(f"{app_url}/health", timeout=2.0).status_code == 200:
                     break
             except httpx.HTTPError:
-                pass
+                pass  # not up yet: keep polling until the deadline below
             if time.monotonic() > deadline:
                 pytest.fail(f"app server did not answer /health within 120 s; log tail:\n{server.tail()}", pytrace=False)
             time.sleep(0.5)
