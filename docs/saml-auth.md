@@ -225,6 +225,19 @@ and while the binding is on an attempt recorded without one is refused — login
 such a restart fail once and succeed on retry. Production deployments serve https and set
 `SESSION_COOKIE_SECURE=true`, which turns the binding on with no further configuration.
 
+Limits worth knowing:
+
+- The defence assumes nothing else can write cookies for MLflow's host: no untrusted sibling
+  subdomain (a `Domain=` cookie from `x.corp.example` reaches `mlflow.corp.example`), and HSTS so
+  a network attacker cannot plant one over plain http. A `__Host-` prefix would rule both out but
+  forces `Path=/`, sending the cookie with every request; it is not used.
+- The cookie is set on the host that served `/login` and returned to the ACS host. When
+  `OIDC_REDIRECT_URI` names a different hostname than the one users browse to, the cookie never
+  arrives and every SAML login is refused — browse through the configured hostname.
+- Each `/login` adds one cookie for ten minutes. A page that bounces a browser through `/login`
+  hundreds of times can grow the ACS request's `Cookie` header past a proxy's limit, blocking that
+  browser's SAML login until the cookies expire. Nothing is gained beyond that.
+
 ## Single logout
 
 Single logout uses the **HTTP-Redirect binding only**, in both directions. `/slo/<id>` accepts
