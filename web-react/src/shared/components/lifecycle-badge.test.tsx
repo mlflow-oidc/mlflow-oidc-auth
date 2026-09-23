@@ -34,4 +34,11 @@ describe("LifecycleBadge", () => {
     render(<LifecycleBadge variant="managed_by" managedBy="oidc:" />);
     expect(screen.getByText("OIDC")).toBeInTheDocument();
   });
+
+  it("renders 'SAML · <provider>' for managed_by 'saml:<provider>'", () => {
+    render(
+      <LifecycleBadge variant="managed_by" managedBy="saml:corp-idp" />,
+    );
+    expect(screen.getByText("SAML · corp-idp")).toBeInTheDocument();
+  });
 });

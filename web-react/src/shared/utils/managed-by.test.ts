@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeManagedBy } from "./managed-by";
+import { describeManagedBy, isDirectoryManaged } from "./managed-by";
 
 describe("describeManagedBy", () => {
   it("classifies manual", () => {
@@ -35,5 +35,37 @@ describe("describeManagedBy", () => {
       label: "Manual",
       bucket: "manual",
     });
+  });
+
+  it("classifies saml:<provider>", () => {
+    expect(describeManagedBy("saml:corp-idp")).toEqual({
+      label: "SAML · corp-idp",
+      bucket: "saml",
+    });
+  });
+
+  it("falls back to a bare SAML label with no provider id", () => {
+    expect(describeManagedBy("saml:")).toEqual({
+      label: "SAML",
+      bucket: "saml",
+    });
+  });
+});
+
+describe("isDirectoryManaged", () => {
+  it("is true for scim", () => {
+    expect(isDirectoryManaged("scim")).toBe(true);
+  });
+
+  it("is true for oidc:<provider>", () => {
+    expect(isDirectoryManaged("oidc:google")).toBe(true);
+  });
+
+  it("is true for saml:<provider>", () => {
+    expect(isDirectoryManaged("saml:corp-idp")).toBe(true);
+  });
+
+  it("is false for manual", () => {
+    expect(isDirectoryManaged("manual")).toBe(false);
   });
 });

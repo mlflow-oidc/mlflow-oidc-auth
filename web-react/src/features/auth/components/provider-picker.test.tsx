@@ -21,6 +21,7 @@ describe("ProviderPicker", () => {
       <ProviderPicker
         providers={[provider("entra", "Entra ID"), provider("okta", "Okta")]}
         next={null}
+        basePath=""
       />,
     );
 
@@ -39,6 +40,7 @@ describe("ProviderPicker", () => {
       <ProviderPicker
         providers={[provider("entra", "Entra ID")]}
         next="/oidc/ui/models"
+        basePath=""
       />,
     );
 
@@ -56,6 +58,7 @@ describe("ProviderPicker", () => {
           provider("entra", "Entra ID", "oidc"),
         ]}
         next={null}
+        basePath=""
       />,
     );
 
@@ -72,6 +75,7 @@ describe("ProviderPicker", () => {
       <ProviderPicker
         providers={[provider("entra", "Entra ID"), provider("okta", "Okta")]}
         next={null}
+        basePath=""
       />,
     );
 
@@ -85,6 +89,7 @@ describe("ProviderPicker", () => {
       <ProviderPicker
         providers={[provider("legacy", "Legacy SSO", "ldap")]}
         next={null}
+        basePath=""
       />,
     );
 
@@ -95,5 +100,42 @@ describe("ProviderPicker", () => {
       screen.queryByTestId("provider-kind-legacy"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("SAML")).not.toBeInTheDocument();
+  });
+
+  it("prefixes a login URL with basePath when the two disagree (untrusted proxy hop)", () => {
+    render(
+      <ProviderPicker
+        providers={[provider("entra", "Entra ID")]}
+        next={null}
+        basePath="/mlflow"
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Entra ID" })).toHaveAttribute(
+      "href",
+      "/mlflow/api/login/entra",
+    );
+  });
+
+  it("leaves a login URL alone when it is already under basePath", () => {
+    render(
+      <ProviderPicker
+        providers={[
+          {
+            id: "entra",
+            display_name: "Entra ID",
+            type: "oidc",
+            login_url: "/mlflow/api/login/entra",
+          },
+        ]}
+        next={null}
+        basePath="/mlflow"
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Entra ID" })).toHaveAttribute(
+      "href",
+      "/mlflow/api/login/entra",
+    );
   });
 });

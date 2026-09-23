@@ -139,6 +139,37 @@ describe("AuthPage provider picker (#317)", () => {
     expect(screen.queryByText("Sign in with")).not.toBeInTheDocument();
   });
 
+  it("prefixes a single provider's login_url with basePath behind an untrusted proxy hop", () => {
+    // login_url is built server-side from root_path, only set for a trusted hop; basePath comes
+    // from X-Forwarded-Prefix unconditionally. When they disagree, the button must still point
+    // somewhere the proxy routes rather than a bare, unprefixed path.
+    mockUseRuntimeConfig.mockReturnValue({
+      provider: "Sign in with OIDC",
+      basePath: "/mlflow",
+      uiPath: "/ui",
+      authenticated: false,
+      gen_ai_gateway_enabled: false,
+      workspaces_enabled: false,
+    });
+    mockUseProviders.mockReturnValue({
+      providers: [
+        {
+          id: "default",
+          display_name: "Login with OIDC",
+          type: "oidc",
+          login_url: "/login/default",
+        },
+      ],
+      loading: false,
+    });
+
+    render(<AuthPage />);
+
+    expect(
+      screen.getByRole("link", { name: "Login with OIDC" }),
+    ).toHaveAttribute("href", "/mlflow/login/default");
+  });
+
   it("renders one button per provider when there are several", () => {
     mockUseProviders.mockReturnValue({
       providers: [provider("entra", "Entra ID"), provider("okta", "Okta")],

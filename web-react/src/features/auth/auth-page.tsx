@@ -8,7 +8,7 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import DarkModeToggle from "../../shared/components/dark-mode-toggle";
 import { useProviders } from "./hooks/use-providers";
-import { withNextTarget } from "./services/provider-service";
+import { withNextTarget, resolveLoginUrl } from "./services/provider-service";
 import { ProviderPicker } from "./components/provider-picker";
 
 export const AuthPage = () => {
@@ -29,7 +29,7 @@ export const AuthPage = () => {
   const singleProvider = providers.length <= 1;
   const loginHref = withNextTarget(
     providers.length === 1
-      ? providers[0].login_url
+      ? resolveLoginUrl(providers[0].login_url, config.basePath)
       : `${config.basePath}/login`,
     nextTarget,
   );
@@ -123,7 +123,11 @@ export const AuthPage = () => {
               )}
             </>
           ) : (
-            <ProviderPicker providers={providers} next={nextTarget} />
+            <ProviderPicker
+              providers={providers}
+              next={nextTarget}
+              basePath={config.basePath}
+            />
           )}
         </div>
       </div>

@@ -132,9 +132,10 @@ function AdminUsersView() {
     null,
   );
   const [isDeactivating, setIsDeactivating] = useState(false);
-  const [reactivatingUsername, setReactivatingUsername] = useState<
-    string | null
-  >(null);
+  const [reactivatingUser, setReactivatingUser] = useState<UserDetails | null>(
+    null,
+  );
+  const [isReactivating, setIsReactivating] = useState(false);
 
   const filteredUsers = useMemo(() => {
     return users
@@ -149,26 +150,32 @@ function AdminUsersView() {
     id: user.username,
   }));
 
-  const handleReactivate = useCallback(
-    async (user: UserDetails) => {
-      setReactivatingUsername(user.username);
+  const handleConfirmReactivate = useCallback(
+    async (adminOverride: boolean) => {
+      if (!reactivatingUser) return;
+      setIsReactivating(true);
       try {
-        const updated = await setUserActive(user.username, true);
-        updateLocalUser(user.username, updated);
-        showToast(`${user.username} reactivated`, "success");
+        const updated = await setUserActive(
+          reactivatingUser.username,
+          true,
+          adminOverride,
+        );
+        updateLocalUser(reactivatingUser.username, updated);
+        showToast(`${reactivatingUser.username} reactivated`, "success");
+        setReactivatingUser(null);
       } catch (err) {
         showToast(
           extractErrorMessage(
             err,
-            `Failed to reactivate ${user.username}`,
+            `Failed to reactivate ${reactivatingUser.username}`,
           ),
           "error",
         );
       } finally {
-        setReactivatingUsername(null);
+        setIsReactivating(false);
       }
     },
-    [updateLocalUser, showToast],
+    [reactivatingUser, updateLocalUser, showToast],
   );
 
   const handleConfirmDeactivate = useCallback(
@@ -268,10 +275,7 @@ function AdminUsersView() {
               <IconButton
                 icon={faUserCheck}
                 title="Reactivate user"
-                disabled={reactivatingUsername === user.username}
-                onClick={() => {
-                  void handleReactivate(user);
-                }}
+                onClick={() => setReactivatingUser(user)}
               />
             )}
           </div>
@@ -279,7 +283,7 @@ function AdminUsersView() {
         className: "flex-shrink-0",
       },
     ],
-    [reactivatingUsername, handleReactivate],
+    [],
   );
 
   return (
@@ -322,6 +326,17 @@ function AdminUsersView() {
             }}
             user={deactivatingUser}
             isProcessing={isDeactivating}
+          />
+
+          <DeactivateUserModal
+            isOpen={!!reactivatingUser}
+            onClose={() => setReactivatingUser(null)}
+            onConfirm={(adminOverride) => {
+              void handleConfirmReactivate(adminOverride);
+            }}
+            user={reactivatingUser}
+            isProcessing={isReactivating}
+            targetActive
           />
         </>
       )}

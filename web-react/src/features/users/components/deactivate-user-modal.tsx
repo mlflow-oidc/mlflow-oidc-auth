@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Modal } from "../../../shared/components/modal";
 import { Button } from "../../../shared/components/button";
 import { Switch } from "../../../shared/components/switch";
-import { describeManagedBy } from "../../../shared/utils/managed-by";
+import { describeManagedBy, isDirectoryManaged } from "../../../shared/utils/managed-by";
 import type { UserDetails } from "../../../shared/types/user";
 
 interface DeactivateUserModalProps {
@@ -11,6 +11,14 @@ interface DeactivateUserModalProps {
   onConfirm: (adminOverride: boolean) => void;
   user: UserDetails | null;
   isProcessing: boolean;
+  /**
+   * The `active` state this confirmation would set. `false` (the original, deactivate-only
+   * shape of this modal) shows the deactivation copy; `true` reuses the same modal — including
+   * the ownership-override switch for a directory-managed account — for reactivation, which
+   * needs the override just as much: under `MANAGED_BY_ENFORCEMENT=enforce` a directory-managed
+   * user can 409 on reactivation exactly like on deactivation.
+   */
+  targetActive?: boolean;
 }
 
 export const DeactivateUserModal = ({
@@ -19,6 +27,7 @@ export const DeactivateUserModal = ({
   onConfirm,
   user,
   isProcessing,
+  targetActive = false,
 }: DeactivateUserModalProps) => {
   const [adminOverride, setAdminOverride] = useState(false);
   const [lastUsername, setLastUsername] = useState<string | null>(
@@ -35,20 +44,34 @@ export const DeactivateUserModal = ({
 
   if (!user) return null;
 
-  const { bucket, label } = describeManagedBy(user.managed_by);
-  const isDirectoryManaged = bucket === "scim" || bucket === "oidc";
+  const { label } = describeManagedBy(user.managed_by);
+  const directoryManaged = isDirectoryManaged(user.managed_by);
+
+  const title = targetActive ? "Reactivate User" : "Deactivate User";
+  const confirmLabel = targetActive ? "Reactivate" : "Deactivate";
+  const confirmInProgressLabel = targetActive
+    ? "Reactivating..."
+    : "Deactivating...";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Deactivate User">
+    <Modal isOpen={isOpen} onClose={onClose} title={title}>
       <div className="text-ui-text dark:text-ui-text-dark">
-        <p className="mb-4">
-          <span className="font-bold">{user.username}</span> will be
-          deactivated. Their sessions and access tokens are revoked
-          immediately; existing permission grants are kept, so reactivating
-          restores access.
-        </p>
+        {targetActive ? (
+          <p className="mb-4">
+            <span className="font-bold">{user.username}</span> will be
+            reactivated. Their existing permission grants are restored
+            immediately.
+          </p>
+        ) : (
+          <p className="mb-4">
+            <span className="font-bold">{user.username}</span> will be
+            deactivated. Their sessions and access tokens are revoked
+            immediately; existing permission grants are kept, so reactivating
+            restores access.
+          </p>
+        )}
 
-        {isDirectoryManaged && (
+        {directoryManaged && (
           <div className="mb-4 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-sm space-y-3">
             <p>
               This account is managed by <span className="font-semibold">{label}</span>
@@ -69,11 +92,11 @@ export const DeactivateUserModal = ({
             Cancel
           </Button>
           <Button
-            variant="danger"
+            variant={targetActive ? "primary" : "danger"}
             onClick={() => onConfirm(adminOverride)}
             disabled={isProcessing}
           >
-            {isProcessing ? "Deactivating..." : "Deactivate"}
+            {isProcessing ? confirmInProgressLabel : confirmLabel}
           </Button>
         </div>
       </div>

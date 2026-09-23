@@ -24,6 +24,12 @@ const oidcUser: UserDetails = {
   managed_by: "oidc:okta-prod",
 };
 
+const samlUser: UserDetails = {
+  ...manualUser,
+  username: "dave@example.com",
+  managed_by: "saml:corp-idp",
+};
+
 describe("DeactivateUserModal", () => {
   it("renders nothing when there is no target user", () => {
     const { container } = render(
@@ -133,5 +139,94 @@ describe("DeactivateUserModal", () => {
       screen.getByRole("button", { name: "Deactivating..." }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
+
+  it("shows the ownership guard warning and override switch for a SAML-managed user", () => {
+    render(
+      <DeactivateUserModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        user={samlUser}
+        isProcessing={false}
+      />,
+    );
+
+    expect(screen.getByText("SAML · corp-idp")).toBeInTheDocument();
+    expect(screen.getByText("Override ownership guard")).toBeInTheDocument();
+  });
+
+  describe("targetActive (reactivation)", () => {
+    it("renders reactivation copy and the Reactivate action", () => {
+      render(
+        <DeactivateUserModal
+          isOpen={true}
+          onClose={vi.fn()}
+          onConfirm={vi.fn()}
+          user={manualUser}
+          isProcessing={false}
+          targetActive
+        />,
+      );
+
+      expect(screen.getByText("Reactivate User")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Reactivate" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Deactivate" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows the ownership override switch for a SCIM-managed user being reactivated", () => {
+      render(
+        <DeactivateUserModal
+          isOpen={true}
+          onClose={vi.fn()}
+          onConfirm={vi.fn()}
+          user={scimUser}
+          isProcessing={false}
+          targetActive
+        />,
+      );
+
+      expect(screen.getByText("Override ownership guard")).toBeInTheDocument();
+    });
+
+    it("calls onConfirm(true) when reactivating a SCIM-managed user with the override switch on", () => {
+      const onConfirm = vi.fn();
+      render(
+        <DeactivateUserModal
+          isOpen={true}
+          onClose={vi.fn()}
+          onConfirm={onConfirm}
+          user={scimUser}
+          isProcessing={false}
+          targetActive
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("switch"));
+      fireEvent.click(screen.getByRole("button", { name: "Reactivate" }));
+
+      expect(onConfirm).toHaveBeenCalledWith(true);
+    });
+
+    it("shows 'Reactivating...' while processing", () => {
+      render(
+        <DeactivateUserModal
+          isOpen={true}
+          onClose={vi.fn()}
+          onConfirm={vi.fn()}
+          user={manualUser}
+          isProcessing={true}
+          targetActive
+        />,
+      );
+
+      expect(
+        screen.getByRole("button", { name: "Reactivating..." }),
+      ).toBeDisabled();
+    });
   });
 });

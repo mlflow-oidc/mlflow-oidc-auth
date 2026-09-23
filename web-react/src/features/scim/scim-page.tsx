@@ -18,20 +18,27 @@ import type { ScimToken, ScimTokenWithSecret } from "../../shared/types/scim";
 
 const EXPIRING_SOON_MS = 14 * 24 * 60 * 60 * 1000;
 
-type TokenStatus = "Active" | "Expiring" | "Revoked";
+type TokenStatus = "Active" | "Expiring" | "Expired" | "Revoked";
 
 function getTokenStatus(token: ScimToken): TokenStatus {
   if (token.revoked_at) return "Revoked";
   if (token.expires_at) {
     const diff = new Date(token.expires_at).getTime() - Date.now();
+    if (diff < 0) return "Expired";
     if (diff <= EXPIRING_SOON_MS) return "Expiring";
   }
   return "Active";
 }
 
+/** Statuses that mean a token can no longer be used to authenticate. */
+function isTokenInactive(status: TokenStatus): boolean {
+  return status === "Revoked" || status === "Expired";
+}
+
 const STATUS_CLASSES: Record<TokenStatus, string> = {
   Active: "text-green-600 dark:text-green-400",
   Expiring: "text-yellow-600 dark:text-yellow-400",
+  Expired: "text-gray-500 dark:text-gray-400",
   Revoked: "text-status-danger dark:text-status-danger-dark",
 };
 
@@ -114,13 +121,17 @@ export default function ScimPage() {
       {
         header: "Name",
         render: (t) => (
-          <span className={t.revoked_at ? "opacity-50" : ""}>{t.name}</span>
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
+            {t.name}
+          </span>
         ),
       },
       {
         header: "Prefix",
         render: (t) => (
-          <span className={`font-mono ${t.revoked_at ? "opacity-50" : ""}`}>
+          <span
+            className={`font-mono ${isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}`}
+          >
             {t.token_prefix}
           </span>
         ),
@@ -128,7 +139,7 @@ export default function ScimPage() {
       {
         header: "Created",
         render: (t) => (
-          <span className={t.revoked_at ? "opacity-50" : ""}>
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {formatDate(t.created_at)}
           </span>
         ),
@@ -136,7 +147,7 @@ export default function ScimPage() {
       {
         header: "Created by",
         render: (t) => (
-          <span className={t.revoked_at ? "opacity-50" : ""}>
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {t.created_by}
           </span>
         ),
@@ -144,7 +155,7 @@ export default function ScimPage() {
       {
         header: "Last used",
         render: (t) => (
-          <span className={t.revoked_at ? "opacity-50" : ""}>
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {formatDate(t.last_used_at)}
           </span>
         ),
@@ -152,7 +163,7 @@ export default function ScimPage() {
       {
         header: "Expires",
         render: (t) => (
-          <span className={t.revoked_at ? "opacity-50" : ""}>
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {formatDate(t.expires_at)}
           </span>
         ),
@@ -175,13 +186,13 @@ export default function ScimPage() {
             <IconButton
               icon={faRotate}
               title="Rotate"
-              disabled={!!t.revoked_at}
+              disabled={isTokenInactive(getTokenStatus(t))}
               onClick={() => setRotatingToken(t)}
             />
             <IconButton
               icon={faBan}
               title="Revoke"
-              disabled={!!t.revoked_at}
+              disabled={isTokenInactive(getTokenStatus(t))}
               onClick={() => setRevokingToken(t)}
             />
           </div>
@@ -241,12 +252,6 @@ export default function ScimPage() {
             onCreated={handleCreated}
           />
 
-          <ScimTokenSecretModal
-            isOpen={!!secretToken}
-            onClose={() => setSecretToken(null)}
-            token={secretToken}
-          />
-
           <RotateScimTokenModal
             isOpen={!!rotatingToken}
             onClose={() => setRotatingToken(null)}
@@ -268,6 +273,16 @@ export default function ScimPage() {
           />
         </>
       )}
+
+      {/* Deliberately outside the isLoading/error gate above: creating or rotating a token
+          calls refresh() right after this modal is populated, and that refetch flips isLoading
+          (or, on failure, sets error). Either would unmount this modal mid-display, and the
+          plaintext token shown here can never be retrieved again once that happens. */}
+      <ScimTokenSecretModal
+        isOpen={!!secretToken}
+        onClose={() => setSecretToken(null)}
+        token={secretToken}
+      />
     </PageContainer>
   );
 }

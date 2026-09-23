@@ -44,6 +44,17 @@ describe("ScimPage", () => {
     revoked_at: "2026-03-01T00:00:00Z",
   };
 
+  const expiredToken: ScimToken = {
+    id: 3,
+    name: "Legacy",
+    token_prefix: "scim_lgcy",
+    created_at: "2026-01-01T00:00:00Z",
+    created_by: "admin",
+    last_used_at: null,
+    expires_at: "2020-01-01T00:00:00Z",
+    revoked_at: null,
+  };
+
   const mockShowToast = vi.fn();
   const mockRefresh = vi.fn();
 
@@ -164,5 +175,70 @@ describe("ScimPage", () => {
     // Second row corresponds to the revoked token.
     expect(rotateButtons[1]).toBeDisabled();
     expect(revokeButtons[1]).toBeDisabled();
+  });
+
+  it("shows Expired (not Expiring) for a token whose expiry is in the past, and disables its actions", () => {
+    vi.spyOn(useScimTokensModule, "useScimTokens").mockReturnValue({
+      tokens: [activeToken, expiredToken],
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    render(<ScimPage />);
+
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(screen.queryByText("Expiring")).not.toBeInTheDocument();
+
+    const rotateButtons = screen.getAllByTitle("Rotate");
+    const revokeButtons = screen.getAllByTitle("Revoke");
+    // Second row corresponds to the expired token.
+    expect(rotateButtons[1]).toBeDisabled();
+    expect(revokeButtons[1]).toBeDisabled();
+  });
+
+  it("keeps the secret modal mounted and visible if the post-create refresh fails (#1)", async () => {
+    let hookState: ReturnType<typeof useScimTokensModule.useScimTokens> = {
+      tokens: [activeToken],
+      isLoading: false,
+      error: null,
+      refresh: () => {
+        // Simulate the refetch that `refresh()` kicks off flipping into a loading state
+        // immediately, the way the real `useApi`-backed hook does.
+        hookState = { ...hookState, isLoading: true };
+      },
+    };
+    vi.spyOn(useScimTokensModule, "useScimTokens").mockImplementation(
+      () => hookState,
+    );
+
+    const created: ScimTokenWithSecret = {
+      ...activeToken,
+      id: 9,
+      name: "New Token",
+      token: "scim_plaintext_xyz",
+    };
+    vi.spyOn(scimTokenService, "createScimToken").mockResolvedValue(created);
+
+    const { rerender } = render(<ScimPage />);
+    fireEvent.click(screen.getByText("Create token"));
+    fireEvent.change(screen.getByLabelText(/Name\*/i), {
+      target: { value: "New Token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(
+      await screen.findByDisplayValue("scim_plaintext_xyz"),
+    ).toBeInTheDocument();
+
+    // The refetch triggered by handleCreated is now "in flight" (isLoading: true). The secret
+    // modal must still be visible even though the rest of the page is gated on !isLoading.
+    expect(screen.getByDisplayValue("scim_plaintext_xyz")).toBeInTheDocument();
+
+    // Now simulate that refetch failing outright.
+    hookState = { ...hookState, isLoading: false, error: new Error("boom") };
+    rerender(<ScimPage />);
+
+    expect(screen.getByDisplayValue("scim_plaintext_xyz")).toBeInTheDocument();
   });
 });

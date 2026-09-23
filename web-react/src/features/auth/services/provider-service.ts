@@ -100,3 +100,25 @@ export function withNextTarget(loginUrl: string, next: string | null): string {
   const separator = loginUrl.includes("?") ? "&" : "?";
   return `${loginUrl}${separator}next=${encodeURIComponent(next)}`;
 }
+
+/**
+ * Prefix a provider's `login_url` with the app's base path when the two disagree.
+ *
+ * `login_url` is built server-side from `root_path`, which the server only sets for a *trusted*
+ * proxy hop. `basePath` (config.ts) is read from `X-Forwarded-Prefix` unconditionally — any hop
+ * can set that header. Behind an untrusted proxy the two can disagree: the app is served under
+ * `basePath` (e.g. `/mlflow`) but `login_url` comes back unprefixed (e.g. `/login/default`), so a
+ * login button built from `login_url` alone points somewhere the proxy does not route.
+ *
+ * A `login_url` that already lives under `basePath` (the trusted-hop case, and every server from
+ * before this existed) is returned unchanged. `isRenderable`'s same-origin, single-leading-slash
+ * check already ran on `login_url` before this is called, and simple concatenation of two
+ * single-leading-slash paths preserves that shape.
+ */
+export function resolveLoginUrl(loginUrl: string, basePath: string): string {
+  if (!basePath) return loginUrl;
+  if (loginUrl === basePath || loginUrl.startsWith(`${basePath}/`)) {
+    return loginUrl;
+  }
+  return `${basePath}${loginUrl}`;
+}

@@ -1,12 +1,14 @@
 import { Button } from "../../../shared/components/button";
 import {
   withNextTarget,
+  resolveLoginUrl,
   type IdentityProvider,
 } from "../services/provider-service";
 
 type ProviderPickerProps = {
   providers: IdentityProvider[];
   next: string | null;
+  basePath: string;
 };
 
 /**
@@ -22,7 +24,11 @@ type ProviderPickerProps = {
  * button, or one of a type this picker has never heard of, renders exactly as it did before #330
  * — no label, pixel-identical.
  */
-export const ProviderPicker = ({ providers, next }: ProviderPickerProps) => (
+export const ProviderPicker = ({
+  providers,
+  next,
+  basePath,
+}: ProviderPickerProps) => (
   <div className="w-full flex flex-col gap-3">
     <span className="text-sm text-ui-text/60 dark:text-ui-text-dark/60 text-center">
       Sign in with
@@ -33,7 +39,10 @@ export const ProviderPicker = ({ providers, next }: ProviderPickerProps) => (
       // label and would break name-based lookups for the button text alone.
       <div key={provider.id} className="w-full">
         <a
-          href={withNextTarget(provider.login_url, next)}
+          href={withNextTarget(
+            resolveLoginUrl(provider.login_url, basePath),
+            next,
+          )}
           className="w-full block"
           data-testid={`provider-${provider.id}`}
         >

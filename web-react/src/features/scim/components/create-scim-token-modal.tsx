@@ -12,6 +12,29 @@ interface CreateScimTokenModalProps {
   onCreated: (token: ScimTokenWithSecret) => void;
 }
 
+/** Today's date as `YYYY-MM-DD` in the viewer's local timezone (not UTC). */
+function localDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * The end of the picked calendar day (23:59:59.999) in the viewer's local timezone, as an ISO
+ * string.
+ *
+ * The `<input type="date">` value is a bare `YYYY-MM-DD` with no timezone. `new Date("YYYY-MM-DD")`
+ * parses that as UTC midnight, which is a past instant (and so an already-expired token) for
+ * anyone west of UTC picking "today". Building the Date from its local-time constructor instead
+ * anchors the string to the viewer's own midnight, and pushing it to the end of that day means an
+ * expiry of "today" still allows use through the rest of today wherever the viewer is.
+ */
+function endOfLocalDayIso(dateString: string): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(year, month - 1, day, 23, 59, 59, 999).toISOString();
+}
+
 export const CreateScimTokenModal: React.FC<CreateScimTokenModalProps> = ({
   isOpen,
   onClose,
@@ -34,7 +57,7 @@ export const CreateScimTokenModal: React.FC<CreateScimTokenModalProps> = ({
     try {
       const token = await createScimToken({
         name: name.trim(),
-        expires_at: expiresAt ? new Date(expiresAt).toISOString() : undefined,
+        expires_at: expiresAt ? endOfLocalDayIso(expiresAt) : undefined,
       });
       showToast(`Token "${token.name}" created`, "success");
       setName("");
@@ -66,7 +89,7 @@ export const CreateScimTokenModal: React.FC<CreateScimTokenModalProps> = ({
           type="date"
           value={expiresAt}
           onChange={(e) => setExpiresAt(e.target.value)}
-          min={new Date().toISOString().split("T")[0]}
+          min={localDateString(new Date())}
         />
       </div>
 

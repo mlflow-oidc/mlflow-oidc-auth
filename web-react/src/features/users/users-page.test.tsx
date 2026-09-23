@@ -145,6 +145,15 @@ const inactiveUser: UserDetails = {
   managed_by: "oidc:okta-prod",
 };
 
+const inactiveScimUser: UserDetails = {
+  username: "dave@example.com",
+  display_name: "Dave",
+  is_admin: false,
+  is_service_account: false,
+  active: false,
+  managed_by: "scim",
+};
+
 describe("UsersPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -332,6 +341,84 @@ describe("UsersPage", () => {
         expect(userService.setUserActive).toHaveBeenCalledWith(
           "bob@example.com",
           false,
+          true,
+        );
+      });
+    });
+
+    it("reactivate opens a confirm modal and calls the service on confirm", async () => {
+      const updateLocalUser = vi.fn();
+      mockUseAllUserDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        updateLocalUser,
+        users: [inactiveUser],
+      });
+      const updated = { ...inactiveUser, active: true };
+      vi.mocked(userService.setUserActive).mockResolvedValue(updated);
+
+      render(<UsersPage />);
+
+      fireEvent.click(screen.getByTestId("icon-btn-Reactivate user"));
+
+      // The confirm modal, not an immediate call — otherwise there is no way to opt into the
+      // ownership override for a directory-managed user.
+      expect(userService.setUserActive).not.toHaveBeenCalled();
+      expect(screen.getByText("Reactivate User")).toBeInTheDocument();
+
+      const dialogButtons = screen.getAllByText("Reactivate");
+      fireEvent.click(dialogButtons[dialogButtons.length - 1]);
+
+      await waitFor(() => {
+        expect(userService.setUserActive).toHaveBeenCalledWith(
+          "carol@example.com",
+          true,
+          false,
+        );
+        expect(updateLocalUser).toHaveBeenCalledWith(
+          "carol@example.com",
+          updated,
+        );
+      });
+      expect(mockShowToast).toHaveBeenCalledWith(
+        expect.stringContaining("reactivated"),
+        "success",
+      );
+    });
+
+    it("reactivating a scim-managed user with the override switch on calls setUserActive(u, true, true)", async () => {
+      mockUseAllUserDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        updateLocalUser: vi.fn(),
+        users: [inactiveScimUser],
+      });
+      vi.mocked(userService.setUserActive).mockResolvedValue({
+        ...inactiveScimUser,
+        active: true,
+      });
+
+      render(<UsersPage />);
+
+      fireEvent.click(screen.getByTestId("icon-btn-Reactivate user"));
+
+      expect(screen.getByText("Override ownership guard")).toBeInTheDocument();
+
+      const overrideLabel = screen
+        .getByText("Override ownership guard")
+        .closest("label");
+      expect(overrideLabel).not.toBeNull();
+      fireEvent.click(within(overrideLabel as HTMLElement).getByRole("switch"));
+
+      const dialogButtons = screen.getAllByText("Reactivate");
+      fireEvent.click(dialogButtons[dialogButtons.length - 1]);
+
+      await waitFor(() => {
+        expect(userService.setUserActive).toHaveBeenCalledWith(
+          "dave@example.com",
+          true,
           true,
         );
       });

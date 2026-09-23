@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-import { fetchProviders, withNextTarget } from "./provider-service";
+import {
+  fetchProviders,
+  withNextTarget,
+  resolveLoginUrl,
+} from "./provider-service";
 
 const ok = (body: unknown) =>
   ({ ok: true, json: () => Promise.resolve(body) }) as Response;
@@ -212,5 +216,35 @@ describe("withNextTarget", () => {
     expect(withNextTarget("/api/login/entra", "//evil.example")).toBe(
       "/api/login/entra?next=%2F%2Fevil.example",
     );
+  });
+});
+
+describe("resolveLoginUrl", () => {
+  it("prefixes login_url with basePath when they disagree (untrusted proxy hop)", () => {
+    // `login_url` comes from `root_path`, only set for a trusted hop; `basePath` comes from
+    // `X-Forwarded-Prefix`, set unconditionally. An untrusted hop can set the header without the
+    // server setting root_path, so login_url arrives unprefixed while the app lives under
+    // basePath.
+    expect(resolveLoginUrl("/login/x", "/mlflow")).toBe("/mlflow/login/x");
+  });
+
+  it("leaves login_url unchanged when it is already under basePath", () => {
+    expect(resolveLoginUrl("/mlflow/login/x", "/mlflow")).toBe(
+      "/mlflow/login/x",
+    );
+  });
+
+  it("leaves login_url unchanged when basePath is empty", () => {
+    expect(resolveLoginUrl("/login/x", "")).toBe("/login/x");
+  });
+
+  it("does not double-prefix a login_url equal to basePath itself", () => {
+    expect(resolveLoginUrl("/mlflow", "/mlflow")).toBe("/mlflow");
+  });
+
+  it("produces a single-leading-slash path, never a protocol-relative one", () => {
+    const result = resolveLoginUrl("/login/x", "/mlflow");
+    expect(result.startsWith("/")).toBe(true);
+    expect(result.startsWith("//")).toBe(false);
   });
 });
