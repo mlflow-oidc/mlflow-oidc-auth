@@ -200,10 +200,13 @@ class TestTokenAdminApi:
         bound_store.create_user("u@example.com", USER_PASSWORD, "U")
         user = basic("u@example.com", USER_PASSWORD)
         assert client.get(TOKENS, headers=user).status_code == 403
-        assert client.post(TOKENS, headers=user, json={"name": "x"}).status_code == 403
+        response = client.post(TOKENS, headers=user, json={"name": "x"})
+        assert response.status_code == 403
         record, _ = bound_store.create_scim_token("okta", created_by=ADMIN)
-        assert client.post(f"{TOKENS}/{record.id}/rotate", headers=user).status_code == 403
-        assert client.delete(f"{TOKENS}/{record.id}", headers=user).status_code == 403
+        response = client.post(f"{TOKENS}/{record.id}/rotate", headers=user)
+        assert response.status_code == 403
+        response = client.delete(f"{TOKENS}/{record.id}", headers=user)
+        assert response.status_code == 403
         assert bound_store.list_scim_tokens()[0].revoked_at is None
 
     def test_unauthenticated_is_refused(self, client, bound_store):
@@ -236,15 +239,20 @@ class TestTokenAdminApi:
         assert all(plaintext not in str(e) and new_plaintext not in str(e) for e in audit_events), "never audit a plaintext"
 
     def test_duplicate_name_is_a_conflict(self, client, admin):
-        assert client.post(TOKENS, headers=admin, json={"name": "entra"}).status_code == 201
-        assert client.post(TOKENS, headers=admin, json={"name": "entra"}).status_code == 409
+        response = client.post(TOKENS, headers=admin, json={"name": "entra"})
+        assert response.status_code == 201
+        response = client.post(TOKENS, headers=admin, json={"name": "entra"})
+        assert response.status_code == 409
 
     def test_past_expiry_is_rejected(self, client, admin):
-        assert client.post(TOKENS, headers=admin, json={"name": "entra", "expires_at": "2000-01-01T00:00:00Z"}).status_code == 400
+        response = client.post(TOKENS, headers=admin, json={"name": "entra", "expires_at": "2000-01-01T00:00:00Z"})
+        assert response.status_code == 400
 
     def test_unknown_token_is_404(self, client, admin):
-        assert client.delete(f"{TOKENS}/9999", headers=admin).status_code == 404
-        assert client.post(f"{TOKENS}/9999/rotate", headers=admin).status_code == 404
+        response = client.delete(f"{TOKENS}/9999", headers=admin)
+        assert response.status_code == 404
+        response = client.post(f"{TOKENS}/9999/rotate", headers=admin)
+        assert response.status_code == 404
 
 
 class TestRequestAudit:

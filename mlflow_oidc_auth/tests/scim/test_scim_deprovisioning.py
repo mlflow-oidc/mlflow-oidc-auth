@@ -23,7 +23,8 @@ REACTIVATE = patch_body({"op": "replace", "path": "active", "value": True})
 @pytest.fixture
 def alice(client, scim, bound_store):
     """A SCIM-provisioned user holding a live session and a known basic-auth token."""
-    assert client.post(USERS, headers=scim, json=user_body(ALICE, external_id="ext-alice")).status_code == 201
+    response = client.post(USERS, headers=scim, json=user_body(ALICE, external_id="ext-alice"))
+    assert response.status_code == 201
     bound_store.update_user(ALICE, password=USER_PASSWORD, written_by="scim")
     return basic(ALICE, USER_PASSWORD)
 
@@ -38,7 +39,8 @@ class TestDeactivation:
         assert client.get(PROTECTED).status_code == 200, "precondition: live session"
         assert client.get(PROTECTED, headers=alice).status_code == 200, "precondition: working token"
 
-        assert client.patch(f"{USERS}/{ALICE}", headers=scim, json=DEACTIVATE).status_code == 200
+        response = client.patch(f"{USERS}/{ALICE}", headers=scim, json=DEACTIVATE)
+        assert response.status_code == 200
 
         assert client.get(PROTECTED).status_code == 401
         assert client.get(PROTECTED, headers=alice).status_code == 401
@@ -162,7 +164,8 @@ class TestOrphans:
         bound_store.add_user_to_group("colleague@example.com", "team")
         bound_store.create_group_model_permission("team", "model-b", "MANAGE")
 
-        assert client.patch(f"{USERS}/{ALICE}", headers=scim, json=DEACTIVATE).status_code == 200
+        response = client.patch(f"{USERS}/{ALICE}", headers=scim, json=DEACTIVATE)
+        assert response.status_code == 200
 
         orphaned = {(e["resource_type"], e["resource_id"]) for e in events(audit_events, "resource.orphaned")}
         assert orphaned == {("experiment", "1"), ("registered_model", "model-a")}
@@ -198,7 +201,8 @@ class TestOrphans:
         bound_store.create_experiment_permission("5", ALICE, "MANAGE")
         bound_store.create_experiment_permission("5", "steward@example.com", "READ")  # raised, not duplicated
 
-        assert client.delete(f"{USERS}/{ALICE}", headers=scim).status_code == 204
+        response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+        assert response.status_code == 204
 
         held = {p.experiment_id: p.permission for p in bound_store.list_experiment_permissions("steward@example.com")}
         assert held == {"1": "MANAGE", "5": "MANAGE"}
@@ -224,7 +228,8 @@ class TestOrphans:
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
 
         bound_store.create_user("steward@example.com", "unused-secret", "Steward")
-        assert client.delete(f"{USERS}/{ALICE}", headers=scim).status_code == 204
+        response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+        assert response.status_code == 204
         assert not bound_store.has_user(ALICE)
         assert bound_store.list_experiment_permissions("steward@example.com") == []
 
@@ -283,7 +288,8 @@ class TestHandoverIsPartOfTheDelete:
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", fallback)
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
 
-        assert client.delete(f"{USERS}/{ALICE}", headers=scim).status_code == 204
+        response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+        assert response.status_code == 204
 
         assert not bound_store.has_user(ALICE)
         orphaned = events(audit_events, "resource.orphaned")

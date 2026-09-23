@@ -124,7 +124,8 @@ class TestRead:
         create(client, scim, "bob")
         deactivate = patch_body({"op": "replace", "path": "active", "value": False})
 
-        assert client.patch(f"{USERS}/bob", headers=scim, json=deactivate).status_code == 200
+        response = client.patch(f"{USERS}/bob", headers=scim, json=deactivate)
+        assert response.status_code == 200
 
         assert bound_store.get_user_detail("bob")["active"] is False
         assert bound_store.get_user_detail("alice")["active"] is True
@@ -225,7 +226,8 @@ class TestPatch:
             {"op": "add", "path": "externalId", "value": "ext-7"},
             {"op": "replace", "path": f"{USER_SCHEMA}:displayName", "value": "Alice Q"},
         )
-        assert client.patch(f"{USERS}/alice@example.com", headers=scim, json=ops).status_code == 200
+        response = client.patch(f"{USERS}/alice@example.com", headers=scim, json=ops)
+        assert response.status_code == 200
         detail = bound_store.get_user_detail("alice@example.com")
         assert (detail["external_id"], detail["display_name"]) == ("ext-7", "Alice Q")
 
@@ -270,7 +272,8 @@ class TestOwnershipGuard:
     def test_an_attribute_write_does_not_claim_a_manual_row(self, client, scim, bound_store):
         bound_store.create_user("carol@example.com", "unused-secret", "Carol")
         ops = patch_body({"op": "replace", "path": "displayName", "value": "Carol D"})
-        assert client.patch(f"{USERS}/carol@example.com", headers=scim, json=ops).status_code == 200
+        response = client.patch(f"{USERS}/carol@example.com", headers=scim, json=ops)
+        assert response.status_code == 200
         detail = bound_store.get_user_detail("carol@example.com")
         assert (detail["display_name"], detail["managed_by"]) == ("Carol D", "manual")
 
@@ -278,7 +281,8 @@ class TestOwnershipGuard:
         """Provisioning: the directory adopts an account an admin created before SCIM existed."""
         bound_store.create_user("carol@example.com", "unused-secret", "Carol")
         ops = patch_body({"op": "add", "path": "externalId", "value": "ext-carol"})
-        assert client.patch(f"{USERS}/carol@example.com", headers=scim, json=ops).status_code == 200
+        response = client.patch(f"{USERS}/carol@example.com", headers=scim, json=ops)
+        assert response.status_code == 200
         assert bound_store.get_user_detail("carol@example.com")["managed_by"] == "scim"
         assert any(e["event"] == "user.ownership_claimed" for e in audit_events)
 
@@ -303,7 +307,8 @@ class TestOwnershipGuard:
     def test_report_applies_to_a_manual_admin_and_records_it(self, client, scim, bound_store, audit_events):
         bound_store.create_user("root@example.com", "unused-secret", "Root", is_admin=True)
         ops = patch_body({"op": "replace", "path": "displayName", "value": "Renamed"})
-        assert client.patch(f"{USERS}/root@example.com", headers=scim, json=ops).status_code == 200
+        response = client.patch(f"{USERS}/root@example.com", headers=scim, json=ops)
+        assert response.status_code == 200
         detail = bound_store.get_user_detail("root@example.com")
         assert (detail["display_name"], detail["managed_by"]) == ("Renamed", "manual")
         conflicts = [e for e in audit_events if e["event"] == "user.ownership_conflict"]
@@ -386,7 +391,8 @@ class TestUserNameValidation:
 
     def test_look_alike_of_an_existing_user_cannot_be_created(self, client, scim):
         create(client, scim, "alice@example.com")
-        assert client.post(USERS, headers=scim, json=user_body("\uff21lice@example.com")).status_code == 400
+        response = client.post(USERS, headers=scim, json=user_body("\uff21lice@example.com"))
+        assert response.status_code == 400
         assert_scim_error(client.post(USERS, headers=scim, json=user_body("ALICE@example.com")), 409, "uniqueness")
 
 
@@ -409,11 +415,13 @@ class TestPutKeepsActiveWhenOmitted:
     def test_put_without_active_does_not_reactivate(self, client, scim, bound_store):
         create(client, scim, "alice@example.com", active=False)
         body = {"schemas": [USER_SCHEMA], "userName": "alice@example.com", "displayName": "Alice"}
-        assert client.put(f"{USERS}/alice@example.com", headers=scim, json=body).status_code == 200
+        response = client.put(f"{USERS}/alice@example.com", headers=scim, json=body)
+        assert response.status_code == 200
         assert bound_store.get_user_detail("alice@example.com")["active"] is False
 
     def test_post_without_active_creates_an_active_user(self, client, scim, bound_store):
-        assert client.post(USERS, headers=scim, json={"schemas": [USER_SCHEMA], "userName": "new@example.com"}).status_code == 201
+        response = client.post(USERS, headers=scim, json={"schemas": [USER_SCHEMA], "userName": "new@example.com"})
+        assert response.status_code == 201
         assert bound_store.get_user_detail("new@example.com")["active"] is True
 
 
@@ -443,9 +451,11 @@ class TestReservedCharactersInExistingNames:
 
         assert client.get(path, headers=scim).json()["userName"] == "team/alice"
         deactivate = patch_body({"op": "replace", "path": "active", "value": False})
-        assert client.patch(path, headers=scim, json=deactivate).status_code == 200
+        response = client.patch(path, headers=scim, json=deactivate)
+        assert response.status_code == 200
         assert bound_store.get_user_detail("team/alice")["active"] is False
-        assert client.delete(path, headers=scim).status_code == 204
+        response = client.delete(path, headers=scim)
+        assert response.status_code == 204
         assert not bound_store.has_user("team/alice")
 
 

@@ -330,7 +330,8 @@ class TestRefreshGuard:
         sid = guard_store.create_auth_session("alice@example.com", expires_at=_in(3600), encrypted_tokens=BLOB)
 
         with guard_store.auth_session_refresh_guard(sid) as guard:
-            assert guard.write("rotated") is True
+            written = guard.write("rotated")
+            assert written is True
             assert guard.reread() == "rotated"
 
         assert guard_store.resolve_auth_session(sid).encrypted_tokens == "rotated"
@@ -342,7 +343,8 @@ class TestRefreshGuard:
         with guard_store.auth_session_refresh_guard(sid) as guard:
             assert guard.live is False
             assert guard.encrypted_tokens is None
-            assert guard.write("rotated") is False
+            written = guard.write("rotated")
+            assert written is False
 
     def test_holders_are_serialised_and_a_waiter_sees_the_previous_write(self, guard_store):
         import threading
@@ -386,9 +388,13 @@ class TestRefreshGuard:
     def test_an_exception_releases_the_guard(self, guard_store):
         sid = guard_store.create_auth_session("alice@example.com", expires_at=_in(3600), encrypted_tokens=BLOB)
 
+        def _boom():
+            raise RuntimeError("boom")
+
+        # The row-lock path re-wraps the error, so only the broad type is stable here.
         with pytest.raises(Exception):
             with guard_store.auth_session_refresh_guard(sid):
-                raise RuntimeError("boom")
+                _boom()
 
         with guard_store.auth_session_refresh_guard(sid) as guard:
             assert guard.encrypted_tokens == BLOB

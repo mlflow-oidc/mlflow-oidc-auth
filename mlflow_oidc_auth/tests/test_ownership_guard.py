@@ -590,9 +590,9 @@ class TestLastAdminLock:
         from sqlalchemy.dialects import postgresql
         from sqlalchemy.orm import Session
 
-        from mlflow_oidc_auth.repository.user import active_admin_ids_query
+        import mlflow_oidc_auth.repository.user as user_repo
 
-        sql = str(active_admin_ids_query(Session()).statement.compile(dialect=postgresql.dialect()))
+        sql = str(user_repo.active_admin_ids_query(Session()).statement.compile(dialect=postgresql.dialect()))
 
         assert "FOR UPDATE" in sql
         assert "is_admin" in sql and "active" in sql
