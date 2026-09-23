@@ -12,7 +12,6 @@ from mlflow_oidc_auth.db.utils import _get_alembic_config
 from mlflow_oidc_auth.tests.db.test_phase0_migration import (  # noqa: F401  (fixtures)
     PHASE0_REVISION,
     _downgrade,
-    _seed_legacy_data,
     _sqlite_uri,
     _upgrade,
     db_uri,

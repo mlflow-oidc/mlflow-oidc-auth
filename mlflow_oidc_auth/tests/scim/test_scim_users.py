@@ -6,7 +6,7 @@ from sqlalchemy import text
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.ownership import Enforcement
 
-from .conftest import ADMIN, patch_body, user_body
+from .conftest import patch_body, user_body
 
 USERS = "/scim/v2/Users"
 USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"

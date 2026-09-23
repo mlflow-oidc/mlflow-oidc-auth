@@ -9,7 +9,7 @@ from sqlalchemy import text
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.repository.scim_token import parse_prefix
 
-from .conftest import ADMIN, ADMIN_PASSWORD, LOGIN, PROTECTED, USER_PASSWORD, basic
+from .conftest import ADMIN, LOGIN, PROTECTED, USER_PASSWORD, basic
 
 SPC = "/scim/v2/ServiceProviderConfig"
 USERS = "/scim/v2/Users"
