@@ -77,6 +77,17 @@ cloud = [
   "azure-keyvault-secrets>=4.10.0",
   "hvac>=2.4.0",
 ]
+# Every optional runtime feature. tox installs this so no test suite skips itself for a
+# missing extra (pip ignores an unknown extra silently, which is how the SAML suite went
+# unexecuted in CI).
+full = [
+  "boto3>=1.42.26",
+  "azure-identity>=1.25.1",
+  "azure-keyvault-secrets>=4.10.0",
+  "hvac>=2.4.0",
+  "python3-saml>=1.16.0,<2",
+  "xmlsec>=1.3.14,<2",
+]
 # Redis cache backend
 cache = [
   "redis>=5.0.0,<6",
