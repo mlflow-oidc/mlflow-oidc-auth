@@ -377,6 +377,10 @@ class SqlAlchemyStore:
         """Record an accepted SAML assertion. False when it was already recorded — a replay (#328)."""
         return self.saml_assertion_repo.record(assertion_id, provider_id, not_on_or_after)
 
+    def release_saml_assertion(self, assertion_id: str) -> bool:
+        """Forget one recorded SAML message ID so it can be processed again (a failed SLO, #329)."""
+        return self.saml_assertion_repo.release(assertion_id)
+
     def delete_expired_saml_assertions(self, before=None) -> int:
         """Sweep replay records for assertions that can no longer validate. Returns the count."""
         return self.saml_assertion_repo.delete_expired(before)
@@ -1352,12 +1356,13 @@ class SqlAlchemyStore:
         self.user_repo.update(username, **kwargs)
         return self.get_user_detail(username)
 
-    def delete_user_with_hook(self, username: str, before_cascade) -> None:
-        """Hard-delete a user, running ``before_cascade(session, user)`` inside the same transaction.
+    def delete_user_with_hook(self, username: str, before_cascade, after_cascade=None) -> None:
+        """Hard-delete a user, running ``before_cascade(session, user)`` and ``after_cascade(session)``
+        inside the same transaction, before and after the cascade.
 
         See :func:`mlflow_oidc_auth.orphans.delete_user_reporting_orphans`.
         """
-        return self.user_repo.delete(username, before_cascade=before_cascade)
+        return self.user_repo.delete(username, before_cascade=before_cascade, after_cascade=after_cascade)
 
     def list_group_details(self) -> List[dict]:
         """Every group with its external id and member count, in two column-only statements.

@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta, timezone
 import re
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.audit import emit_audit_event
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -17,6 +18,7 @@ from mlflow_oidc_auth.models import (
 )
 from mlflow_oidc_auth.models.scim import UserActiveRequest
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
+from mlflow_oidc_auth.ownership import MANUAL, evaluate_write
 from mlflow.protos.databricks_pb2 import INVALID_STATE, ErrorCode
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
@@ -337,6 +339,17 @@ async def set_user_ownership(
     return JSONResponse(content={"username": username, "managed_by": managed_by, "previous": previous}, status_code=200)
 
 
+def _audit_delete_conflict(username: str, decision, admin_username: str) -> None:
+    emit_audit_event(
+        "user.ownership_conflict",
+        actor=admin_username,
+        resource_type="user",
+        resource_id=username,
+        detail={"owner": decision.owner, "written_by": MANUAL, "reason": decision.reason, "permitted": decision.allowed, "operation": "delete"},
+        status="success" if decision.allowed else "denied",
+    )
+
+
 @users_router.delete(
     USERS_ROOT,
     summary="Delete a user",
@@ -345,6 +358,7 @@ async def set_user_ownership(
 async def delete_user(
     username: str = Body(..., description="The username to delete", embed=True),
     admin_username: str = Depends(check_admin_permission),
+    admin_override: Annotated[bool, Body(embed=True, description="Break glass: delete a row another source owns. Always audited.")] = False,
 ) -> JSONResponse:
     """
     Delete a user from the system.
@@ -352,12 +366,20 @@ async def delete_user(
     Only administrators can delete users. This endpoint removes the user
     and all associated permissions from the system.
 
+    Goes through the same ownership guard as ``PATCH /users/{username}/active``, as
+    ``written_by='manual'``: a directory-owned user is refused under
+    ``MANAGED_BY_ENFORCEMENT=enforce`` unless the request says ``admin_override: true``.
+    Otherwise an administrator refused a deactivation could hard-delete the same user instead.
+    Every conflict is audited as ``user.ownership_conflict`` (``operation: delete``).
+
     Parameters:
     -----------
     username : str
         The username of the user to delete.
     admin_username : str
         The authenticated admin username (injected by dependency).
+    admin_override : bool
+        Break glass for a row another source owns. Defaults to False.
 
     Returns:
     --------
@@ -371,9 +393,21 @@ async def delete_user(
     """
     try:
         # Check if user exists before attempting deletion
-        user = store.get_user_profile(username)
-        if not user:
+        detail = store.get_user_detail(username)
+        if not detail:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
+
+        decision = evaluate_write(
+            detail.get("managed_by"),
+            MANUAL,
+            enforcement=config.MANAGED_BY_ENFORCEMENT,
+            admin_override=admin_override is True,
+            fields={"deleted"},
+            target_is_admin=bool(detail.get("is_admin")),
+        )
+        if decision.conflict and not decision.allowed:
+            _audit_delete_conflict(username, decision, admin_username)
+            raise HTTPException(status_code=409, detail=f"User {username} is managed by {decision.owner!r}: {decision.reason}")
 
         # Orphan detection and the ORPHAN_FALLBACK_PRINCIPAL hand-over run inside the delete's own
         # transaction, before the cascade removes the grants they read: a refused delete (the last
@@ -384,6 +418,10 @@ async def delete_user(
             if e.error_code == ErrorCode.Name(INVALID_STATE):
                 raise HTTPException(status_code=409, detail=e.message)
             raise
+        if decision.conflict:
+            # A permitted cross-source delete (report mode, or the override), recorded only once
+            # the delete has committed.
+            _audit_delete_conflict(username, decision, admin_username)
         emit_audit_event(
             "user.delete",
             actor=admin_username,

@@ -17,6 +17,7 @@ from mlflow_oidc_auth.tests.saml.conftest import (
     OIDC_LOGIN,
     PROTECTED,
     PROVIDER_ID,
+    SLS_URL,
     USER_EMAIL,
     decoded_request,
     install_providers,
@@ -178,6 +179,10 @@ class TestIdpInitiatedLogout:
             pytest.param({"sign": False}, id="unsigned"),
             pytest.param({"issuer": "https://evil-idp.example.test"}, id="wrong-issuer"),
             pytest.param({"destination": "https://other-sp.example.test/slo"}, id="wrong-destination"),
+            # python3-saml compares Destination by prefix: a request meant for /slo/saml1-eu
+            # (same IdP certificate, another provider) would otherwise validate here.
+            pytest.param({"destination": SLS_URL + "-eu"}, id="destination-prefix-of-another-provider"),
+            pytest.param({"destination": SLS_URL + "/extra"}, id="destination-with-a-suffix"),
         ],
     )
     def test_an_invalid_logout_request_is_refused_and_revokes_nothing(self, client, idp, kwargs, audit_events):
@@ -234,6 +239,64 @@ class TestIdpInitiatedLogout:
         response = client.get(f"/slo/{PROVIDER_ID}?" + idp.logout_request_query())
 
         assert response.status_code == 400
+
+    def test_a_transient_revocation_failure_does_not_burn_the_request(self, client, idp, store, monkeypatch):
+        """The IdP retries a LogoutRequest that got a 400. Its ID must not already be recorded
+        as consumed, or the retry would be refused as a replay and the session left live."""
+        cookie = _login(client, idp)
+        client.cookies.clear()
+        query = idp.logout_request_query()
+        real_revoke = store.revoke_auth_session
+        calls = {"n": 0}
+
+        def _fail_once(session_id):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("database unavailable")
+            return real_revoke(session_id)
+
+        monkeypatch.setattr(store, "revoke_auth_session", _fail_once)
+
+        assert client.get(f"/slo/{PROVIDER_ID}?" + query).status_code == 400
+        assert _authenticates(client, cookie), "nothing was revoked by the failed attempt"
+        client.cookies.clear()
+
+        retried = client.get(f"/slo/{PROVIDER_ID}?" + query)
+
+        assert retried.status_code == 302, retried.text
+        assert not _authenticates(client, cookie)
+        client.cookies.clear()
+        assert client.get(f"/slo/{PROVIDER_ID}?" + query).status_code == 400, "once it succeeded, it is single use again"
+
+    def test_a_failure_inside_revocation_also_releases_the_request(self, client, idp, store, monkeypatch):
+        from mlflow_oidc_auth.routers import saml as saml_router_module
+
+        cookie = _login(client, idp)
+        client.cookies.clear()
+        query = idp.logout_request_query()
+        real = saml_router_module._revoke_for_logout_request
+        calls = {"n": 0}
+
+        def _explode_once(provider, logout):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("database unavailable")
+            return real(provider, logout)
+
+        monkeypatch.setattr(saml_router_module, "_revoke_for_logout_request", _explode_once)
+
+        assert client.get(f"/slo/{PROVIDER_ID}?" + query).status_code == 400
+        assert client.get(f"/slo/{PROVIDER_ID}?" + query).status_code == 302
+        assert not _authenticates(client, cookie)
+
+    @pytest.mark.parametrize("message", ["SAMLRequest", "SAMLResponse"])
+    def test_the_post_binding_is_not_accepted(self, client, idp, message):
+        """python3-saml verifies only redirect-binding signatures on logout messages, so a
+        POST-bound LogoutRequest could never validate and a POST-bound LogoutResponse would be
+        accepted unsigned. SLO is HTTP-Redirect only."""
+        response = client.post(f"/slo/{PROVIDER_ID}", data={message: "x", "RelayState": "r"})
+
+        assert response.status_code == 405
 
     def test_the_slo_endpoint_of_an_unknown_provider_is_a_404(self, client, idp):
         assert client.get("/slo/nope?" + idp.logout_request_query()).status_code == 404

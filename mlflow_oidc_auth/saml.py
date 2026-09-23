@@ -471,10 +471,16 @@ def process_logout_request(provider: ProviderConfig, base_url: str, get_data: Di
         request_xml = auth.get_last_request_xml()
         if OneLogin_Saml2_Logout_Request.get_issuer(request_xml) != provider.idp_entity_id:
             raise SamlError("the LogoutRequest does not name the IdP as its Issuer")
+        root = OneLogin_Saml2_XML.to_etree(request_xml)
+        # Exact, and required. python3-saml compares Destination by prefix and skips it when
+        # absent, so a request an IdP addressed to /slo/<id>-eu — another provider sharing the
+        # same IdP certificate — would otherwise validate here. Mirrors the ACS Recipient check.
+        if root.get("Destination") != sls_url(provider, base_url):
+            raise SamlError("the LogoutRequest's Destination is not this provider's SLO endpoint")
         name_id = OneLogin_Saml2_Logout_Request.get_nameid(request_xml)
         session_indexes = tuple(index for index in OneLogin_Saml2_Logout_Request.get_session_indexes(request_xml) if index)
         request_id = OneLogin_Saml2_Logout_Request.get_id(request_xml)
-        replay_until = _logout_replay_window(provider, OneLogin_Saml2_XML.to_etree(request_xml))
+        replay_until = _logout_replay_window(provider, root)
     except SamlError:
         raise
     except Exception as exc:

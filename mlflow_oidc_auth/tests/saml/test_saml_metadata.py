@@ -27,6 +27,9 @@ class TestSpMetadata:
         assert f'entityID="{SP_ENTITY_ID}"' in body
         assert f'Location="{ACS_URL}"' in body
         assert f'Location="{SLS_URL}"' in body
+        # Single logout is HTTP-Redirect only (the /slo route refuses POST).
+        assert 'SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"' in body
+        assert 'SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"' not in body
         assert "KeyDescriptor" not in body, "no SP certificate is configured, so none is published"
 
     def test_it_publishes_the_signing_certificate_and_never_the_key(self, client, monkeypatch, idp_keys, sp_keys):

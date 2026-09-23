@@ -5,7 +5,7 @@ unmanageable by anyone short of an administrator. That is not a reason to block 
 deprovisioning — access removal must never wait on housekeeping — but it is something an
 operator needs to hear about. This module finds those resources and reports them as
 ``resource.orphaned`` audit events, and, when ``ORPHAN_FALLBACK_PRINCIPAL`` is configured, hands
-them to that principal before a hard delete cascades the grants away.
+them to that principal as part of the hard delete that cascades the departing user's grants away.
 
 Not to be confused with :mod:`mlflow_oidc_auth.ownership`, which is the ``managed_by`` write guard
 on user rows.
@@ -226,11 +226,18 @@ def report_orphans(username: str, *, actor: str, source: str, store=None) -> Lis
 def delete_user_reporting_orphans(username: str, *, actor: str, source: str, store=None) -> List[Tuple[str, str]]:
     """Hard-delete ``username``, handing orphaned resources to ``ORPHAN_FALLBACK_PRINCIPAL``.
 
-    Detection and hand-over run inside the delete's own transaction, before the cascade removes
-    the grants they read — so a delete that fails (the last-admin invariant, a database error)
-    rolls the hand-over back with it, and a hand-over can never outlive a refused delete. They run
-    under a savepoint and never raise: a failure there is logged, and the delete proceeds without
-    them. Events are emitted only after the delete has committed.
+    Detection and hand-over run inside the delete's own transaction: detection before the cascade
+    removes the grants it reads, the hand-over only after the cascade and the user row's delete
+    have been flushed (the fallback's grants are independent of the rows removed). So a delete
+    that fails (the last-admin invariant, a database error in the cascade) never reaches the
+    hand-over, and a failed commit rolls it back — a hand-over can never outlive a refused delete.
+    This ordering, not savepoint semantics, is what guarantees it: on SQLite a savepoint opened
+    before any write begins the transaction itself and its release commits it.
+
+    Neither half raises: a failure is logged and the delete proceeds without it. The hand-over
+    runs under a savepoint — by then nested inside a transaction the cascade has begun — so a
+    failed hand-over is undone without undoing the delete. Events are emitted only after the
+    delete has committed.
 
     Returns:
         The orphans found.
@@ -248,20 +255,30 @@ def delete_user_reporting_orphans(username: str, *, actor: str, source: str, sto
 
     found: List[Tuple[str, str]] = []
     transferred: List[Tuple[str, str]] = []
+    departing: List[int] = []
 
     def before_cascade(session, user) -> None:
         try:
             with session.begin_nested():
                 found.extend(_find_in_session(session, user.id))
-                target = _valid_fallback(session, fallback, user.id) if found else None
+            departing.append(user.id)
+        except Exception:
+            logger.exception("Orphan detection failed while deleting %s; deleting without it", username)
+            found.clear()
+
+    def after_cascade(session) -> None:
+        if not found or not departing:
+            return
+        try:
+            with session.begin_nested():
+                target = _valid_fallback(session, fallback, departing[0])
                 if target is not None:
                     transferred.extend(_transfer_in_session(session, target.id, found))
         except Exception:
-            logger.exception("Orphan detection or hand-over failed while deleting %s; deleting without it", username)
-            found.clear()
+            logger.exception("Orphan hand-over failed while deleting %s; deleting without it", username)
             transferred.clear()
 
-    store.delete_user_with_hook(username, before_cascade)
+    store.delete_user_with_hook(username, before_cascade, after_cascade)
 
     if transferred:
         try:

@@ -145,3 +145,54 @@ class TestAdminDeleteReportsOrphans:
         assert bound_store.has_user(ADMIN)
         assert bound_store.list_experiment_permissions("steward@example.com") == []
         assert not [e for e in audit_events if e["event"] == "resource.orphaned"]
+
+
+class TestAdminDeleteGoesThroughTheOwnershipGuard:
+    """An admin refused a deactivate under enforce must not be able to hard-delete the same
+    directory-owned user instead, silently: the same guard, the same break-glass override."""
+
+    @pytest.fixture
+    def directory_user(self, client, scim, bound_store):
+        client.post("/scim/v2/Users", headers=scim, json=user_body("dir@example.com"))
+        assert bound_store.get_user_detail("dir@example.com")["managed_by"] == "scim"
+        return "dir@example.com"
+
+    def test_refused_under_enforce_and_audited(self, client, admin, bound_store, monkeypatch, audit_events, directory_user):
+        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
+
+        response = client.request("DELETE", USERS_API, headers=admin, json={"username": directory_user})
+
+        assert response.status_code == 409
+        assert bound_store.has_user(directory_user)
+        conflicts = [e for e in audit_events if e["event"] == "user.ownership_conflict"]
+        assert len(conflicts) == 1
+        assert conflicts[0]["status"] == "denied"
+        assert conflicts[0]["actor"] == ADMIN
+        assert conflicts[0]["detail"]["operation"] == "delete"
+        assert conflicts[0]["detail"]["owner"] == "scim"
+        assert conflicts[0]["detail"]["permitted"] is False
+        assert not [e for e in audit_events if e["event"] == "user.delete"]
+
+    def test_admin_override_deletes_and_is_audited(self, client, admin, bound_store, monkeypatch, audit_events, directory_user):
+        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
+
+        response = client.request("DELETE", USERS_API, headers=admin, json={"username": directory_user, "admin_override": True})
+
+        assert response.status_code == 200
+        assert not bound_store.has_user(directory_user)
+        conflicts = [e for e in audit_events if e["event"] == "user.ownership_conflict"]
+        assert [(c["status"], c["detail"]["permitted"]) for c in conflicts] == [("success", True)]
+
+    def test_report_mode_deletes_and_records(self, client, admin, bound_store, audit_events, directory_user):
+        response = client.request("DELETE", USERS_API, headers=admin, json={"username": directory_user})
+
+        assert response.status_code == 200
+        assert not bound_store.has_user(directory_user)
+        assert any(e["event"] == "user.ownership_conflict" and e["status"] == "success" for e in audit_events)
+
+    def test_a_manual_user_is_deleted_under_enforce_without_a_conflict(self, client, admin, bob, bound_store, monkeypatch, audit_events):
+        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
+
+        assert client.request("DELETE", USERS_API, headers=admin, json={"username": BOB}).status_code == 200
+        assert not bound_store.has_user(BOB)
+        assert not [e for e in audit_events if e["event"] == "user.ownership_conflict"]

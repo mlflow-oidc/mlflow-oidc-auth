@@ -107,10 +107,34 @@ class TestCreate:
 
 
 class TestRead:
-    def test_get_by_id_and_by_external_id(self, client, scim):
+    def test_get_by_id(self, client, scim):
         created = create(client, scim, "alice@example.com", external_id="ext-1")
         assert client.get(f"{USERS}/{created['id']}", headers=scim).json()["userName"] == "alice@example.com"
-        assert client.get(f"{USERS}/ext-1", headers=scim).json()["userName"] == "alice@example.com"
+
+    def test_external_id_is_not_an_id(self, client, scim):
+        """The SCIM id is the username; an externalId is found only through ``filter``."""
+        create(client, scim, "alice@example.com", external_id="ext-1")
+        assert_scim_error(client.get(f"{USERS}/ext-1", headers=scim), 404)
+        found = client.get(USERS, headers=scim, params={"filter": 'externalId eq "ext-1"'}).json()
+        assert [r["userName"] for r in found["Resources"]] == ["alice@example.com"]
+
+    def test_an_external_id_equal_to_another_username_does_not_redirect_writes(self, client, scim, bound_store):
+        """alice's externalId is "bob"; /Users/bob must address the real bob, never alice."""
+        create(client, scim, "alice", external_id="bob")
+        create(client, scim, "bob")
+        deactivate = patch_body({"op": "replace", "path": "active", "value": False})
+
+        assert client.patch(f"{USERS}/bob", headers=scim, json=deactivate).status_code == 200
+
+        assert bound_store.get_user_detail("bob")["active"] is False
+        assert bound_store.get_user_detail("alice")["active"] is True
+
+    def test_an_external_id_alone_is_not_resolved_on_writes(self, client, scim, bound_store):
+        create(client, scim, "alice", external_id="ext-9")
+        deactivate = patch_body({"op": "replace", "path": "active", "value": False})
+        assert_scim_error(client.patch(f"{USERS}/ext-9", headers=scim, json=deactivate), 404)
+        assert_scim_error(client.delete(f"{USERS}/ext-9", headers=scim), 404)
+        assert bound_store.get_user_detail("alice")["active"] is True
 
     def test_unknown_user_is_404(self, client, scim):
         assert_scim_error(client.get(f"{USERS}/nobody@example.com", headers=scim), 404)
@@ -341,6 +365,10 @@ class TestUserNameValidation:
             "a" * 256,
             "\uff41lice@example.com",  # fullwidth "a": NFKC folds it to an existing-looking name
             "stra\u00dfe@example.com",  # "ß" case-folds to "ss"
+            "team/alice",  # would be a /Users/{id} path its own location could not address
+            "alice?x=1",
+            "alice#frag",
+            "alice%2Fbob",
         ],
     )
     def test_rejected(self, client, scim, bound_store, user_name):
@@ -392,13 +420,33 @@ class TestPutKeepsActiveWhenOmitted:
 class TestDelete:
     def test_delete(self, client, scim, bound_store):
         create(client, scim, "alice@example.com", external_id="ext-1")
-        response = client.delete(f"{USERS}/ext-1", headers=scim)
+        response = client.delete(f"{USERS}/alice@example.com", headers=scim)
         assert response.status_code == 204
         assert not bound_store.has_user("alice@example.com")
         assert_scim_error(client.get(f"{USERS}/alice@example.com", headers=scim), 404)
 
     def test_delete_unknown_is_404(self, client, scim):
         assert_scim_error(client.delete(f"{USERS}/ghost@example.com", headers=scim), 404)
+
+
+class TestReservedCharactersInExistingNames:
+    """A row that predates the userName rules (or was made by hand) may hold a '/'. Its SCIM
+    location percent-encodes it, and the decoded segment must still reach it — otherwise the
+    directory could never de-provision that user."""
+
+    def test_a_slash_username_is_addressable_through_its_location(self, client, scim, bound_store):
+        bound_store.create_user("team/alice", "unused-secret", "Team Alice")
+        listed = client.get(USERS, headers=scim, params={"filter": 'userName eq "team/alice"'}).json()["Resources"]
+        location = listed[0]["meta"]["location"]
+        assert location.endswith("/Users/team%2Falice")
+        path = location[location.index("/scim/") :]
+
+        assert client.get(path, headers=scim).json()["userName"] == "team/alice"
+        deactivate = patch_body({"op": "replace", "path": "active", "value": False})
+        assert client.patch(path, headers=scim, json=deactivate).status_code == 200
+        assert bound_store.get_user_detail("team/alice")["active"] is False
+        assert client.delete(path, headers=scim).status_code == 204
+        assert not bound_store.has_user("team/alice")
 
 
 class TestNoDuplicateAccount:

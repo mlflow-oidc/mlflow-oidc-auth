@@ -476,7 +476,9 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             ca_bundle_path=(
                 entry.get("ca_bundle_path").strip() if isinstance(entry.get("ca_bundle_path"), str) and entry.get("ca_bundle_path").strip() else None
             ),
-            in_cluster=bool(entry.get("in_cluster", False)),
+            # ``is True``, never truthiness: validated as a real boolean above for a k8s entry,
+            # and refused as a k8s-only field on any other type.
+            in_cluster=entry.get("in_cluster", False) is True,
             namespace_allowlist=_as_tuple(entry.get("namespace_allowlist")),
             allow_tokens_without_expiry=allow_tokens_without_expiry,
             issuer=issuer.strip() if isinstance(issuer, str) else None,
@@ -608,11 +610,18 @@ def _validate_kubernetes(entry: Dict[str, Any], label: str) -> List[str]:
     """
     errors: List[str] = []
 
+    in_cluster = entry.get("in_cluster", False)
+    if not isinstance(in_cluster, bool):
+        # Strict, as for allow_tokens_without_expiry: the string "false" is truthy, and reading it
+        # as true would attach the pod's service-account token to key fetches against whatever
+        # external 'jwks_uri' the entry names.
+        errors.append(f"{label}: 'in_cluster' must be true or false, got {in_cluster!r}")
+
     sources = [
         bool(entry.get("discovery_url")),
         bool(entry.get("jwks_inline")),
         bool(entry.get("jwks_uri")),
-        bool(entry.get("in_cluster")),
+        in_cluster is True,
     ]
     if not any(sources):
         errors.append(

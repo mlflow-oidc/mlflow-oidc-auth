@@ -196,6 +196,13 @@ assertions the attacker obtained legitimately for their own account.
 
 ## Single logout
 
+Single logout uses the **HTTP-Redirect binding only**, in both directions. `/slo/<id>` accepts
+`GET` and answers `POST` with `405`, and the SP metadata advertises only an HTTP-Redirect
+`SingleLogoutService`. The reason is that the SAML library verifies logout-message signatures
+only on the redirect binding. A POST-bound LogoutRequest could never validate, and a POST-bound
+LogoutResponse would be accepted with no signature check. Configure the IdP to use
+HTTP-Redirect for single logout.
+
 ### Starting from MLflow
 
 `GET /logout` on a session opened by a SAML provider:
@@ -214,9 +221,12 @@ our request is a `400`. A SAML session is never sent to an OIDC provider's end-s
 ### Starting from the IdP
 
 The IdP may send a LogoutRequest to `GET /slo/<id>` (HTTP-Redirect binding) when the user signs
-out elsewhere. It must be **signed** by the IdP's certificate and name the IdP as `Issuer`; an
-unsigned or mis-signed request is a `400` and revokes nothing (`auth.slo_request_rejected`),
-since otherwise any page could log users out with a link.
+out elsewhere. It must be **signed** by the IdP's certificate, name the IdP as `Issuer`, and
+carry a `Destination` exactly equal to this provider's `/slo/<id>` URL. The library alone would
+accept any URL that starts with it, so a request meant for `/slo/<id>-eu` (another provider
+sharing the IdP's certificate) would otherwise validate. An unsigned or mis-signed request, or
+one with the wrong or no `Destination`, is a `400` and revokes nothing
+(`auth.slo_request_rejected`), since otherwise any page could log users out with a link.
 
 A valid request revokes the user's sessions **opened by that provider** — the one whose
 `SessionIndex` matches, or all of them when the request lists none. Sessions the same user
@@ -233,7 +243,9 @@ Each LogoutRequest is **single-use**: its `ID` is recorded in the same replay ta
 assertions before anything is revoked, so a signed URL leaked from browser history or a proxy log
 and replayed later is a `400` (`auth.slo_replay_rejected`) and ends nothing — in particular not
 sessions opened since. A request without `NotOnOrAfter` must have an `IssueInstant` no older than
-five minutes plus `clock_skew_seconds`.
+five minutes plus `clock_skew_seconds`. The one exception: if revocation fails, the `ID` is
+released again before the `400` goes back, so the IdP's retry of the same request is processed
+instead of being refused as a replay.
 
 ## What gets created
 

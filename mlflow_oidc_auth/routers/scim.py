@@ -197,12 +197,16 @@ def _to_scim_user(detail: Dict[str, Any], request: Request) -> Dict[str, Any]:
 
 
 def _find_user(user_id: str) -> Optional[Dict[str, Any]]:
-    """Resolve a SCIM id (the username) or, failing that, an externalId. Service accounts are
-    not directory users and are invisible here."""
+    """Resolve a SCIM id — the username, and nothing else.
+
+    ``user_id`` is the already percent-decoded path segment (the per-user routes use the
+    ``path`` convertor, so a legacy name holding a ``/`` still reaches its row). An
+    ``externalId`` is deliberately *not* tried as a fallback: the client controls it, so one
+    user's externalId could equal another user's name and redirect a write. Clients that know
+    only an externalId look it up with ``filter=externalId eq "..."``. Service accounts are not
+    directory users and are invisible here.
+    """
     detail = store.get_user_detail(user_id)
-    if detail is None:
-        username = store.get_username_by_external_id(user_id)
-        detail = store.get_user_detail(username) if username else None
     if detail is None or detail["is_service_account"]:
         return None
     return detail
@@ -302,7 +306,10 @@ def _apply_changes(
             claim=claim,
             # Revoke the user's own credential alongside their sessions, in the same transaction:
             # the basic-auth token is replaced by a secret nobody is told, already expired.
-            revoke_credential=active is False,
+            # Only on the active -> inactive transition: re-asserting active:false on a row that
+            # is already inactive changes nothing, so it must not rewrite the hash (every sync)
+            # nor count as a credential write the ownership guard would weigh.
+            revoke_credential=active is False and bool(detail["active"]),
         )
     except MlflowException as exc:
         _raise_for_store_error(exc, username)
@@ -322,6 +329,7 @@ def _apply_changes(
 
 
 MAX_USERNAME_LENGTH = 255
+_URL_RESERVED = frozenset("/?#%")
 
 
 def _canonical_username(value: Any, scim_type: str = "invalidValue") -> str:
@@ -534,7 +542,7 @@ async def scim_list_users(request: Request, filter: Optional[str] = None, startI
     return scim_response(ScimListResponse(totalResults=total, startIndex=start_index, itemsPerPage=len(resources), Resources=resources).to_wire())
 
 
-@scim_router.get("/Users/{user_id}", name="scim_get_user", summary="Get a user")
+@scim_router.get("/Users/{user_id:path}", name="scim_get_user", summary="Get a user")
 async def scim_get_user(user_id: str, request: Request) -> JSONResponse:
     return scim_response(_to_scim_user(_require_user(user_id), request))
 
@@ -547,6 +555,11 @@ async def scim_create_user(request: Request) -> JSONResponse:
     except ValidationError:
         raise ScimHTTPError(400, "userName is required", "invalidValue")
     user_name = _canonical_username(payload.user_name)
+    if any(ch in _URL_RESERVED for ch in user_name):
+        # The userName is the SCIM id and becomes a /Users/{id} path segment; these would split
+        # or re-encode it. Checked on creation only, so a legacy row holding one can still be
+        # found by filter, updated and de-provisioned.
+        raise ScimHTTPError(400, "userName must not contain '/', '?', '#' or '%'", "invalidValue")
     active = True if payload.active is None else _coerce_active(payload.active)
     external_id = _optional_str(payload.external_id, "externalId")
 
@@ -573,7 +586,7 @@ async def scim_create_user(request: Request) -> JSONResponse:
     return scim_response(resource, status_code=201, headers={"Location": resource["meta"]["location"]})
 
 
-@scim_router.put("/Users/{user_id}", summary="Replace a user")
+@scim_router.put("/Users/{user_id:path}", summary="Replace a user")
 async def scim_replace_user(user_id: str, request: Request) -> JSONResponse:
     detail = _require_user(user_id)
     body = await _json_body(request)
@@ -651,7 +664,7 @@ def _patch_changes(detail: Dict[str, Any], request_body: Dict[str, Any]) -> Dict
     return changes
 
 
-@scim_router.patch("/Users/{user_id}", summary="Modify a user")
+@scim_router.patch("/Users/{user_id:path}", summary="Modify a user")
 async def scim_patch_user(user_id: str, request: Request) -> JSONResponse:
     detail = _require_user(user_id)
     changes = _patch_changes(detail, await _json_body(request))
@@ -665,7 +678,7 @@ async def scim_patch_user(user_id: str, request: Request) -> JSONResponse:
     return scim_response(_to_scim_user(updated, request))
 
 
-@scim_router.delete("/Users/{user_id}", status_code=204, summary="Delete a user")
+@scim_router.delete("/Users/{user_id:path}", status_code=204, summary="Delete a user")
 async def scim_delete_user(user_id: str, request: Request) -> Response:
     detail = _require_user(user_id)
     username = detail["username"]

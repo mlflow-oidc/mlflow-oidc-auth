@@ -53,6 +53,21 @@ class SamlAssertionRepository:
             raise
         return True
 
+    def release(self, assertion_id: str) -> bool:
+        """Forget one recorded ID, so the same message can be processed again.
+
+        For an IdP-initiated LogoutRequest whose revocation failed after it was recorded: the IdP
+        retries a refused logout, and a retry refused as a replay would leave the session live.
+        Never used for an assertion that logged someone in.
+
+        Returns:
+            Whether a record was removed.
+        """
+        if not assertion_id:
+            return False
+        with self._Session(read_only=False) as session:
+            return bool(session.query(SqlSamlAssertion).filter(SqlSamlAssertion.assertion_id == assertion_id).delete(synchronize_session=False))
+
     def delete_expired(self, before: Optional[datetime] = None) -> int:
         """Delete records of assertions that can no longer pass validation. Returns the count."""
         cutoff = before or _now()

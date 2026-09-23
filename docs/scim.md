@@ -80,8 +80,15 @@ audit log. Token issue, rotation and revocation emit `scim_token.create`, `scim_
 
 The SCIM `id` of a user is their **username**. `userName` is immutable through SCIM, so the id
 is stable, as RFC 7643 §3.1 requires. `externalId` is stored and can be changed. It cannot serve
-as the id because the client controls it. `/Users/{id}` also accepts an `externalId`, for
-clients that address users that way.
+as the id because the client controls it. `/Users/{id}` resolves the **username only**. It
+never falls back to an `externalId`, because one user's `externalId` could equal another
+user's name and redirect a write. A client that knows only the `externalId` finds the user with
+`GET /Users?filter=externalId eq "..."` and then addresses it by the returned `id`.
+
+A new `userName` may not contain `/`, `?`, `#` or `%`, because it becomes a `/Users/{id}` path
+segment. `POST` refuses it with `400 invalidValue`. A row that already holds one of those
+characters (a hand-made one, say) can still be found by filter and addressed at its
+percent-encoded `meta.location`.
 
 The directory's `externalId` is stored on the user row (`users.external_id`, unique when
 present). SCIM does **not** write a `user_identities` row: a directory is not a sign-in
@@ -195,13 +202,18 @@ Errors use the RFC 7644 §3.12 shape with content type `application/scim+json`:
 ## Deprovisioning
 
 Directories normally deactivate rather than delete. For example, Entra sends
-`PATCH active:false`. On `active: false` (`PATCH` or `PUT`), in a single transaction:
+`PATCH active:false`. When `active: false` (`PATCH` or `PUT`) deactivates an active user, in a
+single transaction:
 
 1. `users.active` is set to false, and the auth middleware refuses the user on every
    authentication path from their next request on.
 2. Every live server-side session for the user is revoked (`session.revoked` audit event).
 3. The user's access token (basic-auth secret) is replaced with an undisclosed, already-expired
    value. Reactivation therefore never revives a credential issued before deprovisioning.
+
+Sending `active: false` again for a user who is already inactive changes nothing. The
+credential is not rewritten on every sync, and the ownership guard does not see a credential
+write.
 
 The account row and **every permission grant are kept**. `active: true` restores access with no
 further action from an administrator. The user signs in again, or is issued a new access token
@@ -247,5 +259,8 @@ For the admin UI:
 - `PATCH /api/2.0/mlflow/users/{username}/active` deactivates or reactivates a user with the
   same effects as above (`detail.source = "admin"`). A SCIM-managed user under `enforce` needs
   `"admin_override": true`.
+- `DELETE /api/2.0/mlflow/users` hard-deletes a user through the same ownership guard. A
+  SCIM-managed user under `enforce` needs `"admin_override": true` here as well, so an
+  administrator refused a deactivation cannot hard-delete the user instead without it.
 
 See the [API Reference](api-reference#scim).

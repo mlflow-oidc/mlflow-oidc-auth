@@ -457,6 +457,16 @@ returns one such object:
 - `409` if the ownership guard refuses the change, or it would leave no active administrator.
 - `403` if the caller is not an administrator.
 
+**`DELETE /api/2.0/mlflow/users` request:**
+```json
+{"username": "alice@example.com", "admin_override": false}
+```
+
+The hard delete goes through the same ownership guard. `admin_override` is optional and
+defaults to `false`. Under `enforce`, deleting a user whose row another source owns is refused
+with `409` and audited as `user.ownership_conflict` (`detail.operation = "delete"`), unless
+`admin_override` is `true`. The override is always audited.
+
 **`GET /api/2.0/mlflow/permissions/groups/details` response** (ordered by name):
 ```json
 [{"group_name": "data-team", "external_id": null, "member_count": 3}]

@@ -79,6 +79,31 @@ class TestDeactivation:
 
 
 class TestReactivation:
+    @pytest.mark.parametrize("verb", ["patch", "put"])
+    def test_reasserting_inactive_does_not_touch_the_credential(self, client, scim, bound_store, monkeypatch, verb):
+        """Only an active -> inactive transition revokes the credential. Re-sending active:false
+        on an already-inactive row is a no-op: not a hash rewrite on every sync, and not a
+        credential change the ownership guard would refuse on a row SCIM does not own."""
+        from mlflow_oidc_auth.ownership import Enforcement
+
+        bound_store.create_user("hand@example.com", "unused-secret", "Hand Made")
+        bound_store.update_user("hand@example.com", active=False)
+        with bound_store.ManagedSessionMaker() as session:
+            from mlflow_oidc_auth.db.models import SqlUser
+
+            before = session.query(SqlUser.password_hash).filter(SqlUser.username == "hand@example.com").scalar()
+        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
+
+        if verb == "patch":
+            response = client.patch(f"{USERS}/hand@example.com", headers=scim, json=DEACTIVATE)
+        else:
+            response = client.put(f"{USERS}/hand@example.com", headers=scim, json=user_body("hand@example.com", active=False, display_name="Hand Made"))
+
+        assert response.status_code == 200, response.text
+        with bound_store.ManagedSessionMaker() as session:
+            after = session.query(SqlUser.password_hash).filter(SqlUser.username == "hand@example.com").scalar()
+        assert after == before
+
     def test_access_returns_and_grants_are_untouched(self, client, scim, alice, bound_store, audit_events):
         bound_store.create_experiment_permission("42", ALICE, "EDIT")
         bound_store.create_registered_model_permission("model-a", ALICE, "READ")
@@ -220,6 +245,32 @@ class TestHandoverIsPartOfTheDelete:
         assert bound_store.has_user("boss@example.com")
         assert bound_store.list_experiment_permissions("steward@example.com") == []
         assert not events(audit_events, "resource.orphaned"), "nothing was orphaned: the user is still here"
+
+    def test_a_failing_cascade_leaves_no_handover_behind(self, client, scim, alice, bound_store, monkeypatch):
+        """On SQLite a savepoint opened before any write would itself begin (and its RELEASE
+        commit) the transaction; the hand-over must not depend on that. A delete that fails in
+        the cascade leaves the fallback with nothing."""
+        from sqlalchemy import event
+
+        from mlflow_oidc_auth.db.models import SqlUser
+
+        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
+        bound_store.create_experiment_permission("1", ALICE, "MANAGE")
+
+        def explode(mapper, connection, target):
+            raise RuntimeError("cascade failed")
+
+        event.listen(SqlUser, "before_delete", explode)
+        try:
+            with pytest.raises(Exception, match="cascade failed"):
+                orphans.delete_user_reporting_orphans(ALICE, actor=ADMIN, source="test", store=bound_store)
+        finally:
+            event.remove(SqlUser, "before_delete", explode)
+
+        assert bound_store.has_user(ALICE)
+        assert bound_store.list_experiment_permissions("steward@example.com") == []
+        assert [p.experiment_id for p in bound_store.list_experiment_permissions(ALICE)] == ["1"]
 
     @pytest.mark.parametrize("kind", ["service_account", "inactive", "missing", "self"])
     def test_an_unfit_fallback_is_skipped_without_blocking(self, client, scim, alice, bound_store, monkeypatch, audit_events, kind):

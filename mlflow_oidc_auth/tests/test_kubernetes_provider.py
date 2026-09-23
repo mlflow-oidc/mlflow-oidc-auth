@@ -363,6 +363,20 @@ class TestTheRegistryRefusesAnUnusableClusterProvider:
 
         assert [provider.id for provider in result.providers] == ["cluster"]
 
+    @pytest.mark.parametrize("value", ["false", "true", "no", 0, 1, None, []])
+    def test_in_cluster_must_be_a_real_boolean(self, value):
+        """The string "false" is truthy: read as a flag it would attach the pod's service-account
+        token to fetches against an external jwks_uri. Refused, like allow_tokens_without_expiry."""
+        result = self._build(self._entry(in_cluster=value))
+
+        assert result.providers == []
+        assert any("'in_cluster' must be true or false" in error for error in result.errors)
+
+    def test_in_cluster_false_keeps_the_external_key_source_unauthenticated(self):
+        result = self._build(self._entry(in_cluster=False))
+
+        assert result.providers[0].in_cluster is False
+
     def test_an_unpinned_audience_is_refused(self):
         """Inherited from the shared rules, and it matters most here: an unpinned audience
         accepts any pod's token minted for any service."""

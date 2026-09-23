@@ -462,14 +462,20 @@ class UserRepository:
             _audit_sessions_revoked(username, sessions_revoked, "user_deactivated")
         return entity
 
-    def delete(self, username: str, before_cascade: Optional[Callable] = None) -> None:
+    def delete(self, username: str, before_cascade: Optional[Callable] = None, after_cascade: Optional[Callable] = None) -> None:
         """Hard-delete a user and every row that references them.
 
         Parameters:
             username: The user.
             before_cascade: Optional ``(session, user) -> None`` run inside the same transaction
-                after the last-admin check and before any grant is removed — the orphan hand-over
-                (#324) uses it, so a delete that fails rolls the hand-over back with it.
+                after the last-admin check and before any grant is removed — orphan detection
+                (#324) uses it to read the grants the cascade is about to remove.
+            after_cascade: Optional ``(session) -> None`` run inside the same transaction once
+                the cascade and the user row's delete have been flushed, before the commit — the
+                orphan hand-over uses it, so nothing is written for a delete that fails, and a
+                savepoint it opens is nested inside an already-begun transaction (on SQLite a
+                savepoint opened before any write would itself begin, and its release commit,
+                the transaction).
         """
         username = normalize_username(username)
         deleted_sessions = 0
@@ -554,6 +560,9 @@ class UserRepository:
 
             session.delete(user)
             session.flush()
+
+            if after_cascade is not None:
+                after_cascade(session)
 
         # Emitted after the commit, for the same reason as in ``update``.
         if deleted_sessions:

@@ -326,24 +326,24 @@ def _revoke_for_logout_request(provider: ProviderConfig, logout: SamlLogoutReque
     return username, revoked, failed
 
 
-@saml_router.api_route(f"{SLS_PATH}/{{provider_id}}", methods=["GET", "POST"])
+@saml_router.get(f"{SLS_PATH}/{{provider_id}}")
 async def saml_sls(request: Request, provider_id: str):
-    """Single Logout Service (#329).
+    """Single Logout Service (#329). HTTP-Redirect binding only.
 
     * ``SAMLResponse``: the IdP completing a logout this SP started. The local session is already
       gone; this only decides the landing page, after checking the response answers our request.
     * ``SAMLRequest``: the IdP asking us to end a user's sessions. Must be signed by the IdP. The
       matching sessions are revoked, then a LogoutResponse is sent back to the IdP.
+
+    POST is refused (405): python3-saml verifies only redirect-binding signatures on logout
+    messages, so a POST-bound LogoutRequest could never validate and a POST-bound LogoutResponse
+    would be accepted with no signature check. The SP metadata advertises only HTTP-Redirect.
     """
     from mlflow_oidc_auth.routers.auth import _build_ui_url
 
     provider = _require_provider(provider_id)
-    if request.method == "POST":
-        data = await _read_form(request)
-        query_string = None
-    else:
-        data = _query_data(request)
-        query_string = request.url.query or None
+    data = _query_data(request)
+    query_string = request.url.query or None
     base_url = sp_base_url(request)
 
     if "SAMLResponse" in data and "SAMLRequest" not in data:
@@ -381,6 +381,14 @@ async def saml_sls(request: Request, provider_id: str):
         except Exception as exc:
             logger.error("SAML single logout for provider '%s' failed: %s", provider.id, type(exc).__name__)
             failed += 1
+        if failed:
+            # The IdP retries a refused logout. Left recorded, the retry would be refused as a
+            # replay and the session it names would stay live for good — so a failed attempt
+            # releases the ID. What it did revoke stays revoked; a retry only finishes the job.
+            try:
+                store.release_saml_assertion(f"logout:{logout.request_id}")
+            except Exception as exc:
+                logger.error("Could not release SAML LogoutRequest for provider '%s' after a failed logout: %s", provider.id, type(exc).__name__)
         emit_audit_event(
             "auth.slo_idp_initiated",
             actor=username or "<unknown>",
