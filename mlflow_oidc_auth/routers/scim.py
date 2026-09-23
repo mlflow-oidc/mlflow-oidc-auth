@@ -1168,7 +1168,7 @@ async def scim_delete_group(group_id: str, request: Request) -> Response:
     detail = _require_group(group_id, with_members=False)
     name = detail["group_name"]
     try:
-        removed = store.delete_directory_group(name, written_by=SCIM_SOURCE, actor=_actor(request))
+        removed, grants = store.delete_directory_group(name, written_by=SCIM_SOURCE, actor=_actor(request))
     except MlflowException as exc:
         _raise_for_group_store_error(exc, name)
     emit_audit_event(
@@ -1176,7 +1176,7 @@ async def scim_delete_group(group_id: str, request: Request) -> Response:
         actor=_actor(request),
         resource_type="group",
         resource_id=name,
-        detail={"source": SCIM_SOURCE, "members_removed": [username for username, _ in removed]},
+        detail={"source": SCIM_SOURCE, "members_removed": [username for username, _ in removed], "grants_removed": grants},
     )
     return Response(status_code=204)
 

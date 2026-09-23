@@ -650,7 +650,12 @@ class GroupRepository:
                                 outcome.added.append((user.username, group.group_name))
                     else:
                         raise MlflowException(f"Unknown membership operation {kind!r}", INVALID_PARAMETER_VALUE)
-                    session.flush()
+                    try:
+                        session.flush()
+                    except IntegrityError as e:
+                        # A concurrent write added the same membership first. Refused, and rolled
+                        # back with the rest of the change set; the directory retries.
+                        raise MlflowException(f"Membership of '{group_name}' changed concurrently; retry", RESOURCE_ALREADY_EXISTS) from e
                 if outcome.changed:
                     group.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 try:
@@ -665,7 +670,9 @@ class GroupRepository:
         audit_membership_conflicts(outcome, written_by, actor=actor)
         return outcome, detail
 
-    def delete_directory_group(self, group_name: str, *, written_by: str, admin_override: bool = False, actor: Optional[str] = None) -> List[Tuple[str, str]]:
+    def delete_directory_group(
+        self, group_name: str, *, written_by: str, admin_override: bool = False, actor: Optional[str] = None
+    ) -> Tuple[List[Tuple[str, str]], Dict[str, int]]:
         """Delete a group, its memberships and every permission granted to it, through the guard.
 
         Every membership row is evaluated with :func:`~mlflow_oidc_auth.ownership.evaluate_group_delete`:
@@ -674,7 +681,9 @@ class GroupRepository:
         under ``report`` the delete proceeds and each conflict is recorded.
 
         Returns:
-            The ``(username, group_name)`` memberships removed.
+            ``(memberships, grants)``: the ``(username, group_name)`` memberships removed, and the
+            number of grant rows deleted per permission table — for the audit record, since the
+            grants cannot be rebuilt from anything else.
 
         Raises:
             MlflowException: ``RESOURCE_DOES_NOT_EXIST`` for an unknown group;
@@ -699,6 +708,7 @@ class GroupRepository:
         from mlflow_oidc_auth.ownership import evaluate_group_delete
 
         outcome = MembershipOutcome()
+        grants: Dict[str, int] = {}
         try:
             with self._Session(read_only=False) as session:
                 group = get_group(session, group_name)
@@ -733,7 +743,9 @@ class GroupRepository:
                     SqlWorkspaceGroupPermission,
                     SqlWorkspaceGroupRegexPermission,
                 ):
-                    session.query(model).filter(model.group_id == group_id).delete(synchronize_session=False)
+                    count = session.query(model).filter(model.group_id == group_id).delete(synchronize_session=False)
+                    if count:
+                        grants[model.__tablename__] = int(count)
                 session.query(SqlUserGroup).filter(SqlUserGroup.group_id == group_id).delete(synchronize_session=False)
                 outcome.removed.extend((user.username, group.group_name) for _, user in rows)
                 session.delete(group)
@@ -742,4 +754,4 @@ class GroupRepository:
             audit_membership_conflicts(MembershipOutcome(conflicts=refused.outcome.refused), written_by, actor=actor, operation="group.delete")
             raise
         audit_membership_conflicts(outcome, written_by, actor=actor, operation="group.delete")
-        return outcome.removed
+        return outcome.removed, grants

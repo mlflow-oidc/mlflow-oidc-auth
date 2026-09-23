@@ -48,6 +48,12 @@ curl -u admin@example.com:$ADMIN_TOKEN -X DELETE https://mlflow.example.com/api/
 default one hour), so you can paste the new token into the directory without a failed sync in
 between. A revoked or expired token cannot be rotated.
 
+**Decommissioning a directory.** Revoking its token does not remove what it provisioned. The
+memberships it granted stay owned by `scim`, and under `MANAGED_BY_ENFORCEMENT=enforce` no login
+may remove them. Hand them back with `mlflow-oidc db reconcile-ownership --from-owner scim
+--set-owner manual --memberships`, or with `PATCH /api/2.0/mlflow/users/ownership` and
+`"memberships": true` for each user ([Row ownership](configuration#changing-ownership)).
+
 **Rate limit.** Each token may make `SCIM_RATE_LIMIT_PER_MINUTE` requests per minute (default
 600). Requests over the limit get `429`. The limit is kept **per process**: with N replicas, a
 token can make up to N times the configured rate. It exists to stop a runaway sync from swamping
@@ -289,7 +295,16 @@ A login works the same way from the other side. Under `enforce`, an `authoritati
 SCIM's memberships in place. Under `report` it removes them as it always has, and records each
 one. **If the directory and an `authoritative` provider share users, run `enforce`, or set that
 provider's `group_sync_mode` to `additive`.** Otherwise, under `report`, every sign-in removes
-the directory's memberships and the next sync adds them back.
+the directory's memberships. Entra's incremental cycles and Okta's event-driven pushes do not
+re-send a membership they believe is already there, so the membership stays gone until a full
+resync or a change in the directory. The only record is the `user.ownership_conflict` event.
+
+**What a SCIM token can grant.** Group names are the permission boundary. A SCIM token can add
+any visible user to any group, including one that a login's claims, an administrator or
+Kubernetes (a namespace group) populates, and the user then inherits every grant on that group.
+SCIM names are not namespaced the way a second provider's claims are. Under `report` it can also
+delete any group, namespace groups included. Treat a SCIM token as a credential that administers
+group membership deployment-wide.
 
 SCIM membership never grants administrator rights, even in a group named in
 `OIDC_ADMIN_GROUP_NAME`: admin status comes only from a login's claims.
@@ -307,13 +322,16 @@ When the group holds memberships SCIM does not own, including hand-made (`manual
 - Under `report`, it proceeds and records each such membership as `user.ownership_conflict`
   (`detail.operation: "group.delete"`).
 
-A group delete is never refused because it would leave resources without a manager.
+A group delete is never refused because it would leave resources without a manager. The
+`group.delete` event records the grant rows it removed (`detail.grants_removed`, per permission
+table). Under `enforce` the delete checks membership rows only: a group with no members, or one
+whose unowned (`manual`) memberships SCIM removed first, can be deleted along with its grants.
 
 ### Audit
 
 On top of the `scim.request` event every SCIM request emits, group writes emit `group.create`
 (members), `group.members_changed` (`added`, `removed`, and `kept`, the rows the guard left in
-place), `group.external_id_set` and `group.delete` (`members_removed`).
+place), `group.external_id_set` and `group.delete` (`members_removed`, `grants_removed`).
 
 Errors use the RFC 7644 §3.12 shape with content type `application/scim+json`:
 

@@ -500,6 +500,7 @@ class TestDelete:
         assert effective_experiment_permission("5", ALICE).kind != "group"
         [event] = [e for e in audit_events if e["event"] == "group.delete"]
         assert event["detail"]["members_removed"] == [ALICE, BOB]
+        assert event["detail"]["grants_removed"] == {"experiment_group_permissions": 1}, "the grants cannot be rebuilt from anything else"
 
     def test_unknown_group_is_404(self, client, scim):
         assert_scim_error(client.delete(f"{GROUPS}/nope", headers=scim), 404)
