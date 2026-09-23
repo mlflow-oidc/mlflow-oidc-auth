@@ -383,14 +383,20 @@ Responses use `application/scim+json`, and errors use the RFC 7644 error schema.
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/scim/v2/ServiceProviderConfig` | Capabilities |
-| GET | `/scim/v2/ResourceTypes`, `/scim/v2/ResourceTypes/User` | Resource types |
-| GET | `/scim/v2/Schemas`, `/scim/v2/Schemas/{urn}` | User schema |
+| GET | `/scim/v2/ResourceTypes`, `/scim/v2/ResourceTypes/{User,Group}` | Resource types |
+| GET | `/scim/v2/Schemas`, `/scim/v2/Schemas/{urn}` | User and Group schemas |
 | GET | `/scim/v2/Users` | List users; `filter=userName eq "..."` or `externalId eq "..."`, `startIndex`, `count` |
 | POST | `/scim/v2/Users` | Provision a user |
-| GET | `/scim/v2/Users/{id}` | Get a user (`id` is the username; an `externalId` also resolves) |
+| GET | `/scim/v2/Users/{id}` | Get a user (`id` is the username; an `externalId` does not resolve, use the filter) |
 | PUT | `/scim/v2/Users/{id}` | Replace a user |
 | PATCH | `/scim/v2/Users/{id}` | Modify a user; `active: false` deprovisions |
 | DELETE | `/scim/v2/Users/{id}` | Hard-delete a user |
+| GET | `/scim/v2/Groups` | List groups; `filter=displayName eq "..."` or `externalId eq "..."`, `startIndex`, `count`, `excludedAttributes=members` |
+| POST | `/scim/v2/Groups` | Provision a group, optionally with members |
+| GET | `/scim/v2/Groups/{id}` | Get a group (`id` is the group name) |
+| PUT | `/scim/v2/Groups/{id}` | Replace a group; `members` replaces SCIM's membership (Okta) |
+| PATCH | `/scim/v2/Groups/{id}` | Add/remove members, including `members[value eq "..."]` (Entra) |
+| DELETE | `/scim/v2/Groups/{id}` | Delete a group, its memberships and its grants |
 
 ### SCIM token administration
 

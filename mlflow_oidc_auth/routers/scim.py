@@ -1,7 +1,7 @@
 """SCIM 2.0 provisioning (``/scim/v2``) and its token administration API.
 
-Issues: #321 (dedicated endpoint auth), #322 (``/Users`` and discovery), #324 (de-provisioning).
-``/Groups`` is #323 and not implemented; ``/Groups`` requests get a SCIM 404.
+Issues: #321 (dedicated endpoint auth), #322 (``/Users`` and discovery), #324 (de-provisioning),
+#323 (``/Groups``).
 
 **Authentication.** ``/scim/v2`` is carved out of ``AuthMiddleware`` and every route here —
 discovery included, and the catch-all at the bottom — depends on
@@ -48,6 +48,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission, require_scim_token
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.scim import (
+    GROUP_SCHEMA,
     PATCH_OP_SCHEMA,
     RESOURCE_TYPE_SCHEMA,
     SCHEMA_SCHEMA,
@@ -56,6 +57,8 @@ from mlflow_oidc_auth.models.scim import (
     USER_SCHEMA,
     CreateScimTokenRequest,
     ScimError,
+    ScimGroup,
+    ScimGroupInput,
     ScimListResponse,
     ScimMeta,
     ScimPatchRequest,
@@ -64,6 +67,7 @@ from mlflow_oidc_auth.models.scim import (
 )
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
 from mlflow_oidc_auth.ownership import MANUAL
+from mlflow_oidc_auth.repository.group import UnknownMember
 from mlflow_oidc_auth.store import store
 
 from ._prefix import SCIM_ROUTER_PREFIX, SCIM_TOKENS_ROUTER_PREFIX
@@ -460,6 +464,93 @@ _USER_SCHEMA_DEFINITION = {
 }
 
 
+_GROUP_SCHEMA_DEFINITION = {
+    "schemas": [SCHEMA_SCHEMA],
+    "id": GROUP_SCHEMA,
+    "name": "Group",
+    "description": "Group. Only the attributes listed here are stored.",
+    "attributes": [
+        {
+            "name": "displayName",
+            "type": "string",
+            "multiValued": False,
+            "required": True,
+            "caseExact": True,
+            "mutability": "immutable",
+            "returned": "default",
+            "uniqueness": "server",
+            "description": "The group name, compared with IdP group claims as-is. Also the SCIM id.",
+        },
+        {
+            "name": "externalId",
+            "type": "string",
+            "multiValued": False,
+            "required": False,
+            "caseExact": True,
+            "mutability": "readWrite",
+            "returned": "default",
+            "uniqueness": "server",
+        },
+        {
+            "name": "members",
+            "type": "complex",
+            "multiValued": True,
+            "required": False,
+            "mutability": "readWrite",
+            "returned": "default",
+            "uniqueness": "none",
+            "description": "Users only. Memberships written through SCIM are owned by SCIM; others may be listed and are left to their owner.",
+            "subAttributes": [
+                {
+                    "name": "value",
+                    "type": "string",
+                    "multiValued": False,
+                    "required": False,
+                    "caseExact": True,
+                    "mutability": "immutable",
+                    "returned": "default",
+                    "uniqueness": "none",
+                    "description": "The member's user id (username).",
+                },
+                {
+                    "name": "$ref",
+                    "type": "reference",
+                    "referenceTypes": ["User"],
+                    "multiValued": False,
+                    "required": False,
+                    "caseExact": True,
+                    "mutability": "immutable",
+                    "returned": "default",
+                    "uniqueness": "none",
+                },
+                {
+                    "name": "type",
+                    "type": "string",
+                    "multiValued": False,
+                    "required": False,
+                    "caseExact": False,
+                    "canonicalValues": ["User"],
+                    "mutability": "immutable",
+                    "returned": "default",
+                    "uniqueness": "none",
+                },
+                {
+                    "name": "display",
+                    "type": "string",
+                    "multiValued": False,
+                    "required": False,
+                    "caseExact": False,
+                    "mutability": "readOnly",
+                    "returned": "default",
+                    "uniqueness": "none",
+                },
+            ],
+        },
+    ],
+    "meta": {"resourceType": "Schema", "location": f"{SCIM_ROUTER_PREFIX}/Schemas/{GROUP_SCHEMA}"},
+}
+
+
 def _user_resource_type(request: Request) -> Dict[str, Any]:
     return {
         "schemas": [RESOURCE_TYPE_SCHEMA],
@@ -497,29 +588,50 @@ async def scim_service_provider_config(request: Request) -> JSONResponse:
     )
 
 
+def _group_resource_type(request: Request) -> Dict[str, Any]:
+    return {
+        "schemas": [RESOURCE_TYPE_SCHEMA],
+        "id": "Group",
+        "name": "Group",
+        "endpoint": "/Groups",
+        "description": "Group",
+        "schema": GROUP_SCHEMA,
+        "meta": {"resourceType": "ResourceType", "location": f"{str(request.base_url).rstrip('/')}{SCIM_ROUTER_PREFIX}/ResourceTypes/Group"},
+    }
+
+
+_RESOURCE_TYPES = {"User": _user_resource_type, "Group": _group_resource_type}
+
+
 @scim_router.get("/ResourceTypes", summary="SCIM resource types")
 async def scim_resource_types(request: Request) -> JSONResponse:
-    resources = [_user_resource_type(request)]
-    return scim_response(ScimListResponse(totalResults=1, startIndex=1, itemsPerPage=1, Resources=resources).to_wire())
+    resources = [build(request) for build in _RESOURCE_TYPES.values()]
+    return scim_response(ScimListResponse(totalResults=len(resources), startIndex=1, itemsPerPage=len(resources), Resources=resources).to_wire())
 
 
 @scim_router.get("/ResourceTypes/{resource_type}", summary="One SCIM resource type")
 async def scim_resource_type(resource_type: str, request: Request) -> JSONResponse:
-    if resource_type != "User":
+    build = _RESOURCE_TYPES.get(resource_type)
+    if build is None:
         raise ScimHTTPError(404, f"Resource type {resource_type} not found")
-    return scim_response(_user_resource_type(request))
+    return scim_response(build(request))
+
+
+_SCHEMAS = {USER_SCHEMA: _USER_SCHEMA_DEFINITION, GROUP_SCHEMA: _GROUP_SCHEMA_DEFINITION}
 
 
 @scim_router.get("/Schemas", summary="SCIM schemas")
 async def scim_schemas() -> JSONResponse:
-    return scim_response(ScimListResponse(totalResults=1, startIndex=1, itemsPerPage=1, Resources=[_USER_SCHEMA_DEFINITION]).to_wire())
+    resources = list(_SCHEMAS.values())
+    return scim_response(ScimListResponse(totalResults=len(resources), startIndex=1, itemsPerPage=len(resources), Resources=resources).to_wire())
 
 
 @scim_router.get("/Schemas/{schema_id:path}", summary="One SCIM schema")
 async def scim_schema(schema_id: str) -> JSONResponse:
-    if schema_id != USER_SCHEMA:
+    schema = _SCHEMAS.get(schema_id)
+    if schema is None:
         raise ScimHTTPError(404, f"Schema {schema_id} not found")
-    return scim_response(_USER_SCHEMA_DEFINITION)
+    return scim_response(schema)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -695,6 +807,389 @@ async def scim_delete_user(user_id: str, request: Request) -> Response:
     return Response(status_code=204)
 
 
+# ---------------------------------------------------------------------------------------------
+# /Groups (RFC 7644 §3, #323)
+# ---------------------------------------------------------------------------------------------
+#
+# **Identity.** A group's SCIM ``id`` is its name, as a user's is their username. ``displayName`` is
+# therefore immutable through SCIM, like ``userName``: renaming would change the id. ``externalId``
+# is stored on the group (``groups.external_id``, unique when present) and is found with
+# ``filter=externalId eq "..."`` only, never as an id, for the same reason as for users.
+#
+# **Membership ownership (#360).** Every membership SCIM writes is ``managed_by='scim'``, per row,
+# so it coexists with memberships an administrator or a login's claims granted. SCIM may always add;
+# it removes through the ownership guard — see ``repository/group.py``. A ``PUT`` or a ``replace``
+# of ``members`` is a sync and leaves rows it may not remove in place; a ``remove`` names what it
+# removes and is refused outright (409 ``mutability``) with nothing applied.
+#
+# **Service accounts** are invisible here as they are on ``/Users``: never listed as members, never
+# addable, and never removed by a ``PUT``.
+
+
+def _group_location(request: Request, group_id: str) -> str:
+    base = str(request.base_url).rstrip("/")
+    return f"{base}{SCIM_ROUTER_PREFIX}/Groups/{quote(group_id, safe='@')}"
+
+
+def _to_scim_group(detail: Dict[str, Any], request: Request) -> Dict[str, Any]:
+    members = None
+    if "members" in detail:
+        members = [
+            {
+                "value": member["username"],
+                "display": member.get("display_name") or member["username"],
+                "type": "User",
+                "$ref": _location(request, member["username"]),
+            }
+            for member in detail["members"]
+        ]
+    group = ScimGroup(
+        id=detail["group_name"],
+        displayName=detail["group_name"],
+        externalId=detail.get("external_id"),
+        members=members,
+        meta=ScimMeta(
+            resourceType="Group",
+            created=_iso(detail.get("created_at")),
+            lastModified=_iso(detail.get("updated_at")),
+            location=_group_location(request, detail["group_name"]),
+        ),
+    )
+    return group.to_wire()
+
+
+def _require_group(group_id: str, *, with_members: bool = True) -> Dict[str, Any]:
+    """Resolve a SCIM group id — the group name, and nothing else (never an externalId)."""
+    detail = store.get_group_detail(group_id, with_members=with_members)
+    if detail is None:
+        raise ScimHTTPError(404, f"Group {group_id} not found")
+    return detail
+
+
+MAX_GROUP_NAME_LENGTH = 255
+
+
+def _group_name(value: Any, scim_type: str = "invalidValue") -> str:
+    """Validate a ``displayName`` for a new group.
+
+    Group names are case-sensitive — they are compared with IdP claims as they are — so, unlike a
+    ``userName``, they are not folded. Stripped, non-empty, at most 255 characters, no control or
+    non-printing characters, and none of ``/ ? # %``: the name becomes a ``/Groups/{id}`` segment.
+    """
+    if not isinstance(value, str):
+        raise ScimHTTPError(400, "displayName must be a string", scim_type)
+    name = value.strip()
+    if not name:
+        raise ScimHTTPError(400, "displayName must not be empty", scim_type)
+    if len(name) > MAX_GROUP_NAME_LENGTH:
+        raise ScimHTTPError(400, f"displayName must be at most {MAX_GROUP_NAME_LENGTH} characters", scim_type)
+    if any(unicodedata.category(ch).startswith("C") for ch in name):
+        raise ScimHTTPError(400, "displayName must not contain control or non-printing characters", scim_type)
+    try:
+        name.encode("utf-8")
+    except UnicodeError:
+        raise ScimHTTPError(400, "displayName is not valid Unicode", scim_type)
+    return name
+
+
+def _member_ids(value: Any) -> list:
+    """The usernames a ``members`` value names.
+
+    Each entry is ``{"value": "<user id>"}``, optionally with ``display``, ``$ref`` and ``type``.
+    ``value`` is authoritative; ``display`` and ``$ref`` are informational. Only users can be
+    members: a ``type`` of ``Group`` (a nested group) is refused rather than resolved as a user of
+    the same name.
+    """
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, list):
+        raise ScimHTTPError(400, "members must be a list", "invalidValue")
+    ids = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            raise ScimHTTPError(400, "each member must be an object with a value", "invalidValue")
+        member_type = entry.get("type")
+        if member_type is not None and (not isinstance(member_type, str) or member_type.strip().lower() != "user"):
+            raise ScimHTTPError(400, "only users can be group members; nested groups are not supported", "invalidValue")
+        member_id = entry.get("value")
+        if not isinstance(member_id, str) or not member_id.strip():
+            raise ScimHTTPError(400, "each member needs a string value", "invalidValue")
+        ids.append(member_id.strip())
+    return ids
+
+
+_GROUP_FILTER = re.compile(r'^\s*(displayName|externalId)\s+eq\s+"((?:[^"\\]|\\.)*)"\s*$', re.IGNORECASE)
+_MEMBER_PATH_FILTER = re.compile(r'^members\s*\[\s*value\s+eq\s+"((?:[^"\\]|\\.)*)"\s*\]$', re.IGNORECASE)
+_GROUP_URN_PREFIX = GROUP_SCHEMA + ":"
+
+
+def _decode_filter_value(raw: str) -> str:
+    try:
+        value = json.loads(f'"{raw}"')
+        value.encode("utf-8")
+    except (ValueError, UnicodeError):
+        raise ScimHTTPError(400, "The filter value is not a valid string", "invalidFilter")
+    return value
+
+
+def _parse_group_filter(expression: Optional[str]):
+    if expression is None or not expression.strip():
+        return None, None
+    match = _GROUP_FILTER.match(expression)
+    if not match:
+        raise ScimHTTPError(400, 'Only displayName eq "..." and externalId eq "..." filters are supported', "invalidFilter")
+    value = _decode_filter_value(match.group(2))
+    return ("group_name" if match.group(1).lower() == "displayname" else "external_id"), value
+
+
+def _excludes_members(excluded_attributes: Optional[str]) -> bool:
+    if not excluded_attributes:
+        return False
+    names = {part.strip().lower() for part in excluded_attributes.split(",")}
+    return bool(names & {"members", _GROUP_URN_PREFIX.lower() + "members"})
+
+
+def _raise_for_group_store_error(exc: MlflowException, group_id: str) -> None:
+    if isinstance(exc, UnknownMember):
+        raise ScimHTTPError(400, f"member {exc.username} is not a known user", "invalidValue")
+    code = exc.error_code
+    if code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+        raise ScimHTTPError(404, f"Group {group_id} not found")
+    if code == ErrorCode.Name(RESOURCE_ALREADY_EXISTS):
+        raise ScimHTTPError(409, exc.message, "uniqueness")
+    if code == ErrorCode.Name(INVALID_PARAMETER_VALUE):
+        # The managed_by guard (#360) refusing a targeted membership removal or a group delete.
+        raise ScimHTTPError(409, exc.message, "mutability")
+    logger.error("SCIM write for group %s failed: %s", group_id, exc)
+    raise ScimHTTPError(500, "Internal error")
+
+
+def _audit_membership_change(request: Request, group_name: str, outcome) -> None:
+    """One ``group.members_changed`` event per write that changed membership, after the commit."""
+    if outcome is None or not outcome.changed:
+        return
+    emit_audit_event(
+        "group.members_changed",
+        actor=_actor(request),
+        resource_type="group",
+        resource_id=group_name,
+        detail={
+            "source": SCIM_SOURCE,
+            "added": [username for username, _ in outcome.added],
+            "removed": [username for username, _ in outcome.removed],
+            "kept": [c.username for c in outcome.refused],
+        },
+    )
+
+
+def _apply_group_changes(request: Request, detail: Dict[str, Any], operations, external_id: Any = _UNSET) -> Dict[str, Any]:
+    group_name = detail["group_name"]
+    kwargs: Dict[str, Any] = {"written_by": SCIM_SOURCE, "actor": _actor(request)}
+    if external_id is not _UNSET:
+        kwargs["external_id"] = external_id
+        if external_id:
+            holder = store.list_group_details_page(external_id=external_id, limit=1, with_members=False)[1]
+            if holder and holder[0]["group_name"] != group_name:
+                raise ScimHTTPError(409, f"externalId {external_id!r} is already bound to another group", "uniqueness")
+    try:
+        outcome, updated = store.apply_group_changes(group_name, operations, **kwargs)
+    except MlflowException as exc:
+        _raise_for_group_store_error(exc, group_name)
+    _audit_membership_change(request, group_name, outcome)
+    if external_id is not _UNSET and (external_id or None) != detail.get("external_id"):
+        emit_audit_event(
+            "group.external_id_set",
+            actor=_actor(request),
+            resource_type="group",
+            resource_id=group_name,
+            detail={"source": SCIM_SOURCE, "from": detail.get("external_id"), "to": external_id or None},
+        )
+    return updated
+
+
+@scim_router.get("/Groups", summary="List or filter groups")
+async def scim_list_groups(
+    request: Request,
+    filter: Optional[str] = None,
+    startIndex: int = 1,
+    count: int = DEFAULT_PAGE_SIZE,
+    excludedAttributes: Optional[str] = None,
+) -> JSONResponse:
+    field, value = _parse_group_filter(filter)
+    start_index = max(1, startIndex)
+    page_size = min(max(0, count), MAX_PAGE_SIZE)
+    kwargs: Dict[str, Any] = {"offset": start_index - 1, "limit": page_size, "with_members": not _excludes_members(excludedAttributes)}
+    if field:
+        kwargs[field] = value
+    total, rows = store.list_group_details_page(**kwargs)
+    resources = [_to_scim_group(row, request) for row in rows]
+    return scim_response(ScimListResponse(totalResults=total, startIndex=start_index, itemsPerPage=len(resources), Resources=resources).to_wire())
+
+
+@scim_router.get("/Groups/{group_id:path}", summary="Get a group")
+async def scim_get_group(group_id: str, request: Request, excludedAttributes: Optional[str] = None) -> JSONResponse:
+    return scim_response(_to_scim_group(_require_group(group_id, with_members=not _excludes_members(excludedAttributes)), request))
+
+
+@scim_router.post("/Groups", status_code=201, summary="Provision a group")
+async def scim_create_group(request: Request) -> JSONResponse:
+    body = await _json_body(request)
+    try:
+        payload = ScimGroupInput.model_validate(body)
+    except ValidationError:
+        raise ScimHTTPError(400, "displayName is required", "invalidValue")
+    name = _group_name(payload.display_name)
+    if any(ch in _URL_RESERVED for ch in name):
+        raise ScimHTTPError(400, "displayName must not contain '/', '?', '#' or '%'", "invalidValue")
+    external_id = _optional_str(payload.external_id, "externalId")
+    members = _member_ids(payload.members)
+
+    if store.get_group_detail(name, with_members=False) is not None:
+        raise ScimHTTPError(409, f"Group {name} already exists", "uniqueness")
+    try:
+        detail = store.create_directory_group(name, external_id, members, written_by=SCIM_SOURCE)
+    except MlflowException as exc:
+        _raise_for_group_store_error(exc, name)
+
+    emit_audit_event(
+        "group.create",
+        actor=_actor(request),
+        resource_type="group",
+        resource_id=name,
+        detail={"source": SCIM_SOURCE, "external_id": external_id, "members": [m["username"] for m in detail["members"]]},
+    )
+    resource = _to_scim_group(detail, request)
+    return scim_response(resource, status_code=201, headers={"Location": resource["meta"]["location"]})
+
+
+@scim_router.put("/Groups/{group_id:path}", summary="Replace a group")
+async def scim_replace_group(group_id: str, request: Request) -> JSONResponse:
+    """Okta's shape: the whole group, ``members`` included.
+
+    ``displayName`` must be unchanged (it is the id). ``externalId`` is replaced, and an absent one
+    is cleared. ``members`` replaces the membership as a sync: SCIM's own and unowned memberships
+    not in the list are removed, another source's are left in place under ``enforce``. An omitted
+    ``members`` leaves membership alone, so a PUT that only carries attributes never empties a group.
+    """
+    detail = _require_group(group_id, with_members=False)
+    body = await _json_body(request)
+    try:
+        payload = ScimGroupInput.model_validate(body)
+    except ValidationError:
+        raise ScimHTTPError(400, "displayName is required", "invalidValue")
+    if _group_name(payload.display_name) != detail["group_name"]:
+        raise ScimHTTPError(400, "displayName is immutable", "mutability")
+    operations = [] if payload.members is None else [("replace", _member_ids(payload.members))]
+    updated = _apply_group_changes(request, detail, operations, external_id=_optional_str(payload.external_id, "externalId"))
+    return scim_response(_to_scim_group(updated, request))
+
+
+def _group_patch_operations(detail: Dict[str, Any], request_body: Dict[str, Any]):
+    """Translate RFC 7644 §3.5.2 operations on a group into ``(membership operations, externalId)``.
+
+    Supported, with ``op`` case-insensitive and paths optionally URN-qualified:
+
+    * ``add`` ``members`` with a list — Entra and Okta both.
+    * ``remove`` ``members[value eq "<id>"]`` — Entra's filtered path.
+    * ``remove`` ``members`` with a list of values — Entra's other remove shape; without a value,
+      every member.
+    * ``replace`` ``members`` with a list — a full replacement.
+    * ``add`` / ``replace`` / ``remove`` ``externalId``.
+    * ``add`` / ``replace`` ``displayName`` (unchanged only), and a path-less ``add`` / ``replace``
+      whose object holds any of the above.
+
+    Anything else is refused with 400 and nothing is applied.
+    """
+    try:
+        patch = ScimPatchRequest.model_validate(request_body)
+    except ValidationError:
+        raise ScimHTTPError(400, "A PATCH body needs a non-empty Operations list", "invalidSyntax")
+    if PATCH_OP_SCHEMA not in patch.schemas:
+        raise ScimHTTPError(400, f"schemas must include {PATCH_OP_SCHEMA}", "invalidSyntax")
+
+    operations = []
+    changes: Dict[str, Any] = {}
+
+    def assign(op: str, path: str, value: Any) -> None:
+        key = path[len(_GROUP_URN_PREFIX) :] if path.startswith(_GROUP_URN_PREFIX) else path
+        lowered = key.lower()
+        filtered = _MEMBER_PATH_FILTER.match(key.strip())
+        if filtered:
+            if op != "remove":
+                raise ScimHTTPError(400, f"A filtered members path is supported with remove only, not {op}", "invalidPath")
+            operations.append(("remove", [_decode_filter_value(filtered.group(1))]))
+        elif lowered.startswith("members[") or lowered.startswith("members."):
+            raise ScimHTTPError(400, f'Unsupported members path {path!r}; only members[value eq "..."] is supported', "invalidPath")
+        elif lowered == "members":
+            if op == "add":
+                operations.append(("add", _member_ids(value)))
+            elif op == "replace":
+                operations.append(("replace", _member_ids(value)))
+            else:
+                operations.append(("remove", None if value is None else _member_ids(value)))
+        elif lowered == "externalid":
+            changes["external_id"] = None if op == "remove" else _optional_str(value, "externalId")
+        elif lowered == "displayname":
+            if op == "remove" or _group_name(value) != detail["group_name"]:
+                raise ScimHTTPError(400, "displayName is immutable", "mutability")
+        elif lowered == "id" and op != "remove" and value == detail["group_name"]:
+            pass  # re-asserting the id is harmless
+        else:
+            raise ScimHTTPError(400, f"Unsupported attribute path {path!r}", "invalidPath")
+
+    for operation in patch.operations:
+        op = (operation.op or "").strip().lower()
+        if op not in ("add", "replace", "remove"):
+            raise ScimHTTPError(400, f"Unsupported PATCH op {operation.op!r}", "invalidSyntax")
+        if operation.path:
+            assign(op, operation.path.strip(), operation.value)
+        else:
+            if op == "remove":
+                raise ScimHTTPError(400, "A remove operation needs a path", "noTarget")
+            if not isinstance(operation.value, dict):
+                raise ScimHTTPError(400, "An operation without a path needs an object value", "invalidValue")
+            for attribute, value in operation.value.items():
+                if attribute == "schemas":
+                    continue
+                assign(op, attribute, value)
+    return operations, changes.get("external_id", _UNSET)
+
+
+@scim_router.patch("/Groups/{group_id:path}", summary="Modify a group")
+async def scim_patch_group(group_id: str, request: Request) -> JSONResponse:
+    detail = _require_group(group_id, with_members=False)
+    operations, external_id = _group_patch_operations(detail, await _json_body(request))
+    updated = _apply_group_changes(request, detail, operations, external_id=external_id)
+    return scim_response(_to_scim_group(updated, request))
+
+
+@scim_router.delete("/Groups/{group_id:path}", status_code=204, summary="Delete a group")
+async def scim_delete_group(group_id: str, request: Request) -> Response:
+    """Delete the group, its memberships and every permission granted to it.
+
+    Refused (409 ``mutability``) under ``enforce`` when the group holds any membership SCIM does not
+    own — hand-made (``manual``) ones included: deleting the group takes it away from those members
+    too. Under ``report`` it proceeds and each such membership is recorded. Never refused for
+    orphan reasons.
+    """
+    detail = _require_group(group_id, with_members=False)
+    name = detail["group_name"]
+    try:
+        removed = store.delete_directory_group(name, written_by=SCIM_SOURCE, actor=_actor(request))
+    except MlflowException as exc:
+        _raise_for_group_store_error(exc, name)
+    emit_audit_event(
+        "group.delete",
+        actor=_actor(request),
+        resource_type="group",
+        resource_id=name,
+        detail={"source": SCIM_SOURCE, "members_removed": [username for username, _ in removed]},
+    )
+    return Response(status_code=204)
+
+
 class _AnyMethodScimRoute(ScimRoute):
     """A route that matches *every* HTTP method, not only the ones it lists.
 
@@ -717,7 +1212,7 @@ class _AnyMethodScimRoute(ScimRoute):
 
 
 async def scim_not_found(unsupported: str) -> JSONResponse:
-    """Everything else under the prefix — ``/Groups`` (#323), ``/Bulk``, ``/Me`` — is a SCIM 404.
+    """Everything else under the prefix — ``/Bulk``, ``/Me``, ``/.search`` — is a SCIM 404.
 
     Also what guarantees nothing under ``/scim/v2`` reaches the Flask mount, which would see a
     request that ``AuthMiddleware`` never authenticated.

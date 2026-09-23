@@ -307,6 +307,12 @@ Sources checked:
 Result: MANAGE
 ```
 
+Where a membership came from does not affect resolution. A user can be in one group because
+the directory put them there (SCIM), in another because their login's claims say so, and in a
+third because an administrator added them. Each group grants what it grants. The source is
+recorded on the membership only to decide who may remove it. See
+[Row ownership](configuration#group-membership).
+
 ### Regex Pattern Match
 
 ```

@@ -41,11 +41,12 @@ class TestDiscovery:
     def test_resource_types(self, client, scim):
         body = client.get("/scim/v2/ResourceTypes", headers=scim).json()
         assert body["schemas"] == [LIST_SCHEMA]
-        assert body["totalResults"] == 1
+        assert body["totalResults"] == 2
         user = body["Resources"][0]
         assert (user["id"], user["endpoint"], user["schema"]) == ("User", "/Users", USER_SCHEMA)
         assert client.get("/scim/v2/ResourceTypes/User", headers=scim).json()["id"] == "User"
-        assert client.get("/scim/v2/ResourceTypes/Group", headers=scim).status_code == 404
+        assert client.get("/scim/v2/ResourceTypes/Group", headers=scim).json()["endpoint"] == "/Groups"
+        assert client.get("/scim/v2/ResourceTypes/Bulk", headers=scim).status_code == 404
 
     def test_schemas(self, client, scim):
         body = client.get("/scim/v2/Schemas", headers=scim).json()
