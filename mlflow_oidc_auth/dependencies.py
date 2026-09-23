@@ -308,3 +308,143 @@ async def check_workspace_read_permission(
         )
 
     return username
+
+
+# ---------------------------------------------------------------------------------------------
+# SCIM (#321)
+# ---------------------------------------------------------------------------------------------
+
+
+class ScimRateLimiter:
+    """Token bucket per SCIM token, in process.
+
+    **Multi-replica caveat:** each replica keeps its own buckets, so with N replicas behind a load
+    balancer a token may make up to N times the configured rate. That is acceptable for its
+    purpose — stopping a runaway directory sync from saturating one process — and is not a
+    security boundary. A shared limit belongs at the ingress.
+    """
+
+    def __init__(self) -> None:
+        import threading
+
+        self._lock = threading.Lock()
+        self._buckets: dict = {}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._buckets.clear()
+
+    def allow(self, key, per_minute: int) -> bool:
+        """Take one request from ``key``'s bucket. ``per_minute <= 0`` disables the limit."""
+        import time
+
+        if per_minute <= 0:
+            return True
+        now = time.monotonic()
+        rate = per_minute / 60.0
+        with self._lock:
+            tokens, last = self._buckets.get(key, (float(per_minute), now))
+            tokens = min(float(per_minute), tokens + (now - last) * rate)
+            if tokens < 1.0:
+                self._buckets[key] = (tokens, now)
+                return False
+            self._buckets[key] = (tokens - 1.0, now)
+            return True
+
+
+scim_rate_limiter = ScimRateLimiter()
+
+#: Failed authentications, keyed by client address. Same multi-replica caveat as above; and the
+#: address is whatever ``ProxyHeadersMiddleware`` resolved, so with an untrusted
+#: ``X-Forwarded-For`` a client can rotate it. It bounds noise and CPU, it is not a lockout.
+scim_auth_failure_limiter = ScimRateLimiter()
+
+
+class _AuthFailureAudit:
+    """At most one ``scim.auth_failed`` audit event per client per minute.
+
+    The event carries how many failures the client had in the window that just closed, so the
+    count is not lost — only the repetition is.
+    """
+
+    WINDOW_SECONDS = 60.0
+
+    def __init__(self) -> None:
+        import threading
+
+        self._lock = threading.Lock()
+        self._windows: dict = {}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._windows.clear()
+
+    def record(self, client: str, method: str, path: str) -> None:
+        import time
+
+        from mlflow_oidc_auth.audit import emit_audit_event
+
+        now = time.monotonic()
+        with self._lock:
+            if len(self._windows) > 10_000:
+                # Bounded: an attacker rotating addresses costs at most a duplicate line each.
+                self._windows.clear()
+            started, count = self._windows.get(client, (None, 0))
+            if started is not None and now - started < self.WINDOW_SECONDS:
+                self._windows[client] = (started, count + 1)
+                return
+            self._windows[client] = (now, 1)
+        emit_audit_event(
+            "scim.auth_failed",
+            actor="anonymous",
+            resource_type="scim",
+            resource_id=path,
+            detail={"client": client, "method": method, "path": path, "failures_in_previous_window": count},
+            status="denied",
+        )
+
+
+scim_auth_failure_audit = _AuthFailureAudit()
+
+
+async def require_scim_token(request: Request):
+    """Authenticate a SCIM request by its dedicated bearer token, and nothing else.
+
+    ``/scim/v2`` is carved out of :class:`~mlflow_oidc_auth.middleware.AuthMiddleware`, so this is
+    the *only* authentication those routes see: a browser session, a basic-auth user token or an
+    OIDC bearer token does not authenticate here, whoever it belongs to — admins included. A SCIM
+    token in turn authenticates nowhere else: it names no user, so the middleware rejects it.
+
+    Returns:
+        ScimTokenRecord: The authenticated token, also placed on ``request.state.scim_token``.
+
+    Raises:
+        HTTPException: 401 with ``WWW-Authenticate: Bearer`` when the token is missing, unknown,
+            revoked or expired; 429 when the token has exhausted its rate budget.
+    """
+    import asyncio
+
+    from mlflow_oidc_auth.config import config
+    from mlflow_oidc_auth.store import store
+
+    header = request.headers.get("authorization", "")
+    scheme, _, presented = header.partition(" ")
+    record = None
+    if scheme.lower() == "bearer" and presented.strip():
+        try:
+            # Hash verification and a database round trip: off the event loop.
+            record = await asyncio.get_running_loop().run_in_executor(None, store.authenticate_scim_token, presented.strip())
+        except Exception:
+            # Fail closed. Nothing about the failure is returned to the caller.
+            record = None
+    if record is None:
+        client = request.client.host if request.client else "unknown"
+        scim_auth_failure_audit.record(client, request.method, request.url.path)
+        if not scim_auth_failure_limiter.allow(("auth-failed", client), int(getattr(config, "SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE", 60) or 0)):
+            raise HTTPException(status_code=429, detail="Too many failed SCIM authentications", headers={"Retry-After": "60"})
+        raise HTTPException(status_code=401, detail="A valid SCIM bearer token is required", headers={"WWW-Authenticate": 'Bearer realm="scim"'})
+
+    request.state.scim_token = record
+    if not scim_rate_limiter.allow(record.id, int(getattr(config, "SCIM_RATE_LIMIT_PER_MINUTE", 600) or 0)):
+        raise HTTPException(status_code=429, detail="SCIM rate limit exceeded", headers={"Retry-After": "60"})
+    return record

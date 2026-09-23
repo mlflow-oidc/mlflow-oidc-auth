@@ -147,6 +147,7 @@ def test_update_password_expiration(repo, session):
 
 def test_delete(repo, session):
     user = MagicMock()
+    user.is_admin = False  # not the last-admin path; that has its own tests
     session.delete = MagicMock()
     session.flush = MagicMock()
     with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user):
@@ -251,6 +252,7 @@ class TestUsernameCaseNormalization:
 
     def test_delete_normalizes_username(self, repo, session):
         user = MagicMock()
+        user.is_admin = False
         with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user) as get_user_mock:
             repo.delete("Xyz_Abc")
             assert get_user_mock.call_args.args[1] == "xyz_abc"

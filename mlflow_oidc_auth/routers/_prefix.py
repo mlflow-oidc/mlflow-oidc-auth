@@ -56,3 +56,7 @@ TRASH_ROUTER_PREFIX = "/oidc/trash"
 WEBHOOK_ROUTER_PREFIX = "/oidc/webhook"
 WORKSPACE_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/workspaces", version=3)
 WORKSPACE_REGEX_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/workspaces/regex", version=3)
+# SCIM 2.0 (RFC 7644) lives at the conventional root path rather than under MLflow's REST prefix:
+# directories are configured with a base URL ending in /scim/v2, and it has no "/ajax-api" twin.
+SCIM_ROUTER_PREFIX = "/scim/v2"
+SCIM_TOKENS_ROUTER_PREFIX = _get_rest_path("/mlflow/scim/tokens")

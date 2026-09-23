@@ -20,6 +20,7 @@ pytest mlflow_oidc_auth/tests/path/to/test_file.py -k name
 
 # Full matrix
 tox
+tox -e e2e          # OIDC/SAML/SCIM e2e vs a real Keycloak — docs/development.md
 
 # Format + lint (must pass before commit)
 pre-commit run --all-files

@@ -50,6 +50,17 @@ pip install "mlflow-oidc-auth[cloud]"
 
 See [Configuration Providers](configuration-providers) for details on each provider.
 
+### With SAML 2.0 Support
+
+```bash
+pip install "mlflow-oidc-auth[saml]"
+```
+
+Adds python3-saml and python-xmlsec, which ship binary wheels for Linux, macOS and Windows, so no
+compiler or `libxmlsec1` headers are needed. Only required to configure a `type: saml` provider;
+without it the plugin runs unchanged and any SAML provider is skipped with a logged reason. See
+[SAML Authentication](saml-auth).
+
 ## OIDC Provider Setup
 
 Before starting the server, register a client application with your OIDC provider.

@@ -38,8 +38,8 @@ These pages appear when `OIDC_GEN_AI_GATEWAY_ENABLED=true` (default):
 
 | Page | Path | Description |
 |------|------|-------------|
-| Users | `/users` | List all users. Click a user to view/edit their experiment, model, prompt, and gateway permissions |
-| Groups | `/groups` | List all groups. Click a group to view/edit permissions for experiments, models, prompts, and gateways |
+| Users | `/users` | List all users. Click a user to view/edit their experiment, model, prompt, and gateway permissions. Admins see lifecycle state and can deactivate/reactivate (see [User and group lifecycle](#user-and-group-lifecycle)) |
+| Groups | `/groups` | List all groups. Click a group to view/edit permissions for experiments, models, prompts, and gateways. Admins see member count and directory source |
 | Service Accounts | `/service-accounts` | Manage service accounts and their permissions |
 
 ### Workspaces
@@ -58,6 +58,7 @@ These pages require admin privileges:
 |------|------|-------------|
 | Trash | `/trash` | View and manage deleted experiments and runs. Restore or permanently delete |
 | Webhooks | `/webhooks` | Create, edit, test, and delete webhooks |
+| SCIM | `/scim` | Manage SCIM provisioning tokens. See [SCIM page](#scim-page) |
 
 ### User
 
@@ -87,6 +88,50 @@ When you click a user or group, you see their permissions across all resource ty
 - **AI Gateway Endpoints/Secrets/Models**: Direct and regex pattern permissions
 
 Regex pattern permissions are managed separately from direct permissions, with priority ordering.
+
+## User and Group Lifecycle
+
+Admins see lifecycle state on the Users and Groups pages that non-admins do not (both fall back
+to the plain name list otherwise).
+
+**Users** (`/users`): each row shows a **State** badge (Active/Inactive) and a **Managed by**
+badge — Manual, SCIM, or OIDC · `<provider>` — naming the source that owns the row. A "Show
+inactive" toggle above the table controls whether deactivated users are listed at all. Hovering a
+row reveals a **Deactivate** or **Reactivate** action:
+
+- **Deactivate** revokes the user's live sessions and access token immediately; their permission
+  grants are kept, so reactivating restores access with no re-granting needed.
+- **Reactivate** restores access; the user signs in again or is issued a new access token.
+
+If the target account is directory-managed (SCIM or OIDC), the deactivate dialog shows an
+**"Override ownership guard"** switch, since a later directory sync could otherwise overwrite the
+change. Under [row ownership enforcement](configuration#row-ownership) `enforce`, leaving the
+switch off and deactivating a directory-owned account is refused; switching it on sends
+`admin_override: true` with the request and proceeds. The override is always audited when sent,
+whatever `MANAGED_BY_ENFORCEMENT` is set to. See [De-provisioning](permissions#de-provisioning)
+for what deactivation and reactivation do underneath, and [SCIM
+Provisioning](scim#admin-api-for-lifecycle-state) for the API this UI calls.
+
+**Groups** (`/groups`): each row shows a **Members** count and a **Source** badge (SCIM when the
+group carries a directory `external_id`, Manual otherwise). Groups have no deactivate action —
+membership and permissions are managed the same way regardless of source.
+
+## SCIM Page
+
+The **SCIM** page (`/scim`, admin-only) manages the directory provisioning integration described
+in [SCIM Provisioning](scim):
+
+- **Provisioning endpoint**: the full `/scim/v2` URL for this deployment, with a copy button, to
+  paste into the identity provider's SCIM configuration.
+- **Tokens table**: every issued token with its name, prefix, creation time, creator, last-used
+  time, expiry, and status (Active, Expiring — within 14 days of its expiry, or Revoked).
+- **Create token**: opens a dialog for a name and optional expiry, then shows the plaintext
+  **once** in a dedicated dialog — copy it immediately, since it cannot be retrieved again.
+- **Rotate**: issues a replacement token (shown once, same as creation) while the old token keeps
+  working for `SCIM_TOKEN_ROTATION_OVERLAP_SECONDS`, so the directory sync does not fail while the
+  new value is being pasted in.
+- **Revoke**: disables a token immediately. Rotate and revoke are unavailable for a token that is
+  already revoked.
 
 ## Workspace Picker
 

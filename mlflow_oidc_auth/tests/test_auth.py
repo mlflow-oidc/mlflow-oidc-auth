@@ -152,7 +152,7 @@ class TestValidateToken:
 
         result = validate_token("valid_token")
 
-        mock_jwt_decode.assert_called_once_with("valid_token", mock_jwks, claims_options=None)
+        mock_jwt_decode.assert_called_once_with("valid_token", mock_jwks, claims_options={"exp": {"essential": True}})
         mock_payload.validate.assert_called_once()
         assert result == mock_payload
 
@@ -170,7 +170,7 @@ class TestValidateToken:
 
         result = validate_token("valid_token")
 
-        expected_options = {"aud": {"essential": True, "value": "my-mlflow-app"}}
+        expected_options = {"exp": {"essential": True}, "aud": {"essential": True, "value": "my-mlflow-app"}}
         mock_jwt_decode.assert_called_once_with("valid_token", mock_jwks, claims_options=expected_options)
         mock_payload.validate.assert_called_once()
         assert result == mock_payload
@@ -245,7 +245,7 @@ class TestValidateToken:
         result = validate_token("token_with_new_key")
 
         assert result == mock_payload
-        expected_options = {"aud": {"essential": True, "value": "my-mlflow-app"}}
+        expected_options = {"exp": {"essential": True}, "aud": {"essential": True, "value": "my-mlflow-app"}}
         assert mock_jwt_decode.call_count == 2
         mock_jwt_decode.assert_any_call("token_with_new_key", {"keys": "old_jwks"}, claims_options=expected_options)
         mock_jwt_decode.assert_any_call("token_with_new_key", {"keys": "new_jwks"}, claims_options=expected_options)
@@ -268,24 +268,24 @@ class TestClaimsOptionsPerProvider:
         fields.update(overrides)
         return ProviderConfig(**fields)
 
-    def test_returns_none_when_neither_is_pinned(self):
-        """The pre-#313 default for a deployment that set neither variable."""
-        assert _claims_options_for(self._provider()) is None
+    def test_requires_only_exp_when_neither_is_pinned(self):
+        """A deployment that pins neither audience nor issuer still requires an expiry (#356)."""
+        assert _claims_options_for(self._provider()) == {"exp": {"essential": True}}
 
     def test_returns_the_audience_when_pinned(self):
         options = _claims_options_for(self._provider(audience="my-mlflow-app"))
 
-        assert options == {"aud": {"essential": True, "value": "my-mlflow-app"}}
+        assert options == {"exp": {"essential": True}, "aud": {"essential": True, "value": "my-mlflow-app"}}
 
     def test_returns_the_issuer_when_pinned(self):
         options = _claims_options_for(self._provider(issuer="https://idp.example.com"))
 
-        assert options == {"iss": {"essential": True, "value": "https://idp.example.com"}}
+        assert options == {"exp": {"essential": True}, "iss": {"essential": True, "value": "https://idp.example.com"}}
 
     def test_returns_both(self):
         options = _claims_options_for(self._provider(audience="aud1", issuer="iss1"))
 
-        assert options == {"aud": {"essential": True, "value": "aud1"}, "iss": {"essential": True, "value": "iss1"}}
+        assert options == {"exp": {"essential": True}, "aud": {"essential": True, "value": "aud1"}, "iss": {"essential": True, "value": "iss1"}}
 
     def test_two_providers_get_their_own_constraints(self):
         """The point of the change: one deployment, two issuers, two audiences."""
@@ -318,6 +318,7 @@ class TestClaimsOptionsPerProvider:
 
         assert default is not None
         assert _claims_options_for(default) == {
+            "exp": {"essential": True},
             "aud": {"essential": True, "value": "legacy-audience"},
             "iss": {"essential": True, "value": "https://idp.example.com"},
         }

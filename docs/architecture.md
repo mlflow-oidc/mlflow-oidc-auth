@@ -60,6 +60,14 @@ These paths bypass authentication:
 - `/oidc/ui/*` — Admin UI static files (the API calls within the SPA are authenticated)
 - `/docs`, `/redoc`, `/openapi.json` — API documentation (if enabled)
 
+`/scim/v2` is a different kind of carve-out: it bypasses `AuthMiddleware`'s normal chain
+entirely rather than being unauthenticated. Every route under it — including discovery and the
+catch-all for unknown paths — requires its own bearer credential (a SCIM token issued at
+`/api/2.0/mlflow/scim/tokens`), checked independently of basic auth, JWT bearer, and the session
+cookie. None of those three ever authenticate on `/scim/v2`, and a SCIM token authenticates
+nowhere else: it names no user, so it cannot be used against any other endpoint. See [SCIM
+Provisioning](scim) for the token model and what the endpoint does.
+
 ## Authentication Methods
 
 The `AuthMiddleware` tries authentication methods in order:
@@ -83,6 +91,18 @@ Validates the JWT against the OIDC provider's JWKS endpoint. Extracts the userna
 ### 3. Session Cookie (Fallback)
 
 No `Authorization` header → checks for a valid session cookie set during OIDC login.
+
+**Server-side session tokens.** The refresh token, ID token, and IdP-issued expiry that a
+session needs are stored encrypted (Fernet, `SESSION_TOKEN_ENCRYPTION_KEY`) on the session's
+`auth_sessions` row rather than in the cookie — the cookie carries only the opaque session id.
+When several concurrent requests find a session's IdP token expired, only one exchanges the
+refresh token: an in-process `asyncio.Lock` per session serializes requests within one worker,
+and on PostgreSQL a `SELECT ... FOR UPDATE` row lock serializes across replicas too, with the
+result re-read and adopted by every request that queued behind the refresh. This single-flight
+is what stops a rotated refresh token from being replayed by a losing concurrent request. SQLite
+has no row locks, so on SQLite the guard is process-local only — safe with a single worker
+process, not a substitute for the row lock under multiple workers or replicas. See
+[Sessions](configuration#sessions) for the operator-facing details.
 
 ### OIDC Login Flow
 

@@ -143,8 +143,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # loading chunks instead of dying with ChunkLoadError; the next
             # navigation will redirect through the IdP for re-auth.
             "/static-files",
+            # SCIM 2.0 (#321). Not unauthenticated: every route under it depends on
+            # ``require_scim_token``, a dedicated credential this chain does not understand, and a
+            # catch-all keeps anything unmatched from reaching the Flask mount. Carved out so that
+            # a user session or token can never authenticate a directory write. The trailing
+            # slash keeps a sibling such as "/scim/v2x" protected.
+            "/scim/v2/",
+            # SAML single logout and SP metadata (#328, #329). The IdP calls the first with no
+            # session of ours — that is the point of IdP-initiated logout — and every message it
+            # accepts must carry the IdP's signature. The second is public by nature: entity id,
+            # endpoint URLs and a public certificate. Trailing slashes keep "/slox" protected.
+            "/slo/",
+            "/saml/metadata/",
         )
-        return path.startswith(unprotected_prefixes)
+        # Matched exactly rather than by prefix. A login page has to read this before anyone has
+        # signed in — it is the list of buttons to draw — but "/providers" as a prefix would
+        # silently unprotect any later route whose path merely began with it.
+        unprotected_exact = ("/providers",)
+        return path in unprotected_exact or path.startswith(unprotected_prefixes)
 
     async def _authenticate_basic_auth(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
         """
@@ -421,10 +437,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """
         Authenticate using session.
 
-        Enforces the IdP-issued ``expires_at`` (set at OIDC callback) so a session
-        cannot outlive the underlying token. When ``OIDC_USE_REFRESH_TOKEN`` is
-        enabled and a refresh token is stored, an expired session is silently
-        refreshed against the IdP before being rejected.
+        Enforces the IdP-issued ``expires_at`` so a session cannot outlive the
+        underlying token. When ``OIDC_USE_REFRESH_TOKEN`` is enabled and a refresh
+        token is stored, an expired session is silently refreshed against the IdP
+        before being rejected.
+
+        Both live on the session row, encrypted, since #367 — not in the cookie.
+        They arrive with the same joined lookup that resolves the session, so
+        reading them costs no statement.
 
         Args:
             request: FastAPI request object
@@ -457,11 +477,40 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     # statement rather than two (#305 budget).
                     request.state.resolved_session = resolved
 
-                    if self._is_session_expired(session):
+                    # A cookie from before #367 may still carry token material. Its refresh token
+                    # is never used — only the session row's is — and is dropped at once.
+                    if "refresh_token" in session:
+                        session.pop("refresh_token", None)
+
+                    from mlflow_oidc_auth.session.token_vault import SessionTokens, get_token_vault
+
+                    encrypted_tokens = getattr(resolved, "encrypted_tokens", None)
+                    tokens = get_token_vault().decrypt(encrypted_tokens)
+
+                    # Its ``expires_at`` is different. A row opened by a release before #367 has
+                    # no tokens, so the (signed) cookie holds the only IdP expiry this session
+                    # has. Dropping it would let the session run to the row's lifetime with no
+                    # IdP bound at all, so it is honoured as an upper bound — and kept until it
+                    # passes or a new login replaces the session. Where the row has tokens, the
+                    # row is authoritative and the cookie value is discarded.
+                    legacy_expiry = session.get("expires_at")
+                    legacy_bound = not encrypted_tokens and isinstance(legacy_expiry, (int, float)) and not isinstance(legacy_expiry, bool)
+                    if not legacy_bound and "expires_at" in session:
+                        session.pop("expires_at", None)
+                    if legacy_bound and self._is_session_expired(SessionTokens(expires_at=int(legacy_expiry))):
+                        # Nothing on the row to refresh with: the legacy session ends here.
+                        logger.info("Legacy session expired for user %s; clearing session to force re-authentication", username)
+                        session.clear()
+                        return False, None, "Session expired"
+                    # Tokens that exist but cannot be decrypted (key rotated, row tampered with)
+                    # carry an expiry we can no longer read. Fail closed: treat the session as
+                    # expired, which — with nothing to refresh with — sends the user to log in.
+                    unreadable = bool(encrypted_tokens) and tokens is None
+                    if unreadable or self._is_session_expired(tokens):
                         # Try a silent refresh first; only force re-login if it fails.
                         from mlflow_oidc_auth.routers.auth import refresh_session_with_idp
 
-                        refreshed = await refresh_session_with_idp(session)
+                        refreshed = await refresh_session_with_idp(session_id, resolved)
                         if not refreshed:
                             logger.info(
                                 "Session expired for user %s; clearing session to force re-authentication",
@@ -486,16 +535,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return False, None, "No session authentication"
 
     @staticmethod
-    def _is_session_expired(session) -> bool:
+    def _is_session_expired(tokens) -> bool:
         """Return True when the IdP-issued ``expires_at`` (minus leeway) is in the past.
 
-        Returns False when no expiry is recorded — older sessions predating this
-        feature should keep working until the cookie TTL takes them out, instead
-        of being summarily logged out at deploy time.
+        ``tokens`` is the session's decrypted ``SessionTokens`` (or None). Returns False
+        when no expiry is recorded — the IdP gave none, or the tokens are absent or
+        unreadable — so the session's own lifetime bounds it, as before.
         """
 
-        expires_at = session.get("expires_at")
-        if not isinstance(expires_at, (int, float)):
+        expires_at = getattr(tokens, "expires_at", None) if tokens is not None else None
+        if isinstance(expires_at, bool) or not isinstance(expires_at, (int, float)):
             return False
         leeway = max(0, config.OIDC_SESSION_EXPIRY_LEEWAY_SECONDS)
         return time.time() >= float(expires_at) - leeway

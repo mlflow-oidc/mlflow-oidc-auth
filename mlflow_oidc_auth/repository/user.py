@@ -90,6 +90,9 @@ def _audit_sessions_revoked(username: str, count: int, reason: str) -> None:
 # be updated, this constant has to be re-justified in the same diff.
 TOKEN_HASH_METHOD = "pbkdf2:sha256:1000"
 
+#: "Not supplied", for parameters where None is a meaningful value (clearing an external id).
+UNSET = object()
+
 
 def normalize_username(username: str) -> str:
     """Fold a username to its canonical (lowercase) form.
@@ -103,6 +106,22 @@ def normalize_username(username: str) -> str:
     identity key is folded; the human-readable ``display_name`` is left intact.
     """
     return username.lower() if isinstance(username, str) else username
+
+
+def active_admin_ids_for_update(session):
+    """Ids of every active administrator, read under a row lock (``SELECT ... FOR UPDATE``).
+
+    The invariant it serves: **there is always at least one active administrator.** Every write
+    that could end the last one — deactivation, demotion, deletion — takes this lock inside its
+    own transaction before counting, so concurrent writers are serialised on the admin rows.
+    """
+    return [row[0] for row in active_admin_ids_query(session).all()]
+
+
+def active_admin_ids_query(session):
+    """The locking query behind :func:`active_admin_ids_for_update`, exposed so its SQL can be
+    inspected per dialect."""
+    return session.query(SqlUser.id).filter(SqlUser.is_admin.is_(True), SqlUser.active.is_(True)).order_by(SqlUser.id).with_for_update()
 
 
 class UserRepository:
@@ -133,8 +152,14 @@ class UserRepository:
         if not (user.is_admin and user.active):
             # Not an active admin, so removing them cannot change the count.
             return
-        remaining = session.query(SqlUser).filter(SqlUser.is_admin.is_(True), SqlUser.active.is_(True), SqlUser.id != user.id).count()
-        if remaining == 0:
+        # Lock every active admin row, this one included, before counting. Without the lock two
+        # concurrent transactions deactivating the only two admins each see the other as
+        # "remaining", both pass, and the deployment ends with none. With it the second waits for
+        # the first to commit and then re-reads the rows (PostgreSQL re-evaluates the WHERE clause
+        # of a locking read against the committed version), finds itself alone, and refuses.
+        # SQLite has no FOR UPDATE — the dialect drops the clause — but serialises writers anyway.
+        remaining = [row_id for row_id in active_admin_ids_for_update(session) if row_id != user.id]
+        if not remaining:
             raise MlflowException(
                 f"refusing to {action} '{user.username}': they are the only active administrator, and doing so would "
                 "leave the deployment with none. Grant admin to another active user first.",
@@ -260,6 +285,26 @@ class UserRepository:
             rows = session.query(SqlUser.username).filter(SqlUser.is_service_account == is_service_account).all()
             return [r[0] for r in rows]
 
+    @staticmethod
+    def _changed_fields(user, **supplied) -> set:
+        """The fields a write would actually change, for the ownership guard.
+
+        A supplied value equal to the stored one is not a change: a login that re-asserts an
+        unchanged admin flag is not writing anything. A new ``password`` or an expiry is always a
+        change — secrets are not compared.
+        """
+        changed = set()
+        for name in ("is_admin", "is_service_account", "active", "managed_by", "display_name"):
+            value = supplied.get(name)
+            if value is not None and value != getattr(user, name):
+                changed.add(name)
+        external_id = supplied.get("external_id", UNSET)
+        if external_id is not UNSET and (external_id or None) != user.external_id:
+            changed.add("external_id")
+        if supplied.get("password") is not None or supplied.get("password_expiration") is not None:
+            changed.add("password")
+        return changed
+
     def update(
         self,
         username: str,
@@ -271,6 +316,8 @@ class UserRepository:
         managed_by: Optional[str] = None,
         written_by: Optional[str] = None,
         admin_override: bool = False,
+        display_name: Optional[str] = None,
+        external_id=UNSET,
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
@@ -306,13 +353,18 @@ class UserRepository:
                 None means an unattributed internal write, treated as ``manual``.
             admin_override: Whether an administrator asked for this explicitly. Break glass:
                 always permitted, always audited.
+            display_name: New display name.
+            external_id: New external id; omit to leave it, None to clear it. Unique when present.
 
         Returns:
             User: The updated user entity.
 
         Raises:
-            MlflowException: If the user does not exist, or if the change would leave the
-                deployment with no active administrator.
+            MlflowException: If the user does not exist, if the change would leave the
+                deployment with no active administrator, if the ownership guard refuses it, or
+                (``RESOURCE_ALREADY_EXISTS``) if ``external_id`` belongs to another user. Nothing
+                is written in any of these cases: every field, the session revocation and the
+                credential change share one transaction.
         """
         from werkzeug.security import generate_password_hash
 
@@ -329,6 +381,18 @@ class UserRepository:
                 written_by,
                 enforcement=config.MANAGED_BY_ENFORCEMENT,
                 admin_override=admin_override,
+                fields=self._changed_fields(
+                    user,
+                    password=password,
+                    password_expiration=password_expiration,
+                    is_admin=is_admin,
+                    is_service_account=is_service_account,
+                    active=active,
+                    managed_by=managed_by,
+                    display_name=display_name,
+                    external_id=external_id,
+                ),
+                target_is_admin=bool(user.is_admin),
             )
             if decision.conflict and not decision.allowed:
                 # Refusals are recorded immediately: nothing was written, so there is no commit
@@ -341,7 +405,7 @@ class UserRepository:
                 permitted_conflict = decision
             if not decision.allowed:
                 raise MlflowException(
-                    f"User '{username}' is managed by {decision.owner!r} and cannot be changed by {written_by or 'manual'!r}.",
+                    f"User '{username}' is managed by {decision.owner!r} and cannot be changed by {written_by or 'manual'!r}: {decision.reason}.",
                     INVALID_PARAMETER_VALUE,
                 )
 
@@ -381,7 +445,14 @@ class UserRepository:
                         sessions_revoked = revoked
             if managed_by is not None:
                 user.managed_by = managed_by
-            session.flush()
+            if display_name is not None:
+                user.display_name = display_name
+            if external_id is not UNSET:
+                user.external_id = external_id or None
+            try:
+                session.flush()
+            except IntegrityError as e:
+                raise MlflowException(f"external id {external_id!r} is already bound to another user", RESOURCE_ALREADY_EXISTS) from e
             entity = user.to_mlflow_entity()
 
         # Past the ``with``: the transaction has committed, so the events are true when written.
@@ -391,7 +462,21 @@ class UserRepository:
             _audit_sessions_revoked(username, sessions_revoked, "user_deactivated")
         return entity
 
-    def delete(self, username: str) -> None:
+    def delete(self, username: str, before_cascade: Optional[Callable] = None, after_cascade: Optional[Callable] = None) -> None:
+        """Hard-delete a user and every row that references them.
+
+        Parameters:
+            username: The user.
+            before_cascade: Optional ``(session, user) -> None`` run inside the same transaction
+                after the last-admin check and before any grant is removed — orphan detection
+                (#324) uses it to read the grants the cascade is about to remove.
+            after_cascade: Optional ``(session) -> None`` run inside the same transaction once
+                the cascade and the user row's delete have been flushed, before the commit — the
+                orphan hand-over uses it, so nothing is written for a delete that fails, and a
+                savepoint it opens is nested inside an already-begun transaction (on SQLite a
+                savepoint opened before any write would itself begin, and its release commit,
+                the transaction).
+        """
         username = normalize_username(username)
         deleted_sessions = 0
         with self._Session(read_only=False) as session:
@@ -400,6 +485,9 @@ class UserRepository:
                 raise MlflowException(f"User '{username}' not found.")
 
             self._assert_not_last_active_admin(session, user, "delete")
+
+            if before_cascade is not None:
+                before_cascade(session, user)
 
             # Delete dependent rows first.
             # Without this, SQLAlchemy may try to NULL-out non-nullable FKs
@@ -472,6 +560,9 @@ class UserRepository:
 
             session.delete(user)
             session.flush()
+
+            if after_cascade is not None:
+                after_cascade(session)
 
         # Emitted after the commit, for the same reason as in ``update``.
         if deleted_sessions:

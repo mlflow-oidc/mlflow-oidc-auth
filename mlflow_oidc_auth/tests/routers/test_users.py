@@ -559,9 +559,7 @@ class TestDeleteUserEndpoint:
     @patch("mlflow_oidc_auth.routers.users.store")
     async def test_delete_user_success(self, mock_store_patch):
         """Test successful user deletion."""
-        # Mock the user object
-        mock_user = MagicMock()
-        mock_store_patch.get_user_profile.return_value = mock_user
+        mock_store_patch.get_user_detail.return_value = {"username": "user@example.com", "managed_by": "manual", "is_admin": False}
         mock_store_patch.delete_user.return_value = None
 
         result = await delete_user(username="user@example.com", admin_username="admin@example.com")
@@ -569,13 +567,16 @@ class TestDeleteUserEndpoint:
         assert result.status_code == 200
 
         # Verify user deletion was called
-        mock_store_patch.delete_user.assert_called_once_with("user@example.com")
+        # The delete runs with the orphan hand-over hook in the same transaction (#324).
+        mock_store_patch.delete_user_with_hook.assert_called_once()
+        assert mock_store_patch.delete_user_with_hook.call_args.args[0] == "user@example.com"
+        assert callable(mock_store_patch.delete_user_with_hook.call_args.args[1])
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.users.store")
     async def test_delete_user_not_found(self, mock_store_patch):
         """Test deleting non-existent user."""
-        mock_store_patch.get_user_profile.return_value = None
+        mock_store_patch.get_user_detail.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
             await delete_user(username="nonexistent@example.com", admin_username="admin@example.com")
@@ -587,10 +588,8 @@ class TestDeleteUserEndpoint:
     @patch("mlflow_oidc_auth.routers.users.store")
     async def test_delete_user_exception_handling(self, mock_store_patch):
         """Test delete user exception handling."""
-        # Mock the user object
-        mock_user = MagicMock()
-        mock_store_patch.get_user_profile.return_value = mock_user
-        mock_store_patch.delete_user.side_effect = Exception("Database error")
+        mock_store_patch.get_user_detail.return_value = {"username": "user@example.com", "managed_by": "manual", "is_admin": False}
+        mock_store_patch.delete_user_with_hook.side_effect = Exception("Database error")
 
         with pytest.raises(HTTPException) as exc_info:
             await delete_user(username="user@example.com", admin_username="admin@example.com")

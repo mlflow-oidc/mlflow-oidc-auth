@@ -87,6 +87,17 @@ class AppConfig:
             )
             _secret_key = secrets.token_hex(16)
         self.SECRET_KEY = _secret_key
+        # Key for the provider tokens (refresh token, IdP expiry, id_token) that a server-side
+        # session keeps encrypted on its row (issue #367). One or more comma-separated
+        # urlsafe-base64 32-byte Fernet keys; the first encrypts, all decrypt, so a key can be
+        # rotated. Unset: a key is derived from SECRET_KEY with HKDF, and rotating SECRET_KEY then
+        # makes stored tokens unreadable (sessions re-login once their IdP expiry passes).
+        self.SESSION_TOKEN_ENCRYPTION_KEY = config_manager.get("SESSION_TOKEN_ENCRYPTION_KEY")
+        # Fail at startup, not on the first login: a malformed key would otherwise surface as
+        # every session being refused. The error never includes the value.
+        from mlflow_oidc_auth.session.token_vault import validate_encryption_key
+
+        validate_encryption_key(self.SESSION_TOKEN_ENCRYPTION_KEY)
         self.OIDC_CLIENT_SECRET = config_manager.get("OIDC_CLIENT_SECRET")
 
         # Session cookie settings
@@ -226,6 +237,26 @@ class AppConfig:
 
         # API documentation settings
         self.ENABLE_API_DOCS = config_manager.get_bool("ENABLE_API_DOCS", default=False)
+
+        # SCIM
+        # Provisioning endpoint at /scim/v2 (#321, #322, #324). Inert until an administrator
+        # issues a SCIM token: the endpoint accepts nothing else, so a deployment that never
+        # issues one is unaffected.
+        # How long a rotated SCIM token keeps working alongside its replacement, so the new one
+        # can be pasted into the directory without a sync failing in between.
+        self.SCIM_TOKEN_ROTATION_OVERLAP_SECONDS = config_manager.get_int("SCIM_TOKEN_ROTATION_OVERLAP_SECONDS", default=3600)
+        # Per-token request budget. In-process: with N replicas the effective ceiling is N times
+        # this. A value of 0 disables the limit.
+        self.SCIM_RATE_LIMIT_PER_MINUTE = config_manager.get_int("SCIM_RATE_LIMIT_PER_MINUTE", default=600)
+        # Failed SCIM authentications allowed per client IP per minute before answering 429.
+        # In-process, like the limit above; 0 disables it.
+        self.SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE = config_manager.get_int("SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE", default=60)
+        # When set, resources a hard-deleted user was the last MANAGE holder of are granted MANAGE
+        # to this username before the delete cascades. Unset means orphans are only reported.
+        self.ORPHAN_FALLBACK_PRINCIPAL = config_manager.get("ORPHAN_FALLBACK_PRINCIPAL")
+        # Placeholder for a future purge of deactivated users. 0 means never purge; nothing
+        # reads this yet.
+        self.USER_RETENTION_DAYS = config_manager.get_int("USER_RETENTION_DAYS", default=0)
 
         # Identity provider registry (issue #308). Built from AUTH_PROVIDERS /
         # AUTH_PROVIDERS_FILE, falling back to a single "default" provider synthesised from the

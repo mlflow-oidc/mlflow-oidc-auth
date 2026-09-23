@@ -1,5 +1,6 @@
 export const STATIC_API_ENDPOINTS = {
   ALL_GROUPS: "/api/2.0/mlflow/permissions/groups",
+  GROUPS_DETAILS: "/api/2.0/mlflow/permissions/groups/details",
   ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
   ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
   ALL_PROMPTS: "/api/2.0/mlflow/permissions/prompts",
@@ -16,6 +17,7 @@ export const STATIC_API_ENDPOINTS = {
   CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
   USERS_RESOURCE: "/api/2.0/mlflow/users",
+  USERS_DETAILS: "/api/2.0/mlflow/users/details",
 
   // Trash management
   TRASH_EXPERIMENTS: "/oidc/trash/experiments",
@@ -24,12 +26,17 @@ export const STATIC_API_ENDPOINTS = {
 
   // Webhook management
   WEBHOOKS_RESOURCE: "/oidc/webhook",
+
+  // SCIM token management
+  SCIM_TOKENS_RESOURCE: "/api/2.0/mlflow/scim/tokens",
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {
   // User permissions for resources
   GET_USER_DETAILS: (userName: string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}`,
+  USER_ACTIVE: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/active`,
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiments`,
   USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>
@@ -224,6 +231,12 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/oidc/webhook/${encodeURIComponent(webhookId)}`,
   TEST_WEBHOOK: (webhookId: string) =>
     `/oidc/webhook/${encodeURIComponent(webhookId)}/test`,
+
+  // SCIM token management
+  SCIM_TOKEN_DETAIL: (tokenId: number | string) =>
+    `/api/2.0/mlflow/scim/tokens/${encodeURIComponent(String(tokenId))}`,
+  SCIM_TOKEN_ROTATE: (tokenId: number | string) =>
+    `/api/2.0/mlflow/scim/tokens/${encodeURIComponent(String(tokenId))}/rotate`,
 } as const;
 
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;

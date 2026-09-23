@@ -91,7 +91,7 @@ def prune_sessions(url: str, dry_run: bool) -> None:
     """
     from datetime import datetime, timezone
 
-    from mlflow_oidc_auth.db.models import SqlAuthSession
+    from mlflow_oidc_auth.db.models import SqlAuthSession, SqlSamlAssertion
 
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None)
     engine = sqlalchemy.create_engine(url)
@@ -100,11 +100,27 @@ def prune_sessions(url: str, dry_run: bool) -> None:
             expired = conn.execute(
                 sqlalchemy.select(sqlalchemy.func.count()).select_from(SqlAuthSession).where(SqlAuthSession.expires_at <= cutoff)
             ).scalar_one()
+            # SAML replay records (#328) are needed only while their assertion could still
+            # validate. Skipped on a database migrated before the table existed.
+            has_assertions = sqlalchemy.inspect(conn).has_table(SqlSamlAssertion.__tablename__)
+            expired_assertions = (
+                conn.execute(
+                    sqlalchemy.select(sqlalchemy.func.count()).select_from(SqlSamlAssertion).where(SqlSamlAssertion.not_on_or_after <= cutoff)
+                ).scalar_one()
+                if has_assertions
+                else 0
+            )
             if dry_run:
                 click.echo(f"{expired} expired session(s) would be deleted")
+                if has_assertions:
+                    click.echo(f"{expired_assertions} expired SAML assertion record(s) would be deleted")
                 return
             conn.execute(sqlalchemy.delete(SqlAuthSession).where(SqlAuthSession.expires_at <= cutoff))
+            if has_assertions:
+                conn.execute(sqlalchemy.delete(SqlSamlAssertion).where(SqlSamlAssertion.not_on_or_after <= cutoff))
         click.echo(f"deleted {expired} expired session(s)")
+        if has_assertions:
+            click.echo(f"deleted {expired_assertions} expired SAML assertion record(s)")
     finally:
         engine.dispose()
 

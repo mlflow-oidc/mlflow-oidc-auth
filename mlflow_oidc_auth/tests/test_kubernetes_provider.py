@@ -363,6 +363,20 @@ class TestTheRegistryRefusesAnUnusableClusterProvider:
 
         assert [provider.id for provider in result.providers] == ["cluster"]
 
+    @pytest.mark.parametrize("value", ["false", "true", "no", 0, 1, None, []])
+    def test_in_cluster_must_be_a_real_boolean(self, value):
+        """The string "false" is truthy: read as a flag it would attach the pod's service-account
+        token to fetches against an external jwks_uri. Refused, like allow_tokens_without_expiry."""
+        result = self._build(self._entry(in_cluster=value))
+
+        assert result.providers == []
+        assert any("'in_cluster' must be true or false" in error for error in result.errors)
+
+    def test_in_cluster_false_keeps_the_external_key_source_unauthenticated(self):
+        result = self._build(self._entry(in_cluster=False))
+
+        assert result.providers[0].in_cluster is False
+
     def test_an_unpinned_audience_is_refused(self):
         """Inherited from the shared rules, and it matters most here: an unpinned audience
         accepts any pod's token minted for any service."""
@@ -370,5 +384,113 @@ class TestTheRegistryRefusesAnUnusableClusterProvider:
         entry.pop("audience")
 
         result = self._build(entry)
+
+        assert result.providers == []
+
+
+class TestTokensWithoutAnExpiry:
+    """A token with no ``exp`` is valid forever unless something requires the claim (#356).
+
+    Bound service-account tokens — projected volumes, the default since Kubernetes 1.22 — carry
+    ``exp`` and need nothing. A token without one is refused by default, and a cluster provider
+    accepts it only when the operator writes ``allow_tokens_without_expiry: true``. Opting in
+    removes the expiry requirement and nothing else: issuer, audience and signature still hold.
+    """
+
+    CLUSTER_ISSUER = "https://kubernetes.default.svc"
+    AUDIENCE = "mlflow-api"
+    SUBJECT = "system:serviceaccount:team-a:trainer"
+
+    @pytest.fixture
+    def cluster(self):
+        from mlflow_oidc_auth.tests.adversarial.suite import Issuer
+
+        return Issuer(name="cluster", iss=self.CLUSTER_ISSUER, audience=self.AUDIENCE)
+
+    @pytest.fixture
+    def verify_with(self, cluster, monkeypatch):
+        """``validate_token`` against a single ``k8s`` provider trusting ``cluster``'s inline keys."""
+        import mlflow_oidc_auth.auth as auth_module
+        from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+
+        def configure(**overrides):
+            fields = {
+                "id": "cluster",
+                "type": "k8s",
+                "interactive": False,
+                "audience": self.AUDIENCE,
+                "issuer": self.CLUSTER_ISSUER,
+                "jwks_inline": cluster.jwks,
+                "namespace_allowlist": ("team-a",),
+            }
+            fields.update(overrides)
+            registry = RegistryLoadResult(providers=[ProviderConfig(**fields)], errors=[], source="env")
+            monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry)
+            return auth_module.validate_token
+
+        return configure
+
+    def _without_exp(self, cluster, **overrides):
+        claims = {key: value for key, value in cluster.claims(sub=self.SUBJECT).items() if key != "exp"}
+        claims.update(overrides)
+        return cluster.mint(claims=claims)
+
+    def test_a_bound_token_with_an_expiry_is_accepted_by_default(self, verify_with, cluster):
+        assert verify_with()(cluster.mint(sub=self.SUBJECT))["sub"] == self.SUBJECT
+
+    def test_a_token_without_an_expiry_is_refused_by_default(self, verify_with, cluster):
+        from authlib.jose.errors import MissingClaimError
+
+        with pytest.raises(MissingClaimError):
+            verify_with()(self._without_exp(cluster))
+
+    def test_a_token_without_an_expiry_is_accepted_when_the_provider_opts_in(self, verify_with, cluster):
+        assert verify_with(allow_tokens_without_expiry=True)(self._without_exp(cluster))["sub"] == self.SUBJECT
+
+    def test_opting_in_still_refuses_a_token_that_has_expired(self, verify_with, cluster):
+        """The opt-in waives a *missing* ``exp``. One that is present is still checked."""
+        import time
+
+        from mlflow_oidc_auth.tests.adversarial.suite import rejects
+
+        now = int(time.time())
+
+        with rejects():
+            verify_with(allow_tokens_without_expiry=True)(cluster.mint(sub=self.SUBJECT, iat=now - 7200, exp=now - 3600))
+
+    @pytest.mark.parametrize("claim, value", [("aud", "some-other-service"), ("iss", "https://another-cluster.invalid")])
+    def test_opting_in_waives_nothing_but_the_expiry(self, verify_with, cluster, claim, value):
+        from mlflow_oidc_auth.tests.adversarial.suite import rejects
+
+        with rejects():
+            verify_with(allow_tokens_without_expiry=True)(self._without_exp(cluster, **{claim: value}))
+
+    def test_opting_in_still_requires_the_clusters_signature(self, verify_with, cluster):
+        from mlflow_oidc_auth.tests.adversarial.suite import Issuer, rejects
+
+        impostor = Issuer(name="impostor", iss=self.CLUSTER_ISSUER, audience=self.AUDIENCE)
+        claims = {key: value for key, value in impostor.claims(sub=self.SUBJECT).items() if key != "exp"}
+
+        with rejects():
+            verify_with(allow_tokens_without_expiry=True)(impostor.mint(claims=claims, kid=cluster.kid))
+
+
+class TestTheRegistryAcceptsTheExpiryOptInOnAClusterProvider:
+    """Registry side of #356 for ``k8s``: off unless written, and only as a boolean."""
+
+    _build = staticmethod(TestTheRegistryRefusesAnUnusableClusterProvider._build)
+    _entry = staticmethod(TestTheRegistryRefusesAnUnusableClusterProvider._entry)
+
+    def test_it_is_off_unless_written(self):
+        assert self._build(self._entry()).providers[0].allow_tokens_without_expiry is False
+
+    def test_it_can_be_turned_on_explicitly(self):
+        result = self._build(self._entry(allow_tokens_without_expiry=True))
+
+        assert result.errors == []
+        assert result.providers[0].allow_tokens_without_expiry is True
+
+    def test_a_string_is_not_read_as_true(self):
+        result = self._build(self._entry(allow_tokens_without_expiry="true"))
 
         assert result.providers == []

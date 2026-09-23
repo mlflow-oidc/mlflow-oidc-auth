@@ -13,11 +13,17 @@ import type {
   ExperimentPatternPermission,
   ModelPatternPermission,
   PromptPatternPermission,
+  GroupDetails,
 } from "../../shared/types/entity";
 
 export const fetchAllGroups = createStaticApiFetcher<string[]>({
   endpointKey: "ALL_GROUPS",
   responseType: [] as string[],
+});
+
+export const fetchAllGroupDetails = createStaticApiFetcher<GroupDetails[]>({
+  endpointKey: "GROUPS_DETAILS",
+  responseType: [] as GroupDetails[],
 });
 
 export const fetchAllExperiments = createStaticApiFetcher<ExperimentListItem[]>(

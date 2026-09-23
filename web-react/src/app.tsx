@@ -66,6 +66,7 @@ const UserPermissionsPage = React.lazy(
 const WebhooksPage = React.lazy(
   () => import("./features/webhooks/webhooks-page"),
 );
+const ScimPage = React.lazy(() => import("./features/scim/scim-page"));
 const NotFoundPage = React.lazy(
   () => import("./features/not-found/not-found-page"),
 );
@@ -396,6 +397,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <WebhooksPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/scim"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <ScimPage />
           </ProtectedLayoutRoute>
         }
       />

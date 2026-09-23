@@ -13,6 +13,20 @@ export type CurrentUser = {
   username: string;
 };
 
+/**
+ * managed_by values: "manual", "scim", or "oidc:<provider_id>".
+ */
+export type ManagedBy = string;
+
+export type UserDetails = {
+  username: string;
+  display_name: string;
+  is_admin: boolean;
+  is_service_account: boolean;
+  active: boolean;
+  managed_by: ManagedBy;
+};
+
 export interface UserContextType {
   currentUser: CurrentUser | null;
   setCurrentUser: (user: CurrentUser | null) => void;

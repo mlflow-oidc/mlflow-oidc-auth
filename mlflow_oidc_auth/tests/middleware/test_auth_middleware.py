@@ -332,80 +332,147 @@ class TestAuthMiddleware:
             else:
                 delattr(request.__class__, "session")
 
+    @staticmethod
+    def _resolved_with(tokens=None, blob=None):
+        """A resolved session whose row carries ``tokens`` (encrypted) or a raw ``blob`` (#367)."""
+        from mlflow_oidc_auth.repository.auth_session import ResolvedSession
+        from mlflow_oidc_auth.session.token_vault import get_token_vault
+
+        if tokens is not None:
+            blob = get_token_vault().encrypt(tokens)
+        return ResolvedSession(username="user@example.com", is_admin=False, is_active=True, session_id="sid-user", encrypted_tokens=blob)
+
+    async def _authenticate(self, auth_middleware, create_mock_request, session, resolved, refresh=None):
+        from unittest.mock import AsyncMock, patch as _patch
+
+        from mlflow_oidc_auth.middleware import auth_middleware as middleware_mod
+
+        refresh = refresh if refresh is not None else AsyncMock(return_value=False)
+        with (
+            _patch.object(middleware_mod, "store") as store_mock,
+            _patch("mlflow_oidc_auth.routers.auth.refresh_session_with_idp", new=refresh),
+            _patch.object(middleware_mod.config, "OIDC_SESSION_EXPIRY_LEEWAY_SECONDS", 0, create=True),
+        ):
+            store_mock.resolve_auth_session.return_value = resolved
+            request = create_mock_request(session=session)
+            result = await auth_middleware._authenticate_session(request)
+        return result, refresh
+
     @pytest.mark.asyncio
     async def test_authenticate_session_unexpired_passes_through(self, auth_middleware, create_mock_request):
-        """A session with a future ``expires_at`` is allowed without touching the IdP."""
-        future = 9999999999  # year 2286
-        request = create_mock_request(session={"session_id": "sid-user", "expires_at": future})
+        """A session whose row holds a future IdP expiry is allowed without touching the IdP."""
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
 
-        success, username, error = await auth_middleware._authenticate_session(request)
+        (success, username, error), refresh = await self._authenticate(
+            auth_middleware, create_mock_request, {"session_id": "sid-user"}, self._resolved_with(SessionTokens(expires_at=9999999999))
+        )
 
-        assert success is True
-        assert username == "user@example.com"
-        assert error == ""
+        assert (success, username, error) == (True, "user@example.com", "")
+        refresh.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_authenticate_session_expired_no_refresh_token_clears(self, auth_middleware, create_mock_request):
-        """Expired sessions without a refresh token are cleared and rejected."""
-        from mlflow_oidc_auth.middleware import auth_middleware as middleware_mod
+        """Expired sessions that cannot be refreshed are cleared and rejected."""
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
 
-        session = {"session_id": "sid-user", "expires_at": 100}  # 1970, well past
+        session = {"session_id": "sid-user", "authenticated": True}
+        resolved = self._resolved_with(SessionTokens(expires_at=100))
+        (success, username, error), refresh = await self._authenticate(auth_middleware, create_mock_request, session, resolved)
 
-        # Patch refresh helper to confirm no successful refresh path
-        from unittest.mock import AsyncMock, patch as _patch
-
-        with (
-            _patch("mlflow_oidc_auth.routers.auth.refresh_session_with_idp", new=AsyncMock(return_value=False)),
-            _patch.object(middleware_mod.config, "OIDC_SESSION_EXPIRY_LEEWAY_SECONDS", 0, create=True),
-        ):
-            request = create_mock_request(session=session)
-            success, username, error = await auth_middleware._authenticate_session(request)
-
-        assert success is False
-        assert username is None
-        assert error == "Session expired"
-        assert "username" not in session  # session.clear() was called
+        assert (success, username, error) == (False, None, "Session expired")
+        assert session == {}  # session.clear() was called
+        refresh.assert_awaited_once_with("sid-user", resolved)
 
     @pytest.mark.asyncio
     async def test_authenticate_session_expired_refresh_succeeds(self, auth_middleware, create_mock_request):
-        """When OIDC_USE_REFRESH_TOKEN is on and refresh succeeds, the session is accepted."""
-        from mlflow_oidc_auth.middleware import auth_middleware as middleware_mod
+        """When refresh succeeds the session is accepted, and nothing token-shaped enters the cookie."""
+        from unittest.mock import AsyncMock
 
-        session = {
-            "session_id": "sid-user",
-            "expires_at": 100,
-            "refresh_token": "rt-123",
-        }
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
 
-        async def fake_refresh(s):
-            s["expires_at"] = 9999999999
-            s["refresh_token"] = "rt-456"
-            return True
+        session = {"session_id": "sid-user"}
+        resolved = self._resolved_with(SessionTokens(expires_at=100, refresh_token="rt-123"))
+        (success, username, error), refresh = await self._authenticate(
+            auth_middleware, create_mock_request, session, resolved, refresh=AsyncMock(return_value=True)
+        )
 
-        from unittest.mock import patch as _patch
-
-        with (
-            _patch("mlflow_oidc_auth.routers.auth.refresh_session_with_idp", side_effect=fake_refresh),
-            _patch.object(middleware_mod.config, "OIDC_SESSION_EXPIRY_LEEWAY_SECONDS", 0, create=True),
-        ):
-            request = create_mock_request(session=session)
-            success, username, error = await auth_middleware._authenticate_session(request)
-
-        assert success is True
-        assert username == "user@example.com"
-        assert error == ""
-        assert session["expires_at"] == 9999999999
-        assert session["refresh_token"] == "rt-456"
+        assert (success, username, error) == (True, "user@example.com", "")
+        refresh.assert_awaited_once_with("sid-user", resolved)
+        assert session == {"session_id": "sid-user"}
 
     @pytest.mark.asyncio
     async def test_authenticate_session_no_expires_at_unchanged(self, auth_middleware, create_mock_request):
-        """Sessions predating this feature (no ``expires_at``) keep working."""
-        request = create_mock_request(session={"session_id": "sid-user"})
+        """A row with no IdP expiry (or no tokens at all) keeps working."""
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
 
-        success, username, error = await auth_middleware._authenticate_session(request)
+        for resolved in (self._resolved_with(), self._resolved_with(SessionTokens(refresh_token="rt"))):
+            (success, username, _), refresh = await self._authenticate(auth_middleware, create_mock_request, {"session_id": "sid-user"}, resolved)
+            assert success is True
+            assert username == "user@example.com"
+            refresh.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_authenticate_session_ignores_and_cleans_legacy_cookie_expiry(self, auth_middleware, create_mock_request):
+        """A pre-#367 cookie's ``expires_at``/``refresh_token`` is neither trusted nor kept.
+
+        Here the cookie claims a far-future expiry while the row says expired: the row wins.
+        """
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        session = {"session_id": "sid-user", "expires_at": 9999999999, "refresh_token": "rt-from-cookie"}
+        resolved = self._resolved_with(SessionTokens(expires_at=100))
+        (success, _, error), refresh = await self._authenticate(auth_middleware, create_mock_request, session, resolved)
+
+        assert (success, error) == (False, "Session expired")
+        refresh.assert_awaited_once_with("sid-user", resolved)
+        assert "refresh_token" not in session and "expires_at" not in session
+
+    @pytest.mark.asyncio
+    async def test_legacy_cookie_expiry_bounds_a_tokenless_row_when_past(self, auth_middleware, create_mock_request):
+        """A row opened before #367 has no tokens; the signed cookie's expiry is its only IdP bound.
+        Once past, the session ends — there is nothing on the row to refresh with."""
+        session = {"session_id": "sid-user", "expires_at": 100, "refresh_token": "rt-from-cookie"}
+        (success, _, error), refresh = await self._authenticate(auth_middleware, create_mock_request, session, self._resolved_with())
+
+        assert (success, error) == (False, "Session expired")
+        assert session == {}
+        refresh.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_legacy_cookie_expiry_is_kept_while_in_the_future(self, auth_middleware, create_mock_request):
+        """Still in the future: accepted, the refresh token dropped, the bound kept for next time."""
+        session = {"session_id": "sid-user", "expires_at": 9999999999, "refresh_token": "rt-from-cookie"}
+        (success, _, _), refresh = await self._authenticate(auth_middleware, create_mock_request, session, self._resolved_with())
 
         assert success is True
-        assert username == "user@example.com"
+        refresh.assert_not_called()
+        assert session == {"session_id": "sid-user", "expires_at": 9999999999}
+
+    @pytest.mark.asyncio
+    async def test_non_numeric_legacy_expiry_is_dropped(self, auth_middleware, create_mock_request):
+        session = {"session_id": "sid-user", "expires_at": "never"}
+        (success, _, _), _ = await self._authenticate(auth_middleware, create_mock_request, session, self._resolved_with())
+
+        assert success is True
+        assert session == {"session_id": "sid-user"}
+
+    @pytest.mark.asyncio
+    async def test_authenticate_session_undecryptable_tokens_fail_closed(self, auth_middleware, create_mock_request):
+        """Tokens that exist but cannot be read (key rotated, tampering) do not keep a session alive."""
+        session = {"session_id": "sid-user"}
+        (success, _, error), _ = await self._authenticate(auth_middleware, create_mock_request, session, self._resolved_with(blob="gAAAA-tampered"))
+
+        assert (success, error) == (False, "Session expired")
+        assert session == {}
+
+    def test_is_session_expired_reads_session_tokens(self):
+        from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        assert AuthMiddleware._is_session_expired(None) is False
+        assert AuthMiddleware._is_session_expired(SessionTokens()) is False
+        assert AuthMiddleware._is_session_expired(SessionTokens(expires_at=100)) is True
+        assert AuthMiddleware._is_session_expired(SessionTokens(expires_at=9999999999)) is False
 
     @pytest.mark.asyncio
     async def test_authenticate_user_basic_auth_priority(self, auth_middleware, create_mock_request, mock_store):

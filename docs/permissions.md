@@ -176,6 +176,26 @@ Key points:
 - With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`)
 - All workspace-isolated resources (experiments, models, webhooks, trash) are automatically scoped to the active workspace
 
+## De-provisioning
+
+Deactivating a user — through SCIM (`PATCH active:false`) or the admin API
+(`PATCH /api/2.0/mlflow/users/{username}/active`) — does not touch their permission grants.
+`users.active` is set to false, every live session and the user's access token are revoked
+immediately, and the account row and **every permission grant are kept**. Reactivation restores
+access with no re-granting: the user signs in again, or is issued a new access token, and their
+prior grants apply exactly as before.
+
+On deactivation and on hard delete, the plugin looks for resources where the departing user was
+the **last holder of `MANAGE`** — no other active user or group member holds it — across
+experiments, registered models, prompts, scorers, gateway endpoints, model definitions, secrets,
+and workspaces, and emits a `resource.orphaned` audit event per resource. A hard delete additionally
+grants `MANAGE` on each orphaned resource to `ORPHAN_FALLBACK_PRINCIPAL` when it names an active
+user; deactivation never transfers, since a deactivated user may come back. Orphan detection never
+blocks the deprovisioning itself — a failure there is logged, not raised.
+
+See [SCIM Provisioning](scim#deprovisioning) for the full mechanics and [Admin UI](admin-ui#user-and-group-lifecycle)
+for the UI actions.
+
 ## Configuration
 
 ```bash

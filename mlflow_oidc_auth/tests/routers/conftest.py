@@ -120,6 +120,21 @@ def mock_store():
 
     store_mock.get_user_profile.side_effect = _get_user_profile
 
+    def _get_user_detail(username: str):
+        user = store_mock.get_user(username)
+        if user is None:
+            return None
+        return {
+            "username": user.username,
+            "display_name": user.display_name,
+            "is_admin": user.is_admin,
+            "is_service_account": user.is_service_account,
+            "active": True,
+            "managed_by": "manual",
+        }
+
+    store_mock.get_user_detail.side_effect = _get_user_detail
+
     store_mock.authenticate_user.return_value = True
 
     store_mock.list_users.return_value = [admin_user, regular_user, service_user]

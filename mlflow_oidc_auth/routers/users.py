@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta, timezone
 import re
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.audit import emit_audit_event
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -15,6 +16,10 @@ from mlflow_oidc_auth.models import (
     CurrentUserProfile,
     GroupRecord,
 )
+from mlflow_oidc_auth.models.scim import UserActiveRequest
+from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
+from mlflow_oidc_auth.ownership import MANUAL, evaluate_write
+from mlflow.protos.databricks_pb2 import INVALID_STATE, ErrorCode
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -38,6 +43,11 @@ CREATE_ACCESS_TOKEN = "/access-token"
 USER_OWNERSHIP = "/ownership"
 CURRENT_USER = "/current"
 USERNAME = "/{username}"
+USERS_DETAILS = "/details"
+USER_ACTIVE = "/{username}/active"
+
+#: Fields of each object returned by ``GET /users/details`` and ``PATCH /users/{username}/active``.
+USER_DETAIL_FIELDS = ("username", "display_name", "is_admin", "is_service_account", "active", "managed_by")
 
 
 @users_router.patch(
@@ -329,6 +339,17 @@ async def set_user_ownership(
     return JSONResponse(content={"username": username, "managed_by": managed_by, "previous": previous}, status_code=200)
 
 
+def _audit_delete_conflict(username: str, decision, admin_username: str) -> None:
+    emit_audit_event(
+        "user.ownership_conflict",
+        actor=admin_username,
+        resource_type="user",
+        resource_id=username,
+        detail={"owner": decision.owner, "written_by": MANUAL, "reason": decision.reason, "permitted": decision.allowed, "operation": "delete"},
+        status="success" if decision.allowed else "denied",
+    )
+
+
 @users_router.delete(
     USERS_ROOT,
     summary="Delete a user",
@@ -337,6 +358,7 @@ async def set_user_ownership(
 async def delete_user(
     username: str = Body(..., description="The username to delete", embed=True),
     admin_username: str = Depends(check_admin_permission),
+    admin_override: Annotated[bool, Body(embed=True, description="Break glass: delete a row another source owns. Always audited.")] = False,
 ) -> JSONResponse:
     """
     Delete a user from the system.
@@ -344,12 +366,20 @@ async def delete_user(
     Only administrators can delete users. This endpoint removes the user
     and all associated permissions from the system.
 
+    Goes through the same ownership guard as ``PATCH /users/{username}/active``, as
+    ``written_by='manual'``: a directory-owned user is refused under
+    ``MANAGED_BY_ENFORCEMENT=enforce`` unless the request says ``admin_override: true``.
+    Otherwise an administrator refused a deactivation could hard-delete the same user instead.
+    Every conflict is audited as ``user.ownership_conflict`` (``operation: delete``).
+
     Parameters:
     -----------
     username : str
         The username of the user to delete.
     admin_username : str
         The authenticated admin username (injected by dependency).
+    admin_override : bool
+        Break glass for a row another source owns. Defaults to False.
 
     Returns:
     --------
@@ -363,12 +393,35 @@ async def delete_user(
     """
     try:
         # Check if user exists before attempting deletion
-        user = store.get_user_profile(username)
-        if not user:
+        detail = store.get_user_detail(username)
+        if not detail:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
 
-        # Delete the user
-        store.delete_user(username)
+        decision = evaluate_write(
+            detail.get("managed_by"),
+            MANUAL,
+            enforcement=config.MANAGED_BY_ENFORCEMENT,
+            admin_override=admin_override is True,
+            fields={"deleted"},
+            target_is_admin=bool(detail.get("is_admin")),
+        )
+        if decision.conflict and not decision.allowed:
+            _audit_delete_conflict(username, decision, admin_username)
+            raise HTTPException(status_code=409, detail=f"User {username} is managed by {decision.owner!r}: {decision.reason}")
+
+        # Orphan detection and the ORPHAN_FALLBACK_PRINCIPAL hand-over run inside the delete's own
+        # transaction, before the cascade removes the grants they read: a refused delete (the last
+        # active administrator) rolls the hand-over back too. They never block the delete (#324).
+        try:
+            delete_user_reporting_orphans(username, actor=admin_username, source="admin", store=store)
+        except MlflowException as e:
+            if e.error_code == ErrorCode.Name(INVALID_STATE):
+                raise HTTPException(status_code=409, detail=e.message)
+            raise
+        if decision.conflict:
+            # A permitted cross-source delete (report mode, or the override), recorded only once
+            # the delete has committed.
+            _audit_delete_conflict(username, decision, admin_username)
         emit_audit_event(
             "user.delete",
             actor=admin_username,
@@ -384,6 +437,83 @@ async def delete_user(
     except Exception as e:
         logger.error(f"Error deleting user {username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete user")
+
+
+@users_router.get(
+    USERS_DETAILS,
+    summary="List users with lifecycle state",
+    description="Lists users with their admin, service-account, active and managed_by state. Admins only.",
+)
+async def list_user_details(service: Optional[bool] = None, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    """List users as objects, for the admin UI (issue #320).
+
+    ``GET /users`` keeps returning a bare ``string[]`` — the UI and API clients depend on it —
+    so the richer shape is a separate, admin-only endpoint: ``managed_by`` and ``is_admin`` are
+    administrative information.
+
+    Parameters:
+        service: True for service accounts only, False for users only, omitted for both.
+        admin_username: The authenticated administrator (injected).
+
+    Returns:
+        JSONResponse: ``[{"username", "display_name", "is_admin", "is_service_account", "active",
+        "managed_by"}]``, ordered by creation.
+    """
+    try:
+        _, rows = store.list_user_details(is_service_account=service)
+    except Exception as e:
+        logger.error(f"Error listing user details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve users")
+    return JSONResponse(content=[{key: row[key] for key in USER_DETAIL_FIELDS} for row in rows])
+
+
+@users_router.patch(
+    USER_ACTIVE,
+    summary="Activate or deactivate a user",
+    description="Sets a user's active flag. Deactivating revokes their sessions and token and keeps their grants. Admins only.",
+)
+async def set_user_active(
+    username: str,
+    active_request: UserActiveRequest = Body(...),
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """Deactivate or reactivate a user from the admin API (issues #320, #324).
+
+    Goes through the same store write as a SCIM de-provision, as ``written_by='manual'``: a
+    directory-owned user is refused under ``MANAGED_BY_ENFORCEMENT=enforce`` unless the request
+    says ``admin_override: true`` — break glass, always audited.
+
+    Deactivation revokes every live session and replaces the user's token with an undisclosed,
+    already-expired secret in one transaction. Grants are retained, so reactivation restores
+    access once the user signs in again or is issued a new token.
+
+    Raises:
+        HTTPException: 404 for an unknown user; 409 when the ownership guard refuses the write
+            or it would leave no active administrator.
+    """
+    detail = store.get_user_detail(username)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"User {username} not found")
+
+    kwargs = {"active": active_request.active, "written_by": "manual", "admin_override": active_request.admin_override}
+    if active_request.active is False:
+        kwargs["password"] = generate_token()
+        kwargs["password_expiration"] = datetime.now(timezone.utc)
+    try:
+        store.update_user(detail["username"], **kwargs)
+    except MlflowException as e:
+        # The ownership guard and the last-active-admin invariant: both a refusal, never a 500.
+        raise HTTPException(status_code=409, detail=e.message)
+
+    target = detail["username"]
+    if active_request.active is False and detail["active"]:
+        emit_audit_event("user.deactivated", actor=admin_username, resource_type="user", resource_id=target, detail={"source": "admin"})
+        report_orphans(target, actor=admin_username, source="admin", store=store)
+    elif active_request.active is True and not detail["active"]:
+        emit_audit_event("user.reactivated", actor=admin_username, resource_type="user", resource_id=target, detail={"source": "admin"})
+
+    updated = store.get_user_detail(target)
+    return JSONResponse(content={key: updated[key] for key in USER_DETAIL_FIELDS})
 
 
 @users_router.get(
