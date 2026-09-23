@@ -47,7 +47,7 @@ Request → ProxyHeaders → Auth → WorkspaceContext → Session → Route Han
 |-----------|---------|
 | **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and client IP. When `TRUSTED_PROXIES` is configured, only applies headers from requests originating within the trusted CIDR ranges |
 | **AuthMiddleware** | Authenticates the user via basic auth, JWT bearer token, or session cookie. Sets `request.state.username`, `request.state.is_admin`, and `request.scope["mlflow_oidc_auth"]`. When `OIDC_AUDIENCE` is configured, JWT `aud` claim is validated |
-| **FastAPIPermissionMiddleware** | Enforces RBAC on MLflow's native FastAPI routers (gateway invocations, chat completions, embeddings). Extracts the gateway endpoint name from the URL path and checks USE permission before forwarding |
+| **FastAPIPermissionMiddleware** | Enforces RBAC on MLflow's native FastAPI routers (gateway invocations, chat completions, embeddings). Extracts the gateway endpoint name from the URL path and checks USE permission before forwarding. On the MCP server registry, reads are open to any authenticated user and mutations are admin-only |
 | **WorkspaceContextMiddleware** | When workspaces are enabled, reads the `X-MLFLOW-WORKSPACE` header and sets MLflow's workspace ContextVar so tracking store operations run in the correct workspace |
 | **SessionMiddleware** | Starlette's built-in cookie-based session. Decodes/encodes the signed session cookie |
 

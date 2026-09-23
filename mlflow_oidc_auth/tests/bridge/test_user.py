@@ -7,6 +7,8 @@ Updated to use AuthContext pattern instead of individual environ keys.
 import pytest
 from unittest.mock import Mock, patch
 from mlflow_oidc_auth.bridge.user import (
+    set_auth_context,
+    clear_auth_context,
     get_auth_context,
     get_fastapi_username,
     get_fastapi_admin_status,
@@ -387,6 +389,90 @@ class TestBridgeErrorHandling:
             # Verify log messages contain expected content
             log_calls = [call.args[0] for call in mock_logger.debug.call_args_list]
             assert any("Retrieved AuthContext from Flask environ" in msg for msg in log_calls)
+
+
+class TestContextVarFallback:
+    """Test ContextVar fallback for FastAPI-native routes (no Flask context)."""
+
+    def setup_method(self):
+        clear_auth_context()
+
+    def teardown_method(self):
+        clear_auth_context()
+
+    def test_get_auth_context_from_contextvar(self):
+        """When Flask is unavailable, get_auth_context falls back to the ContextVar."""
+        ctx = AuthContext(username="fastapi@example.com", is_admin=False, workspace="team-ws")
+        set_auth_context(ctx)
+
+        with patch.dict("sys.modules", {"flask": None}):
+            result = get_auth_context()
+            assert result is ctx
+            assert result.username == "fastapi@example.com"
+            assert result.workspace == "team-ws"
+
+    def test_get_request_workspace_from_contextvar(self):
+        """get_request_workspace returns workspace from ContextVar when Flask is unavailable"""
+        set_auth_context(AuthContext(username="user@example.com", is_admin=False, workspace="my-ws"))
+
+        with patch.dict("sys.modules", {"flask": None}):
+            assert get_request_workspace() == "my-ws"
+
+    def test_get_request_workspace_none_from_contextvar(self):
+        """get_request_workspace returns None when ContextVar has no workspace."""
+        set_auth_context(AuthContext(username="user@example.com", is_admin=False))
+
+        with patch.dict("sys.modules", {"flask": None}):
+            assert get_request_workspace() is None
+
+    def test_contextvar_cleared(self):
+        """After clear_auth_context, get_auth_context raises."""
+        set_auth_context(AuthContext(username="user@example.com", is_admin=False))
+        clear_auth_context()
+
+        with patch.dict("sys.modules", {"flask": None}):
+            with pytest.raises(Exception, match="Could not retrieve AuthContext"):
+                get_auth_context()
+
+    def test_flask_environ_takes_precedence(self):
+        """Flask env is preferred over ContextVar when both are available."""
+        flask_ctx = AuthContext(username="flask@example.com", is_admin=False, workspace="flask-ws")
+        cv_ctx = AuthContext(username="cv@example.com", is_admin=False, workspace="cv-ws")
+        set_auth_context(cv_ctx)
+
+        mock_request = Mock()
+        mock_request.environ = {"mlflow_oidc_auth": flask_ctx}
+
+        with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
+            result = get_auth_context()
+            assert result.username == "flask@example.com"
+            assert result.workspace == "flask-ws"
+
+    def test_contextvar_used_when_flask_environ_empty(self):
+        """ContextVar is used when Flask environ exists but has no AuthContext."""
+        cv_ctx = AuthContext(username="cv@example.com", is_admin=False, workspace="cv-ws")
+        set_auth_context(cv_ctx)
+
+        mock_request = Mock()
+        mock_request.environ = {}
+
+        with patch.dict("sys.modules", {"flask": Mock(request=mock_request)}):
+            result = get_auth_context()
+            assert result.username == "cv@example.com"
+
+    def test_get_fastapi_username_from_context_var(self):
+        """get_fastapi_username works via ContextVar fallback."""
+        set_auth_context(AuthContext(username="fastapi@example.com", is_admin=False))
+
+        with patch.dict("sys.modules", {"flask": None}):
+            assert get_fastapi_username() == "fastapi@example.com"
+
+    def test_get_fastapi_admin_status_from_context_var(self):
+        """get_fastapi_admin_status works via ContextVar fallback."""
+        set_auth_context(AuthContext(username="fastapi@example.com", is_admin=True))
+
+        with patch.dict("sys.modules", {"flask": None}):
+            assert get_fastapi_admin_status() is True
 
 
 class TestBridgeDataValidation:

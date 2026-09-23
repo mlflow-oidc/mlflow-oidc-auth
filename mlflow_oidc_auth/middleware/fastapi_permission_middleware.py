@@ -19,6 +19,8 @@ from typing import Any
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse, PlainTextResponse
 
+from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 
@@ -45,6 +47,10 @@ _GEMINI_STREAM = re.compile(r"^/gateway/gemini/v1beta/models/([^/:]+):streamGene
 
 # Pattern: /gateway/{endpoint_name}/mlflow/invocations
 _INVOCATIONS_RE = re.compile(r"^/gateway/([^/]+)/mlflow/invocations$")
+
+# MCP server registry, mounted by MLflow under both the API and the UI prefix
+# (mlflow.server.mcp_server_api.get_mcp_server_api_route_prefixes)
+_MCP_SERVER_PREFIXES = ("/api/3.0/mlflow/mcp-servers", "/ajax-api/3.0/mlflow/mcp-servers")
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +148,22 @@ def _get_require_authentication_validator() -> Callable[[str, Request], Awaitabl
     return validator
 
 
+def _get_mcp_server_registry_validator() -> Callable[[str, Request], Awaitable[bool]]:
+    """Return a validator for the MCP server registry routes.
+
+    The registry is a single catalog shared by every tenant, and there is no
+    per-server permission model for it yet. Reading it is open to any
+    authenticated user; mutating it is admin-only. Admins never reach this
+    validator (the middleware short-circuits on ``is_admin``), so denying
+    every write method here is what makes mutation admin-only.
+    """
+
+    async def validator(username: str, request: Request) -> bool:
+        return request.method in ("GET", "HEAD")
+
+    return validator
+
+
 # ---------------------------------------------------------------------------
 # Route → validator dispatcher
 # ---------------------------------------------------------------------------
@@ -166,6 +188,9 @@ def _find_fastapi_validator(
 
     if path.startswith("/ajax-api/3.0/mlflow/assistant"):
         return _get_require_authentication_validator()
+
+    if path.startswith(_MCP_SERVER_PREFIXES):
+        return _get_mcp_server_registry_validator()
 
     return None
 
@@ -209,6 +234,12 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         if is_admin:
             return await call_next(request)
 
+        # Bridge AuthContext into ContextVar so downstream permission code
+        # (e.g. _apply_workspace_fallback) can resolve the workspace even
+        # though these routes never enter Flask
+        auth_context = request.scope.get(AUTH_CONTEXT_KEY)
+        auth_context_token = set_auth_context(auth_context) if isinstance(auth_context, AuthContext) else None
+
         # Run the validator
         try:
             if not await validator(username, request):
@@ -222,5 +253,8 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
                 "Permission denied",
                 status_code=403,
             )
+        finally:
+            if auth_context_token is not None:
+                clear_auth_context(auth_context_token)
 
         return await call_next(request)

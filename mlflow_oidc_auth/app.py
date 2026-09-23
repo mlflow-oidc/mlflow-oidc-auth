@@ -192,6 +192,18 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
     except ImportError:
         logger.debug("mlflow.server.assistant.api not available — Assistant endpoints disabled")
 
+    # MCP server registry: /api/3.0/mlflow/mcp-servers/* and the /ajax-api twin.
+    # The router carries no prefix of its own; MLflow mounts one copy per prefix,
+    # so we do the same rather than going through `_include_router`.
+    try:
+        from mlflow.server.mcp_server_api import get_mcp_server_api_route_prefixes, mcp_server_router
+
+        for route_prefix in get_mcp_server_api_route_prefixes():
+            oidc_app.include_router(mcp_server_router, prefix=route_prefix)
+        logger.info("Included MLflow MCP server registry router (/api/3.0/mlflow/mcp-servers)")
+    except ImportError:
+        logger.debug("mlflow.server.mcp_server_api not available — MCP registry endpoints disabled")
+
 
 def create_app() -> FastAPI:
     """Create a FastAPI application with OIDC integration.
