@@ -186,9 +186,44 @@ access with no re-granting: the user signs in again, or is issued a new access t
 prior grants apply exactly as before.
 
 On deactivation and on hard delete, the plugin looks for resources where the departing user was
-the **last holder of `MANAGE`** — no other active user or group member holds it — across
-experiments, registered models, prompts, scorers, gateway endpoints, model definitions, secrets,
-and workspaces, and emits a `resource.orphaned` audit event per resource. A hard delete additionally
+the **last holder of `MANAGE`** across experiments, registered models, prompts, scorers, gateway
+endpoints, model definitions, secrets, and workspaces, and emits a `resource.orphaned` audit event
+per resource.
+
+The departing user's resources are the ones they hold `MANAGE` on **directly** or **through a
+group**; `detail.via` on the event says which (`"direct"` or `"group:<name>"`). A resource they could
+manage only through a regex grant is not enumerated: a pattern matches resources in MLflow, including
+ones that do not exist yet.
+
+Anyone in this list still holds the resource, so it is **not** orphaned:
+
+| Holder | Counts when |
+|---|---|
+| A user with a direct `MANAGE` grant | the user is active and is not the departing user |
+| A group with `MANAGE` on the resource | the group has an active member other than the departing user |
+| A user's regex grant | the user is active, is not the departing user, and their patterns resolve to `MANAGE` for the resource |
+| A group regex grant | an active member other than the departing user has group patterns that resolve to `MANAGE` for the resource |
+
+So a group in which the departing user was the **last active member** does not keep a resource
+managed. Resources they managed only through that group are reported as `via: "group:<name>"`.
+
+Regex grants resolve the way they do at request time. Patterns are tried in priority order and the
+first match wins; for workspaces, the most permissive of the best-priority matches wins. So a
+higher-priority `READ` pattern shadows a lower-priority `MANAGE` one. Each pattern is matched against
+the same value the resolver uses:
+
+- experiments: the experiment **name**
+- registered models and prompts: the name, using model patterns for models and prompt patterns for
+  prompts
+- scorers: the scorer name
+- gateway resources and workspaces: their name
+
+Each source is evaluated on its own; `PERMISSION_SOURCE_ORDER` is not replayed across sources.
+Experiment names and the model-or-prompt distinction come from MLflow. At most 200 of those lookups
+are made per resource type. A resource that cannot be resolved is reported as orphaned rather than
+assumed held. Administrators are not counted, because an administrator can always recover a resource.
+
+A hard delete additionally
 grants `MANAGE` on each orphaned resource to `ORPHAN_FALLBACK_PRINCIPAL` when it names an active
 user; deactivation never transfers, since a deactivated user may come back. Orphan detection never
 blocks the deprovisioning itself — a failure there is logged, not raised.

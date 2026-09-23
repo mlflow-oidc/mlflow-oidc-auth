@@ -396,12 +396,14 @@ removed. Use it for the rarer "gone for good" case.
 ### Orphaned resources
 
 On deactivation and on delete (through SCIM or the admin API), the plugin looks for resources
-where the departing user is the **last holder of `MANAGE`**. That means no other *active* user
-holds `MANAGE` directly, and no group holding `MANAGE` has another active member. It checks
-experiments, registered models and prompts, scorers, gateway endpoints, model definitions and
-secrets, and workspaces. It emits one `resource.orphaned` audit event per resource, with
-`resource_type`, `resource_id` and `detail.user`. Regex grants are not resolved against resource
-names, and administrators are not counted: an administrator can always recover a resource.
+where the departing user is the **last holder of `MANAGE`**. The departing user holds it directly
+or through a group. Nobody else holds it: no other active user directly or through a regex grant, and
+no group or group regex grant with another active member. A group in which the departing user was
+the last active member does not count. It checks experiments, registered models and prompts, scorers,
+gateway endpoints, model definitions and secrets, and workspaces. It emits one `resource.orphaned`
+audit event per resource, with `resource_type`, `resource_id`, `detail.user` and `detail.via`
+(`"direct"` or `"group:<name>"`). Administrators are not counted: an administrator can always recover
+a resource. See [Permissions](permissions#de-provisioning) for how regex grants are matched.
 
 If `ORPHAN_FALLBACK_PRINCIPAL` is set, a hard delete first grants that user `MANAGE` on each
 orphaned resource (`detail.transferred_to` on the event). The fallback must be an existing,
