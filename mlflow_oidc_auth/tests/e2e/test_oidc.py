@@ -99,8 +99,15 @@ class TestLoginAndProvisioning:
         assert rows[0]["username"] == ALICE
         assert rows[0]["provider_id"] in (OIDC_PROVIDER_ID, None)
         assert rows[0]["revoked_at"] is None
-        # The provider tokens are on the row, encrypted — none of them is readable there either.
-        assert rows[0]["encrypted_tokens"] and "eyJ" not in rows[0]["encrypted_tokens"]
+        # The provider tokens are on the row, encrypted: a Fernet token (version byte 0x80 encodes
+        # as "gAAAA"), never a JSON document, and it decrypts with the server's key into the
+        # tokens the IdP issued. A substring check for a JWT prefix would be flaky here, since
+        # random ciphertext eventually contains any short string.
+        blob = rows[0]["encrypted_tokens"]
+        assert blob and blob.startswith("gAAAA") and not blob.lstrip().startswith("{")
+        tokens = TokenVault(app_server.secret_key).decrypt(blob)
+        assert tokens is not None and tokens.refresh_token and tokens.id_token
+        assert tokens.id_token.startswith("eyJ") and tokens.expires_at
 
     def test_first_login_provisions_a_manual_user_with_synced_groups(self, app_server):
         alice = flows.session_cookie(flows.login(app_server, ALICE))
