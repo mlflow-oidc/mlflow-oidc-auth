@@ -115,7 +115,7 @@ class TestAuthorizationGate:
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice"})
             create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False, written_by="oidc:default")
-            populate_groups.assert_called_once_with(group_names=["mlflow-users"])
+            populate_groups.assert_called_once_with(group_names=["mlflow-users"], written_by="oidc:default")
             update_user.assert_called_once_with(username="a@x.com", group_names=["mlflow-users"], written_by="oidc:default")
 
 
@@ -195,7 +195,7 @@ class TestRobustness:
             _cfg(cfg)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": "mlflow-users"})
-            populate_groups.assert_called_once_with(group_names=["mlflow-users"])
+            populate_groups.assert_called_once_with(group_names=["mlflow-users"], written_by="oidc:default")
 
     def test_provisioning_error_is_swallowed(self):
         """A concurrent-insert IntegrityError (or any provisioning failure) must not raise."""

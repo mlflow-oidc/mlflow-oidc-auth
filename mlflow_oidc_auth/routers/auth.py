@@ -1356,7 +1356,7 @@ def _provision_login(
         is_new_user=outcome.create,
     )
     if groups is not None:
-        user_module.populate_groups(group_names=groups)
+        user_module.populate_groups(group_names=groups, written_by=f"{method}:{provider.id}")
         # Attributed to the provider (#360): the memberships this creates are owned by it, and an
         # authoritative sync removes only what the guard lets it — its own rows and unowned
         # ``manual`` ones everywhere, another source's only outside ``enforce``.

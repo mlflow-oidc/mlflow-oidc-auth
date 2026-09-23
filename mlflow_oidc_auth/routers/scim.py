@@ -806,11 +806,15 @@ async def scim_delete_user(user_id: str, request: Request) -> Response:
 # is stored on the group (``groups.external_id``, unique when present) and is found with
 # ``filter=externalId eq "..."`` only, never as an id, for the same reason as for users.
 #
+# **Group ownership.** Groups record who created them (``groups.managed_by``). Every write to a
+# group checks its owner first: under ``enforce`` SCIM writes only ``scim``-owned groups, so a SCIM
+# token cannot put users into, or delete, a login-derived, Kubernetes namespace or hand-made group.
+#
 # **Membership ownership (#360).** Every membership SCIM writes is ``managed_by='scim'``, per row,
-# so it coexists with memberships an administrator or a login's claims granted. SCIM may always add;
-# it removes through the ownership guard — see ``repository/group.py``. A ``PUT`` or a ``replace``
-# of ``members`` is a sync and leaves rows it may not remove in place; a ``remove`` names what it
-# removes and is refused outright (409 ``mutability``) with nothing applied.
+# so it coexists with memberships an administrator or a login's claims granted. A ``PUT`` or a
+# ``replace`` of ``members`` is a sync and never removes another source's row; a ``remove`` names
+# what it removes and, under ``enforce``, is refused outright (409 ``mutability``) with nothing
+# applied. See ``repository/group.py``.
 #
 # **Service accounts** are invisible here as they are on ``/Users``: never listed as members, never
 # addable, and never removed by a ``PUT``.

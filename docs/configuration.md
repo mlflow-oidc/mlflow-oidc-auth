@@ -212,27 +212,32 @@ owner:
 | A login's claims, bearer provisioning, a service account | `oidc:<provider>` or `saml:<provider>` |
 
 Adding a membership never counts as a cross-source write: the writer owns the new row, and a
-membership that already exists keeps its owner. Removing one goes through the guard, with the
-membership's owner as the row owner:
+membership that already exists keeps its owner. Removing one depends on the membership's owner
+and on the kind of write:
 
-| Membership owner | Removed by its own source | Removed by another source under `report` | ...under `enforce` |
+| Membership owner | Removed by its own source | By another source's **sync** (login, SCIM `PUT`) | By another source's targeted removal |
 |---|---|---|---|
-| `manual` | yes | yes | yes, except that SCIM may not remove a hand-made administrator's |
-| `scim`, `oidc:*`, `saml:*` | yes | yes, audited | **kept**, audited as refused |
+| `manual` | yes | yes | yes, except that SCIM may not remove a hand-made administrator's under `enforce` |
+| `scim`, `oidc:*`, `saml:*` | yes | **never, in any mode**; recorded under `report` and `enforce` | `report`: yes, audited. `enforce`: refused |
 
-An `authoritative` login therefore still revokes its own memberships and every `manual` one.
-Every membership that predates this is `manual`, so revocation keeps working after an upgrade
-without a backfill. Under `enforce`, a login leaves SCIM's and other providers' memberships in
-place. Under `report` (the default) it removes them as it always has, and records
-`user.ownership_conflict` with `detail.operation: "membership.remove"` and `detail.group`.
+An `authoritative` login therefore revokes its own memberships and every `manual` one, and
+leaves SCIM's and other providers' in place in every mode. Every membership that predates this is
+`manual`, so revocation keeps working after an upgrade without a backfill, and a deployment that
+changes nothing sees no change. Each membership a sync leaves in place is recorded as
+`user.ownership_conflict` with `detail.operation: "membership.remove"` and `detail.group`, except
+under `off`.
 
-A sync (a login, or a SCIM `PUT`) never fails because a row was kept: failing it would lock the
-user or the group out of every future sync. A targeted removal fails with nothing applied
-(`409` from SCIM).
+A sync never fails because a row was kept: failing it would lock the user or the group out of
+every future sync. A targeted removal fails with nothing applied (`409` from SCIM).
 
-To let SCIM groups and an `authoritative` provider share users under `report`, set the provider's
-`group_sync_mode` to `additive`, or move to `enforce`. Otherwise every login removes the
-directory's memberships and the next SCIM sync adds them back.
+### Group ownership
+
+Groups record who created them too (`groups.managed_by`): `scim` for SCIM, `oidc:<provider>` /
+`saml:<provider>` for a group a login's claims brought into existence (a Kubernetes namespace
+group included), and `manual` for everything else, including every group that existed before the
+column. Under `enforce` SCIM may write, fill or delete only the groups it owns. See
+[SCIM: Group ownership](scim#group-ownership). `reconcile-ownership --groups` hands a group to
+another source.
 
 ### Changing ownership
 
@@ -257,7 +262,9 @@ runs. `restore-ownership` is also a dry run without `--apply`.
 **This is the repair path when a source is turned off.** Point `--from-owner` at it and
 `--set-owner` at `manual`, and the rows it used to own become editable again.
 
-Add `--memberships` to re-own group memberships too. `--from-owner` then matches each
+Add `--groups` (optionally with `--group NAME`) to re-own groups instead of user rows, for
+example to let a directory manage a group that existed before it. Add `--memberships` to re-own
+group memberships too. `--from-owner` then matches each
 membership's owner, and `--username` the member. The journal records them, and
 `restore-ownership` puts them back. From the API, `PATCH /api/2.0/mlflow/users/ownership` with
 `"memberships": true` hands all of one user's memberships to the new owner. Without one of these,

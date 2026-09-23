@@ -60,8 +60,9 @@ def create_user(
         return True, f"User {user.username} (ID: {user.id}) successfully created"
 
 
-def populate_groups(group_names: list) -> None:
-    store.populate_groups(group_names=group_names)
+def populate_groups(group_names: list, written_by: Optional[str] = None) -> None:
+    """Create the missing groups. ``written_by`` owns the ones created (#323 review)."""
+    store.populate_groups(group_names=group_names, written_by=written_by)
 
 
 def update_user(username: str, group_names: list, written_by: Optional[str] = None, admin_override: bool = False) -> None:

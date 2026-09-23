@@ -145,22 +145,29 @@ class TestLoginDoesNotStripTheDirectorysGroups:
             "group": "finance",
         }
 
-    def test_report_removes_as_before_and_records_it(self, store, directory_member, audit_events):
-        """``report`` changes nothing about the outcome — that is the back-compat promise — and
-        records what ``enforce`` would have refused."""
+    def test_report_keeps_them_too_and_records_it(self, store, directory_member, audit_events):
+        """A sync never removes another source's membership, in any mode: under ``report`` the
+        skipped row is recorded. Every pre-existing row is ``manual``, so a deployment that changes
+        nothing sees no change."""
         login(ALICE, ["mlflow-users"])
 
-        assert owners(store, ALICE) == {"mlflow-users": "oidc:default"}
+        assert owners(store, ALICE) == {"finance": "scim", "mlflow-users": "oidc:default"}
         [event] = conflicts(audit_events, "membership.remove")
-        assert (event["status"], event["detail"]["permitted"], event["detail"]["group"]) == ("success", True, "finance")
+        assert (event["status"], event["detail"]["permitted"], event["detail"]["group"]) == ("denied", False, "finance")
 
-    def test_off_removes_silently(self, store, directory_member, audit_events, monkeypatch):
+    def test_off_keeps_them_silently(self, store, directory_member, audit_events, monkeypatch):
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.OFF)
 
         login(ALICE, ["mlflow-users"])
 
-        assert owners(store, ALICE) == {"mlflow-users": "oidc:default"}
+        assert owners(store, ALICE) == {"finance": "scim", "mlflow-users": "oidc:default"}
         assert conflicts(audit_events) == []
+
+    def test_groups_a_login_creates_are_the_providers(self, store):
+        login(ALICE, ["mlflow-users", "brand-new"])
+
+        assert store.get_group_detail("brand-new")["managed_by"] == "oidc:default"
+        assert store.get_group_detail("mlflow-users")["managed_by"] == "manual", "an existing group keeps its owner"
 
     def test_the_permission_the_scim_group_carries_survives_the_login(self, store, enforce, directory_member):
         """Membership is only interesting for what it grants: resolve through the real permission path."""
@@ -216,7 +223,9 @@ class TestAuthoritativeStillRevokes:
 
 
 class TestTwoProviders:
-    def test_one_providers_authoritative_sync_leaves_the_others_memberships_under_enforce(self, store, enforce):
+    @pytest.mark.parametrize("mode", list(Enforcement))
+    def test_one_providers_authoritative_sync_leaves_the_others_memberships(self, store, monkeypatch, mode):
+        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", mode)
         store.populate_groups(["partner:eng"])
         store.add_user_to_group(ALICE, "partner:eng", written_by="oidc:partner")
 

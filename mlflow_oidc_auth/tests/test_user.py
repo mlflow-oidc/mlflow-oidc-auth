@@ -228,34 +228,34 @@ class TestPopulateGroups:
     def test_populate_groups_single_group(self, mock_store):
         """Test populating a single group"""
         user.populate_groups(["admin"])
-        mock_store.populate_groups.assert_called_once_with(group_names=["admin"])
+        mock_store.populate_groups.assert_called_once_with(group_names=["admin"], written_by=None)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_populate_groups_multiple_groups(self, mock_store):
         """Test populating multiple groups"""
         groups = ["admin", "users", "developers"]
         user.populate_groups(groups)
-        mock_store.populate_groups.assert_called_once_with(group_names=groups)
+        mock_store.populate_groups.assert_called_once_with(group_names=groups, written_by=None)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_populate_groups_empty_list(self, mock_store):
         """Test populating with empty group list"""
         user.populate_groups([])
-        mock_store.populate_groups.assert_called_once_with(group_names=[])
+        mock_store.populate_groups.assert_called_once_with(group_names=[], written_by=None)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_populate_groups_with_special_characters(self, mock_store):
         """Test populating groups with special characters"""
         groups = ["group-1", "group_2", "group@domain.com"]
         user.populate_groups(groups)
-        mock_store.populate_groups.assert_called_once_with(group_names=groups)
+        mock_store.populate_groups.assert_called_once_with(group_names=groups, written_by=None)
 
     @patch("mlflow_oidc_auth.user.store")
     def test_populate_groups_with_duplicates(self, mock_store):
         """Test populating groups with duplicate names"""
         groups = ["admin", "admin", "users"]
         user.populate_groups(groups)
-        mock_store.populate_groups.assert_called_once_with(group_names=groups)
+        mock_store.populate_groups.assert_called_once_with(group_names=groups, written_by=None)
 
 
 class TestUpdateUser:
@@ -327,7 +327,7 @@ class TestUserModuleIntegration:
         # Verify all calls were made
         mock_store.get_user_profile.assert_called_with("workflow_user")
         mock_store.create_user.assert_called_once()
-        mock_store.populate_groups.assert_called_once_with(group_names=groups)
+        mock_store.populate_groups.assert_called_once_with(group_names=groups, written_by=None)
         mock_store.set_user_groups.assert_called_once_with("workflow_user", groups, written_by=None, admin_override=False)
 
 
@@ -377,7 +377,7 @@ def test_create_user_new_user(mock_store, mock_generate_token):
 def test_populate_groups(mock_store):
     """Legacy test for backward compatibility"""
     user.populate_groups(["g1", "g2"])
-    mock_store.populate_groups.assert_called_once_with(group_names=["g1", "g2"])
+    mock_store.populate_groups.assert_called_once_with(group_names=["g1", "g2"], written_by=None)
 
 
 @patch("mlflow_oidc_auth.user.store")

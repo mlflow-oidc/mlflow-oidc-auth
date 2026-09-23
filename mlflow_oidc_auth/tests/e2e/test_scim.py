@@ -326,10 +326,10 @@ def test_okta_put_replaces_membership_for_keycloak_users(app_server, keycloak, s
     assert flows.api_get(app_server, get_experiment, carol).status_code == 200
 
 
-def test_an_authoritative_login_under_report_removes_the_directory_membership_and_records_it(app_server, keycloak, scim_token, group_grant):
-    """The documented interplay under the default MANAGED_BY_ENFORCEMENT=report (#360): Keycloak's
-    claims do not carry the directory group, the default provider syncs authoritatively, and the
-    login removes the SCIM membership exactly as before — but no longer silently."""
+def test_an_authoritative_login_keeps_the_directory_membership_and_records_it(app_server, keycloak, scim_token, group_grant):
+    """Keycloak's claims do not carry the directory group and the default provider syncs
+    authoritatively; the login still leaves the SCIM membership alone — a sync removes only its
+    own and unowned memberships, in every mode — and, under the default ``report``, records it."""
     group, _ = group_grant
     flows.login(app_server, ALICE)
     added = _scim(
@@ -343,13 +343,13 @@ def test_an_authoritative_login_under_report_removes_the_directory_membership_an
 
     flows.login(app_server, ALICE)
 
-    assert _group_members(app_server, scim_token, group) == []
+    assert _group_members(app_server, scim_token, group) == [ALICE]
     conflicts = [
         e
         for e in app_server.audit_events("user.ownership_conflict")
         if e.get("detail", {}).get("group") == group and e["detail"].get("operation") == "membership.remove"
     ]
-    assert [(e["detail"]["owner"], e["detail"]["written_by"], e["detail"]["permitted"]) for e in conflicts] == [("scim", "oidc:default", True)]
+    assert [(e["detail"]["owner"], e["detail"]["written_by"], e["detail"]["permitted"]) for e in conflicts] == [("scim", "oidc:default", False)]
 
 
 def _eventually_status(app_server, path: str, cookie: str, expected: int, attempts: int = 10) -> bool:

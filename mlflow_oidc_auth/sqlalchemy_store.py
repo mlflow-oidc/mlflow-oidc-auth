@@ -526,8 +526,9 @@ class SqlAlchemyStore:
     def list_experiment_permissions_for_experiment(self, experiment_id: str) -> List[ExperimentPermission]:
         return self.experiment_repo.list_permissions_for_experiment(experiment_id)
 
-    def populate_groups(self, group_names: List[str]):
-        return self.group_repo.create_groups(group_names)
+    def populate_groups(self, group_names: List[str], written_by: Optional[str] = None):
+        """Create the missing groups, owned by ``written_by`` (default ``manual``)."""
+        return self.group_repo.create_groups(group_names, written_by=written_by)
 
     def get_groups(self) -> List[str]:
         return self.group_repo.list_groups()

@@ -7,21 +7,22 @@ carrier, so the ``managed_by`` guard (:mod:`mlflow_oidc_auth.ownership`) covers 
 
 * **Adding** a membership is never a cross-source write. It creates a row the writer owns. A row
   that already exists keeps its owner — nothing here re-owns a membership.
-* **Removing** one is. It goes through :func:`~mlflow_oidc_auth.ownership.evaluate_write` with the
-  row's own ``managed_by`` as the owner: ``manual`` rows are removable by any source (they are what
-  every membership written before #360 is, so an authoritative login keeps revoking them exactly as
-  it did), a source's own rows are removable by it, and another source's rows are what the
-  three-state ``MANAGED_BY_ENFORCEMENT`` decides — ``report`` removes and records, ``enforce``
-  keeps the row and records the refusal, ``off`` removes silently.
-
-Two kinds of write use that rule differently:
-
+* **Removing** one depends on who owns the row and on the kind of write. ``manual`` rows are
+  removable by any source (they are what every membership written before #360 is, so an
+  authoritative login keeps revoking them exactly as it did), and a source's own rows by it.
 * A **sync** (:meth:`GroupRepository.set_groups_for_user`, a SCIM ``PUT``) states the whole
-  membership the writer wants. Rows it may not remove are left in place and the rest is applied —
-  refusing the whole sync would stop a directory or an IdP from ever updating that user or group
-  again, which is the lockout the guard must not cause.
-* A **targeted** removal (SCIM ``PATCH`` ``remove``, group ``DELETE``) names what it removes. A
-  refusal refuses the whole write, atomically, so a directory never believes a removal landed.
+  membership the writer wants, and **never removes another source's row, in any mode**; it is
+  recorded as a conflict under ``report`` and ``enforce``. Refusing the whole sync would stop a
+  directory or an IdP from ever updating that user or group again, and removing the row would
+  undo the other source's decision at every sign-in.
+* A **targeted** removal (SCIM ``PATCH`` ``remove``) of another source's row goes through
+  :func:`~mlflow_oidc_auth.ownership.evaluate_write`: removed and recorded under ``report``,
+  refused atomically under ``enforce``, removed silently under ``off``.
+
+**Group ownership.** Groups carry ``managed_by`` too. Every group-centric write here (SCIM
+``/Groups``) checks the group's owner with
+:func:`~mlflow_oidc_auth.ownership.evaluate_group_write` before anything else: only the owning
+source writes a group under ``enforce``.
 """
 
 from dataclasses import dataclass, field
@@ -35,7 +36,7 @@ from sqlalchemy.orm import Session
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
 from mlflow_oidc_auth.entities import User
-from mlflow_oidc_auth.ownership import MANUAL, OwnershipDecision, evaluate_write
+from mlflow_oidc_auth.ownership import MANUAL, Enforcement, OwnershipDecision, evaluate_group_write, evaluate_write
 from mlflow_oidc_auth.repository.utils import get_group, get_user
 
 #: What a membership removal changes, for :func:`evaluate_write`. Not in ``LOGIN_WRITABLE_FIELDS``:
@@ -161,6 +162,62 @@ class MembershipRefused(MlflowException):
         self.outcome = outcome
 
 
+class GroupWriteRefused(MlflowException):
+    """A SCIM (or other source's) write to a group another source owns, refused. Nothing was written."""
+
+    def __init__(self, group_name: str, decision: OwnershipDecision, written_by: Optional[str]):
+        super().__init__(
+            f"Group '{group_name}' is managed by {decision.owner!r} and cannot be changed by {written_by or MANUAL!r}: {decision.reason}.",
+            INVALID_PARAMETER_VALUE,
+        )
+        self.group_name = group_name
+        self.decision = decision
+
+
+def audit_group_conflict(group_name: str, decision: OwnershipDecision, written_by: Optional[str], *, actor: Optional[str], operation: str) -> None:
+    """Record a write to a group owned by another source as ``group.ownership_conflict``."""
+    from mlflow_oidc_auth.audit import emit_audit_event
+
+    emit_audit_event(
+        "group.ownership_conflict",
+        actor=actor or written_by or MANUAL,
+        resource_type="group",
+        resource_id=group_name,
+        detail={
+            "owner": decision.owner,
+            "written_by": written_by or MANUAL,
+            "reason": decision.reason,
+            "permitted": decision.allowed,
+            "operation": operation,
+        },
+        status="success" if decision.allowed else "denied",
+    )
+
+
+def _foreign_sync_row(row: SqlUserGroup, written_by: Optional[str], admin_override: bool) -> Optional[OwnershipDecision]:
+    """The decision for a sync meeting a membership another source owns, or None if it is not one.
+
+    **A sync never removes another source's membership, in any mode** — only its own and unowned
+    (``manual``) ones. Every membership that predates ownership is ``manual``, so a deployment that
+    changes nothing sees no change, while a directory's memberships stop vanishing at each sign-in
+    (Entra and Okta do not re-send a membership they believe exists). The skipped row is recorded as
+    a conflict under ``report`` and ``enforce``; ``off`` skips it silently. An administrator override
+    is the one exception: it removes, and is recorded.
+    """
+    owner = row.managed_by or MANUAL
+    if owner in (MANUAL, written_by or MANUAL):
+        return None
+    if admin_override:
+        return OwnershipDecision(allowed=True, conflict=True, owner=owner, reason=f"administrator override: removing a membership owned by {owner!r}")
+    enforcement = config.MANAGED_BY_ENFORCEMENT
+    return OwnershipDecision(
+        allowed=False,
+        conflict=enforcement != Enforcement.OFF,
+        owner=owner,
+        reason=f"a sync by {written_by or MANUAL!r} removes only its own and unowned memberships, not one owned by {owner!r}; left in place",
+    )
+
+
 class GroupRepository:
     def __init__(self, session_maker):
         self._Session: Callable[[], Session] = session_maker
@@ -179,16 +236,21 @@ class GroupRepository:
             except IntegrityError as e:
                 raise MlflowException(f"Group '{group_name}' exists: {e}", RESOURCE_ALREADY_EXISTS)
 
-    def create_groups(self, group_names: List[str]) -> None:
-        """
-        Create multiple groups.
+    def create_groups(self, group_names: List[str], written_by: Optional[str] = None) -> None:
+        """Create whichever of ``group_names`` do not exist yet, owned by ``written_by``.
+
+        An existing group keeps its owner. A login passes its source (``oidc:<id>`` /
+        ``saml:<id>``), so the groups its claims bring into existence are the provider's and a SCIM
+        token may not write them under ``enforce``.
+
         :param group_names: A list of group names to be created.
+        :param written_by: The creating source; None means ``manual``.
         """
         with self._Session(read_only=False) as session:
             for group_name in group_names:
                 group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).first()
                 if group is None:
-                    group = SqlGroup(group_name=group_name)
+                    group = SqlGroup(group_name=group_name, managed_by=written_by or MANUAL)
                     session.add(group)
             session.flush()
 
@@ -268,17 +330,20 @@ class GroupRepository:
     # ------------------------------------------------------------------------------------------
 
     @staticmethod
-    def _remove_rows(session, rows, outcome: MembershipOutcome, *, written_by: Optional[str], admin_override: bool, strict: bool) -> None:
+    def _remove_rows(session, rows, outcome: MembershipOutcome, *, written_by: Optional[str], admin_override: bool, strict: bool, sync: bool = False) -> None:
         """Delete the membership rows the guard permits, recording every conflict in ``outcome``.
 
         ``rows`` are ``(SqlUserGroup, SqlUser, group_name)``. With ``strict`` a refusal raises
         :class:`MembershipRefused` after every row has been evaluated — the caller's transaction
         then rolls back, so a targeted write is all-or-nothing. Without it a refused row is left in
-        place and the rest proceeds.
+        place and the rest proceeds. With ``sync`` another source's rows are never removed, in any
+        mode (see :func:`_foreign_sync_row`).
         """
         refused_here = False
         for row, user, group_name in rows:
-            decision = _evaluate_removal(row, user, written_by, admin_override)
+            decision = _foreign_sync_row(row, written_by, admin_override) if sync else None
+            if decision is None:
+                decision = _evaluate_removal(row, user, written_by, admin_override)
             if decision.conflict:
                 outcome.conflicts.append(MembershipConflict(user.username, group_name, decision))
             if decision.allowed:
@@ -307,14 +372,12 @@ class GroupRepository:
           ``written_by``.
         * A group the user is already in: left as it is, including its owner. A login re-asserting
           a membership the directory granted does not take it over.
-        * A membership not in ``group_names``: removed through the ownership guard. ``manual`` rows
-          and ``written_by``'s own rows are removed; so an ``authoritative`` provider keeps revoking
-          what its claims no longer assert, including every membership written before #360 (they
-          are all ``manual``), and ``group_sync_mode: additive`` — which passes the current
-          membership back in — still never removes anything. A row another source owns is the
-          cross-source case: removed and audited under ``report`` (today's behaviour, now
-          recorded), **kept** and audited as refused under ``enforce``, removed silently under
-          ``off``.
+        * A membership not in ``group_names``: removed if it is ``written_by``'s own or unowned
+          (``manual``). So an ``authoritative`` provider keeps revoking what its claims no longer
+          assert, including every membership written before #360, and ``group_sync_mode:
+          additive`` — which passes the current membership back in — still never removes
+          anything. A row another source owns is **never removed, in any mode** (see
+          :func:`_foreign_sync_row`); it is recorded under ``report`` and ``enforce``.
 
         The sync never raises for an ownership refusal: refusing a login because the directory also
         grants the user a group would lock every directory-provisioned user out of SSO under
@@ -351,7 +414,7 @@ class GroupRepository:
             )
             held = {row.group_id for row, _ in existing}
             stale = [(row, user, name if name is not None else str(row.group_id)) for row, name in existing if row.group_id not in wanted]
-            self._remove_rows(session, stale, outcome, written_by=written_by, admin_override=admin_override, strict=False)
+            self._remove_rows(session, stale, outcome, written_by=written_by, admin_override=admin_override, strict=False, sync=True)
             for group_id, group_name in wanted.items():
                 if group_id not in held:
                     session.add(SqlUserGroup(user_id=user.id, group_id=group_id, managed_by=written_by or MANUAL))
@@ -444,6 +507,7 @@ class GroupRepository:
         return {
             "group_name": group.group_name,
             "external_id": group.external_id,
+            "managed_by": group.managed_by or MANUAL,
             "created_at": group.created_at,
             "updated_at": group.updated_at,
         }
@@ -557,7 +621,7 @@ class GroupRepository:
                 raise MlflowException(f"Group '{group_name}' exists", RESOURCE_ALREADY_EXISTS)
             self._assert_external_id_free(session, external_id, None)
             users = self._resolve_members(session, members, include_service_accounts=False)
-            group = SqlGroup(group_name=group_name, external_id=external_id or None)
+            group = SqlGroup(group_name=group_name, external_id=external_id or None, managed_by=written_by)
             session.add(group)
             try:
                 session.flush()
@@ -607,9 +671,13 @@ class GroupRepository:
         from datetime import datetime, timezone
 
         outcome = MembershipOutcome()
+        group_decision = None
         try:
             with self._Session(read_only=False) as session:
                 group = get_group(session, group_name)
+                group_decision = evaluate_group_write(group.managed_by, written_by, enforcement=config.MANAGED_BY_ENFORCEMENT, admin_override=admin_override)
+                if not group_decision.allowed:
+                    raise GroupWriteRefused(group.group_name, group_decision, written_by)
                 if external_id is not UNSET:
                     self._assert_external_id_free(session, external_id, group.id)
                     group.external_id = external_id or None
@@ -643,7 +711,7 @@ class GroupRepository:
                         wanted = self._resolve_members(session, usernames or [], include_service_accounts=False)
                         wanted_ids = {user.id for user in wanted}
                         rows = [(row, user, group.group_name) for uid, (row, user) in members.items() if uid not in wanted_ids]
-                        self._remove_rows(session, rows, outcome, written_by=written_by, admin_override=admin_override, strict=False)
+                        self._remove_rows(session, rows, outcome, written_by=written_by, admin_override=admin_override, strict=False, sync=True)
                         for user in wanted:
                             if user.id not in members:
                                 session.add(SqlUserGroup(user_id=user.id, group_id=group.id, managed_by=written_by))
@@ -664,9 +732,14 @@ class GroupRepository:
                     raise MlflowException(f"external id {external_id!r} is already bound to another group", RESOURCE_ALREADY_EXISTS) from e
                 detail = self._group_detail(group)
                 detail["members"] = self._members_by_group(session, [group.id], include_service_accounts=False)[group.id]
+        except GroupWriteRefused as refused:
+            audit_group_conflict(refused.group_name, refused.decision, written_by, actor=actor, operation="group.write")
+            raise
         except MembershipRefused as refused:
             audit_membership_conflicts(MembershipOutcome(conflicts=refused.outcome.refused), written_by, actor=actor)
             raise
+        if group_decision is not None and group_decision.conflict:
+            audit_group_conflict(detail["group_name"], group_decision, written_by, actor=actor, operation="group.write")
         audit_membership_conflicts(outcome, written_by, actor=actor)
         return outcome, detail
 
@@ -709,9 +782,14 @@ class GroupRepository:
 
         outcome = MembershipOutcome()
         grants: Dict[str, int] = {}
+        group_decision = None
         try:
             with self._Session(read_only=False) as session:
                 group = get_group(session, group_name)
+                # The group's own owner first: a source may not delete a group it does not own.
+                group_decision = evaluate_group_write(group.managed_by, written_by, enforcement=config.MANAGED_BY_ENFORCEMENT, admin_override=admin_override)
+                if not group_decision.allowed:
+                    raise GroupWriteRefused(group.group_name, group_decision, written_by)
                 rows = (
                     session.query(SqlUserGroup, SqlUser)
                     .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
@@ -750,8 +828,13 @@ class GroupRepository:
                 outcome.removed.extend((user.username, group.group_name) for _, user in rows)
                 session.delete(group)
                 session.flush()
+        except GroupWriteRefused as refused:
+            audit_group_conflict(refused.group_name, refused.decision, written_by, actor=actor, operation="group.delete")
+            raise
         except MembershipRefused as refused:
             audit_membership_conflicts(MembershipOutcome(conflicts=refused.outcome.refused), written_by, actor=actor, operation="group.delete")
             raise
+        if group_decision is not None and group_decision.conflict:
+            audit_group_conflict(group_name, group_decision, written_by, actor=actor, operation="group.delete")
         audit_membership_conflicts(outcome, written_by, actor=actor, operation="group.delete")
         return outcome.removed, grants

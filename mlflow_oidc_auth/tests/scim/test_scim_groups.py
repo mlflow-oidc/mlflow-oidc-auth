@@ -379,13 +379,13 @@ class TestOktaPut:
 
 class TestMembershipOwnership:
     """SCIM + manual + claim-derived memberships on one user, resolved through the real permission
-    path; and what SCIM may and may not remove of the other two."""
+    path; and what SCIM may and may not remove of the other two, inside a group SCIM owns."""
 
     @pytest.fixture
     def mixed(self, client, scim, users, bound_store, monkeypatch):
         from mlflow_oidc_auth.utils.permissions import flush_permission_cache
 
-        login(ALICE, ["claims-grp"], monkeypatch)  # oidc:default
+        login(ALICE, ["claims-grp"], monkeypatch)  # oidc:default membership, in a group the login created
         create_group(client, scim, "directory-grp", [ALICE])  # scim
         bound_store.populate_groups(["hand-grp"])
         bound_store.add_user_to_group(ALICE, "hand-grp")  # manual
@@ -394,6 +394,15 @@ class TestMembershipOwnership:
         bound_store.create_group_experiment_permission("claims-grp", "3", "MANAGE")
         flush_permission_cache()
         return ALICE
+
+    @pytest.fixture
+    def shared(self, client, scim, users, bound_store, monkeypatch):
+        """A SCIM-owned group that also holds a login-derived and a hand-made membership."""
+        create_group(client, scim, "shared", [ALICE])
+        login(BOB, ["shared"], monkeypatch)
+        bound_store.add_user_to_group(CAROL, "shared")
+        assert owners(bound_store, "shared") == {ALICE: "scim", BOB: "oidc:default", CAROL: "manual"}
+        return "shared"
 
     def _permissions(self):
         from mlflow_oidc_auth.utils.permissions import effective_experiment_permission
@@ -416,8 +425,9 @@ class TestMembershipOwnership:
             )
         assert rows == {"directory-grp": "scim", "hand-grp": "manual", "claims-grp": "oidc:default", "mlflow-users": "oidc:default"}
 
-    def test_a_login_under_enforce_keeps_the_directorys_group(self, bound_store, mixed, monkeypatch):
-        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
+    @pytest.mark.parametrize("mode", list(Enforcement))
+    def test_a_login_keeps_the_directorys_group_in_every_mode(self, bound_store, mixed, monkeypatch, audit_events, mode):
+        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", mode)
 
         login(ALICE, ["claims-grp"], monkeypatch)
 
@@ -425,46 +435,50 @@ class TestMembershipOwnership:
         assert permissions["1"].permission.name == "READ", "the directory's grant survives"
         assert permissions["2"].kind != "group", "the unowned membership the claims no longer assert is revoked"
         assert permissions["3"].permission.name == "MANAGE"
+        skipped = [e for e in audit_events if e["event"] == "user.ownership_conflict" and e["detail"]["group"] == "directory-grp"]
+        assert [e["status"] for e in skipped] == ([] if mode == Enforcement.OFF else ["denied"])
 
-    def test_scim_cannot_remove_a_claim_derived_membership_under_enforce(self, client, scim, bound_store, mixed, enforce, audit_events):
+    def test_scim_cannot_remove_a_login_derived_membership_under_enforce(self, client, scim, bound_store, shared, enforce, audit_events):
         response = client.patch(
-            f"{GROUPS}/claims-grp",
+            f"{GROUPS}/shared",
             headers=scim,
-            json=patch_body({"op": "add", "path": "members", "value": [{"value": BOB}]}, {"op": "remove", "path": f'members[value eq "{ALICE}"]'}),
+            json=patch_body({"op": "add", "path": "members", "value": [{"value": CAROL}]}, {"op": "remove", "path": f'members[value eq "{BOB}"]'}),
         )
 
         assert_scim_error(response, 409, "mutability")
-        assert owners(bound_store, "claims-grp") == {ALICE: "oidc:default"}, "nothing applied, the add included"
-        assert self._permissions()["3"].permission.name == "MANAGE"
+        assert owners(bound_store, "shared") == {ALICE: "scim", BOB: "oidc:default", CAROL: "manual"}, "nothing applied"
         [event] = [e for e in audit_events if e["event"] == "user.ownership_conflict"]
-        assert (event["status"], event["detail"]["owner"], event["detail"]["group"]) == ("denied", "oidc:default", "claims-grp")
+        assert (event["status"], event["detail"]["owner"], event["detail"]["group"]) == ("denied", "oidc:default", "shared")
 
-    def test_report_removes_it_and_records(self, client, scim, bound_store, mixed, audit_events):
-        response = client.patch(f"{GROUPS}/claims-grp", headers=scim, json=patch_body({"op": "remove", "path": f'members[value eq "{ALICE}"]'}))
+    def test_report_removes_it_and_records(self, client, scim, bound_store, shared, audit_events):
+        response = client.patch(f"{GROUPS}/shared", headers=scim, json=patch_body({"op": "remove", "path": f'members[value eq "{BOB}"]'}))
 
         assert response.status_code == 200, response.text
-        assert owners(bound_store, "claims-grp") == {}
-        assert self._permissions()["3"].permission.name != "MANAGE", "the permission cache was flushed with the membership"
-        assert [e["status"] for e in audit_events if e["event"] == "user.ownership_conflict" and e["detail"]["group"] == "claims-grp"] == ["success"]
+        assert BOB not in owners(bound_store, "shared")
+        assert [e["status"] for e in audit_events if e["event"] == "user.ownership_conflict"] == ["success"]
 
-    def test_put_under_enforce_is_a_sync_that_leaves_the_claim_derived_row(self, client, scim, bound_store, mixed, enforce, audit_events):
-        response = client.put(f"{GROUPS}/claims-grp", headers=scim, json=group_body("claims-grp", [BOB]))
+    @pytest.mark.parametrize("mode", list(Enforcement))
+    def test_put_is_a_sync_that_never_removes_the_login_derived_row(self, client, scim, bound_store, shared, monkeypatch, audit_events, mode):
+        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", mode)
+
+        response = client.put(f"{GROUPS}/shared", headers=scim, json=group_body("shared", [ALICE]))
 
         assert response.status_code == 200, response.text
         assert member_ids(response.json()) == [ALICE, BOB], "the response shows the membership as it really is"
-        assert owners(bound_store, "claims-grp") == {ALICE: "oidc:default", BOB: "scim"}
-        [kept] = [e for e in audit_events if e["event"] == "group.members_changed"]
-        assert kept["detail"]["kept"] == [ALICE]
+        assert owners(bound_store, "shared") == {ALICE: "scim", BOB: "oidc:default"}, "the manual row goes, the login's stays"
+        [changed] = [e for e in audit_events if e["event"] == "group.members_changed"]
+        assert changed["detail"]["removed"] == [CAROL]
+        assert changed["detail"]["kept"] == ([] if mode == Enforcement.OFF else [BOB])
 
-    def test_scim_removes_a_manual_membership(self, client, scim, bound_store, mixed, enforce):
+    def test_scim_removes_a_manual_membership(self, client, scim, bound_store, shared, enforce):
         """Unowned memberships are revocable by any source — including every pre-#360 row."""
-        response = client.patch(f"{GROUPS}/hand-grp", headers=scim, json=patch_body({"op": "remove", "path": f'members[value eq "{ALICE}"]'}))
+        response = client.patch(f"{GROUPS}/shared", headers=scim, json=patch_body({"op": "remove", "path": f'members[value eq "{CAROL}"]'}))
 
         assert response.status_code == 200, response.text
-        assert owners(bound_store, "hand-grp") == {}
+        assert CAROL not in owners(bound_store, "shared")
 
     def test_but_not_a_hand_made_administrators(self, client, scim, bound_store, admin, enforce):
-        bound_store.populate_groups(["ops"])
+        create_group(client, scim, "ops")
         bound_store.add_user_to_group(ADMIN, "ops")
 
         response = client.patch(f"{GROUPS}/ops", headers=scim, json=patch_body({"op": "remove", "path": f'members[value eq "{ADMIN}"]'}))
@@ -483,6 +497,123 @@ class TestMembershipOwnership:
         client.patch(f"{GROUPS}/late", headers=scim, json=patch_body({"op": "add", "path": "members", "value": [{"value": BOB}]}))
 
         assert effective_experiment_permission("9", BOB).permission.name == "EDIT"
+
+
+class TestGroupOwnership:
+    """SCIM writes only the groups it owns under ``enforce`` (deny by default). A login-derived or
+    Kubernetes namespace group is the provider's; a hand-made group is the administrator's."""
+
+    @pytest.fixture
+    def login_group(self, users, monkeypatch, bound_store):
+        login(ALICE, ["from-claims"], monkeypatch)
+        assert bound_store.get_group_detail("from-claims")["managed_by"] == "oidc:default"
+        return "from-claims"
+
+    WRITES = {
+        "add": lambda client, scim, group: client.patch(
+            f"{GROUPS}/{group}", headers=scim, json=patch_body({"op": "add", "path": "members", "value": [{"value": BOB}]})
+        ),
+        "remove": lambda client, scim, group: client.patch(
+            f"{GROUPS}/{group}", headers=scim, json=patch_body({"op": "remove", "path": f'members[value eq "{ALICE}"]'})
+        ),
+        "put": lambda client, scim, group: client.put(f"{GROUPS}/{group}", headers=scim, json=group_body(group, [BOB])),
+        "external_id": lambda client, scim, group: client.patch(
+            f"{GROUPS}/{group}", headers=scim, json=patch_body({"op": "add", "path": "externalId", "value": "adopt"})
+        ),
+        "delete": lambda client, scim, group: client.delete(f"{GROUPS}/{group}", headers=scim),
+    }
+
+    @pytest.mark.parametrize("write", sorted(WRITES))
+    def test_refused_on_a_login_owned_group_under_enforce(self, client, scim, bound_store, login_group, enforce, audit_events, write):
+        before = owners(bound_store, login_group)
+
+        assert_scim_error(self.WRITES[write](client, scim, login_group), 409, "mutability")
+
+        detail = bound_store.get_group_detail(login_group)
+        assert detail is not None and detail["external_id"] is None
+        assert owners(bound_store, login_group) == before
+        [event] = [e for e in audit_events if e["event"] == "group.ownership_conflict"]
+        assert (event["status"], event["resource_id"], event["detail"]["owner"]) == ("denied", login_group, "oidc:default")
+
+    @pytest.mark.parametrize("write", sorted(WRITES))
+    def test_permitted_and_recorded_under_report(self, client, scim, bound_store, login_group, audit_events, write):
+        response = self.WRITES[write](client, scim, login_group)
+
+        assert response.status_code in (200, 204), response.text
+        [event] = [e for e in audit_events if e["event"] == "group.ownership_conflict"]
+        assert (event["status"], event["detail"]["permitted"]) == ("success", True)
+
+    def test_silent_under_off(self, client, scim, login_group, monkeypatch, audit_events):
+        monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.OFF)
+
+        assert self.WRITES["add"](client, scim, login_group).status_code == 200
+        assert not [e for e in audit_events if e["event"] == "group.ownership_conflict"]
+
+    def test_a_hand_made_group_is_refused_too(self, client, scim, users, bound_store, enforce):
+        bound_store.populate_groups(["hand-made"])
+
+        assert_scim_error(self.WRITES["add"](client, scim, "hand-made"), 409, "mutability")
+        assert owners(bound_store, "hand-made") == {}
+
+    def test_an_operator_can_hand_an_existing_group_to_the_directory(self, client, scim, users, bound_store, enforce, tmp_path):
+        """The break glass for groups: adopting a pre-existing group under ``enforce`` is an operator
+        action with a journal, not something SCIM can do by itself."""
+        from click.testing import CliRunner
+
+        from mlflow_oidc_auth.db.cli import commands
+
+        bound_store.populate_groups(["legacy-team"])
+        assert_scim_error(self.WRITES["add"](client, scim, "legacy-team"), 409, "mutability")
+        url, journal = str(bound_store.engine.url), str(tmp_path / "groups.json")
+
+        dry = CliRunner().invoke(commands, ["reconcile-ownership", "--url", url, "--groups", "--group", "legacy-team", "--set-owner", "scim"])
+        assert dry.exit_code == 0, dry.output
+        assert "group legacy-team: manual -> scim" in dry.output
+        assert bound_store.get_group_detail("legacy-team")["managed_by"] == "manual"
+
+        applied = CliRunner().invoke(
+            commands, ["reconcile-ownership", "--url", url, "--groups", "--group", "legacy-team", "--set-owner", "scim", "--apply", "--journal", journal]
+        )
+        assert applied.exit_code == 0, applied.output
+        assert self.WRITES["add"](client, scim, "legacy-team").status_code == 200
+        assert bound_store.get_user_detail(ALICE)["managed_by"] == "scim", "user rows untouched"
+
+        restored = CliRunner().invoke(commands, ["restore-ownership", "--url", url, "--journal", journal, "--apply"])
+        assert restored.exit_code == 0, restored.output
+        assert bound_store.get_group_detail("legacy-team")["managed_by"] == "manual"
+
+    def test_a_namespace_group_is_the_clusters(self, client, scim, users, bound_store, enforce):
+        from unittest.mock import MagicMock
+        from types import SimpleNamespace
+
+        from mlflow_oidc_auth.kubernetes import ServiceAccount
+        from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
+
+        account = ServiceAccount(namespace="ml", name="trainer")
+        AuthMiddleware(app=MagicMock())._provision_service_account(account, SimpleNamespace(id="cluster"))
+        assert bound_store.get_group_detail(account.group)["managed_by"] == "oidc:cluster"
+
+        assert_scim_error(self.WRITES["add"](client, scim, account.group), 409, "mutability")
+        assert_scim_error(client.delete(f"{GROUPS}/{account.group}", headers=scim), 409, "mutability")
+
+    def test_a_scim_owned_group_is_fully_writable_under_enforce(self, client, scim, users, bound_store, enforce, audit_events):
+        create_group(client, scim, "mine", [ALICE])
+        assert bound_store.get_group_detail("mine")["managed_by"] == "scim"
+
+        for write in ("add", "remove", "external_id", "put"):
+            response = self.WRITES[write](client, scim, "mine")
+            assert response.status_code == 200, (write, response.text)
+        assert self.WRITES["delete"](client, scim, "mine").status_code == 204
+        assert not [e for e in audit_events if e["event"].endswith("ownership_conflict")]
+
+    def test_any_user_may_be_added_to_a_scim_owned_group(self, client, scim, users, bound_store, enforce, monkeypatch):
+        """Including one a login owns the membership rows of elsewhere: adding is never a cross-source write."""
+        login(CAROL, [], monkeypatch)
+        create_group(client, scim, "mine")
+
+        assert self.WRITES["add"](client, scim, "mine").status_code == 200
+        response = client.patch(f"{GROUPS}/mine", headers=scim, json=patch_body({"op": "add", "path": "members", "value": [{"value": CAROL}]}))
+        assert member_ids(response.json()) == [BOB, CAROL]
 
 
 class TestDelete:

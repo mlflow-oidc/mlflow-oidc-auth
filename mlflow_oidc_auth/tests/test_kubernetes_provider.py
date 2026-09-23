@@ -165,7 +165,7 @@ class TestProvisioningAServiceAccount:
         assert create_user.call_args.kwargs["username"] == "trainer.team-a@serviceaccount.cluster.local"
         assert create_user.call_args.kwargs["is_service_account"] is True
         assert create_user.call_args.kwargs["is_admin"] is False
-        populate_groups.assert_called_once_with(group_names=["k8s:team-a"])
+        populate_groups.assert_called_once_with(group_names=["k8s:team-a"], written_by="oidc:cluster")
 
     def test_the_oidc_provisioning_flag_is_not_a_hidden_prerequisite(self):
         """OIDC_PROVISION_ON_BEARER_AUTH gates provisioning from an *OIDC* token, where the

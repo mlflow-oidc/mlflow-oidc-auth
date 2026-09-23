@@ -293,7 +293,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # who is writing and the memberships are owned by that provider rather than ``manual``.
             written_by = f"oidc:{provider.id}"
             user_module.create_user(username=username, display_name=display_name, is_admin=is_admin, written_by=written_by)
-            user_module.populate_groups(group_names=user_groups)
+            user_module.populate_groups(group_names=user_groups, written_by=written_by)
             user_module.update_user(username=username, group_names=user_groups, written_by=written_by)
             logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(user_groups))
         except Exception as e:
@@ -386,7 +386,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # not ``manual``, so no other source's sync can quietly remove it under ``enforce``.
             written_by = f"oidc:{provider.id}"
             user_module.create_user(username=username, display_name=display_name, is_admin=False, is_service_account=True, written_by=written_by)
-            user_module.populate_groups(group_names=[group])
+            user_module.populate_groups(group_names=[group], written_by=written_by)
             user_module.update_user(username=username, group_names=[group], written_by=written_by)
             logger.info("Provisioned service account %s from namespace %s", username, account.namespace)
             emit_audit_event(

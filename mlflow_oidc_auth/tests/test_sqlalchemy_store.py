@@ -429,7 +429,7 @@ class TestSqlAlchemyStore:
     # Test group management methods
     def test_populate_groups(self, mock_store: SqlAlchemyStore):
         mock_store.populate_groups(["group1", "group2"])
-        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2"])
+        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2"], written_by=None)
 
     def test_get_groups(self, mock_store: SqlAlchemyStore):
         mock_groups = ["group1", "group2"]
@@ -659,7 +659,7 @@ class TestSqlAlchemyStoreTransactionHandling:
         # Test bulk group creation
         mock_store.group_repo.create_groups.return_value = None
         mock_store.populate_groups(["group1", "group2", "group3"])
-        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2", "group3"])
+        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2", "group3"], written_by=None)
 
     def test_cascading_delete_operations(self, mock_store):
         """Test cascading delete operations maintain referential integrity"""
