@@ -189,6 +189,51 @@ curl -X PATCH "$MLFLOW/api/2.0/mlflow/users/ownership" \
 
 or in bulk with the CLI below, for an operator who has a shell.
 
+### Delete and create
+
+A delete goes through the same guard as an update, before anything else happens. Under `enforce`
+a source cannot delete a row it may not write. The admin API needs `"admin_override": true` for
+that. The attempt is audited as `user.ownership_conflict` with `detail.operation: "delete"`.
+
+A create never takes over an existing row. When the username exists, the create is refused with
+`RESOURCE_ALREADY_EXISTS` in every mode, and the row and its owner stay as they were. When that
+row belongs to another source, the attempt is also audited (`operation: "create"`). Together
+these rules stop a source from deleting a row it does not own and creating it again as `manual`.
+
+### Group membership
+
+Group membership carries permissions, so each membership (`user_groups` row) records its own
+owner:
+
+| Written by | Owner |
+|---|---|
+| An administrator, or any write from before this was recorded | `manual` |
+| SCIM `/Groups` | `scim` |
+| A login's claims, bearer provisioning, a service account | `oidc:<provider>` or `saml:<provider>` |
+
+Adding a membership never counts as a cross-source write: the writer owns the new row, and a
+membership that already exists keeps its owner. Removing one goes through the guard, with the
+membership's owner as the row owner:
+
+| Membership owner | Removed by its own source | Removed by another source under `report` | ...under `enforce` |
+|---|---|---|---|
+| `manual` | yes | yes | yes, except that SCIM may not remove a hand-made administrator's |
+| `scim`, `oidc:*`, `saml:*` | yes | yes, audited | **kept**, audited as refused |
+
+An `authoritative` login therefore still revokes its own memberships and every `manual` one.
+Every membership that predates this is `manual`, so revocation keeps working after an upgrade
+without a backfill. Under `enforce`, a login leaves SCIM's and other providers' memberships in
+place. Under `report` (the default) it removes them as it always has, and records
+`user.ownership_conflict` with `detail.operation: "membership.remove"` and `detail.group`.
+
+A sync (a login, or a SCIM `PUT`) never fails because a row was kept: failing it would lock the
+user or the group out of every future sync. A targeted removal fails with nothing applied
+(`409` from SCIM).
+
+To let SCIM groups and an `authoritative` provider share users under `report`, set the provider's
+`group_sync_mode` to `additive`, or move to `enforce`. Otherwise every login removes the
+directory's memberships and the next SCIM sync adds them back.
+
 ### Changing ownership
 
 Ownership never changes implicitly — not at startup, not when a provider's configuration
@@ -211,6 +256,13 @@ runs. `restore-ownership` is also a dry run without `--apply`.
 
 **This is the repair path when a source is turned off.** Point `--from-owner` at it and
 `--set-owner` at `manual`, and the rows it used to own become editable again.
+
+Add `--memberships` to re-own group memberships too. `--from-owner` then matches each
+membership's owner, and `--username` the member. The journal records them, and
+`restore-ownership` puts them back. From the API, `PATCH /api/2.0/mlflow/users/ownership` with
+`"memberships": true` hands all of one user's memberships to the new owner. Without one of these,
+the memberships of a source you have turned off cannot be removed by any other source under
+`enforce`.
 
 ## PKCE
 

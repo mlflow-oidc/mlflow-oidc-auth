@@ -443,6 +443,7 @@ class TestCreateUserEndpoint:
             display_name="New User",
             is_admin=False,
             is_service_account=False,
+            written_by="manual",
         )
 
     @pytest.mark.asyncio

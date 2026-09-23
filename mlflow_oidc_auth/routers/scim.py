@@ -63,7 +63,7 @@ from mlflow_oidc_auth.models.scim import (
     ScimUserInput,
 )
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
-from mlflow_oidc_auth.ownership import MANUAL, evaluate_write
+from mlflow_oidc_auth.ownership import MANUAL
 from mlflow_oidc_auth.store import store
 
 from ._prefix import SCIM_ROUTER_PREFIX, SCIM_TOKENS_ROUTER_PREFIX
@@ -682,29 +682,13 @@ async def scim_delete_user(user_id: str, request: Request) -> Response:
     username = detail["username"]
 
     actor = _actor(request)
-    decision = evaluate_write(
-        detail.get("managed_by"),
-        SCIM_SOURCE,
-        enforcement=config.MANAGED_BY_ENFORCEMENT,
-        fields={"deleted"},
-        target_is_admin=bool(detail["is_admin"]),
-    )
-    if decision.conflict:
-        emit_audit_event(
-            "user.ownership_conflict",
-            actor=actor,
-            resource_type="user",
-            resource_id=username,
-            detail={"owner": decision.owner, "written_by": SCIM_SOURCE, "reason": decision.reason, "permitted": decision.allowed, "operation": "delete"},
-            status="success" if decision.allowed else "denied",
-        )
-    if not decision.allowed:
-        raise ScimHTTPError(409, f"User {username}: {decision.reason}", "mutability")
-
-    # Orphan detection and the ORPHAN_FALLBACK_PRINCIPAL hand-over run inside the delete's own
-    # transaction, so a refused delete (the last active administrator) rolls them back too.
+    # The ownership guard (#360) runs inside the delete as ``scim``: under enforce a row SCIM may
+    # not write — another source's, a hand-made administrator — is refused (409 mutability) and
+    # nothing, orphan hand-over included, is written. Orphan detection and the
+    # ORPHAN_FALLBACK_PRINCIPAL hand-over run inside the delete's own transaction, so a refused
+    # delete (the last active administrator) rolls them back too.
     try:
-        delete_user_reporting_orphans(username, actor=actor, source=SCIM_SOURCE, store=store)
+        delete_user_reporting_orphans(username, actor=actor, source=SCIM_SOURCE, store=store, written_by=SCIM_SOURCE)
     except MlflowException as exc:
         _raise_for_store_error(exc, username)
     emit_audit_event("user.delete", actor=actor, resource_type="user", resource_id=username, detail={"source": SCIM_SOURCE})

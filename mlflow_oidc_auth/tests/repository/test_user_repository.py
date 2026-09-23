@@ -30,6 +30,8 @@ def test_create_success(repo, session):
     user.to_mlflow_entity.return_value = "entity"
     session.add = MagicMock()
     session.flush = MagicMock()
+    # No existing row: create refuses one, and never re-owns it (#360).
+    session.query.return_value.filter.return_value.one_or_none.return_value = None
 
     with (
         patch("mlflow_oidc_auth.db.models.SqlUser", return_value=user),
@@ -215,6 +217,7 @@ class TestUsernameCaseNormalization:
         """#219: an admin-created service account with capitals is stored lowercase."""
         session.add = MagicMock()
         session.flush = MagicMock()
+        session.query.return_value.filter.return_value.one_or_none.return_value = None
         with (
             patch("mlflow_oidc_auth.repository.user.SqlUser") as sql_user,
             patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"),

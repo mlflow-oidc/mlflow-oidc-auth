@@ -328,8 +328,11 @@ class SqlAlchemyStore:
         display_name: str,
         is_admin: bool = False,
         is_service_account=False,
+        *,
+        written_by: Optional[str] = None,
     ):
-        return self.user_repo.create(username, password, display_name, is_admin, is_service_account)
+        """Create a ``manual`` user row. Refused, and never re-owned, if the username exists (#360)."""
+        return self.user_repo.create(username, password, display_name, is_admin, is_service_account, written_by=written_by)
 
     def create_auth_session(self, username: str, expires_at, provider_id: Optional[str] = None, encrypted_tokens: Optional[str] = None) -> str:
         """Open a server-side session and return its opaque id (issue #310).
@@ -462,8 +465,9 @@ class SqlAlchemyStore:
             admin_override=admin_override,
         )
 
-    def delete_user(self, username: str):
-        return self.user_repo.delete(username)
+    def delete_user(self, username: str, *, written_by: Optional[str] = None, admin_override: bool = False, actor: Optional[str] = None):
+        """Hard-delete a user through the ownership guard (#360). See :meth:`UserRepository.delete`."""
+        return self.user_repo.delete(username, written_by=written_by, admin_override=admin_override, actor=actor)
 
     def create_experiment_permission(self, experiment_id: str, username: str, permission: str) -> ExperimentPermission:
         return self.experiment_repo.grant_permission(experiment_id, username, permission)
@@ -531,11 +535,13 @@ class SqlAlchemyStore:
     def get_group_users(self, group_name: str) -> List[User]:
         return self.group_repo.list_group_members(group_name)
 
-    def add_user_to_group(self, username: str, group_name: str) -> None:
-        return self.group_repo.add_user_to_group(username, group_name)
+    def add_user_to_group(self, username: str, group_name: str, **kwargs) -> None:
+        """Add one membership, owned by ``written_by`` (default ``manual``)."""
+        return self.group_repo.add_user_to_group(username, group_name, **kwargs)
 
-    def remove_user_from_group(self, username: str, group_name: str) -> None:
-        return self.group_repo.remove_user_from_group(username, group_name)
+    def remove_user_from_group(self, username: str, group_name: str, **kwargs) -> None:
+        """Remove one membership through the ownership guard (``written_by``, ``admin_override``, ``actor``)."""
+        return self.group_repo.remove_user_from_group(username, group_name, **kwargs)
 
     def get_groups_for_user(self, username: str) -> List[str]:
         return self.group_repo.list_groups_for_user(username)
@@ -543,8 +549,21 @@ class SqlAlchemyStore:
     def get_groups_ids_for_user(self, username: str) -> List[int]:
         return self.group_repo.list_group_ids_for_user(username)
 
-    def set_user_groups(self, username: str, group_names: List[str]) -> None:
-        return self.group_repo.set_groups_for_user(username, group_names)
+    def set_user_groups(
+        self,
+        username: str,
+        group_names: List[str],
+        *,
+        written_by: Optional[str] = None,
+        admin_override: bool = False,
+        actor: Optional[str] = None,
+    ):
+        """Sync a user's membership as ``written_by`` sees it, through the ownership guard (#360).
+
+        See :meth:`GroupRepository.set_groups_for_user` for which memberships are added, kept and
+        removed.
+        """
+        return self.group_repo.set_groups_for_user(username, group_names, written_by=written_by, admin_override=admin_override, actor=actor)
 
     def get_group_experiments(self, group_name: str) -> List[ExperimentPermission]:
         return self.experiment_group_repo.list_permissions_for_group(group_name)
@@ -1356,13 +1375,57 @@ class SqlAlchemyStore:
         self.user_repo.update(username, **kwargs)
         return self.get_user_detail(username)
 
-    def delete_user_with_hook(self, username: str, before_cascade, after_cascade=None) -> None:
+    def delete_user_with_hook(
+        self,
+        username: str,
+        before_cascade,
+        after_cascade=None,
+        *,
+        written_by: Optional[str] = None,
+        admin_override: bool = False,
+        actor: Optional[str] = None,
+    ) -> None:
         """Hard-delete a user, running ``before_cascade(session, user)`` and ``after_cascade(session)``
         inside the same transaction, before and after the cascade.
 
-        See :func:`mlflow_oidc_auth.orphans.delete_user_reporting_orphans`.
+        The ownership guard (#360) runs first; see :meth:`UserRepository.delete`. See also
+        :func:`mlflow_oidc_auth.orphans.delete_user_reporting_orphans`.
         """
-        return self.user_repo.delete(username, before_cascade=before_cascade, after_cascade=after_cascade)
+        return self.user_repo.delete(
+            username,
+            before_cascade=before_cascade,
+            after_cascade=after_cascade,
+            written_by=written_by,
+            admin_override=admin_override,
+            actor=actor,
+        )
+
+    def set_membership_owner(self, username: str, managed_by: str):
+        """Hand every membership of a user to ``managed_by`` (break glass, #360)."""
+        return self.group_repo.set_membership_owner(username, managed_by)
+
+    # SCIM /Groups (#323). Group-centric writes change many users' membership at once, so the
+    # wiring at the bottom of this module flushes both permission caches after each of them.
+
+    def list_group_details_page(self, **kwargs):
+        """A page of groups with their members. See :meth:`GroupRepository.list_group_details_page`."""
+        return self.group_repo.list_group_details_page(**kwargs)
+
+    def get_group_detail(self, group_name: str, **kwargs) -> Optional[dict]:
+        """One group with its members, or None."""
+        return self.group_repo.get_group_detail(group_name, **kwargs)
+
+    def create_directory_group(self, group_name: str, external_id: Optional[str], members, *, written_by: str) -> dict:
+        """Create a group and its members, owned by ``written_by``, in one transaction."""
+        return self.group_repo.create_directory_group(group_name, external_id, members, written_by=written_by)
+
+    def apply_group_changes(self, group_name: str, operations, **kwargs):
+        """Apply a directory change set to one group. See :meth:`GroupRepository.apply_group_changes`."""
+        return self.group_repo.apply_group_changes(group_name, operations, **kwargs)
+
+    def delete_directory_group(self, group_name: str, **kwargs):
+        """Delete a group, its memberships and its grants through the guard."""
+        return self.group_repo.delete_directory_group(group_name, **kwargs)
 
     def list_group_details(self) -> List[dict]:
         """Every group with its external id and member count, in two column-only statements.
@@ -1559,6 +1622,16 @@ _MEMBERSHIP_CUD_METHODS = [
     "remove_user_from_group",
 ]
 
+# Group-centric membership writes (SCIM /Groups, #323). One call changes the membership of any
+# number of users — and a group delete drops the group's grants — so there is no single user to
+# target: both the permission cache and the workspace cache are flushed. These are directory
+# syncs, not per-login writes, so the full flush is affordable.
+_GROUP_CUD_METHODS = [
+    "create_directory_group",
+    "apply_group_changes",
+    "delete_directory_group",
+]
+
 # Group-scoped workspace permission CUD. Invalidation lives here rather than only in
 # the router so it cannot be bypassed by any other caller of the store. All three take
 # (workspace, group_name) as their first two positional arguments.
@@ -1733,3 +1806,7 @@ def _wrap_with_workspace_flush(method):
 for _method_name in _WORKSPACE_WIPE_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)
     setattr(SqlAlchemyStore, _method_name, _wrap_with_workspace_flush(_original))
+
+for _method_name in _GROUP_CUD_METHODS:
+    _original = getattr(SqlAlchemyStore, _method_name)
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_workspace_flush(_wrap_with_cache_flush(_original)))

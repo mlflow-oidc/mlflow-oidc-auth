@@ -467,6 +467,16 @@ defaults to `false`. Under `enforce`, deleting a user whose row another source o
 with `409` and audited as `user.ownership_conflict` (`detail.operation = "delete"`), unless
 `admin_override` is `true`. The override is always audited.
 
+**`PATCH /api/2.0/mlflow/users/ownership` request** (admin, break glass):
+```json
+{"username": "alice@example.com", "managed_by": "manual", "memberships": false}
+```
+
+This sets the user row's `managed_by`. With `"memberships": true` it also hands every group
+membership of the user to the new owner. The response then lists the memberships that changed as
+`"memberships": [{"group": "...", "from": "..."}]`. The change is audited as `user.ownership_set`.
+See [Row ownership](configuration#group-membership).
+
 **`GET /api/2.0/mlflow/permissions/groups/details` response** (ordered by name):
 ```json
 [{"group_name": "data-team", "external_id": null, "member_count": 3}]

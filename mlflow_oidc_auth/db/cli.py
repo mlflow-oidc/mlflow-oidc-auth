@@ -133,7 +133,15 @@ def prune_sessions(url: str, dry_run: bool) -> None:
 @click.option("--apply", "apply_changes", is_flag=True, help="Actually write. Without it, nothing is changed.")
 @click.option("--all", "all_rows", is_flag=True, help="Required to match every row: without a filter this rewrites the whole user table.")
 @click.option("--journal", default=None, help="Where to record prior ownership, so a mistaken run can be rolled back.")
-def reconcile_ownership(url: str, set_owner: str, from_owner: str, username: str, apply_changes: bool, all_rows: bool, journal: str) -> None:
+@click.option(
+    "--memberships",
+    "include_memberships",
+    is_flag=True,
+    help="Also re-own group memberships (user_groups rows) matching --from-owner / --username.",
+)
+def reconcile_ownership(
+    url: str, set_owner: str, from_owner: str, username: str, apply_changes: bool, all_rows: bool, journal: str, include_memberships: bool
+) -> None:
     """Change which source owns user rows (issue #319).
 
     **Dry run unless ``--apply`` is given**, and it never runs implicitly — not at startup, not
@@ -149,12 +157,17 @@ def reconcile_ownership(url: str, set_owner: str, from_owner: str, username: str
 
     This is also the repair path when a source is turned off: point ``--from-owner`` at it and
     ``--set-owner`` at ``manual``, and the rows it used to own become editable again.
+
+    ``--memberships`` does the same for group memberships (#360), whose owner is recorded per
+    ``user_groups`` row. ``--from-owner`` then matches the *membership's* owner, and ``--username``
+    the member. Without it a decommissioned source's memberships stay owned by it, and under
+    ``enforce`` no other source's sync may remove them.
     """
     import json as _json
     import re as _re
     from datetime import datetime, timezone
 
-    from mlflow_oidc_auth.db.models import SqlUser
+    from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
 
     # An owner string no source will ever present is worse than a rejected one: under 'enforce'
     # every writer then conflicts with it forever, and the operator was usually in the middle of
@@ -177,15 +190,31 @@ def reconcile_ownership(url: str, set_owner: str, from_owner: str, username: str
                 query = query.where(SqlUser.username == username.strip().lower())
             rows = [row for row in conn.execute(query).fetchall() if (row.managed_by or "manual") != set_owner]
 
-            if not rows:
+            memberships = []
+            if include_memberships:
+                membership_query = (
+                    sqlalchemy.select(SqlUserGroup.id, SqlUser.username, SqlGroup.group_name, SqlUserGroup.managed_by)
+                    .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
+                    .join(SqlGroup, SqlGroup.id == SqlUserGroup.group_id)
+                    .order_by(SqlUserGroup.id)
+                )
+                if from_owner:
+                    membership_query = membership_query.where(SqlUserGroup.managed_by == from_owner)
+                if username:
+                    membership_query = membership_query.where(SqlUser.username == username.strip().lower())
+                memberships = [row for row in conn.execute(membership_query).fetchall() if (row.managed_by or "manual") != set_owner]
+
+            if not rows and not memberships:
                 click.echo("no rows to change")
                 return
 
             for row in rows:
                 click.echo(f"{row.username}: {row.managed_by or 'manual'} -> {set_owner}")
+            for row in memberships:
+                click.echo(f"{row.username} in {row.group_name}: {row.managed_by or 'manual'} -> {set_owner}")
 
             if not apply_changes:
-                click.echo(f"\n{len(rows)} row(s) would change. Re-run with --apply to write them.")
+                click.echo(f"\n{len(rows) + len(memberships)} row(s) would change. Re-run with --apply to write them.")
                 return
 
             if journal:
@@ -202,6 +231,7 @@ def reconcile_ownership(url: str, set_owner: str, from_owner: str, username: str
                             "recorded_at": datetime.now(timezone.utc).isoformat(),
                             "set_owner": set_owner,
                             "previous": [{"username": row.username, "managed_by": row.managed_by} for row in rows],
+                            "memberships": [{"username": row.username, "group": row.group_name, "managed_by": row.managed_by} for row in memberships],
                         },
                         handle,
                         indent=2,
@@ -210,9 +240,14 @@ def reconcile_ownership(url: str, set_owner: str, from_owner: str, username: str
 
             for row in rows:
                 conn.execute(sqlalchemy.update(SqlUser).where(SqlUser.username == row.username).values(managed_by=set_owner))
+            for row in memberships:
+                conn.execute(sqlalchemy.update(SqlUserGroup).where(SqlUserGroup.id == row.id).values(managed_by=set_owner))
 
-        emit_ownership_audit("user.ownership_reconciled", set_owner, [row.username for row in rows])
-        click.echo(f"\nchanged {len(rows)} row(s)")
+        if rows:
+            emit_ownership_audit("user.ownership_reconciled", set_owner, [row.username for row in rows])
+        if memberships:
+            emit_ownership_audit("membership.ownership_reconciled", set_owner, [f"{row.username}:{row.group_name}" for row in memberships])
+        click.echo(f"\nchanged {len(rows) + len(memberships)} row(s)")
     finally:
         engine.dispose()
 
@@ -230,13 +265,15 @@ def restore_ownership(url: str, journal: str, apply_changes: bool) -> None:
     """
     import json as _json
 
-    from mlflow_oidc_auth.db.models import SqlUser
+    from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
 
     with open(journal, "r", encoding="utf-8") as handle:
         recorded = _json.load(handle)
 
     previous = recorded.get("previous") or []
-    if not previous:
+    # Membership ownership (#360), present only in journals written with --memberships.
+    memberships = recorded.get("memberships") or []
+    if not previous and not memberships:
         click.echo("journal records no changes")
         return
 
@@ -244,9 +281,11 @@ def restore_ownership(url: str, journal: str, apply_changes: bool) -> None:
     try:
         for entry in previous:
             click.echo(f"{entry['username']}: -> {entry['managed_by'] or 'manual'}")
+        for entry in memberships:
+            click.echo(f"{entry['username']} in {entry['group']}: -> {entry['managed_by'] or 'manual'}")
 
         if not apply_changes:
-            click.echo(f"\n{len(previous)} row(s) would be restored. Re-run with --apply to write them.")
+            click.echo(f"\n{len(previous) + len(memberships)} row(s) would be restored. Re-run with --apply to write them.")
             return
 
         restored = 0
@@ -265,8 +304,25 @@ def restore_ownership(url: str, journal: str, apply_changes: bool) -> None:
                     restored += int(result.rowcount)
                 else:
                     skipped.append(entry["username"])
+            for entry in memberships:
+                # Addressed by (member, group) rather than row id: a membership removed and
+                # granted again since is a different decision, and is left alone like any other.
+                user_id = sqlalchemy.select(SqlUser.id).where(SqlUser.username == entry["username"]).scalar_subquery()
+                group_id = sqlalchemy.select(SqlGroup.id).where(SqlGroup.group_name == entry["group"]).scalar_subquery()
+                result = conn.execute(
+                    sqlalchemy.update(SqlUserGroup)
+                    .where(SqlUserGroup.user_id == user_id, SqlUserGroup.group_id == group_id, SqlUserGroup.managed_by == recorded.get("set_owner"))
+                    .values(managed_by=entry["managed_by"] or "manual")
+                )
+                if result.rowcount:
+                    restored += int(result.rowcount)
+                else:
+                    skipped.append(f"{entry['username']} in {entry['group']}")
 
-        emit_ownership_audit("user.ownership_restored", recorded.get("set_owner"), [entry["username"] for entry in previous])
+        if previous:
+            emit_ownership_audit("user.ownership_restored", recorded.get("set_owner"), [entry["username"] for entry in previous])
+        if memberships:
+            emit_ownership_audit("membership.ownership_restored", recorded.get("set_owner"), [f"{e['username']}:{e['group']}" for e in memberships])
         click.echo(f"\nrestored {restored} row(s)")
         if skipped:
             click.echo(f"left alone (changed since the journal was written): {', '.join(skipped)}")

@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.audit import emit_audit_event
-from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -18,8 +17,8 @@ from mlflow_oidc_auth.models import (
 )
 from mlflow_oidc_auth.models.scim import UserActiveRequest
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
-from mlflow_oidc_auth.ownership import MANUAL, evaluate_write
-from mlflow.protos.databricks_pb2 import INVALID_STATE, ErrorCode
+from mlflow_oidc_auth.ownership import MANUAL
+from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, INVALID_STATE, ErrorCode
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -262,6 +261,7 @@ async def create_new_user(
             display_name=user_request.display_name,
             is_admin=user_request.is_admin,
             is_service_account=user_request.is_service_account,
+            written_by="manual",
         )
 
         if status:
@@ -294,6 +294,7 @@ async def create_new_user(
 async def set_user_ownership(
     username: str = Body(..., description="The user whose ownership is being changed"),
     managed_by: str = Body(..., description="The new owner: 'manual', 'scim', or 'oidc:<provider-id>'"),
+    memberships: bool = Body(False, description="Also hand every group membership of the user to the new owner"),
     admin_username: str = Depends(check_admin_permission),
 ) -> JSONResponse:
     """Hand a user row to a different source (issue #319).
@@ -306,9 +307,14 @@ async def set_user_ownership(
     and become editable again. ``mlflow-oidc db reconcile-ownership`` does the same thing in
     bulk, for an operator who does have a shell.
 
+    With ``memberships: true`` the user's group memberships (#360), which carry their own owner,
+    are handed over too — otherwise a decommissioned source's grants could not be removed by any
+    other source under ``enforce``.
+
     Parameters:
         username: The user whose ownership is being changed.
         managed_by: The new owner.
+        memberships: Whether to re-own the user's group memberships as well.
         admin_username: The authenticated administrator (injected).
 
     Returns:
@@ -328,26 +334,21 @@ async def set_user_ownership(
 
     previous = store.get_user_profile(username).managed_by
     store.update_user(username=username, managed_by=managed_by, written_by="manual", admin_override=True)
+    detail = {"from": previous, "to": managed_by}
+    content = {"username": username, "managed_by": managed_by, "previous": previous}
+    if memberships is True:
+        changed = store.set_membership_owner(username, managed_by)
+        detail["memberships"] = [{"group": group, "from": owner} for group, owner in changed]
+        content["memberships"] = detail["memberships"]
     emit_audit_event(
         "user.ownership_set",
         actor=admin_username,
         resource_type="user",
         resource_id=username,
-        detail={"from": previous, "to": managed_by},
+        detail=detail,
     )
     logger.info("Administrator %s set ownership of %s from %s to %s", admin_username, username, previous, managed_by)
-    return JSONResponse(content={"username": username, "managed_by": managed_by, "previous": previous}, status_code=200)
-
-
-def _audit_delete_conflict(username: str, decision, admin_username: str) -> None:
-    emit_audit_event(
-        "user.ownership_conflict",
-        actor=admin_username,
-        resource_type="user",
-        resource_id=username,
-        detail={"owner": decision.owner, "written_by": MANUAL, "reason": decision.reason, "permitted": decision.allowed, "operation": "delete"},
-        status="success" if decision.allowed else "denied",
-    )
+    return JSONResponse(content=content, status_code=200)
 
 
 @users_router.delete(
@@ -397,31 +398,27 @@ async def delete_user(
         if not detail:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
 
-        decision = evaluate_write(
-            detail.get("managed_by"),
-            MANUAL,
-            enforcement=config.MANAGED_BY_ENFORCEMENT,
-            admin_override=admin_override is True,
-            fields={"deleted"},
-            target_is_admin=bool(detail.get("is_admin")),
-        )
-        if decision.conflict and not decision.allowed:
-            _audit_delete_conflict(username, decision, admin_username)
-            raise HTTPException(status_code=409, detail=f"User {username} is managed by {decision.owner!r}: {decision.reason}")
-
+        # The ownership guard (#360) runs inside the delete, as ``manual``: refused under enforce
+        # unless ``admin_override``, recorded as ``user.ownership_conflict`` (``operation: delete``)
+        # either way, and before anything else — so a refused delete detects and hands over nothing.
         # Orphan detection and the ORPHAN_FALLBACK_PRINCIPAL hand-over run inside the delete's own
         # transaction, before the cascade removes the grants they read: a refused delete (the last
         # active administrator) rolls the hand-over back too. They never block the delete (#324).
         try:
-            delete_user_reporting_orphans(username, actor=admin_username, source="admin", store=store)
+            delete_user_reporting_orphans(
+                username,
+                actor=admin_username,
+                source="admin",
+                store=store,
+                written_by=MANUAL,
+                admin_override=admin_override is True,
+            )
         except MlflowException as e:
-            if e.error_code == ErrorCode.Name(INVALID_STATE):
+            # The ownership guard (INVALID_PARAMETER_VALUE) and the last-active-admin invariant
+            # (INVALID_STATE): both a refusal, never a 500.
+            if e.error_code in (ErrorCode.Name(INVALID_STATE), ErrorCode.Name(INVALID_PARAMETER_VALUE)):
                 raise HTTPException(status_code=409, detail=e.message)
             raise
-        if decision.conflict:
-            # A permitted cross-source delete (report mode, or the override), recorded only once
-            # the delete has committed.
-            _audit_delete_conflict(username, decision, admin_username)
         emit_audit_event(
             "user.delete",
             actor=admin_username,
