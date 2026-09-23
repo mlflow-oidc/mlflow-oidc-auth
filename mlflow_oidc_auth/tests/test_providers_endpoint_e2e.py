@@ -22,7 +22,7 @@ from mlflow_oidc_auth.routers.auth import auth_router
 
 @pytest.fixture
 def client(monkeypatch):
-    import mlflow_oidc_auth.routers.auth as auth_router_mod
+    from mlflow_oidc_auth.routers import auth as auth_router_mod
 
     registry = RegistryLoadResult(
         providers=[

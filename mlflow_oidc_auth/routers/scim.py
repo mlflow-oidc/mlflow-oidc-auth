@@ -48,7 +48,6 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission, require_scim_token
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.scim import (
-    LIST_RESPONSE_SCHEMA,
     PATCH_OP_SCHEMA,
     RESOURCE_TYPE_SCHEMA,
     SCHEMA_SCHEMA,
@@ -66,7 +65,6 @@ from mlflow_oidc_auth.models.scim import (
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
 from mlflow_oidc_auth.ownership import MANUAL, evaluate_write
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.user import generate_token
 
 from ._prefix import SCIM_ROUTER_PREFIX, SCIM_TOKENS_ROUTER_PREFIX
 

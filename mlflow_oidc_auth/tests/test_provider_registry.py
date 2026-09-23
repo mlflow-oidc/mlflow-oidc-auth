@@ -298,7 +298,7 @@ class TestValidationRejections:
 
     def test_a_saml_provider_without_the_extra_is_rejected(self, monkeypatch):
         """Monkeypatched rather than assumed: the extra is installed in the dev environment."""
-        import mlflow_oidc_auth.provider_registry as registry_module
+        from mlflow_oidc_auth import provider_registry as registry_module
 
         monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: False)
         result = build([saml_entry()])
@@ -657,7 +657,7 @@ class TestATokenProviderMustPinItsOwnIssuerAndKeys:
     def test_a_saml_provider_needs_neither(self, monkeypatch):
         """The requirement is about validating bearer tokens against a key set. SAML asserts
         identity through a browser POST and never resolves a token here."""
-        import mlflow_oidc_auth.provider_registry as registry_module
+        from mlflow_oidc_auth import provider_registry as registry_module
 
         monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
         result = build([saml_entry()])
@@ -719,7 +719,7 @@ class TestAllowTokensWithoutExpiry:
 
     def test_it_is_refused_on_a_saml_provider(self, monkeypatch):
         """Refused for the field itself, not incidentally for a missing [saml] extra."""
-        import mlflow_oidc_auth.provider_registry as registry_module
+        from mlflow_oidc_auth import provider_registry as registry_module
 
         monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
         entry = saml_entry(allow_tokens_without_expiry=True)
@@ -730,7 +730,7 @@ class TestAllowTokensWithoutExpiry:
         assert any("'allow_tokens_without_expiry' applies only to a token provider" in error for error in result.errors)
 
     def test_a_saml_provider_without_it_is_unaffected(self, monkeypatch):
-        import mlflow_oidc_auth.provider_registry as registry_module
+        from mlflow_oidc_auth import provider_registry as registry_module
 
         monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
 
@@ -778,7 +778,7 @@ class TestSamlProviders:
 
     @pytest.fixture(autouse=True)
     def extra_installed(self, monkeypatch):
-        import mlflow_oidc_auth.provider_registry as registry_module
+        from mlflow_oidc_auth import provider_registry as registry_module
 
         monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
         return registry_module
@@ -959,7 +959,7 @@ class TestSamlMetadataUrl:
 
     @pytest.fixture(autouse=True)
     def extra_installed(self, monkeypatch):
-        import mlflow_oidc_auth.provider_registry as registry_module
+        from mlflow_oidc_auth import provider_registry as registry_module
 
         monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
         monkeypatch.setattr(registry_module, "_METADATA_CACHE", {})
@@ -1047,7 +1047,7 @@ class TestSamlMetadataFetch:
     def fake_get(self, monkeypatch):
         import requests
 
-        import mlflow_oidc_auth.provider_registry as registry_module
+        from mlflow_oidc_auth import provider_registry as registry_module
 
         monkeypatch.setattr(registry_module, "_METADATA_CACHE", {})
         seen = {}
