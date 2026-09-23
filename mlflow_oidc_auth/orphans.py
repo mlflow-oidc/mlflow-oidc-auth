@@ -27,8 +27,9 @@ every deprovisioning is out of proportion to a report.
 Regex grants are resolved exactly as the request-time resolvers resolve them: the principal's
 patterns in priority order, first match wins (for workspaces, the most permissive of the
 best-priority matches), against the same subject — the experiment's *name*, the model or prompt
-name, the scorer name, the gateway key, the workspace name. Each source is evaluated on its own;
-``PERMISSION_SOURCE_ORDER`` is not replayed across sources. Where the subject lives in MLflow
+name, the scorer name, the gateway key, the workspace name. A regex holder's permission is found by
+replaying ``PERMISSION_SOURCE_ORDER``, so a direct or group grant the resolver reaches first (say,
+``READ``) shadows their patterns. Where the subject lives in MLflow
 rather than in this plugin's tables (an experiment's name, whether a registered model is a prompt),
 at most :data:`_EXTERNAL_LOOKUP_LIMIT` lookups are made per resource type, and a resource that
 cannot be resolved is reported, never silently assumed held.
@@ -39,7 +40,7 @@ an orphan is a report and never a refusal.
 
 import re
 from collections import defaultdict
-from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NamedTuple, Optional, Set, Tuple
+from typing import Any, Dict, FrozenSet, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from mlflow_oidc_auth.logger import get_logger
 
@@ -180,28 +181,34 @@ def _key_columns(model, names):
 RuleList = List[Any]
 
 
-def _manages_by_rules(rules: RuleList, subject: str) -> bool:
-    """Whether ``rules`` resolve to ``MANAGE`` for ``subject``, as the request-time resolver does."""
+def _regex_permission(rules: RuleList, subject: str, workspace: bool = False) -> Optional[str]:
+    """The permission ``rules`` resolve to for ``subject``, exactly as the request-time resolver does.
+
+    ``None`` when nothing matches — or when a pattern is malformed, which holds nothing either.
+    """
     from mlflow.exceptions import MlflowException
 
-    from mlflow_oidc_auth.utils.permissions import _match_regex_permission
-
     try:
-        return _match_regex_permission(rules, subject, "resource") == MANAGE
+        if workspace:
+            from mlflow_oidc_auth.utils.workspace_cache import _match_workspace_regex_permission
+
+            permission = _match_workspace_regex_permission(rules, subject)
+            return permission.name if permission is not None else None
+        from mlflow_oidc_auth.utils.permissions import _match_regex_permission
+
+        return _match_regex_permission(rules, subject, "resource")
     except (MlflowException, re.error):
-        # No match, or a malformed pattern: either way it holds nothing.
-        return False
+        return None
+
+
+def _manages_by_rules(rules: RuleList, subject: str) -> bool:
+    """Whether ``rules`` resolve to ``MANAGE`` for ``subject``, first match by priority."""
+    return _regex_permission(rules, subject) == MANAGE
 
 
 def _manages_workspace_by_rules(rules: RuleList, subject: str) -> bool:
     """Workspace variant: ties at the best priority resolve to the most permissive match."""
-    from mlflow_oidc_auth.utils.workspace_cache import _match_workspace_regex_permission
-
-    try:
-        permission = _match_workspace_regex_permission(rules, subject)
-    except re.error:
-        return False
-    return permission is not None and permission.name == MANAGE
+    return _regex_permission(rules, subject, workspace=True) == MANAGE
 
 
 class _Context:
@@ -247,57 +254,6 @@ def _rule_columns(model):
 
 def _prompt_flag(row) -> bool:
     return bool(getattr(row, "prompt", False))
-
-
-def _user_rule_lists(ctx: _Context, model) -> Dict[bool, List[RuleList]]:
-    """Other active users' own regex rules, one ordered list per user and prompt flag.
-
-    One statement. Lists without any ``MANAGE`` rule are dropped: they can never resolve to it.
-    """
-    from mlflow_oidc_auth.db.models import SqlUser
-
-    per_user: Dict[Tuple[int, bool], List[Any]] = defaultdict(list)
-    rows = (
-        ctx.session.query(model.user_id, *_rule_columns(model))
-        .join(SqlUser, SqlUser.id == model.user_id)
-        .filter(SqlUser.active.is_(True), SqlUser.id != ctx.user_id)
-        .all()
-    )
-    for row in rows:
-        per_user[(row.user_id, _prompt_flag(row))].append(row)
-    lists: Dict[bool, List[RuleList]] = defaultdict(list)
-    for (_, prompt), rules in per_user.items():
-        if any(r.permission == MANAGE for r in rules):
-            lists[prompt].append(_sort_rules(rules))
-    return lists
-
-
-def _group_rule_lists(ctx: _Context, model) -> Dict[bool, List[RuleList]]:
-    """Other active users' group regex rules, one ordered list per distinct set of groups.
-
-    One statement (plus the shared membership read). The resolver evaluates a user's group
-    patterns as one list across all their groups, so that is what is built here.
-    """
-    managed = ctx.managed_groups()
-    if not managed:
-        return {}
-    per_group: Dict[Tuple[int, bool], List[Any]] = defaultdict(list)
-    for row in ctx.session.query(model.group_id, *_rule_columns(model)).all():
-        if row.group_id in managed:
-            per_group[(row.group_id, _prompt_flag(row))].append(row)
-    if not per_group:
-        return {}
-    lists: Dict[bool, List[RuleList]] = defaultdict(list)
-    for group_ids in set(ctx.other_active_memberships().values()):
-        for prompt in (False, True):
-            rules = [r for g in group_ids for r in per_group.get((g, prompt), ())]
-            if any(r.permission == MANAGE for r in rules):
-                lists[prompt].append(_sort_rules(rules))
-    return lists
-
-
-def _held_by_any(rule_lists: List[RuleList], subject: str, matcher: Callable[[RuleList, str], bool]) -> bool:
-    return any(matcher(rules, subject) for rules in rule_lists)
 
 
 def _limited(values: List[str], what: str) -> List[str]:
@@ -351,47 +307,156 @@ def _prompt_flags(names: List[str]) -> Dict[str, bool]:
     return flags
 
 
-def _regex_held(ctx: _Context, spec: _Spec, candidates: Set[Tuple[str, ...]]) -> Set[Tuple[str, ...]]:
-    """The subset of ``candidates`` another active principal manages through a regex grant.
+class _Holder(NamedTuple):
+    """One other active user's grants on a resource type, as their resolver would see them."""
 
-    A bounded number of statements: one per regex table, plus the membership read shared across
-    resource types; at most :data:`_EXTERNAL_LOOKUP_LIMIT` MLflow lookups where a subject lives there.
+    direct: Dict[Tuple[str, ...], str]
+    group: Dict[Tuple[str, ...], str]
+    #: ``{prompt_flag: rules}`` for the user's own patterns and for their groups' patterns.
+    regex: Dict[bool, RuleList]
+    group_regex: Dict[bool, RuleList]
+
+
+def _more_permissive(a: Optional[str], b: str) -> str:
+    from mlflow_oidc_auth.permissions import get_permission
+
+    if a is None:
+        return b
+    return b if get_permission(b).priority > get_permission(a).priority else a
+
+
+def _regex_holders(ctx: _Context, spec: _Spec) -> List[_Holder]:
+    """Other active users with a ``MANAGE`` pattern (their own or a group's), with every grant that
+    could decide their permission first. Four statements plus the shared membership read.
+
+    A user whose patterns hold no ``MANAGE`` rule can never manage anything through them, and is
+    already counted (or not) by the direct and group checks, so they are left out.
     """
-    user_lists = _user_rule_lists(ctx, spec.user_regex_model)
-    group_lists = _group_rule_lists(ctx, spec.group_regex_model)
-    by_flag = {flag: user_lists.get(flag, []) + group_lists.get(flag, []) for flag in (False, True)}
-    if not by_flag[False] and not by_flag[True]:
-        return set()
+    from mlflow_oidc_auth.db.models import SqlUser
 
-    matcher = _manages_workspace_by_rules if spec.resource_type == WORKSPACE else _manages_by_rules
-    rules = by_flag[False]
+    memberships = ctx.other_active_memberships()
+    own: Dict[int, Dict[bool, List[Any]]] = defaultdict(lambda: defaultdict(list))
+    rows = (
+        ctx.session.query(spec.user_regex_model.user_id, *_rule_columns(spec.user_regex_model))
+        .join(SqlUser, SqlUser.id == spec.user_regex_model.user_id)
+        .filter(SqlUser.active.is_(True), SqlUser.id != ctx.user_id)
+        .all()
+    )
+    for row in rows:
+        own[row.user_id][_prompt_flag(row)].append(row)
+
+    managed = ctx.managed_groups()
+    per_group: Dict[int, Dict[bool, List[Any]]] = defaultdict(lambda: defaultdict(list))
+    if managed:
+        for row in ctx.session.query(spec.group_regex_model.group_id, *_rule_columns(spec.group_regex_model)).all():
+            if row.group_id in managed:
+                per_group[row.group_id][_prompt_flag(row)].append(row)
+
+    def has_manage(rules_by_flag) -> bool:
+        return any(r.permission == MANAGE for rules in rules_by_flag.values() for r in rules)
+
+    candidates = {u for u, rules in own.items() if has_manage(rules)}
+    candidates |= {u for u, groups in memberships.items() if any(has_manage(per_group[g]) for g in groups if g in per_group)}
+    if not candidates:
+        return []
+
+    key_names = spec.key_columns
+    direct: Dict[int, Dict[Tuple[str, ...], str]] = defaultdict(dict)
+    user_keys = _key_columns(spec.user_model, key_names)
+    for row in ctx.session.query(spec.user_model.user_id, spec.user_model.permission, *user_keys).filter(spec.user_model.user_id.in_(candidates)).all():
+        direct[row[0]][tuple(row[2:])] = row[1]
+    group_grants: Dict[int, Dict[Tuple[str, ...], str]] = defaultdict(dict)
+    candidate_groups = {g for u in candidates for g in memberships.get(u, ())}
+    if candidate_groups:
+        group_keys = _key_columns(spec.group_model, key_names)
+        rows = (
+            ctx.session.query(spec.group_model.group_id, spec.group_model.permission, *group_keys).filter(spec.group_model.group_id.in_(candidate_groups)).all()
+        )
+        for row in rows:
+            group_grants[row[0]][tuple(row[2:])] = row[1]
+
+    holders = []
+    for u in sorted(candidates):
+        groups = memberships.get(u, frozenset())
+        via_groups: Dict[Tuple[str, ...], str] = {}
+        for g in groups:
+            for keys, permission in group_grants.get(g, {}).items():
+                via_groups[keys] = _more_permissive(via_groups.get(keys), permission)
+        holders.append(
+            _Holder(
+                direct=direct.get(u, {}),
+                group=via_groups,
+                regex={flag: _sort_rules(own[u][flag]) for flag in (False, True)} if u in own else {False: [], True: []},
+                group_regex={flag: _sort_rules([r for g in groups for r in per_group[g][flag]]) if per_group else [] for flag in (False, True)},
+            )
+        )
+    return holders
+
+
+def _resolves_to_manage(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prompt: bool, workspace: bool) -> bool:
+    """Replay ``PERMISSION_SOURCE_ORDER`` for one holder: the first source with an answer decides.
+
+    A direct or group grant at any level shadows a later regex source, as it does at request time.
+    ``subject`` is ``None`` when the regex subject could not be resolved: the regex sources then
+    give no answer. The configured default is never a holder.
+    """
+    from mlflow_oidc_auth.config import config
+
+    for source in config.PERMISSION_SOURCE_ORDER:
+        if source == "user":
+            answer = holder.direct.get(keys)
+        elif source == "group":
+            answer = holder.group.get(keys)
+        elif source == "regex":
+            answer = _regex_permission(holder.regex[prompt], subject, workspace) if subject is not None else None
+        elif source == "group-regex":
+            answer = _regex_permission(holder.group_regex[prompt], subject, workspace) if subject is not None else None
+        else:
+            continue
+        if answer is not None:
+            return answer == MANAGE
+    return False
+
+
+def _regex_held(ctx: _Context, spec: _Spec, candidates: Set[Tuple[str, ...]]) -> Set[Tuple[str, ...]]:
+    """The subset of ``candidates`` another active user manages through a regex grant.
+
+    Each holder's permission is resolved by replaying ``PERMISSION_SOURCE_ORDER``, so a direct or
+    group grant that the resolver would reach first (say, ``READ``) is what they get, whatever their
+    patterns say. A bounded number of statements; at most :data:`_EXTERNAL_LOOKUP_LIMIT` MLflow
+    lookups where the subject lives there.
+    """
+    holders = _regex_holders(ctx, spec)
+    if not holders:
+        return set()
+    workspace = spec.resource_type == WORKSPACE
+
+    def held(keys, subject, prompt) -> bool:
+        return any(_resolves_to_manage(h, keys, subject, prompt, workspace) for h in holders)
 
     if spec.regex_key_index is None:  # experiments: patterns match the name
-        if not rules:
-            return set()
         names = _experiment_names(sorted({keys[0] for keys in candidates}))
-        return {keys for keys in candidates if keys[0] in names and _held_by_any(rules, names[keys[0]], matcher)}
+        return {keys for keys in candidates if keys[0] in names and held(keys, names[keys[0]], False)}
 
     if spec.resource_type != REGISTERED_MODEL:
-        return {keys for keys in candidates if _held_by_any(rules, keys[spec.regex_key_index], matcher)}
+        return {keys for keys in candidates if held(keys, keys[spec.regex_key_index], False)}
 
     # Registered models and prompts share grant rows but not patterns: model patterns apply to a
     # model, prompt patterns to a prompt. Ask the registry only when the two disagree.
-    held: Set[Tuple[str, ...]] = set()
+    result: Set[Tuple[str, ...]] = set()
     undecided: Dict[str, Tuple[str, ...]] = {}
     for keys in candidates:
-        as_model = _held_by_any(by_flag[False], keys[0], matcher)
-        as_prompt = _held_by_any(by_flag[True], keys[0], matcher)
+        as_model, as_prompt = held(keys, keys[0], False), held(keys, keys[0], True)
         if as_model and as_prompt:
-            held.add(keys)
+            result.add(keys)
         elif as_model or as_prompt:
             undecided[keys[0]] = keys
     if undecided:
         flags = _prompt_flags(sorted(undecided))
         for name, keys in undecided.items():
-            if name in flags and _held_by_any(by_flag[flags[name]], name, matcher):
-                held.add(keys)
-    return held
+            if name in flags and held(keys, name, flags[name]):
+                result.add(keys)
+    return result
 
 
 # ---------------------------------------------------------------------------

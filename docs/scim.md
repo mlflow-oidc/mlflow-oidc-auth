@@ -408,7 +408,9 @@ a resource. See [Permissions](permissions#de-provisioning) for how regex grants 
 If `ORPHAN_FALLBACK_PRINCIPAL` is set, a hard delete first grants that user `MANAGE` on each
 orphaned resource (`detail.transferred_to` on the event). The fallback must be an existing,
 active, non-service-account user other than the one being deleted. Otherwise the hand-over is
-skipped with a warning and orphans are only reported. Deactivation never transfers, because a
+skipped with a warning and orphans are only reported. Grants are keyed by resource name or id, not
+by workspace, so the fallback principal's `MANAGE` on a model name applies to that name in every
+workspace. Treat `ORPHAN_FALLBACK_PRINCIPAL` as a cross-tenant steward. Deactivation never transfers, because a
 deactivated user may come back.
 
 The hand-over runs **inside the delete's own transaction**, before the cascade. A delete that is

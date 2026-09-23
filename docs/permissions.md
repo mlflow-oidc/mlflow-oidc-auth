@@ -218,10 +218,15 @@ the same value the resolver uses:
 - scorers: the scorer name
 - gateway resources and workspaces: their name
 
-Each source is evaluated on its own; `PERMISSION_SOURCE_ORDER` is not replayed across sources.
+A regex holder's permission is resolved by replaying `PERMISSION_SOURCE_ORDER`, as at request time.
+With the default order, a user with a direct or group `READ` grant on the resource gets `READ`, even
+if one of their patterns says `MANAGE`, so they are not a holder.
+
 Experiment names and the model-or-prompt distinction come from MLflow. At most 200 of those lookups
 are made per resource type. A resource that cannot be resolved is reported as orphaned rather than
-assumed held. Administrators are not counted, because an administrator can always recover a resource.
+assumed held. The model-or-prompt lookup runs outside any workspace. With workspaces enabled, a name
+that is a model in one workspace and a prompt in another is judged by the default workspace's
+entry. Administrators are not counted, because an administrator can always recover a resource.
 
 A hard delete additionally
 grants `MANAGE` on each orphaned resource to `ORPHAN_FALLBACK_PRINCIPAL` when it names an active

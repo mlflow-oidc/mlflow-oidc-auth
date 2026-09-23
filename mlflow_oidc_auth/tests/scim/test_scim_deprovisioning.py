@@ -315,6 +315,36 @@ class TestOrphansThroughGroupsAndRegex:
 
         assert set(orphaned_events(audit_events)) == {("gateway_secret", "key-1")}
 
+    @pytest.mark.parametrize(
+        "order, orphaned",
+        [(["user", "group", "regex", "group-regex"], True), (["regex", "group-regex", "user", "group"], False)],
+    )
+    def test_a_direct_grant_the_resolver_reaches_first_shadows_a_manage_pattern(
+        self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch, order, orphaned
+    ):
+        """The colleague's READ grant decides their permission when ``user`` comes first, so their
+        MANAGE pattern does not make them a holder; with patterns first, it does."""
+        monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", order)
+        bound_store.create_registered_model_permission("fraud-v2", ALICE, "MANAGE")
+        bound_store.create_registered_model_permission("fraud-v2", COLLEAGUE, "READ")
+        bound_store.create_registered_model_regex_permission("^fraud-", 1, "MANAGE", COLLEAGUE)
+
+        self.deactivate(client, scim)
+
+        assert (("registered_model", "fraud-v2") in orphaned_events(audit_events)) is orphaned
+
+    def test_a_group_grant_the_resolver_reaches_first_shadows_a_group_pattern(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_gateway_endpoint_permission("ep-1", ALICE, "MANAGE")
+        bound_store.populate_groups(["readers", "platform"])
+        bound_store.add_user_to_group(COLLEAGUE, "readers")
+        bound_store.add_user_to_group(COLLEAGUE, "platform")
+        bound_store.create_group_gateway_endpoint_permission("readers", "ep-1", "READ")
+        bound_store.create_group_gateway_endpoint_regex_permission("platform", "^ep-", 1, "MANAGE")
+
+        self.deactivate(client, scim)
+
+        assert set(orphaned_events(audit_events)) == {("gateway_endpoint", "ep-1")}
+
     def test_scorer_patterns_match_the_scorer_name(self, client, scim, alice, colleague, bound_store, audit_events):
         bound_store.create_scorer_permission("7", "quality", ALICE, "MANAGE")
         bound_store.create_scorer_permission("7", "latency", ALICE, "MANAGE")
