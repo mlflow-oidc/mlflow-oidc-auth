@@ -12,9 +12,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Dict, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
+
+# ``routers._prefix.UI_ROUTER_PREFIX``, spelled out: importing it would import every router, and
+# with them the app's configuration, into the test process that only plays the browser.
+UI_ROUTER_PREFIX = "/oidc/ui"
 
 # Hosts a browser treats as a secure context even over plain http (the "potentially trustworthy"
 # origins of the Secure Contexts spec). Keycloak sets ``Secure; SameSite=None`` on its login
@@ -22,6 +26,19 @@ import httpx
 _LOOPBACK_HOSTS = {"localhost", "localhost.local", "127.0.0.1", "[::1]", "::1"}
 
 MAX_REDIRECTS = 25
+
+
+def is_ui_redirect(response: httpx.Response) -> bool:
+    """Whether ``response`` redirects into the plugin's React SPA (``/oidc/ui/...``).
+
+    The SPA is static build output that may not exist where the suite runs (CI does not build
+    ``web-react``), and nothing the suite checks lives in it: where a flow *lands* is the redirect's
+    ``Location``, which is asserted on directly.
+    """
+    if response.status_code not in (301, 302, 303, 307, 308):
+        return False
+    path = urlparse(urljoin(str(response.url), response.headers.get("location", ""))).path
+    return path == UI_ROUTER_PREFIX or path.startswith(UI_ROUTER_PREFIX + "/")
 
 
 @dataclass
@@ -110,13 +127,17 @@ class Browser:
     def post(self, url: str, **kwargs) -> httpx.Response:
         return self._record(self.client.post(url, **kwargs))
 
-    def follow(self, response: httpx.Response, *, stop_at: Optional[str] = None) -> httpx.Response:
+    def follow(self, response: httpx.Response, *, stop_at: Optional[str] = None, into_ui: bool = False) -> httpx.Response:
         """Follow ``Location`` headers until a non-redirect, or until a URL starting with ``stop_at``.
 
-        When stopping at ``stop_at`` the redirect *to* it is returned, unfollowed.
+        When stopping at ``stop_at`` the redirect *to* it is returned, unfollowed. So is, by
+        default, a redirect into the plugin's SPA (see ``is_ui_redirect``): assert on its
+        ``Location`` rather than on a page that needs a built UI. ``into_ui=True`` follows it.
         """
         for _ in range(MAX_REDIRECTS):
             if response.status_code not in (301, 302, 303, 307, 308):
+                return response
+            if not into_ui and is_ui_redirect(response):
                 return response
             location = urljoin(str(response.url), response.headers["location"])
             if stop_at is not None and location.startswith(stop_at):

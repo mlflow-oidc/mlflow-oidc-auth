@@ -271,6 +271,13 @@ than merely forgotten by the browser.
   `session.revoked` audit event
 - Logging out revokes the row. If revocation fails, logout returns **503** rather than
   reporting success, because a cleared cookie does not end a session that is still live
+- Logging out also ends the session at the provider that opened it: RP-initiated logout goes to
+  *that* OIDC provider's `end_session_endpoint` (with its own `id_token_hint`), or SAML single
+  logout for a SAML session; a provider without one gets a local logout only. With
+  `OIDC_USE_REFRESH_TOKEN`, the stored refresh token is first revoked at the provider's RFC 7009
+  `revocation_endpoint` when its discovery document advertises one, so the `offline_access` grant
+  does not outlive the logout. This is best effort with a 5-second limit: a failure is logged and
+  audited as `auth.token_revocation_failed`, and never blocks the logout
 - The cookie is still signed with `SECRET_KEY` — all replicas **must** share the same key, and
   it must be set explicitly for sessions to survive a restart
 - The cookie is signed but **not** encrypted; nothing secret belongs in it

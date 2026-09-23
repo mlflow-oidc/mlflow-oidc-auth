@@ -78,6 +78,27 @@
       ]
     },
     {
+      "username": "carol@example.com",
+      "email": "carol@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Carol",
+      "lastName": "E2E",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "carol-e2e-not-a-secret",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-mlflow-e2e"
+      ],
+      "groups": [
+        "/mlflow-users"
+      ]
+    },
+    {
       "username": "root@example.com",
       "email": "root@example.com",
       "emailVerified": true,

@@ -1,9 +1,11 @@
 """OIDC against a real Keycloak: login, provisioning, the #367 refresh race, RP-initiated logout.
 
-The provider is the registry's ``default`` entry (``identity_binding: email``, JIT provisioning,
+The provider is mostly the registry's ``default`` entry (``identity_binding: email``, JIT provisioning,
 group sync on every login, admin from the ``mlflow-admins`` claim). Keycloak issues 10-second
 access tokens, rotates refresh tokens and detects their reuse, so a second exchange of the same
 refresh token would end the session at the IdP — which is exactly what the race test watches for.
+One test logs in through a *named* OIDC entry over the same realm, to check that logout goes to
+the provider that opened the session.
 """
 
 from __future__ import annotations
@@ -12,16 +14,21 @@ import base64
 import json
 import time
 
+from urllib.parse import parse_qs, urlparse
+
 import itsdangerous
 import pytest
 
+from mlflow_oidc_auth.session.token_vault import SessionTokens, TokenVault
 from mlflow_oidc_auth.tests.e2e import flows
-from mlflow_oidc_auth.tests.e2e.harness import ACCESS_TOKEN_LIFESPAN_SECONDS, OIDC_PROVIDER_ID
+from mlflow_oidc_auth.tests.e2e.harness import ACCESS_TOKEN_LIFESPAN_SECONDS, NAMED_OIDC_PROVIDER_ID, OIDC_PROVIDER_ID
 
 pytestmark = pytest.mark.e2e
 
 ALICE = "alice@example.com"
 ROOT = "root@example.com"
+# Bound to the named provider on first login; an account bound to one provider refuses another.
+CAROL = "carol@example.com"
 CONCURRENT_REQUESTS = 8
 # Refresh-token material or identity must never ride in the cookie (#310, #367).
 FORBIDDEN_COOKIE_KEYS = {"username", "refresh_token", "access_token", "id_token", "expires_at", "token", "userinfo"}
@@ -37,6 +44,18 @@ def _signed_cookie(secret_key: str, payload: dict) -> str:
     """A cookie signed exactly as the app signs one — i.e. by someone who holds SECRET_KEY."""
     data = base64.b64encode(json.dumps(payload).encode())
     return itsdangerous.TimestampSigner(secret_key).sign(data).decode()
+
+
+def _stored_tokens(app_server, cookie: str) -> SessionTokens:
+    """The provider tokens the app keeps on the session row, decrypted with the app's key.
+
+    Only a test holding ``SECRET_KEY`` can do this; it is how the suite gets the refresh token the
+    app would present, to check afterwards what Keycloak thinks of it.
+    """
+    rows = app_server.db.query("SELECT encrypted_tokens FROM auth_sessions WHERE session_id = :sid", sid=_cookie_payload(cookie)["session_id"])
+    tokens = TokenVault(app_server.secret_key).decrypt(rows[0]["encrypted_tokens"])
+    assert tokens is not None and tokens.has_refresh_token, "the session row holds no refresh token"
+    return tokens
 
 
 def _wait_until_access_token_expired() -> None:
@@ -198,26 +217,73 @@ class TestRpInitiatedLogout:
         # Keycloak accepts the logout request as built (a bad hint or an unregistered
         # post_logout_redirect_uri is an error page there) and sends the browser back to the app.
         landing = flows.drive_to_app(browser, leaving, app_server)
-        assert landing.status_code == 200
-        assert "/oidc/ui/auth" in str(landing.url)
+        assert urlparse(flows.landing_url(landing)).path == "/oidc/ui/auth"
         assert keycloak.user_sessions(ALICE) == []
         # A fresh login needs credentials again: nothing at the IdP signs the browser straight back in.
         again = browser.follow(browser.get(f"{app_server.url}/login"))
         assert "kc-form-login" in again.text
 
-    def test_the_idp_grant_outlives_logout_because_refresh_uses_offline_access(self, app_server, keycloak):
-        """Documents a known gap rather than a guarantee (see docs/development.md).
+    def test_logout_revokes_the_refresh_token_at_keycloak(self, app_server, keycloak):
+        """RFC 7009 at logout: the ``offline_access`` grant does not outlive it.
 
-        With ``OIDC_USE_REFRESH_TOKEN`` the plugin asks for ``offline_access``. Keycloak then keeps
-        an *offline* session for the grant, which RP-initiated logout does not end — the plugin
-        revokes its own session row, so the grant is unusable through MLflow, but the refresh token
-        stays valid at the IdP until its offline idle timeout. This test pins the current behaviour
-        so a change to it (for example RFC 7009 revocation at logout) is noticed and the docs
-        updated; it asserts nothing about MLflow access, which the test above covers.
+        With ``OIDC_USE_REFRESH_TOKEN`` the plugin asks for ``offline_access``, and Keycloak keeps an
+        *offline* session for the grant that RP-initiated logout alone does not end. ``/logout``
+        therefore revokes the stored refresh token at Keycloak's ``revocation_endpoint`` before
+        leaving, so the token is dead at the IdP, not merely forgotten by MLflow.
         """
         keycloak.logout_everywhere(ALICE)
         before = keycloak.offline_session_count(ALICE)
         browser = flows.login(app_server, ALICE)
         assert keycloak.offline_session_count(ALICE) == before + 1
-        flows.drive_to_app(browser, browser.get(f"{app_server.url}/logout"), app_server)
-        assert keycloak.offline_session_count(ALICE) == before + 1
+        refresh_token = _stored_tokens(app_server, flows.session_cookie(browser)).refresh_token
+
+        leaving = browser.get(f"{app_server.url}/logout")
+        # Revoked before the redirect is even issued: nothing depends on the browser reaching Keycloak.
+        refused = keycloak.refresh(refresh_token)
+        assert refused.status_code == 400 and refused.json()["error"] == "invalid_grant", refused.text
+        # Exactly this session's offline grant is gone; other logins' grants are untouched.
+        assert keycloak.offline_session_count(ALICE) == before
+        assert not app_server.audit_events("auth.token_revocation_failed")
+
+        flows.drive_to_app(browser, leaving, app_server)
+
+
+class TestNamedProviderLogout:
+    def test_a_named_oidc_providers_session_is_logged_out_at_that_provider(self, app_server, keycloak):
+        keycloak.logout_everywhere(CAROL)
+        before = keycloak.offline_session_count(CAROL)
+        browser = flows.login(app_server, CAROL, provider=NAMED_OIDC_PROVIDER_ID)
+        cookie = flows.session_cookie(browser)
+        status = flows.auth_status(app_server, cookie)
+        assert status["authenticated"] is True and status["username"] == CAROL
+        # Reported under the provider that opened the session, not the default one.
+        assert status["provider"] == "Keycloak (named OIDC)"
+        session_id = _cookie_payload(cookie)["session_id"]
+        rows = app_server.db.query("SELECT provider_id FROM auth_sessions WHERE session_id = :sid", sid=session_id)
+        assert rows[0]["provider_id"] == NAMED_OIDC_PROVIDER_ID
+        tokens = _stored_tokens(app_server, cookie)
+        assert keycloak.offline_session_count(CAROL) == before + 1
+
+        leaving = browser.get(f"{app_server.url}/logout")
+        assert leaving.status_code == 302
+        location = leaving.headers["location"]
+        # That provider's end-session endpoint — its issuer, not the default provider's.
+        assert location.startswith(f"{keycloak.named_issuer}/protocol/openid-connect/logout?"), location
+        query = parse_qs(urlparse(location).query)
+        assert query["id_token_hint"] == [tokens.id_token]
+        assert query["client_id"] == ["mlflow"]
+        assert urlparse(query["post_logout_redirect_uri"][0]).path == "/oidc/ui/auth"
+        assert flows.api_get(app_server, flows.CURRENT_USER, cookie).status_code == 401
+
+        # Its refresh token was revoked at that provider too.
+        refused = keycloak.refresh(tokens.refresh_token, issuer=keycloak.named_issuer)
+        assert refused.status_code == 400 and refused.json()["error"] == "invalid_grant", refused.text
+        assert keycloak.offline_session_count(CAROL) == before
+
+        landing = flows.drive_to_app(browser, leaving, app_server)
+        assert urlparse(flows.landing_url(landing)).path == "/oidc/ui/auth"
+        assert keycloak.user_sessions(CAROL) == []
+        # Keycloak's session at that issuer is over: logging in there again needs credentials.
+        again = browser.follow(browser.get(f"{app_server.url}/login/{NAMED_OIDC_PROVIDER_ID}"))
+        assert urlparse(str(again.url)).hostname == urlparse(keycloak.named_issuer).hostname
+        assert "kc-form-login" in again.text

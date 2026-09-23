@@ -28,10 +28,15 @@ OIDC_CLIENT_SECRET = "mlflow-e2e-client-secret-not-a-secret"
 PASSWORDS = {
     "alice@example.com": "alice-e2e-not-a-secret",
     "bob@example.com": "bob-e2e-not-a-secret",
+    "carol@example.com": "carol-e2e-not-a-secret",
     "root@example.com": "root-e2e-not-a-secret",
 }
 
 OIDC_PROVIDER_ID = "default"
+# A second, *named* OIDC provider over the same realm and client. Reached through the other
+# loopback name (see ``Keycloak.named_issuer``), so Keycloak gives it a distinct issuer and the
+# registry accepts it next to ``default``.
+NAMED_OIDC_PROVIDER_ID = "keycloak-named"
 SAML_PROVIDER_ID = "keycloak-saml"
 SAML_CLIENT_ID = "mlflow-saml"
 ACCESS_TOKEN_LIFESPAN_SECONDS = 10
@@ -92,6 +97,24 @@ class Keycloak:
     @property
     def saml_issuer(self) -> str:
         return f"{self.https_url}/realms/{REALM}"
+
+    @property
+    def named_url(self) -> str:
+        """Keycloak's http listener under the *other* loopback name (localhost <-> 127.0.0.1).
+
+        Keycloak in dev mode derives the issuer from the request's host, so this is the same realm
+        with a different ``iss`` — which is what lets a second registry entry point at it: the
+        registry refuses two providers claiming one issuer.
+        """
+        parsed = urlparse(self.url)
+        other = {"localhost": "127.0.0.1", "127.0.0.1": "localhost"}.get(parsed.hostname or "")
+        if other is None:
+            raise RuntimeError(f"the named-provider e2e test needs a loopback Keycloak URL (localhost or 127.0.0.1), not {self.url}")
+        return parsed._replace(netloc=f"{other}:{parsed.port}" if parsed.port else other).geturl()
+
+    @property
+    def named_issuer(self) -> str:
+        return f"{self.named_url}/realms/{REALM}"
 
     @property
     def token_endpoint(self) -> str:
@@ -218,9 +241,14 @@ class Keycloak:
         response.raise_for_status()
         return response.json()
 
-    def refresh(self, refresh_token: str) -> httpx.Response:
+    def refresh(self, refresh_token: str, issuer: Optional[str] = None) -> httpx.Response:
+        """A refresh-token grant at ``issuer``'s token endpoint (default: the http issuer).
+
+        Keycloak checks a refresh token's ``iss`` against the endpoint it is presented to, so a
+        token minted through ``named_issuer`` must be refreshed there.
+        """
         return self._http.post(
-            self.token_endpoint,
+            f"{issuer or self.issuer}/protocol/openid-connect/token",
             data={"grant_type": "refresh_token", "client_id": OIDC_CLIENT_ID, "client_secret": OIDC_CLIENT_SECRET, "refresh_token": refresh_token},
         )
 
@@ -312,6 +340,22 @@ def server_env(*, app_url: str, secret_key: str, db_uri: str, keycloak: Keycloak
             "admin_source": "claims",
         },
         {
+            # Same realm and client as ``default``, under its own id and issuer: RP-initiated
+            # logout and token revocation must go to the provider that opened the session.
+            "id": NAMED_OIDC_PROVIDER_ID,
+            "type": "oidc",
+            "display_name": "Keycloak (named OIDC)",
+            "discovery_url": f"{keycloak.named_issuer}/.well-known/openid-configuration",
+            "client_id": OIDC_CLIENT_ID,
+            "issuer": keycloak.named_issuer,
+            "audience": OIDC_CLIENT_ID,
+            "identity_binding": "email",
+            "allowed_email_domains": ["example.com"],
+            "provisioning": "jit",
+            "group_sync": "every_login",
+            "admin_source": "claims",
+        },
+        {
             "id": SAML_PROVIDER_ID,
             "type": "saml",
             "display_name": "Keycloak (SAML)",
@@ -342,6 +386,7 @@ def server_env(*, app_url: str, secret_key: str, db_uri: str, keycloak: Keycloak
             "OIDC_DISCOVERY_URL": f"{keycloak.issuer}/.well-known/openid-configuration",
             "OIDC_CLIENT_ID": OIDC_CLIENT_ID,
             "OIDC_CLIENT_SECRET": OIDC_CLIENT_SECRET,
+            "OIDC_CLIENT_SECRET_KEYCLOAK_NAMED": OIDC_CLIENT_SECRET,
             "OIDC_REDIRECT_URI": f"{app_url}/callback",
             "OIDC_USE_REFRESH_TOKEN": "true",
             # Keycloak access tokens live ACCESS_TOKEN_LIFESPAN_SECONDS; with no leeway the tests

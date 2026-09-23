@@ -5,11 +5,11 @@ from __future__ import annotations
 import concurrent.futures
 import threading
 from typing import List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from mlflow_oidc_auth.tests.e2e.browser import Browser, parse_forms
+from mlflow_oidc_auth.tests.e2e.browser import Browser, is_ui_redirect, parse_forms
 from mlflow_oidc_auth.tests.e2e.harness import PASSWORDS, AppServer, keycloak_verify
 
 SESSION_COOKIE = "session"
@@ -26,16 +26,31 @@ def new_browser() -> Browser:
     return Browser(verify=keycloak_verify())
 
 
-def drive_to_app(browser: Browser, response: httpx.Response, app: AppServer, username: Optional[str] = None) -> httpx.Response:
-    """Play the browser's part until it is back on the app with a non-redirect response.
+def landing_url(response: httpx.Response) -> str:
+    """Where ``response`` puts the browser: its ``Location`` if it redirects, else its own URL.
 
-    Handles every page Keycloak shows on the way: its login form (credentials for ``username``),
-    the SAML HTTP-POST auto-submit form (posted to the app with no cookies, as a cross-site POST
-    under ``SameSite=Lax`` is), and its logout confirmation.
+    Flows stop *at* a redirect into the SPA instead of loading it (see ``Browser.follow``), so
+    "the user landed on the login page" is this URL, not a rendered page.
+    """
+    if response.status_code in (301, 302, 303, 307, 308):
+        return urljoin(str(response.url), response.headers["location"])
+    return str(response.url)
+
+
+def drive_to_app(browser: Browser, response: httpx.Response, app: AppServer, username: Optional[str] = None) -> httpx.Response:
+    """Play the browser's part until it is back on the app.
+
+    Returns the app's non-redirect response, or — when the flow ends in the plugin's SPA — the
+    redirect into it, unfollowed (use ``landing_url``). Handles every page Keycloak shows on the
+    way: its login form (credentials for ``username``), the SAML HTTP-POST auto-submit form (posted
+    to the app with no cookies, as a cross-site POST under ``SameSite=Lax`` is), and its logout
+    confirmation.
     """
     for _ in range(12):
         response = browser.follow(response)
         if _origin(str(response.url)) == app.url:
+            return response
+        if is_ui_redirect(response) and _origin(landing_url(response)) == app.url:
             return response
         forms = parse_forms(response.text)
         login = next((form for form in forms if form.attrs.get("id") == "kc-form-login"), None)

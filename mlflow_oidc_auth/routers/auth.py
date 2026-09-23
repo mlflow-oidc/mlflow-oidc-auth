@@ -727,28 +727,151 @@ def _open_server_session(username: str, provider_id: Optional[str] = None, token
     return store.create_auth_session(username, expires_at=expires_at, provider_id=provider_id, encrypted_tokens=encrypted)
 
 
-def _id_token_hint_for_logout(request: Request, session_id: Optional[str]) -> Optional[str]:
-    """The session's ID token, for ``id_token_hint`` at the default provider's logout, or None.
+# How long logout waits on the IdP — for its discovery document, or for a token revocation —
+# before giving up on it. Logout is interactive and the local session is already gone by then, so
+# a slow or unreachable IdP may cost the user a few seconds, never the logout itself.
+IDP_LOGOUT_TIMEOUT_SECONDS = 5.0
 
-    Only a token issued by the default provider qualifies: RP-initiated logout goes to the
-    default client's ``end_session_endpoint``, and handing it another issuer's ID token would
-    disclose a credential to the wrong party. Best effort — logout never fails over a hint.
+
+class _RevocationRefused(Exception):
+    """The IdP answered the RFC 7009 revocation request with an error status."""
+
+
+def _logout_context(request: Request, session_id: Optional[str]) -> tuple[str, Optional[SessionTokens]]:
+    """The provider that opened ``session_id`` and the tokens it issued, read before revocation.
+
+    The provider is the one the session row records, else the one recorded with its tokens, else
+    ``default`` — a session from before providers were recorded belongs to the legacy client.
+    Tokens recorded for a provider other than the one the row names are dropped: a credential is
+    only ever offered back to the issuer that minted it. Best effort — logout never fails over
+    this; anything unreadable yields ``("default", None)``, which is the pre-#367 behaviour.
+
+    Parameters:
+        request: The logout request (its ``state`` may already hold the resolved session).
+        session_id: The session being logged out, if any.
+
+    Returns:
+        ``(provider_id, tokens)``.
     """
     if not session_id:
-        return None
+        return DEFAULT_PROVIDER_ID, None
     try:
         resolved = getattr(getattr(request, "state", None), "resolved_session", None)
         if resolved is None or getattr(resolved, "session_id", session_id) != session_id:
             resolved = store.resolve_auth_session(session_id)
-        tokens = get_token_vault().decrypt(getattr(resolved, "encrypted_tokens", None)) if resolved is not None else None
+        if resolved is None:
+            return DEFAULT_PROVIDER_ID, None
+        tokens = get_token_vault().decrypt(getattr(resolved, "encrypted_tokens", None))
     except Exception as exc:
-        logger.debug("Could not read the session's ID token for logout: %s", type(exc).__name__)
+        logger.debug("Could not read the session's provider and tokens for logout: %s", type(exc).__name__)
+        return DEFAULT_PROVIDER_ID, None
+    row_provider = getattr(resolved, "provider_id", None)
+    token_provider = tokens.provider_id if tokens is not None else None
+    provider_id = row_provider or token_provider or DEFAULT_PROVIDER_ID
+    if tokens is not None and token_provider not in (None, provider_id):
+        tokens = None
+    return provider_id, tokens
+
+
+async def _provider_metadata(client) -> dict:
+    """The provider's discovery metadata, loading it if this process has not yet, or ``{}``.
+
+    A worker that never served this provider's login may not have fetched its discovery
+    document; loading it here (bounded by ``IDP_LOGOUT_TIMEOUT_SECONDS``) is what lets that
+    worker still find the end-session and revocation endpoints.
+    """
+    loader = getattr(client, "load_server_metadata", None)
+    if callable(loader):
+        try:
+            loaded = await asyncio.wait_for(_maybe_await(loader()), IDP_LOGOUT_TIMEOUT_SECONDS)
+            if isinstance(loaded, dict):
+                return loaded
+        except Exception as exc:
+            logger.debug("Could not load provider metadata for logout: %s", type(exc).__name__)
+    metadata = getattr(client, "server_metadata", None)
+    return metadata if isinstance(metadata, dict) else {}
+
+
+async def _revoke_at_revocation_endpoint(client, refresh_token: str) -> bool:
+    """Send ``refresh_token`` to the provider's RFC 7009 endpoint. False when it advertises none."""
+    metadata = await _provider_metadata(client)
+    endpoint = metadata.get("revocation_endpoint")
+    if not isinstance(endpoint, str) or not endpoint:
+        return False
+    # The same authlib session factory the client's own token exchange uses, so the request
+    # carries this provider's client credentials, auth method and TLS settings — and only its.
+    async with client._get_oauth_client(**metadata) as session:
+        response = await session.revoke_token(endpoint, token=refresh_token, token_type_hint="refresh_token")
+    status_code = getattr(response, "status_code", 200)
+    if not isinstance(status_code, int) or not 200 <= status_code < 300:
+        raise _RevocationRefused(f"HTTP {status_code}")
+    return True
+
+
+async def _revoke_refresh_token_at_idp(provider_id: str, tokens: Optional[SessionTokens], username: Optional[str]) -> None:
+    """Revoke the session's refresh token at the provider that issued it (RFC 7009). Best effort.
+
+    Without this, the ``offline_access`` grant behind ``OIDC_USE_REFRESH_TOKEN`` outlives logout:
+    RP-initiated logout ends the IdP's browser session, not an offline one, so the refresh token
+    would stay valid at the IdP until its offline idle timeout. The token goes only to the
+    provider recorded for the session, through that provider's own client. A provider that
+    advertises no ``revocation_endpoint`` is skipped silently. Any failure is logged (exception
+    type only — never the token) and audited as ``auth.token_revocation_failed``; it never blocks
+    the logout, whose local half has already happened.
+    """
+    if tokens is None or not tokens.has_refresh_token:
+        return
+    client = _client_for_refresh(provider_id)
+    if client is None or not hasattr(client, "_get_oauth_client"):
+        # The provider is no longer configured (or is not OIDC): nothing here holds the client
+        # credentials to revoke with, so the grant lives until the IdP expires it. Say so.
+        logger.warning("No OIDC client for provider '%s'; the session's refresh token cannot be revoked", provider_id)
+        emit_audit_event(
+            "auth.token_revocation_failed",
+            actor=username or "<unknown>",
+            detail={"provider_id": provider_id, "reason": "no_client"},
+            status="denied",
+        )
+        return
+    try:
+        revoked = await asyncio.wait_for(_revoke_at_revocation_endpoint(client, tokens.refresh_token), IDP_LOGOUT_TIMEOUT_SECONDS)
+    except Exception as exc:
+        reason = type(exc).__name__
+        logger.warning("Could not revoke the session's refresh token at provider '%s': %s", provider_id, reason)
+        emit_audit_event(
+            "auth.token_revocation_failed",
+            actor=username or "<unknown>",
+            detail={"provider_id": provider_id, "reason": reason},
+            status="denied",
+        )
+        return
+    if revoked:
+        logger.debug("Revoked the session's refresh token at provider '%s'", provider_id)
+
+
+async def _named_provider_end_session_url(request: Request, provider_id: str, tokens: Optional[SessionTokens]) -> Optional[str]:
+    """RP-initiated logout at the named OIDC provider that opened the session, or None.
+
+    Uses that provider's own ``end_session_endpoint`` and client id, and offers its own ID token
+    as ``id_token_hint``. None — local logout only — when the provider has no registered client
+    (not OIDC, or no longer configured) or advertises no end-session endpoint. Never falls back to
+    the default provider, which did not authenticate this session.
+    """
+    client = get_client(provider_id)
+    if client is None:
+        logger.debug("No OIDC client for provider '%s'; ending the local session only", provider_id)
         return None
-    if tokens is None or not tokens.id_token:
+    metadata = await _provider_metadata(client)
+    end_session_endpoint = metadata.get("end_session_endpoint")
+    if not isinstance(end_session_endpoint, str) or not end_session_endpoint:
         return None
-    if tokens.provider_id not in (None, DEFAULT_PROVIDER_ID):
-        return None
-    return tokens.id_token
+    logout_params = {"post_logout_redirect_uri": _build_ui_url(request, "/auth")}
+    client_id = getattr(client, "client_id", None)
+    if isinstance(client_id, str) and client_id:
+        logout_params["client_id"] = client_id
+    if tokens is not None and tokens.id_token:
+        logout_params["id_token_hint"] = tokens.id_token
+    return f"{end_session_endpoint}?{urlencode(logout_params)}"
 
 
 @auth_router.get(LOGOUT)
@@ -773,8 +896,9 @@ async def logout(request: Request):
         # defensively so logout never fails on the way out.
         username = getattr(getattr(request, "state", None), "username", None)
         session_id = session.get("session_id")
-        # Read before revocation: a revoked row no longer resolves.
-        id_token_hint = _id_token_hint_for_logout(request, session_id)
+        # Read before revocation: a revoked row no longer resolves. The provider that opened the
+        # session decides where RP-initiated logout and token revocation go.
+        provider_id, session_tokens = _logout_context(request, session_id)
         # Likewise the SAML NameID and SessionIndex for single logout (#329).
         from mlflow_oidc_auth.routers.saml import saml_logout_context, saml_logout_redirect
 
@@ -819,6 +943,15 @@ async def logout(request: Request):
             slo_url = saml_logout_redirect(request, *saml_context)
             return RedirectResponse(url=slo_url or _build_ui_url(request, "/auth"), status_code=302)
 
+        # End the IdP grant too, before the browser leaves: RP-initiated logout does not end the
+        # offline session a refresh token belongs to. Never raises.
+        await _revoke_refresh_token_at_idp(provider_id, session_tokens, username)
+
+        if provider_id != DEFAULT_PROVIDER_ID:
+            # A named OIDC provider opened this session: log out there, or nowhere.
+            logout_url = await _named_provider_end_session_url(request, provider_id, session_tokens)
+            return RedirectResponse(url=logout_url or _build_ui_url(request, "/auth"), status_code=302)
+
         # Check if OIDC provider supports logout
         if hasattr(oauth.oidc, "server_metadata"):
             metadata = getattr(oauth.oidc, "server_metadata", {})
@@ -836,9 +969,9 @@ async def logout(request: Request):
                     "post_logout_redirect_uri": post_logout_redirect,
                     "client_id": config.OIDC_CLIENT_ID,
                 }
-                if id_token_hint:
+                if session_tokens is not None and session_tokens.id_token:
                     # Held on the (now revoked) session row since #367, so it can be offered.
-                    logout_params["id_token_hint"] = id_token_hint
+                    logout_params["id_token_hint"] = session_tokens.id_token
                 params = urlencode(logout_params)
                 logout_url = f"{end_session_endpoint}?{params}"
                 return RedirectResponse(url=logout_url, status_code=302)
@@ -976,6 +1109,26 @@ async def _complete_login(request: Request, provider_id: Optional[str]):
         raise HTTPException(status_code=500, detail="Internal server error during authentication")
 
 
+def _session_provider_display_name(resolved) -> str:
+    """Display name of the provider that opened the session, else ``OIDC_PROVIDER_DISPLAY_NAME``.
+
+    A SAML or named-OIDC session is reported under its own provider, not the default one. A
+    session from before providers were recorded, or from a provider no longer configured, falls
+    back to the deployment-wide name.
+    """
+    provider_id = getattr(resolved, "provider_id", None)
+    if isinstance(provider_id, str) and provider_id:
+        try:
+            provider = config.AUTH_PROVIDERS.by_id(provider_id)
+        except Exception as exc:
+            logger.debug("Could not look up the session's provider: %s", type(exc).__name__)
+            provider = None
+        display_name = getattr(provider, "display_name", None) if provider is not None else None
+        if isinstance(display_name, str) and display_name:
+            return display_name
+    return config.OIDC_PROVIDER_DISPLAY_NAME
+
+
 @auth_router.get(AUTH_STATUS)
 async def auth_status(request: Request):
     """
@@ -1004,7 +1157,7 @@ async def auth_status(request: Request):
             content={
                 "authenticated": is_authenticated,
                 "username": username,
-                "provider": config.OIDC_PROVIDER_DISPLAY_NAME if is_authenticated else None,
+                "provider": _session_provider_display_name(resolved) if is_authenticated else None,
             }
         )
 

@@ -219,8 +219,8 @@ form itself, with no browser engine. CI runs it on every pull request as the req
 PostgreSQL.
 
 The realm is code: `scripts/e2e/keycloak/realm-mlflow-e2e.json` (realm `mlflow-e2e`, users
-`alice@example.com` / `bob@example.com` in `mlflow-users` and `root@example.com` in
-`mlflow-admins`, an OIDC client `mlflow` and a SAML client `mlflow-saml`). It contains no keys —
+`alice@example.com` / `bob@example.com` / `carol@example.com` in `mlflow-users` and
+`root@example.com` in `mlflow-admins`, an OIDC client `mlflow` and a SAML client `mlflow-saml`). It contains no keys —
 Keycloak generates the realm keys on import — and its passwords and client secret are test
 literals. At start-up the suite rewrites both clients' redirect, ACS and SLO URLs for the port
 the app actually got.
@@ -282,7 +282,10 @@ The default `tox` environment deselects the `e2e` marker. Without Keycloak the s
 | `MLFLOW_OIDC_E2E_LOG_DIR` | a pytest temp dir | Where `app-server.log` goes (CI uploads it on failure). A failing test prints its tail |
 
 The app is configured through its real environment variables — `AUTH_PROVIDERS` with a
-`default` OIDC entry (`identity_binding: email`, JIT, group sync, `admin_source: claims`) and a
+`default` OIDC entry (`identity_binding: email`, JIT, group sync, `admin_source: claims`), a named
+OIDC entry `keycloak-named` over the same realm and client — reached through the other loopback
+name (`127.0.0.1` for `localhost` and vice versa), because Keycloak derives the issuer from the
+request host and the registry refuses two providers with one issuer — and a
 `keycloak-saml` entry built from Keycloak's SAML descriptor, `OIDC_USE_REFRESH_TOKEN=true`,
 `OIDC_SESSION_EXPIRY_LEEWAY_SECONDS=0` against 10-second Keycloak access tokens — from a clean
 environment with `PYTHON_DOTENV_DISABLED=1`, so neither your shell nor a repository `.env` leaks
@@ -296,7 +299,13 @@ into it.
   concurrent requests on an expired session all succeed and Keycloak, which rotates refresh
   tokens with reuse detection on, records exactly one `REFRESH_TOKEN` event and no
   `REFRESH_TOKEN_ERROR`; a control test proves Keycloak really revokes a replayed refresh
-  token; RP-initiated logout revokes the session before the browser leaves for Keycloak.
+  token; RP-initiated logout revokes the session before the browser leaves for Keycloak, and
+  revokes the stored refresh token at Keycloak's RFC 7009 `revocation_endpoint`, so the
+  `offline_access` grant does not outlive logout (the token is `invalid_grant` afterwards); a
+  session opened through the **named** OIDC provider is logged out at that provider's
+  end-session endpoint with its own `id_token_hint`, and `/auth/status` reports that provider.
+- *The browser never loads the React SPA*: `Browser.follow` stops at a redirect into `/oidc/ui/`
+  and tests assert on its `Location`, so the suite does not need `web-react` built.
 - *SAML*: SP-initiated login with the session cookie set on the ACS response to a cookie-less
   cross-site POST; replayed Responses refused; SP-initiated SLO revokes before redirecting and
   completes the LogoutRequest/LogoutResponse round trip; **IdP-initiated SLO**, driven headlessly
@@ -315,10 +324,6 @@ into it.
 - *Keycloak's admin "log out user"*: its SAML logout is back-channel and would POST to `/slo`,
   which answers `405` by design (only the HTTP-Redirect binding verifies logout signatures).
   IdP-initiated logout is exercised through the browser instead.
-- *The IdP grant after logout*: with `OIDC_USE_REFRESH_TOKEN` the plugin requests
-  `offline_access`, so Keycloak holds an **offline** session for the grant, which RP-initiated
-  logout does not end. MLflow access ends (the session row is revoked), but the refresh token stays
-  valid at Keycloak until its offline idle timeout. A test pins this so a change is noticed.
 - *Bearer-token API access with Keycloak tokens, Kubernetes service accounts, workspaces*
   (`MLFLOW_ENABLE_WORKSPACES=false`), and SCIM features the endpoint does not implement — Groups,
   attribute projection, `/.search`, PATCH `remove`, stored `name.*` — which the conformance test

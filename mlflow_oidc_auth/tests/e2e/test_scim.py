@@ -182,8 +182,8 @@ def test_directory_deprovisioning_cuts_every_credential_and_keeps_grants(app_ser
     denied_before = len(app_server.audit_events("auth.denied_inactive"))
     refused = flows.login(app_server, ALICE)
     assert flows.auth_status(app_server, flows.session_cookie(refused))["authenticated"] is False
-    landing = refused.history[-1]
-    assert "/oidc/ui/auth" in str(landing.url) and "error" in str(landing.url)
+    landing = flows.landing_url(refused.history[-1])
+    assert "/oidc/ui/auth" in landing and "error" in landing
     assert len(app_server.audit_events("auth.denied_inactive")) == denied_before + 1
 
     # Repeating the deactivation is a no-op, as directories re-send state on every sync.

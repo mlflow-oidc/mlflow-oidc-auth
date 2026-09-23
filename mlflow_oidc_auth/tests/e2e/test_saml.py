@@ -114,7 +114,7 @@ class TestSpInitiatedSlo:
         assert "SAMLResponse=" in str(slo[0].url) and "Signature=" in str(slo[0].url)
         assert slo[0].status_code == 302
         assert urlparse(slo[0].headers["location"]).path.endswith("/auth")
-        assert landing.status_code == 200 and "/oidc/ui/auth" in str(landing.url)
+        assert urlparse(flows.landing_url(landing)).path == "/oidc/ui/auth"
         assert keycloak.user_sessions(BOB) == []
 
 

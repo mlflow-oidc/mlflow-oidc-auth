@@ -1124,6 +1124,340 @@ class TestLogoutIdTokenHint:
         assert "id_token_hint" not in query
 
 
+class _LogoutStore:
+    """The two store calls ``/logout`` makes, for a single session row with a given provider."""
+
+    def __init__(self, tokens=None, provider_id=None):
+        from mlflow_oidc_auth.session.token_vault import get_token_vault
+
+        self.blob = get_token_vault().encrypt(tokens) if tokens is not None else None
+        self.provider_id = provider_id
+        self.revoked = []
+
+    def resolve_auth_session(self, session_id):
+        if self.revoked:
+            return None
+        return SimpleNamespace(username="u@x", is_admin=False, is_active=True, provider_id=self.provider_id, encrypted_tokens=self.blob, session_id=session_id)
+
+    def revoke_auth_session(self, session_id):
+        self.revoked.append(session_id)
+        return True
+
+
+class _RevocationSession:
+    """Stands in for the authlib ``AsyncOAuth2Client`` a provider's client builds."""
+
+    def __init__(self, calls, status_code=200, error=None):
+        self.calls = calls
+        self.status_code = status_code
+        self.error = error
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def revoke_token(self, url, token=None, token_type_hint=None, **kwargs):
+        self.calls.append({"url": url, "token": token, "token_type_hint": token_type_hint})
+        if self.error is not None:
+            raise self.error
+        return SimpleNamespace(status_code=self.status_code)
+
+
+class _ProviderClient:
+    """A registered authlib client for one provider: its metadata, id and session factory."""
+
+    def __init__(self, name, metadata, status_code=200, error=None):
+        self.name = name
+        self.client_id = f"{name}-client"
+        self.server_metadata = dict(metadata)
+        self.revocations = []
+        self.sessions_built_with = []
+        self._status_code = status_code
+        self._error = error
+
+    async def load_server_metadata(self):
+        return self.server_metadata
+
+    def _get_oauth_client(self, **metadata):
+        self.sessions_built_with.append(metadata)
+        return _RevocationSession(self.revocations, self._status_code, self._error)
+
+
+def _refreshable(provider_id="default"):
+    from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+    return SessionTokens(provider_id=provider_id, id_token=f"idt-{provider_id}", refresh_token=f"SECRET-RT-{provider_id}", expires_at=1)
+
+
+async def _do_logout(mock_request_with_session, fake_store, *, default_client=None, named=None, events=None):
+    """Log out through the real handler, with the given clients registered."""
+    request = mock_request_with_session({"session_id": "sid", "authenticated": True})
+    request.state = SimpleNamespace(username="u@x", resolved_session=None)
+    oauth_mock = SimpleNamespace(oidc=default_client if default_client is not None else SimpleNamespace(server_metadata={}))
+    named = named or {}
+    audit = events if events is not None else []
+    with (
+        patch("mlflow_oidc_auth.routers.auth.oauth", oauth_mock),
+        patch("mlflow_oidc_auth.routers.auth.store", fake_store),
+        patch("mlflow_oidc_auth.routers.auth.get_client", lambda provider_id: named.get(provider_id)),
+        patch("mlflow_oidc_auth.routers.auth.emit_audit_event", lambda event, **kw: audit.append((event, kw))),
+        patch("mlflow_oidc_auth.routers.saml.store", fake_store),
+    ):
+        result = await logout(request)
+    return request, result
+
+
+def _query(result):
+    from urllib.parse import parse_qs, urlparse
+
+    return parse_qs(urlparse(result.headers["location"]).query)
+
+
+class TestLogoutRevokesRefreshTokenAtIdP:
+    """RFC 7009 at logout: the offline grant behind OIDC_USE_REFRESH_TOKEN must not outlive it."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_is_revoked_with_the_hint_through_the_issuing_client(self, mock_request_with_session):
+        client = _ProviderClient(
+            "default", {"end_session_endpoint": "https://idp/logout", "revocation_endpoint": "https://idp/revoke", "token_endpoint": "https://idp/token"}
+        )
+        fake_store = _LogoutStore(_refreshable("default"), provider_id="default")
+
+        request, result = await _do_logout(mock_request_with_session, fake_store, default_client=client)
+
+        assert client.revocations == [{"url": "https://idp/revoke", "token": "SECRET-RT-default", "token_type_hint": "refresh_token"}]
+        # Built from this provider's own metadata, so its client credentials authenticate the call.
+        assert client.sessions_built_with[0]["revocation_endpoint"] == "https://idp/revoke"
+        assert fake_store.revoked == ["sid"]
+        assert len(request.session) == 0
+        assert result.headers["location"].startswith("https://idp/logout?")
+
+    @pytest.mark.asyncio
+    async def test_a_named_providers_token_goes_only_to_that_provider(self, mock_request_with_session):
+        default = _ProviderClient("default", {"end_session_endpoint": "https://default/logout", "revocation_endpoint": "https://default/revoke"})
+        okta = _ProviderClient("okta", {"end_session_endpoint": "https://okta/logout", "revocation_endpoint": "https://okta/revoke"})
+        fake_store = _LogoutStore(_refreshable("okta"), provider_id="okta")
+
+        await _do_logout(mock_request_with_session, fake_store, default_client=default, named={"okta": okta})
+
+        assert [c["url"] for c in okta.revocations] == ["https://okta/revoke"]
+        assert okta.revocations[0]["token"] == "SECRET-RT-okta"
+        assert default.revocations == []
+
+    @pytest.mark.asyncio
+    async def test_provider_without_a_revocation_endpoint_is_skipped_silently(self, mock_request_with_session):
+        client = _ProviderClient("default", {"end_session_endpoint": "https://idp/logout"})
+        fake_store = _LogoutStore(_refreshable("default"), provider_id="default")
+        events = []
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, default_client=client, events=events)
+
+        assert client.sessions_built_with == [] and client.revocations == []
+        assert [e for e, _ in events] == ["auth.logout"]
+        assert result.headers["location"].startswith("https://idp/logout?")
+
+    @pytest.mark.asyncio
+    async def test_no_refresh_token_means_no_revocation_call(self, mock_request_with_session):
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        client = _ProviderClient("default", {"end_session_endpoint": "https://idp/logout", "revocation_endpoint": "https://idp/revoke"})
+        fake_store = _LogoutStore(SessionTokens(provider_id="default", id_token="idt"), provider_id="default")
+
+        await _do_logout(mock_request_with_session, fake_store, default_client=client)
+
+        assert client.revocations == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "client_kwargs, reason",
+        [
+            ({"error": RuntimeError("connection refused")}, "RuntimeError"),
+            ({"status_code": 503}, "_RevocationRefused"),
+        ],
+    )
+    async def test_a_failed_revocation_never_blocks_logout_and_never_logs_the_token(self, mock_request_with_session, caplog, client_kwargs, reason):
+        import logging
+
+        client = _ProviderClient("default", {"end_session_endpoint": "https://idp/logout", "revocation_endpoint": "https://idp/revoke"}, **client_kwargs)
+        fake_store = _LogoutStore(_refreshable("default"), provider_id="default")
+        events = []
+
+        with caplog.at_level(logging.DEBUG):
+            request, result = await _do_logout(mock_request_with_session, fake_store, default_client=client, events=events)
+
+        # The local logout happened in full, and the browser still goes on to the IdP's logout.
+        assert fake_store.revoked == ["sid"]
+        assert len(request.session) == 0
+        assert result.status_code == 302 and result.headers["location"].startswith("https://idp/logout?")
+        failures = [kw for e, kw in events if e == "auth.token_revocation_failed"]
+        assert len(failures) == 1
+        assert failures[0]["detail"] == {"provider_id": "default", "reason": reason}
+        assert failures[0]["status"] == "denied"
+        assert reason in caplog.text
+        assert "SECRET-RT" not in caplog.text
+        assert "SECRET-RT" not in repr(events)
+
+    @pytest.mark.asyncio
+    async def test_a_hanging_idp_is_abandoned_after_the_timeout(self, mock_request_with_session, monkeypatch):
+        import asyncio
+
+        from mlflow_oidc_auth.routers import auth as auth_module
+
+        monkeypatch.setattr(auth_module, "IDP_LOGOUT_TIMEOUT_SECONDS", 0.05)
+
+        class _Hanging(_ProviderClient):
+            def _get_oauth_client(self, **metadata):
+                session = super()._get_oauth_client(**metadata)
+
+                async def _never(*args, **kwargs):
+                    await asyncio.sleep(10)
+
+                session.revoke_token = _never
+                return session
+
+        client = _Hanging("default", {"end_session_endpoint": "https://idp/logout", "revocation_endpoint": "https://idp/revoke"})
+        fake_store = _LogoutStore(_refreshable("default"), provider_id="default")
+        events = []
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, default_client=client, events=events)
+
+        assert fake_store.revoked == ["sid"]
+        assert result.headers["location"].startswith("https://idp/logout?")
+        assert [kw["detail"]["reason"] for e, kw in events if e == "auth.token_revocation_failed"] == ["TimeoutError"]
+
+
+class TestLogoutAtNamedOidcProvider:
+    """A session opened by a named OIDC provider is logged out at that provider, not the default."""
+
+    @pytest.mark.asyncio
+    async def test_named_provider_gets_its_own_end_session_with_its_id_token(self, mock_request_with_session):
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        default = _ProviderClient("default", {"end_session_endpoint": "https://default/logout"})
+        okta = _ProviderClient("okta", {"end_session_endpoint": "https://okta/logout"})
+        fake_store = _LogoutStore(SessionTokens(provider_id="okta", id_token="idt-okta"), provider_id="okta")
+
+        request, result = await _do_logout(mock_request_with_session, fake_store, default_client=default, named={"okta": okta})
+
+        assert fake_store.revoked == ["sid"]
+        assert len(request.session) == 0
+        location = result.headers["location"]
+        assert location.startswith("https://okta/logout?")
+        query = _query(result)
+        assert query["id_token_hint"] == ["idt-okta"]
+        assert query["client_id"] == ["okta-client"]
+        assert query["post_logout_redirect_uri"][0].endswith("/oidc/ui/auth")
+
+    @pytest.mark.asyncio
+    async def test_named_provider_without_end_session_endpoint_is_local_logout_only(self, mock_request_with_session):
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        default = _ProviderClient("default", {"end_session_endpoint": "https://default/logout"})
+        okta = _ProviderClient("okta", {})
+        fake_store = _LogoutStore(SessionTokens(provider_id="okta", id_token="idt-okta"), provider_id="okta")
+
+        request, result = await _do_logout(mock_request_with_session, fake_store, default_client=default, named={"okta": okta})
+
+        assert fake_store.revoked == ["sid"]
+        assert len(request.session) == 0
+        location = result.headers["location"]
+        assert "/oidc/ui/auth" in location
+        assert "default/logout" not in location and "idt-okta" not in location
+
+    @pytest.mark.asyncio
+    async def test_unregistered_provider_is_local_logout_only_and_never_the_default(self, mock_request_with_session):
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        default = _ProviderClient("default", {"end_session_endpoint": "https://default/logout"})
+        fake_store = _LogoutStore(SessionTokens(provider_id="gone", id_token="idt-gone"), provider_id="gone")
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, default_client=default)
+
+        assert "/oidc/ui/auth" in result.headers["location"]
+        assert "default/logout" not in result.headers["location"]
+
+    @pytest.mark.asyncio
+    async def test_a_refresh_token_whose_provider_is_gone_is_audited_not_sent_elsewhere(self, mock_request_with_session):
+        default = _ProviderClient("default", {"end_session_endpoint": "https://default/logout", "revocation_endpoint": "https://default/revoke"})
+        fake_store = _LogoutStore(_refreshable("gone"), provider_id="gone")
+        events = []
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, default_client=default, events=events)
+
+        assert default.revocations == []
+        assert fake_store.revoked == ["sid"]
+        assert "/oidc/ui/auth" in result.headers["location"]
+        assert [kw["detail"] for e, kw in events if e == "auth.token_revocation_failed"] == [{"provider_id": "gone", "reason": "no_client"}]
+        assert "SECRET-RT" not in repr(events)
+
+    @pytest.mark.asyncio
+    async def test_tokens_recorded_for_another_provider_are_never_offered(self, mock_request_with_session):
+        """The row says okta; tokens claiming another issuer are dropped rather than sent to okta."""
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        okta = _ProviderClient("okta", {"end_session_endpoint": "https://okta/logout", "revocation_endpoint": "https://okta/revoke"})
+        fake_store = _LogoutStore(
+            SessionTokens(provider_id="default", id_token="idt-default", refresh_token="SECRET-RT-default", expires_at=1), provider_id="okta"
+        )
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, named={"okta": okta})
+
+        assert "id_token_hint" not in _query(result)
+        assert okta.revocations == []
+
+    @pytest.mark.asyncio
+    async def test_default_session_keeps_the_legacy_end_session_request(self, mock_request_with_session, mock_oauth, monkeypatch):
+        """Unchanged for default/legacy sessions: default endpoint, OIDC_CLIENT_ID, its own hint."""
+        from mlflow_oidc_auth.routers import auth as auth_module
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        monkeypatch.setattr(auth_module.config, "OIDC_CLIENT_ID", "legacy-client")
+        fake_store = _LogoutStore(SessionTokens(provider_id=None, id_token="idt-legacy"), provider_id=None)
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, default_client=mock_oauth.oidc)
+
+        assert result.headers["location"].startswith("https://provider.com/logout?")
+        query = _query(result)
+        assert query["id_token_hint"] == ["idt-legacy"]
+        assert query["client_id"] == ["legacy-client"]
+
+
+class TestAuthStatusReportsTheSessionsProvider:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "provider_id, expected",
+        [
+            ("corp-saml", "Corporate SSO"),
+            ("okta", "Okta"),
+            (None, "Test Provider (flat)"),
+            ("no-longer-configured", "Test Provider (flat)"),
+        ],
+    )
+    async def test_provider_is_the_one_that_opened_the_session(self, mock_request_with_session, mock_config, provider_id, expected):
+        import json
+
+        from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult
+
+        mock_config.OIDC_PROVIDER_DISPLAY_NAME = "Test Provider (flat)"
+        mock_config.AUTH_PROVIDERS = RegistryLoadResult(
+            providers=[
+                ProviderConfig(id="default", type="oidc", display_name="Test Provider", audience="mlflow"),
+                ProviderConfig(id="okta", type="oidc", display_name="Okta", audience="mlflow"),
+                ProviderConfig(id="corp-saml", type="saml", display_name="Corporate SSO"),
+            ],
+            errors=[],
+            source="env",
+        )
+        request = mock_request_with_session({"session_id": "sid"})
+        with patch("mlflow_oidc_auth.routers.auth.config", mock_config), patch("mlflow_oidc_auth.routers.auth.store") as mock_store:
+            mock_store.resolve_auth_session.return_value = SimpleNamespace(username="u@x", is_admin=False, is_active=True, provider_id=provider_id)
+            result = await auth_status(request)
+
+        assert json.loads(result.body)["provider"] == expected
+
+
 class TestSanitizeNext:
     """Validate the open-redirect guard on the ?next= query param."""
 
