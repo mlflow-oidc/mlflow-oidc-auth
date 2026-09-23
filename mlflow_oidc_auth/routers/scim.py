@@ -534,16 +534,6 @@ _GROUP_SCHEMA_DEFINITION = {
                     "returned": "default",
                     "uniqueness": "none",
                 },
-                {
-                    "name": "display",
-                    "type": "string",
-                    "multiValued": False,
-                    "required": False,
-                    "caseExact": False,
-                    "mutability": "readOnly",
-                    "returned": "default",
-                    "uniqueness": "none",
-                },
             ],
         },
     ],
@@ -836,8 +826,9 @@ def _to_scim_group(detail: Dict[str, Any], request: Request) -> Dict[str, Any]:
     if "members" in detail:
         members = [
             {
+                # No ``display``: it is read-only and server-computed, and clients (and scim2-tester)
+                # compare members as they wrote them. The user resource carries the display name.
                 "value": member["username"],
-                "display": member.get("display_name") or member["username"],
                 "type": "User",
                 "$ref": _location(request, member["username"]),
             }
@@ -895,7 +886,7 @@ def _group_name(value: Any, scim_type: str = "invalidValue") -> str:
 def _member_ids(value: Any) -> list:
     """The usernames a ``members`` value names.
 
-    Each entry is ``{"value": "<user id>"}``, optionally with ``display``, ``$ref`` and ``type``.
+    Each entry is ``{"value": "<user id>"}``, optionally with ``display`` (ignored), ``$ref`` and ``type``.
     ``value`` is authoritative; ``display`` and ``$ref`` are informational. Only users can be
     members: a ``type`` of ``Group`` (a nested group) is refused rather than resolved as a user of
     the same name.

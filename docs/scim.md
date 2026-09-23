@@ -219,7 +219,8 @@ administrator created the group. Entra and Okta look a group up by `displayName`
 it, and then manage the one they find through `PATCH`/`PUT`.
 
 Members are **users only**. A member is `{"value": "<user id>"}`, and `display`, `$ref` and
-`type` are accepted. A `type` of `Group` (a nested group) is refused with `400 invalidValue`. So
+`type` are accepted. Responses list each member as `value`, `$ref` and `type` without
+`display`, which is read-only; the user resource carries the display name. A `type` of `Group` (a nested group) is refused with `400 invalidValue`. So
 is a member that names no user. In both cases the whole request is refused and nothing is
 applied. Service accounts are not visible: they are never listed as members and cannot be
 added, and a `PUT` never removes them.

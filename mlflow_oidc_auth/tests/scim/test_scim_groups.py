@@ -115,7 +115,7 @@ class TestDiscovery:
         schema = client.get(f"/scim/v2/Schemas/{GROUP_SCHEMA}", headers=scim).json()
         attributes = {a["name"]: a for a in schema["attributes"]}
         assert attributes["displayName"]["mutability"] == "immutable"
-        assert {s["name"] for s in attributes["members"]["subAttributes"]} == {"value", "$ref", "type", "display"}
+        assert {s["name"] for s in attributes["members"]["subAttributes"]} == {"value", "$ref", "type"}
         listed = client.get("/scim/v2/Schemas", headers=scim).json()
         assert {r["id"] for r in listed["Resources"]} == {GROUP_SCHEMA, "urn:ietf:params:scim:schemas:core:2.0:User"}
 
