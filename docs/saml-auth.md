@@ -296,4 +296,5 @@ The browser only ever sees `SAML sign-in failed`. The server log names the reaso
 | `The response was received at ... instead of ...` | the ACS URL registered at the IdP differs from the one MLflow derives — set `OIDC_REDIRECT_URI` |
 | `RelayState names no live login attempt` | the login took longer than 15 minutes, was replayed, or began at a different provider |
 | `unsolicited or mismatched InResponseTo` | the user started at the IdP's portal (IdP-initiated SSO is refused) — start from MLflow's login page |
+| `Found an Attribute element with duplicated Name` | the IdP sends one attribute per value — Keycloak's default `role_list` mapper does, one `Role` per role. Turn on its *Single Role Attribute*, or remove the `role_list` client scope from the SAML client |
 | `Conditions NotOnOrAfter beyond the allowed clock skew` | clocks differ; fix NTP, or raise `clock_skew_seconds` (max 300) |

@@ -168,6 +168,7 @@ tox -e py
 Test configuration is in `pyproject.toml` under `[tool.pytest.ini_options]`:
 - `asyncio_mode = "auto"` — async tests run automatically
 - Tests in `mlflow_oidc_auth/tests/integration/` are excluded by default (require a running server)
+- Tests marked `e2e` need Keycloak; the default tox env deselects them (see [End-to-end identity tests](#end-to-end-identity-tests))
 - Directories like `mlruns`, `htmlcov`, `__pycache__` are excluded from test discovery
 
 ### Frontend Tests (Vitest)
@@ -206,6 +207,124 @@ tox -e integration
 export MLFLOW_OIDC_E2E_BASE_URL=http://localhost:8080
 tox -e integration-live
 ```
+
+### End-to-end identity tests
+
+`mlflow_oidc_auth/tests/e2e/` drives real OIDC, SAML and SCIM flows against a real **Keycloak
+26.7.4**. Nothing is mocked: the plugin is started as a real server (`mlflow server --app-name
+oidc-auth`) in a subprocess on a free loopback port, and the suite plays the browser with plain
+`httpx` — it follows redirects, fills in Keycloak's login form and submits the SAML POST-binding
+form itself, with no browser engine. CI runs it on every pull request as the required job
+**E2E identity (Keycloak)** (`.github/workflows/e2e-identity.yml`), with the auth database on
+PostgreSQL.
+
+The realm is code: `scripts/e2e/keycloak/realm-mlflow-e2e.json` (realm `mlflow-e2e`, users
+`alice@example.com` / `bob@example.com` in `mlflow-users` and `root@example.com` in
+`mlflow-admins`, an OIDC client `mlflow` and a SAML client `mlflow-saml`). It contains no keys —
+Keycloak generates the realm keys on import — and its passwords and client secret are test
+literals. At start-up the suite rewrites both clients' redirect, ACS and SLO URLs for the port
+the app actually got.
+
+Keycloak must serve **https** as well as http: the plugin refuses a SAML IdP whose SSO/SLO URLs
+are not https. Give it a throwaway certificate:
+
+```bash
+mkdir -p /tmp/kc-tls
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+  -keyout /tmp/kc-tls/tls.key -out /tmp/kc-tls/tls.crt
+chmod 0644 /tmp/kc-tls/tls.key   # the container runs as a non-root user
+```
+
+Start Keycloak with Docker:
+
+```bash
+docker run --rm -d --name keycloak -p 127.0.0.1:8080:8080 -p 127.0.0.1:8443:8443 \
+  -v "$PWD/scripts/e2e/keycloak:/opt/keycloak/data/import:ro" \
+  -v /tmp/kc-tls:/opt/keycloak/conf/tls:ro \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  quay.io/keycloak/keycloak:26.7.4 start-dev --import-realm --https-port 8443 \
+  --https-certificate-file /opt/keycloak/conf/tls/tls.crt \
+  --https-certificate-key-file /opt/keycloak/conf/tls/tls.key
+```
+
+or from the Keycloak zip (needs Java 21+):
+
+```bash
+cp scripts/e2e/keycloak/realm-mlflow-e2e.json keycloak-26.7.4/data/import/
+KC_BOOTSTRAP_ADMIN_USERNAME=admin KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+  keycloak-26.7.4/bin/kc.sh start-dev --import-realm --http-port 8080 --https-port 8443 \
+  --https-certificate-file /tmp/kc-tls/tls.crt --https-certificate-key-file /tmp/kc-tls/tls.key
+```
+
+The zip keeps its dev database in `data/h2` and skips a realm that already exists, so delete
+`data/h2` after editing the realm JSON. Then, once `http://localhost:8080/realms/mlflow-e2e`
+answers:
+
+```bash
+tox -e e2e
+# or, in an environment with '.[full,test]' and 'scim2-tester[httpx2]==0.4.0' installed:
+pytest -m e2e mlflow_oidc_auth/tests/e2e -rs
+```
+
+The default `tox` environment deselects the `e2e` marker. Without Keycloak the suite skips, unless
+`MLFLOW_OIDC_E2E_REQUIRE=1` (set in CI), which makes an unreachable Keycloak a failure.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MLFLOW_OIDC_E2E_KEYCLOAK_URL` | `http://localhost:8080` | Keycloak over http: OIDC and the admin REST API |
+| `MLFLOW_OIDC_E2E_KEYCLOAK_HTTPS_URL` | `https://localhost:8443` | Keycloak over https: SAML |
+| `MLFLOW_OIDC_E2E_KEYCLOAK_CA` | unset | The certificate above; verifies the https leg. Unset, verification is off — allowed only when the https URL is loopback |
+| `MLFLOW_OIDC_E2E_KEYCLOAK_ADMIN` / `_PASSWORD` | `admin` / `admin` | Keycloak bootstrap admin, for the admin REST API |
+| `MLFLOW_OIDC_E2E_REQUIRE` | unset | `1`: fail instead of skip when Keycloak is unreachable |
+| `MLFLOW_OIDC_E2E_DB_URI` | unset (temp SQLite) | PostgreSQL URI with CREATEDB; a fresh database is created in it per run and dropped afterwards |
+| `MLFLOW_OIDC_E2E_WORKERS` | 1 on SQLite, 4 on PostgreSQL | uvicorn workers for the app. SQLite's refresh guard is process-wide only, by design |
+| `MLFLOW_OIDC_E2E_LOG_DIR` | a pytest temp dir | Where `app-server.log` goes (CI uploads it on failure). A failing test prints its tail |
+
+The app is configured through its real environment variables — `AUTH_PROVIDERS` with a
+`default` OIDC entry (`identity_binding: email`, JIT, group sync, `admin_source: claims`) and a
+`keycloak-saml` entry built from Keycloak's SAML descriptor, `OIDC_USE_REFRESH_TOKEN=true`,
+`OIDC_SESSION_EXPIRY_LEEWAY_SECONDS=0` against 10-second Keycloak access tokens — from a clean
+environment with `PYTHON_DOTENV_DISABLED=1`, so neither your shell nor a repository `.env` leaks
+into it.
+
+**What is covered.**
+
+- *OIDC*: login and JIT provisioning (`managed_by=manual`, synced groups, admin from the
+  `mlflow-admins` claim); the cookie carries only an opaque session id; forged, legacy
+  (pre-server-side) and re-signed cookies are refused; the **#367 refresh race** — eight
+  concurrent requests on an expired session all succeed and Keycloak, which rotates refresh
+  tokens with reuse detection on, records exactly one `REFRESH_TOKEN` event and no
+  `REFRESH_TOKEN_ERROR`; a control test proves Keycloak really revokes a replayed refresh
+  token; RP-initiated logout revokes the session before the browser leaves for Keycloak.
+- *SAML*: SP-initiated login with the session cookie set on the ACS response to a cookie-less
+  cross-site POST; replayed Responses refused; SP-initiated SLO revokes before redirecting and
+  completes the LogoutRequest/LogoutResponse round trip; **IdP-initiated SLO**, driven headlessly
+  by submitting Keycloak's own logout page, which delivers a signed HTTP-Redirect LogoutRequest to
+  `/slo/<id>` through the browser — only the session with that `SessionIndex` ends, the request
+  cannot be replayed, and an unsigned copy is refused.
+- *SCIM*: `scim2-tester` as a smoke test, then Entra-shaped `PATCH` (`"op": "Replace"`,
+  `"value": "False"`) and Okta-shaped `PUT` deprovisioning: the live session, the access token and
+  a fresh Keycloak login (`auth.denied_inactive`) are all refused; reactivation restores login
+  with the experiment grant intact and the old token still dead.
+
+**What is not, and why.**
+
+- *SP-signed SAML requests* (`sign_requests`): the realm has "client signature required" off and
+  the SP signs nothing; signing is covered by the unit tests.
+- *Keycloak's admin "log out user"*: its SAML logout is back-channel and would POST to `/slo`,
+  which answers `405` by design (only the HTTP-Redirect binding verifies logout signatures).
+  IdP-initiated logout is exercised through the browser instead.
+- *The IdP grant after logout*: with `OIDC_USE_REFRESH_TOKEN` the plugin requests
+  `offline_access`, so Keycloak holds an **offline** session for the grant, which RP-initiated
+  logout does not end. MLflow access ends (the session row is revoked), but the refresh token stays
+  valid at Keycloak until its offline idle timeout. A test pins this so a change is noticed.
+- *Bearer-token API access with Keycloak tokens, Kubernetes service accounts, workspaces*
+  (`MLFLOW_ENABLE_WORKSPACES=false`), and SCIM features the endpoint does not implement — Groups,
+  attribute projection, `/.search`, PATCH `remove`, stored `name.*` — which the conformance test
+  sets aside by tag.
+- *One user through two protocols*: an account bound to one provider refuses sign-in through
+  another, so each protocol has its own test user.
 
 ## Code Style and Formatting
 
@@ -327,6 +446,7 @@ The following GitHub Actions workflows run on pull requests and pushes:
 | Workflow | File | Trigger | What it does |
 |----------|------|---------|--------------|
 | **Unit Tests** | `unit-tests.yml` | PR + push to main | Runs frontend tests (Vitest) and backend tests (tox/pytest), uploads coverage to SonarCloud |
+| **E2E identity** | `e2e-identity.yml` | PR + push to main | OIDC, SAML and SCIM end to end against Keycloak 26.7.4 with the auth DB on PostgreSQL ([details](#end-to-end-identity-tests)) |
 | **Pre-commit** | `pre-commit.yml` | PR + push | Runs all pre-commit hooks |
 | **Bandit** | `bandit.yml` | PR + push | Security analysis on Python code |
 | **PR Title** | `pr-validate-title.yml` | PR | Validates Conventional Commits format |

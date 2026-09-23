@@ -1,0 +1,129 @@
+# End-to-end identity tests: OIDC, SAML and SCIM against a real Keycloak, with the plugin started
+# as a real server and its auth database on PostgreSQL (the refresh guard's row lock is only
+# exercised there). See "End-to-end identity tests" in docs/development.md.
+#
+# Agentic-CI rule (AGENTS.md) — of untrusted input / secrets / state-or-network, this job holds:
+#   1. untrusted input: YES — it runs the pull request's code, including from forks.
+#   2. secrets or elevated permissions: NO — no repository secrets are referenced, the token is
+#      read-only (contents: read), and every credential in play (Keycloak admin, realm users, the
+#      OIDC client secret, the TLS key, PostgreSQL) is a test literal or generated in the run.
+#   3. state change / network: network only, to pull the pinned Keycloak and PostgreSQL images
+#      and Python packages. It writes nothing outside the runner.
+# Two of three, never all three: do not add a secret to this job.
+name: E2E identity
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-identity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-identity:
+    name: E2E identity (Keycloak)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    services:
+      # Local to the runner, test-only credentials. The suite creates (and drops) its own
+      # database in it, so this one only needs CREATEDB, which the superuser has.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: mlflow_oidc
+          POSTGRES_PASSWORD: mlflow_oidc
+          POSTGRES_DB: mlflow_oidc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      KEYCLOAK_IMAGE: quay.io/keycloak/keycloak:26.7.4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # The pull request's code runs in this job; leave no token in .git/config for it.
+          persist-credentials: false
+
+      - name: Generate a throwaway TLS certificate for Keycloak
+        # SAML needs https IdP endpoints (the plugin refuses http ones). Generated per run, never
+        # committed; the suite verifies Keycloak against it via MLFLOW_OIDC_E2E_KEYCLOAK_CA.
+        run: |
+          mkdir -p "$RUNNER_TEMP/kc-tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+            -keyout "$RUNNER_TEMP/kc-tls/tls.key" -out "$RUNNER_TEMP/kc-tls/tls.crt"
+          chmod 0644 "$RUNNER_TEMP/kc-tls/tls.key" "$RUNNER_TEMP/kc-tls/tls.crt"
+
+      - name: Start Keycloak
+        run: |
+          docker run -d --name keycloak -p 127.0.0.1:8080:8080 -p 127.0.0.1:8443:8443 \
+            -v "$GITHUB_WORKSPACE/scripts/e2e/keycloak:/opt/keycloak/data/import:ro" \
+            -v "$RUNNER_TEMP/kc-tls:/opt/keycloak/conf/tls:ro" \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            "$KEYCLOAK_IMAGE" start-dev --import-realm --health-enabled=true \
+            --https-port 8443 \
+            --https-certificate-file /opt/keycloak/conf/tls/tls.crt \
+            --https-certificate-key-file /opt/keycloak/conf/tls/tls.key
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: 3.12
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[full,test]' 'scim2-tester[httpx2]==0.4.0' psycopg2-binary
+
+      - name: Wait for Keycloak
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf -m 5 http://localhost:8080/realms/mlflow-e2e >/dev/null \
+              && curl -sf -m 5 --cacert "$RUNNER_TEMP/kc-tls/tls.crt" https://localhost:8443/realms/mlflow-e2e >/dev/null; then
+              echo "Keycloak is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Keycloak did not come up within 120 s"
+          docker logs keycloak
+          exit 1
+
+      - name: Run the e2e identity suite
+        env:
+          MLFLOW_OIDC_E2E_REQUIRE: "1"
+          MLFLOW_OIDC_E2E_KEYCLOAK_URL: http://localhost:8080
+          MLFLOW_OIDC_E2E_KEYCLOAK_HTTPS_URL: https://localhost:8443
+          MLFLOW_OIDC_E2E_KEYCLOAK_CA: ${{ runner.temp }}/kc-tls/tls.crt
+          MLFLOW_OIDC_E2E_DB_URI: postgresql+psycopg2://mlflow_oidc:mlflow_oidc@localhost:5432/mlflow_oidc_test
+          MLFLOW_OIDC_E2E_LOG_DIR: ${{ runner.temp }}/e2e-logs
+        run: pytest -m e2e mlflow_oidc_auth/tests/e2e -rs -v
+
+      - name: Keycloak logs
+        if: failure()
+        run: docker logs keycloak
+
+      - name: Upload the app server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-identity-app-server-log
+          path: ${{ runner.temp }}/e2e-logs/
+          if-no-files-found: ignore
+          retention-days: 7

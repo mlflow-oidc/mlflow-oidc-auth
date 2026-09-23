@@ -133,6 +133,7 @@ asyncio_mode = "auto"
 testpaths = ["mlflow_oidc_auth/tests"]
 markers = [
   "integration: end-to-end tests that require a running server",
+  "e2e: identity end-to-end tests against a real Keycloak and a real app server (tox -e e2e)",
 ]
 norecursedirs = [
   "mlruns",
