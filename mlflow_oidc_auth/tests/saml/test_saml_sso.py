@@ -64,7 +64,8 @@ class TestLoginStartsAtTheIdP:
         assert response.headers["cache-control"] == "no-store"
 
     def test_login_sets_no_cookie(self, client):
-        """The attempt lives in the ``auth_state`` row; nothing the ACS needs can be in a cookie."""
+        """With the browser binding off (this suite's default: no secure cookies), the attempt lives
+        in the ``auth_state`` row alone. The binding cookie is covered in ``test_saml_login_binding``."""
         response = client.get(f"/login/{PROVIDER_ID}")
 
         assert "set-cookie" not in response.headers
