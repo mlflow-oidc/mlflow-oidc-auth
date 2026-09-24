@@ -542,6 +542,68 @@ class UserRepository:
             _audit_sessions_revoked(username, sessions_revoked, "user_deactivated")
         return entity
 
+    @staticmethod
+    def _reown_memberships(session, user, managed_by: str) -> list:
+        """Set every membership of ``user`` to ``managed_by`` inside ``session``.
+
+        Returns ``(group_name, previous_owner)`` for each row that changed.
+        """
+        from mlflow_oidc_auth.db.models import SqlUserGroup
+
+        changed = []
+        rows = (
+            session.query(SqlUserGroup, SqlGroup.group_name)
+            .outerjoin(SqlGroup, SqlGroup.id == SqlUserGroup.group_id)
+            .filter(SqlUserGroup.user_id == user.id)
+            .order_by(SqlUserGroup.id)
+            .all()
+        )
+        for row, group_name in rows:
+            previous = row.managed_by or "manual"
+            if previous != managed_by:
+                row.managed_by = managed_by
+                changed.append((group_name if group_name is not None else str(row.group_id), previous))
+        return changed
+
+    def hand_over(self, username: str, managed_by: str, *, memberships: bool = False, actor: Optional[str] = None) -> dict:
+        """Break glass: hand a user row — and optionally every membership of it — to ``managed_by``.
+
+        One transaction for both halves, so a failure re-owning the memberships leaves the user row
+        as it was too: an operator repairing a lockout must never be left with half a repair and no
+        record of it. An explicit administrator action, so always permitted; the cross-source
+        override is recorded as ``user.ownership_conflict`` once the change has committed.
+
+        Parameters:
+            username: The user.
+            managed_by: The new owner.
+            memberships: Whether to re-own the user's group memberships too.
+            actor: The administrator, for the audit record.
+
+        Returns:
+            ``{"previous": <old owner>, "memberships": [(group, previous_owner), ...]}``.
+
+        Raises:
+            MlflowException: ``RESOURCE_DOES_NOT_EXIST`` for an unknown user. Nothing is written.
+        """
+        username = normalize_username(username)
+        with self._Session(read_only=False) as session:
+            user = get_user(session, username)
+            previous = user.managed_by
+            decision = evaluate_write(
+                previous,
+                "manual",
+                enforcement=config.MANAGED_BY_ENFORCEMENT,
+                admin_override=True,
+                fields={"managed_by"} if (previous or "manual") != managed_by else set(),
+                target_is_admin=bool(user.is_admin),
+            )
+            user.managed_by = managed_by
+            changed = self._reown_memberships(session, user, managed_by) if memberships else []
+            session.flush()
+        if decision.conflict:
+            _audit_ownership_conflict(username, decision, "manual", allowed=True, actor=actor)
+        return {"previous": previous, "memberships": changed}
+
     def delete(
         self,
         username: str,

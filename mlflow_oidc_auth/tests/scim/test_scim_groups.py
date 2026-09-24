@@ -68,7 +68,8 @@ def owners(store, group_name):
 @pytest.fixture
 def users(client, scim):
     for name in (ALICE, BOB, CAROL):
-        assert client.post(USERS, headers=scim, json=user_body(name)).status_code == 201
+        response = client.post(USERS, headers=scim, json=user_body(name))
+        assert response.status_code == 201
     return ALICE, BOB, CAROL
 
 
@@ -120,9 +121,12 @@ class TestDiscovery:
         assert {r["id"] for r in listed["Resources"]} == {GROUP_SCHEMA, "urn:ietf:params:scim:schemas:core:2.0:User"}
 
     def test_groups_need_the_scim_token(self, client, bound_store, admin):
-        assert client.get(GROUPS).status_code == 401
-        assert client.get(GROUPS, headers=admin).status_code == 401, "not even an administrator's credential"
-        assert client.post(GROUPS, json=group_body("x")).status_code == 401
+        response = client.get(GROUPS)
+        assert response.status_code == 401
+        response = client.get(GROUPS, headers=admin)
+        assert response.status_code == 401, "not even an administrator's credential"
+        response = client.post(GROUPS, json=group_body("x"))
+        assert response.status_code == 401
 
 
 class TestCreateAndRead:
@@ -174,7 +178,8 @@ class TestCreateAndRead:
 
         found = client.get(GROUPS, headers=scim, params={"filter": 'displayName eq "eng"', "excludedAttributes": "members"}).json()
         assert "members" not in found["Resources"][0]
-        assert "members" not in client.get(f"{GROUPS}/eng", headers=scim, params={"excludedAttributes": "members"}).json()
+        response = client.get(f"{GROUPS}/eng", headers=scim, params={"excludedAttributes": "members"})
+        assert "members" not in response.json()
 
     @pytest.mark.parametrize("expression", ['members eq "x"', 'displayName co "x"', 'displayName eq "a" or displayName eq "b"'])
     def test_unsupported_filters(self, client, scim, expression):
@@ -213,10 +218,12 @@ class TestCreateAndRead:
         create_group(client, scim, "eng", [ALICE])
         bound_store.add_user_to_group("svc", "eng", written_by="manual")
 
-        assert member_ids(client.get(f"{GROUPS}/eng", headers=scim).json()) == [ALICE]
+        response = client.get(f"{GROUPS}/eng", headers=scim)
+        assert member_ids(response.json()) == [ALICE]
         assert_scim_error(client.post(GROUPS, headers=scim, json=group_body("ops", ["svc"])), 400, "invalidValue")
         # A PUT is a sync of what SCIM can see, so it never removes what it cannot.
-        assert client.put(f"{GROUPS}/eng", headers=scim, json=group_body("eng", [])).status_code == 200
+        response = client.put(f"{GROUPS}/eng", headers=scim, json=group_body("eng", []))
+        assert response.status_code == 200
         assert owners(bound_store, "eng") == {"svc": "manual"}
 
 
@@ -319,7 +326,8 @@ class TestEntraPatch:
         )
 
         assert_scim_error(response, 400, scim_type)
-        assert member_ids(client.get(f"{GROUPS}/eng", headers=scim).json()) == [ALICE], "the valid add in the same request must not land"
+        response = client.get(f"{GROUPS}/eng", headers=scim)
+        assert member_ids(response.json()) == [ALICE], "the valid add in the same request must not land"
 
     def test_an_unknown_member_applies_nothing(self, client, scim, users):
         create_group(client, scim, "eng", [ALICE])
@@ -331,7 +339,8 @@ class TestEntraPatch:
         )
 
         assert_scim_error(response, 400, "invalidValue")
-        assert member_ids(client.get(f"{GROUPS}/eng", headers=scim).json()) == [ALICE]
+        response = client.get(f"{GROUPS}/eng", headers=scim)
+        assert member_ids(response.json()) == [ALICE]
 
     def test_unknown_group_is_404(self, client, scim):
         assert_scim_error(client.patch(f"{GROUPS}/nope", headers=scim, json=patch_body({"op": "add", "path": "members", "value": []})), 404)
@@ -436,7 +445,7 @@ class TestMembershipOwnership:
         assert permissions["2"].kind != "group", "the unowned membership the claims no longer assert is revoked"
         assert permissions["3"].permission.name == "MANAGE"
         skipped = [e for e in audit_events if e["event"] == "user.ownership_conflict" and e["detail"]["group"] == "directory-grp"]
-        assert [e["status"] for e in skipped] == ([] if mode == Enforcement.OFF else ["denied"])
+        assert [(e["status"], e["detail"]["operation"]) for e in skipped] == ([] if mode == Enforcement.OFF else [("success", "membership.sync_kept")])
 
     def test_scim_cannot_remove_a_login_derived_membership_under_enforce(self, client, scim, bound_store, shared, enforce, audit_events):
         response = client.patch(
@@ -546,7 +555,8 @@ class TestGroupOwnership:
     def test_silent_under_off(self, client, scim, login_group, monkeypatch, audit_events):
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.OFF)
 
-        assert self.WRITES["add"](client, scim, login_group).status_code == 200
+        response = self.WRITES["add"](client, scim, login_group)
+        assert response.status_code == 200
         assert not [e for e in audit_events if e["event"] == "group.ownership_conflict"]
 
     def test_a_hand_made_group_is_refused_too(self, client, scim, users, bound_store, enforce):
@@ -575,7 +585,8 @@ class TestGroupOwnership:
             commands, ["reconcile-ownership", "--url", url, "--groups", "--group", "legacy-team", "--set-owner", "scim", "--apply", "--journal", journal]
         )
         assert applied.exit_code == 0, applied.output
-        assert self.WRITES["add"](client, scim, "legacy-team").status_code == 200
+        response = self.WRITES["add"](client, scim, "legacy-team")
+        assert response.status_code == 200
         assert bound_store.get_user_detail(ALICE)["managed_by"] == "scim", "user rows untouched"
 
         restored = CliRunner().invoke(commands, ["restore-ownership", "--url", url, "--journal", journal, "--apply"])
@@ -603,7 +614,8 @@ class TestGroupOwnership:
         for write in ("add", "remove", "external_id", "put"):
             response = self.WRITES[write](client, scim, "mine")
             assert response.status_code == 200, (write, response.text)
-        assert self.WRITES["delete"](client, scim, "mine").status_code == 204
+        response = self.WRITES["delete"](client, scim, "mine")
+        assert response.status_code == 204
         assert not [e for e in audit_events if e["event"].endswith("ownership_conflict")]
 
     def test_any_user_may_be_added_to_a_scim_owned_group(self, client, scim, users, bound_store, enforce, monkeypatch):
@@ -611,7 +623,8 @@ class TestGroupOwnership:
         login(CAROL, [], monkeypatch)
         create_group(client, scim, "mine")
 
-        assert self.WRITES["add"](client, scim, "mine").status_code == 200
+        response = self.WRITES["add"](client, scim, "mine")
+        assert response.status_code == 200
         response = client.patch(f"{GROUPS}/mine", headers=scim, json=patch_body({"op": "add", "path": "members", "value": [{"value": CAROL}]}))
         assert member_ids(response.json()) == [BOB, CAROL]
 
@@ -652,7 +665,8 @@ class TestDelete:
         create_group(client, scim, "eng", [ALICE])
         bound_store.add_user_to_group(BOB, "eng")
 
-        assert client.delete(f"{GROUPS}/eng", headers=scim).status_code == 204
+        response = client.delete(f"{GROUPS}/eng", headers=scim)
+        assert response.status_code == 204
 
         assert bound_store.get_group_detail("eng") is None
         [event] = [e for e in audit_events if e["event"] == "user.ownership_conflict"]
