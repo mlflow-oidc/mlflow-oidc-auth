@@ -195,8 +195,18 @@ class TestIsTrustedProxy:
             _parse_trusted_proxies(["::ffff:10.0.0.5", "10.0.0.0/8", "::ffff:10.0.0.0/104"])
         messages = [call.args[0] for call in mock_logger.info.call_args_list]
         assert len(messages) == 2
-        assert "::ffff:10.0.0.5" in messages[0] and "10.0.0.5/32" in messages[0]
-        assert "::ffff:10.0.0.0/104" in messages[1] and "10.0.0.0/8" in messages[1]
+        # The configured value is not written to the log.
+        assert not any("10.0.0" in message for message in messages)
+
+    @pytest.mark.parametrize("entry", ["::/0", "::ffff:0:0/80", "::/64"])
+    def test_wide_ipv6_entry_still_matches_mapped_peer(self, entry):
+        """A wide IPv6 entry covers the mapped range, so a dual-stack peer keeps matching."""
+        middleware = self._make_middleware([entry])
+        assert middleware._is_trusted_proxy(self._make_request("::ffff:10.0.0.5")) is True
+
+    def test_ipv4_entry_does_not_match_unrelated_ipv6_peer(self):
+        middleware = self._make_middleware(["10.0.0.0/8"])
+        assert middleware._is_trusted_proxy(self._make_request("2001:db8::5")) is False
 
     def test_unparseable_client_ip_returns_false(self):
         """When client IP can't be parsed, proxy is not trusted."""

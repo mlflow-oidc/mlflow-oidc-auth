@@ -101,7 +101,7 @@ def _parse_trusted_proxies(
             continue
         mapped = _ipv4_form_of_mapped_network(network)
         if mapped is not None:
-            logger.info(f"TRUSTED_PROXIES entry '{cidr}' is IPv4-mapped; matching it as {mapped}")
+            logger.info("A TRUSTED_PROXIES entry is IPv4-mapped IPv6; it is matched in its IPv4 form")
             network = mapped
         networks.append(network)
     return networks
@@ -258,8 +258,16 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
         return prefix.rstrip("/")
 
     def _is_trusted_address(self, address: _Address) -> bool:
-        """Whether ``address`` is inside one of the TRUSTED_PROXIES networks."""
-        return any(address in network for network in self._trusted_networks)
+        """Whether ``address`` is inside one of the TRUSTED_PROXIES networks.
+
+        Addresses arrive in IPv4 form when they were IPv4-mapped (see ``_parse_address``), so an
+        IPv4 address is also checked in its mapped IPv6 form: a wide IPv6 entry such as ``::/0``
+        covers the mapped range and must keep matching a dual-stack peer.
+        """
+        candidates: List[_Address] = [address]
+        if isinstance(address, ipaddress.IPv4Address):
+            candidates.append(ipaddress.IPv6Address(f"::ffff:{address}"))
+        return any(candidate in network for candidate in candidates for network in self._trusted_networks if candidate.version == network.version)
 
     def _get_real_ip(self, request: Request) -> Optional[str]:
         """
