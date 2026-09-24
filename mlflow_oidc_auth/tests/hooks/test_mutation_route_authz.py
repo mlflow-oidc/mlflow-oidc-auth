@@ -281,3 +281,41 @@ def test_start_trace_v3_new_trace_with_its_own_assessments_is_allowed():
     """Exporting / copying a trace with assessments into a fresh id stays allowed."""
     body = _with_assessments(_v3_body(VICTIM_EXPERIMENT, "new-t"), [{"assessment_id": "a-1", "trace_id": "new-t", "feedback": {"value": 1}}])
     assert _hook("/api/3.0/mlflow/traces", "POST", EDITOR, body=body) is None
+
+
+# ---------------------------------------------------------------------------
+# StartTraceV3 id shapes: absent ids and non-scalar ids must be refused, never 500
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("trace_id", [None, ""], ids=["absent", "empty"])
+def test_start_trace_v3_without_a_trace_id_is_denied(trace_id):
+    """MLflow stores an absent trace_id as "", so a second id-less start merges into the first."""
+    body = _v3_body(OWN_EXPERIMENT, "placeholder")
+    if trace_id is None:
+        del body["trace"]["trace_info"]["trace_id"]
+    else:
+        body["trace"]["trace_info"]["trace_id"] = trace_id
+    assert _denied(_hook("/api/3.0/mlflow/traces", "POST", OUTSIDER, body=body))
+
+
+_NON_SCALARS = [pytest.param(["x"], id="list"), pytest.param({"a": "b"}, id="dict")]
+
+
+@pytest.mark.parametrize("value", _NON_SCALARS)
+def test_start_trace_v3_non_scalar_trace_id_is_refused(value):
+    body = _v3_body(OWN_EXPERIMENT, "new-t")
+    body["trace"]["trace_info"]["trace_id"] = value
+    assert _denied(_hook("/api/3.0/mlflow/traces", "POST", OUTSIDER, body=body))
+
+
+@pytest.mark.parametrize("value", _NON_SCALARS)
+def test_start_trace_v3_non_scalar_experiment_id_is_refused(value):
+    assert _denied(_hook("/api/3.0/mlflow/traces", "POST", OUTSIDER, body=_v3_body(value, "new-t")))
+
+
+@pytest.mark.parametrize("field", ["trace_id", "assessment_id"])
+@pytest.mark.parametrize("value", _NON_SCALARS)
+def test_start_trace_v3_non_scalar_assessment_ids_are_refused(field, value):
+    body = _with_assessments(_v3_body(OWN_EXPERIMENT, "new-t"), [{field: value, "feedback": {"value": 1}}])
+    assert _denied(_hook("/api/3.0/mlflow/traces", "POST", OUTSIDER, body=body))
