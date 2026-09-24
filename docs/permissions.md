@@ -231,6 +231,10 @@ everywhere else, a request that names more than one resource needs the permissio
 one, and a resource that cannot be resolved is refused, never granted by
 `DEFAULT_MLFLOW_PERMISSION`.
 
+The plugin also sets `g.mlflow_authenticated_user` to the caller before MLflow handles a
+request, so MLflow records the caller, not a client-supplied name, as a review queue's owner
+and as the reviewer of an item.
+
 | Route family | Operation | Permission required |
 |---|---|---|
 | Evaluation datasets (`3.0/mlflow/datasets/…`) | get, records `GET`, `experiment-ids` | READ on every linked experiment |
@@ -252,10 +256,10 @@ one, and a resource that cannot be resolved is refused, never granted by
 | | `update` with `new_owner` | MANAGE on the experiment |
 | | `delete` | MANAGE on the experiment |
 | | `get-or-create-user` | EDIT on the experiment; `user` must be an existing, active, non-service account (it may be a teammate) |
-| | `items/set-status` | EDIT on the experiment; `completed_by`, if given, must be the caller |
-| UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job; admin only if there is none |
-| Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment |
-| | `GET online-configs` | READ on the experiment of every configuration returned for `scorer_ids` |
+| | `items/set-status` | EDIT on the experiment; `completed_by` must be the caller, and is required for `COMPLETE` / `DECLINED` |
+| UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job, or else on the experiment of the run it records; admin only if neither resolves |
+| Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment and on the scorer (`name`) |
+| | `GET online-configs` | READ on the experiment and on the scorer of every configuration returned for `scorer_ids` |
 | Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
 | Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
 

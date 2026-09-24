@@ -26,19 +26,33 @@ from mlflow_oidc_auth.tests.hooks.authz_harness import (
     install_permission_store,
 )
 
-CONFIG_EXPERIMENT = {"sc-victim": VICTIM, "sc-own": OWN}
+CONFIG_EXPERIMENT = {"sc-victim": VICTIM, "sc-own": OWN, "sc-own-guarded": OWN, "sc-own-orphan": OWN}
+
+
+SCORER_NAME = {"sc-victim": "judge", "sc-own": "judge", "sc-own-guarded": "guarded"}
 
 
 class _FakeTrackingStore(BaseFakeTrackingStore):
     def get_online_scoring_configs(self, scorer_ids):
         return [SimpleNamespace(scorer_id=s, experiment_id=CONFIG_EXPERIMENT[s]) for s in scorer_ids if s in CONFIG_EXPERIMENT]
 
+    def list_scorers(self, experiment_id):
+        return [
+            SimpleNamespace(scorer_id=s, scorer_name=SCORER_NAME[s], experiment_id=e)
+            for s, e in CONFIG_EXPERIMENT.items()
+            if e == experiment_id and s in SCORER_NAME
+        ]
+
 
 @pytest.fixture(autouse=True)
 def permission_store(tmp_path, monkeypatch):
     from mlflow_oidc_auth.utils.permissions import flush_permission_cache
 
-    yield install_permission_store(tmp_path, monkeypatch, _FakeTrackingStore())
+    s = install_permission_store(tmp_path, monkeypatch, _FakeTrackingStore())
+    # The outsider may write their own experiment, but one scorer in it is withheld.
+    s.create_scorer_permission(OWN, "guarded", OUTSIDER, "NO_PERMISSIONS")
+    flush_permission_cache()
+    yield s
     flush_permission_cache()
 
 
@@ -102,3 +116,24 @@ def test_reading_configs_requires_read_on_every_resolved_experiment(prefix):
 def test_reading_configs_with_no_scorer_id_is_admin_only(prefix):
     assert denied(hook(_get(prefix), "GET", MANAGER))
     assert allowed(hook(_get(prefix), "GET", ADMIN))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_writing_a_config_honours_scorer_level_grants(prefix):
+    body = {"experiment_id": OWN, "sample_rate": 0.5}
+    assert allowed(hook(_put(prefix), "PUT", OUTSIDER, body={**body, "name": "judge"}))
+    assert denied(hook(_put(prefix), "PUT", OUTSIDER, body={**body, "name": "guarded"}))
+    assert denied(hook(_put(prefix), "PUT", OUTSIDER, body={**body, "name": "judge"}, query={"name": "guarded"}))
+    assert denied(hook(_put(prefix), "PUT", MANAGER, body={"experiment_id": VICTIM, "sample_rate": 0.5}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_reading_configs_honours_scorer_level_grants(prefix):
+    assert allowed(hook(_get(prefix), "GET", OUTSIDER, query={"scorer_ids": "sc-own"}))
+    assert denied(hook(_get(prefix), "GET", OUTSIDER, query={"scorer_ids": "sc-own-guarded"}))
+    assert denied(hook(_get(prefix), "GET", OUTSIDER, query=[("scorer_ids", "sc-own"), ("scorer_ids", "sc-own-guarded")]))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_reading_a_config_whose_scorer_cannot_be_found_is_refused(prefix):
+    assert denied(hook(_get(prefix), "GET", MANAGER, query={"scorer_ids": "sc-own-orphan"}))

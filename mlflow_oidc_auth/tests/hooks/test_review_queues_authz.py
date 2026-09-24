@@ -126,13 +126,56 @@ def test_deleting_a_queue_requires_delete_on_its_experiment(prefix):
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
-def test_setting_item_status_requires_update_and_the_caller_as_reviewer(prefix):
+@pytest.mark.parametrize("status", ["COMPLETE", "DECLINED", 2])
+def test_finishing_an_item_requires_update_and_names_the_caller_as_reviewer(prefix, status):
     path = _rq(prefix, "items/set-status")
-    body = {"queue_id": "rq-victim", "item_id": "t", "status": "COMPLETED"}
-    assert denied(hook(path, "POST", READER, body=body))
+    body = {"queue_id": "rq-victim", "item_id": "t", "status": status, "completed_by": EDITOR}
+    assert allowed(hook(path, "POST", EDITOR, body=body))
+    assert denied(hook(path, "POST", READER, body={**body, "completed_by": READER}))
+    assert denied(hook(path, "POST", EDITOR, body={**body, "completed_by": MANAGER}))
+    # Omitted reviewer on a terminal state: the item would carry no attribution.
+    no_reviewer = {k: v for k, v in body.items() if k != "completed_by"}
+    assert denied(hook(path, "POST", EDITOR, body=no_reviewer))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_reopening_an_item_needs_no_reviewer_but_refuses_someone_else(prefix):
+    path = _rq(prefix, "items/set-status")
+    body = {"queue_id": "rq-victim", "item_id": "t", "status": "PENDING"}
     assert allowed(hook(path, "POST", EDITOR, body=body))
     assert allowed(hook(path, "POST", EDITOR, body={**body, "completed_by": EDITOR}))
     assert denied(hook(path, "POST", EDITOR, body={**body, "completed_by": MANAGER}))
+    assert denied(hook(path, "POST", READER, body=body))
+
+
+def test_the_hook_tells_mlflow_who_the_caller_is():
+    """MLflow stamps a queue's owner and an item's reviewer from g.mlflow_authenticated_user."""
+    from mlflow.server import app as mlflow_app
+    from mlflow.server.handlers import _get_request_username
+
+    from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
+    from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+    body = {"experiment_id": VICTIM, "name": "q", "queue_type": "CUSTOM"}
+    for user, is_admin in ((EDITOR, False), ("admin@example.com", True)):
+        environ = {AUTH_CONTEXT_KEY: AuthContext(username=user, is_admin=is_admin)}
+        with mlflow_app.test_request_context("/api/3.0/mlflow/review-queues/create", method="POST", json=body, environ_base=environ):
+            assert before_request_hook() is None
+            assert _get_request_username() == user
+
+
+def test_the_hook_does_not_overwrite_an_already_authenticated_user():
+    from flask import g
+    from mlflow.server import app as mlflow_app
+
+    from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
+    from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+    environ = {AUTH_CONTEXT_KEY: AuthContext(username=EDITOR, is_admin=False)}
+    with mlflow_app.test_request_context("/api/3.0/mlflow/review-queues/list", query_string={"experiment_id": VICTIM}, environ_base=environ):
+        g.mlflow_authenticated_user = "set-earlier"
+        before_request_hook()
+        assert g.mlflow_authenticated_user == "set-earlier"
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)

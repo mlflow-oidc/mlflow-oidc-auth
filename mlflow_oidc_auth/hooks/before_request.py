@@ -963,6 +963,11 @@ def before_request_hook():
     username, is_admin = _get_auth_context()
     if username is None:
         return responses.make_auth_required_response()
+    # MLflow's handlers attribute review-queue ownership and review work to
+    # g.mlflow_authenticated_user (a username string, read by MLflow 3.14 and later) and fall
+    # back to client-supplied values when it is unset. No database access.
+    if getattr(g, "mlflow_authenticated_user", None) is None:
+        g.mlflow_authenticated_user = username
 
     logger.debug(f"Before request hook called for path: {request.path}, method: {request.method}, username: {username}, is admin: {is_admin}")
     validator = _find_validator(request)

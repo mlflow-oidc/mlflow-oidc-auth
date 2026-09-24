@@ -25,7 +25,20 @@ from mlflow_oidc_auth.tests.hooks.authz_harness import (
     install_permission_store,
 )
 
-JOBS = {"job-victim": {"experiment_id": VICTIM, "trace_ids": []}, "job-unscoped": {"trace_ids": []}}
+JOBS = {
+    "job-victim": {"experiment_id": VICTIM, "trace_ids": []},
+    "job-unscoped": {"trace_ids": []},
+    # MLflow 3.14's evaluation job records only the run it writes to.
+    "job-v314": {"trace_ids": [], "serialized_scorers": [], "run_id": "run-victim", "username": None},
+    "job-v314-lost-run": {"trace_ids": [], "run_id": "run-gone"},
+}
+
+
+class _FakeTrackingStore(BaseFakeTrackingStore):
+    def get_run(self, run_id):
+        if run_id != "run-victim":
+            raise MlflowException(f"Run '{run_id}' not found", RESOURCE_DOES_NOT_EXIST)
+        return SimpleNamespace(info=SimpleNamespace(run_id=run_id, experiment_id=VICTIM))
 
 
 def _get_job(job_id):
@@ -39,7 +52,7 @@ def permission_store(tmp_path, monkeypatch):
     from mlflow_oidc_auth.utils.permissions import flush_permission_cache
 
     monkeypatch.setattr("mlflow_oidc_auth.validators.job.get_job", _get_job)
-    yield install_permission_store(tmp_path, monkeypatch, BaseFakeTrackingStore())
+    yield install_permission_store(tmp_path, monkeypatch, _FakeTrackingStore())
     flush_permission_cache()
 
 
@@ -60,7 +73,14 @@ def test_cancelling_a_job_requires_update_on_its_experiment():
     assert allowed(hook(CANCEL_JOB.format("job-victim"), "PATCH", EDITOR))
 
 
-@pytest.mark.parametrize("job_id", ["job-unscoped", "job-missing"])
+def test_a_job_recording_only_its_run_is_scoped_by_the_run_s_experiment():
+    assert denied(hook(GET_JOB.format("job-v314"), "GET", OUTSIDER))
+    assert allowed(hook(GET_JOB.format("job-v314"), "GET", READER))
+    assert denied(hook(CANCEL_JOB.format("job-v314"), "PATCH", READER))
+    assert allowed(hook(CANCEL_JOB.format("job-v314"), "PATCH", EDITOR))
+
+
+@pytest.mark.parametrize("job_id", ["job-unscoped", "job-missing", "job-v314-lost-run"])
 def test_an_unresolvable_job_is_admin_only(job_id):
     assert denied(hook(GET_JOB.format(job_id), "GET", MANAGER))
     assert denied(hook(CANCEL_JOB.format(job_id), "PATCH", MANAGER))

@@ -108,6 +108,18 @@ def validate_can_update_review_queue_items(username: str) -> bool:
     return _review_queue_permission(username).can_update
 
 
+# ReviewStatus.PENDING, by name or by proto number.
+_PENDING_STATUS = {"PENDING", "1"}
+
+
 def validate_can_set_review_queue_item_status(username: str) -> bool:
-    """UPDATE on the queue's experiment; ``completed_by``, if given, must be the caller."""
-    return names_only_caller("completed_by", username) and _review_queue_permission(username).can_update
+    """UPDATE on the queue's experiment; ``completed_by`` must be the caller, and is required
+    when the item moves to a terminal state."""
+    if not names_only_caller("completed_by", username):
+        return False
+    # Moving an item to a terminal state (COMPLETE / DECLINED) records who reviewed it, so
+    # the caller must be named; MLflow's UI and client always send it there.
+    statuses = {str(s).strip().upper() for s in all_source_values("status")}
+    if statuses - _PENDING_STATUS and not all_source_values("completed_by"):
+        return False
+    return _review_queue_permission(username).can_update

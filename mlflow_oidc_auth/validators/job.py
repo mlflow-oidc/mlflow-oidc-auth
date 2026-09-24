@@ -2,7 +2,8 @@
 
 ``GET /ajax-api/3.0/mlflow/jobs/<job_id>`` and ``PATCH /ajax-api/3.0/mlflow/jobs/cancel/<job_id>``
 read and cancel the jobs the UI starts (issue detection, evaluation, prompt optimization).
-Those jobs record the experiment they run in among their params, and inherit its permission:
+Those jobs record the experiment they run in among their params (or, on MLflow 3.14, only the
+run they write to), and inherit its permission:
 READ to read a job, UPDATE to cancel it. A job that does not exist, or whose params name no
 experiment, is admin-only.
 """
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 import json
 
+from mlflow.server.handlers import _get_tracking_store
 from mlflow.server.jobs import get_job
 
 from mlflow_oidc_auth.logger import get_logger
@@ -22,14 +24,26 @@ logger = get_logger()
 
 
 def _experiment_of_job(job_id: str) -> str | None:
-    """The experiment id recorded in the job's params, or None if it cannot be resolved."""
+    """The experiment a job runs in, or None if it cannot be resolved.
+
+    Taken from ``params["experiment_id"]``, else from the run in ``params["run_id"]``: on
+    MLflow 3.14 an evaluation job records only its run, not its experiment.
+    """
     try:
         params = json.loads(get_job(job_id).params or "{}")
     except Exception:
         logger.debug("Could not resolve job for authorization")
         return None
-    experiment_id = params.get("experiment_id") if isinstance(params, dict) else None
-    return str(experiment_id) if experiment_id else None
+    if not isinstance(params, dict):
+        return None
+    if experiment_id := params.get("experiment_id"):
+        return str(experiment_id)
+    if run_id := params.get("run_id"):
+        try:
+            return str(_get_tracking_store().get_run(str(run_id)).info.experiment_id)
+        except Exception:
+            logger.debug("Could not resolve the run of a job for authorization")
+    return None
 
 
 def _job_permission(username: str) -> Permission:
