@@ -252,19 +252,35 @@ async def is_authenticated(request: Request) -> bool:
         return False
 
 
+def _as_path_prefix(value: str) -> str:
+    """Return ``value`` without a trailing slash if it is a usable path prefix, else ``""``.
+
+    A prefix must start with exactly one ``/``. Anything else (a bare word, or ``//`` which a
+    browser resolves as a protocol-relative URL) is dropped; a dropped prefix gives a link
+    that does not resolve under the mount, never one that leaves this origin. Mirrors the guard
+    in ``routers.auth._login_path``.
+    """
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return ""
+    return value.rstrip("/")
+
+
 async def get_base_path(request: Request) -> str:
     """
     Helper function to get the base path from the request.
 
-    This function extracts the base path for the application, taking into account
-    proxy headers set by reverse proxies (nginx, etc.). The base path is used
-    for constructing proper URLs and redirects when the application is behind a proxy.
+    The base path is the prefix a deployment is served under, used to build redirect targets
+    such as ``/login`` and ``/oidc/ui``.
 
     Priority order:
-    1. X-Forwarded-Prefix header (most common proxy setup)
-    2. root_path from ASGI scope (set by ProxyHeadersMiddleware)
-    3. request.base_url.path (direct access)
-    4. Empty string (default)
+    1. ``root_path`` from the ASGI scope — set by the ASGI server, or by
+       ``ProxyHeadersMiddleware`` from ``X-Forwarded-Prefix`` only when the connecting client is
+       a trusted proxy. The header itself is never read here, so the prefix in a redirect comes
+       from the same trust decision as the routed path used for authorization.
+    2. request.base_url.path (direct access)
+    3. Empty string (default)
+
+    Any candidate that is not a path starting with a single ``/`` is ignored.
 
     Args:
         request: FastAPI request object
@@ -272,23 +288,16 @@ async def get_base_path(request: Request) -> str:
     Returns:
         Base path string (without trailing slash)
     """
-    # First check X-Forwarded-Prefix header (nginx, apache, etc.)
-    headers = getattr(request, "headers", {}) or {}
-    forwarded_prefix = headers.get("x-forwarded-prefix", "")
-    if forwarded_prefix:
-        return forwarded_prefix.rstrip("/")
-
-    # Then check root_path from ASGI scope (set by ProxyHeadersMiddleware or ASGI server)
     scope = getattr(request, "scope", None) or {}
-    root_path = scope.get("root_path", "")
+    root_path = scope.get("root_path", "") if isinstance(scope, dict) else ""
     if root_path:
-        return root_path.rstrip("/")
+        return _as_path_prefix(root_path)
 
     # Fallback to base URL path for direct access
     base_url = getattr(request, "base_url", None)
     base_url_path = getattr(base_url, "path", "") if base_url is not None else ""
     if base_url_path and base_url_path != "/":
-        return base_url_path.rstrip("/")
+        return _as_path_prefix(base_url_path)
 
     # Default to empty string (no prefix)
     return ""

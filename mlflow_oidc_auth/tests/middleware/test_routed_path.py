@@ -70,6 +70,9 @@ def _build_app() -> FastAPI:
     async def gateway(endpoint_name: str):
         return {"endpoint": endpoint_name}
 
+    from mlflow_oidc_auth.routers.ui import ui_router
+
+    app.include_router(ui_router)
     app.mount("/", AuthAwareWSGIMiddleware(_flask_stand_in()))
     return app
 
@@ -289,3 +292,41 @@ class TestEveryFastapiRouteRequiresAUser:
         template = next(t for t, methods in routes if "GET" in methods and not is_unprotected_route(self._concrete(t)))
         scope = {"type": "http", "method": "GET", "path": self._concrete(template), "root_path": "", "headers": [], "app": real_app}
         assert _dispatches_to_flask_mount(Request(scope)) is False
+
+
+class TestRedirectPrefixFollowsProxyTrust:
+    """Redirect targets use the prefix recorded for a trusted hop, never the raw header."""
+
+    DOCUMENT = {"Accept": "text/html", "Sec-Fetch-Dest": "document"}
+
+    def test_untrusted_client_prefix_not_applied_to_login_redirect(self, stack):
+        client = stack(trusted_proxies=["10.0.0.0/8"], client=("192.0.2.10", 40000))
+        response = client.get("/experiments", headers={**self.DOCUMENT, "X-Forwarded-Prefix": "/mlflow"})
+        assert response.status_code == 302
+        assert response.headers["location"] == "/oidc/ui"
+
+    def test_trusted_proxy_prefix_applied_to_login_redirect(self, stack):
+        client = stack(trusted_proxies=["10.0.0.0/8"], client=("10.0.0.5", 40000))
+        response = client.get("/mlflow/experiments", headers={**self.DOCUMENT, "X-Forwarded-Prefix": "/mlflow"})
+        assert response.status_code == 302
+        assert response.headers["location"] == "/mlflow/oidc/ui"
+
+    def test_non_path_prefix_dropped_from_login_redirect(self, stack):
+        client = stack()
+        response = client.get("/experiments", headers={**self.DOCUMENT, "X-Forwarded-Prefix": "//other.example"})
+        assert response.status_code == 302
+        assert response.headers["location"] == "/oidc/ui"
+
+    @pytest.mark.parametrize(
+        "trusted, client_addr, prefix, expected",
+        [
+            (["10.0.0.0/8"], ("192.0.2.10", 40000), "/mlflow", "/oidc/ui/"),
+            (["10.0.0.0/8"], ("10.0.0.5", 40000), "/mlflow", "/mlflow/oidc/ui/"),
+            ([], ("testclient", 50000), "//other.example", "/oidc/ui/"),
+        ],
+    )
+    def test_ui_redirect_prefix(self, stack, trusted, client_addr, prefix, expected):
+        client = stack(trusted_proxies=trusted, client=client_addr)
+        response = client.get("/oidc/ui", headers={"X-Forwarded-Prefix": prefix})
+        assert response.status_code == 307
+        assert response.headers["location"] == expected
