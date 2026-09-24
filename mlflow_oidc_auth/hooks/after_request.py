@@ -28,6 +28,7 @@ from mlflow.protos.service_pb2 import (
     UpdateGatewayEndpoint,
 )
 from mlflow.server.handlers import (
+    _get_ajax_path,
     _get_model_registry_store,
     _get_request_message,
     _get_tracking_store,
@@ -758,6 +759,38 @@ def _filter_list_workspaces(response: Response) -> None:
     response.set_data(json.dumps(data))
 
 
+def _redact_gateway_secrets_config(resp: Response) -> None:
+    """Reduce the gateway secrets-config response to what a non-admin needs (issue #366).
+
+    MLflow's handler returns two server-wide flags and no per-secret data::
+
+        {"secrets_available": true, "using_default_passphrase": <bool>}
+
+    ``secrets_available`` gates MLflow's gateway page: when it is not true the page shows
+    only its setup guide, so it must pass through or the page stays blank.
+    ``using_default_passphrase`` says whether stored gateway secrets are encrypted under
+    MLflow's well-known default KEK passphrase. MLflow's UI never reads it, and to anyone
+    other than an operator it is a statement of how weakly the secrets are protected, so
+    it is removed. Admins receive the response unchanged.
+
+    There is nothing per-secret to filter here: which secrets a user can see is decided by
+    ``ListGatewaySecretInfos`` (``_filter_list_gateway_secrets``) and ``GetGatewaySecretInfo``.
+    A body that is not a JSON object is replaced with ``secrets_available: false`` rather
+    than passed through.
+    """
+    if get_fastapi_admin_status():
+        return
+    data = resp.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+    # Rebuilt from an allowlist, not stripped by denylist: a field a future MLflow release
+    # adds is withheld from non-admins until it has been reviewed here.
+    resp.set_data(json.dumps({"secrets_available": data.get("secrets_available") is True}))
+
+
+GATEWAY_SECRETS_CONFIG_PATH = _get_ajax_path("/mlflow/gateway/secrets/config", version=3)
+
+
 AFTER_REQUEST_PATH_HANDLERS = {
     CreateExperiment: _set_can_manage_experiment_permission,
     CreateRegisteredModel: _set_can_manage_registered_model_permission,
@@ -809,6 +842,8 @@ AFTER_REQUEST_HANDLERS = {
     for method in methods
     if handler in _our_handlers and "/graphql" not in http_path
 }
+# Non-proto Flask route, so get_endpoints() above cannot map it; bound by exact path.
+AFTER_REQUEST_HANDLERS[(GATEWAY_SECRETS_CONFIG_PATH, "GET")] = _redact_gateway_secrets_config
 
 
 @catch_mlflow_exception

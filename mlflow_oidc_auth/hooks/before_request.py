@@ -226,6 +226,31 @@ def _deny_non_admin(_username: str) -> bool:
     return False
 
 
+def _allow_authenticated_gateway_config_read(_username: str) -> bool:
+    """Allow any authenticated user to read MLflow's gateway configuration metadata (issue #366).
+
+    Bound only to GET on ``gateway/provider-config`` and ``gateway/secrets/config``.
+    Unauthenticated requests never reach a validator (the hook returns 401 first), so
+    returning True here means "authenticated", nothing more. Both routes are safe to
+    open:
+
+    - ``provider-config`` is a static catalogue built from LiteLLM's provider metadata:
+      auth-mode names, descriptions, and the *names* of the secret and config fields a
+      provider needs. It reads no stored secret and no tenant resource. Non-admins need
+      it to render the create-secret form, and creating gateway resources is already
+      open to any authenticated user (``validate_can_create_gateway``).
+    - ``secrets/config`` returns server-wide flags, not per-secret data. The response is
+      reduced to an allowlist for non-admins by ``after_request`` (see
+      ``_redact_gateway_secrets_config``), so the KEK-passphrase posture flag is never
+      disclosed to them.
+
+    MLflow's gateway page renders nothing but its setup guide unless ``secrets/config``
+    returns ``secrets_available: true``, which is why a 403 here blanked the page for every
+    non-admin even when ``endpoints/list`` returned their endpoints.
+    """
+    return True
+
+
 def _get_auth_context() -> tuple[Optional[str], bool]:
     """Best-effort retrieval of auth context injected by FastAPI."""
     try:
@@ -445,10 +470,20 @@ BEFORE_REQUEST_VALIDATORS.update(
         # Gateway discovery routes use the same gateway proxy permission check
         (GATEWAY_SUPPORTED_PROVIDERS, "GET"): validate_gateway_proxy,
         (GATEWAY_SUPPORTED_MODELS, "GET"): validate_gateway_proxy,
-        # Gateway configuration routes are admin-only
-        (GATEWAY_PROVIDER_CONFIG, "GET"): _deny_non_admin,
-        (GATEWAY_SECRETS_CONFIG, "GET"): _deny_non_admin,
+        # Gateway configuration reads are open to authenticated users (issue #366): the
+        # MLflow gateway page cannot render for anyone who gets a 403 here. Neither route
+        # returns a secret value or another tenant's resource; secrets/config is further
+        # reduced to an allowlist for non-admins in after_request.
+        (GATEWAY_PROVIDER_CONFIG, "GET"): _allow_authenticated_gateway_config_read,
+        (GATEWAY_SECRETS_CONFIG, "GET"): _allow_authenticated_gateway_config_read,
     }
+)
+
+# Gateway configuration writes stay admin-only. MLflow registers both config routes GET-only
+# today, so these entries turn a would-be 405 into a 403 for non-admins — and keep any
+# writer a future MLflow release adds on these paths denied by default rather than open.
+BEFORE_REQUEST_VALIDATORS.update(
+    {(path, method): _deny_non_admin for path in (GATEWAY_PROVIDER_CONFIG, GATEWAY_SECRETS_CONFIG) for method in ("POST", "PUT", "PATCH", "DELETE")}
 )
 
 # Gateway guardrails: admin-only on every method MLflow serves, under both prefixes.
