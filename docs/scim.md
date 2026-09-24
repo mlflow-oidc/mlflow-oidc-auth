@@ -425,6 +425,58 @@ failure is logged, and the deactivation or delete proceeds without them.
 `USER_RETENTION_DAYS` is reserved for a future job that purges long-deactivated users. It
 defaults to `0` (never), and nothing reads it yet.
 
+## Provisioning status and activity
+
+Directories fail quietly: a rotated-away token, a schema the endpoint refuses, or a `409` on
+every sync. A token's `last_used_at` only says it authenticated. So every request to `/scim/v2`
+also writes one row to the `scim_activity` table, and the admin UI's SCIM page shows what they
+add up to.
+
+**What is recorded**, per request:
+
+| Field | Content |
+|---|---|
+| `at` | When the request was served (UTC) |
+| `token_id`, `token_name` | The token that authenticated it; a name snapshot survives a rotation's rename. Empty for an unauthenticated request |
+| `method` | The HTTP method |
+| `path` | The route **template**, such as `/Users/{user_id}`, never the concrete path |
+| `resource_id` | The SCIM `id` the request addressed (a username or group name), when it addressed one |
+| `status` | The HTTP status returned |
+| `outcome` | `ok` (below 400), `client_error` (4xx), `server_error` (5xx), or `auth_failed` (no valid token) |
+| `error` | For a failure, the SCIM `scimType: detail` text, capped at 500 characters |
+| `duration_ms` | Time spent serving the request |
+
+**What is deliberately not recorded**: tokens (anything shaped like a SCIM token in an error
+message is redacted too), request and response bodies, headers, client addresses, and exception
+text. A server error records only `Internal error`; the stack trace goes to the server log.
+
+**Unauthenticated requests** are recorded on the same throttle as the `scim.auth_failed` audit
+event, at most one row per client per minute, so an anonymous client cannot fill the table any
+faster than it can fill the audit log.
+
+Recording is best effort. It happens after the response is decided, one insert per request, and
+a failure to record is logged and never changes the response. It does not touch the
+authentication path of any other request.
+
+**Retention**: rows older than `SCIM_ACTIVITY_RETENTION_DAYS` (default `30`; `0` keeps them all)
+are deleted by `mlflow-oidc db prune-sessions` and, at most once an hour per process, by the
+server itself.
+
+**Status** (`GET /api/2.0/mlflow/scim/status`): per token, the last success, the last error and
+its message, and the request and error counts over the last 24 hours. Overall:
+
+- `provisioning_healthy` is `true` when a request succeeded within
+  `SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS` (default `86400`), `false` when none did, and `null`
+  when SCIM has never been used: no token ever authenticated and nothing was recorded. A
+  directory presenting only a wrong or revoked token is `false`, not `null`.
+- `auth_failures_24h` and `last_auth_failure_at` count rejected tokens separately, since they
+  belong to no token. The overall `requests_24h`, `errors_24h` and `last_error` include them.
+
+**Activity** (`GET /api/2.0/mlflow/scim/activity`): the rows, newest first, filterable by
+`outcome` and `token_id`, paged with `before`.
+
+Both are admin-only. See the [API Reference](api-reference#provisioning-status-and-activity).
+
 ## Admin API for lifecycle state
 
 For the admin UI:
@@ -436,5 +488,9 @@ For the admin UI:
 - `DELETE /api/2.0/mlflow/users` hard-deletes a user through the same ownership guard. A
   SCIM-managed user under `enforce` needs `"admin_override": true` here as well, so an
   administrator refused a deactivation cannot hard-delete the user instead without it.
+- `GET /api/2.0/mlflow/users/{username}/sessions` lists a user's live sessions, and
+  `DELETE .../sessions/{pk}` and `DELETE .../sessions` revoke one or all of them
+  (`session.revoked` with `detail.source = "admin"`). Revoking sessions signs the user out; it
+  does not deactivate the account or touch its access token.
 
 See the [API Reference](api-reference#scim).

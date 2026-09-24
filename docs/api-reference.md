@@ -425,12 +425,80 @@ Token object:
 }
 ```
 
+### Provisioning status and activity
+
+Admin-only. See [Provisioning status and activity](scim#provisioning-status-and-activity) for what
+is recorded.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/2.0/mlflow/scim/status` | Provisioning health, overall and per token |
+| GET | `/api/2.0/mlflow/scim/activity` | Recorded SCIM requests, newest first. Query: `limit` (1 to 200, default 50), `before` (an activity `id`: only older rows), `outcome` (`ok`, `client_error`, `server_error`, `auth_failed`; anything else is `400`), `token_id` |
+
+**`GET /api/2.0/mlflow/scim/status` response:**
+```json
+{
+  "provisioning_healthy": true,
+  "last_success_at": "2026-09-23T10:05:00+00:00",
+  "last_error_at": "2026-09-23T09:00:00+00:00",
+  "last_error": "uniqueness: User 'alice@example.com' already exists",
+  "requests_24h": 120,
+  "errors_24h": 2,
+  "auth_failures_24h": 1,
+  "last_auth_failure_at": "2026-09-23T08:00:00+00:00",
+  "healthy_window_seconds": 86400,
+  "retention_days": 30,
+  "tokens": [
+    {
+      "token_id": 1,
+      "name": "entra-prod",
+      "active": true,
+      "last_used_at": "2026-09-23T10:05:00+00:00",
+      "last_success_at": "2026-09-23T10:05:00+00:00",
+      "last_error_at": "2026-09-23T09:00:00+00:00",
+      "last_error": "uniqueness: User 'alice@example.com' already exists",
+      "last_error_status": 409,
+      "requests_24h": 119,
+      "errors_24h": 1
+    }
+  ]
+}
+```
+
+`provisioning_healthy` is `null` when SCIM has never been used.
+
+**`GET /api/2.0/mlflow/scim/activity` response.** `next_before` is the value to pass as `before`
+for the next page, or `null` when this page was the last:
+```json
+{
+  "activity": [
+    {
+      "id": 42,
+      "at": "2026-09-23T10:05:00+00:00",
+      "token_id": 1,
+      "token_name": "entra-prod",
+      "method": "PATCH",
+      "path": "/Users/{user_id}",
+      "resource_id": "alice@example.com",
+      "status": 200,
+      "outcome": "ok",
+      "error": null,
+      "duration_ms": 12
+    }
+  ],
+  "next_before": null
+}
+```
+
 ### User and group lifecycle state
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/2.0/mlflow/users/details` | Admin | Users with lifecycle state. Optional `service=true\|false` filter; omit it for both |
 | PATCH | `/api/2.0/mlflow/users/{username}/active` | Admin | Deactivate or reactivate a user |
+| GET | `/api/2.0/mlflow/users/{username}/sessions` | Admin | The user's live sessions |
+| DELETE | `/api/2.0/mlflow/users/{username}/sessions/{pk}` | Admin | Revoke one of the user's sessions |
+| DELETE | `/api/2.0/mlflow/users/{username}/sessions` | Admin | Revoke all of the user's sessions |
 | GET | `/api/2.0/mlflow/permissions/groups/details` | Admin | Groups with external id and member count |
 
 `GET /api/2.0/mlflow/users` and `GET /api/2.0/mlflow/permissions/groups` are unchanged and still
@@ -472,6 +540,35 @@ The hard delete goes through the same ownership guard. `admin_override` is optio
 defaults to `false`. Under `enforce`, deleting a user whose row another source owns is refused
 with `409` and audited as `user.ownership_conflict` (`detail.operation = "delete"`), unless
 `admin_override` is `true`. The override is always audited.
+
+**`GET /api/2.0/mlflow/users/{username}/sessions` response** (newest first, `Cache-Control:
+no-store`):
+```json
+{
+  "sessions": [
+    {
+      "pk": 17,
+      "session_id_prefix": "Xk3v9QpA",
+      "provider_id": "default",
+      "created_at": "2026-09-23T08:00:00+00:00",
+      "last_seen_at": null,
+      "expires_at": "2026-09-23T16:00:00+00:00"
+    }
+  ]
+}
+```
+
+The full session id is a bearer credential and is never returned. `session_id_prefix` tells
+sessions apart; `pk` addresses one for `DELETE`. `last_seen_at` is `null` unless something records
+it; the per-request authentication path deliberately does not write to the session row.
+
+Both `DELETE`s return `{"revoked": <count>}` and emit `session.revoked` with
+`detail.source = "admin"`. The session stops working on its next request. The account, its grants
+and its access token are unchanged. Responses:
+
+- `404` for an unknown user, or a `pk` that is not a live session of **this** user. Another user's
+  session reads exactly like one that does not exist, and is not revoked.
+- `403` if the caller is not an administrator.
 
 **`PATCH /api/2.0/mlflow/users/ownership` request** (admin, break glass):
 ```json

@@ -102,6 +102,10 @@ row reveals a **Deactivate** or **Reactivate** action:
 - **Deactivate** revokes the user's live sessions and access token immediately; their permission
   grants are kept, so reactivating restores access with no re-granting needed.
 - **Reactivate** restores access; the user signs in again or is issued a new access token.
+- **Sessions** opens the user's live sign-in sessions: a short id prefix, the provider, when it
+  was opened and when it expires. **Revoke** ends one session and **Revoke all** ends every one,
+  each after a confirmation; the list refreshes afterwards. The session is signed out on its next
+  request. The account, its grants and its access token are not affected; use Deactivate for that.
 
 If the target account is directory-managed (SCIM or OIDC), the deactivate dialog shows an
 **"Override ownership guard"** switch, since a later directory sync could otherwise overwrite the
@@ -132,6 +136,15 @@ in [SCIM Provisioning](scim):
   new value is being pasted in.
 - **Revoke**: disables a token immediately. Rotate and revoke are unavailable for a token that is
   already revoked.
+- **Provisioning status**: **Healthy** when a SCIM request succeeded within
+  `SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS` (24 hours by default), **Unhealthy** when none did, and
+  **Never used** before any directory has connected. Next to it: the last success, the last error
+  with its SCIM message, requests and failures in the last 24 hours, and rejected tokens. A table
+  shows the same per token, including its last-used time.
+- **Recent activity**: the latest SCIM requests with time, token, method, resource (the route and
+  the SCIM id), status, outcome and error. Failed requests are highlighted. Filter by outcome, and
+  **Load more** pages further back, as far as `SCIM_ACTIVITY_RETENTION_DAYS` keeps. See
+  [Provisioning status and activity](scim#provisioning-status-and-activity) for what is recorded.
 
 ## Workspace Picker
 
