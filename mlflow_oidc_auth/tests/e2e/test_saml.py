@@ -135,7 +135,7 @@ class TestLoginCsrf:
 
     def test_a_response_posted_without_the_nonce_cookie_is_refused(self, app_server, keycloak):
         keycloak.logout_everywhere(BOB)
-        rejected_before = len(app_server.audit_events("auth.saml_binding_rejected"))
+        missing_before = len(app_server.audit_events("auth.saml_binding_missing"))
         attacker, page, form = _stop_at_the_acs_post(app_server, BOB)
 
         # The attacker's genuine Response, auto-submitted from a victim's browser: same form, same
@@ -146,7 +146,7 @@ class TestLoginCsrf:
             assert refused.status_code == 400, refused.text[:500]
             assert not any(h.startswith("session=") for h in refused.headers.get_list("set-cookie"))
             assert flows.session_cookie(victim) is None
-        assert len(app_server.audit_events("auth.saml_binding_rejected")) == rejected_before + 1
+        assert len(app_server.audit_events("auth.saml_binding_missing")) == missing_before + 1
 
         # The refusal spent the attempt: the attacker's own browser cannot complete it afterwards.
         late = attacker.submit(page, form, cookies=False)

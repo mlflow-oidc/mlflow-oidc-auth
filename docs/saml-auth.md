@@ -164,8 +164,10 @@ refused.
    - consumes the `RelayState` row. Unknown, expired, already used, or created for a
      *different* provider → `400` (audited as `auth.saml_relaystate_rejected`);
    - checks the [browser binding](#browser-binding): the nonce cookie must hash to what the
-     consumed row recorded. Missing, or belonging to another attempt → `400`
-     (`auth.saml_binding_rejected`). The cookie is cleared whatever the outcome;
+     consumed row recorded. No cookie → `400` (`auth.saml_binding_missing`: usually a browser
+     that blocked or outlived it, though a login-CSRF victim holds none either); a cookie that
+     does not belong to this attempt → `400` (`auth.saml_binding_rejected`). The cookie is
+     cleared whatever the outcome;
    - validates the Response: signature against `idp_x509_cert`, `Issuer`, `Destination`,
      `Recipient`, audience, `NotBefore`/`NotOnOrAfter` with `clock_skew_seconds`, and that
      `InResponseTo` is the AuthnRequest from step 2 — on the Response *and* on the signed
@@ -202,7 +204,9 @@ Response (with their own fresh `RelayState`) signs the victim in as themselves �
 So `GET /login/<id>` also sets a cookie carrying a random 256-bit nonce:
 
 - `HttpOnly; Secure; SameSite=None`, `Path=/callback/<id>` (the ACS, under any mount prefix),
-  `Max-Age=600` — only the ACS ever receives it, and only for ten minutes;
+  `Max-Age=600` — only the ACS ever receives it, and only for ten minutes. The bound
+  `auth_state` row gets the same ten-minute lifetime (instead of the usual 15), so a slow login
+  fails as an expired `RelayState`, not as a live attempt whose cookie is gone;
 - one cookie per attempt (its name is derived from the `RelayState`), so logins started in two
   tabs do not overwrite each other;
 - only its SHA-256 is stored, on the `auth_state` row. The nonce is never stored or logged.
@@ -338,8 +342,9 @@ The browser only ever sees `SAML sign-in failed`. The server log names the reaso
 | `The Assertion of the Response is not signed` | the IdP signs only the Response — set `want_response_signed: true` and `want_assertions_signed: false`, or change the IdP |
 | `is not a valid audience` / `does not name this SP` | the IdP's audience / identifier differs from `entity_id` |
 | `The response was received at ... instead of ...` | the ACS URL registered at the IdP differs from the one MLflow derives — set `OIDC_REDIRECT_URI` |
-| `RelayState names no live login attempt` | the login took longer than 15 minutes, was replayed, or began at a different provider |
-| `did not start this login attempt` | the binding cookie did not arrive: the login took more than 10 minutes, the browser blocks third-party-context cookies for this site, it is plain http on a non-loopback host with `SAML_LOGIN_BINDING=on` — or the Response really was delivered by a different browser |
+| `RelayState names no live login attempt` | the login took longer than 15 minutes (10 with the browser binding on), was replayed, or began at a different provider |
+| `no browser-binding cookie arrived` | the browser blocks third-party-context cookies for this site, it is plain http on a non-loopback host with `SAML_LOGIN_BINDING=on`, `OIDC_REDIRECT_URI` names a different host than users browse to — or the Response was delivered by a browser that never started a login |
+| `did not start this login attempt` | a binding cookie arrived but belongs to another attempt, or is malformed — the Response was very likely delivered by a different browser |
 | `unsolicited or mismatched InResponseTo` | the user started at the IdP's portal (IdP-initiated SSO is refused) — start from MLflow's login page |
 | `Found an Attribute element with duplicated Name` | the IdP sends one attribute per value — Keycloak's default `role_list` mapper does, one `Role` per role. Turn on its *Single Role Attribute*, or remove the `role_list` client scope from the SAML client |
 | `Conditions NotOnOrAfter beyond the allowed clock skew` | clocks differ; fix NTP, or raise `clock_skew_seconds` (max 300) |

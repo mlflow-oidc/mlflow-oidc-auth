@@ -129,6 +129,29 @@ class TestCsrfBindingCookie:
             assert row.binding_hash == hashlib.sha256(nonce.encode()).hexdigest()
             assert nonce not in (row.binding_hash, row.nonce, row.relay_state, row.state)
 
+    def test_a_bound_row_lives_exactly_as_long_as_its_cookie(self, client, store, bound):
+        """A slow login must fail as an expired RelayState, not as a live row with its cookie gone."""
+        from mlflow_oidc_auth.db.models import SqlAuthState
+
+        relay_state, _, _ = _start(client)
+
+        with store.ManagedSessionMaker() as session:
+            row = session.query(SqlAuthState).filter(SqlAuthState.state == relay_state).one()
+            lifetime = (row.expires_at - row.created_at).total_seconds()
+        assert abs(lifetime - BINDING_COOKIE_MAX_AGE_SECONDS) <= 5
+
+    def test_an_unbound_row_keeps_the_default_lifetime(self, client, store, monkeypatch):
+        from mlflow_oidc_auth.db.models import SqlAuthState
+        from mlflow_oidc_auth.repository.auth_state import DEFAULT_STATE_LIFETIME_SECONDS
+
+        _patch_live_configs(monkeypatch, SESSION_COOKIE_SECURE=False, SAML_LOGIN_BINDING="auto")
+        relay_state, _, _ = _start(client)
+
+        with store.ManagedSessionMaker() as session:
+            row = session.query(SqlAuthState).filter(SqlAuthState.state == relay_state).one()
+            lifetime = (row.expires_at - row.created_at).total_seconds()
+        assert abs(lifetime - DEFAULT_STATE_LIFETIME_SECONDS) <= 5
+
     def test_each_attempt_gets_its_own_cookie(self, client, bound):
         first = _start(client)
         second = _start(client)
@@ -145,8 +168,10 @@ class TestCsrfBindingEnforced:
         assert response.status_code == 400
         assert response.json() == {"detail": "SAML sign-in failed"}
         _assert_no_session(client, store, response)
-        [event] = _events(audit_events, "auth.saml_binding_rejected")
+        # No cookie at all is audited apart from a wrong one: a timeout is not an attack signal.
+        [event] = _events(audit_events, "auth.saml_binding_missing")
         assert event["status"] == "denied" and event["detail"] == {"provider": PROVIDER_ID}
+        assert not _events(audit_events, "auth.saml_binding_rejected")
         assert not _events(audit_events, "auth.login")
 
     def test_the_attackers_own_nonce_does_not_bind_another_attempt(self, client, idp, store, audit_events, bound):
@@ -154,12 +179,13 @@ class TestCsrfBindingEnforced:
         attacker_relay, _, _ = _start(client)
         _, victim_cookie, victim_nonce = _start(client)
 
-        # The victim's browser holds a cookie for its own attempt; the attacker's RelayState names another.
+        # The victim's browser holds a cookie for its own attempt; the attacker's RelayState names
+        # another, whose cookie it does not hold. Per-attempt names make that a *missing* cookie.
         response = _post(client, idp, attacker_relay, cookie=(victim_cookie, victim_nonce))
         assert response.status_code == 400
         _assert_no_session(client, store, response)
 
-        assert len(_events(audit_events, "auth.saml_binding_rejected")) == 1
+        assert len(_events(audit_events, "auth.saml_binding_missing")) == 1
 
     def test_a_nonce_from_a_different_attempt_under_the_right_name_is_refused(self, client, idp, store, audit_events, bound):
         relay_state, cookie_name, nonce = _start(client)
@@ -170,6 +196,7 @@ class TestCsrfBindingEnforced:
         assert response.status_code == 400
         _assert_no_session(client, store, response)
         assert _events(audit_events, "auth.saml_binding_rejected")
+        assert not _events(audit_events, "auth.saml_binding_missing")
         _assert_cleared(response, cookie_name)
 
     @pytest.mark.parametrize("value", ["\xff" * 43, "abc\xffdef" + "a" * 40, "not a nonce!", "a" * 500])
@@ -212,6 +239,7 @@ class TestCsrfBindingEnforced:
         _assert_cleared(response, cookie_name)
         assert client.get(PROTECTED).json() == {"username": USER_EMAIL}
         assert not _events(audit_events, "auth.saml_binding_rejected")
+        assert not _events(audit_events, "auth.saml_binding_missing")
         assert _events(audit_events, "auth.login")
 
     def test_two_tabs_both_complete(self, client, idp, bound):
@@ -230,7 +258,7 @@ class TestCsrfBindingEnforced:
         assert response.status_code == 400
         _assert_no_session(client, store, response)
 
-    def test_an_unbound_row_is_refused_while_the_binding_is_on(self, client, idp, store, monkeypatch):
+    def test_an_unbound_row_is_refused_while_the_binding_is_on(self, client, idp, store, audit_events, monkeypatch):
         """An attempt started before the binding was switched on carries no hash; it is not trusted."""
         relay_state, cookie_name, _ = _start(client)
         assert cookie_name is None
@@ -240,6 +268,7 @@ class TestCsrfBindingEnforced:
 
         assert response.status_code == 400
         _assert_no_session(client, store, response)
+        assert _events(audit_events, "auth.saml_binding_missing")
 
     def test_the_relaystate_check_still_comes_first(self, client, idp, audit_events, bound):
         response = _post(client, idp, "not-a-live-attempt", cookie=None)
@@ -247,6 +276,7 @@ class TestCsrfBindingEnforced:
         assert response.status_code == 400
         assert _events(audit_events, "auth.saml_relaystate_rejected")
         assert not _events(audit_events, "auth.saml_binding_rejected")
+        assert not _events(audit_events, "auth.saml_binding_missing")
 
 
 class TestCsrfBindingSwitch:
