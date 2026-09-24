@@ -32,7 +32,9 @@ def _field_values(container, snake: str, camel: str) -> list:
     """All present values for a proto field across its snake_case and camelCase spellings."""
     values = []
     if isinstance(container, dict):
-        for key in (snake, camel):
+        # dict.fromkeys: a field whose two spellings coincide (single-word names such as
+        # "trace" or "locations") must be read once, not twice.
+        for key in dict.fromkeys((snake, camel)):
             value = container.get(key)
             if value is not None:
                 values.append(value)
