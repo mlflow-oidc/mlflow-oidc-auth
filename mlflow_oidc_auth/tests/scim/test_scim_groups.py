@@ -35,7 +35,7 @@ def no_tracking_store(monkeypatch):
     rather than let it build whatever store ``MLFLOW_TRACKING_URI`` (or its absence) implies."""
     from types import SimpleNamespace
 
-    import mlflow_oidc_auth.utils.permissions as permissions
+    from mlflow_oidc_auth.utils import permissions
 
     class _Store:
         def get_experiment(self, experiment_id):
