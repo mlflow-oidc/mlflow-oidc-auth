@@ -405,7 +405,7 @@ Additional session cookie settings:
 
 ## Upgrading to this release
 
-Three behaviour changes ship together in this release. None require a configuration change to
+These behaviour changes ship together in this release. None require a configuration change to
 keep working; each is called out here because it changes what a running deployment does on
 upgrade.
 
@@ -422,6 +422,20 @@ upgrade.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Routes without a validator are refused to non-admins.** A request to an MLflow route that
+  has no authorization rule now gets `403` for a non-admin user instead of being served. Admins
+  are unaffected. See [Routes without a validator](permissions#routes-without-a-validator).
+  Until their validators land, this includes the logged-model artifact listing
+  (`logged-models/<id>/artifacts/files` and `…/directories`) and `artifacts/presigned-upload-url`.
+- **GenAI routes now need experiment grants.** Evaluation datasets, issues, label schemas,
+  review queues, UI jobs, scorer online-scoring configuration, `issues/invoke`,
+  `genai/evaluate/invoke` and `presigned-download-url` now check the permission of the
+  experiment they belong to. A non-admin needs the grant listed in
+  [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes); with the
+  default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold it. Requests that name no
+  experiment (an unscoped dataset or issue search, a dataset linked to no experiment, a job with
+  no recorded experiment) are admin-only. Gateway budget reads (`gateway/budgets/get`, `list`,
+  `windows`) and demo-data generation are admin-only.
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.

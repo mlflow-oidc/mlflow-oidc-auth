@@ -29,6 +29,7 @@ The permission system covers these MLflow resource types:
 | Prompts | Per prompt name | Uses the model permission infrastructure |
 | Scorers | Per experiment + scorer name | Compound key |
 | Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions |
+| Evaluation datasets, issues, label schemas, review queues, UI jobs | Per linked experiment | See [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes) |
 | Gateway Endpoints | Per endpoint name | AI Gateway routes |
 | Gateway Secrets | Per secret name | AI Gateway secrets |
 | Gateway Model Definitions | Per model definition name | AI Gateway model configs |
@@ -150,12 +151,61 @@ For non-admin users, search and list results are filtered to only include resour
 - `ListGatewaySecretInfos` — removes unreadable gateway secrets
 - `ListGatewayModelDefinitions` — removes unreadable model definitions
 - `ListWorkspaces` — removes workspaces the user has no READ permission for
+- `SearchEvaluationDatasets` — removes datasets linked to any experiment the user cannot read
 
 The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist.
 
 ## HEAD Requests and Route Coverage
 
 A `HEAD` request is authorized exactly like the `GET` it mirrors. werkzeug serves `HEAD` through the `GET` view and keeps the `Content-Length` header, so it gets the same validator and the same search filtering as its `GET` twin. A caller who cannot read a resource cannot use `HEAD` to learn whether it exists or how large it is. Coverage of MLflow's API is enforced by a test, not by convention. `mlflow_oidc_auth/tests/hooks/test_validator_coverage_sweep.py` walks every route and method in MLflow's Flask routing table, with `HEAD` folded onto `GET`, and every protobuf message MLflow registers. The test fails on any route that has no validator, no search filtering, no unprotected prefix and no reasoned entry in its lists. It also fails on any mutating message (`Log*`, `Set*`, `Delete*`, `Create*`, …) that does not reach a validator. Those lists can only shrink, so a new MLflow route cannot go unnoticed. MLflow's own registry webhook API (`/api/2.0/mlflow/webhooks*` and its `/ajax-api` twin) is admin-only. Its deliveries are not scoped to a tenant, so it is gated the same way as the plugin's own webhook API (`/oidc/webhook`).
+
+### Routes without a validator
+
+A route that MLflow serves but that has no validator is refused to non-admin users with
+`403`. It is not served unchecked. The exceptions are a short list of routes that carry no
+tenant data and are open to any authenticated user: the web UI shell and its static assets,
+`/version`, `server-info`, `ui-telemetry`, `/graphql` (authorized per field) and the routes
+MLflow answers with `501`. Search and list routes whose results are filtered for the caller
+are also exempt. The list is `LEGITIMATELY_OPEN` in `mlflow_oidc_auth/hooks/route_policy.py`,
+and the coverage sweep reads the same list. Admins are not affected. Adding a validator for a
+new MLflow route restores access for non-admins who hold the grant it requires.
+
+## Experiment-scoped GenAI routes
+
+These MLflow routes have no permission record of their own. They take their permission from
+the experiment the resource belongs to, under both the `/api` and the `/ajax-api` prefix. As
+everywhere else, a request that names more than one resource needs the permission on every
+one, and a resource that cannot be resolved is refused, never granted by
+`DEFAULT_MLFLOW_PERMISSION`.
+
+| Route family | Operation | Permission required |
+|---|---|---|
+| Evaluation datasets (`3.0/mlflow/datasets/…`) | get, records `GET`, `experiment-ids` | READ on every linked experiment |
+| | tags `PATCH` / `DELETE`, records `POST` / `DELETE` | EDIT on every linked experiment |
+| | `DELETE datasets/<id>` | MANAGE on every linked experiment |
+| | `create` | EDIT on every experiment in `experiment_ids` (at least one) |
+| | `search` | READ on every experiment in `experiment_ids` (at least one); results filtered as above |
+| | `add-experiments`, `remove-experiments` | EDIT on every linked experiment and on every experiment named |
+| | a dataset linked to no experiment | admin only |
+| Issues (`3.0/mlflow/issues…`) | `GET issues/<id>`, `issues/search` | READ on the experiment (search must name one) |
+| | `POST issues`, `PATCH issues/<id>` | EDIT on the experiment, plus READ on `source_run_id` if given |
+| `issues/invoke`, `genai/evaluate/invoke` | start an issue-detection or evaluation job | EDIT on the experiment, READ on the experiment of every trace in `trace_ids`; for `issues/invoke`, USE on a named gateway secret (`secret_id`) or endpoint (`endpoint_name`) |
+| Label schemas (`3.0/mlflow/label-schemas/…`) | `get`, `get-by-name`, `list` | READ on the experiment |
+| | `create`, `update` | EDIT on the experiment |
+| | `delete` | MANAGE on the experiment |
+| | a schema with no experiment | readable by any authenticated user; writable by admins only |
+| Review queues (`3.0/mlflow/review-queues/…`) | `get`, `get-by-name`, `list`, `items/list` | READ on the experiment |
+| | `create`, `update`, `items/add`, `items/remove` | EDIT on the experiment |
+| | `update` with `new_owner` | MANAGE on the experiment |
+| | `delete` | MANAGE on the experiment |
+| | `get-or-create-user` | EDIT on the experiment; `user` must be the caller |
+| | `items/set-status` | EDIT on the experiment; `completed_by`, if given, must be the caller |
+| UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job; admin only if there is none |
+| Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment |
+| | `GET online-configs` | READ on the experiment of every configuration returned for `scorer_ids` |
+| `2.0/mlflow/artifacts/presigned-download-url` | `POST` | READ on the run's experiment |
+| Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
+| Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
 
 ## Permission Cascade on Delete/Rename
 
