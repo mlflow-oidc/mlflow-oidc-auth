@@ -486,7 +486,8 @@ class TestOrphansThroughGroupsAndRegex:
         bound_store.add_user_to_group(ALICE, "solo-team")
         bound_store.create_group_experiment_permission("solo-team", "4", "MANAGE")
 
-        assert client.delete(f"{USERS}/{ALICE}", headers=scim).status_code == 204
+        response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+        assert response.status_code == 204
 
         assert {p.experiment_id: p.permission for p in bound_store.list_experiment_permissions("steward@example.com")} == {"4": "MANAGE"}
         detail = orphaned_events(audit_events)[("experiment", "4")]
@@ -544,7 +545,8 @@ class TestOrphansThroughGroupsAndRegex:
             patch("mlflow.server.handlers._get_tracking_store", return_value=SimpleNamespace(get_experiment=get_experiment)),
             caplog.at_level(logging.WARNING, logger=orphans.logger.name),
         ):
-            assert client.delete(f"{USERS}/{ALICE}", headers=scim).status_code == 204
+            response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+            assert response.status_code == 204
 
         found = orphaned_events(audit_events)
         assert found[("experiment", "1")]["via"] == "unresolved" and "transferred_to" not in found[("experiment", "1")]
@@ -576,7 +578,8 @@ class TestOrphansThroughGroupsAndRegex:
         monkeypatch.setattr(orphans, "_judge_all", explode)
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
 
-        assert client.delete(f"{USERS}/{ALICE}", headers=scim).status_code == 204
+        response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+        assert response.status_code == 204
 
         assert not bound_store.has_user(ALICE)
         assert bound_store.list_experiment_permissions("steward@example.com") == []
