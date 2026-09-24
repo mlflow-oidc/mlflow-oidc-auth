@@ -578,3 +578,111 @@ def test_union_covers_both_get_and_non_get_routes():
     methods = {m for _p, m, _n in _UNION_CASES}
     assert {"GET", "POST"} <= methods, methods
     assert len(_UNION_CASES) >= 50, len(_UNION_CASES)
+
+
+def _raw_hook(path, method, *, query=None, data=None, content_type=None):
+    from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+    kwargs = {"path": path, "method": method}
+    if query is not None:
+        kwargs["query_string"] = query
+    if data is not None:
+        kwargs["data"] = data
+    if content_type is not None:
+        kwargs["content_type"] = content_type
+    with app.test_request_context(**kwargs):
+        return before_request_hook()
+
+
+@pytest.mark.parametrize(
+    "path, method, query, data, content_type",
+    [
+        # Double-encoded JSON body (legacy clients) — MLflow decodes it a second time.
+        (UPDATE_EXPERIMENT, "POST", {"experiment_id": OWN}, json.dumps(json.dumps({"experiment_id": VICTIM})), "application/json"),
+        # camelCase-only body.
+        (UPDATE_EXPERIMENT, "POST", {"experiment_id": OWN}, json.dumps({"experimentId": VICTIM}), "application/json"),
+        # run_uuid alias in the body, run_id in the query.
+        ("/api/2.0/mlflow/runs/update", "POST", {"run_id": OWN}, json.dumps({"run_uuid": VICTIM}), "application/json"),
+        # Both aliases in one body.
+        ("/api/2.0/mlflow/runs/update", "POST", None, json.dumps({"run_id": OWN, "run_uuid": VICTIM}), "application/json"),
+        # Repeated query parameter on a GET: MLflow takes the first, the check takes all.
+        (GET_EXPERIMENT, "GET", [("experiment_id", OWN), ("experiment_id", VICTIM)], None, None),
+        # camelCase in a GET query string (MLflow never reads it; still authorized).
+        (GET_EXPERIMENT, "GET", {"experiment_id": OWN, "experimentId": VICTIM}, None, None),
+        # DELETE body without a JSON content type: MLflow force-parses it.
+        (
+            "/api/3.0/mlflow/scorers/delete",
+            "DELETE",
+            {"experiment_id": OWN, "name": "scorer"},
+            json.dumps({"experiment_id": VICTIM, "name": "scorer"}),
+            "text/plain",
+        ),
+        ("/api/3.0/mlflow/scorers/delete", "DELETE", {"experiment_id": OWN, "name": "scorer"}, json.dumps({"experiment_id": VICTIM, "name": "scorer"}), None),
+        # Integer id in the body.
+        (UPDATE_EXPERIMENT, "POST", {"experiment_id": OWN}, json.dumps({"experiment_id": 7}), "application/json"),
+    ],
+    ids=["double-encoded", "camel-only", "run_uuid-alias", "both-aliases", "repeated-query", "camel-query", "delete-text-plain", "delete-no-ctype", "int-id"],
+)
+def test_parser_edge_shapes_are_denied(union_world, path, method, query, data, content_type):
+    """The shapes that caused past drift (#270, #283, #285, #288), pinned end to end.
+
+    ``7`` has no grant and gets DEFAULT_MLFLOW_PERMISSION, so it is made an explicit
+    NO_PERMISSIONS here to keep the assertion independent of the configured default.
+    """
+    union_world.create_experiment_permission("7", USER, "NO_PERMISSIONS")
+    resp = _raw_hook(path, method, query=query, data=data, content_type=content_type)
+    assert resp is not None and resp.status_code in (400, 403), resp
+
+
+def test_scorer_name_half_of_the_key_is_also_unioned(union_world, monkeypatch):
+    """A scorer is keyed by (experiment_id, name); the name half must be unioned too.
+
+    Resolution is stubbed per (experiment, name) here because the permission cache keys
+    scorer results by experiment id only (resource_type:experiment_id:user), so two
+    scorer names in one experiment share a cached decision. That is a separate,
+    pre-existing defect; this test pins what the validator asks for.
+    """
+    from mlflow_oidc_auth.permissions import get_permission
+
+    asked = []
+
+    def scorer_permission(experiment_id, scorer_name, user):
+        asked.append((experiment_id, scorer_name))
+        return SimpleNamespace(permission=get_permission("MANAGE" if scorer_name == "scorer" else "NO_PERMISSIONS"))
+
+    monkeypatch.setattr("mlflow_oidc_auth.validators.scorers.effective_scorer_permission", scorer_permission)
+    resp = _raw_hook(
+        "/api/3.0/mlflow/scorers/delete",
+        "DELETE",
+        query={"experiment_id": OWN, "name": "theirs"},
+        data=json.dumps({"experiment_id": OWN, "name": "scorer"}),
+        content_type="application/json",
+    )
+    assert resp is not None and resp.status_code == 403
+    assert asked == [(OWN, "scorer"), (OWN, "theirs")]
+
+
+@pytest.mark.parametrize(
+    "path, method, query, body",
+    [
+        # Non-proto routes changed by this branch: each mirrors its handler, plus the union.
+        ("/ajax-api/2.0/mlflow/gateway-proxy", "POST", {"gateway_path": f"gateway/{VICTIM}/invocations"}, {"gateway_path": f"gateway/{OWN}/invocations"}),
+        ("/ajax-api/2.0/mlflow/gateway-proxy", "POST", {"gateway_path": f"gateway/{OWN}/invocations"}, {"gateway_path": f"gateway/{VICTIM}/invocations"}),
+        ("/ajax-api/3.0/mlflow/scorer/invoke", "POST", {"experiment_id": VICTIM}, {"experiment_id": OWN}),
+        ("/ajax-api/2.0/mlflow/runs/create-promptlab-run", "POST", {"experiment_id": VICTIM}, {"experiment_id": OWN}),
+        ("/ajax-api/2.0/mlflow/experiments/search-datasets", "POST", {"experiment_ids": VICTIM}, {"experiment_ids": [OWN]}),
+    ],
+)
+def test_non_proto_routes_apply_the_union(union_world, path, method, query, body):
+    resp = _hook(path, method, query=query, body=body)
+    assert resp is not None and resp.status_code == 403, resp
+
+
+def test_upload_artifact_union_is_the_query_string_only(union_world):
+    """upload-artifact's body is the artifact; only repeated run_uuid values are unioned."""
+    upload = "/ajax-api/2.0/mlflow/upload-artifact"
+    resp = _raw_hook(upload, "POST", query=[("run_uuid", OWN), ("run_uuid", VICTIM), ("path", "f.txt")], data=b"x", content_type="application/octet-stream")
+    assert resp is not None and resp.status_code == 403
+    # A JSON artifact whose content names another run is the owner's upload, not a second run.
+    resp = _raw_hook(upload, "POST", query={"run_uuid": OWN, "path": "f.json"}, data=json.dumps({"run_id": VICTIM}), content_type="application/json")
+    assert resp is None

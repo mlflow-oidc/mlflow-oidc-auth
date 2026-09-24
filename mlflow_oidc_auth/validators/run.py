@@ -57,13 +57,16 @@ def validate_can_update_run_artifact(username: str) -> bool:
 
     A request with no ``run_uuid`` query parameter is refused rather than passed along:
     MLflow rejects it with 400 regardless, and resolving nothing must never mean allow.
-    Any other run the request names — a repeated ``run_uuid``, or a ``run_uuid`` /
-    ``run_id`` in a JSON or form body — must be updatable too (the union rule).
+    Every repetition of ``run_uuid`` in the query string must be updatable too (the
+    union rule). The BODY is deliberately not consulted: on this route it is the
+    artifact itself, so reading it as JSON would refuse an owner uploading a JSON file
+    that happens to contain a ``run_id``, and reading it as form data would consume a
+    multipart stream before the handler sees it.
     """
     run_id = request.args.get("run_uuid")
     if not run_id:
         return False
-    run_ids = list(dict.fromkeys([run_id, *all_source_values("run_uuid", "run_id")]))
+    run_ids = list(dict.fromkeys([run_id, *(r for r in request.args.getlist("run_uuid") if r)]))
     return all(_permission_for_run(r, username).can_update for r in run_ids)
 
 

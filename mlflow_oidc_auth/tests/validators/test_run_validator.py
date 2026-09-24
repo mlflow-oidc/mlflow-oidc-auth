@@ -88,13 +88,12 @@ def test_validate_can_update_run_artifact_authorizes_the_query_run_first() -> No
 
         validate_can_update_run_artifact("bob")
 
-        # The run MLflow will write into comes first; the body's run is authorized as well.
-        calls = [c.args[0] for c in mock_tracking_store.return_value.get_run.call_args_list]
-        assert calls == ["VICTIM-RUN", "MY-OWN-RUN"]
+        # Only the run MLflow writes into: the body is the artifact, not a parameter.
+        mock_tracking_store.return_value.get_run.assert_called_once_with("VICTIM-RUN")
 
 
 def test_validate_can_update_run_artifact_denies_when_any_named_run_is_denied() -> None:
-    """Union rule (#285/#288): a second run in the body must not ride on the query's."""
+    """Union rule (#285/#288): a repeated run_uuid must not ride on the first one."""
 
     app = Flask(__name__)
 
@@ -106,22 +105,41 @@ def test_validate_can_update_run_artifact_denies_when_any_named_run_is_denied() 
     def perm_for(experiment_id, username):
         return SimpleNamespace(permission=get_permission("EDIT" if experiment_id == "own-exp" else "READ"))
 
-    for query_run, body_run in (("OWN-RUN", "VICTIM-RUN"), ("VICTIM-RUN", "OWN-RUN")):
+    for first, second in (("OWN-RUN", "VICTIM-RUN"), ("VICTIM-RUN", "OWN-RUN")):
         with (
-            app.test_request_context(f"/?run_uuid={query_run}&path=f.txt", method="POST", json={"run_uuid": body_run}),
+            app.test_request_context(f"/?run_uuid={first}&run_uuid={second}&path=f.txt", method="POST", data=b"artifact bytes"),
             patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
             patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", side_effect=perm_for),
         ):
             mock_tracking_store.return_value.get_run.side_effect = run_for
             assert validate_can_update_run_artifact("bob") is False
 
+    # A JSON artifact whose CONTENT names another run is still the owner's upload.
     with (
-        app.test_request_context("/?run_uuid=OWN-RUN&path=f.txt", method="POST", json={"run_uuid": "OWN-RUN"}),
+        app.test_request_context("/?run_uuid=OWN-RUN&path=f.json", method="POST", json={"run_id": "VICTIM-RUN", "run_uuid": "VICTIM-RUN"}),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
         patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", side_effect=perm_for),
     ):
         mock_tracking_store.return_value.get_run.side_effect = run_for
         assert validate_can_update_run_artifact("bob") is True
+
+
+def test_validate_can_update_run_artifact_leaves_a_multipart_body_unread() -> None:
+    """Parsing the body as form data would consume the stream the handler uploads from."""
+    app = Flask(__name__)
+    mock_run = MagicMock()
+    mock_run.info.experiment_id = "own-exp"
+    payload = b'--b\r\nContent-Disposition: form-data; name="run_id"\r\n\r\nx\r\n--b--\r\n'
+    with (
+        app.test_request_context("/?run_uuid=OWN-RUN&path=f.txt", method="POST", data=payload, content_type="multipart/form-data; boundary=b"),
+        patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
+        patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", return_value=SimpleNamespace(permission=get_permission("EDIT"))),
+    ):
+        mock_tracking_store.return_value.get_run.return_value = mock_run
+        assert validate_can_update_run_artifact("bob") is True
+        from flask import request as live_request
+
+        assert live_request.get_data() == payload
 
 
 def test_validate_can_update_run_artifact_denies_when_run_uuid_is_absent() -> None:
