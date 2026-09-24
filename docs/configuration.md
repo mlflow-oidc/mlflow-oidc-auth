@@ -399,6 +399,7 @@ Additional session cookie settings:
 | `SESSION_COOKIE_MAX_AGE_SECONDS` | Integer | `1209600` (2 weeks) | Absolute session lifetime in seconds, fixed at login and not extended by activity. `0` makes the *cookie* last only as long as the browser session; the server-side session still expires after two weeks |
 | `SESSION_COOKIE_SAMESITE` | String | `lax` | SameSite flag prevents the browser from sending session cookie along with cross-site requests |
 | `SESSION_COOKIE_SECURE` | Boolean | `false` | Indicate that the "Secure" flag should be set (can be used with HTTPS only), set this to `true` in production to ensure the session cookie is only sent over HTTPS |
+| `SAML_LOGIN_BINDING` | String | `auto` | Binds a SAML login to the browser that started it with a short-lived `HttpOnly; Secure; SameSite=None` nonce cookie scoped to the ACS (login-CSRF defence). `auto`: on iff `SESSION_COOKIE_SECURE=true`; `on`: forced even over http (loopback test rigs only, logged as a warning); `off`: disabled. Any other value refuses to start. See [SAML: browser binding](saml-auth.md#browser-binding) |
 
 ## Upgrading to this release
 

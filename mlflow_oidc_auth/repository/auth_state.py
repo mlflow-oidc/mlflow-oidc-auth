@@ -49,11 +49,15 @@ class AuthAttempt:
             different one mid-flight *should* fail the comparison rather than pass it against a
             stale copy.
         redirect_after_login: Where to send the browser once it is authenticated.
+        binding_hash: SHA-256 (hex) of the nonce the SAML login start put in a browser cookie, or
+            None when the attempt is not browser-bound (every OIDC attempt; SAML with the binding
+            off). See ``routers.saml`` (#374).
     """
 
     state: str
     provider_id: str
     redirect_after_login: Optional[str] = None
+    binding_hash: Optional[str] = None
 
 
 def _now() -> datetime:
@@ -73,6 +77,7 @@ class AuthStateRepository:
         *,
         redirect_after_login: Optional[str] = None,
         lifetime_seconds: int = DEFAULT_STATE_LIFETIME_SECONDS,
+        binding_hash: Optional[str] = None,
     ) -> str:
         """Start an attempt and return its ``state``.
 
@@ -80,6 +85,8 @@ class AuthStateRepository:
             provider_id: Registry id of the provider this attempt goes to.
             redirect_after_login: Validated relative path to return the browser to.
             lifetime_seconds: How long the attempt may take.
+            binding_hash: Hash of the browser-binding nonce, for a SAML attempt bound to the
+                browser that started it. Never the nonce itself.
 
         Returns:
             The state value to send to the authorization endpoint.
@@ -91,6 +98,7 @@ class AuthStateRepository:
                     state=state,
                     provider_id=provider_id,
                     relay_state=redirect_after_login,
+                    binding_hash=binding_hash,
                     expires_at=_now() + timedelta(seconds=lifetime_seconds),
                 )
             )
@@ -118,6 +126,7 @@ class AuthStateRepository:
                 state=row.state,
                 provider_id=row.provider_id or "",
                 redirect_after_login=row.relay_state,
+                binding_hash=row.binding_hash,
             )
             expired = row.expires_at is not None and row.expires_at <= _now()
 

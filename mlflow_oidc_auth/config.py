@@ -108,6 +108,17 @@ class AppConfig:
             raise ValueError(f"Invalid SESSION_COOKIE_SAMESITE value: '{_session_cookie_samesite}'")
         self.SESSION_COOKIE_SAMESITE = _session_cookie_samesite
         self.SESSION_COOKIE_SECURE = config_manager.get_bool("SESSION_COOKIE_SECURE", default=False)
+        # Binds a SAML login to the browser that started it with a nonce cookie (issue #374).
+        # ``auto`` (default): on exactly when SESSION_COOKIE_SECURE is — the cookie is
+        # ``SameSite=None; Secure``, which a browser only returns over https. ``on`` forces it
+        # without secure session cookies, for http test rigs; ``off`` disables it. Raises on
+        # anything else, like SESSION_COOKIE_SAMESITE: a typo in a CSRF switch must not
+        # silently pick a mode.
+        _saml_login_binding = str(config_manager.get("SAML_LOGIN_BINDING", "auto") or "auto").strip().lower()
+        if _saml_login_binding not in self.SAML_LOGIN_BINDING_MODES:
+            # The value itself is not repeated: config values may come from a secrets provider.
+            raise ValueError("Invalid SAML_LOGIN_BINDING value (expected one of auto, on, off)")
+        self.SAML_LOGIN_BINDING = _saml_login_binding
 
         # Database settings (sensitive)
         self.OIDC_USERS_DB_URI = config_manager.get("OIDC_USERS_DB_URI", "sqlite:///auth.db")
@@ -271,6 +282,45 @@ class AppConfig:
         self._warn_if_username_field_unusable()
         self._warn_if_group_name_unusable()
         self._warn_if_provider_registry_invalid()
+        self._log_saml_login_binding()
+
+    #: Accepted ``SAML_LOGIN_BINDING`` values.
+    SAML_LOGIN_BINDING_MODES = ("auto", "on", "off")
+
+    @property
+    def saml_login_binding_enabled(self) -> bool:
+        """Whether SAML logins are bound to the starting browser by a nonce cookie (#374).
+
+        ``auto`` follows ``SESSION_COOKIE_SECURE``: the binding cookie is ``Secure``, so with
+        secure cookies off (plain-http development) it would never come back and every SAML
+        login would fail.
+        """
+        mode = getattr(self, "SAML_LOGIN_BINDING", "auto")
+        if mode == "on":
+            return True
+        if mode == "off":
+            return False
+        return bool(getattr(self, "SESSION_COOKIE_SECURE", False))
+
+    def _log_saml_login_binding(self) -> None:
+        """Say once, at startup, when a configured SAML provider logs in without the binding.
+
+        Silent when no SAML provider is configured: the setting has nothing to act on then.
+        """
+        if not any(provider.type == "saml" for provider in self.AUTH_PROVIDERS.providers):
+            return
+        # Fixed messages only: no config value is ever interpolated into these lines.
+        if self.SAML_LOGIN_BINDING == "on" and not self.SESSION_COOKIE_SECURE:
+            logger.warning(
+                "SAML login binding is forced on without secure cookies. This is for http test rigs only; production "
+                "deployments must serve https and enable secure session cookies."
+            )
+        elif not self.saml_login_binding_enabled:
+            logger.warning(
+                "SAML login binding is disabled while a SAML provider is configured: a SAML response is not bound to the "
+                "browser that started the login, so login CSRF is possible. Serve https and enable secure session "
+                "cookies to turn it on."
+            )
 
     #: Values that turn PKCE off. Both the words and the boolean spellings, because operators
     #: reach for whichever their config tooling already uses and a rejected value stops the

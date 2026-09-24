@@ -306,8 +306,10 @@ into it.
   end-session endpoint with its own `id_token_hint`, and `/auth/status` reports that provider.
 - *The browser never loads the React SPA*: `Browser.follow` stops at a redirect into `/oidc/ui/`
   and tests assert on its `Location`, so the suite does not need `web-react` built.
-- *SAML*: SP-initiated login with the session cookie set on the ACS response to a cookie-less
-  cross-site POST; replayed Responses refused; SP-initiated SLO revokes before redirecting and
+- *SAML*: SP-initiated login with the session cookie set on the ACS response to a cross-site
+  POST that carries only the `SameSite=None` browser-binding cookie (the harness sets
+  `SAML_LOGIN_BINDING=on`, since the app runs over loopback http); a genuine Response delivered
+  from another browser without that cookie refused (login CSRF); replayed Responses refused; SP-initiated SLO revokes before redirecting and
   completes the LogoutRequest/LogoutResponse round trip; **IdP-initiated SLO**, driven headlessly
   by submitting Keycloak's own logout page, which delivers a signed HTTP-Redirect LogoutRequest to
   `/slo/<id>` through the browser — only the session with that `SessionIndex` ends, the request

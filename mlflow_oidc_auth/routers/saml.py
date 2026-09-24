@@ -10,16 +10,31 @@ the ``state`` of the ``auth_state`` row ``/login`` created: single use, 15-minut
 bound to the provider it was created for. The session cookie is set fresh on the ACS response;
 ``Set-Cookie`` on a top-level navigation is honoured whatever the SameSite attribute.
 
+**Browser binding (#374).** ``RelayState`` alone proves a Response answers *some* attempt, not that
+the browser delivering it started that attempt — an attacker could complete a login for their own
+account and have a victim's browser post it (login CSRF). So ``/login`` also sets a nonce cookie,
+``HttpOnly; Secure; SameSite=None``, path-scoped to this provider's ACS and short-lived, and stores
+only its SHA-256 on the attempt's row; the ACS requires the cookie's hash to match the row it
+consumed. ``SameSite=None`` is what lets this one cookie ride the cross-site POST; the session
+cookie keeps its own policy and is still never read here. The cookie is named per attempt, so two
+logins started in two tabs do not overwrite each other's nonce. It is on when
+``SESSION_COOKIE_SECURE`` is (``SAML_LOGIN_BINDING=auto``): a ``Secure`` cookie never comes back
+over plain http, so without https the binding would refuse every login.
+
 Every refusal answers with one fixed string; why it was refused goes to the log and, where it is
 security-relevant, to the audit trail.
 """
 
+import hashlib
+import hmac
+import re
+import secrets
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
@@ -32,6 +47,7 @@ from mlflow_oidc_auth.saml import (
     SamlError,
     SamlIdentity,
     SamlLogoutRequest,
+    acs_url,
     build_authn_redirect,
     build_logout_redirect,
     process_logout_request,
@@ -56,6 +72,17 @@ MAX_SAML_POST_BYTES = 512 * 1024
 # The only thing a refused SAML message ever tells the browser.
 REFUSED = "SAML sign-in failed"
 LOGOUT_REFUSED = "SAML logout failed"
+
+#: Name prefix of the per-attempt browser-binding cookie (#374). The rest of the name is derived
+#: from the attempt's RelayState, so the ACS can find the cookie for the attempt it consumed.
+BINDING_COOKIE_PREFIX = "mlflow_saml_binding_"
+#: Lifetime of the binding cookie and of the bound ``auth_state`` row, kept equal (see
+#: :func:`begin_saml_login`). Unbound SAML attempts keep the row's default 15 minutes.
+BINDING_COOKIE_MAX_AGE_SECONDS = 10 * 60
+#: 256 bits, like the ``state`` itself.
+BINDING_NONCE_BYTES = 32
+#: What ``secrets.token_urlsafe(BINDING_NONCE_BYTES)`` produces (43 characters), with slack.
+_NONCE_SHAPE = re.compile(r"[A-Za-z0-9_-]{16,128}")
 
 
 def _saml_provider(provider_id: str) -> Optional[ProviderConfig]:
@@ -125,13 +152,82 @@ async def begin_saml_login(request: Request, provider: ProviderConfig) -> Redire
         raise HTTPException(status_code=500, detail="SAML sign-in is not available")
 
     next_target = _sanitize_next(request.query_params.get("next"))
-    relay_state = store.create_auth_state(provider.id, redirect_after_login=next_target)
+    nonce = secrets.token_urlsafe(BINDING_NONCE_BYTES) if config.saml_login_binding_enabled else None
+    if nonce:
+        # The row lives exactly as long as the cookie: a slow login then fails as an expired
+        # RelayState, never as a live attempt whose cookie is gone (which reads like login CSRF).
+        relay_state = store.create_auth_state(
+            provider.id, redirect_after_login=next_target, binding_hash=_binding_hash(nonce), lifetime_seconds=BINDING_COOKIE_MAX_AGE_SECONDS
+        )
+    else:
+        relay_state = store.create_auth_state(provider.id, redirect_after_login=next_target)
+    base_url = sp_base_url(request)
     try:
-        url = build_authn_redirect(provider, sp_base_url(request), relay_state)
+        url = build_authn_redirect(provider, base_url, relay_state)
     except Exception as exc:
         logger.error("Could not build a SAML AuthnRequest for provider '%s': %s", provider.id, type(exc).__name__)
         raise HTTPException(status_code=500, detail="SAML sign-in is misconfigured; see the server logs")
-    return RedirectResponse(url=url, status_code=302, headers={"Cache-Control": "no-store"})
+    response = RedirectResponse(url=url, status_code=302, headers={"Cache-Control": "no-store"})
+    if nonce:
+        response.set_cookie(
+            _binding_cookie_name(relay_state),
+            nonce,
+            max_age=BINDING_COOKIE_MAX_AGE_SECONDS,
+            path=_binding_cookie_path(provider, base_url),
+            secure=True,
+            httponly=True,
+            samesite="none",
+        )
+    return response
+
+
+def _binding_hash(nonce: str) -> str:
+    """What the ``auth_state`` row stores for a binding nonce. The nonce itself is never stored or logged."""
+    return hashlib.sha256(nonce.encode("ascii")).hexdigest()
+
+
+def _binding_cookie_name(relay_state: str) -> str:
+    """The binding cookie's name for the attempt ``relay_state`` names (see the module docstring)."""
+    return BINDING_COOKIE_PREFIX + hashlib.sha256(relay_state.encode("utf-8")).hexdigest()[:16]
+
+
+def _binding_cookie_path(provider: ProviderConfig, base_url: str) -> str:
+    """The ACS path the IdP posts to, which is the only place the binding cookie is sent."""
+    return urlparse(acs_url(provider, base_url)).path or "/"
+
+
+#: :func:`_binding_verdict` outcomes.
+BINDING_OK = "ok"
+BINDING_MISSING = "missing"
+BINDING_MISMATCH = "mismatch"
+
+
+def _binding_verdict(request: Request, attempt, cookie_name: str) -> str:
+    """Whether the browser posting to the ACS is the one that started ``attempt``.
+
+    Returns :data:`BINDING_OK`; :data:`BINDING_MISSING` when no binding cookie arrived (the usual
+    cause is a browser that dropped or outlived it, not an attack); or :data:`BINDING_MISMATCH`
+    when one arrived that does not belong to this attempt — the login-CSRF shape. Both refuse.
+
+    An attempt recorded with a binding needs the matching cookie, whatever the switch says now.
+    An attempt recorded without one passes only while the binding is off: with it on, an unbound
+    row (one started before the switch flipped) is refused as missing rather than trusted.
+    """
+    expected = attempt.binding_hash
+    if not expected:
+        return BINDING_MISSING if config.saml_login_binding_enabled else BINDING_OK
+    nonce = request.cookies.get(cookie_name)
+    if not nonce:
+        return BINDING_MISSING
+    # The value is attacker-controlled and Starlette decodes it as latin-1: anything that is not
+    # the shape /login mints is refused, never passed on to be encoded.
+    if not _NONCE_SHAPE.fullmatch(nonce):
+        return BINDING_MISMATCH
+    return BINDING_OK if hmac.compare_digest(_binding_hash(nonce), expected) else BINDING_MISMATCH
+
+
+def _clear_binding_cookie(response: Response, provider: ProviderConfig, base_url: str, cookie_name: str) -> None:
+    response.delete_cookie(cookie_name, path=_binding_cookie_path(provider, base_url), secure=True, httponly=True, samesite="none")
 
 
 def _first(attributes: Dict[str, list], name: str) -> Optional[str]:
@@ -171,21 +267,54 @@ async def saml_acs(request: Request, provider_id: str):
     """Assertion Consumer Service (HTTP-POST binding).
 
     Order matters and each step is a refusal point: the ``RelayState`` must name a live attempt
-    for *this* provider (consumed, so it cannot be used twice); the Response must validate
-    against that attempt; its assertion must not have been seen before. Only then is anything
-    written — the previous login retired, the user provisioned, a session opened.
-    """
-    from mlflow_oidc_auth.routers.auth import _build_ui_url, _open_server_session, _provision_login, _retire_previous_login
+    for *this* provider (consumed, so it cannot be used twice); the browser must hold that
+    attempt's binding cookie (#374); the Response must validate against that attempt; its
+    assertion must not have been seen before. Only then is anything written — the previous login
+    retired, the user provisioned, a session opened.
 
+    The attempt's binding cookie is cleared on every outcome: it is single use, like the row.
+    """
     provider = _require_provider(provider_id)
     form = await _read_form(request)
-
     relay_state = form.get("RelayState") or ""
+    cookie_name = _binding_cookie_name(relay_state)
+
+    try:
+        response = await _complete_saml_login(request, provider, form, relay_state, cookie_name)
+    except HTTPException as exc:
+        if cookie_name not in request.cookies:
+            raise
+        response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+    except Exception as exc:
+        # Answered here rather than by the default 500 handler, whose response cannot carry the
+        # cookie deletion. The audit gets the exception type only; the traceback goes to the log.
+        # Fixed message: the provider id is in the audit event, not interpolated here.
+        logger.exception("Unexpected error in the SAML ACS")
+        emit_audit_event("auth.saml_acs_error", actor="<anonymous>", detail={"provider": provider.id, "error": type(exc).__name__}, status="denied")
+        response = JSONResponse({"detail": REFUSED}, status_code=500)
+    if cookie_name in request.cookies:
+        _clear_binding_cookie(response, provider, sp_base_url(request), cookie_name)
+    return response
+
+
+async def _complete_saml_login(request: Request, provider: ProviderConfig, form: Dict[str, str], relay_state: str, cookie_name: str) -> Response:
+    """The ACS itself, less the binding cookie's cleanup (see :func:`saml_acs`)."""
+    from mlflow_oidc_auth.routers.auth import _build_ui_url, _open_server_session, _provision_login, _retire_previous_login
+
     attempt = store.consume_auth_state(relay_state)
     if attempt is None or attempt.provider_id != provider.id:
         # Unknown, expired, already used, or started at a different provider. A RelayState minted
         # for provider A and delivered to B's ACS is the SAML shape of a mix-up.
         raise _refuse("auth.saml_relaystate_rejected", provider, "RelayState names no live login attempt for this provider")
+
+    verdict = _binding_verdict(request, attempt, cookie_name)
+    # Either way the row is already consumed. Audited apart so a timeout or a cookie-blocking
+    # browser does not read as an attack in the trail.
+    if verdict == BINDING_MISSING:
+        raise _refuse("auth.saml_binding_missing", provider, "no browser-binding cookie arrived for this login attempt")
+    if verdict != BINDING_OK:
+        # A live attempt, delivered with a nonce that is not this attempt's: login CSRF.
+        raise _refuse("auth.saml_binding_rejected", provider, "the browser posting the response did not start this login attempt")
 
     base_url = sp_base_url(request)
     try:

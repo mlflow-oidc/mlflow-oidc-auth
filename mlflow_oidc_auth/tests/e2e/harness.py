@@ -398,6 +398,10 @@ def server_env(*, app_url: str, secret_key: str, db_uri: str, keycloak: Keycloak
             "MLFLOW_ENABLE_WORKSPACES": "false",
             "OIDC_USERS_DB_URI": db_uri,
             "SESSION_COOKIE_SECURE": "false",
+            # The app is served over plain http here, where SAML_LOGIN_BINDING=auto would leave the
+            # SAML browser binding (#374) off. Force it on: the binding cookie is still marked
+            # Secure, and loopback http is a secure context to a browser (and to ``browser.py``).
+            "SAML_LOGIN_BINDING": "on",
             # Several workers each keep their own permission cache; keep a grant made through one
             # visible to the others within the test's patience.
             "PERMISSION_CACHE_TTL_SECONDS": "1",

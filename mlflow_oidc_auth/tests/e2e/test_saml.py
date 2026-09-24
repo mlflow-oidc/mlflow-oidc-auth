@@ -22,14 +22,17 @@ import httpx
 import pytest
 
 from mlflow_oidc_auth.tests.e2e import flows
-from mlflow_oidc_auth.tests.e2e.browser import parse_forms
-from mlflow_oidc_auth.tests.e2e.harness import SAML_PROVIDER_ID
+from mlflow_oidc_auth.tests.e2e.browser import find_form, parse_forms, same_site
+from mlflow_oidc_auth.tests.e2e.harness import PASSWORDS, SAML_PROVIDER_ID
 
 pytestmark = pytest.mark.e2e
 
 BOB = "bob@example.com"
 ACS = f"/callback/{SAML_PROVIDER_ID}"
 SLO = f"/slo/{SAML_PROVIDER_ID}"
+# ``routers.saml.BINDING_COOKIE_PREFIX``, spelled out for the same reason as ``browser.UI_ROUTER_PREFIX``.
+BINDING_COOKIE_PREFIX = "mlflow_saml_binding_"
+APP_HOST = "127.0.0.1"
 
 
 def _session_id(cookie: str) -> str:
@@ -59,11 +62,17 @@ class TestSpInitiatedSso:
         acs_posts = [r for r in browser.history if r.request.method == "POST" and urlparse(str(r.url)).path == ACS]
         assert len(acs_posts) == 1
         acs = acs_posts[0]
-        # Cross-site POST under SameSite=Lax: the browser sends none of the app's cookies, and the
-        # login must not need one — RelayState ties the Response to its attempt.
-        assert "cookie" not in acs.request.headers
+        # Cross-site POST: the Lax session cookie is withheld, and the login does not need it —
+        # RelayState ties the Response to its attempt. The one cookie that does ride along is the
+        # SameSite=None binding cookie /login set (#374), which ties it to this browser.
+        sent = [part.strip().split("=", 1)[0] for part in acs.request.headers.get("cookie", "").split(";") if part.strip()]
+        assert len(sent) == 1 and sent[0].startswith(BINDING_COOKIE_PREFIX), sent
         assert acs.status_code == 302
-        assert any(header.startswith("session=") for header in acs.headers.get_list("set-cookie"))
+        set_cookies = acs.headers.get_list("set-cookie")
+        assert any(header.startswith("session=") for header in set_cookies)
+        # Single use: the ACS clears it, and the browser no longer holds it.
+        assert any(header.startswith(f"{sent[0]}=") and "max-age=0" in header.lower() for header in set_cookies), set_cookies
+        assert browser.cookies_named(BINDING_COOKIE_PREFIX, host=APP_HOST) == []
 
         status = flows.auth_status(app_server, cookie)
         assert status["authenticated"] is True and status["username"] == BOB
@@ -91,6 +100,59 @@ class TestSpInitiatedSso:
         # The RelayState is single-use, so a verbatim replay is refused before signature checks.
         assert replay.status_code == 400
         assert "set-cookie" not in replay.headers
+
+
+def _stop_at_the_acs_post(app_server, username: str):
+    """Sign ``username`` in at Keycloak and stop at the auto-submit form bound for the ACS.
+
+    Returns ``(browser, page, form)``: a genuine, signed Response for a live attempt, not yet
+    delivered.
+    """
+    browser = flows.new_browser()
+    start = browser.get(f"{app_server.url}/login/{SAML_PROVIDER_ID}")
+    assert start.status_code == 302, start.text[:500]
+    page = browser.follow(start)
+    page = browser.follow(browser.submit(page, find_form(page.text, form_id="kc-form-login"), {"username": username, "password": PASSWORDS[username]}))
+    form = find_form(page.text, containing="SAMLResponse")
+    assert urlparse(form.action).path == ACS, form.action
+    return browser, page, form
+
+
+class TestLoginCsrf:
+    """#374: a valid Response for a live attempt, delivered by a browser that did not start it."""
+
+    def test_login_sets_the_binding_cookie(self, app_server, keycloak):
+        keycloak.logout_everywhere(BOB)
+        browser = flows.new_browser()
+        start = browser.get(f"{app_server.url}/login/{SAML_PROVIDER_ID}")
+
+        [cookie] = browser.cookies_named(BINDING_COOKIE_PREFIX, host=APP_HOST)
+        assert cookie.path == ACS
+        assert same_site(cookie) == "none"
+        [header] = [h for h in start.headers.get_list("set-cookie") if h.startswith(cookie.name)]
+        lowered = header.lower()
+        assert "httponly" in lowered and "secure" in lowered and "samesite=none" in lowered and "max-age=600" in lowered
+
+    def test_a_response_posted_without_the_nonce_cookie_is_refused(self, app_server, keycloak):
+        keycloak.logout_everywhere(BOB)
+        missing_before = len(app_server.audit_events("auth.saml_binding_missing"))
+        attacker, page, form = _stop_at_the_acs_post(app_server, BOB)
+
+        # The attacker's genuine Response, auto-submitted from a victim's browser: same form, same
+        # RelayState, a live attempt — but not the browser holding that attempt's nonce.
+        with flows.new_browser() as victim:
+            refused = victim.submit(page, form, cookies=False)
+            assert "cookie" not in refused.request.headers
+            assert refused.status_code == 400, refused.text[:500]
+            assert not any(h.startswith("session=") for h in refused.headers.get_list("set-cookie"))
+            assert flows.session_cookie(victim) is None
+        assert len(app_server.audit_events("auth.saml_binding_missing")) == missing_before + 1
+
+        # The refusal spent the attempt: the attacker's own browser cannot complete it afterwards.
+        late = attacker.submit(page, form, cookies=False)
+        assert late.status_code == 400
+        assert flows.session_cookie(attacker) is None
+        attacker.close()
 
 
 class TestSpInitiatedSlo:

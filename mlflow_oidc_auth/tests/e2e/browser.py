@@ -89,6 +89,14 @@ def find_form(html: str, *, containing: Optional[str] = None, form_id: Optional[
     raise AssertionError(f"no form (id={form_id!r}, field={containing!r}) on the page:\n{html[:2000]}")
 
 
+def same_site(cookie) -> str:
+    """A stored cookie's ``SameSite`` attribute, lower-cased; ``lax`` when unset, as browsers default."""
+    for name, value in getattr(cookie, "_rest", {}).items():
+        if name.lower() == "samesite":
+            return (value or "lax").lower()
+    return "lax"
+
+
 class Browser:
     """A cookie-carrying client that follows redirects the way the suite needs to watch them.
 
@@ -148,9 +156,10 @@ class Browser:
     def submit(self, page: httpx.Response, form: Form, values: Optional[Dict[str, str]] = None, *, cookies: bool = True) -> httpx.Response:
         """Submit ``form`` from ``page`` as a browser would.
 
-        ``cookies=False`` sends the request with no cookies at all and then stores whatever the
-        response sets: this is how a browser treats a cross-site top-level POST under
-        ``SameSite=Lax`` (the SAML ACS), where the target site's cookies are withheld.
+        ``cookies=False`` makes it a cross-site top-level POST (the SAML ACS): the target site's
+        ``SameSite=Lax`` and ``Strict`` cookies are withheld, and only its ``SameSite=None`` ones
+        — still subject to their path, domain and ``Secure`` — go with it. Whatever the response
+        sets is stored as usual.
         """
         url = urljoin(str(page.url), form.action) if form.action else str(page.url)
         data = {**form.fields, **(values or {})}
@@ -158,12 +167,19 @@ class Browser:
             return self.get(url, params=data)
         if cookies:
             return self.post(url, data=data)
-        with httpx.Client(follow_redirects=False, verify=self._verify, timeout=30.0) as bare:
-            response = bare.post(url, data=data)
+        with httpx.Client(follow_redirects=False, verify=self._verify, timeout=30.0) as cross_site:
+            for cookie in self.client.cookies.jar:
+                if same_site(cookie) == "none":
+                    cross_site.cookies.jar.set_cookie(cookie)
+            response = cross_site.post(url, data=data)
         self.client.cookies.extract_cookies(response)
         return self._record(response)
 
     # -- helpers ------------------------------------------------------------------------------
+
+    def cookies_named(self, prefix: str, *, host: str) -> List:
+        """Every stored cookie for ``host`` whose name starts with ``prefix``."""
+        return [cookie for cookie in self.client.cookies.jar if cookie.name.startswith(prefix) and cookie.domain.split(".local")[0] == host]
 
     def cookie(self, name: str, *, host: str) -> Optional[str]:
         """The value of cookie ``name`` held for ``host``, or None."""

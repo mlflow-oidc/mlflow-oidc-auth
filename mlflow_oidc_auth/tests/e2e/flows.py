@@ -43,8 +43,8 @@ def drive_to_app(browser: Browser, response: httpx.Response, app: AppServer, use
     Returns the app's non-redirect response, or — when the flow ends in the plugin's SPA — the
     redirect into it, unfollowed (use ``landing_url``). Handles every page Keycloak shows on the
     way: its login form (credentials for ``username``), the SAML HTTP-POST auto-submit form (posted
-    to the app with no cookies, as a cross-site POST under ``SameSite=Lax`` is), and its logout
-    confirmation.
+    to the app as a cross-site POST: only its ``SameSite=None`` cookies — the SAML binding cookie —
+    go with it, never the ``Lax`` session cookie), and its logout confirmation.
     """
     for _ in range(12):
         response = browser.follow(response)
