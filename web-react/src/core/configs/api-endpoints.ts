@@ -29,6 +29,9 @@ export const STATIC_API_ENDPOINTS = {
 
   // SCIM token management
   SCIM_TOKENS_RESOURCE: "/api/2.0/mlflow/scim/tokens",
+  // SCIM provisioning status and activity log
+  SCIM_STATUS: "/api/2.0/mlflow/scim/status",
+  SCIM_ACTIVITY: "/api/2.0/mlflow/scim/activity",
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {
@@ -37,6 +40,10 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}`,
   USER_ACTIVE: (userName: string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/active`,
+  USER_SESSIONS: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions`,
+  USER_SESSION: (userName: string, sessionPk: number | string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions/${encodeURIComponent(String(sessionPk))}`,
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiments`,
   USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>

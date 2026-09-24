@@ -94,6 +94,22 @@ vi.mock("../../shared/components/entity-list-table", () => ({
   ),
 }));
 
+vi.mock("./components/user-sessions-modal", () => ({
+  UserSessionsModal: ({
+    username,
+    onClose,
+  }: {
+    username: string | null;
+    onClose: () => void;
+  }) =>
+    username ? (
+      <div data-testid="sessions-modal">
+        {username}
+        <button onClick={onClose}>close sessions</button>
+      </div>
+    ) : null,
+}));
+
 vi.mock("../../shared/components/row-action-button", () => ({
   RowActionButton: () => <button>Manage permissions</button>,
 }));
@@ -225,6 +241,28 @@ describe("UsersPage", () => {
       expect(
         screen.getByTestId("icon-btn-Deactivate user"),
       ).toBeInTheDocument();
+    });
+
+    it("opens the sessions modal for a user", () => {
+      mockUseAllUserDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        updateLocalUser: vi.fn(),
+        users: [adminUser, scimUser],
+      });
+
+      render(<UsersPage />);
+      expect(screen.queryByTestId("sessions-modal")).not.toBeInTheDocument();
+
+      const row = screen.getByTestId(`row-${scimUser.username}`);
+      fireEvent.click(within(row).getByTestId("icon-btn-Sessions"));
+      expect(screen.getByTestId("sessions-modal")).toHaveTextContent(
+        scimUser.username,
+      );
+
+      fireEvent.click(screen.getByText("close sessions"));
+      expect(screen.queryByTestId("sessions-modal")).not.toBeInTheDocument();
     });
 
     it("shows a reactivate action for an inactive user", () => {

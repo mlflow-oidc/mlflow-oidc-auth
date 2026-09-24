@@ -4,11 +4,15 @@ import ScimPage from "./scim-page";
 import * as useScimTokensModule from "./hooks/use-scim-tokens";
 import * as useToastModule from "../../shared/components/toast/use-toast";
 import * as scimTokenService from "./services/scim-token-service";
+import * as useScimStatusModule from "./hooks/use-scim-status";
+import * as useScimActivityModule from "./hooks/use-scim-activity";
 import type { ScimToken, ScimTokenWithSecret } from "../../shared/types/scim";
 
 vi.mock("./hooks/use-scim-tokens");
 vi.mock("../../shared/components/toast/use-toast");
 vi.mock("./services/scim-token-service");
+vi.mock("./hooks/use-scim-status");
+vi.mock("./hooks/use-scim-activity");
 
 vi.mock("../../shared/context/use-runtime-config", () => ({
   useRuntimeConfig: () => ({
@@ -57,6 +61,9 @@ describe("ScimPage", () => {
 
   const mockShowToast = vi.fn();
   const mockRefresh = vi.fn();
+  const mockRefreshStatus = vi.fn();
+  const mockRefreshActivity = vi.fn();
+  const mockLoadMore = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,6 +72,48 @@ describe("ScimPage", () => {
       isLoading: false,
       error: null,
       refresh: mockRefresh,
+    });
+
+    vi.spyOn(useScimStatusModule, "useScimStatus").mockReturnValue({
+      status: {
+        provisioning_healthy: false,
+        last_success_at: "2026-02-01T00:00:00Z",
+        last_error_at: "2026-02-02T00:00:00Z",
+        last_error: "uniqueness: already exists",
+        requests_24h: 4,
+        errors_24h: 1,
+        auth_failures_24h: 0,
+        last_auth_failure_at: null,
+        healthy_window_seconds: 86400,
+        retention_days: 30,
+        tokens: [],
+      },
+      isLoading: false,
+      error: null,
+      refresh: mockRefreshStatus,
+    });
+    vi.spyOn(useScimActivityModule, "useScimActivity").mockReturnValue({
+      entries: [
+        {
+          id: 1,
+          at: "2026-02-02T00:00:00Z",
+          token_id: 1,
+          token_name: "entra-activity",
+          method: "POST",
+          path: "/Users",
+          resource_id: null,
+          status: 409,
+          outcome: "client_error",
+          error: "uniqueness: already exists",
+          duration_ms: 3,
+        },
+      ],
+      hasMore: true,
+      isLoading: false,
+      isLoadingMore: false,
+      error: null,
+      loadMore: mockLoadMore,
+      refresh: mockRefreshActivity,
     });
 
     vi.spyOn(useToastModule, "useToast").mockReturnValue({
@@ -195,6 +244,31 @@ describe("ScimPage", () => {
     // Second row corresponds to the expired token.
     expect(rotateButtons[1]).toBeDisabled();
     expect(revokeButtons[1]).toBeDisabled();
+  });
+
+  it("shows provisioning status and recent activity with its controls", () => {
+    render(<ScimPage />);
+    expect(screen.getByTestId("scim-health")).toHaveTextContent("Unhealthy");
+    expect(screen.getByTestId("scim-last-error")).toHaveTextContent(
+      "uniqueness: already exists",
+    );
+    expect(screen.getByTestId("scim-activity-1")).toHaveAttribute(
+      "data-error",
+      "true",
+    );
+
+    fireEvent.change(screen.getByLabelText("Filter by outcome"), {
+      target: { value: "client_error" },
+    });
+    expect(useScimActivityModule.useScimActivity).toHaveBeenLastCalledWith(
+      "client_error",
+    );
+
+    fireEvent.click(screen.getByText("Load more"));
+    expect(mockLoadMore).toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Refresh"));
+    expect(mockRefreshActivity).toHaveBeenCalled();
+    expect(mockRefreshStatus).toHaveBeenCalled();
   });
 
   it("keeps the secret modal mounted and visible if the post-create refresh fails (#1)", async () => {
