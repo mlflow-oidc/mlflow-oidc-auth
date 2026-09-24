@@ -86,11 +86,16 @@ class TestIsTrustedProxy:
         request.client.host = client_host
         return request
 
-    def test_no_trusted_proxies_trusts_all(self):
-        """When TRUSTED_PROXIES is empty, all requests are trusted."""
+    @pytest.mark.parametrize("client_host", ["1.2.3.4", "127.0.0.1", "10.0.0.1", "::1"])
+    def test_no_trusted_proxies_trusts_none(self, client_host):
+        """When TRUSTED_PROXIES is empty, no client is trusted."""
         middleware = self._make_middleware([])
-        request = self._make_request("1.2.3.4")
-        assert middleware._is_trusted_proxy(request) is True
+        assert middleware._is_trusted_proxy(self._make_request(client_host)) is False
+
+    def test_none_trusted_proxies_trusts_none(self):
+        """A missing TRUSTED_PROXIES value behaves like an empty one."""
+        middleware = self._make_middleware(None)
+        assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is False
 
     def test_trusted_ip_in_cidr(self):
         """Request from an IP within a trusted CIDR is trusted."""
@@ -139,21 +144,29 @@ class TestIsTrustedProxy:
         assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is False
 
     def test_blank_entries_count_as_unset(self):
-        """Blank entries alone are the same as an unset TRUSTED_PROXIES."""
+        """Blank entries alone are the same as an unset TRUSTED_PROXIES: no client is trusted."""
         middleware = self._make_middleware(["", "  "])
-        assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is True
+        assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is False
 
-    def test_warns_once_when_unset(self):
-        """An unset TRUSTED_PROXIES is reported at construction, which happens once at startup."""
+    def test_logs_info_once_when_unset(self):
+        """An unset TRUSTED_PROXIES is reported at INFO at construction, which happens once at startup."""
         with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
             self._make_middleware([])
-        assert mock_logger.warning.call_count == 1
-        assert "TRUSTED_PROXIES" in mock_logger.warning.call_args[0][0]
+        assert mock_logger.info.call_count == 1
+        message = mock_logger.info.call_args[0][0]
+        assert "TRUSTED_PROXIES" in message and "ignored" in message
+        mock_logger.warning.assert_not_called()
 
     def test_no_warning_when_configured(self):
         with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
             self._make_middleware(["10.0.0.0/8"])
         mock_logger.warning.assert_not_called()
+        mock_logger.info.assert_not_called()
+
+    def test_warns_when_every_entry_is_invalid(self):
+        with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
+            self._make_middleware(["not-a-cidr"])
+        assert any("no valid entry" in call.args[0] for call in mock_logger.warning.call_args_list)
 
     def test_unparseable_client_ip_returns_false(self):
         """When client IP can't be parsed, proxy is not trusted."""
@@ -244,8 +257,8 @@ class TestProxyHeadersDispatch:
         assert request.scope["scheme"] == "https"
 
     @pytest.mark.asyncio
-    async def test_empty_trusted_proxies_processes_all(self):
-        """When TRUSTED_PROXIES is empty, all proxy headers are processed (backward compat)."""
+    async def test_empty_trusted_proxies_processes_none(self):
+        """When TRUSTED_PROXIES is empty, proxy headers are ignored from every client."""
         middleware = self._make_middleware([])
 
         scope = {
@@ -276,5 +289,5 @@ class TestProxyHeadersDispatch:
 
         await middleware.dispatch(request, call_next)
 
-        # Scheme should have been updated (all proxies trusted)
-        assert request.scope["scheme"] == "https"
+        # Scheme should NOT have been updated (no client is trusted)
+        assert request.scope["scheme"] == "http"

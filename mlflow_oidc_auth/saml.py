@@ -119,10 +119,11 @@ def sp_base_url(request: Any) -> str:
     Taken from ``OIDC_REDIRECT_URI`` when it is set: that is an operator-written absolute URL of
     this deployment's callback, so its origin and the prefix above ``/callback`` are the SP's.
     Otherwise from the request, with ``root_path`` discarded when it is not a plain path — the
-    same reasoning as ``routers.auth._login_path``: ``X-Forwarded-Prefix`` is trusted from any
-    client while ``TRUSTED_PROXIES`` is empty, so a ``//host`` prefix would move the URL
-    off-origin. The ``Host`` header is the one input left, which is why production deployments
-    should set ``OIDC_REDIRECT_URI``.
+    same reasoning as ``routers.auth._login_path``: a proxy listed in ``TRUSTED_PROXIES`` sets it
+    from ``X-Forwarded-Prefix``, and a ``//host`` prefix would move the URL off-origin. Scheme,
+    host and prefix come from the scope, which reflects forwarded headers only from a trusted
+    proxy and is the direct connection's otherwise. The ``Host`` header is the one input left,
+    which is why production deployments should set ``OIDC_REDIRECT_URI``.
     """
     from mlflow_oidc_auth.config import config
 

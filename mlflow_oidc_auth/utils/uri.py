@@ -2,9 +2,9 @@
 URI construction and validation utilities for MLflow OIDC Auth.
 
 This module provides functionality to dynamically construct OIDC redirect URIs
-and other URI-related operations based on the current request context. With ProxyFix
-middleware configured, FastAPI's request object automatically contains the correct
-values from proxy headers.
+and other URI-related operations based on the current request context. The request scope
+carries values from proxy headers only when ``ProxyHeadersMiddleware`` trusted the connecting
+client (see ``TRUSTED_PROXIES``).
 
 Key Features:
 - Dynamic OIDC redirect URI construction
@@ -14,7 +14,7 @@ Key Features:
 
 Dependencies:
 - FastAPI request context (requires active request)
-- ProxyFix middleware for proper proxy header handling
+- ProxyHeadersMiddleware for proxy header handling from trusted proxies
 """
 
 from typing import Optional
@@ -97,9 +97,9 @@ def _get_base_url_from_request(request: Request) -> str:
     """
     Extract the base URL from the current FastAPI request context.
 
-    With ProxyFix middleware configured, this function automatically handles
-    proxy headers (X-Forwarded-Proto, X-Forwarded-Host, X-Forwarded-Prefix)
-    to construct the correct base URL regardless of proxy configuration.
+    Scheme, host and prefix are read from the request scope. ``ProxyHeadersMiddleware`` updates
+    them from X-Forwarded-Proto, X-Forwarded-Host and X-Forwarded-Prefix only when the connecting
+    client is a proxy listed in ``TRUSTED_PROXIES``; otherwise they are the direct connection's.
 
     Returns:
         str: The normalized base URL for the current request
@@ -135,10 +135,10 @@ def _get_dynamic_redirect_uri(request: Request, callback_path: str) -> str:
     """
     Dynamically construct the OIDC redirect URI based on the current request context.
 
-    With ProxyFix middleware configured, Flask's request object automatically
-    contains the correct scheme, host, and URL from X-Forwarded-* headers.
-    This allows the redirect URI to adapt automatically to different proxy
-    configurations without requiring manual configuration.
+    The base URL comes from :func:`_get_base_url_from_request`: behind a proxy listed in
+    ``TRUSTED_PROXIES`` it reflects the forwarded scheme, host and prefix; otherwise it is the
+    direct connection's. Deployments behind a proxy either set ``TRUSTED_PROXIES`` or configure
+    ``OIDC_REDIRECT_URI``.
 
     Args:
         callback_path (str): The callback path to append to the base URL.
