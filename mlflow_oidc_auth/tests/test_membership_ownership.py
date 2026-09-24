@@ -53,6 +53,22 @@ def login_config(monkeypatch):
     monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.REPORT)
 
 
+@pytest.fixture(autouse=True)
+def no_tracking_store(monkeypatch):
+    """Permission resolution falls through to the regex sources, which look the experiment name up
+    in MLflow's tracking store. These tests grant nothing by regex, so give that lookup a stub
+    rather than let it build whatever store ``MLFLOW_TRACKING_URI`` (or its absence) implies."""
+    from types import SimpleNamespace
+
+    import mlflow_oidc_auth.utils.permissions as permissions
+
+    class _Store:
+        def get_experiment(self, experiment_id):
+            return SimpleNamespace(experiment_id=experiment_id, name=f"experiment-{experiment_id}")
+
+    monkeypatch.setattr(permissions, "_get_tracking_store", lambda: _Store())
+
+
 @pytest.fixture
 def enforce(monkeypatch):
     monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
@@ -159,13 +175,44 @@ class TestLoginDoesNotStripTheDirectorysGroups:
         assert (event["status"], event["detail"]["permitted"], event["detail"]["group"]) == ("success", False, "finance")
         assert not [e for e in audit_events if e["status"] == "denied"], "a kept row is not a denial"
 
-    def test_off_keeps_them_silently(self, store, directory_member, audit_events, monkeypatch):
+    def test_off_keeps_them_and_still_says_so(self, store, directory_member, audit_events, monkeypatch, caplog):
+        """``off`` evaluates nothing else, so the kept row is the one thing it still reports: the
+        audit event (a success, not a denial) and one INFO line per sync — the trail an operator
+        follows after renaming a provider, whose old rows now look foreign."""
+        import logging
+
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.OFF)
 
-        login(ALICE, ["mlflow-users"])
+        with caplog.at_level(logging.INFO):
+            login(ALICE, ["mlflow-users"])
 
         assert owners(store, ALICE) == {"finance": "scim", "mlflow-users": "oidc:default"}
-        assert conflicts(audit_events) == []
+        assert [(e["status"], e["detail"]["operation"]) for e in conflicts(audit_events)] == [("success", "membership.sync_kept")]
+        [line] = [r.getMessage() for r in caplog.records if "kept 1 membership" in r.getMessage()]
+        assert f"user {ALICE}" in line and "'scim'" in line and "oidc:default" in line
+
+    def test_no_log_line_outside_off(self, store, directory_member, caplog):
+        import logging
+
+        with caplog.at_level(logging.INFO):
+            login(ALICE, ["mlflow-users"])
+
+        assert not [r for r in caplog.records if "kept 1 membership" in r.getMessage()]
+
+    def test_a_renamed_provider_is_repaired_with_reconcile(self, store, enforce):
+        """``oidc:kc`` became ``oidc:default``: the old rows are foreign until handed over."""
+        store.add_user_to_group(ALICE, "eng", written_by="oidc:kc")
+        login(ALICE, ["mlflow-users"])
+        assert owners(store, ALICE)["eng"] == "oidc:kc", "a sync never removes another source's row"
+
+        result = CliRunner().invoke(
+            commands,
+            ["reconcile-ownership", "--url", str(store.engine.url), "--memberships", "--from-owner", "oidc:kc", "--set-owner", "oidc:default", "--apply"],
+        )
+        assert result.exit_code == 0, result.output
+
+        login(ALICE, ["mlflow-users"])
+        assert owners(store, ALICE) == {"mlflow-users": "oidc:default"}, "now its own, the claims revoke it"
 
     def test_groups_a_login_creates_are_the_providers(self, store):
         login(ALICE, ["mlflow-users", "brand-new"])
@@ -561,6 +608,22 @@ class TestHandOverIsOneTransaction:
         assert (event["status"], event["detail"]["applied"]) == ("error", False)
         assert not conflicts(audit_events), "no override is recorded for a change that did not commit"
 
+    def test_no_override_is_recorded_when_the_owner_does_not_change(self, store, admin_api, audit_events):
+        store.add_user_to_group(ALICE, "finance", written_by="oidc:gone")
+
+        response = admin_api.patch(f"{USERS_ROUTER_PREFIX}/ownership", json={"username": ALICE, "managed_by": "scim", "memberships": True})
+
+        assert response.status_code == 200, response.text
+        assert owners(store, ALICE) == {"finance": "scim"}
+        assert conflicts(audit_events) == [], "the user row already was 'scim'; nothing was overridden"
+
+    def test_an_override_is_recorded_when_the_owner_changes(self, store, admin_api, audit_events):
+        response = admin_api.patch(f"{USERS_ROUTER_PREFIX}/ownership", json={"username": ALICE, "managed_by": "manual", "memberships": True})
+
+        assert response.status_code == 200, response.text
+        [event] = conflicts(audit_events)
+        assert (event["status"], event["detail"]["owner"]) == ("success", "scim")
+
     def test_success_is_audited_once(self, store, admin_api, audit_events):
         store.add_user_to_group(ALICE, "finance", written_by="scim")
 
@@ -570,3 +633,59 @@ class TestHandOverIsOneTransaction:
         assert owners(store, ALICE) == {"finance": "manual"}
         [event] = [e for e in audit_events if e["event"] == "user.ownership_set"]
         assert (event["status"], event["detail"]["from"], event["detail"]["memberships"]) == ("success", "scim", [{"group": "finance", "from": "scim"}])
+
+
+class TestReconcileJournalRoundTrips:
+    """The CLI paths a reviewer probed by hand: re-own, journal, restore — for memberships and groups."""
+
+    def _run(self, *args):
+        return CliRunner().invoke(commands, list(args))
+
+    def test_memberships_round_trip(self, store, tmp_path):
+        store.add_user_to_group(ALICE, "finance", written_by="scim")
+        store.add_user_to_group(KEEPER, "eng", written_by="scim")
+        url, journal = str(store.engine.url), str(tmp_path / "memberships.json")
+
+        applied = self._run("reconcile-ownership", "--url", url, "--memberships", "--username", ALICE, "--set-owner", "manual", "--apply", "--journal", journal)
+        assert applied.exit_code == 0, applied.output
+        assert owners(store, ALICE) == {"finance": "manual"}
+        assert owners(store, KEEPER) == {"eng": "scim"}
+        recorded = json.loads(open(journal).read())
+        assert recorded["memberships"] == [{"username": ALICE, "group": "finance", "managed_by": "scim"}]
+
+        dry = self._run("restore-ownership", "--url", url, "--journal", journal)
+        assert dry.exit_code == 0 and owners(store, ALICE) == {"finance": "manual"}, "a restore is a dry run without --apply"
+
+        restored = self._run("restore-ownership", "--url", url, "--journal", journal, "--apply")
+        assert restored.exit_code == 0, restored.output
+        assert owners(store, ALICE) == {"finance": "scim"}
+
+    def test_groups_round_trip_and_audit_as_groups(self, store, tmp_path, audit_events):
+        store.populate_groups(["from-login"], written_by="oidc:default")
+        url, journal = str(store.engine.url), str(tmp_path / "groups.json")
+
+        applied = self._run("reconcile-ownership", "--url", url, "--groups", "--group", "from-login", "--set-owner", "scim", "--apply", "--journal", journal)
+        assert applied.exit_code == 0, applied.output
+        assert store.get_group_detail("from-login", with_members=False)["managed_by"] == "scim"
+
+        restored = self._run("restore-ownership", "--url", url, "--journal", journal, "--apply")
+        assert restored.exit_code == 0, restored.output
+        assert store.get_group_detail("from-login", with_members=False)["managed_by"] == "oidc:default"
+
+        events = {e["event"]: e for e in audit_events if e["event"] in ("group.ownership_reconciled", "group.ownership_restored")}
+        assert {name: (e["resource_type"], e["resource_id"]) for name, e in events.items()} == {
+            "group.ownership_reconciled": ("group", "from-login"),
+            "group.ownership_restored": ("group", "from-login"),
+        }
+
+    def test_a_restore_leaves_a_group_changed_since(self, store, tmp_path):
+        store.populate_groups(["from-login"], written_by="oidc:default")
+        url, journal = str(store.engine.url), str(tmp_path / "groups.json")
+        self._run("reconcile-ownership", "--url", url, "--groups", "--group", "from-login", "--set-owner", "scim", "--apply", "--journal", journal)
+        self._run("reconcile-ownership", "--url", url, "--groups", "--group", "from-login", "--set-owner", "manual", "--apply")
+
+        restored = self._run("restore-ownership", "--url", url, "--journal", journal, "--apply")
+
+        assert restored.exit_code == 0, restored.output
+        assert "left alone" in restored.output
+        assert store.get_group_detail("from-login", with_members=False)["managed_by"] == "manual"

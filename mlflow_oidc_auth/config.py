@@ -116,7 +116,8 @@ class AppConfig:
         # silently pick a mode.
         _saml_login_binding = str(config_manager.get("SAML_LOGIN_BINDING", "auto") or "auto").strip().lower()
         if _saml_login_binding not in self.SAML_LOGIN_BINDING_MODES:
-            raise ValueError(f"Invalid SAML_LOGIN_BINDING value: '{_saml_login_binding}' (expected one of {', '.join(self.SAML_LOGIN_BINDING_MODES)})")
+            # The value itself is not repeated: config values may come from a secrets provider.
+            raise ValueError("Invalid SAML_LOGIN_BINDING value (expected one of auto, on, off)")
         self.SAML_LOGIN_BINDING = _saml_login_binding
 
         # Database settings (sensitive)
@@ -314,19 +315,17 @@ class AppConfig:
         """
         if not any(provider.type == "saml" for provider in self.AUTH_PROVIDERS.providers):
             return
+        # Fixed messages only: no config value is ever interpolated into these lines.
         if self.SAML_LOGIN_BINDING == "on" and not self.SESSION_COOKIE_SECURE:
             logger.warning(
-                "SAML_LOGIN_BINDING=on with SESSION_COOKIE_SECURE=false: the SAML login binding is forced over what is "
-                "presumably plain http. This is for http test rigs only; production deployments must serve https and "
-                "set SESSION_COOKIE_SECURE=true."
+                "SAML login binding is forced on without secure cookies. This is for http test rigs only; production "
+                "deployments must serve https and enable secure session cookies."
             )
         elif not self.saml_login_binding_enabled:
             logger.warning(
-                "SAML login binding is disabled (SAML_LOGIN_BINDING=%s, SESSION_COOKIE_SECURE=%s): a SAML response is not "
-                "bound to the browser that started the login, so login CSRF is possible. Serve https and set "
-                "SESSION_COOKIE_SECURE=true to enable it.",
-                self.SAML_LOGIN_BINDING,
-                str(self.SESSION_COOKIE_SECURE).lower(),
+                "SAML login binding is disabled while a SAML provider is configured: a SAML response is not bound to the "
+                "browser that started the login, so login CSRF is possible. Serve https and enable secure session "
+                "cookies to turn it on."
             )
 
     #: Values that turn PKCE off. Both the words and the boolean spellings, because operators

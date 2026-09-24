@@ -220,15 +220,21 @@ and on the kind of write:
 | Membership owner | Removed by its own source | By another source's **sync** (login, SCIM `PUT`) | By another source's targeted removal |
 |---|---|---|---|
 | `manual` | yes | yes | yes, except that SCIM may not remove a hand-made administrator's under `enforce` |
-| `scim`, `oidc:*`, `saml:*` | yes | **never, in any mode**; recorded under `report` and `enforce` | `report`: yes, audited. `enforce`: refused |
+| `scim`, `oidc:*`, `saml:*` | yes | **never, in any mode**; recorded as kept | `report`: yes, audited. `enforce`: refused |
 
 An `authoritative` login therefore revokes its own memberships and every `manual` one, and
 leaves SCIM's and other providers' in place in every mode. Every membership that predates this is
 `manual`, so revocation keeps working after an upgrade without a backfill, and a deployment that
 changes nothing sees no change. Each membership a sync leaves in place is recorded as
 `user.ownership_conflict` with `detail.operation: "membership.sync_kept"`, `status: "success"`
-and `detail.group`, except under `off`. It is not a denial, so it does not inflate denial counts.
+and `detail.group`. It is not a denial, so it does not inflate denial counts.
 A refused targeted removal is `detail.operation: "membership.remove"` with `status: "denied"`.
+
+A kept row is recorded in every mode, `off` included, where the sync also logs one INFO line
+per sync (the user or group, how many rows it kept, and their owners). **A renamed provider
+(`oidc:kc` → `oidc:keycloak`) or a move from OIDC to SAML makes that provider's old memberships
+foreign to it**, so its syncs keep them instead of revoking them. Hand them to the new source
+with `mlflow-oidc db reconcile-ownership --memberships --from-owner <old> --set-owner <new>`.
 
 A sync never fails because a row was kept: failing it would lock the user or the group out of
 every future sync. A targeted removal fails with nothing applied (`409` from SCIM).

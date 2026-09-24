@@ -589,18 +589,22 @@ class UserRepository:
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             previous = user.managed_by
-            decision = evaluate_write(
-                previous,
-                "manual",
-                enforcement=config.MANAGED_BY_ENFORCEMENT,
-                admin_override=True,
-                fields={"managed_by"} if (previous or "manual") != managed_by else set(),
-                target_is_admin=bool(user.is_admin),
-            )
-            user.managed_by = managed_by
+            decision = None
+            if (previous or "manual") != managed_by:
+                # Only an actual change of the user row's owner is an override worth recording; a
+                # call that only re-owns memberships (the row already has this owner) is not.
+                decision = evaluate_write(
+                    previous,
+                    "manual",
+                    enforcement=config.MANAGED_BY_ENFORCEMENT,
+                    admin_override=True,
+                    fields={"managed_by"},
+                    target_is_admin=bool(user.is_admin),
+                )
+                user.managed_by = managed_by
             changed = self._reown_memberships(session, user, managed_by) if memberships else []
             session.flush()
-        if decision.conflict:
+        if decision is not None and decision.conflict:
             _audit_ownership_conflict(username, decision, "manual", allowed=True, actor=actor)
         return {"previous": previous, "memberships": changed}
 
