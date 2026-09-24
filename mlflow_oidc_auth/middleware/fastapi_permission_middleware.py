@@ -12,6 +12,7 @@ It mirrors the upstream ``add_fastapi_permission_middleware`` from
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -28,6 +29,8 @@ from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 
 logger = get_logger()
+
+_MLFLOW_MODELS_PATH = "/gateway/mlflow/v1/models"
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +103,9 @@ def _get_gateway_validator(
 
     Validates that the user has USE permission on the target gateway endpoint.
     """
+
+    if path == _MLFLOW_MODELS_PATH:
+        return _get_require_authentication_validator()
 
     async def validator(username: str, request: Request) -> bool:
         body: dict[str, Any] | None = None
@@ -196,6 +202,50 @@ def _find_fastapi_validator(
         return _get_mcp_server_registry_validator()
 
     return None
+
+
+async def _filter_gateway_models_response(response, username: str):
+    """Keep only models backed by gateway endpoints the user can USE."""
+    if response.status_code != 200:
+        return response
+
+    try:
+        chunks = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk.encode() if isinstance(chunk, str) else bytes(chunk))
+
+        data = json.loads(b"".join(chunks))
+        models = data.get("data")
+        if not isinstance(models, list):
+            raise ValueError("Models response does not contain a data list")
+
+        visible_models = []
+        for model in models:
+            endpoint_name = model.get("id") if isinstance(model, dict) else None
+            if not isinstance(endpoint_name, str):
+                continue
+            try:
+                if can_use_gateway_endpoint(endpoint_name, username):
+                    visible_models.append(model)
+            except Exception as e:
+                logger.error(
+                    "Gateway models permission check failed for endpoint %s: %s",
+                    endpoint_name,
+                    type(e).__name__,
+                )
+
+        data["data"] = visible_models
+    except Exception as e:
+        logger.error("Gateway models response filtering failed: %s", type(e).__name__)
+        return PlainTextResponse("Internal server error", status_code=500)
+
+    filtered_response = JSONResponse(
+        content=data,
+        status_code=response.status_code,
+        background=response.background,
+    )
+    filtered_response.raw_headers.extend((key, value) for key, value in response.raw_headers if key.lower() not in {b"content-length", b"content-type"})
+    return filtered_response
 
 
 # ---------------------------------------------------------------------------
@@ -298,4 +348,7 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             if auth_context_token is not None:
                 clear_auth_context(auth_context_token)
 
-        return await call_next(request)
+        response = await call_next(request)
+        if request.method == "GET" and path == _MLFLOW_MODELS_PATH:
+            return await _filter_gateway_models_response(response, username)
+        return response
