@@ -784,7 +784,12 @@ class TestPermissionCacheCompositeKey:
         from mlflow_oidc_auth.utils import permissions as perms
 
         deleted = []
-        monkeypatch.setattr(perms, "_get_permission_cache", lambda: type("C", (), {"delete": lambda self, k: deleted.append(k)})())
+
+        class _RecordingCache:
+            def delete(self, key):
+                deleted.append(key)
+
+        monkeypatch.setattr(perms, "_get_permission_cache", _RecordingCache)
         monkeypatch.setattr(perms, "_get_cache_workspace", lambda: None)
         perms.invalidate_permission_cache("scorer", "1", "bob", scorer_name="mine")
         assert deleted == [perms._make_cache_key("scorer", "1", "bob", None, scorer_name="mine")]
