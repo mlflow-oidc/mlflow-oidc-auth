@@ -137,7 +137,7 @@ export function ScimActivityTable({
 
       {hasMore && (
         <div className="mt-3 flex justify-center">
-          <Button variant="secondary" onClick={onLoadMore} disabled={isLoadingMore}>
+          <Button variant="secondary" onClick={onLoadMore} disabled={isLoading || isLoadingMore}>
             {isLoadingMore ? "Loading..." : "Load more"}
           </Button>
         </div>

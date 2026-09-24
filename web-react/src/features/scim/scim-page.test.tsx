@@ -271,6 +271,23 @@ describe("ScimPage", () => {
     expect(mockRefreshStatus).toHaveBeenCalled();
   });
 
+  it("disables Load more while the activity's first page is loading", () => {
+    vi.spyOn(useScimActivityModule, "useScimActivity").mockReturnValue({
+      entries: [],
+      hasMore: true,
+      isLoading: true,
+      isLoadingMore: false,
+      error: null,
+      loadMore: mockLoadMore,
+      refresh: mockRefreshActivity,
+    });
+    render(<ScimPage />);
+    const button = screen.getByRole("button", { name: "Load more" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mockLoadMore).not.toHaveBeenCalled();
+  });
+
   it("keeps the secret modal mounted and visible if the post-create refresh fails (#1)", async () => {
     let hookState: ReturnType<typeof useScimTokensModule.useScimTokens> = {
       tokens: [activeToken],

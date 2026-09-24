@@ -78,6 +78,14 @@ describe("ScimActivityTable", () => {
     expect(props.onRefresh).toHaveBeenCalled();
   });
 
+  it("disables load more while the first page is loading", () => {
+    const props = renderTable({ hasMore: true, isLoading: true });
+    const button = screen.getByRole("button", { name: "Load more" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(props.onLoadMore).not.toHaveBeenCalled();
+  });
+
   it("hides load more on the last page and shows the empty state", () => {
     renderTable({ entries: [] });
     expect(screen.queryByText("Load more")).not.toBeInTheDocument();

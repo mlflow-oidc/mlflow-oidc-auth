@@ -88,6 +88,42 @@ describe("useScimActivity", () => {
     );
   });
 
+  it("never appends a page fetched with the previous filter's cursor", async () => {
+    let resolveFiltered: (page: { activity: ScimActivityEntry[]; next_before: number | null }) => void = () => undefined;
+    const fetchSpy = vi
+      .spyOn(service, "fetchScimActivity")
+      .mockResolvedValueOnce({ activity: [entry(5), entry(4)], next_before: 4 })
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveFiltered = resolve)))
+      .mockResolvedValue({ activity: [entry(3)], next_before: null });
+
+    const { result, rerender } = renderHook(
+      ({ outcome }: { outcome: ScimActivityOutcome | null }) => useScimActivity(outcome),
+      { initialProps: { outcome: null as ScimActivityOutcome | null } },
+    );
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+    const staleLoadMore = result.current.loadMore;
+
+    // Switch the filter; its first page is still in flight.
+    rerender({ outcome: "client_error" });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.hasMore).toBe(false);
+
+    // Both the stale callback and the current one must do nothing yet.
+    await act(async () => {
+      await staleLoadMore();
+      await result.current.loadMore();
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveFiltered({ activity: [entry(9, "client_error")], next_before: null });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.entries.map((e) => e.id)).toEqual([9]);
+    expect(fetchSpy).not.toHaveBeenCalledWith(expect.objectContaining({ before: 4 }));
+  });
+
   it("reports an error and refresh fetches again", async () => {
     const fetchSpy = vi
       .spyOn(service, "fetchScimActivity")

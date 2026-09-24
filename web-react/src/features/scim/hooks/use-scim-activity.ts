@@ -27,6 +27,13 @@ export function useScimActivity(outcome: ScimActivityOutcome | null) {
   // Bumped on every first-page load, so a "load more" answer for a filter that is no longer
   // selected is dropped instead of appended.
   const generation = useRef(0);
+  // The paging cursor, tagged with the first-page load it came from. "Load more" uses it only
+  // while that load is still the current one, so a cursor left over from the previous filter
+  // (or from before a Refresh) can never fetch a page into the new list.
+  const cursor = useRef<{ generation: number; before: number | null }>({
+    generation: 0,
+    before: null,
+  });
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -34,6 +41,8 @@ export function useScimActivity(outcome: ScimActivityOutcome | null) {
     const current = ++generation.current;
 
     const load = async () => {
+      cursor.current = { generation: current, before: null };
+      setNextBefore(null);
       setIsLoading(true);
       setError(null);
       try {
@@ -42,6 +51,7 @@ export function useScimActivity(outcome: ScimActivityOutcome | null) {
           controller.signal,
         );
         if (current !== generation.current) return;
+        cursor.current = { generation: current, before: page.next_before };
         setEntries(page.activity);
         setNextBefore(page.next_before);
       } catch (err) {
@@ -59,16 +69,19 @@ export function useScimActivity(outcome: ScimActivityOutcome | null) {
   }, [isAuthenticated, outcome, reloadKey]);
 
   const loadMore = useCallback(async () => {
-    if (nextBefore === null) return;
     const current = generation.current;
+    const { generation: cursorGeneration, before } = cursor.current;
+    // No cursor yet for the current first-page load (it is still in flight), or none left.
+    if (cursorGeneration !== current || before === null) return;
     setIsLoadingMore(true);
     try {
       const page = await fetchScimActivity({
         limit: SCIM_ACTIVITY_PAGE_SIZE,
-        before: nextBefore,
+        before,
         outcome: outcome ?? undefined,
       });
       if (current !== generation.current) return;
+      cursor.current = { generation: current, before: page.next_before };
       setEntries((previous) => [...previous, ...page.activity]);
       setNextBefore(page.next_before);
     } catch (err) {
@@ -76,7 +89,7 @@ export function useScimActivity(outcome: ScimActivityOutcome | null) {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [nextBefore, outcome]);
+  }, [outcome]);
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
 
