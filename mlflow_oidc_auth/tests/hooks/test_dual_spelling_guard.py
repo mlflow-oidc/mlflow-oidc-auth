@@ -226,6 +226,20 @@ _ARGS_ONLY_EXEMPT_SUFFIXES = (
     "mlflow/scorer/invoke",
 )
 
+# Gated routes MLflow serves with a plain JSON handler (_get_validated_flask_request_json):
+# fields are read with a dict lookup, not ParseDict, so only the snake_case key is ever
+# honoured and there is no dual-spelling ambiguity. Their validators authorize every value
+# in every source under both spellings (all_source_values), a superset of what MLflow reads.
+# The job routes read only the <job_id> path parameter.
+_PLAIN_JSON_EXEMPT_SUFFIXES = (
+    "mlflow/issues/invoke",
+    "mlflow/genai/evaluate/invoke",
+    "mlflow/scorers/online-config",
+    "mlflow/scorers/online-configs",
+    "mlflow/jobs/<job_id>",
+    "mlflow/jobs/cancel/<job_id>",
+)
+
 
 def test_every_gated_route_is_guard_covered_or_explicitly_exempt():
     """Coverage assertion: no gated route may silently escape the guard.
@@ -244,7 +258,7 @@ def test_every_gated_route_is_guard_covered_or_explicitly_exempt():
             continue
         if validator is _deny_non_admin:
             continue  # admin-only hard deny: no request field feeds the decision
-        if any(path.endswith(suffix) for suffix in _ARGS_ONLY_EXEMPT_SUFFIXES):
+        if any(path.endswith(suffix) for suffix in _ARGS_ONLY_EXEMPT_SUFFIXES + _PLAIN_JSON_EXEMPT_SUFFIXES):
             continue
         gaps.append(f"{method} {path} -> {getattr(validator, '__name__', validator)}")
 

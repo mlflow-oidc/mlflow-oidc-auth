@@ -405,7 +405,7 @@ Additional session cookie settings:
 
 ## Upgrading to this release
 
-Four behaviour changes ship together in this release. None require a configuration change to
+These behaviour changes ship together in this release. None require a configuration change to
 keep working; each is called out here because it changes what a running deployment does on
 upgrade.
 
@@ -449,6 +449,19 @@ upgrade.
   experiment it names exists. A server that cannot answer that denies all non-admin proxy
   traffic, and logs the store error. Keep the tracking store reachable from the artifact
   server, or route non-admin artifact traffic through the tracking server.
+
+- **Routes without a validator are refused to non-admins.** A request to an MLflow route that
+  has no authorization rule now gets `403` for a non-admin user instead of being served. Admins
+  are unaffected. See [Routes without a validator](permissions#routes-without-a-validator).
+- **GenAI routes now need experiment grants.** Evaluation datasets, issues, label schemas,
+  review queues, UI jobs, scorer online-scoring configuration, `issues/invoke` and
+  `genai/evaluate/invoke` now check the permission of the
+  experiment they belong to. A non-admin needs the grant listed in
+  [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes); with the
+  default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold it. Requests that name no
+  experiment (an unscoped dataset or issue search, a dataset linked to no experiment, a job with
+  no recorded experiment) are admin-only. Gateway budget reads (`gateway/budgets/get`, `list`,
+  `windows`) and demo-data generation are admin-only.
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.

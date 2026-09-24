@@ -1,9 +1,9 @@
 """Every route MLflow serves must be accounted for by the authorization layer (#286, #291).
 
-A route with no validator is not denied — ``before_request_hook`` falls through and MLflow
-serves it. That is how HEAD (#286), ``runs/log-inputs``, ``runs/outputs`` and MLflow's
-native webhook CRUD (#291) went unchecked. Adding entries one at a time after each report
-has not been durable, so these tests sweep the WHOLE surface instead:
+``before_request_hook`` refuses a non-admin request on a route that has no validator, no
+response filter and no entry on the open list (``hooks/route_policy.py``). That makes a
+missing validator a denial rather than an unchecked route, but a denial is still a broken
+feature for the users who should have access, so these tests sweep the WHOLE surface:
 
 * ``test_every_flask_route_is_accounted_for`` walks every rule in MLflow's Flask
   ``url_map`` and every method it serves (HEAD folded onto GET, exactly as the hook does).
@@ -23,110 +23,17 @@ from flask import request
 from mlflow.server import app as mlflow_app
 from mlflow.server.handlers import get_endpoints
 
-from mlflow_oidc_auth.hooks import after_request, before_request
+from mlflow_oidc_auth.hooks import before_request
 from mlflow_oidc_auth.hooks.http_method import authorization_method
+from mlflow_oidc_auth.hooks.route_policy import LEGITIMATELY_OPEN, is_filtered_in_after_request
 
-# Routes that are open by design. Every entry needs a reason.
-LEGITIMATELY_OPEN = (
-    # The MLflow web UI shell and its bundled static assets. No tenant data.
-    ("/", ("GET",)),
-    ("/build/<path:filename>", ("GET",)),
-    # MLflow's version string.
-    ("/version", ("GET",)),
-    # Server capability flags the UI reads at start-up (e.g. which store backs it).
-    ("/api/3.0/mlflow/server-info", ("GET",)),
-    ("/ajax-api/3.0/mlflow/server-info", ("GET",)),
-    # UI usage-telemetry config and event sink. Carries no tracking data.
-    ("/ajax-api/3.0/mlflow/ui-telemetry", ("GET", "POST")),
-    # GraphQL is authorized per field by our own middleware
-    # (install_mlflow_graphql_authorization_middleware in app.py), not by a route validator.
-    ("/graphql", ("GET", "POST")),
-    # Bound by MLflow to its `_not_implemented` handler: they answer 501 and serve nothing.
-    # test_not_implemented_routes_really_are pins that.
-    ("/api/2.0/mlflow/unified-traces", ("GET",)),
-    ("/ajax-api/2.0/mlflow/unified-traces", ("GET",)),
-    ("/api/2.0/mlflow/get-online-trace-details", ("GET",)),
-    ("/ajax-api/2.0/mlflow/get-online-trace-details", ("GET",)),
-)
+# Routes that are open by design live in production code (hooks/route_policy.py), which
+# before_request_hook consults before refusing a route with no validator. Importing the
+# same list here means the sweep and the hook cannot disagree about what is open.
 
 # Routes MLflow registers that have no validator yet; entries are removed as validators land.
 # Never add an entry here without a validator PR.
-ROUTES_AWAITING_VALIDATOR = (
-    ("/ajax-api/3.0/mlflow/datasets/<dataset_id>", ("DELETE", "GET")),
-    ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/add-experiments", ("POST",)),
-    ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/experiment-ids", ("GET",)),
-    ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/records", ("DELETE", "GET", "POST")),
-    ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/remove-experiments", ("POST",)),
-    ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/tags", ("PATCH",)),
-    ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/tags/<key>", ("DELETE",)),
-    ("/ajax-api/3.0/mlflow/datasets/create", ("POST",)),
-    ("/ajax-api/3.0/mlflow/datasets/search", ("GET", "POST")),
-    ("/ajax-api/3.0/mlflow/demo/delete", ("POST",)),
-    ("/ajax-api/3.0/mlflow/demo/generate", ("POST",)),
-    ("/ajax-api/3.0/mlflow/gateway/budgets/get", ("GET",)),
-    ("/ajax-api/3.0/mlflow/gateway/budgets/list", ("GET",)),
-    ("/ajax-api/3.0/mlflow/gateway/budgets/windows", ("GET",)),
-    ("/ajax-api/3.0/mlflow/genai/evaluate/invoke", ("POST",)),
-    ("/ajax-api/3.0/mlflow/issues", ("POST",)),
-    ("/ajax-api/3.0/mlflow/issues/<issue_id>", ("GET", "PATCH")),
-    ("/ajax-api/3.0/mlflow/issues/invoke", ("POST",)),
-    ("/ajax-api/3.0/mlflow/issues/search", ("POST",)),
-    ("/ajax-api/3.0/mlflow/jobs/<job_id>", ("GET",)),
-    ("/ajax-api/3.0/mlflow/jobs/cancel/<job_id>", ("PATCH",)),
-    ("/ajax-api/3.0/mlflow/label-schemas/create", ("POST",)),
-    ("/ajax-api/3.0/mlflow/label-schemas/delete", ("DELETE",)),
-    ("/ajax-api/3.0/mlflow/label-schemas/get", ("GET",)),
-    ("/ajax-api/3.0/mlflow/label-schemas/get-by-name", ("GET",)),
-    ("/ajax-api/3.0/mlflow/label-schemas/list", ("GET",)),
-    ("/ajax-api/3.0/mlflow/label-schemas/update", ("PATCH",)),
-    ("/ajax-api/3.0/mlflow/review-queues/create", ("POST",)),
-    ("/ajax-api/3.0/mlflow/review-queues/delete", ("POST",)),
-    ("/ajax-api/3.0/mlflow/review-queues/get", ("GET",)),
-    ("/ajax-api/3.0/mlflow/review-queues/get-by-name", ("GET",)),
-    ("/ajax-api/3.0/mlflow/review-queues/get-or-create-user", ("POST",)),
-    ("/ajax-api/3.0/mlflow/review-queues/items/add", ("POST",)),
-    ("/ajax-api/3.0/mlflow/review-queues/items/list", ("GET",)),
-    ("/ajax-api/3.0/mlflow/review-queues/items/remove", ("POST",)),
-    ("/ajax-api/3.0/mlflow/review-queues/items/set-status", ("POST",)),
-    ("/ajax-api/3.0/mlflow/review-queues/list", ("GET",)),
-    ("/ajax-api/3.0/mlflow/review-queues/update", ("POST",)),
-    ("/ajax-api/3.0/mlflow/scorers/online-config", ("PUT",)),
-    ("/ajax-api/3.0/mlflow/scorers/online-configs", ("GET",)),
-    ("/api/3.0/mlflow/datasets/<dataset_id>", ("DELETE", "GET")),
-    ("/api/3.0/mlflow/datasets/<dataset_id>/add-experiments", ("POST",)),
-    ("/api/3.0/mlflow/datasets/<dataset_id>/experiment-ids", ("GET",)),
-    ("/api/3.0/mlflow/datasets/<dataset_id>/records", ("DELETE", "GET", "POST")),
-    ("/api/3.0/mlflow/datasets/<dataset_id>/remove-experiments", ("POST",)),
-    ("/api/3.0/mlflow/datasets/<dataset_id>/tags", ("PATCH",)),
-    ("/api/3.0/mlflow/datasets/<dataset_id>/tags/<key>", ("DELETE",)),
-    ("/api/3.0/mlflow/datasets/create", ("POST",)),
-    ("/api/3.0/mlflow/datasets/search", ("GET", "POST")),
-    ("/api/3.0/mlflow/gateway/budgets/get", ("GET",)),
-    ("/api/3.0/mlflow/gateway/budgets/list", ("GET",)),
-    ("/api/3.0/mlflow/gateway/budgets/windows", ("GET",)),
-    ("/api/3.0/mlflow/issues", ("POST",)),
-    ("/api/3.0/mlflow/issues/<issue_id>", ("GET", "PATCH")),
-    ("/api/3.0/mlflow/issues/search", ("POST",)),
-    ("/api/3.0/mlflow/label-schemas/create", ("POST",)),
-    ("/api/3.0/mlflow/label-schemas/delete", ("DELETE",)),
-    ("/api/3.0/mlflow/label-schemas/get", ("GET",)),
-    ("/api/3.0/mlflow/label-schemas/get-by-name", ("GET",)),
-    ("/api/3.0/mlflow/label-schemas/list", ("GET",)),
-    ("/api/3.0/mlflow/label-schemas/update", ("PATCH",)),
-    ("/api/3.0/mlflow/review-queues/create", ("POST",)),
-    ("/api/3.0/mlflow/review-queues/delete", ("POST",)),
-    ("/api/3.0/mlflow/review-queues/get", ("GET",)),
-    ("/api/3.0/mlflow/review-queues/get-by-name", ("GET",)),
-    ("/api/3.0/mlflow/review-queues/get-or-create-user", ("POST",)),
-    ("/api/3.0/mlflow/review-queues/items/add", ("POST",)),
-    ("/api/3.0/mlflow/review-queues/items/list", ("GET",)),
-    ("/api/3.0/mlflow/review-queues/items/remove", ("POST",)),
-    ("/api/3.0/mlflow/review-queues/items/set-status", ("POST",)),
-    ("/api/3.0/mlflow/review-queues/list", ("GET",)),
-    ("/api/3.0/mlflow/review-queues/update", ("POST",)),
-    ("/api/3.0/mlflow/scorers/online-config", ("PUT",)),
-    ("/api/3.0/mlflow/scorers/online-configs", ("GET",)),
-)
+ROUTES_AWAITING_VALIDATOR: tuple = ()
 
 # Protobuf messages whose names mark them as mutations. Anything matching must be gated.
 _MUTATING_PROTO_NAME = re.compile(
@@ -167,8 +74,7 @@ def _classify(rule_path: str, method: str) -> str | None:
         if before_request._is_proxy_artifact_path(path):
             # Unrecognised artifact routes are denied by the hook, so any match is gated.
             return "artifact-proxy"
-    handler = after_request.AFTER_REQUEST_HANDLERS.get((rule_path, method))
-    if handler is not None and handler.__name__.startswith("_filter_"):
+    if is_filtered_in_after_request(rule_path, method):
         return "filtered"
     return None
 
