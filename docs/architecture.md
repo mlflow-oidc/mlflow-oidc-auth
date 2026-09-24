@@ -40,14 +40,21 @@ FastAPI handles authentication, the admin UI, and the permission management API.
 Middleware is applied to every request. The execution order (outermost to innermost) is:
 
 ```
-Request → ProxyHeaders → Auth → WorkspaceContext → Session → Route Handler
+Request → ProxyHeaders → Session → WorkspaceContext → Auth → FastAPIPermission → Route Handler
 ```
+
+`ProxyHeadersMiddleware` runs first so a forwarded path prefix is recorded in the ASGI
+`root_path` before any authorization decision. `AuthMiddleware` and the FastAPI permission
+middleware both decide on the **routed path** — the request path with that prefix removed, which
+is the path the router dispatches on — so the unprotected-route list and the validator mapping
+always describe the endpoint that serves the request, whether or not the deployment sits under
+a prefix. The wiring lives in `add_middleware_stack()` in `app.py`.
 
 | Middleware | Purpose |
 |-----------|---------|
-| **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and client IP. When `TRUSTED_PROXIES` is configured, only applies headers from requests originating within the trusted CIDR ranges |
+| **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and path prefix (`root_path`), and records the client IP. When `TRUSTED_PROXIES` is configured, only applies headers from requests originating within the trusted CIDR ranges; when it is unset, headers are applied from every client and a warning is logged at startup |
 | **AuthMiddleware** | Authenticates the user via basic auth, JWT bearer token, or session cookie. Sets `request.state.username`, `request.state.is_admin`, and `request.scope["mlflow_oidc_auth"]`. When `OIDC_AUDIENCE` is configured, JWT `aud` claim is validated |
-| **FastAPIPermissionMiddleware** | Enforces RBAC on MLflow's native FastAPI routers (gateway invocations, chat completions, embeddings). Extracts the gateway endpoint name from the URL path and checks USE permission before forwarding. On the MCP server registry, reads are open to any authenticated user and mutations are admin-only |
+| **FastAPIPermissionMiddleware** | Enforces RBAC on MLflow's native FastAPI routers (gateway invocations, chat completions, embeddings). Extracts the gateway endpoint name from the routed path and checks USE permission before forwarding. On the MCP server registry, reads are open to any authenticated user and mutations are admin-only. Fails closed: any request not dispatched to the Flask mount and not on an unprotected route must carry an authenticated user, even where no validator is mapped |
 | **WorkspaceContextMiddleware** | When workspaces are enabled, reads the `X-MLFLOW-WORKSPACE` header and sets MLflow's workspace ContextVar so tracking store operations run in the correct workspace |
 | **SessionMiddleware** | Starlette's built-in cookie-based session. Decodes/encodes the signed session cookie |
 
@@ -298,7 +305,7 @@ The `mlflow-oidc-server` command:
 
 `create_app()` in `mlflow_oidc_auth/app.py`:
 1. Creates the FastAPI application
-2. Configures the middleware stack (Session → Workspace → Auth → Proxy)
+2. Configures the middleware stack via `add_middleware_stack()` (outermost first: Proxy → Session → Workspace → Auth → Permission)
 3. Registers all routers
 4. Creates the MLflow Flask app
 5. Mounts Flask via `AuthAwareWSGIMiddleware`
