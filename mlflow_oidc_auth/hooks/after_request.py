@@ -806,11 +806,15 @@ def _filter_list_artifact_root(resp: Response) -> None:
         name = entry.get("path") if isinstance(entry, dict) else None
         if not isinstance(name, str) or not name.isdigit():
             return False
+        # The permission check is cached; do it first so an entry the caller cannot read
+        # never costs a tracking-store lookup.
+        if not _cached_can_read_experiment(name, username):
+            return False
         try:
             experiment = tracking_store.get_experiment(name)
         except Exception:
             return False
-        if experiment is None or not _cached_can_read_experiment(name, username):
+        if experiment is None:
             return False
         if workspaces_enabled:
             from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME

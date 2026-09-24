@@ -429,9 +429,16 @@ upgrade.
   experiment's artifacts) and list every experiment id. Such paths now get `403` for every
   method. Listing the root still works, but it returns only the experiments the caller can read.
   This is a behaviour change only if you run `DEFAULT_MLFLOW_PERMISSION=MANAGE` (or any level
-  above `NO_PERMISSIONS`). Clients that address artifacts by experiment, which covers MLflow's own
-  client and UI, are unaffected. A tool that wrote to or deleted the artifact root as a
-  non-admin must now run as an administrator. On a `NO_PERMISSIONS` deployment these requests
+  above `NO_PERMISSIONS`). MLflow's own client and UI are unaffected when experiment artifact
+  locations sit directly under the proxy root (`mlflow-artifacts:/<experiment_id>` or
+  `mlflow-artifacts:/workspaces/<ws>/<experiment_id>`, MLflow's default layout). **If your
+  artifact root or a workspace's `default_artifact_root` adds a prefix** (for example
+  `--default-artifact-root mlflow-artifacts:/mlartifacts`, giving
+  `mlflow-artifacts:/mlartifacts/<experiment_id>`), the plugin cannot tell which experiment such a
+  path belongs to, and non-admin artifact uploads, downloads and listings through the proxy are
+  now denied. Before, they were allowed for everyone, including other tenants. Keep experiment
+  locations at the top of the proxy root to use the proxy as a non-admin. A tool that wrote to or
+  deleted the artifact root as a non-admin must now run as an administrator. On a `NO_PERMISSIONS` deployment these requests
   were already denied, and nothing changes except that the root listing is now filtered rather
   than refused. The logged-model artifact routes and the run presigned-URL routes are also
   authorized now; before, they had no check. See [Artifact Access](permissions#artifact-access).

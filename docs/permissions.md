@@ -170,6 +170,11 @@ empty path), a workspace root (`workspaces/<ws>`) and any path whose first segme
 experiment id (`models/…`, `workspaces`, …). Only an administrator can download, upload to or
 delete the root, which holds every tenant's artifacts.
 
+This assumes MLflow's default layout, where experiment locations sit directly under the
+proxy root. If the artifact root or a workspace's `default_artifact_root` adds a prefix
+(`mlflow-artifacts:/mlartifacts/<experiment_id>`), the first segment is not an experiment id,
+so non-admin requests to those paths are denied.
+
 **Listing the root is filtered, not denied.** `GET /mlflow-artifacts/artifacts` with no
 `path`, an empty `path`, or a root-shaped `path` (including `workspaces/<ws>`) is allowed.
 The response keeps only entries that name an existing experiment the caller can read. With
