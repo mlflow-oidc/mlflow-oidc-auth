@@ -35,6 +35,7 @@ OWN = "2"  # the outsider's own experiment
 OTHER = "3"  # nobody but the admin and OWNER holds a grant here
 WS1_EXPERIMENT = "4"  # lives in workspace ws1
 WS2_EXPERIMENT = "5"  # lives in workspace ws2, but a directory for it sits under ws1's root
+DELETED = "6"  # soft-deleted: still exists, but is not browsable from the root
 
 OWNER = "owner@example.com"  # MANAGE on every experiment — still cannot touch the root
 READER = "reader@example.com"  # READ on the victim only
@@ -42,7 +43,10 @@ EDITOR = "editor@example.com"  # EDIT on the victim
 OUTSIDER = "outsider@example.com"  # NO_PERMISSIONS on the victim, EDIT on their own
 ADMIN = "admin@example.com"
 
-EXPERIMENT_WORKSPACES = {VICTIM: "default", OWN: "default", OTHER: "default", WS1_EXPERIMENT: "ws1", WS2_EXPERIMENT: "ws2"}
+EXPERIMENT_WORKSPACES = {VICTIM: "default", OWN: "default", OTHER: "default", WS1_EXPERIMENT: "ws1", WS2_EXPERIMENT: "ws2", DELETED: "default"}
+# Directories under the root with no experiment behind them: a garbage-collected
+# experiment's leftovers, and Unicode digits that str.isdigit() accepts.
+NOT_EXPERIMENTS = ["999", "²", "١٢"]
 RUN_EXPERIMENTS = {"r-victim": VICTIM, "r-own": OWN}
 
 PREFIXES = ("/api", "/ajax-api")
@@ -53,7 +57,8 @@ class _FakeTrackingStore:
     def get_experiment(self, experiment_id):
         if str(experiment_id) not in EXPERIMENT_WORKSPACES:
             raise MlflowException(f"Experiment {experiment_id} not found", RESOURCE_DOES_NOT_EXIST)
-        return SimpleNamespace(experiment_id=str(experiment_id), workspace=EXPERIMENT_WORKSPACES[str(experiment_id)])
+        stage = "deleted" if str(experiment_id) == DELETED else "active"
+        return SimpleNamespace(experiment_id=str(experiment_id), workspace=EXPERIMENT_WORKSPACES[str(experiment_id)], lifecycle_stage=stage)
 
     def get_run(self, run_id):
         return SimpleNamespace(info=SimpleNamespace(experiment_id=RUN_EXPERIMENTS.get(run_id, VICTIM), run_id=run_id))
@@ -104,7 +109,7 @@ def artifact_root(tmp_path, monkeypatch):
     from mlflow.store.artifact.local_artifact_repo import LocalArtifactRepository
 
     root = tmp_path / "artifacts"
-    for experiment in (VICTIM, OWN, OTHER, "999"):  # 999: a directory with no experiment behind it
+    for experiment in (VICTIM, OWN, OTHER, DELETED, *NOT_EXPERIMENTS):
         (root / experiment / "r1" / "artifacts").mkdir(parents=True)
         (root / experiment / "r1" / "artifacts" / "model.pkl").write_text("secret")
     for workspace, experiment in (("ws1", WS1_EXPERIMENT), ("ws1", WS2_EXPERIMENT), ("ws2", WS2_EXPERIMENT)):
@@ -234,11 +239,14 @@ def test_root_listing_is_filtered_to_readable_experiments(artifact_root, prefix,
     assert _listed(_request(path, "GET", OUTSIDER)) == [OWN]
     assert _listed(_request(path, "GET", READER)) == [VICTIM]
     # MANAGE on every experiment: still no stray file, no orphan directory, no "workspaces".
+    # Nor a soft-deleted experiment, nor a directory that names no experiment.
     assert _listed(_request(path, "GET", OWNER)) == sorted([VICTIM, OWN, OTHER])
 
 
 def test_admin_root_listing_is_unfiltered(artifact_root):
-    assert _listed(_request("/api/2.0/mlflow-artifacts/artifacts", "GET", ADMIN)) == sorted([VICTIM, OWN, OTHER, "999", "stray.txt", "workspaces"])
+    assert _listed(_request("/api/2.0/mlflow-artifacts/artifacts", "GET", ADMIN)) == sorted(
+        [VICTIM, OWN, OTHER, DELETED, *NOT_EXPERIMENTS, "stray.txt", "workspaces"]
+    )
 
 
 def test_head_on_the_list_route_is_filtered_like_get(artifact_root):
@@ -255,6 +263,40 @@ def test_head_on_the_list_route_is_filtered_like_get(artifact_root):
 def test_a_root_cannot_smuggle_an_unreadable_experiment_into_the_list(artifact_root):
     """Every ?path= value is authorized, not just the first."""
     assert _denied(_request(f"/api/2.0/mlflow-artifacts/artifacts?path=.&path={VICTIM}/r1", "GET", OUTSIDER))
+
+
+def test_listing_decides_root_on_the_first_path_like_mlflow(artifact_root):
+    """MLflow lists only the FIRST ?path= value. A root named second is denied rather
+    than turning an experiment listing into an (emptied) root listing; a root named
+    first is listed and filtered, and every other value is still authorized."""
+    base = "/api/2.0/mlflow-artifacts/artifacts"
+    assert _denied(_request(f"{base}?path={VICTIM}/r1&path=.", "GET", READER))
+    assert _listed(_request(f"{base}?path=.&path={VICTIM}/r1", "GET", READER)) == [VICTIM]
+    assert _denied(_request(f"{base}?path=.&path={VICTIM}/r1", "GET", OUTSIDER))
+    assert _listed(_request(f"{base}?path={VICTIM}/r1&path={VICTIM}/r1/artifacts", "GET", READER)) == ["artifacts"]
+    assert _denied(_request(f"{base}?path={OWN}/r1&path={VICTIM}/r1", "GET", OUTSIDER))
+
+
+@pytest.mark.parametrize("name", NOT_EXPERIMENTS)
+@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+def test_directories_that_name_no_experiment_are_denied(artifact_root, name, method):
+    """An id-shaped first segment with no experiment behind it is not an experiment.
+
+    It used to reach effective_experiment_permission, which falls back to the MANAGE
+    default for an unknown id: any user could read, overwrite or delete a garbage-collected
+    experiment's leftovers, or create new trees under the root.
+    """
+    before = _tree(artifact_root)
+    assert _denied(_request(f"/api/2.0/mlflow-artifacts/artifacts/{name}/r1/artifacts/model.pkl", method, OWNER))
+    assert _denied(_request(f"/api/2.0/mlflow-artifacts/artifacts?path={name}/r1", "GET", OWNER))
+    assert _tree(artifact_root) == before
+
+
+def test_a_soft_deleted_experiment_is_still_its_owners(artifact_root):
+    """Soft-deleted still exists: its owner keeps access, others stay denied."""
+    path = f"/api/2.0/mlflow-artifacts/artifacts/{DELETED}/r1/artifacts/model.pkl"
+    assert _request(path, "GET", OWNER).status_code == 200
+    assert _denied(_request(path, "GET", OUTSIDER))
 
 
 def test_non_root_listing_is_not_filtered(artifact_root):

@@ -122,6 +122,7 @@ def test__get_experiment_id_from_view_args_none():
 
 def test__get_permission_from_experiment_id_artifact_proxy_with_id():
     with (
+        patch("mlflow_oidc_auth.validators.experiment.get_artifact_experiment", return_value=MagicMock()),
         patch(
             "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
             return_value="123",

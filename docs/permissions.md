@@ -167,8 +167,12 @@ MANAGE.
 **A path that names no experiment is denied** with `403` for every method, whatever
 `DEFAULT_MLFLOW_PERMISSION` is. That covers the artifact root (`.`, `%2e`, `./.`, `.//`, an
 empty path), a workspace root (`workspaces/<ws>`) and any path whose first segment is not an
-experiment id (`models/…`, `workspaces`, …). Only an administrator can download, upload to or
-delete the root, which holds every tenant's artifacts.
+experiment id (`models/…`, `workspaces`, …). An experiment id is ASCII decimal digits only,
+and it must name an experiment that exists in the tracking store. A soft-deleted experiment
+still exists, so its owner keeps access. A directory with no experiment behind it (for
+example what is left after an experiment is garbage-collected) is denied. Only an
+administrator can download, upload to or delete the root or such leftovers, since the root
+holds every tenant's artifacts.
 
 This assumes MLflow's default layout, where experiment locations sit directly under the
 proxy root. If the artifact root or a workspace's `default_artifact_root` adds a prefix
@@ -177,7 +181,11 @@ so non-admin requests to those paths are denied.
 
 **Listing the root is filtered, not denied.** `GET /mlflow-artifacts/artifacts` with no
 `path`, an empty `path`, or a root-shaped `path` (including `workspaces/<ws>`) is allowed.
-The response keeps only entries that name an existing experiment the caller can read. With
+MLflow lists only the first `path` value, and so does this check. Every other `path` value
+must name an experiment the caller can read, and a root-shaped value that is not first is
+denied. The response keeps only entries that name an existing, active experiment the caller
+can read. Soft-deleted experiments and directories with no experiment behind them are left
+out. With
 workspaces enabled, the experiment must also belong to the listed workspace (the one the
 path names, otherwise the request's workspace), and the caller needs READ on that workspace.
 A `HEAD` on the list route is filtered the same way. Listing a path inside an experiment

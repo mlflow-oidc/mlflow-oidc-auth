@@ -36,6 +36,7 @@ from mlflow.server.handlers import (
     get_endpoints,
 )
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
+from mlflow.entities.lifecycle_stage import LifecycleStage
 from mlflow.utils.search_utils import SearchUtils
 
 import json
@@ -57,7 +58,7 @@ from mlflow_oidc_auth.utils.permissions import (
     can_read_gateway_model_definition,
     can_read_gateway_secret,
 )
-from mlflow_oidc_auth.validators.experiment import is_artifact_root_listing
+from mlflow_oidc_auth.validators.experiment import get_artifact_experiment, is_artifact_root_listing, is_experiment_id_segment
 from mlflow_oidc_auth.utils.workspace_cache import (
     flush_workspace_cache,
     get_workspace_permission_cached,
@@ -770,8 +771,10 @@ def _filter_list_artifact_root(resp: Response) -> None:
     experiment id. Listing the root is legitimate, so rather than deny it outright the
     listing keeps only entries that:
 
-    * name an experiment that exists (a stray directory or a deleted experiment's
-      leftovers is not the caller's to see),
+    * name an experiment that exists (the same ``get_artifact_experiment`` decision the
+      path check uses, so the two cannot disagree) and is ACTIVE — a stray directory, a
+      garbage-collected experiment's leftovers and a soft-deleted experiment are not
+      browsable from the root,
     * the caller can READ, and
     * with workspaces enabled, belongs to the workspace being listed — the one a
       ``workspaces/<ws>`` path names, otherwise the request workspace — and one the
@@ -800,21 +803,16 @@ def _filter_list_artifact_root(resp: Response) -> None:
         request_workspace = get_request_workspace() or DEFAULT_WORKSPACE_NAME
         allowed_workspaces = {workspace or request_workspace for workspace in roots}
 
-    tracking_store = _get_tracking_store()
-
     def _visible(entry: Any) -> bool:
         name = entry.get("path") if isinstance(entry, dict) else None
-        if not isinstance(name, str) or not name.isdigit():
+        if not isinstance(name, str) or not is_experiment_id_segment(name):
             return False
         # The permission check is cached; do it first so an entry the caller cannot read
         # never costs a tracking-store lookup.
         if not _cached_can_read_experiment(name, username):
             return False
-        try:
-            experiment = tracking_store.get_experiment(name)
-        except Exception:
-            return False
-        if experiment is None:
+        experiment = get_artifact_experiment(name)
+        if experiment is None or getattr(experiment, "lifecycle_stage", None) != LifecycleStage.ACTIVE:
             return False
         if workspaces_enabled:
             from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME

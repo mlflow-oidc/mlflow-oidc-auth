@@ -24,6 +24,21 @@ from mlflow_oidc_auth.validators import (
 from mlflow.server import app  # the real routing table: view_args match production
 
 
+class _EveryExperimentExists:
+    """Every experiment id exists and is active, so these tests exercise path parsing and
+    permission resolution. Non-existent experiments are covered in test_artifact_fail_closed."""
+
+    def get_experiment(self, experiment_id):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(experiment_id=experiment_id, lifecycle_stage="active", workspace=None)
+
+
+@pytest.fixture(autouse=True)
+def _tracking_store(monkeypatch):
+    monkeypatch.setattr("mlflow.server.handlers._tracking_store", _EveryExperimentExists())
+
+
 def _mlflow_artifact_rules():
     """Every artifact-proxy (path, method) MLflow actually serves."""
     from mlflow.server import app as mlflow_flask_app
