@@ -124,8 +124,40 @@ async def assert_pkce_supported(client, provider_id: str = DEFAULT_PROVIDER_ID) 
 
 
 def _has_required_config() -> bool:
-    """Whether the flat ``OIDC_*`` variables describe a usable client."""
-    return bool(config.OIDC_CLIENT_ID and config.OIDC_CLIENT_SECRET and config.OIDC_DISCOVERY_URL)
+    """Whether the flat ``OIDC_*`` variables name a client worth attempting to register.
+
+    Credentials are deliberately *not* checked here. ``_credentials_usable`` checks them and
+    reports why when they are unusable, so a deployment that set a client id and a discovery URL
+    reaches that message instead of being counted as one that configured nothing at all.
+    """
+    return bool(config.OIDC_CLIENT_ID and config.OIDC_DISCOVERY_URL)
+
+
+def _credentials_usable(provider_id: str, client_secret: Optional[str]) -> bool:
+    """Whether the provider can authenticate its token request, reporting it when it cannot.
+
+    A public client has no secret, and PKCE — on by default since #312 — is what binds the code
+    to the login attempt in its place. With neither, the token exchange cannot be authenticated
+    at all, so the provider is refused here and named, rather than left to surface later as the
+    provider's opaque ``invalid_client``.
+
+    Parameters:
+        provider_id: Registry id of the provider, used only for the log line.
+        client_secret: The resolved secret, or None for a public client.
+
+    Returns:
+        True when a secret or PKCE is available.
+    """
+
+    if client_secret or config.OIDC_CODE_CHALLENGE:
+        return True
+
+    logger.error(
+        "Provider '%s' has no client secret and PKCE is disabled; refusing to register it. Set its client secret, "
+        "or leave OIDC_CODE_CHALLENGE at its S256 default to register it as a public client.",
+        provider_id,
+    )
+    return False
 
 
 def _secret_env_key(provider_id: str) -> str:
@@ -184,6 +216,20 @@ def _build_scope() -> str:
     return " ".join(unique)
 
 
+def _settings_dict(client_id: str, client_secret: Optional[str], discovery_url: str) -> Dict[str, Optional[str]]:
+    """Authlib registration settings, omitting ``client_secret`` for a public client.
+
+    Authlib treats a present-but-empty ``client_secret`` as a confidential client and sends an
+    empty credential to the token endpoint, which providers reject as ``invalid_client``. A
+    public client has to leave the key out entirely so PKCE is what authenticates the exchange.
+    """
+
+    settings: Dict[str, Optional[str]] = {"client_id": client_id, "server_metadata_url": discovery_url}
+    if client_secret:
+        settings["client_secret"] = client_secret
+    return settings
+
+
 def _client_settings(provider_id: str) -> Optional[Dict[str, Optional[str]]]:
     """Gather what authlib needs to register ``provider_id``, or None if it cannot be built.
 
@@ -214,11 +260,9 @@ def _client_settings(provider_id: str) -> Optional[Dict[str, Optional[str]]]:
         # must not resurrect a browser login path they removed.
         if provider_id != DEFAULT_PROVIDER_ID or config.AUTH_PROVIDERS.source != "legacy" or not _has_required_config():
             return None
-        return {
-            "client_id": config.OIDC_CLIENT_ID,
-            "client_secret": config.OIDC_CLIENT_SECRET,
-            "server_metadata_url": config.OIDC_DISCOVERY_URL,
-        }
+        if not _credentials_usable(DEFAULT_PROVIDER_ID, config.OIDC_CLIENT_SECRET):
+            return None
+        return _settings_dict(config.OIDC_CLIENT_ID, config.OIDC_CLIENT_SECRET, config.OIDC_DISCOVERY_URL)
 
     if provider.type != "oidc":
         # SAML has no authlib OAuth client, and a Kubernetes issuer is verified from its JWKS
@@ -229,10 +273,13 @@ def _client_settings(provider_id: str) -> Optional[Dict[str, Optional[str]]]:
     discovery_url = provider.discovery_url or (config.OIDC_DISCOVERY_URL if provider_id == DEFAULT_PROVIDER_ID else None)
     client_secret = _client_secret_for(provider_id)
 
-    if not (client_id and client_secret and discovery_url):
+    if not (client_id and discovery_url):
         return None
 
-    return {"client_id": client_id, "client_secret": client_secret, "server_metadata_url": discovery_url}
+    if not _credentials_usable(provider_id, client_secret):
+        return None
+
+    return _settings_dict(client_id, client_secret, discovery_url)
 
 
 def ensure_client_registered(provider_id: str = DEFAULT_PROVIDER_ID) -> bool:

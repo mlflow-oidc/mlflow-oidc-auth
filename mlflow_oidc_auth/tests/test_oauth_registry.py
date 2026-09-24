@@ -120,15 +120,32 @@ class TestMultipleProviders:
 
         assert results == {"okta": True, "broken": False, "entra": True}
 
-    def test_a_provider_with_no_secret_is_skipped_not_raised(self):
+    def test_a_provider_with_no_secret_is_skipped_when_pkce_is_off(self):
         with (
             with_registry(provider("okta"), provider("nosecret")),
             with_secrets(OIDC_CLIENT_SECRET_OKTA="s1"),
+            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", None),
         ):
             results = oauth_mod.ensure_all_clients_registered()
 
         assert results == {"okta": True, "nosecret": False}
         assert oauth_mod.get_client("nosecret") is None
+
+    def test_a_provider_with_no_secret_registers_as_a_public_client(self):
+        """A secretless provider is a public client, not a broken one, once PKCE is on (#300).
+
+        PKCE is the default since #312, so this — not the skip above — is what an operator who
+        omits a client secret actually gets.
+        """
+        with (
+            with_registry(provider("okta"), provider("nosecret")),
+            with_secrets(OIDC_CLIENT_SECRET_OKTA="s1"),
+            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", "S256"),
+        ):
+            results = oauth_mod.ensure_all_clients_registered()
+
+        assert results == {"okta": True, "nosecret": True}
+        assert oauth_mod.get_client("nosecret") is not None
 
     def test_non_oidc_providers_are_not_registered(self):
         """SAML has no authlib OAuth client, and a Kubernetes issuer is verified from its JWKS
@@ -151,6 +168,8 @@ class TestMultipleProviders:
         with (
             with_registry(provider("okta"), provider("nosecret")),
             with_secrets(OIDC_CLIENT_SECRET_OKTA="s1"),
+            # PKCE off, so "nosecret" is genuinely unregistrable rather than a public client.
+            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", None),
         ):
             oauth_mod.ensure_all_clients_registered()
 

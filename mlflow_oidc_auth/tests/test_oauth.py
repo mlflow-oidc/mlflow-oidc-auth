@@ -8,6 +8,8 @@ and OIDC provider integration.
 
 import sys
 import unittest
+from contextlib import ExitStack, contextmanager
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -47,6 +49,7 @@ class TestOAuthModule(unittest.TestCase):
         self.assertTrue(hasattr(config, "OIDC_CLIENT_SECRET"))
         self.assertTrue(hasattr(config, "OIDC_DISCOVERY_URL"))
         self.assertTrue(hasattr(config, "OIDC_SCOPE"))
+        self.assertTrue(hasattr(config, "OIDC_CODE_CHALLENGE"))
 
     @patch("mlflow_oidc_auth.config.config")
     def test_oauth_with_mocked_config(self, mock_config):
@@ -56,6 +59,7 @@ class TestOAuthModule(unittest.TestCase):
         mock_config.OIDC_CLIENT_SECRET = "test_client_secret"
         mock_config.OIDC_DISCOVERY_URL = "https://example.com/.well-known/openid_configuration"
         mock_config.OIDC_SCOPE = "openid email profile"
+        mock_config.OIDC_CODE_CHALLENGE = None
 
         # Clear the module cache to force re-import with mocked config
         if "mlflow_oidc_auth.oauth" in sys.modules:
@@ -481,6 +485,111 @@ class TestBuildScope(unittest.TestCase):
             patch.object(oauth_mod.config, "OIDC_SCOPE", "", create=True),
         ):
             self.assertEqual(oauth_mod._build_scope(), "")
+
+
+class TestPublicClientRegistration(unittest.TestCase):
+    """A client secret is optional when PKCE is on, and must be omitted rather than blank."""
+
+    @contextmanager
+    def _patch_config(self, oauth_mod, **kwargs):
+        """Patch the ``config`` attributes that client registration reads."""
+
+        defaults = {
+            "OIDC_CLIENT_ID": "test-client-id",
+            "OIDC_CLIENT_SECRET": "test-client-secret",
+            "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
+            "OIDC_SCOPE": "openid,email,profile",
+            "OIDC_USE_REFRESH_TOKEN": False,
+            "OIDC_VERIFY_SSL": True,
+            "OIDC_CODE_CHALLENGE": "S256",
+            # No registry configured, so the default provider falls back to the flat OIDC_*
+            # variables — the shape a legacy deployment has.
+            "AUTH_PROVIDERS": SimpleNamespace(providers=[], source="legacy", by_id=lambda _: None),
+        }
+        defaults.update(kwargs)
+        with ExitStack() as stack:
+            for key, value in defaults.items():
+                stack.enter_context(patch.object(oauth_mod.config, key, value, create=True))
+            stack.enter_context(patch.object(oauth_mod, "_registered", {}))
+            yield
+
+    def test_credentials_usable_allows_public_client(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with self._patch_config(oauth_mod):
+            self.assertTrue(oauth_mod._credentials_usable("default", None))
+
+    def test_credentials_usable_rejects_no_secret_and_no_pkce(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with self._patch_config(oauth_mod, OIDC_CODE_CHALLENGE=None):
+            self.assertFalse(oauth_mod._credentials_usable("default", None))
+
+    def test_legacy_public_client_without_pkce_is_named_not_silently_dropped(self):
+        """A deployment that set an id and a discovery URL must not be told nothing was configured."""
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with self._patch_config(oauth_mod, OIDC_CLIENT_SECRET=None, OIDC_CODE_CHALLENGE=None):
+            # The gate that decides whether registration is attempted at all must still pass, or
+            # the specific error below is never reached.
+            self.assertTrue(oauth_mod._has_required_config())
+            with self.assertLogs(oauth_mod.logger, level="ERROR") as captured:
+                self.assertIsNone(oauth_mod._client_settings(oauth_mod.DEFAULT_PROVIDER_ID))
+
+        self.assertIn("PKCE is disabled", "".join(captured.output))
+
+    def test_public_client_settings_omit_client_secret_entirely(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with self._patch_config(oauth_mod, OIDC_CLIENT_SECRET=None):
+            settings = oauth_mod._client_settings(oauth_mod.DEFAULT_PROVIDER_ID)
+
+        # Not merely falsy: authlib reads a present-but-empty secret as a confidential client
+        # and sends a blank credential the provider rejects as invalid_client.
+        self.assertNotIn("client_secret", settings)
+        self.assertEqual(settings["client_id"], "test-client-id")
+
+    def test_registry_provider_without_secret_registers_as_public_client(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        provider = SimpleNamespace(id="okta", type="oidc", client_id="okta-id", discovery_url="https://okta.example.com/.well-known/openid-configuration")
+        registry = SimpleNamespace(providers=[provider], source="registry", by_id=lambda _: provider)
+
+        with self._patch_config(oauth_mod, AUTH_PROVIDERS=registry), patch.object(oauth_mod, "_client_secret_for", return_value=None):
+            settings = oauth_mod._client_settings("okta")
+
+        self.assertNotIn("client_secret", settings)
+        self.assertEqual(settings["client_id"], "okta-id")
+
+    def test_registry_provider_without_secret_or_pkce_is_refused(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        provider = SimpleNamespace(id="okta", type="oidc", client_id="okta-id", discovery_url="https://okta.example.com/.well-known/openid-configuration")
+        registry = SimpleNamespace(providers=[provider], source="registry", by_id=lambda _: provider)
+
+        with (
+            self._patch_config(oauth_mod, AUTH_PROVIDERS=registry, OIDC_CODE_CHALLENGE=None),
+            patch.object(oauth_mod, "_client_secret_for", return_value=None),
+        ):
+            self.assertIsNone(oauth_mod._client_settings("okta"))
+
+    def test_registration_omits_client_secret_for_public_client(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with self._patch_config(oauth_mod, OIDC_CLIENT_SECRET=None), patch.object(oauth_mod.oauth, "register") as mock_register:
+            self.assertTrue(oauth_mod.ensure_client_registered())
+
+        kwargs = mock_register.call_args.kwargs
+        self.assertNotIn("client_secret", kwargs)
+        self.assertEqual(kwargs["client_kwargs"]["code_challenge_method"], "S256")
+
+    def test_registration_passes_client_secret_when_present(self):
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with self._patch_config(oauth_mod), patch.object(oauth_mod.oauth, "register") as mock_register:
+            self.assertTrue(oauth_mod.ensure_client_registered())
+
+        self.assertEqual(mock_register.call_args.kwargs["client_secret"], "test-client-secret")
 
 
 if __name__ == "__main__":
