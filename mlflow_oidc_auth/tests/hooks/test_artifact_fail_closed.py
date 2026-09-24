@@ -36,6 +36,7 @@ OTHER = "3"  # nobody but the admin and OWNER holds a grant here
 WS1_EXPERIMENT = "4"  # lives in workspace ws1
 WS2_EXPERIMENT = "5"  # lives in workspace ws2, but a directory for it sits under ws1's root
 DELETED = "6"  # soft-deleted: still exists, but is not browsable from the root
+ALIASED = "12"  # a victim experiment reachable, before the fix, through "012" / "0012"
 
 OWNER = "owner@example.com"  # MANAGE on every experiment — still cannot touch the root
 READER = "reader@example.com"  # READ on the victim only
@@ -43,10 +44,21 @@ EDITOR = "editor@example.com"  # EDIT on the victim
 OUTSIDER = "outsider@example.com"  # NO_PERMISSIONS on the victim, EDIT on their own
 ADMIN = "admin@example.com"
 
-EXPERIMENT_WORKSPACES = {VICTIM: "default", OWN: "default", OTHER: "default", WS1_EXPERIMENT: "ws1", WS2_EXPERIMENT: "ws2", DELETED: "default"}
+EXPERIMENT_WORKSPACES = {
+    VICTIM: "default",
+    OWN: "default",
+    OTHER: "default",
+    WS1_EXPERIMENT: "ws1",
+    WS2_EXPERIMENT: "ws2",
+    DELETED: "default",
+    ALIASED: "default",
+}
 # Directories under the root with no experiment behind them: a garbage-collected
 # experiment's leftovers, and Unicode digits that str.isdigit() accepts.
 NOT_EXPERIMENTS = ["999", "²", "١٢"]
+# Non-canonical spellings of an existing id: the SQL store int()s them to experiment 12,
+# but they are different directories and carry no grant of their own.
+ALIASES = ["012", "0012"]
 RUN_EXPERIMENTS = {"r-victim": VICTIM, "r-own": OWN}
 
 PREFIXES = ("/api", "/ajax-api")
@@ -54,11 +66,34 @@ ROOT_SHAPES = [".", "%2e", "%252e", "./.", ".//", "./", "workspaces/ws1", "works
 
 
 class _FakeTrackingStore:
+    """Behaves like MLflow's SQL store where it matters: ids are int()ed on lookup."""
+
+    def __init__(self):
+        self.calls = []
+
+    def _experiment(self, experiment_id):
+        stage = "deleted" if experiment_id == DELETED else "active"
+        return SimpleNamespace(experiment_id=experiment_id, workspace=EXPERIMENT_WORKSPACES[experiment_id], lifecycle_stage=stage)
+
     def get_experiment(self, experiment_id):
-        if str(experiment_id) not in EXPERIMENT_WORKSPACES:
+        self.calls.append("get_experiment")
+        try:
+            normalized = str(int(experiment_id))
+        except ValueError:
+            normalized = str(experiment_id)
+        if normalized not in EXPERIMENT_WORKSPACES:
             raise MlflowException(f"Experiment {experiment_id} not found", RESOURCE_DOES_NOT_EXIST)
-        stage = "deleted" if str(experiment_id) == DELETED else "active"
-        return SimpleNamespace(experiment_id=str(experiment_id), workspace=EXPERIMENT_WORKSPACES[str(experiment_id)], lifecycle_stage=stage)
+        return self._experiment(normalized)
+
+    def search_experiments(self, view_type=None, max_results=None, page_token=None, **_):
+        from mlflow.entities import ViewType
+        from mlflow.store.entities.paged_list import PagedList
+
+        self.calls.append("search_experiments")
+        experiments = [self._experiment(e) for e in EXPERIMENT_WORKSPACES]
+        if view_type == ViewType.ACTIVE_ONLY:
+            experiments = [e for e in experiments if e.lifecycle_stage == "active"]
+        return PagedList(experiments, None)
 
     def get_run(self, run_id):
         return SimpleNamespace(info=SimpleNamespace(experiment_id=RUN_EXPERIMENTS.get(run_id, VICTIM), run_id=run_id))
@@ -109,7 +144,7 @@ def artifact_root(tmp_path, monkeypatch):
     from mlflow.store.artifact.local_artifact_repo import LocalArtifactRepository
 
     root = tmp_path / "artifacts"
-    for experiment in (VICTIM, OWN, OTHER, DELETED, *NOT_EXPERIMENTS):
+    for experiment in (VICTIM, OWN, OTHER, DELETED, *NOT_EXPERIMENTS, *ALIASES):
         (root / experiment / "r1" / "artifacts").mkdir(parents=True)
         (root / experiment / "r1" / "artifacts" / "model.pkl").write_text("secret")
     for workspace, experiment in (("ws1", WS1_EXPERIMENT), ("ws1", WS2_EXPERIMENT), ("ws2", WS2_EXPERIMENT)):
@@ -245,7 +280,7 @@ def test_root_listing_is_filtered_to_readable_experiments(artifact_root, prefix,
 
 def test_admin_root_listing_is_unfiltered(artifact_root):
     assert _listed(_request("/api/2.0/mlflow-artifacts/artifacts", "GET", ADMIN)) == sorted(
-        [VICTIM, OWN, OTHER, DELETED, *NOT_EXPERIMENTS, "stray.txt", "workspaces"]
+        [VICTIM, OWN, OTHER, DELETED, *NOT_EXPERIMENTS, *ALIASES, "stray.txt", "workspaces"]
     )
 
 
@@ -290,6 +325,56 @@ def test_directories_that_name_no_experiment_are_denied(artifact_root, name, met
     assert _denied(_request(f"/api/2.0/mlflow-artifacts/artifacts/{name}/r1/artifacts/model.pkl", method, OWNER))
     assert _denied(_request(f"/api/2.0/mlflow-artifacts/artifacts?path={name}/r1", "GET", OWNER))
     assert _tree(artifact_root) == before
+
+
+@pytest.mark.parametrize("alias", ALIASES)
+@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+def test_non_canonical_ids_are_denied(artifact_root, alias, method):
+    """ "012" is not experiment 12: the store would resolve it to 12, the grant lookup would
+    not (no grant on "012", so the MANAGE default), and MLflow would serve <root>/012."""
+    before = _tree(artifact_root)
+    assert _denied(_request(f"/api/2.0/mlflow-artifacts/artifacts/{alias}/r1/artifacts/model.pkl", method, OUTSIDER))
+    assert _denied(_request(f"/api/2.0/mlflow-artifacts/artifacts?path={alias}/r1", "GET", OUTSIDER))
+    assert _tree(artifact_root) == before
+
+
+def test_non_canonical_directories_are_never_listed(artifact_root, permission_store):
+    """Even for a caller who can read experiment 12, "012" is a stray directory."""
+    permission_store.update_experiment_permission(ALIASED, OUTSIDER, "READ")
+    assert _listed(_request("/api/2.0/mlflow-artifacts/artifacts", "GET", OUTSIDER)) == [OWN]
+
+
+def test_root_listing_makes_a_bounded_number_of_store_calls(artifact_root, monkeypatch):
+    """No N+1: one batched lookup whatever the number of listed directories."""
+    for i in range(100, 300):
+        (artifact_root / str(i)).mkdir()
+    store = _FakeTrackingStore()
+    monkeypatch.setattr("mlflow.server.handlers._tracking_store", store)
+    assert _listed(_request("/api/2.0/mlflow-artifacts/artifacts", "GET", OWNER)) == sorted([VICTIM, OWN, OTHER])
+    assert store.calls == ["search_experiments"]
+
+
+def test_a_store_outage_denies_and_is_logged_once(artifact_root, monkeypatch):
+    """A lookup failure fails closed, and says so instead of claiming the experiment is missing."""
+    from unittest.mock import MagicMock
+
+    class _Down(_FakeTrackingStore):
+        def get_experiment(self, experiment_id):
+            raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("mlflow.server.handlers._tracking_store", _Down())
+    logger = MagicMock()
+    monkeypatch.setattr("mlflow_oidc_auth.validators.experiment.logger", logger)
+    assert _denied(_request(f"/api/2.0/mlflow-artifacts/artifacts/{VICTIM}/r1/artifacts/model.pkl", "GET", OWNER))
+
+    from mlflow_oidc_auth.validators.experiment import get_artifact_experiment
+
+    logger.reset_mock()
+    with mlflow_app.test_request_context("/"):
+        assert get_artifact_experiment(VICTIM) is None
+        assert get_artifact_experiment(OWN) is None
+    outage = [c for c in logger.warning.call_args_list if "RuntimeError: database unavailable" in c.args[0]]
+    assert len(outage) == 1, "an outage must be logged, once per request"
 
 
 def test_a_soft_deleted_experiment_is_still_its_owners(artifact_root):

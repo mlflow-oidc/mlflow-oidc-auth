@@ -442,6 +442,14 @@ upgrade.
   were already denied, and nothing changes except that the root listing is now filtered rather
   than refused. The logged-model artifact routes and the run presigned-URL routes are also
   authorized now; before, they had no check. See [Artifact Access](permissions#artifact-access).
+
+  **Artifacts-only servers** (`mlflow server --artifacts-only`, or any artifact proxy whose
+  tracking store has no experiment table or cannot be reached) are affected too. An artifact
+  path is now authorized only after the plugin confirms, in the tracking store, that the
+  experiment it names exists. A server that cannot answer that denies all non-admin proxy
+  traffic, and logs the store error. Keep the tracking store reachable from the artifact
+  server, or route non-admin artifact traffic through the tracking server.
+
 - **Routes without a validator are refused to non-admins.** A request to an MLflow route that
   has no authorization rule now gets `403` for a non-admin user instead of being served. Admins
   are unaffected. See [Routes without a validator](permissions#routes-without-a-validator).

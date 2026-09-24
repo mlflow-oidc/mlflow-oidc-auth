@@ -169,8 +169,9 @@ MANAGE.
 **A path that names no experiment is denied** with `403` for every method, whatever
 `DEFAULT_MLFLOW_PERMISSION` is. That covers the artifact root (`.`, `%2e`, `./.`, `.//`, an
 empty path), a workspace root (`workspaces/<ws>`) and any path whose first segment is not an
-experiment id (`models/…`, `workspaces`, …). An experiment id is ASCII decimal digits only,
-and it must name an experiment that exists in the tracking store. A soft-deleted experiment
+experiment id (`models/…`, `workspaces`, …). An experiment id is ASCII decimal digits in
+canonical form, so `012` is not experiment `12`. It must name an experiment that exists in the
+tracking store, and a failed store lookup denies. A soft-deleted experiment
 still exists, so its owner keeps access. A directory with no experiment behind it (for
 example what is left after an experiment is garbage-collected) is denied. Only an
 administrator can download, upload to or delete the root or such leftovers, since the root
@@ -209,7 +210,7 @@ Every run or model id the request carries is authorized, in any source (see
 
 ## HEAD Requests and Route Coverage
 
-A `HEAD` request is authorized exactly like the `GET` it mirrors. werkzeug serves `HEAD` through the `GET` view and keeps the `Content-Length` header, so it gets the same validator and the same search filtering as its `GET` twin. A caller who cannot read a resource cannot use `HEAD` to learn whether it exists or how large it is. Coverage of MLflow's API is enforced by a test, not by convention. `mlflow_oidc_auth/tests/hooks/test_validator_coverage_sweep.py` walks every route and method in MLflow's Flask routing table, with `HEAD` folded onto `GET`, and every protobuf message MLflow registers. The test fails on any route that has no validator, no search filtering, no unprotected prefix and no reasoned entry in its lists. It also fails on any mutating message (`Log*`, `Set*`, `Delete*`, `Create*`, …) that does not reach a validator. Those lists can only shrink, so a new MLflow route cannot go unnoticed. MLflow's own registry webhook API (`/api/2.0/mlflow/webhooks*` and its `/ajax-api` twin) is admin-only. Its deliveries are not scoped to a tenant, so it is gated the same way as the plugin's own webhook API (`/oidc/webhook`).
+A `HEAD` request is authorized exactly like the `GET` it mirrors. werkzeug serves `HEAD` through the `GET` view and keeps the `Content-Length` header, so it gets the same validator and the same search filtering as its `GET` twin. A caller who cannot read a resource cannot use `HEAD` to learn whether it exists or how large it is. Coverage of MLflow's API is checked by a test, `mlflow_oidc_auth/tests/hooks/test_validator_coverage_sweep.py`. It walks every route and method in MLflow's Flask routing table, with `HEAD` folded onto `GET`, and every protobuf message MLflow registers. The test fails on any route, or any mutating message (`Log*`, `Set*`, `Delete*`, `Create*`, …), that does not fall into one of these groups: mapped to a validator, filtered after the request, admin-only, on the documented list of open routes, or on a list of routes still awaiting a validator. That last list can only shrink, and follow-up changes are emptying it. A route MLflow adds later therefore fails the test until it is classified. MLflow's own registry webhook API is admin-only. Its deliveries are not scoped to a tenant, so it is gated the same way as the plugin's own webhook API.
 
 ### Routes without a validator
 

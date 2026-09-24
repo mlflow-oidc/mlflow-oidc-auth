@@ -255,14 +255,14 @@ def _extract_param_from_all_sources(param: str) -> str | None:
         if hasattr(request, "json") and request.json and param in request.json:
             return request.json[param]
     except Exception:
-        pass
+        pass  # an unreadable source contributes no value; the caller decides on what it did read
     # Fallback to get_json method
     try:
         json_data = request.get_json(silent=True)
         if json_data and param in json_data:
             return json_data[param]
     except Exception:
-        pass
+        pass  # an unreadable source contributes no value; the caller decides on what it did read
     return None
 
 
@@ -347,7 +347,7 @@ def all_source_values(*params: str) -> list:
             try:
                 values.extend(request.args.getlist(key))
             except Exception:
-                pass
+                pass  # an unreadable source contributes no value; the caller decides on what it did read
             value = body.get(key)
             values.extend(value if isinstance(value, list) else [value])
             values.extend(_form_values(key))
