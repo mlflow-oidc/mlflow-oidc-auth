@@ -508,3 +508,57 @@ class TestPermissionBoundaryConditions:
                 result1 = compare_permissions(perm1, perm2)
                 result2 = compare_permissions(perm1, perm2)  # Should be same
                 assert result1 == result2
+
+
+class TestIntersectPermissions:
+    """intersect_permissions must return a real, lookup-safe level no stronger than its weakest input."""
+
+    LEVELS = ["READ", "USE", "EDIT", "MANAGE", "NO_PERMISSIONS"]
+
+    @pytest.mark.parametrize("a", LEVELS)
+    @pytest.mark.parametrize("b", LEVELS)
+    def test_result_is_the_weakest_member_and_a_valid_key(self, a, b):
+        from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, compare_permissions, get_permission, intersect_permissions
+
+        pa, pb = get_permission(a), get_permission(b)
+        result = intersect_permissions([pa, pb])
+
+        # The name is a real key: neither of these may raise.
+        assert get_permission(result.name) is result
+        assert result in ALL_PERMISSIONS.values()
+        compare_permissions(result.name, a)
+        compare_permissions(result.name, b)
+
+        # Exactly the capabilities held on both, never more.
+        for flag in ("can_read", "can_use", "can_update", "can_delete", "can_manage"):
+            assert getattr(result, flag) == (getattr(pa, flag) and getattr(pb, flag)), flag
+        weakest = (
+            pa
+            if sum(vars(pa)[f] for f in ("can_read", "can_use", "can_update", "can_delete", "can_manage"))
+            <= sum(vars(pb)[f] for f in ("can_read", "can_use", "can_update", "can_delete", "can_manage"))
+            else pb
+        )
+        assert result is weakest
+
+    def test_manage_and_no_permissions_is_no_permissions(self):
+        """priority is not a capability order (NO_PERMISSIONS=100), so neither min nor max of it is right."""
+        from mlflow_oidc_auth.permissions import MANAGE, NO_PERMISSIONS, intersect_permissions
+
+        assert intersect_permissions([MANAGE, NO_PERMISSIONS]) is NO_PERMISSIONS
+        assert intersect_permissions([NO_PERMISSIONS, MANAGE]) is NO_PERMISSIONS
+
+    def test_flags_matching_no_level_round_down(self):
+        """A custom permission outside the level chain can only ever lower the result."""
+        from mlflow_oidc_auth.permissions import EDIT, NO_PERMISSIONS, READ, Permission, get_permission, intersect_permissions
+
+        odd = Permission(name="ODD", priority=7, can_read=False, can_use=True, can_update=True, can_delete=False, can_manage=False)
+        result = intersect_permissions([EDIT, odd])  # AND = use+update, no read: no level fits except NONE
+        assert result is NO_PERMISSIONS
+        assert get_permission(result.name) is result
+        odd_read = Permission(name="ODD2", priority=7, can_read=True, can_use=False, can_update=True, can_delete=False, can_manage=False)
+        assert intersect_permissions([EDIT, odd_read]) is READ
+
+    def test_empty_is_no_permissions(self):
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, intersect_permissions
+
+        assert intersect_permissions([]) is NO_PERMISSIONS
