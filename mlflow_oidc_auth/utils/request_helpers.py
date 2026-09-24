@@ -284,12 +284,6 @@ def _is_scalar(value: object) -> bool:
     return isinstance(value, (str, int, float)) and not isinstance(value, bool)
 
 
-def _snake_to_camel(name: str) -> str:
-    """protobuf's ``json_name`` spelling for a snake_case field name."""
-    head, *rest = name.split("_")
-    return head + "".join(word[:1].upper() + word[1:] for word in rest)
-
-
 def request_body_dict() -> dict:
     """The request body as the dict MLflow would parse, or ``{}``.
 
@@ -330,6 +324,11 @@ def all_source_values(*params: str) -> list:
     contribute their items), and form fields. Order is deterministic and
     duplicates are dropped by their string form, so ``1`` and ``"1"`` count once.
     """
+    # The guard's own spelling function, imported lazily like _proto_route_value's
+    # import, so the camelCase the union checks can never drift from the one the
+    # dual-spelling guard and proto_request_value use.
+    from mlflow_oidc_auth.hooks.dual_spelling_guard import _snake_to_camel
+
     values: list = []
     view_args = request.view_args if isinstance(request.view_args, dict) else {}
     body = request_body_dict()
