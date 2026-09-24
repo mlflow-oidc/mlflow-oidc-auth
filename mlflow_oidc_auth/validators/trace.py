@@ -215,12 +215,18 @@ def validate_can_start_trace_v3(username: str) -> bool:
     """
     from mlflow.exceptions import MlflowException
 
+    from mlflow_oidc_auth.utils.request_helpers import _is_scalar
+
     infos = _start_trace_v3_trace_infos()
     destinations: list = []
     for info in infos:
         for location in _field_values(info, "trace_location", "traceLocation"):
             for mlflow_experiment in _field_values(location, "mlflow_experiment", "mlflowExperiment"):
                 destinations += _field_values(mlflow_experiment, "experiment_id", "experimentId")
+    # A list / dict where an id belongs names no single resource; refuse rather than let it
+    # reach a set or a store lookup, which would raise and turn the auth hook into a 500.
+    if not all(_is_scalar(e) for e in destinations):
+        return False
     destinations = list(dict.fromkeys(e for e in destinations if e))
     if not destinations:
         return False
@@ -228,10 +234,20 @@ def validate_can_start_trace_v3(username: str) -> bool:
     need_update = list(destinations)
     need_delete: list = []
     for info in infos:
-        own_ids = {t for t in _field_values(info, "trace_id", "traceId") if t}
+        # MLflow trusts the caller-chosen trace_id, and an absent one is stored as "" — so a
+        # second id-less request collides with the first and takes the merge path. An absent
+        # id is therefore not "a new trace": every trace_info must name a non-empty string id.
+        own_values = _field_values(info, "trace_id", "traceId")
+        if not own_values or not all(isinstance(t, str) and t for t in own_values):
+            return False
+        own_ids = set(own_values)
         assessments = _assessments_of(info)
         for assessment in assessments:
-            named = {t for t in _field_values(assessment, "trace_id", "traceId") if t}
+            named_values = _field_values(assessment, "trace_id", "traceId")
+            assessment_ids = _field_values(assessment, "assessment_id", "assessmentId")
+            if not all(_is_scalar(v) for v in named_values + assessment_ids):
+                return False
+            named = {t for t in named_values if t}
             if named - own_ids:
                 return False
         for trace_id in own_ids:
