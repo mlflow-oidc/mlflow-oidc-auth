@@ -132,7 +132,7 @@ class TestScimTokenDoesNotAuthenticateElsewhere:
 
 class TestUnmatchedScimPaths:
     def test_unsupported_resource_is_a_scim_404(self, client, scim):
-        response = client.get("/scim/v2/Groups", headers=scim)
+        response = client.get("/scim/v2/Bulk", headers=scim)
         assert response.status_code == 404
         assert response.json()["schemas"] == [ERROR_SCHEMA]
 

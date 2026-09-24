@@ -108,9 +108,9 @@ def test_add_user_to_group(repo, session):
 
 
 def test_remove_user_from_group(repo, session):
-    user = MagicMock(id=1)
-    grp = MagicMock(id=2)
-    ug = MagicMock()
+    user = MagicMock(id=1, is_admin=False, username="user")
+    grp = MagicMock(id=2, group_name="g7")
+    ug = MagicMock(managed_by="manual")
     session.query().filter().one.return_value = ug
     session.delete = MagicMock()
     session.flush = MagicMock()
@@ -159,43 +159,33 @@ def test_list_group_members(repo, session):
         assert result == ["user1_entity", "user2_entity"]
 
 
-def test_set_groups_for_user(repo, session):
-    user = MagicMock(id=1)
-    group1 = MagicMock(id=10)
-    group2 = MagicMock(id=20)
-    session.delete = MagicMock()
-    session.add = MagicMock()
-    session.flush = MagicMock()
-    with (
-        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.group.list_user_groups", return_value=[group1]),
-        patch("mlflow_oidc_auth.repository.group.get_group", side_effect=[group1, group2]),
-        patch("mlflow_oidc_auth.db.models.SqlUserGroup", return_value=MagicMock()),
-    ):
-        repo.set_groups_for_user("user", ["g1", "g2"])
-        session.delete.assert_called_once_with(group1)
-        assert session.add.call_count == 2
-        session.flush.assert_called_once()
+@pytest.fixture
+def real_store(tmp_path):
+    from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+
+    s = SqlAlchemyStore()
+    s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+    s.create_user("user@example.com", "unused-secret", "User")
+    s.populate_groups(["g1", "g2", "g3"])
+    yield s
+    s.engine.dispose()
 
 
-def test_set_groups_for_user_deduplicates_group_names(repo, session):
+def test_set_groups_for_user(real_store):
+    real_store.set_user_groups("user@example.com", ["g1"])
+
+    outcome = real_store.set_user_groups("user@example.com", ["g2", "g3"])
+
+    assert sorted(real_store.get_groups_for_user("user@example.com")) == ["g2", "g3"]
+    assert outcome.removed == [("user@example.com", "g1")]
+    assert sorted(outcome.added) == [("user@example.com", "g2"), ("user@example.com", "g3")]
+
+
+def test_set_groups_for_user_deduplicates_group_names(real_store):
     """Regression test: duplicate group names in the token (e.g. Microsoft Entra ID
     emitting the same security group GUID twice when a user holds multiple app roles
     backed by the same group) must not cause a UniqueViolation on user_groups."""
-    user = MagicMock(id=1)
-    group1 = MagicMock(id=10)
-    group2 = MagicMock(id=20)
-    session.delete = MagicMock()
-    session.add = MagicMock()
-    session.flush = MagicMock()
-    with (
-        patch("mlflow_oidc_auth.repository.group.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.group.list_user_groups", return_value=[]),
-        # get_group should only be called twice despite three names being passed
-        patch("mlflow_oidc_auth.repository.group.get_group", side_effect=[group1, group2]),
-        patch("mlflow_oidc_auth.db.models.SqlUserGroup", return_value=MagicMock()),
-    ):
-        repo.set_groups_for_user("user", ["g1", "g2", "g2"])  # "g2" appears twice
-        # Only two unique groups should be inserted, not three
-        assert session.add.call_count == 2
-        session.flush.assert_called_once()
+    outcome = real_store.set_user_groups("user@example.com", ["g1", "g2", "g2"])  # "g2" appears twice
+
+    assert len(outcome.added) == 2
+    assert sorted(real_store.get_groups_for_user("user@example.com")) == ["g1", "g2"]

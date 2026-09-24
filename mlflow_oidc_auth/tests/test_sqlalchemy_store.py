@@ -262,7 +262,7 @@ class TestSqlAlchemyStore:
         mock_user = create_test_user("testuser", "Test User", False, False)
         mock_store.user_repo.create.return_value = mock_user
         result = mock_store.create_user("testuser", "password", "Test User", False, False)
-        mock_store.user_repo.create.assert_called_once_with("testuser", "password", "Test User", False, False)
+        mock_store.user_repo.create.assert_called_once_with("testuser", "password", "Test User", False, False, written_by=None)
         assert result == mock_user
 
     def test_has_user(self, mock_store: SqlAlchemyStore):
@@ -305,7 +305,7 @@ class TestSqlAlchemyStore:
 
     def test_delete_user(self, mock_store: SqlAlchemyStore):
         mock_store.delete_user("testuser")
-        mock_store.user_repo.delete.assert_called_once_with("testuser")
+        mock_store.user_repo.delete.assert_called_once_with("testuser", written_by=None, admin_override=False, actor=None)
 
     # Test experiment permission methods
     def test_create_experiment_permission(self, mock_store: SqlAlchemyStore):
@@ -429,7 +429,7 @@ class TestSqlAlchemyStore:
     # Test group management methods
     def test_populate_groups(self, mock_store: SqlAlchemyStore):
         mock_store.populate_groups(["group1", "group2"])
-        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2"])
+        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2"], written_by=None)
 
     def test_get_groups(self, mock_store: SqlAlchemyStore):
         mock_groups = ["group1", "group2"]
@@ -469,7 +469,7 @@ class TestSqlAlchemyStore:
 
     def test_set_user_groups(self, mock_store: SqlAlchemyStore):
         mock_store.set_user_groups("user1", ["group1", "group2"])
-        mock_store.group_repo.set_groups_for_user.assert_called_once_with("user1", ["group1", "group2"])
+        mock_store.group_repo.set_groups_for_user.assert_called_once_with("user1", ["group1", "group2"], written_by=None, admin_override=False, actor=None)
 
     def test_get_group_experiments(self, mock_store: SqlAlchemyStore):
         mock_permissions = [create_test_experiment_permission("exp1", "READ", 1)]
@@ -659,14 +659,14 @@ class TestSqlAlchemyStoreTransactionHandling:
         # Test bulk group creation
         mock_store.group_repo.create_groups.return_value = None
         mock_store.populate_groups(["group1", "group2", "group3"])
-        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2", "group3"])
+        mock_store.group_repo.create_groups.assert_called_once_with(["group1", "group2", "group3"], written_by=None)
 
     def test_cascading_delete_operations(self, mock_store):
         """Test cascading delete operations maintain referential integrity"""
         # Test user deletion cascades to permissions
         mock_store.user_repo.delete.return_value = None
         mock_store.delete_user("testuser")
-        mock_store.user_repo.delete.assert_called_once_with("testuser")
+        mock_store.user_repo.delete.assert_called_once_with("testuser", written_by=None, admin_override=False, actor=None)
 
         # Test model deletion cascades to permissions
         mock_store.registered_model_repo.wipe.return_value = None

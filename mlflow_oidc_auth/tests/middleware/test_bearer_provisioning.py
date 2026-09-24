@@ -114,9 +114,9 @@ class TestAuthorizationGate:
             _cfg(cfg)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice"})
-            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False)
-            populate_groups.assert_called_once_with(group_names=["mlflow-users"])
-            update_user.assert_called_once_with(username="a@x.com", group_names=["mlflow-users"])
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False, written_by="oidc:default")
+            populate_groups.assert_called_once_with(group_names=["mlflow-users"], written_by="oidc:default")
+            update_user.assert_called_once_with(username="a@x.com", group_names=["mlflow-users"], written_by="oidc:default")
 
 
 class TestAdminElevation:
@@ -132,7 +132,7 @@ class TestAdminElevation:
             _cfg(cfg, OIDC_TRUST_BEARER_GROUP_CLAIMS=False)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
-            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False)
+            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False, written_by="oidc:default")
 
     def test_admin_group_with_trust_on_confers_admin(self):
         with (
@@ -145,7 +145,7 @@ class TestAdminElevation:
             _cfg(cfg, OIDC_TRUST_BEARER_GROUP_CLAIMS=True)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
-            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=True)
+            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=True, written_by="oidc:default")
 
 
 class TestConfigurableDisplayName:
@@ -164,7 +164,7 @@ class TestConfigurableDisplayName:
             _cfg(cfg)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice", "full_name": "Alice Anderson"})
-            create_user.assert_called_once_with(username="a@x.com", display_name="Alice Anderson", is_admin=False)
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice Anderson", is_admin=False, written_by="oidc:default")
 
     def test_provisioning_falls_back_to_username_when_configured_field_missing(self, monkeypatch):
         """A present-but-unconfigured field (e.g. 'name') must not be used as a fallback source."""
@@ -180,7 +180,7 @@ class TestConfigurableDisplayName:
             store.has_user.return_value = False
             # "name" is present but not the configured field, so it must not be used.
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice"})
-            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False)
+            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False, written_by="oidc:default")
 
 
 class TestRobustness:
@@ -195,7 +195,7 @@ class TestRobustness:
             _cfg(cfg)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": "mlflow-users"})
-            populate_groups.assert_called_once_with(group_names=["mlflow-users"])
+            populate_groups.assert_called_once_with(group_names=["mlflow-users"], written_by="oidc:default")
 
     def test_provisioning_error_is_swallowed(self):
         """A concurrent-insert IntegrityError (or any provisioning failure) must not raise."""

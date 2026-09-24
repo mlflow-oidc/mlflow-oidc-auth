@@ -1,7 +1,9 @@
 """Who may write a row that another source owns (issue #319).
 
 ``managed_by`` (#311) records which source a user row belongs to — ``manual``, ``scim``, or
-``oidc:<provider>``. Per-provider policy (#318) is a promise about what each source *should* do;
+``oidc:<provider>``. Since #360 each group membership (``user_groups.managed_by``) records its
+own owner too, and membership removal, user deletion and user creation go through the same guard
+(see :mod:`mlflow_oidc_auth.repository.group` and ``UserRepository.create`` / ``delete``). Per-provider policy (#318) is a promise about what each source *should* do;
 this is what stops one source silently overwriting another's row when it does something else.
 
 **Staged, because the failure mode is lockout.** A guard that refuses writes cannot be recovered
@@ -41,6 +43,11 @@ MANUAL = "manual"
 
 #: The directory source (SCIM, #322).
 SCIM = "scim"
+
+#: Every owner a source presents. The break-glass paths (``PATCH /users/ownership``,
+#: ``reconcile-ownership``) refuse anything else: under ``enforce`` an owner no source presents
+#: conflicts with every writer forever.
+OWNER_PATTERN = r"manual|scim|(?:oidc|saml):[A-Za-z0-9._-]+"
 
 #: Writers that are identity providers performing a login, as ``<kind>:<provider-id>``.
 LOGIN_SOURCE_PREFIXES = ("oidc:", "saml:")
@@ -181,3 +188,75 @@ def evaluate_write(
     # Anything else reports, including a value that is neither of the three: an unreadable
     # setting must not be the thing that turns the guard off.
     return OwnershipDecision(allowed=True, conflict=True, owner=owner, reason=f"{reason} (report mode: permitted, and recorded)")
+
+
+def evaluate_group_delete(
+    membership_owner: Optional[str],
+    writer: Optional[str],
+    *,
+    enforcement: Enforcement,
+    admin_override: bool = False,
+) -> OwnershipDecision:
+    """Decide whether ``writer`` may delete a group that holds a membership owned by ``membership_owner``.
+
+    Stricter than :func:`evaluate_write` in one respect: a ``manual`` membership counts as owned.
+    Removing one membership row is a revocation any source may make of an unowned grant; deleting the
+    group takes the group away from every member *and* drops every permission granted to it, so a
+    directory deleting a group that an administrator or a login also populates is deleting
+    something that is not only its own (#323). The three enforcement states and the override apply
+    as everywhere else.
+
+    Parameters:
+        membership_owner: ``managed_by`` of one of the group's membership rows.
+        writer: The source deleting the group.
+        enforcement: The configured mode.
+        admin_override: Whether an administrator asked for this explicitly.
+
+    Returns:
+        OwnershipDecision: As for :func:`evaluate_write`.
+    """
+    return _evaluate_strict(membership_owner, writer, enforcement, admin_override, "delete a group holding memberships owned by")
+
+
+def _evaluate_strict(owner: Optional[str], writer: Optional[str], enforcement: Enforcement, admin_override: bool, action: str) -> OwnershipDecision:
+    """Only the owner writes without a conflict; ``manual`` counts as owned. Modes as usual."""
+    writer = writer or MANUAL
+    owner = owner or MANUAL
+    if owner == writer:
+        return OwnershipDecision(allowed=True)
+    if admin_override:
+        return OwnershipDecision(allowed=True, conflict=True, owner=owner, reason=f"administrator override: {writer!r} may {action} {owner!r}")
+    reason = f"{writer!r} may not {action} {owner!r}"
+    if enforcement == Enforcement.ENFORCE:
+        return OwnershipDecision(allowed=False, conflict=True, owner=owner, reason=reason)
+    if enforcement == Enforcement.OFF:
+        return OwnershipDecision(allowed=True)
+    return OwnershipDecision(allowed=True, conflict=True, owner=owner, reason=f"{reason} (report mode: permitted, and recorded)")
+
+
+def evaluate_group_write(
+    group_owner: Optional[str],
+    writer: Optional[str],
+    *,
+    enforcement: Enforcement,
+    admin_override: bool = False,
+) -> OwnershipDecision:
+    """Decide whether ``writer`` may write a *group* — its membership, its external id, or the
+    group itself — owned by ``group_owner`` (``groups.managed_by``).
+
+    Deny by default, stricter than :func:`evaluate_write`: only the owning source writes without a
+    conflict. A ``manual`` group is an administrator's (or predates ownership), and group names are
+    the permission boundary, so a directory putting users into it, or deleting it, is a write to
+    something it does not own. Adding a user to a group is how a group's grants reach them, so this
+    is what keeps a SCIM token out of a login-derived or Kubernetes namespace group under ``enforce``.
+
+    Parameters:
+        group_owner: The group's ``managed_by``. None means ``manual``.
+        writer: The source writing.
+        enforcement: The configured mode.
+        admin_override: Whether an administrator asked for this explicitly.
+
+    Returns:
+        OwnershipDecision: As for :func:`evaluate_write`.
+    """
+    return _evaluate_strict(group_owner, writer, enforcement, admin_override, "write a group owned by")

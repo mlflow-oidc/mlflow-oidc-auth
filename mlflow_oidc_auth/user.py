@@ -55,13 +55,23 @@ def create_user(
             display_name=display_name,
             is_admin=is_admin,
             is_service_account=is_service_account,
+            written_by=written_by,
         )
         return True, f"User {user.username} (ID: {user.id}) successfully created"
 
 
-def populate_groups(group_names: list) -> None:
-    store.populate_groups(group_names=group_names)
+def populate_groups(group_names: list, written_by: Optional[str] = None) -> None:
+    """Create the missing groups. ``written_by`` owns the ones created (#323 review)."""
+    store.populate_groups(group_names=group_names, written_by=written_by)
 
 
-def update_user(username: str, group_names: list) -> None:
-    store.set_user_groups(username, group_names)
+def update_user(username: str, group_names: list, written_by: Optional[str] = None, admin_override: bool = False) -> None:
+    """Sync the user's group membership as ``written_by`` asserts it (#360).
+
+    ``written_by`` is recorded as the owner of every membership this creates, and decides which
+    existing memberships the sync may remove — see
+    :meth:`mlflow_oidc_auth.repository.group.GroupRepository.set_groups_for_user`. Without it the
+    sync is ``manual``: its memberships are removable by any source, and under ``enforce`` it
+    cannot remove any other source's.
+    """
+    store.set_user_groups(username, group_names, written_by=written_by, admin_override=admin_override)

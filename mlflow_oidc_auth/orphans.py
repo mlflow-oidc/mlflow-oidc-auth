@@ -223,7 +223,15 @@ def report_orphans(username: str, *, actor: str, source: str, store=None) -> Lis
     return orphans
 
 
-def delete_user_reporting_orphans(username: str, *, actor: str, source: str, store=None) -> List[Tuple[str, str]]:
+def delete_user_reporting_orphans(
+    username: str,
+    *,
+    actor: str,
+    source: str,
+    store=None,
+    written_by: Optional[str] = None,
+    admin_override: bool = False,
+) -> List[Tuple[str, str]]:
     """Hard-delete ``username``, handing orphaned resources to ``ORPHAN_FALLBACK_PRINCIPAL``.
 
     Detection and hand-over run inside the delete's own transaction: detection before the cascade
@@ -239,11 +247,15 @@ def delete_user_reporting_orphans(username: str, *, actor: str, source: str, sto
     failed hand-over is undone without undoing the delete. Events are emitted only after the
     delete has committed.
 
+    The ``managed_by`` guard (#360) is evaluated by the delete itself, before either hook runs:
+    ``written_by`` and ``admin_override`` are passed through, and a refused delete detects nothing
+    and hands nothing over.
+
     Returns:
         The orphans found.
 
     Raises:
-        MlflowException: Whatever the delete itself raises.
+        MlflowException: Whatever the delete itself raises, the ownership refusal included.
     """
     store = _store_or_singleton(store)
     try:
@@ -278,7 +290,7 @@ def delete_user_reporting_orphans(username: str, *, actor: str, source: str, sto
             logger.exception("Orphan hand-over failed while deleting %s; deleting without it", username)
             transferred.clear()
 
-    store.delete_user_with_hook(username, before_cascade, after_cascade)
+    store.delete_user_with_hook(username, before_cascade, after_cascade, written_by=written_by, admin_override=admin_override, actor=actor)
 
     if transferred:
         try:

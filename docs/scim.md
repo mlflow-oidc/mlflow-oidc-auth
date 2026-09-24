@@ -6,8 +6,8 @@ ID, Okta, or a script) can use it to create users, keep their attributes current
 importantly, **deprovision** them: a user the directory deactivates loses every session and
 token on their next request.
 
-Only the `User` resource is implemented. `Groups` is not yet available (#323), and
-`/scim/v2/Groups` returns a SCIM 404.
+The `User` and `Group` resources are implemented. See [Groups](#groups) for group
+membership and how it coexists with memberships that come from logins or administrators.
 
 Nothing changes for a deployment that never issues a SCIM token: the endpoint accepts no other
 credential.
@@ -47,6 +47,12 @@ curl -u admin@example.com:$ADMIN_TOKEN -X DELETE https://mlflow.example.com/api/
 `<name> (rotated #<id>)` and expires after the overlap window (`SCIM_TOKEN_ROTATION_OVERLAP_SECONDS`,
 default one hour), so you can paste the new token into the directory without a failed sync in
 between. A revoked or expired token cannot be rotated.
+
+**Decommissioning a directory.** Revoking its token does not remove what it provisioned. The
+memberships it granted stay owned by `scim`, and under `MANAGED_BY_ENFORCEMENT=enforce` no login
+may remove them. Hand them back with `mlflow-oidc db reconcile-ownership --from-owner scim
+--set-owner manual --memberships`, or with `PATCH /api/2.0/mlflow/users/ownership` and
+`"memberships": true` for each user ([Row ownership](configuration#changing-ownership)).
 
 **Rate limit.** Each token may make `SCIM_RATE_LIMIT_PER_MINUTE` requests per minute (default
 600). Requests over the limit get `429`. The limit is kept **per process**: with N replicas, a
@@ -106,7 +112,7 @@ It then binds that provider's `(provider, sub)` identity as usual.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/ServiceProviderConfig`, `/ResourceTypes[/User]`, `/Schemas[/<urn>]` | Discovery |
+| GET | `/ServiceProviderConfig`, `/ResourceTypes[/User\|/Group]`, `/Schemas[/<urn>]` | Discovery |
 | GET | `/Users` | `filter` supports only `userName eq "..."` and `externalId eq "..."`. `startIndex` is 1-based; `count` defaults to 100, max 200 |
 | GET | `/Users/{id}` | |
 | POST | `/Users` | `409 uniqueness` if the userName or externalId is taken. An omitted `active` means `true` |
@@ -192,6 +198,175 @@ a SCIM-owned row. A provider writing a row another *provider* owns is still a fo
 
 Before turning on `enforce`, make sure the directory owns the rows it should manage. Either let
 it bind `externalId`s, or hand rows over with `mlflow-oidc db reconcile-ownership`.
+
+`DELETE` goes through the same guard, inside the delete's own transaction. A refused delete
+removes nothing and hands nothing over to `ORPHAN_FALLBACK_PRINCIPAL`.
+
+## Groups
+
+`/scim/v2/Groups` provisions groups and their membership. Group membership is what carries
+permissions ([Permissions](permissions)), so this is where the directory's access decisions take effect.
+
+### Identifiers
+
+A group's SCIM `id` is its **name**, as a user's is their username. `displayName` is therefore
+immutable through SCIM: a `PUT` or `PATCH` that changes it gets `400 mutability`. To rename a
+group, create a new one. Group names are **case-sensitive**, because they are compared with IdP
+group claims exactly as the IdP sends them. A new `displayName` follows the same rules as a
+`userName`, except that it is not case-folded. It may not be empty or longer than 255
+characters, contain control characters, or contain `/`, `?`, `#` or `%`.
+
+`externalId` is stored on the group (`groups.external_id`, unique when present). As for users,
+it is **not** an id. `/Groups/{id}` resolves the name only, and a client that knows only the
+`externalId` uses `GET /Groups?filter=externalId eq "..."`.
+
+`POST` for a name that already exists gets `409 uniqueness`, even when a login or an
+administrator created the group. Entra and Okta look a group up by `displayName` before creating
+it, and then manage the one they find through `PATCH`/`PUT`. Under `enforce` that works only for a
+group SCIM owns; see [Group ownership](#group-ownership).
+
+Members are **users only**. A member is `{"value": "<user id>"}`, and `display`, `$ref` and
+`type` are accepted. Responses list each member as `value`, `$ref` and `type` without
+`display`, which is read-only; the user resource carries the display name. A `type` of `Group` (a nested group) is refused with `400 invalidValue`. So
+is a member that names no user. In both cases the whole request is refused and nothing is
+applied. Service accounts are not visible: they are never listed as members and cannot be
+added, and a `PUT` never removes them.
+
+### Operations
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/Groups` | `filter` supports only `displayName eq "..."` and `externalId eq "..."`. `startIndex` / `count` as for users. `excludedAttributes=members` omits members |
+| GET | `/Groups/{id}` | `excludedAttributes=members` supported |
+| POST | `/Groups` | `displayName` required. `externalId` and `members` optional |
+| PUT | `/Groups/{id}` | Okta's shape. `displayName` must be unchanged. `externalId` is replaced, and an absent one is cleared. `members` replaces the membership as a sync (below). **An omitted `members` leaves membership unchanged**, so a PUT carrying only attributes never empties a group |
+| PATCH | `/Groups/{id}` | See below |
+| DELETE | `/Groups/{id}` | Removes the group, its memberships and every permission granted to it. See [Deleting a group](#deleting-a-group) |
+
+**PATCH.** Operations apply in order, in one transaction. `op` is case-insensitive
+(`Add`/`Remove`/`Replace`, as Entra sends them), and paths may be URN-qualified.
+
+| Operation | Shape | Sent by |
+|---|---|---|
+| Add members | `{"op": "add", "path": "members", "value": [{"value": "<id>"}, ...]}` | Entra, Okta |
+| Remove one member | `{"op": "remove", "path": "members[value eq \"<id>\"]"}` | Entra |
+| Remove listed members | `{"op": "remove", "path": "members", "value": [{"value": "<id>"}]}` | Entra |
+| Remove every member | `{"op": "remove", "path": "members"}` | |
+| Replace members | `{"op": "replace", "path": "members", "value": [...]}` | |
+| Set or clear `externalId` | `add` / `replace` / `remove` on `externalId` | |
+| No path | `{"op": "replace", "value": {"displayName": ..., "externalId": ..., "members": [...]}}` | Entra |
+
+`displayName` (and `id`) may be re-asserted unchanged. Anything else gets `400` and **none** of
+the request's operations are applied: any other path (`invalidPath`), a filter other than
+`members[value eq "..."]`, a filtered path with `add` or `replace`, a sub-attribute after the
+filter such as `members[value eq "x"].display`, or another `op`. Removing a user who is not a
+member does nothing and is not an error.
+
+### Group ownership
+
+Each group records which source created it (`groups.managed_by`):
+
+| Created by | Owner |
+|---|---|
+| SCIM `POST /Groups` | `scim` |
+| A login whose claims name a group that did not exist yet (including a second provider's namespaced `provider:name` groups), bearer provisioning, a Kubernetes namespace group | `oidc:<provider>` / `saml:<provider>` |
+| An administrator, the CLI, or any group that existed before ownership was recorded | `manual` |
+
+**Every SCIM write that targets a group checks the group's owner first**: adding or removing
+members, `PUT`, `PATCH` (including binding an `externalId`) and `DELETE`. Only a `scim`-owned
+group is SCIM's. Deny by default, so a `manual` group counts as owned by someone else too:
+
+| Group owner | `off` | `report` (default) | `enforce` |
+|---|---|---|---|
+| `scim` | written | written | written |
+| anything else | written | written; `group.ownership_conflict` recorded | **refused** (`409 mutability`), nothing applied |
+
+**What a SCIM token can grant.** Group names are the permission boundary, and adding a user to a
+group hands them every grant on it. Under `enforce`, a SCIM token can put users only into groups
+SCIM created. It cannot add anyone to a group a login's claims created, to a Kubernetes namespace
+group, or to a hand-made group, and it cannot delete any of them. Under the default `report` it
+still can, and every such write is recorded as `group.ownership_conflict` (`detail.operation`
+`group.write` or `group.delete`). Any user may be added to a group SCIM owns.
+
+To let a directory manage a group that existed before it (under `enforce`), hand the group over
+explicitly and with a journal:
+
+```bash
+mlflow-oidc db reconcile-ownership --url "$DB" --groups --group data-eng --set-owner scim --apply --journal /tmp/groups.json
+```
+
+### Membership ownership
+
+Every membership SCIM writes is owned by `scim`, per row. So a user can hold, at once,
+memberships granted by the directory, by an administrator (`manual`) and by a login's claims
+(`oidc:<provider>` / `saml:<provider>`). Permission resolution does not care who granted a
+membership, and each one grants what its group grants. Membership ownership decides who may
+**remove** a membership ([Row ownership](configuration#group-membership)). Inside a group SCIM
+owns:
+
+| Membership owner | SCIM adds | SCIM removes under `report` (default) | SCIM removes under `enforce` |
+|---|---|---|---|
+| `scim` | yes | yes | yes |
+| `manual` | yes (already a member: unchanged) | yes | yes, except a hand-made administrator's |
+| `oidc:*` / `saml:*` | yes (already a member: unchanged) | targeted: yes, recorded; `PUT`: kept, recorded | targeted: **refused**; `PUT`: kept |
+
+Adding a user who is already a member through another source changes nothing: the membership
+keeps its owner.
+
+How it shows depends on the operation:
+
+- A targeted removal (`PATCH` `remove`) of another source's membership is refused with
+  `409 mutability` under `enforce`, and nothing in the request is applied. Under `report` it is
+  removed and recorded.
+- A replacement (`PUT` with `members`, `PATCH` `replace members`) is a **sync**. SCIM's own and
+  unowned memberships that are not in the list are removed. A membership another source owns is
+  **never** removed by a sync, in any mode, and the request succeeds. The response lists the
+  membership as it actually is.
+
+Cross-source removals are audited as `user.ownership_conflict` with `detail.group`:
+
+- A targeted removal has `detail.operation: "membership.remove"`, with `status: "denied"` when
+  refused and `"success"` when permitted (not recorded under `off`).
+- A row a sync left in place has `detail.operation: "membership.sync_kept"` and
+  `status: "success"`, in every mode. Nothing was refused, so it does not count as a denial. This
+  includes a hand-made administrator's membership that a SCIM `PUT` may not remove.
+
+A login works the same way from the other side: an `authoritative` login removes its own
+memberships and unowned (`manual`) ones, and **never SCIM's or another provider's, in any mode**.
+Each membership it leaves in place is recorded as `membership.sync_kept`, in every mode. So the directory's
+memberships no longer disappear at each sign-in, and nothing depends on the directory re-sending
+them. Every membership that existed before ownership was recorded is `manual`, so a deployment
+that changes no configuration sees no change.
+
+SCIM membership never grants administrator rights, even in a group named in
+`OIDC_ADMIN_GROUP_NAME`: admin status comes only from a login's claims.
+
+### Deleting a group
+
+`DELETE /Groups/{id}` removes the group, **every** membership in it, and every permission
+granted to the group (experiments, models and prompts, scorers, gateway resources, workspaces,
+regex grants included). If you recreate a group with the same name, it starts with no grants.
+
+Two checks run first, in this order:
+
+1. The group's owner, as for every group write: under `enforce` only a `scim`-owned group can be
+   deleted.
+2. The group's memberships: if any is not SCIM's, including hand-made (`manual`) ones, the delete
+   is refused under `enforce`. Deleting the group would take it away from those members too.
+
+Either refusal is `409 mutability` with nothing removed. Under `report` the delete proceeds and
+records each conflict (`group.ownership_conflict` for the group,
+`user.ownership_conflict` with `detail.operation: "group.delete"` for memberships).
+
+A group delete is never refused because it would leave resources without a manager. The
+`group.delete` event records the grant rows it removed (`detail.grants_removed`, per permission
+table).
+
+### Audit
+
+On top of the `scim.request` event every SCIM request emits, group writes emit `group.create`
+(members), `group.members_changed` (`added`, `removed`, and `kept`, the rows the guard left in
+place), `group.external_id_set` and `group.delete` (`members_removed`, `grants_removed`).
 
 Errors use the RFC 7644 §3.12 shape with content type `application/scim+json`:
 

@@ -18,27 +18,47 @@ from mlflow_oidc_auth.db.models import SqlAuthSession, SqlGroup, SqlUser
 from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.ownership import evaluate_write
+from mlflow_oidc_auth.ownership import OwnershipDecision, evaluate_write
 from mlflow_oidc_auth.repository.utils import get_user
 
 logger = get_logger()
 
 
-def _audit_ownership_conflict(username: str, decision, written_by: Optional[str], *, allowed: bool) -> None:
+def _audit_ownership_conflict(
+    username: str,
+    decision,
+    written_by: Optional[str],
+    *,
+    allowed: bool,
+    operation: Optional[str] = None,
+    actor: Optional[str] = None,
+) -> None:
     """Record a write that crossed ownership.
 
     Emitted in ``report`` mode as well as ``enforce`` — that is what ``report`` is *for*: the
     same event, with ``status`` saying whether it was permitted, so an operator can count what
     enforcement would refuse before enabling it.
+
+    Parameters:
+        username: The user row.
+        decision: The guard's decision.
+        written_by: The source that attempted the write.
+        allowed: Whether it went ahead.
+        operation: ``delete`` or ``create`` for those writes; omitted for an update.
+        actor: Who to name as the actor — an administrator's username, a SCIM token — when the
+            caller knows better than ``written_by``.
     """
     from mlflow_oidc_auth.audit import emit_audit_event
 
+    detail = {"owner": decision.owner, "written_by": written_by or "manual", "reason": decision.reason, "permitted": allowed}
+    if operation:
+        detail["operation"] = operation
     emit_audit_event(
         "user.ownership_conflict",
-        actor=written_by or "manual",
+        actor=actor or written_by or "manual",
         resource_type="user",
         resource_id=username,
-        detail={"owner": decision.owner, "written_by": written_by or "manual", "reason": decision.reason, "permitted": allowed},
+        detail=detail,
         status="success" if allowed else "denied",
     )
 
@@ -173,11 +193,49 @@ class UserRepository:
         display_name: str,
         is_admin: bool = False,
         is_service_account: bool = False,
+        *,
+        written_by: Optional[str] = None,
     ) -> User:
+        """Create a user row, owned by ``manual``.
+
+        **Create never re-owns (#360).** When the username already exists the create is refused
+        with ``RESOURCE_ALREADY_EXISTS`` — whoever asks, in every enforcement mode — and the
+        existing row, its owner included, is left exactly as it was. If that row is owned by a
+        source other than ``written_by`` the attempt is also recorded as a refused
+        ``user.ownership_conflict`` (``operation: create``). This does not depend on the caller
+        checking first: the login path refuses a foreign username earlier (#318), but a repository
+        that would silently hand an existing row to its caller would be one missing check away from
+        an ownership takeover.
+
+        Together with the guard on :meth:`delete`, this is what stops delete-then-create from
+        laundering ownership: a source that may not write a row may not delete it either, so it
+        cannot clear the name for a create that would come back ``manual``.
+
+        Every row created here is ``manual``, including one a login creates (``docs/scim.md``:
+        a first SSO sign-in does not make the provider the owner). A directory creates its rows
+        through :meth:`SqlAlchemyStore.create_scim_user`, which writes ``scim``.
+
+        Parameters:
+            username: Identity key; folded to lower case.
+            password: The initial secret, hashed with :data:`TOKEN_HASH_METHOD`.
+            display_name: Display name.
+            is_admin: Administrator flag.
+            is_service_account: Service-account flag.
+            written_by: The source asking, for the audit record of a refused create.
+
+        Returns:
+            User: The new user.
+
+        Raises:
+            MlflowException: ``RESOURCE_ALREADY_EXISTS`` if the username exists.
+        """
         username = normalize_username(username)
         _validate_username(username)
         pwhash = generate_password_hash(password, method=TOKEN_HASH_METHOD)
         with self._Session(read_only=False) as session:
+            existing = session.query(SqlUser.managed_by, SqlUser.is_admin).filter(SqlUser.username == username).one_or_none()
+            if existing is not None:
+                self._refuse_create(username, (existing[0], bool(existing[1])), written_by)
             try:
                 u = SqlUser(
                     username=username,
@@ -191,6 +249,28 @@ class UserRepository:
                 return u.to_mlflow_entity()
             except IntegrityError as e:
                 raise MlflowException(f"User '{username}' already exists: {e}", RESOURCE_ALREADY_EXISTS) from e
+
+    @staticmethod
+    def _refuse_create(username: str, existing, written_by: Optional[str]) -> None:
+        owner, is_admin = existing
+        decision = evaluate_write(
+            owner,
+            written_by,
+            enforcement=config.MANAGED_BY_ENFORCEMENT,
+            fields={"created"},
+            target_is_admin=is_admin,
+        )
+        if decision.conflict:
+            # Refused whatever the mode says: a create over an existing row is not a write that
+            # ``report`` could let through, because it would replace the row rather than change it.
+            refused = OwnershipDecision(
+                allowed=False,
+                conflict=True,
+                owner=decision.owner,
+                reason=f"{written_by or 'manual'!r} may not create over a row owned by {decision.owner!r}; create never re-owns",
+            )
+            _audit_ownership_conflict(username, refused, written_by, allowed=False, operation="create")
+        raise MlflowException(f"User '{username}' already exists", RESOURCE_ALREADY_EXISTS)
 
     def get(self, username: str) -> User:
         username = normalize_username(username)
@@ -462,8 +542,92 @@ class UserRepository:
             _audit_sessions_revoked(username, sessions_revoked, "user_deactivated")
         return entity
 
-    def delete(self, username: str, before_cascade: Optional[Callable] = None, after_cascade: Optional[Callable] = None) -> None:
-        """Hard-delete a user and every row that references them.
+    @staticmethod
+    def _reown_memberships(session, user, managed_by: str) -> list:
+        """Set every membership of ``user`` to ``managed_by`` inside ``session``.
+
+        Returns ``(group_name, previous_owner)`` for each row that changed.
+        """
+        from mlflow_oidc_auth.db.models import SqlUserGroup
+
+        changed = []
+        rows = (
+            session.query(SqlUserGroup, SqlGroup.group_name)
+            .outerjoin(SqlGroup, SqlGroup.id == SqlUserGroup.group_id)
+            .filter(SqlUserGroup.user_id == user.id)
+            .order_by(SqlUserGroup.id)
+            .all()
+        )
+        for row, group_name in rows:
+            previous = row.managed_by or "manual"
+            if previous != managed_by:
+                row.managed_by = managed_by
+                changed.append((group_name if group_name is not None else str(row.group_id), previous))
+        return changed
+
+    def hand_over(self, username: str, managed_by: str, *, memberships: bool = False, actor: Optional[str] = None) -> dict:
+        """Break glass: hand a user row — and optionally every membership of it — to ``managed_by``.
+
+        One transaction for both halves, so a failure re-owning the memberships leaves the user row
+        as it was too: an operator repairing a lockout must never be left with half a repair and no
+        record of it. An explicit administrator action, so always permitted; the cross-source
+        override is recorded as ``user.ownership_conflict`` once the change has committed.
+
+        Parameters:
+            username: The user.
+            managed_by: The new owner.
+            memberships: Whether to re-own the user's group memberships too.
+            actor: The administrator, for the audit record.
+
+        Returns:
+            ``{"previous": <old owner>, "memberships": [(group, previous_owner), ...]}``.
+
+        Raises:
+            MlflowException: ``RESOURCE_DOES_NOT_EXIST`` for an unknown user. Nothing is written.
+        """
+        username = normalize_username(username)
+        with self._Session(read_only=False) as session:
+            user = get_user(session, username)
+            previous = user.managed_by
+            decision = None
+            if (previous or "manual") != managed_by:
+                # Only an actual change of the user row's owner is an override worth recording; a
+                # call that only re-owns memberships (the row already has this owner) is not.
+                decision = evaluate_write(
+                    previous,
+                    "manual",
+                    enforcement=config.MANAGED_BY_ENFORCEMENT,
+                    admin_override=True,
+                    fields={"managed_by"},
+                    target_is_admin=bool(user.is_admin),
+                )
+                user.managed_by = managed_by
+            changed = self._reown_memberships(session, user, managed_by) if memberships else []
+            session.flush()
+        if decision is not None and decision.conflict:
+            _audit_ownership_conflict(username, decision, "manual", allowed=True, actor=actor)
+        return {"previous": previous, "memberships": changed}
+
+    def delete(
+        self,
+        username: str,
+        before_cascade: Optional[Callable] = None,
+        after_cascade: Optional[Callable] = None,
+        *,
+        written_by: Optional[str] = None,
+        admin_override: bool = False,
+        actor: Optional[str] = None,
+    ) -> None:
+        """Hard-delete a user and every row that references them, through the ownership guard.
+
+        **Ownership (#360).** Deleting a row is the largest write there is, so it goes through
+        :func:`evaluate_write` like :meth:`update` does, before anything else — before the
+        last-admin check, before the orphan hooks. A source that may not write a row may not delete
+        it: under ``enforce`` the delete is refused (``INVALID_PARAMETER_VALUE``) and audited as a
+        refused ``user.ownership_conflict`` (``operation: delete``); under ``report`` it proceeds and
+        the conflict is recorded once the delete has committed. ``admin_override`` is the break
+        glass: always permitted, always recorded. A directory may not delete a hand-made
+        administrator under ``enforce``.
 
         Parameters:
             username: The user.
@@ -476,13 +640,40 @@ class UserRepository:
                 savepoint it opens is nested inside an already-begun transaction (on SQLite a
                 savepoint opened before any write would itself begin, and its release commit,
                 the transaction).
+            written_by: The source deleting the row. None is an unattributed write, treated as
+                ``manual``.
+            admin_override: Break glass for a row another source owns.
+            actor: Who to name in the audit event (an administrator, a SCIM token).
+
+        Raises:
+            MlflowException: ``RESOURCE_DOES_NOT_EXIST`` for an unknown user;
+                ``INVALID_PARAMETER_VALUE`` when the ownership guard refuses; ``INVALID_STATE`` for
+                the last active administrator. Nothing is written in any of these cases.
         """
         username = normalize_username(username)
         deleted_sessions = 0
+        permitted_conflict = None
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             if user is None:
                 raise MlflowException(f"User '{username}' not found.")
+
+            decision = evaluate_write(
+                getattr(user, "managed_by", None),
+                written_by,
+                enforcement=config.MANAGED_BY_ENFORCEMENT,
+                admin_override=admin_override,
+                fields={"deleted"},
+                target_is_admin=bool(user.is_admin),
+            )
+            if decision.conflict and not decision.allowed:
+                _audit_ownership_conflict(username, decision, written_by, allowed=False, operation="delete", actor=actor)
+                raise MlflowException(
+                    f"User '{username}' is managed by {decision.owner!r} and cannot be deleted by {written_by or 'manual'!r}: {decision.reason}.",
+                    INVALID_PARAMETER_VALUE,
+                )
+            if decision.conflict:
+                permitted_conflict = decision
 
             self._assert_not_last_active_admin(session, user, "delete")
 
@@ -565,6 +756,8 @@ class UserRepository:
                 after_cascade(session)
 
         # Emitted after the commit, for the same reason as in ``update``.
+        if permitted_conflict is not None:
+            _audit_ownership_conflict(username, permitted_conflict, written_by, allowed=True, operation="delete", actor=actor)
         if deleted_sessions:
             _audit_sessions_revoked(username, deleted_sessions, "user_deleted")
 

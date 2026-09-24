@@ -189,6 +189,63 @@ curl -X PATCH "$MLFLOW/api/2.0/mlflow/users/ownership" \
 
 or in bulk with the CLI below, for an operator who has a shell.
 
+### Delete and create
+
+A delete goes through the same guard as an update, before anything else happens. Under `enforce`
+a source cannot delete a row it may not write. The admin API needs `"admin_override": true` for
+that. The attempt is audited as `user.ownership_conflict` with `detail.operation: "delete"`.
+
+A create never takes over an existing row. When the username exists, the create is refused with
+`RESOURCE_ALREADY_EXISTS` in every mode, and the row and its owner stay as they were. When that
+row belongs to another source, the attempt is also audited (`operation: "create"`). Together
+these rules stop a source from deleting a row it does not own and creating it again as `manual`.
+
+### Group membership
+
+Group membership carries permissions, so each membership (`user_groups` row) records its own
+owner:
+
+| Written by | Owner |
+|---|---|
+| An administrator, or any write from before this was recorded | `manual` |
+| SCIM `/Groups` | `scim` |
+| A login's claims, bearer provisioning, a service account | `oidc:<provider>` or `saml:<provider>` |
+
+Adding a membership never counts as a cross-source write: the writer owns the new row, and a
+membership that already exists keeps its owner. Removing one depends on the membership's owner
+and on the kind of write:
+
+| Membership owner | Removed by its own source | By another source's **sync** (login, SCIM `PUT`) | By another source's targeted removal |
+|---|---|---|---|
+| `manual` | yes | yes | yes, except that SCIM may not remove a hand-made administrator's under `enforce` |
+| `scim`, `oidc:*`, `saml:*` | yes | **never, in any mode**; recorded as kept | `report`: yes, audited. `enforce`: refused |
+
+An `authoritative` login therefore revokes its own memberships and every `manual` one, and
+leaves SCIM's and other providers' in place in every mode. Every membership that predates this is
+`manual`, so revocation keeps working after an upgrade without a backfill, and a deployment that
+changes nothing sees no change. Each membership a sync leaves in place is recorded as
+`user.ownership_conflict` with `detail.operation: "membership.sync_kept"`, `status: "success"`
+and `detail.group`. It is not a denial, so it does not inflate denial counts.
+A refused targeted removal is `detail.operation: "membership.remove"` with `status: "denied"`.
+
+A kept row is recorded in every mode, `off` included, where the sync also logs one INFO line
+per sync (the user or group, how many rows it kept, and their owners). **A renamed provider
+(`oidc:kc` → `oidc:keycloak`) or a move from OIDC to SAML makes that provider's old memberships
+foreign to it**, so its syncs keep them instead of revoking them. Hand them to the new source
+with `mlflow-oidc db reconcile-ownership --memberships --from-owner <old> --set-owner <new>`.
+
+A sync never fails because a row was kept: failing it would lock the user or the group out of
+every future sync. A targeted removal fails with nothing applied (`409` from SCIM).
+
+### Group ownership
+
+Groups record who created them too (`groups.managed_by`): `scim` for SCIM, `oidc:<provider>` /
+`saml:<provider>` for a group a login's claims brought into existence (a Kubernetes namespace
+group included), and `manual` for everything else, including every group that existed before the
+column. Under `enforce` SCIM may write, fill or delete only the groups it owns. See
+[SCIM: Group ownership](scim#group-ownership). `reconcile-ownership --groups` hands a group to
+another source.
+
 ### Changing ownership
 
 Ownership never changes implicitly — not at startup, not when a provider's configuration
@@ -211,6 +268,17 @@ runs. `restore-ownership` is also a dry run without `--apply`.
 
 **This is the repair path when a source is turned off.** Point `--from-owner` at it and
 `--set-owner` at `manual`, and the rows it used to own become editable again.
+
+Add `--groups` with `--group NAME` or `--from-owner` to re-own groups instead of user rows, for
+example to let a directory manage a group that existed before it. Every filter must apply to the
+table being rewritten: `--username` with `--groups`, or `--group` without it, is refused rather
+than ignored. `--set-owner` accepts `manual`, `scim`, `oidc:<id>` and `saml:<id>`. Add `--memberships` to re-own
+group memberships too. `--from-owner` then matches each
+membership's owner, and `--username` the member. The journal records them, and
+`restore-ownership` puts them back. From the API, `PATCH /api/2.0/mlflow/users/ownership` with
+`"memberships": true` hands all of one user's memberships to the new owner. Without one of these,
+the memberships of a source you have turned off cannot be removed by any other source under
+`enforce`.
 
 ## PKCE
 
