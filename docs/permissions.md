@@ -195,22 +195,29 @@ group**; `detail.via` on the event says which (`"direct"` or `"group:<name>"`). 
 manage only through a regex grant is not enumerated: a pattern matches resources in MLflow, including
 ones that do not exist yet.
 
-Anyone in this list still holds the resource, so it is **not** orphaned:
+Another user still holds the resource, so it is **not** orphaned, when that user is active, is not
+the departing user, and their permission on it resolves to `MANAGE`. That permission is resolved the
+way it is at request time, by replaying `PERMISSION_SOURCE_ORDER`: the first source that has an answer
+decides. The sources are:
 
-| Holder | Counts when |
+| Source | Answer |
 |---|---|
-| A user with a direct `MANAGE` grant | the user is active and is not the departing user |
-| A group with `MANAGE` on the resource | the group has an active member other than the departing user |
-| A user's regex grant | the user is active, is not the departing user, and their patterns resolve to `MANAGE` for the resource |
-| A group regex grant | an active member other than the departing user has group patterns that resolve to `MANAGE` for the resource |
+| `user` | the user's direct grant on the resource |
+| `group` | the most permissive grant any of the user's groups holds on it |
+| `regex` | the user's own patterns |
+| `group-regex` | the patterns of the user's groups |
 
-So a group in which the departing user was the **last active member** does not keep a resource
-managed. Resources they managed only through that group are reported as `via: "group:<name>"`.
+Some consequences under the default order (`user,group,regex,group-regex`):
 
-Regex grants resolve the way they do at request time. Patterns are tried in priority order and the
-first match wins; for workspaces, the most permissive of the best-priority matches wins. So a
-higher-priority `READ` pattern shadows a lower-priority `MANAGE` one. Each pattern is matched against
-the same value the resolver uses:
+- A colleague with a direct `READ` grant is **not** a holder, even if one of their groups holds
+  `MANAGE`, or one of their patterns says `MANAGE`.
+- A colleague with a direct `MANAGE` grant is a holder, even if one of their groups only reads.
+- A group in which the departing user was the **last active member** holds nothing. Resources the
+  departing user managed only through that group are reported as `via: "group:<name>"`.
+
+Patterns resolve as they do at request time. They are tried in priority order and the first match
+wins; for workspaces, the most permissive of the best-priority matches wins. Each pattern is matched
+against the same value the resolver uses:
 
 - experiments: the experiment **name**
 - registered models and prompts: the name, using model patterns for models and prompt patterns for
@@ -218,20 +225,17 @@ the same value the resolver uses:
 - scorers: the scorer name
 - gateway resources and workspaces: their name
 
-A regex holder's permission is resolved by replaying `PERMISSION_SOURCE_ORDER`, as at request time.
-With the default order, a user with a direct or group `READ` grant on the resource gets `READ`, even
-if one of their patterns says `MANAGE`, so they are not a holder.
+Experiment names and the model-or-prompt distinction come from MLflow. With workspaces enabled, each
+lookup is tried in every workspace. A name that is a model in one workspace and a prompt in another
+must be held as both. At most 1000 store calls are made per resource type. When the answer depends on
+a lookup that fails, the resource is reported with `via: "unresolved"` and a warning is logged, and it
+is **never** handed over. Administrators are not counted, because an administrator can always recover
+a resource.
 
-Experiment names and the model-or-prompt distinction come from MLflow. At most 200 of those lookups
-are made per resource type. A resource that cannot be resolved is reported as orphaned rather than
-assumed held. The model-or-prompt lookup runs outside any workspace. With workspaces enabled, a name
-that is a model in one workspace and a prompt in another is judged by the default workspace's
-entry. Administrators are not counted, because an administrator can always recover a resource.
-
-A hard delete additionally
-grants `MANAGE` on each orphaned resource to `ORPHAN_FALLBACK_PRINCIPAL` when it names an active
-user; deactivation never transfers, since a deactivated user may come back. Orphan detection never
-blocks the deprovisioning itself — a failure there is logged, not raised.
+When `ORPHAN_FALLBACK_PRINCIPAL` names an active user, a hard delete also grants that user `MANAGE`
+on each orphaned resource, except unresolved ones. Deactivation never transfers, since a deactivated
+user may come back. Orphan detection never blocks the deprovisioning itself: a failure there is
+logged, not raised.
 
 See [SCIM Provisioning](scim#deprovisioning) for the full mechanics and [Admin UI](admin-ui#user-and-group-lifecycle)
 for the UI actions.
