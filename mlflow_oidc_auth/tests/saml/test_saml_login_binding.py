@@ -270,6 +270,39 @@ class TestCsrfBindingEnforced:
         _assert_no_session(client, store, response)
         assert _events(audit_events, "auth.saml_binding_missing")
 
+    def test_an_unexpected_error_is_a_500_that_still_clears_the_cookie(self, client, idp, store, audit_events, monkeypatch, bound, caplog):
+        relay_state, cookie_name, nonce = _start(client)
+
+        def outage(_state):
+            raise RuntimeError(f"database unreachable (nonce {nonce})")
+
+        monkeypatch.setattr(store, "consume_auth_state", outage)
+
+        with caplog.at_level(logging.ERROR):
+            response = _post(client, idp, relay_state, cookie=(cookie_name, nonce))
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "SAML sign-in failed"}
+        _assert_cleared(response, cookie_name)
+        [event] = _events(audit_events, "auth.saml_acs_error")
+        assert event["status"] == "denied" and event["detail"] == {"provider": PROVIDER_ID, "error": "RuntimeError"}
+        # The audit trail carries the type only, never the message.
+        assert nonce not in str(event)
+        assert any(record.exc_info for record in caplog.records if "SAML ACS" in record.getMessage())
+        monkeypatch.undo()
+        _assert_no_session(client, store, response)
+
+    def test_an_unexpected_error_without_a_cookie_is_still_answered_and_audited(self, client, idp, store, audit_events, monkeypatch):
+        relay_state, cookie_name, _ = _start(client)
+        assert cookie_name is None
+        monkeypatch.setattr(store, "consume_auth_state", lambda _state: (_ for _ in ()).throw(RuntimeError("down")))
+
+        response = _post(client, idp, relay_state, cookie=None)
+
+        assert response.status_code == 500
+        assert _events(audit_events, "auth.saml_acs_error")
+        assert not any(name.startswith(BINDING_COOKIE_PREFIX) for name in _set_cookies(response))
+
     def test_the_relaystate_check_still_comes_first(self, client, idp, audit_events, bound):
         response = _post(client, idp, "not-a-live-attempt", cookie=None)
 

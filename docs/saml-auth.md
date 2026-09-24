@@ -167,7 +167,8 @@ refused.
      consumed row recorded. No cookie → `400` (`auth.saml_binding_missing`: usually a browser
      that blocked or outlived it, though a login-CSRF victim holds none either); a cookie that
      does not belong to this attempt → `400` (`auth.saml_binding_rejected`). The cookie is
-     cleared whatever the outcome;
+     cleared whatever the outcome — including an unexpected server error, which answers `500`
+     and is audited as `auth.saml_acs_error` with the exception type only;
    - validates the Response: signature against `idp_x509_cert`, `Issuer`, `Destination`,
      `Recipient`, audience, `NotBefore`/`NotOnOrAfter` with `clock_skew_seconds`, and that
      `InResponseTo` is the AuthnRequest from step 2 — on the Response *and* on the signed
