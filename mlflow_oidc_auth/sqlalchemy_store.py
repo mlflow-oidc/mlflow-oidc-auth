@@ -372,6 +372,14 @@ class SqlAlchemyStore:
         """Revoke every live session for a user. Returns how many were revoked."""
         return self.auth_session_repo.revoke_all_for_user(username)
 
+    def list_live_auth_session_details(self, username: str):
+        """A user's live sessions for administration (#325). Never carries a full session id."""
+        return self.auth_session_repo.list_live_details_for_user(username)
+
+    def revoke_auth_session_by_pk(self, username: str, session_pk: int) -> bool:
+        """Revoke one of ``username``'s sessions by row id. False if it is not a live session of theirs."""
+        return self.auth_session_repo.revoke_by_pk_for_user(username, session_pk)
+
     def list_live_auth_sessions_for_provider(self, username: str, provider_id: str):
         """``(session_id, encrypted_tokens)`` for a user's live sessions opened by one provider (#329)."""
         return self.auth_session_repo.list_live_for_provider(username, provider_id)
@@ -1211,6 +1219,32 @@ class SqlAlchemyStore:
     def authenticate_scim_token(self, plaintext: str):
         """Return the live SCIM token record for ``plaintext``, or None."""
         return self._scim_token_repo().authenticate(plaintext)
+
+    def _scim_activity_repo(self):
+        """The SCIM activity repository (#325), created on first use like the token repository."""
+        repo = getattr(self, "_scim_activity_repository", None)
+        if repo is None:
+            from mlflow_oidc_auth.repository.scim_activity import ScimActivityRepository
+
+            repo = ScimActivityRepository(self.ManagedSessionMaker)
+            self._scim_activity_repository = repo
+        return repo
+
+    def record_scim_activity(self, **fields) -> None:
+        """Record one ``/scim/v2`` request. See ``ScimActivityRepository.record``."""
+        self._scim_activity_repo().record(**fields)
+
+    def list_scim_activity(self, limit: int = 50, before: Optional[int] = None, outcome: Optional[str] = None, token_id: Optional[int] = None):
+        """Recorded SCIM requests, newest first."""
+        return self._scim_activity_repo().list(limit=limit, before=before, outcome=outcome, token_id=token_id)
+
+    def scim_provisioning_status(self, healthy_window_seconds: int):
+        """Provisioning health, overall and per token."""
+        return self._scim_activity_repo().status(healthy_window_seconds)
+
+    def delete_scim_activity_before(self, cutoff: datetime) -> int:
+        """Sweep SCIM activity recorded before ``cutoff``. Returns the count."""
+        return self._scim_activity_repo().delete_older_than(cutoff)
 
     @staticmethod
     def _user_detail(row) -> dict:

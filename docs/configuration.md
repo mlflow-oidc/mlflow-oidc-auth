@@ -147,6 +147,8 @@ token. See [SCIM Provisioning](scim).
 | `SCIM_TOKEN_ROTATION_OVERLAP_SECONDS` | Integer | `3600` | How long a rotated SCIM token keeps working next to its replacement |
 | `SCIM_RATE_LIMIT_PER_MINUTE` | Integer | `600` | Requests per minute allowed for each SCIM token, counted **per process** (N replicas allow up to N times this). `0` disables the limit |
 | `SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE` | Integer | `60` | Failed SCIM authentications allowed per client IP per minute before `429`. Counted per process, like the rate limit. `0` disables it |
+| `SCIM_ACTIVITY_RETENTION_DAYS` | Integer | `30` | Days of SCIM activity kept for the provisioning status. Older rows are deleted by `mlflow-oidc db prune-sessions` and hourly by the server. `0` keeps everything. See [Provisioning status](scim#provisioning-status-and-activity) |
+| `SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS` | Integer | `86400` | Provisioning counts as healthy while a SCIM request succeeded within this many seconds |
 | `ORPHAN_FALLBACK_PRINCIPAL` | String | None | Username that receives `MANAGE` on resources a hard-deleted user was the last manager of. When unset, orphans are only reported as `resource.orphaned` audit events |
 | `USER_RETENTION_DAYS` | Integer | `0` | Reserved for a future purge of deactivated users. `0` means never; nothing reads it yet |
 
@@ -382,7 +384,7 @@ refused, so the table grows until an operator prunes it:
 mlflow-oidc db prune-sessions --url postgresql://user:pass@host/auth_db
 ```
 
-It also deletes expired SAML replay records (`saml_assertions`), which are needed only while their assertion could still validate. Add `--dry-run` to see the count without deleting. Revoked-but-unexpired rows are kept until
+It also deletes expired SAML replay records (`saml_assertions`), which are needed only while their assertion could still validate, and SCIM activity older than `SCIM_ACTIVITY_RETENTION_DAYS`. Add `--dry-run` to see the count without deleting. Revoked-but-unexpired rows are kept until
 their expiry, so "was this session revoked, and when?" stays answerable. Running it from cron is
 the expected deployment.
 

@@ -13,8 +13,16 @@ import { CreateScimTokenModal } from "./components/create-scim-token-modal";
 import { ScimTokenSecretModal } from "./components/scim-token-secret-modal";
 import { RotateScimTokenModal } from "./components/rotate-scim-token-modal";
 import { RevokeScimTokenModal } from "./components/revoke-scim-token-modal";
+import { ScimStatusPanel } from "./components/scim-status-panel";
+import { ScimActivityTable } from "./components/scim-activity-table";
+import { useScimStatus } from "./hooks/use-scim-status";
+import { useScimActivity } from "./hooks/use-scim-activity";
 import type { ColumnConfig } from "../../shared/types/table";
-import type { ScimToken, ScimTokenWithSecret } from "../../shared/types/scim";
+import type {
+  ScimActivityOutcome,
+  ScimToken,
+  ScimTokenWithSecret,
+} from "../../shared/types/scim";
 
 const EXPIRING_SOON_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -50,7 +58,28 @@ function formatDate(value: string | null): string {
 }
 
 export default function ScimPage() {
-  const { tokens, isLoading, error, refresh } = useScimTokens();
+  const {
+    tokens,
+    isLoading,
+    error,
+    refresh: refreshTokens,
+  } = useScimTokens();
+  const {
+    status,
+    isLoading: isStatusLoading,
+    error: statusError,
+    refresh: refreshStatus,
+  } = useScimStatus();
+  const [outcomeFilter, setOutcomeFilter] =
+    useState<ScimActivityOutcome | null>(null);
+  const activity = useScimActivity(outcomeFilter);
+  const refreshActivity = activity.refresh;
+
+  // A token change shows up in the per-token status too, so both lists refresh together.
+  const refresh = useCallback(() => {
+    refreshTokens();
+    refreshStatus();
+  }, [refreshTokens, refreshStatus]);
   const { showToast } = useToast();
   const { basePath } = useRuntimeConfig();
 
@@ -224,6 +253,13 @@ export default function ScimPage() {
         </p>
       </div>
 
+      <ScimStatusPanel
+        status={status}
+        isLoading={isStatusLoading}
+        error={statusError}
+        onRetry={refreshStatus}
+      />
+
       <PageStatus
         isLoading={isLoading}
         loadingText="Loading SCIM tokens..."
@@ -273,6 +309,23 @@ export default function ScimPage() {
           />
         </>
       )}
+
+      <ScimActivityTable
+        entries={activity.entries}
+        outcome={outcomeFilter}
+        onOutcomeChange={setOutcomeFilter}
+        isLoading={activity.isLoading}
+        isLoadingMore={activity.isLoadingMore}
+        hasMore={activity.hasMore}
+        error={activity.error}
+        onLoadMore={() => {
+          void activity.loadMore();
+        }}
+        onRefresh={() => {
+          refreshActivity();
+          refreshStatus();
+        }}
+      />
 
       {/* Deliberately outside the isLoading/error gate above: creating or rotating a token
           calls refresh() right after this modal is populated, and that refetch flips isLoading

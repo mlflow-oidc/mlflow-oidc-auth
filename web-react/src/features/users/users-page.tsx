@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   faCheck,
+  faDesktop,
   faUserCheck,
   faUserSlash,
 } from "@fortawesome/free-solid-svg-icons";
@@ -21,6 +22,7 @@ import { useToast } from "../../shared/components/toast/use-toast";
 import { extractErrorMessage } from "../../core/services/http";
 import { setUserActive } from "../../core/services/user-service";
 import { DeactivateUserModal } from "./components/deactivate-user-modal";
+import { UserSessionsModal } from "./components/user-sessions-modal";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { UserDetails } from "../../shared/types/user";
 
@@ -136,6 +138,7 @@ function AdminUsersView() {
     null,
   );
   const [isReactivating, setIsReactivating] = useState(false);
+  const [sessionsUser, setSessionsUser] = useState<string | null>(null);
 
   const filteredUsers = useMemo(() => {
     return users
@@ -264,7 +267,12 @@ function AdminUsersView() {
       {
         header: "Actions",
         render: (user) => (
-          <div className="invisible group-hover:visible">
+          <div className="invisible group-hover:visible flex space-x-2">
+            <IconButton
+              icon={faDesktop}
+              title="Sessions"
+              onClick={() => setSessionsUser(user.username)}
+            />
             {user.active ? (
               <IconButton
                 icon={faUserSlash}
@@ -337,6 +345,11 @@ function AdminUsersView() {
             user={reactivatingUser}
             isProcessing={isReactivating}
             targetActive
+          />
+
+          <UserSessionsModal
+            username={sessionsUser}
+            onClose={() => setSessionsUser(null)}
           />
         </>
       )}

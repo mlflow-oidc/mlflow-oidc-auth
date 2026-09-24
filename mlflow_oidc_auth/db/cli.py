@@ -78,7 +78,7 @@ def restore_admin(url: str, username: str) -> None:
 @click.option("--url", required=True, help="Database URL, e.g. sqlite:///auth.db")
 @click.option("--dry-run", is_flag=True, help="Report how many rows would be deleted, and delete nothing.")
 def prune_sessions(url: str, dry_run: bool) -> None:
-    """Delete expired server-side sessions (issue #310).
+    """Delete expired server-side sessions (issue #310), and other expired housekeeping rows.
 
     Housekeeping, not correctness: an expired session already fails to resolve, so leaving the
     rows in place is safe but unbounded — every login inserts one and nothing else removes them.
@@ -87,13 +87,19 @@ def prune_sessions(url: str, dry_run: bool) -> None:
     Revoked-but-unexpired sessions are kept until their expiry, so that "was this session
     revoked, and when?" stays answerable for the lifetime the session would have had.
 
+    Also sweeps expired SAML replay records (#328) and SCIM activity older than
+    ``SCIM_ACTIVITY_RETENTION_DAYS`` (#325; ``0`` keeps it all).
+
     Run it from cron, or by hand. It is safe to run concurrently with a live server.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
-    from mlflow_oidc_auth.db.models import SqlAuthSession, SqlSamlAssertion
+    from mlflow_oidc_auth.config import config
+    from mlflow_oidc_auth.db.models import SqlAuthSession, SqlSamlAssertion, SqlScimActivity
 
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None)
+    retention_days = int(getattr(config, "SCIM_ACTIVITY_RETENTION_DAYS", 30) or 0)
+    activity_cutoff = cutoff - timedelta(days=retention_days)
     engine = sqlalchemy.create_engine(url)
     try:
         with engine.begin() as conn:
@@ -102,7 +108,8 @@ def prune_sessions(url: str, dry_run: bool) -> None:
             ).scalar_one()
             # SAML replay records (#328) are needed only while their assertion could still
             # validate. Skipped on a database migrated before the table existed.
-            has_assertions = sqlalchemy.inspect(conn).has_table(SqlSamlAssertion.__tablename__)
+            inspector = sqlalchemy.inspect(conn)
+            has_assertions = inspector.has_table(SqlSamlAssertion.__tablename__)
             expired_assertions = (
                 conn.execute(
                     sqlalchemy.select(sqlalchemy.func.count()).select_from(SqlSamlAssertion).where(SqlSamlAssertion.not_on_or_after <= cutoff)
@@ -110,17 +117,30 @@ def prune_sessions(url: str, dry_run: bool) -> None:
                 if has_assertions
                 else 0
             )
+            # SCIM activity (#325), likewise skipped before its table exists or when retention is 0.
+            sweep_activity = retention_days > 0 and inspector.has_table(SqlScimActivity.__tablename__)
+            expired_activity = (
+                conn.execute(sqlalchemy.select(sqlalchemy.func.count()).select_from(SqlScimActivity).where(SqlScimActivity.at < activity_cutoff)).scalar_one()
+                if sweep_activity
+                else 0
+            )
             if dry_run:
                 click.echo(f"{expired} expired session(s) would be deleted")
                 if has_assertions:
                     click.echo(f"{expired_assertions} expired SAML assertion record(s) would be deleted")
+                if sweep_activity:
+                    click.echo(f"{expired_activity} SCIM activity row(s) older than {retention_days} day(s) would be deleted")
                 return
             conn.execute(sqlalchemy.delete(SqlAuthSession).where(SqlAuthSession.expires_at <= cutoff))
             if has_assertions:
                 conn.execute(sqlalchemy.delete(SqlSamlAssertion).where(SqlSamlAssertion.not_on_or_after <= cutoff))
+            if sweep_activity:
+                conn.execute(sqlalchemy.delete(SqlScimActivity).where(SqlScimActivity.at < activity_cutoff))
         click.echo(f"deleted {expired} expired session(s)")
         if has_assertions:
             click.echo(f"deleted {expired_assertions} expired SAML assertion record(s)")
+        if sweep_activity:
+            click.echo(f"deleted {expired_activity} SCIM activity row(s) older than {retention_days} day(s)")
     finally:
         engine.dispose()
 

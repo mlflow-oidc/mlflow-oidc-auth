@@ -35,3 +35,31 @@ class SqlScimToken(Base):
         UniqueConstraint("name", name="uq_scim_tokens_name"),
         Index("ix_scim_tokens_token_prefix", "token_prefix", unique=True),
     )
+
+
+class SqlScimActivity(Base):
+    """One request to ``/scim/v2``, as the admin UI's provisioning status sees it (issue #325).
+
+    What is recorded is deliberately narrow: the route *template* (``/Users/{user_id}``), never
+    the concrete path, with the SCIM ``id`` in ``resource_id``; the status, an outcome class and
+    the short SCIM error ``detail``. Never a token, never a header, never a request or response
+    body. ``token_id`` is not a foreign key: a token row is never deleted, but the activity must
+    also outlive a table rebuild, and ``token_name`` keeps the row readable on its own.
+    """
+
+    __tablename__ = "scim_activity"
+    id: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    token_id: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    token_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    path: Mapped[str] = mapped_column(String(255), nullable=False)
+    resource_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[int] = mapped_column(Integer(), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    __table_args__ = (
+        Index("ix_scim_activity_at", "at"),
+        Index("ix_scim_activity_token_id_at", "token_id", "at"),
+    )

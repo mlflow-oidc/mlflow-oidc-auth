@@ -379,7 +379,12 @@ class _AuthFailureAudit:
         with self._lock:
             self._windows.clear()
 
-    def record(self, client: str, method: str, path: str) -> None:
+    def record(self, client: str, method: str, path: str) -> bool:
+        """Count one failure. Returns True when this one was written out, False when absorbed.
+
+        The SCIM activity log (#325) follows the same cadence: it records an ``auth_failed`` row
+        only when this returns True, so an anonymous client cannot flood that table either.
+        """
         import time
 
         from mlflow_oidc_auth.audit import emit_audit_event
@@ -392,7 +397,7 @@ class _AuthFailureAudit:
             started, count = self._windows.get(client, (None, 0))
             if started is not None and now - started < self.WINDOW_SECONDS:
                 self._windows[client] = (started, count + 1)
-                return
+                return False
             self._windows[client] = (now, 1)
         emit_audit_event(
             "scim.auth_failed",
@@ -402,6 +407,7 @@ class _AuthFailureAudit:
             detail={"client": client, "method": method, "path": path, "failures_in_previous_window": count},
             status="denied",
         )
+        return True
 
 
 scim_auth_failure_audit = _AuthFailureAudit()
@@ -439,7 +445,7 @@ async def require_scim_token(request: Request):
             record = None
     if record is None:
         client = request.client.host if request.client else "unknown"
-        scim_auth_failure_audit.record(client, request.method, request.url.path)
+        request.state.scim_auth_failure_recorded = scim_auth_failure_audit.record(client, request.method, request.url.path)
         if not scim_auth_failure_limiter.allow(("auth-failed", client), int(getattr(config, "SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE", 60) or 0)):
             raise HTTPException(status_code=429, detail="Too many failed SCIM authentications", headers={"Retry-After": "60"})
         raise HTTPException(status_code=401, detail="A valid SCIM bearer token is required", headers={"WWW-Authenticate": 'Bearer realm="scim"'})

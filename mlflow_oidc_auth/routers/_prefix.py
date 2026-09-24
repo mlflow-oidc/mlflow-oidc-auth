@@ -60,3 +60,5 @@ WORKSPACE_REGEX_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/
 # directories are configured with a base URL ending in /scim/v2, and it has no "/ajax-api" twin.
 SCIM_ROUTER_PREFIX = "/scim/v2"
 SCIM_TOKENS_ROUTER_PREFIX = _get_rest_path("/mlflow/scim/tokens")
+# Provisioning status and the SCIM activity log (#325), admin only.
+SCIM_ADMIN_ROUTER_PREFIX = _get_rest_path("/mlflow/scim")

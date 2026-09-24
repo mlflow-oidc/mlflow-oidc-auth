@@ -58,6 +58,10 @@ def scim_config(monkeypatch):
     monkeypatch.setattr(config, "SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE", 60, raising=False)
     for state in (scim_rate_limiter, scim_auth_failure_limiter, scim_auth_failure_audit):
         state.reset()
+    from mlflow_oidc_auth.routers.scim import _sweep_state, anonymous_activity_limiter
+
+    _sweep_state["last"] = None
+    anonymous_activity_limiter.reset()
     yield
     for state in (scim_rate_limiter, scim_auth_failure_limiter, scim_auth_failure_audit):
         state.reset()
@@ -82,7 +86,7 @@ def audit_events():
 @pytest.fixture
 def app(bound_store):
     from mlflow_oidc_auth.routers.group_permissions import group_permissions_router
-    from mlflow_oidc_auth.routers.scim import scim_router, scim_tokens_router
+    from mlflow_oidc_auth.routers.scim import scim_admin_router, scim_router, scim_tokens_router
     from mlflow_oidc_auth.routers.users import users_router
 
     application = FastAPI()
@@ -99,6 +103,7 @@ def app(bound_store):
 
     application.include_router(scim_router)
     application.include_router(scim_tokens_router)
+    application.include_router(scim_admin_router)
     application.include_router(users_router)
     application.include_router(group_permissions_router)
     application.add_middleware(AuthMiddleware)
