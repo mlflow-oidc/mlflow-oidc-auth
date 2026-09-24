@@ -205,23 +205,14 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
         logger.debug("mlflow.server.mcp_server_api not available — MCP registry endpoints disabled")
 
 
-def create_app() -> FastAPI:
-    """Create a FastAPI application with OIDC integration.
+def add_middleware_stack(oidc_app: FastAPI) -> None:
+    """Install the plugin's middleware on ``oidc_app`` in its required order.
 
-    The app uses a lifespan context manager to ensure OIDC client registration
-    happens at startup, making the app ready for multi-replica deployments.
+    Kept separate from ``create_app`` so tests exercise exactly this order.
+
+    Parameters:
+        oidc_app: The FastAPI application to configure.
     """
-    oidc_app = FastAPI(
-        title="MLflow Tracking Server with OIDC Auth",
-        description="MLflow Tracking Server API with OIDC Authentication",
-        version=VERSION,
-        docs_url="/docs" if config.ENABLE_API_DOCS else None,
-        redoc_url="/redoc" if config.ENABLE_API_DOCS else None,
-        openapi_url="/openapi.json" if config.ENABLE_API_DOCS else None,
-        lifespan=lifespan,
-    )
-    register_exception_handlers(oidc_app)
-
     # ---------------------------------------------------------------------------
     # Middleware ordering (Starlette executes LAST-added as OUTERMOST):
     #
@@ -250,6 +241,26 @@ def create_app() -> FastAPI:
         https_only=config.SESSION_COOKIE_SECURE,
     )
     oidc_app.add_middleware(ProxyHeadersMiddleware)
+
+
+def create_app() -> FastAPI:
+    """Create a FastAPI application with OIDC integration.
+
+    The app uses a lifespan context manager to ensure OIDC client registration
+    happens at startup, making the app ready for multi-replica deployments.
+    """
+    oidc_app = FastAPI(
+        title="MLflow Tracking Server with OIDC Auth",
+        description="MLflow Tracking Server API with OIDC Authentication",
+        version=VERSION,
+        docs_url="/docs" if config.ENABLE_API_DOCS else None,
+        redoc_url="/redoc" if config.ENABLE_API_DOCS else None,
+        openapi_url="/openapi.json" if config.ENABLE_API_DOCS else None,
+        lifespan=lifespan,
+    )
+    register_exception_handlers(oidc_app)
+
+    add_middleware_stack(oidc_app)
 
     for router in get_all_routers():
         _include_router(oidc_app, router)
