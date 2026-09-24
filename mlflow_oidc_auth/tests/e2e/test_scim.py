@@ -359,3 +359,103 @@ def _eventually_status(app_server, path: str, cookie: str, expected: int, attemp
             return True
         time.sleep(0.5)
     return False
+
+
+# ---------------------------------------------------------------------------------------------
+# Provisioning status, activity and admin session revocation (#325). These run after the flows
+# above in file order, so the activity they read is what those flows produced.
+# ---------------------------------------------------------------------------------------------
+
+
+def _admin_get(app_server, root_cookie: str, path: str, **params) -> httpx.Response:
+    return httpx.get(f"{app_server.url}{path}", params=params, headers={"Cookie": f"{flows.SESSION_COOKIE}={root_cookie}"}, timeout=30.0)
+
+
+def _scim_token_name(app_server, root_cookie: str, token: str) -> str:
+    prefix = token.split("_")[1]
+    tokens = _admin_get(app_server, root_cookie, "/api/2.0/mlflow/scim/tokens").json()
+    return next(t["name"] for t in tokens if t["token_prefix"] == prefix)
+
+
+def test_provisioning_status_and_activity_reflect_the_directory_traffic(app_server, scim_token, root_cookie):
+    name = _scim_token_name(app_server, root_cookie, scim_token)
+
+    status = _admin_get(app_server, root_cookie, "/api/2.0/mlflow/scim/status")
+    assert status.status_code == 200, status.text
+    body = status.json()
+    assert body["provisioning_healthy"] is True
+    assert body["last_success_at"] is not None
+    token = next(t for t in body["tokens"] if t["name"] == name)
+    assert token["active"] is True
+    assert token["requests_24h"] > 0 and token["last_success_at"] is not None
+
+    activity = []
+    before = None
+    while True:
+        params = {"limit": 200, **({"before": before} if before else {})}
+        page = _admin_get(app_server, root_cookie, "/api/2.0/mlflow/scim/activity", **params).json()
+        activity.extend(page["activity"])
+        before = page["next_before"]
+        if before is None:
+            break
+    mine = [row for row in activity if row["token_name"] == name]
+
+    # Entra's PATCH and Okta's PUT against alice, both successful, recorded by route template.
+    alice = [(row["method"], row["path"], row["status"], row["outcome"]) for row in mine if row["resource_id"] == ALICE]
+    assert ("PATCH", "/Users/{user_id}", 200, "ok") in alice
+    assert ("PUT", "/Users/{user_id}", 200, "ok") in alice
+    assert all(ALICE not in row["path"] for row in activity), "the path column never holds a username"
+    # The conformance smoke test probes unsupported features: those are client errors with a SCIM reason.
+    assert any(row["outcome"] == "client_error" and row["error"] for row in mine)
+    # The bogus token presented earlier is recorded without a token, and never the token itself.
+    failures = _admin_get(app_server, root_cookie, "/api/2.0/mlflow/scim/activity", outcome="auth_failed").json()["activity"]
+    assert failures and all(row["token_id"] is None for row in failures)
+    assert "scim_bogus_" not in str(activity)
+    assert scim_token not in str(activity) and scim_token not in status.text
+
+
+def test_provisioning_status_is_admin_only(app_server, keycloak):
+    # Carol is a plain user who signs in through the named OIDC provider (her identity is bound to it above).
+    carol = flows.session_cookie(flows.login(app_server, CAROL, provider=NAMED_OIDC_PROVIDER_ID))
+    assert flows.auth_status(app_server, carol)["username"] == CAROL
+    assert flows.api_get(app_server, "/api/2.0/mlflow/scim/status", carol).status_code == 403
+    assert flows.api_get(app_server, "/api/2.0/mlflow/scim/activity", carol).status_code == 403
+    assert flows.api_get(app_server, f"/api/2.0/mlflow/users/{ALICE}/sessions", carol).status_code == 403
+    carol_headers = {**flows.API_HEADERS, "Cookie": f"{flows.SESSION_COOKIE}={carol}"}
+    assert httpx.delete(f"{app_server.url}/api/2.0/mlflow/users/{ALICE}/sessions", headers=carol_headers, timeout=30.0).status_code == 403
+
+
+def _session_id(cookie: str) -> str:
+    """The server-side session id inside a Starlette session cookie (base64 JSON, then signature)."""
+    import base64
+    import json
+
+    payload = cookie.split(".", 1)[0]
+    return json.loads(base64.b64decode(payload + "=" * (-len(payload) % 4)))["session_id"]
+
+
+def test_an_admin_revoking_a_session_signs_that_browser_out(app_server, keycloak, root_cookie):
+    root_headers = {"Cookie": f"{flows.SESSION_COOKIE}={root_cookie}"}
+    alice = flows.session_cookie(flows.login(app_server, ALICE))
+    other = flows.session_cookie(flows.login(app_server, ALICE))
+    assert flows.api_get(app_server, flows.CURRENT_USER, alice).status_code == 200
+
+    listed = _admin_get(app_server, root_cookie, f"/api/2.0/mlflow/users/{ALICE}/sessions")
+    assert listed.status_code == 200, listed.text
+    sessions = listed.json()["sessions"]
+    assert len(sessions) >= 2
+    alice_id, other_id = _session_id(alice), _session_id(other)
+    assert alice_id not in listed.text and other_id not in listed.text, "a session id is never returned"
+    target = next(s for s in sessions if alice_id.startswith(s["session_id_prefix"]))
+
+    revoked = httpx.delete(f"{app_server.url}/api/2.0/mlflow/users/{ALICE}/sessions/{target['pk']}", headers=root_headers, timeout=30.0)
+    assert revoked.status_code == 200, revoked.text
+    assert flows.api_get(app_server, flows.CURRENT_USER, alice).status_code == 401
+    assert flows.api_get(app_server, flows.CURRENT_USER, other).status_code == 200
+    events = [e for e in app_server.audit_events("session.revoked") if e.get("detail", {}).get("source") == "admin"]
+    assert events and events[-1]["resource_id"] == ALICE
+
+    # Revoke all ends the rest.
+    assert httpx.delete(f"{app_server.url}/api/2.0/mlflow/users/{ALICE}/sessions", headers=root_headers, timeout=30.0).status_code == 200
+    assert flows.api_get(app_server, flows.CURRENT_USER, other).status_code == 401
+    assert _admin_get(app_server, root_cookie, f"/api/2.0/mlflow/users/{ALICE}/sessions").json()["sessions"] == []
