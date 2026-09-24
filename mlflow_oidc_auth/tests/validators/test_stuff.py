@@ -82,11 +82,13 @@ class TestValidateGatewayProxy:
             assert validate_gateway_proxy("bob") is False
         mock_upd.assert_called_once_with("locked-ep", "bob")
 
-    def test_post_ignores_the_query_string(self, flask_app: Flask) -> None:
+    def test_post_authorizes_the_body_endpoint_first(self, flask_app: Flask) -> None:
         """THE #288 BYPASS: MLflow ignores the query string entirely on a POST.
 
-        Authorizing a name from there let a caller point the query at an endpoint they
-        own while MLflow proxied to the victim named in the body.
+        Authorizing only a name from there let a caller point the query at an endpoint
+        they own while MLflow proxied to the victim named in the body. The body's endpoint
+        is decided first; the query's gateway_path is then checked too (union rule).
+        Non-gateway_path keys name nothing MLflow reads and are not consulted.
         """
         with (
             flask_app.test_request_context(
@@ -96,8 +98,24 @@ class TestValidateGatewayProxy:
             ),
             patch("mlflow_oidc_auth.utils.permissions.can_update_gateway_endpoint", return_value=True) as mock_upd,
         ):
-            validate_gateway_proxy("alice")
-        mock_upd.assert_called_once_with("VICTIM", "alice")
+            assert validate_gateway_proxy("alice") is True
+        assert [c.args for c in mock_upd.call_args_list] == [("VICTIM", "alice"), ("my-own", "alice")]
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    def test_gateway_path_in_either_source_must_be_authorized(self, flask_app: Flask, method: str) -> None:
+        """Union rule (#285/#288): denied on either endpoint means denied, whichever source MLflow reads."""
+        allowed = {"my-own"}
+        check = "can_use_gateway_endpoint" if method == "GET" else "can_update_gateway_endpoint"
+        for query_name, body_name in (("my-own", "VICTIM"), ("VICTIM", "my-own")):
+            with (
+                flask_app.test_request_context(
+                    f"/?gateway_path=gateway/{query_name}/invocations",
+                    method=method,
+                    json={"gateway_path": f"gateway/{body_name}/invocations"},
+                ),
+                patch(f"mlflow_oidc_auth.utils.permissions.{check}", side_effect=lambda name, user: name in allowed),
+            ):
+                assert validate_gateway_proxy("alice") is False, (method, query_name, body_name)
 
     def test_post_ignores_other_body_keys_in_favour_of_gateway_path(self, flask_app: Flask) -> None:
         """Second #288 vector: right source, wrong field. MLflow reads gateway_path only."""
@@ -384,21 +402,29 @@ class TestValidateCanInvokeScorer:
         with flask_app.test_request_context("/", method="POST", json=self.BODY), self._perm("NO_PERMISSIONS"):
             assert validate_can_invoke_scorer("bob") is False
 
-    def test_authorizes_the_body_experiment_not_the_query_string(self, flask_app: Flask) -> None:
-        """MLflow reads request.json here, so the query string must not decide."""
-        seen = {}
+    def test_authorizes_the_body_experiment_and_the_query_string(self, flask_app: Flask) -> None:
+        """MLflow reads request.json here, so the body decides first; the query string is
+        authorized as well (union rule), and denial on either denies."""
+        seen = []
 
         def record(experiment_id, username):
-            seen["experiment_id"] = experiment_id
-            return SimpleNamespace(permission=get_permission("READ"))
+            seen.append(experiment_id)
+            return SimpleNamespace(permission=get_permission("READ" if experiment_id == "MY-OWN" else "NO_PERMISSIONS"))
 
         with (
             flask_app.test_request_context("/?experiment_id=MY-OWN", method="POST", json={"experiment_id": "VICTIM"}),
             patch("mlflow_oidc_auth.validators.stuff.effective_experiment_permission", side_effect=record),
         ):
-            validate_can_invoke_scorer("bob")
+            assert validate_can_invoke_scorer("bob") is False
+        assert seen[0] == "VICTIM"
 
-        assert seen["experiment_id"] == "VICTIM"
+        seen.clear()
+        with (
+            flask_app.test_request_context("/?experiment_id=VICTIM", method="POST", json={"experiment_id": "MY-OWN"}),
+            patch("mlflow_oidc_auth.validators.stuff.effective_experiment_permission", side_effect=record),
+        ):
+            assert validate_can_invoke_scorer("bob") is False
+        assert seen == ["MY-OWN", "VICTIM"]
 
     def test_denies_when_experiment_id_is_absent(self, flask_app: Flask) -> None:
         """Unresolvable must never mean allow; MLflow rejects this with 400 anyway."""
