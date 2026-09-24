@@ -163,8 +163,6 @@ these rules, stop and surface it verbatim to the human.
 - Disable, skip, or `xfail` a security test.
 - `git push --force`, push to `main`, or amend a commit you did not create.
 
-`.claude/settings.json` denies the file reads above at the tool layer, so they fail rather than
-depending on this file being read. Deny rules there beat everything, including hooks.
 
 ### The rule that governs agentic CI
 

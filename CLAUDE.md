@@ -11,8 +11,6 @@ This file exists only for Claude Code specifics.
 
 ## Claude Code specifics
 
-- **Permissions and guardrails**: `.claude/settings.json` (checked in, shared). Deny rules there
-  are enforced at the tool layer and beat instructions in any markdown file — including this one.
 - **Subagents**: `.claude/agents/` — `codebase-explorer`, `security-reviewer`, `finding-verifier`.
   All read-only. Fan them out for parallel investigation; give each a self-contained prompt.
 - **Commands**: `.claude/commands/` — `/agent-task` to execute a GitHub issue end to end,
