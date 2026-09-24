@@ -302,7 +302,7 @@ def reconcile_ownership(
         if memberships:
             emit_ownership_audit("membership.ownership_reconciled", set_owner, [f"{row.username}:{row.group_name}" for row in memberships])
         if groups:
-            emit_ownership_audit("group.ownership_reconciled", set_owner, [row.group_name for row in groups])
+            emit_ownership_audit("group.ownership_reconciled", set_owner, [row.group_name for row in groups], resource_type="group")
         click.echo(f"\nchanged {len(rows) + len(memberships) + len(groups)} row(s)")
     finally:
         engine.dispose()
@@ -393,7 +393,7 @@ def restore_ownership(url: str, journal: str, apply_changes: bool) -> None:
         if memberships:
             emit_ownership_audit("membership.ownership_restored", recorded.get("set_owner"), [f"{e['username']}:{e['group']}" for e in memberships])
         if groups:
-            emit_ownership_audit("group.ownership_restored", recorded.get("set_owner"), [e["group"] for e in groups])
+            emit_ownership_audit("group.ownership_restored", recorded.get("set_owner"), [e["group"] for e in groups], resource_type="group")
         click.echo(f"\nrestored {restored} row(s)")
         if skipped:
             click.echo(f"left alone (changed since the journal was written): {', '.join(skipped)}")
@@ -401,14 +401,18 @@ def restore_ownership(url: str, journal: str, apply_changes: bool) -> None:
         engine.dispose()
 
 
-def emit_ownership_audit(event: str, owner, usernames) -> None:
-    """Record a bulk ownership change. Out of band by nature, so it belongs in the audit log."""
+def emit_ownership_audit(event: str, owner, names, resource_type: str = "user") -> None:
+    """Record a bulk ownership change. Out of band by nature, so it belongs in the audit log.
+
+    ``resource_type`` names what was re-owned: ``user`` (user rows and ``user:group``
+    memberships, which belong to a user) or ``group``.
+    """
     from mlflow_oidc_auth.audit import emit_audit_event
 
     emit_audit_event(
         event,
         actor="cli",
-        resource_type="user",
-        resource_id=",".join(usernames[:20]) + ("..." if len(usernames) > 20 else ""),
-        detail={"owner": owner, "count": len(usernames)},
+        resource_type=resource_type,
+        resource_id=",".join(names[:20]) + ("..." if len(names) > 20 else ""),
+        detail={"owner": owner, "count": len(names)},
     )
