@@ -43,8 +43,9 @@ Middleware is applied to every request. The execution order (outermost to innerm
 Request → ProxyHeaders → Session → WorkspaceContext → Auth → FastAPIPermission → Route Handler
 ```
 
-`ProxyHeadersMiddleware` runs first so a forwarded path prefix is recorded in the ASGI
-`root_path` before any authorization decision. `AuthMiddleware` and the FastAPI permission
+`ProxyHeadersMiddleware` runs first so a forwarded path prefix from a trusted proxy is recorded
+in the ASGI `root_path` before any workspace resolution or authorization decision.
+`WorkspaceContextMiddleware` resolves the workspace on the same routed path. `AuthMiddleware` and the FastAPI permission
 middleware both decide on the **routed path** — the request path with that prefix removed, which
 is the path the router dispatches on — so the unprotected-route list and the validator mapping
 always describe the endpoint that serves the request, whether or not the deployment sits under
@@ -52,7 +53,7 @@ a prefix. The wiring lives in `add_middleware_stack()` in `app.py`.
 
 | Middleware | Purpose |
 |-----------|---------|
-| **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and path prefix (`root_path`), and records the client IP. When `TRUSTED_PROXIES` is configured, only applies headers from requests originating within the trusted CIDR ranges; when it is unset, headers are applied from every client and a warning is logged at startup |
+| **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and path prefix (`root_path`), and records the forwarded client IP under its own scope key (`client_address()`; `request.client` is left as the connection address). Applies headers only from requests originating within the `TRUSTED_PROXIES` CIDR ranges; when it is unset, no proxy is trusted, the headers are ignored from every client and this is logged once at startup |
 | **AuthMiddleware** | Authenticates the user via basic auth, JWT bearer token, or session cookie. Sets `request.state.username`, `request.state.is_admin`, and `request.scope["mlflow_oidc_auth"]`. When `OIDC_AUDIENCE` is configured, JWT `aud` claim is validated |
 | **FastAPIPermissionMiddleware** | Enforces RBAC on MLflow's native FastAPI routers (gateway invocations, chat completions, embeddings). Extracts the gateway endpoint name from the routed path and checks USE permission before forwarding. On the MCP server registry, reads are open to any authenticated user and mutations are admin-only. Fails closed: any request not dispatched to the Flask mount and not on an unprotected route must carry an authenticated user, even where no validator is mapped |
 | **WorkspaceContextMiddleware** | When workspaces are enabled, reads the `X-MLFLOW-WORKSPACE` header and sets MLflow's workspace ContextVar so tracking store operations run in the correct workspace |

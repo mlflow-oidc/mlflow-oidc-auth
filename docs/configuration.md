@@ -84,7 +84,7 @@ Fields for an entry with `"type": "saml"` (requires the `[saml]` extra). They ar
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `SECRET_KEY` | String | Auto-generated | Secret key used to sign session cookies. **All replicas must share the same value** in multi-instance deployments. If not set, a random key is generated on startup and a warning is logged — sessions will not survive restarts or work across replicas |
-| `TRUSTED_PROXIES` | String (CSV) | Empty (trust all) | Comma-separated list of trusted proxy IP addresses or CIDR ranges (e.g., `10.0.0.0/8,172.16.0.0/12`). When configured, `X-Forwarded-*` headers from untrusted sources are ignored; a value with no valid entry trusts no source. When empty, all proxy headers are trusted for backward compatibility and a warning is logged at startup. **Production deployments behind a reverse proxy must set this** to the proxy's address or range — see [Reverse proxies](#reverse-proxies) |
+| `TRUSTED_PROXIES` | String (CSV) | Empty (trust no proxy) | Comma-separated list of trusted proxy IP addresses or CIDR ranges (e.g., `10.0.0.0/8,172.16.0.0/12`). `X-Forwarded-*` and `X-Real-IP` headers are honoured only from a connecting client inside one of these ranges and ignored from every other client; a value with no valid entry trusts no client. When empty, no proxy is trusted: the headers are ignored from every client and this is logged once at startup. **A deployment behind a reverse proxy must set this** to the proxy's address or range — see [Reverse proxies](#reverse-proxies) |
 | `AUTOMATIC_LOGIN_REDIRECT` | Boolean | `false` | When `true`, unauthenticated browser requests are automatically redirected to the OIDC login page instead of showing the login UI |
 
 ### UI Behavior
@@ -405,30 +405,71 @@ Additional session cookie settings:
 
 ## Reverse proxies
 
-`ProxyHeadersMiddleware` applies `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port`
-and `X-Forwarded-Prefix` to each request so redirects and callback URLs are built correctly
-behind a proxy, and so a deployment served under a sub-path (for example `/mlflow`) routes
-correctly. Authorization is always decided on the routed path — the request path with the
-forwarded prefix removed — which is the same path the application dispatches on.
+`ProxyHeadersMiddleware` applies `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port`,
+`X-Forwarded-Prefix` and `X-Forwarded-For` (or `X-Real-IP`) to each request so redirects and
+callback URLs are built correctly behind a proxy, so a deployment served under a sub-path (for
+example `/mlflow`) routes correctly, and so the SCIM failed-authentication limit and its audit
+events name the original client rather than the proxy. The connection address the application
+sees (`request.client`) is never replaced. Authorization is always decided on the routed path — the
+request path with the forwarded prefix removed — which is the same path the application
+dispatches on, and the workspace is resolved on that same path.
 
-These headers are only meaningful when they come from your proxy. Set `TRUSTED_PROXIES` to the
-proxy's address or CIDR range in every production deployment behind a reverse proxy:
+These headers are only meaningful when they come from your proxy, so they are honoured only from
+the addresses listed in `TRUSTED_PROXIES`. **A deployment behind a reverse proxy must set it** to
+the proxy's address or CIDR range:
 
 ```bash
 TRUSTED_PROXIES=10.0.0.0/8
 ```
 
-When `TRUSTED_PROXIES` is unset, the headers are honoured from every client (the default, kept
-for backward compatibility) and a warning is logged once at startup. When it is set, headers
-from any other client are ignored; a value in which no entry parses as an address or range
-trusts no client at all. Make sure the proxy overwrites, rather than appends to, any
+List only proxies: every address inside a listed range can set these headers. IPv4-mapped IPv6
+connection addresses (`::ffff:10.0.0.5`) are matched as their IPv4 form, so list IPv4 ranges in
+IPv4 notation.
+
+When `TRUSTED_PROXIES` is unset, no proxy is trusted: the plugin ignores the headers from every
+client, and this is logged once at startup at `INFO`. Scheme, host, path and client
+address are then the direct connection's, and redirect and callback URLs are built from them
+unless `OIDC_REDIRECT_URI` is configured. When it is set, the headers from any other client are
+ignored; a value in which no entry parses as an address or range trusts no client at all.
+
+For `X-Forwarded-For`, the proxy should append the address it received the request from (the
+usual behaviour). The client address is the right-most entry that is not itself inside
+`TRUSTED_PROXIES`, reading repeated header lines as one list; when that entry is not an IP
+address, the direct connection's address is used. `X-Real-IP` is read only when there is no
+`X-Forwarded-For`. Make sure the proxy overwrites, rather than appends to, any other
 `X-Forwarded-*` header a client sends.
+
+The trust decision is made on the connection address the ASGI server reports. uvicorn, which
+`mlflow server` runs, applies `X-Forwarded-For` and `X-Forwarded-Proto` itself for the peers in
+its `FORWARDED_ALLOW_IPS` setting (`127.0.0.1` by default) and reports the forwarded address as
+the connection address. Keep uvicorn's default: MLflow relies on it to tell same-host requests
+from proxied ones. The simplest setup is a proxy on its own, non-loopback address listed in
+`TRUSTED_PROXIES`, which uvicorn leaves alone. A proxy on `127.0.0.1` has its requests reported
+with the client's address, which the plugin does not trust unless that address is itself inside
+`TRUSTED_PROXIES`; for such a deployment set `OIDC_REDIRECT_URI` and serve the application at the
+same path the proxy exposes rather than relying on `X-Forwarded-Prefix`.
 
 ## Upgrading to this release
 
-These behaviour changes ship together in this release. None require a configuration change to
-keep working; each is called out here because it changes what a running deployment does on
-upgrade.
+These behaviour changes ship together in this release. Each is called out here because it
+changes what a running deployment does on upgrade; the first one requires a configuration change
+for deployments behind a reverse proxy.
+
+- **`TRUSTED_PROXIES` unset now trusts no proxy.** Previously an unset `TRUSTED_PROXIES` honoured
+  `X-Forwarded-*` headers from every client. Now they are ignored unless the connecting client is
+  inside one of the listed ranges. A deployment behind a reverse proxy that relied on the old
+  default must set `TRUSTED_PROXIES` to the proxy's address or CIDR range; otherwise a deployment
+  mounted under a prefix (`X-Forwarded-Prefix`) no longer routes under that prefix, redirect and
+  callback URLs built from the request use the internal scheme and host (unless
+  `OIDC_REDIRECT_URI` is set), and the SCIM failed-authentication limit and its audit events see
+  the proxy's address as the client IP. See [Reverse proxies](#reverse-proxies).
+- **The SCIM client IP comes from the trusted proxy.** Behind a proxy listed in
+  `TRUSTED_PROXIES`, the SCIM failed-authentication limit and its audit events are now keyed on
+  the client address taken from `X-Forwarded-For` (right-most untrusted entry) or `X-Real-IP`,
+  rather than on the proxy's address. The connection address (`request.client`) is unchanged.
+- **Workspaces are resolved on the routed path.** With `MLFLOW_ENABLE_WORKSPACES=true`, the
+  workspace of a request is resolved on the path the router dispatches — the request path with a
+  trusted forwarded prefix removed — the same path authorization decides on.
 
 - **Session tokens move off the cookie.** The refresh token, ID token, and IdP expiry that used
   to live in the signed session cookie now live encrypted on the server-side `auth_sessions` row
