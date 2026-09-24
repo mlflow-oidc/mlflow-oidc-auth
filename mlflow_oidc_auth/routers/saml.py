@@ -288,7 +288,8 @@ async def saml_acs(request: Request, provider_id: str):
     except Exception as exc:
         # Answered here rather than by the default 500 handler, whose response cannot carry the
         # cookie deletion. The audit gets the exception type only; the traceback goes to the log.
-        logger.exception("Unexpected error in the SAML ACS for provider '%s'", provider.id)
+        # Fixed message: the provider id is in the audit event, not interpolated here.
+        logger.exception("Unexpected error in the SAML ACS")
         emit_audit_event("auth.saml_acs_error", actor="<anonymous>", detail={"provider": provider.id, "error": type(exc).__name__}, status="denied")
         response = JSONResponse({"detail": REFUSED}, status_code=500)
     if cookie_name in request.cookies:

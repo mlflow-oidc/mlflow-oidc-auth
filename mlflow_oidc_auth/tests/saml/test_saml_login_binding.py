@@ -288,7 +288,7 @@ class TestCsrfBindingEnforced:
         assert event["status"] == "denied" and event["detail"] == {"provider": PROVIDER_ID, "error": "RuntimeError"}
         # The audit trail carries the type only, never the message.
         assert nonce not in str(event)
-        assert any(record.exc_info for record in caplog.records if "SAML ACS" in record.getMessage())
+        assert any(record.exc_info for record in caplog.records if record.getMessage() == "Unexpected error in the SAML ACS")
         monkeypatch.undo()
         _assert_no_session(client, store, response)
 
@@ -370,15 +370,16 @@ class TestCsrfBindingConfig:
 
         monkeypatch.setenv("SAML_LOGIN_BINDING", "yes-please")
 
-        with pytest.raises(ValueError, match="SAML_LOGIN_BINDING"):
+        with pytest.raises(ValueError, match="SAML_LOGIN_BINDING") as raised:
             AppConfig()
+        assert "yes-please" not in str(raised.value)
 
     @pytest.mark.parametrize(
         "mode,secure,expected",
         [
-            ("auto", False, "SAML login binding is disabled"),
-            ("off", True, "SAML login binding is disabled"),
-            ("on", False, "for http test rigs only"),
+            ("auto", False, "SAML login binding is disabled while a SAML provider is configured"),
+            ("off", True, "SAML login binding is disabled while a SAML provider is configured"),
+            ("on", False, "SAML login binding is forced on without secure cookies"),
             ("auto", True, None),
         ],
     )
@@ -394,11 +395,13 @@ class TestCsrfBindingConfig:
         with caplog.at_level(logging.WARNING):
             app_config._log_saml_login_binding()
 
-        messages = [record.getMessage() for record in caplog.records if "SAML_LOGIN_BINDING" in record.getMessage()]
+        messages = [record.getMessage() for record in caplog.records if "SAML login binding" in record.getMessage()]
         if expected is None:
             assert messages == []
         else:
-            assert len(messages) == 1 and expected in messages[0]
+            assert len(messages) == 1 and messages[0].startswith(expected)
+            # No config value is interpolated into the line (CodeQL py/clear-text-logging-sensitive-data).
+            assert "SAML_LOGIN_BINDING=" not in messages[0] and "=true" not in messages[0] and "=false" not in messages[0]
 
     def test_startup_is_silent_without_a_saml_provider(self, monkeypatch, caplog):
         from mlflow_oidc_auth.config import AppConfig
