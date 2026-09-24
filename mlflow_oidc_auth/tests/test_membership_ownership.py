@@ -60,7 +60,7 @@ def no_tracking_store(monkeypatch):
     rather than let it build whatever store ``MLFLOW_TRACKING_URI`` (or its absence) implies."""
     from types import SimpleNamespace
 
-    import mlflow_oidc_auth.utils.permissions as permissions
+    from mlflow_oidc_auth.utils import permissions
 
     class _Store:
         def get_experiment(self, experiment_id):
@@ -179,7 +179,6 @@ class TestLoginDoesNotStripTheDirectorysGroups:
         """``off`` evaluates nothing else, so the kept row is the one thing it still reports: the
         audit event (a success, not a denial) and one INFO line per sync — the trail an operator
         follows after renaming a provider, whose old rows now look foreign."""
-        import logging
 
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.OFF)
 
@@ -192,7 +191,6 @@ class TestLoginDoesNotStripTheDirectorysGroups:
         assert f"user {ALICE}" in line and "'scim'" in line and "oidc:default" in line
 
     def test_no_log_line_outside_off(self, store, directory_member, caplog):
-        import logging
 
         with caplog.at_level(logging.INFO):
             login(ALICE, ["mlflow-users"])
@@ -650,7 +648,8 @@ class TestReconcileJournalRoundTrips:
         assert applied.exit_code == 0, applied.output
         assert owners(store, ALICE) == {"finance": "manual"}
         assert owners(store, KEEPER) == {"eng": "scim"}
-        recorded = json.loads(open(journal).read())
+        with open(journal) as fh:
+            recorded = json.load(fh)
         assert recorded["memberships"] == [{"username": ALICE, "group": "finance", "managed_by": "scim"}]
 
         dry = self._run("restore-ownership", "--url", url, "--journal", journal)
