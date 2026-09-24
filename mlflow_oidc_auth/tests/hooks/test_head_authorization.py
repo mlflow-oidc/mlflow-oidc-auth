@@ -17,7 +17,6 @@ only come from the grant being consulted, never from a restrictive default.
 """
 
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 from mlflow.server import app as mlflow_app
