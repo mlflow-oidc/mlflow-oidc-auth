@@ -362,3 +362,219 @@ def test_head_on_a_proto_get_route_fails_closed():
         with pytest.raises(MlflowException) as exc:
             get_experiment_id()
     assert exc.value.get_http_status_code() == 400
+
+
+# ---------------------------------------------------------------------------
+# Union rule, every proto route (issues #285, #288)
+#
+# Mirroring MLflow's request source is a hand-maintained model of MLflow's parsing,
+# and it has drifted before. So on top of it, every value a request carries for a
+# resource field — in ANY source — must be authorized. This is the durable
+# regression: it enumerates every proto route bound in BEFORE_REQUEST_VALIDATORS,
+# puts one id in the query string (or the path) and a different id in the body, and
+# drives the real before_request_hook against a real permission store. Denied on
+# either id must mean denied, on GET and non-GET routes alike, whichever source MLflow
+# happens to read. A newly bound validator must be classified below or this fails.
+# ---------------------------------------------------------------------------
+
+from types import SimpleNamespace  # noqa: E402
+
+USER = "alice@example.com"
+OWN, OWN2, VICTIM = "own", "own2", "victim"
+
+# validator name -> (field, is_list, constant fields the request also needs)
+_UNION_SPECS = {
+    "validate_can_read_experiment": ("experiment_id", False, {}),
+    "validate_can_update_experiment": ("experiment_id", False, {}),
+    "validate_can_delete_experiment": ("experiment_id", False, {}),
+    "validate_can_manage_experiment": ("experiment_id", False, {}),
+    "validate_can_read_experiment_by_name": ("experiment_name", False, {}),
+    "validate_can_read_experiments_from_experiment_ids": ("experiment_ids", True, {}),
+    "validate_can_read_run": ("run_id", False, {}),
+    "validate_can_update_run": ("run_id", False, {}),
+    "validate_can_delete_run": ("run_id", False, {}),
+    "validate_can_read_registered_model": ("name", False, {}),
+    "validate_can_update_registered_model": ("name", False, {}),
+    "validate_can_delete_registered_model": ("name", False, {}),
+    "validate_can_manage_registered_model": ("name", False, {}),
+    "validate_can_read_scorer": ("experiment_id", False, {"name": "scorer"}),
+    "validate_can_update_scorer": ("experiment_id", False, {"name": "scorer"}),
+    "validate_can_delete_scorer": ("experiment_id", False, {"name": "scorer"}),
+    "validate_can_manage_scorer": ("experiment_id", False, {"name": "scorer"}),
+    "validate_can_read_trace": ("trace_id", False, {}),
+    "validate_can_update_trace": ("trace_id", False, {}),
+    "validate_can_read_traces_from_experiment_ids": ("experiment_ids", True, {}),
+    "validate_can_read_traces_from_trace_ids": ("trace_ids", True, {}),
+    "validate_can_update_trace_from_run_id": ("run_id", False, {}),
+    "validate_can_delete_traces_from_experiment_id": ("experiment_id", False, {}),
+    "validate_can_read_metric_history_bulk_interval": ("run_ids", True, {}),
+    "validate_can_search_datasets": ("experiment_ids", True, {}),
+    "validate_can_read_gateway_endpoint": ("name", False, {}),
+    "validate_can_delete_gateway_endpoint": ("name", False, {}),
+    "validate_can_update_gateway_endpoint": ("endpoint_id", False, {}),
+    "validate_can_read_gateway_secret": ("secret_name", False, {}),
+    "validate_can_delete_gateway_secret": ("secret_name", False, {}),
+    "validate_can_update_gateway_secret": ("secret_id", False, {}),
+    "validate_can_read_gateway_model_definition": ("name", False, {}),
+    "validate_can_delete_gateway_model_definition": ("name", False, {}),
+    "validate_can_update_gateway_model_definition": ("model_definition_id", False, {}),
+}
+
+# Validators that read no caller-chosen id for an EXISTING resource, with the reason.
+_UNION_EXEMPT = {
+    "_deny_non_admin": "unconditional deny; no request field feeds the decision",
+    "validate_can_create_experiment": "creation: no existing resource; name-gated only under RESTRICT_RESOURCE_CREATION",
+    "validate_can_create_registered_model": "creation: no existing resource; name-gated only under RESTRICT_RESOURCE_CREATION",
+    "validate_can_create_gateway": "creation: allowed for any authenticated user",
+    "validate_can_read_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
+    "validate_can_update_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
+    "validate_can_delete_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
+}
+
+
+def _union_routes():
+    from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_VALIDATORS
+    from mlflow_oidc_auth.hooks.dual_spelling_guard import _is_proto_route
+
+    for (path, method), validator in sorted(BEFORE_REQUEST_VALIDATORS.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+        if _is_proto_route(path, method):
+            yield path, method, validator.__name__
+
+
+def test_every_proto_validator_is_classified_for_the_union_rule():
+    """A new proto validator must be added to _UNION_SPECS (and so tested) or exempted with a reason."""
+    unclassified = sorted({name for _p, _m, name in _union_routes() if name not in _UNION_SPECS and name not in _UNION_EXEMPT})
+    assert not unclassified, f"classify these validators for the union-rule regression: {unclassified}"
+
+
+class _FakeTrackingStore:
+    """Resolves every token-named run / trace / logged model / gateway id to a same-named parent."""
+
+    def get_run(self, run_id):
+        return SimpleNamespace(info=SimpleNamespace(experiment_id=run_id))
+
+    def get_trace_info(self, trace_id):
+        return SimpleNamespace(experiment_id=trace_id)
+
+    def get_logged_model(self, model_id):
+        return SimpleNamespace(experiment_id=model_id)
+
+    def get_experiment_by_name(self, name):
+        return SimpleNamespace(experiment_id=name)
+
+    def get_gateway_endpoint(self, endpoint_id=None, **_):
+        return SimpleNamespace(name=endpoint_id)
+
+    def get_secret_info(self, secret_id=None, **_):
+        return SimpleNamespace(secret_name=secret_id)
+
+    def get_gateway_model_definition(self, model_definition_id=None, **_):
+        return SimpleNamespace(name=model_definition_id)
+
+
+@pytest.fixture
+def union_world(store, monkeypatch):
+    """OWN and OWN2 are MANAGE for alice on every resource type; VICTIM is an explicit NO_PERMISSIONS.
+
+    The denial is explicit rather than absent, so the assertions cannot pass merely
+    because DEFAULT_MLFLOW_PERMISSION happens to be restrictive.
+    """
+    store.create_user(USER, "pw", "Alice")
+    for token, level in ((OWN, "MANAGE"), (OWN2, "MANAGE"), (VICTIM, "NO_PERMISSIONS")):
+        store.create_experiment_permission(token, USER, level)
+        store.create_registered_model_permission(token, USER, level)
+        store.create_scorer_permission(token, "scorer", USER, level)
+        store.create_gateway_endpoint_permission(token, USER, level)
+        store.create_gateway_secret_permission(token, USER, level)
+        store.create_gateway_model_definition_permission(token, USER, level)
+
+    fake = _FakeTrackingStore()
+    for target in (
+        "mlflow.server.handlers._get_tracking_store",
+        "mlflow_oidc_auth.validators.run._get_tracking_store",
+        "mlflow_oidc_auth.validators.registered_model._get_tracking_store",
+        "mlflow_oidc_auth.validators.experiment._get_tracking_store",
+        "mlflow_oidc_auth.validators.trace._get_tracking_store",
+        "mlflow_oidc_auth.utils.request_helpers._get_tracking_store",
+    ):
+        monkeypatch.setattr(target, lambda: fake)
+    monkeypatch.setattr("mlflow_oidc_auth.hooks.before_request.store", store)
+    monkeypatch.setattr("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", lambda: USER)
+    monkeypatch.setattr("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", lambda: False)
+    return store
+
+
+def _hook(path, method, *, view_args=None, query=None, body=None):
+    from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+    with _ctx(path, method, body=body, query=query):
+        if view_args:
+            request.view_args = view_args
+        return before_request_hook()
+
+
+def _union_request(template, method, field, is_list, extra, first, second):
+    """``first`` where MLflow might read it (the path, else the query string), ``second`` elsewhere.
+
+    Off the path, ``second`` goes in the body. On a path route it goes in the body for a
+    mutating method and in the query string for a GET — a GET body with an otherwise
+    empty query string is already refused by the #270 guard, which would mask the
+    union check this test is about.
+    """
+    import re
+
+    view_args = {}
+
+    def fill(match):
+        name = match.group(1)
+        view_args[name] = first if name in ("trace_id", "request_id") else "a1"
+        return view_args[name]
+
+    path = re.sub(r"<([^>]+)>", fill, template)
+    query = dict(extra)
+    body = dict(extra)
+    if not view_args:
+        query[field] = first
+        body[field] = [second] if is_list else second
+    elif method == "GET":
+        query[field] = second
+        body = None
+    else:
+        body[field] = [second] if is_list else second
+    return path, view_args or None, query, body
+
+
+_UNION_CASES = [(p, m, n) for p, m, n in _union_routes() if n in _UNION_SPECS]
+
+
+@pytest.mark.parametrize("path, method, validator_name", _UNION_CASES, ids=[f"{m} {p}" for p, m, _n in _UNION_CASES])
+def test_a_second_id_in_another_source_is_authorized_too(union_world, path, method, validator_name):
+    field, is_list, extra = _UNION_SPECS[validator_name]
+
+    # Denied on EITHER id means denied — in both orientations, so the outcome does not
+    # depend on which source MLflow reads for this method.
+    for first, second in ((OWN, VICTIM), (VICTIM, OWN)):
+        p, view_args, query, body = _union_request(path, method, field, is_list, extra, first, second)
+        resp = _hook(p, method, view_args=view_args, query=query, body=body)
+        assert resp is not None and resp.status_code in (400, 403), f"{method} {path}: {field} {first!r} vs {second!r} was allowed"
+        if not view_args:
+            # Off the path, the only way to refuse is the union check itself (403),
+            # not an ambiguity 400 that a different code path might stop raising.
+            assert resp.status_code == 403, f"{method} {path}: expected 403, got {resp.status_code}"
+
+    # Control: two different ids the caller holds MANAGE on are allowed, so the denials
+    # above are the union rule at work, not a blanket refusal of the request shape.
+    p, view_args, query, body = _union_request(path, method, field, is_list, extra, OWN, OWN2)
+    if not view_args:
+        assert _hook(p, method, query=query, body=body) is None, f"{method} {path}: {OWN!r} + {OWN2!r} should be allowed"
+
+    # And the ordinary shape — one id, repeated or in one place — still passes.
+    p, view_args, query, body = _union_request(path, method, field, is_list, extra, OWN, OWN)
+    assert _hook(p, method, view_args=view_args, query=query, body=body) is None, f"{method} {path}: plain request denied"
+
+
+def test_union_covers_both_get_and_non_get_routes():
+    """The regression must exercise GET and mutating routes alike, or it proves half the rule."""
+    methods = {m for _p, m, _n in _UNION_CASES}
+    assert {"GET", "POST"} <= methods, methods
+    assert len(_UNION_CASES) >= 50, len(_UNION_CASES)
