@@ -16,7 +16,7 @@ from mlflow_oidc_auth.tests.db.test_phase0_migration import (  # noqa: F401  (fi
     engine,
 )
 
-SAML_REVISION = "b1e2f3a45678"
+SAML_REVISION = "e4f5a6b7c8d9"
 BINDING_REVISION = "c2f3a4b56789"
 
 _INSERT = text("INSERT INTO auth_state (state, provider_id, expires_at) VALUES (:s, 'corp', '2030-01-01 00:00:00')")
@@ -27,7 +27,7 @@ def _columns(engine):
 
 
 class TestRevisionChain:
-    def test_binding_follows_saml(self, tmp_path):
+    def test_binding_follows_group_ownership(self, tmp_path):
         script = ScriptDirectory.from_config(_get_alembic_config(_sqlite_uri(tmp_path))).get_revision(BINDING_REVISION)
         assert script.down_revision == SAML_REVISION
 
