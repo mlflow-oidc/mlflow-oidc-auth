@@ -112,6 +112,23 @@ class TestRecorder:
 
         assert [row.outcome for row in _rows(bound_store)] == ["auth_failed", "auth_failed"]
 
+    def test_anonymous_rows_are_capped_across_clients(self, client, bound_store, monkeypatch):
+        """An attacker rotating source addresses gets past the per-client throttle, not this cap."""
+        from mlflow_oidc_auth.dependencies import scim_auth_failure_audit
+
+        monkeypatch.setattr(scim_module, "ANONYMOUS_ACTIVITY_PER_MINUTE", 2)
+        monkeypatch.setattr(scim_auth_failure_audit, "WINDOW_SECONDS", 0.0)  # every request looks like a new client
+        for _ in range(5):
+            assert client.get(USERS).status_code == 401
+
+        assert len(_rows(bound_store, outcome="auth_failed")) == 2
+
+    def test_authenticated_requests_are_not_capped(self, client, scim, bound_store, monkeypatch):
+        monkeypatch.setattr(scim_module, "ANONYMOUS_ACTIVITY_PER_MINUTE", 1)
+        for _ in range(3):
+            client.get(USERS, headers=scim)
+        assert len(_rows(bound_store, outcome="ok")) == 3
+
     def test_rate_limited_token_is_a_client_error_with_the_token(self, client, scim, bound_store, monkeypatch):
         monkeypatch.setattr(config, "SCIM_RATE_LIMIT_PER_MINUTE", 1)
         assert client.get(USERS, headers=scim).status_code == 200

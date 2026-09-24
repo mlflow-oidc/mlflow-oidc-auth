@@ -46,7 +46,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.dependencies import check_admin_permission, require_scim_token
+from mlflow_oidc_auth.dependencies import ScimRateLimiter, check_admin_permission, require_scim_token
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.scim import (
     GROUP_SCHEMA,
@@ -117,6 +117,10 @@ _ROUTE_PARAM = re.compile(r"\{([^}:]+)(?::[^}]*)?\}")
 #: Anything shaped like a SCIM token that might have found its way into an error message.
 _TOKEN_LIKE = re.compile(r"scim_[0-9a-fA-F]{8}_\S+")
 _SWEEP_INTERVAL_SECONDS = 3600
+#: Unauthenticated rows per minute, per process, across *all* clients. The per-client throttle
+#: alone is keyed on the peer address, which an attacker holding many addresses can rotate.
+ANONYMOUS_ACTIVITY_PER_MINUTE = 60
+anonymous_activity_limiter = ScimRateLimiter()
 _sweep_state = {"last": None}
 _sweep_lock = threading.Lock()
 
@@ -169,8 +173,9 @@ async def _record_activity(request: Request, status_code: int, detail: Optional[
     """One ``scim_activity`` row for this request (#325). Best effort: never raises.
 
     Unauthenticated requests are recorded on the same throttle as their ``scim.auth_failed``
-    audit event — at most one per client per minute — so an anonymous client cannot fill the
-    table any faster than the audit log.
+    audit event — at most one per client per minute — and at most
+    ``ANONYMOUS_ACTIVITY_PER_MINUTE`` across all clients, so neither one anonymous client nor
+    many can fill the table.
     """
     import asyncio
     import time
@@ -178,6 +183,8 @@ async def _record_activity(request: Request, status_code: int, detail: Optional[
     try:
         token = getattr(request.state, "scim_token", None)
         if token is None and not getattr(request.state, "scim_auth_failure_recorded", False):
+            return
+        if token is None and not anonymous_activity_limiter.allow("anonymous", ANONYMOUS_ACTIVITY_PER_MINUTE):
             return
         path, resource_id = _activity_target(request)
         fields = {

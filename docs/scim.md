@@ -451,8 +451,9 @@ message is redacted too), request and response bodies, headers, client addresses
 text. A server error records only `Internal error`; the stack trace goes to the server log.
 
 **Unauthenticated requests** are recorded on the same throttle as the `scim.auth_failed` audit
-event, at most one row per client per minute, so an anonymous client cannot fill the table any
-faster than it can fill the audit log.
+event, at most one row per client per minute, and at most 60 such rows per minute per process
+across all clients, so neither one anonymous client nor many rotating addresses can fill the
+table.
 
 Recording is best effort. It happens after the response is decided, one insert per request, and
 a failure to record is logged and never changes the response. It does not touch the

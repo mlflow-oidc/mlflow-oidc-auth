@@ -58,9 +58,10 @@ def scim_config(monkeypatch):
     monkeypatch.setattr(config, "SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE", 60, raising=False)
     for state in (scim_rate_limiter, scim_auth_failure_limiter, scim_auth_failure_audit):
         state.reset()
-    from mlflow_oidc_auth.routers.scim import _sweep_state
+    from mlflow_oidc_auth.routers.scim import _sweep_state, anonymous_activity_limiter
 
     _sweep_state["last"] = None
+    anonymous_activity_limiter.reset()
     yield
     for state in (scim_rate_limiter, scim_auth_failure_limiter, scim_auth_failure_audit):
         state.reset()
