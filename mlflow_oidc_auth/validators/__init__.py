@@ -48,6 +48,7 @@ from mlflow_oidc_auth.validators.trace import (
     validate_can_update_trace_from_run_id,
     validate_can_update_trace,
     validate_can_delete_traces_from_experiment_id,
+    validate_can_start_trace_v3,
 )
 
 from mlflow_oidc_auth.validators.stuff import (
@@ -117,6 +118,7 @@ __all__ = [
     "validate_can_update_trace_from_run_id",
     "validate_can_update_trace",
     "validate_can_delete_traces_from_experiment_id",
+    "validate_can_start_trace_v3",
     "validate_can_read_scorer",
     "validate_can_update_scorer",
     "validate_can_delete_scorer",

@@ -184,3 +184,59 @@ def validate_can_update_trace_from_run_id(username: str) -> bool:
         if not effective_experiment_permission(experiment_id, username).permission.can_update:
             return False
     return True
+
+
+def _start_trace_v3_trace_infos() -> list:
+    """Every ``trace.trace_info`` object in a StartTraceV3 body, across both spellings."""
+    infos: list = []
+    for trace in _field_values(_json_body(), "trace", "trace"):
+        infos += [info for info in _field_values(trace, "trace_info", "traceInfo") if isinstance(info, dict)]
+    return infos
+
+
+def validate_can_start_trace_v3(username: str) -> bool:
+    """StartTraceV3 (``POST /3.0/mlflow/traces``): UPDATE on the destination experiment,
+    and on the experiment of any existing trace the body names.
+
+    The destination is ``trace.trace_info.trace_location.mlflow_experiment.experiment_id``.
+    A body naming no experiment (or a non-experiment location) is denied — there is nothing
+    to authorize against.
+
+    The body also carries a caller-chosen ``trace_id``. MLflow's SQL store does not reject
+    an id that already exists: it catches the IntegrityError and merges the body's tags,
+    assessments and metadata into the EXISTING trace. Authorizing only the destination
+    experiment would therefore let a caller who can write their own experiment write into
+    any other tenant's trace by naming its id. So an existing trace must also be writable.
+    Only a definite "does not exist" counts as a new trace; any other lookup failure denies.
+
+    Parameters:
+        username: The authenticated user.
+
+    Returns:
+        True when every referenced experiment grants UPDATE.
+    """
+    from mlflow.exceptions import MlflowException
+
+    infos = _start_trace_v3_trace_infos()
+    experiment_ids: list = []
+    trace_ids: list = []
+    for info in infos:
+        for location in _field_values(info, "trace_location", "traceLocation"):
+            for mlflow_experiment in _field_values(location, "mlflow_experiment", "mlflowExperiment"):
+                experiment_ids += _field_values(mlflow_experiment, "experiment_id", "experimentId")
+        trace_ids += _field_values(info, "trace_id", "traceId")
+    experiment_ids = [e for e in experiment_ids if e]
+    if not experiment_ids:
+        return False
+
+    for trace_id in dict.fromkeys(t for t in trace_ids if t):
+        try:
+            experiment_ids.append(_experiment_for_trace(trace_id))
+        except MlflowException as e:
+            if e.error_code == "RESOURCE_DOES_NOT_EXIST":
+                continue
+            return False
+        except Exception:
+            return False
+
+    return all(effective_experiment_permission(e, username).permission.can_update for e in dict.fromkeys(experiment_ids))
