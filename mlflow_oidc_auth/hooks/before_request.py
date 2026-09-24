@@ -41,6 +41,9 @@ from mlflow.protos.service_pb2 import (
     DeleteTracesV3,
     LinkTracesToRun,
     LinkPromptsToTrace,
+    StartTrace,
+    StartTraceV3,
+    EndTrace,
     CreateAssessment,
     UpdateAssessment,
     DeleteAssessment,
@@ -82,7 +85,9 @@ from mlflow.protos.service_pb2 import (
     ListGatewayEndpointBindings,
     ListWorkspaces,
     LogBatch,
+    LogInputs,
     LogLoggedModelParamsRequest,
+    LogOutputs,
     LogMetric,
     LogModel,
     LogParam,
@@ -136,6 +141,7 @@ import mlflow_oidc_auth.responses as responses
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.hooks.dual_spelling_guard import find_dual_spelling_collision, has_unexpected_get_body
+from mlflow_oidc_auth.hooks.http_method import authorization_method
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
     validate_can_create_experiment,
@@ -168,6 +174,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_trace_from_run_id,
     validate_can_update_trace,
     validate_can_delete_traces_from_experiment_id,
+    validate_can_start_trace_v3,
     validate_can_delete_scorer,
     validate_can_manage_scorer,
     validate_can_manage_scorer_permission,
@@ -262,6 +269,9 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateRun: validate_can_update_run,
     LogMetric: validate_can_update_run,
     LogBatch: validate_can_update_run,
+    # Attach datasets / logged-model outputs to a run: a write on that run (#291).
+    LogInputs: validate_can_update_run,
+    LogOutputs: validate_can_update_run,
     LogModel: validate_can_update_run,
     SetTag: validate_can_update_run,
     DeleteTag: validate_can_update_run,
@@ -293,6 +303,13 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteAssessment: validate_can_update_trace,
     LinkPromptsToTrace: validate_can_update_trace,
     LinkTracesToRun: validate_can_update_trace_from_run_id,
+    # Starting a trace writes into the destination experiment. v2 names it top-level; v3
+    # nests it under trace_info.trace_location and may also name an EXISTING trace id,
+    # which MLflow merges into rather than rejecting, so v3 has its own validator.
+    StartTrace: validate_can_update_trace_from_experiment_id,
+    StartTraceV3: validate_can_start_trace_v3,
+    # Ending a v2 trace (PATCH /traces/<request_id>) mutates that trace.
+    EndTrace: validate_can_update_trace,
     # Deletes require DELETE on the trace's experiment:
     DeleteTraces: validate_can_delete_traces_from_experiment_id,
     DeleteTracesV3: validate_can_delete_traces_from_experiment_id,
@@ -462,6 +479,32 @@ BEFORE_REQUEST_VALIDATORS.update(
         )
         # MLflow serves these across GET/POST/DELETE/PATCH (update-config is PATCH); cover
         # every verb rather than the ones in use today, so a new one is denied by default.
+        for method in ("GET", "POST", "PUT", "PATCH", "DELETE")
+    }
+)
+
+
+# MLflow's native model-registry webhooks (/{api,ajax-api}/2.0/mlflow/webhooks*). Delivery
+# is filtered by event type only, with no tenant scoping, so a webhook registered by one
+# user receives every tenant's registry events; update/delete/test act on any webhook by
+# id. This plugin already offers its own admin-managed webhook API, so MLflow's is
+# admin-only (#291), matching the gateway guardrail routes above. Derived from the real
+# routing table so every prefix and sub-route MLflow registers is covered.
+MLFLOW_WEBHOOK_ROUTE_MARKER = "/mlflow/webhooks"
+
+
+def _mlflow_webhook_route_paths() -> list[str]:
+    """Every Flask rule MLflow registers for its native webhook API."""
+    from mlflow.server import app as mlflow_flask_app
+
+    return sorted({str(rule) for rule in mlflow_flask_app.url_map.iter_rules() if MLFLOW_WEBHOOK_ROUTE_MARKER in str(rule)})
+
+
+BEFORE_REQUEST_VALIDATORS.update(
+    {
+        (path, method): _deny_non_admin
+        for path in _mlflow_webhook_route_paths()
+        # Every verb, not just the ones MLflow serves today, so a new one is denied by default.
         for method in ("GET", "POST", "PUT", "PATCH", "DELETE")
     }
 )
@@ -676,8 +719,7 @@ def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any
     # werkzeug registers HEAD alongside every GET rule and routes it to the same
     # handler, so it is a read. Without this it fell through to "no validator" and was
     # denied outright — even for a user holding MANAGE.
-    if method == "HEAD":
-        method = "GET"
+    method = authorization_method(method)
 
     if family == "mpu":
         # create / complete / abort all WRITE to the artifact path.
@@ -716,9 +758,10 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
     path — so ``HEAD /get-artifact?path=<victim>`` sailed past the 403 its GET twin
     receives and returned the response headers, an existence and exact-size oracle
     over any tenant's data. The same fold is applied in
-    ``dual_spelling_guard._is_proto_route`` and ``_get_proxy_artifact_validator``.
+    ``dual_spelling_guard._is_proto_route``, ``_get_proxy_artifact_validator`` and
+    ``after_request_hook``, all through the one shared ``authorization_method`` helper.
     """
-    method = "GET" if req.method == "HEAD" else req.method
+    method = authorization_method(req.method)
     if "/mlflow/workspaces" in req.path:
         # Workspace routes use path parameters (e.g. /mlflow/workspaces/<workspace_name>)
         validator = next(
