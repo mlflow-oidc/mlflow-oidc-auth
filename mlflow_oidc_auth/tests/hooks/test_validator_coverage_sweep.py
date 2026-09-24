@@ -49,20 +49,9 @@ LEGITIMATELY_OPEN = (
     ("/ajax-api/2.0/mlflow/get-online-trace-details", ("GET",)),
 )
 
-# Artifact routes without the /mlflow-artifacts/ marker. Tracked in #289 and fixed in the
-# next change of this stack; listed here so this sweep does not block on them.
-ARTIFACT_ROUTES_TRACKED_IN_289 = (
-    ("/ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files", ("GET",)),
-    ("/api/2.0/mlflow/logged-models/<model_id>/artifacts/directories", ("GET",)),
-    ("/ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/directories", ("GET",)),
-    ("/api/2.0/mlflow/artifacts/presigned-upload-url", ("POST",)),
-    ("/ajax-api/2.0/mlflow/artifacts/presigned-upload-url", ("POST",)),
-)
-
 # Routes MLflow registers that have no validator yet; entries are removed as validators land.
 # Never add an entry here without a validator PR.
 ROUTES_AWAITING_VALIDATOR = (
-    ("/ajax-api/2.0/mlflow/artifacts/presigned-download-url", ("POST",)),
     ("/ajax-api/3.0/mlflow/datasets/<dataset_id>", ("DELETE", "GET")),
     ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/add-experiments", ("POST",)),
     ("/ajax-api/3.0/mlflow/datasets/<dataset_id>/experiment-ids", ("GET",)),
@@ -103,7 +92,6 @@ ROUTES_AWAITING_VALIDATOR = (
     ("/ajax-api/3.0/mlflow/review-queues/update", ("POST",)),
     ("/ajax-api/3.0/mlflow/scorers/online-config", ("PUT",)),
     ("/ajax-api/3.0/mlflow/scorers/online-configs", ("GET",)),
-    ("/api/2.0/mlflow/artifacts/presigned-download-url", ("POST",)),
     ("/api/3.0/mlflow/datasets/<dataset_id>", ("DELETE", "GET")),
     ("/api/3.0/mlflow/datasets/<dataset_id>/add-experiments", ("POST",)),
     ("/api/3.0/mlflow/datasets/<dataset_id>/experiment-ids", ("GET",)),
@@ -195,7 +183,6 @@ def _expand(entries):
 
 _LISTED = {
     "LEGITIMATELY_OPEN": _expand(LEGITIMATELY_OPEN),
-    "ARTIFACT_ROUTES_TRACKED_IN_289": _expand(ARTIFACT_ROUTES_TRACKED_IN_289),
     "ROUTES_AWAITING_VALIDATOR": _expand(ROUTES_AWAITING_VALIDATOR),
 }
 
@@ -268,7 +255,7 @@ def test_every_mutating_proto_is_gated():
     mutating = {cls for cls in pairs if _MUTATING_PROTO_NAME.match(cls.__name__)}
     assert len(mutating) > 50, "precondition: expected MLflow to register many mutating protos"
 
-    tracked = _LISTED["ARTIFACT_ROUTES_TRACKED_IN_289"] | _LISTED["ROUTES_AWAITING_VALIDATOR"]
+    tracked = _LISTED["ROUTES_AWAITING_VALIDATOR"]
     gaps = []
     for cls in sorted(mutating, key=lambda c: c.__name__):
         if cls.__name__ in DELIBERATELY_UNMAPPED_MUTATIONS:

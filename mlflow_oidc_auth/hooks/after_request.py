@@ -7,6 +7,7 @@ from mlflow.protos.model_registry_pb2 import (
     SearchModelVersions,
     SearchRegisteredModels,
 )
+from mlflow.protos.mlflow_artifacts_pb2 import ListArtifacts as ListArtifactsMlflowArtifacts
 from mlflow.protos.service_pb2 import (
     CreateExperiment,
     CreateGatewayEndpoint,
@@ -35,6 +36,7 @@ from mlflow.server.handlers import (
     get_endpoints,
 )
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
+from mlflow.entities.lifecycle_stage import LifecycleStage
 from mlflow.utils.search_utils import SearchUtils
 
 import json
@@ -56,6 +58,7 @@ from mlflow_oidc_auth.utils.permissions import (
     can_read_gateway_model_definition,
     can_read_gateway_secret,
 )
+from mlflow_oidc_auth.validators.experiment import get_active_artifact_experiments, is_artifact_root_listing
 from mlflow_oidc_auth.utils.workspace_cache import (
     flush_workspace_cache,
     get_workspace_permission_cached,
@@ -759,6 +762,70 @@ def _filter_list_workspaces(response: Response) -> None:
     response.set_data(json.dumps(data))
 
 
+def _filter_list_artifact_root(resp: Response) -> None:
+    """Trim an artifact-ROOT listing to the experiments the caller can READ (issue #289).
+
+    ``GET /mlflow-artifacts/artifacts`` with no ``path`` (or ``.``, ``%2e``, ``./``,
+    ``workspaces/<ws>`` ...) lists the artifact root, which holds one directory per
+    experiment across every tenant. It used to be served whole, enumerating every
+    experiment id. Listing the root is legitimate, so rather than deny it outright the
+    listing keeps only entries that:
+
+    * name, in canonical form, an experiment that exists and is ACTIVE (the same
+      canonical-id and exact-match rules as the path check, fetched in one batched store
+      lookup) — a stray directory, a ``0<id>`` alias, a garbage-collected experiment's
+      leftovers and a soft-deleted experiment are not browsable from the root,
+    * the caller can READ, and
+    * with workspaces enabled, belongs to the workspace being listed — the one a
+      ``workspaces/<ws>`` path names, otherwise the request workspace — and one the
+      caller can read, mirroring the search filters.
+
+    A listing that is not of a root (``path=12/run/artifacts``) is left alone: its
+    entries are file names, and ``before_request`` has already required READ on it.
+    """
+    if get_fastapi_admin_status():
+        return
+    roots = is_artifact_root_listing()
+    if roots is None:
+        return
+    data = resp.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("files"), list):
+        return
+
+    username = get_fastapi_username()
+    workspaces_enabled = bool(config.MLFLOW_ENABLE_WORKSPACES)
+    allowed_workspaces: set = set()
+    if workspaces_enabled:
+        from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+
+        request_workspace = get_request_workspace() or DEFAULT_WORKSPACE_NAME
+        allowed_workspaces = {workspace or request_workspace for workspace in roots}
+
+    # One batched store lookup for every candidate, not one per listed directory.
+    names = [entry.get("path") if isinstance(entry, dict) else None for entry in data["files"]]
+    active = get_active_artifact_experiments(name for name in names if isinstance(name, str))
+
+    def _visible(entry: Any) -> bool:
+        name = entry.get("path") if isinstance(entry, dict) else None
+        experiment = active.get(name) if isinstance(name, str) else None
+        if experiment is None or getattr(experiment, "lifecycle_stage", None) != LifecycleStage.ACTIVE:
+            return False
+        if not _cached_can_read_experiment(name, username):
+            return False
+        if workspaces_enabled:
+            from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
+            workspace = getattr(experiment, "workspace", None) or DEFAULT_WORKSPACE_NAME
+            if workspace not in allowed_workspaces or not _can_access_workspace(username, workspace):
+                return False
+        return True
+
+    data["files"] = [entry for entry in data["files"] if _visible(entry)]
+    resp.set_data(json.dumps(data))
+
+
 AFTER_REQUEST_PATH_HANDLERS = {
     CreateExperiment: _set_can_manage_experiment_permission,
     CreateRegisteredModel: _set_can_manage_registered_model_permission,
@@ -781,6 +848,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     ListGatewaySecretInfos: _filter_list_gateway_secrets,
     ListGatewayModelDefinitions: _filter_list_gateway_model_definitions,
     ListWorkspaces: _filter_list_workspaces,
+    ListArtifactsMlflowArtifacts: _filter_list_artifact_root,
     CreateWorkspace: _auto_grant_workspace_manage_permission,
     DeleteWorkspace: _cascade_delete_workspace_permissions,
 }

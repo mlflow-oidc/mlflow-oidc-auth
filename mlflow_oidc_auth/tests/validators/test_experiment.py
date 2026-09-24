@@ -122,6 +122,7 @@ def test__get_experiment_id_from_view_args_none():
 
 def test__get_permission_from_experiment_id_artifact_proxy_with_id():
     with (
+        patch("mlflow_oidc_auth.validators.experiment.get_artifact_experiment", return_value=MagicMock()),
         patch(
             "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
             return_value="123",
@@ -136,21 +137,25 @@ def test__get_permission_from_experiment_id_artifact_proxy_with_id():
 
 
 def test__get_permission_from_experiment_id_artifact_proxy_no_id():
-    dummy_perm = DummyPermission(can_read=True)
+    """No resolvable experiment denies, even under a permissive default (issue #289).
+
+    It used to return DEFAULT_MLFLOW_PERMISSION, which ships as MANAGE.
+    """
+    from mlflow.server import app
+
     with (
+        app.test_request_context("/api/2.0/mlflow-artifacts/artifacts/.", method="DELETE"),
         patch(
             "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
             return_value=None,
         ),
         patch("mlflow_oidc_auth.validators.experiment.config") as mock_config,
-        patch(
-            "mlflow_oidc_auth.validators.experiment.get_permission",
-            return_value=dummy_perm,
-        ),
+        patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission") as resolved,
     ):
-        mock_config.DEFAULT_MLFLOW_PERMISSION = "default"
+        mock_config.DEFAULT_MLFLOW_PERMISSION = "MANAGE"
         perm = experiment._get_permission_from_experiment_id_artifact_proxy("alice")
-        assert perm.can_read is True
+        assert not (perm.can_read or perm.can_update or perm.can_delete or perm.can_manage)
+        resolved.assert_not_called()
 
 
 def test_validate_can_read_experiment():
@@ -186,9 +191,12 @@ def test_validate_can_manage_experiment():
 
 
 def test_validate_can_read_experiment_artifact_proxy():
-    with patch(
-        "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
-        return_value=DummyPermission(can_read=True),
+    with (
+        patch("mlflow_oidc_auth.validators.experiment._is_artifact_list_request", return_value=False),
+        patch(
+            "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
+            return_value=DummyPermission(can_read=True),
+        ),
     ):
         assert experiment.validate_can_read_experiment_artifact_proxy("alice") is True
 
@@ -336,9 +344,12 @@ def test_validate_can_manage_experiment_false():
 
 def test_validate_can_read_experiment_artifact_proxy_false():
     """Test when user cannot read experiment artifact proxy"""
-    with patch(
-        "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
-        return_value=DummyPermission(can_read=False),
+    with (
+        patch("mlflow_oidc_auth.validators.experiment._is_artifact_list_request", return_value=False),
+        patch(
+            "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
+            return_value=DummyPermission(can_read=False),
+        ),
     ):
         assert experiment.validate_can_read_experiment_artifact_proxy("alice") is False
 
@@ -406,11 +417,15 @@ def test_validate_with_very_long_username():
 
 def test_get_experiment_id_from_view_args_edge_cases():
     """Test edge cases for experiment ID extraction"""
-    # Test with leading zeros
+    # Leading zeros are not an experiment id: "0123" would reach experiment 123 through the
+    # store while its grants are keyed on the string "0123" (review of #386).
     mock_request = MagicMock()
     mock_request.view_args = {"artifact_path": "0123/path"}
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
-        assert experiment._get_experiment_id_from_view_args() == "0123"
+        assert experiment._get_experiment_id_from_view_args() is None
+    mock_request.view_args = {"artifact_path": "0/path"}
+    with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
+        assert experiment._get_experiment_id_from_view_args() == "0", "experiment 0 (Default) is canonical"
 
     # Test with very large number
     mock_request.view_args = {"artifact_path": "999999999999999999/path"}
