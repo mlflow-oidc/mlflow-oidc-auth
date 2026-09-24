@@ -152,8 +152,60 @@ For non-admin users, search and list results are filtered to only include resour
 - `ListGatewayModelDefinitions` — removes unreadable model definitions
 - `ListWorkspaces` — removes workspaces the user has no READ permission for
 - `SearchEvaluationDatasets` — removes datasets linked to any experiment the user cannot read
+- Artifact-root listing (`GET /mlflow-artifacts/artifacts` with no `path`) — keeps only experiments the user can read; see [Artifact Access](#artifact-access)
 
 The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist.
+
+## Artifact Access
+
+Artifacts inherit their experiment's permissions. On the artifact proxy
+(`/{api,ajax-api}/2.0/mlflow-artifacts/{artifacts,mpu,presigned}/…`) the experiment is the
+first segment of the artifact path (`<experiment_id>/<run_id>/artifacts/…`, or
+`workspaces/<ws>/<experiment_id>/…`), normalised exactly as MLflow normalises it before
+serving: repeated percent-decoding, a `file:` scheme, `./` and repeated slashes are all
+resolved first. Reads need READ, uploads and multipart uploads need EDIT, deletes need
+MANAGE.
+
+**A path that names no experiment is denied** with `403` for every method, whatever
+`DEFAULT_MLFLOW_PERMISSION` is. That covers the artifact root (`.`, `%2e`, `./.`, `.//`, an
+empty path), a workspace root (`workspaces/<ws>`) and any path whose first segment is not an
+experiment id (`models/…`, `workspaces`, …). An experiment id is ASCII decimal digits only,
+and it must name an experiment that exists in the tracking store. A soft-deleted experiment
+still exists, so its owner keeps access. A directory with no experiment behind it (for
+example what is left after an experiment is garbage-collected) is denied. Only an
+administrator can download, upload to or delete the root or such leftovers, since the root
+holds every tenant's artifacts.
+
+This assumes MLflow's default layout, where experiment locations sit directly under the
+proxy root. If the artifact root or a workspace's `default_artifact_root` adds a prefix
+(`mlflow-artifacts:/mlartifacts/<experiment_id>`), the first segment is not an experiment id,
+so non-admin requests to those paths are denied.
+
+**Listing the root is filtered, not denied.** `GET /mlflow-artifacts/artifacts` with no
+`path`, an empty `path`, or a root-shaped `path` (including `workspaces/<ws>`) is allowed.
+MLflow lists only the first `path` value, and so does this check. Every other `path` value
+must name an experiment the caller can read, and a root-shaped value that is not first is
+denied. The response keeps only entries that name an existing, active experiment the caller
+can read. Soft-deleted experiments and directories with no experiment behind them are left
+out. With
+workspaces enabled, the experiment must also belong to the listed workspace (the one the
+path names, otherwise the request's workspace), and the caller needs READ on that workspace.
+A `HEAD` on the list route is filtered the same way. Listing a path inside an experiment
+still needs READ on that experiment and is not filtered.
+
+Artifact routes outside the proxy:
+
+| Route | Requires |
+|-------|----------|
+| `GET /get-artifact`, `/{api,ajax-api}/2.0/mlflow/artifacts/list` | READ on the run's experiment |
+| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on the run's experiment (`run_uuid` from the query string) |
+| `GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files` | READ on the logged model's experiment |
+| `GET /{api,ajax-api}/2.0/mlflow/logged-models/<model_id>/artifacts/directories` | READ on the logged model's experiment |
+| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the run's experiment |
+| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-download-url` | READ on the run's experiment |
+
+Every run or model id the request carries is authorized, in any source (see
+[Which request source is authorized](#which-request-source-is-authorized)).
 
 ## HEAD Requests and Route Coverage
 
@@ -203,7 +255,6 @@ one, and a resource that cannot be resolved is refused, never granted by
 | UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job; admin only if there is none |
 | Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment |
 | | `GET online-configs` | READ on the experiment of every configuration returned for `scorer_ids` |
-| `2.0/mlflow/artifacts/presigned-download-url` | `POST` | READ on the run's experiment |
 | Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
 | Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
 

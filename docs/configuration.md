@@ -422,14 +422,32 @@ upgrade.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Artifact paths that name no experiment are denied.** The artifact proxy used to authorize a
+  path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. That setting ships as
+  `MANAGE`, so on a default deployment any authenticated user could download, upload to or
+  delete the artifact root (`DELETE /api/2.0/mlflow-artifacts/artifacts/.` emptied every
+  experiment's artifacts) and list every experiment id. Such paths now get `403` for every
+  method. Listing the root still works, but it returns only the experiments the caller can read.
+  This is a behaviour change only if you run `DEFAULT_MLFLOW_PERMISSION=MANAGE` (or any level
+  above `NO_PERMISSIONS`). MLflow's own client and UI are unaffected when experiment artifact
+  locations sit directly under the proxy root (`mlflow-artifacts:/<experiment_id>` or
+  `mlflow-artifacts:/workspaces/<ws>/<experiment_id>`, MLflow's default layout). **If your
+  artifact root or a workspace's `default_artifact_root` adds a prefix** (for example
+  `--default-artifact-root mlflow-artifacts:/mlartifacts`, giving
+  `mlflow-artifacts:/mlartifacts/<experiment_id>`), the plugin cannot tell which experiment such a
+  path belongs to, and non-admin artifact uploads, downloads and listings through the proxy are
+  now denied. Before, they were allowed for everyone, including other tenants. Keep experiment
+  locations at the top of the proxy root to use the proxy as a non-admin. A tool that wrote to or
+  deleted the artifact root as a non-admin must now run as an administrator. On a `NO_PERMISSIONS` deployment these requests
+  were already denied, and nothing changes except that the root listing is now filtered rather
+  than refused. The logged-model artifact routes and the run presigned-URL routes are also
+  authorized now; before, they had no check. See [Artifact Access](permissions#artifact-access).
 - **Routes without a validator are refused to non-admins.** A request to an MLflow route that
   has no authorization rule now gets `403` for a non-admin user instead of being served. Admins
   are unaffected. See [Routes without a validator](permissions#routes-without-a-validator).
-  Until their validators land, this includes the logged-model artifact listing
-  (`logged-models/<id>/artifacts/files` and `…/directories`) and `artifacts/presigned-upload-url`.
 - **GenAI routes now need experiment grants.** Evaluation datasets, issues, label schemas,
-  review queues, UI jobs, scorer online-scoring configuration, `issues/invoke`,
-  `genai/evaluate/invoke` and `presigned-download-url` now check the permission of the
+  review queues, UI jobs, scorer online-scoring configuration, `issues/invoke` and
+  `genai/evaluate/invoke` now check the permission of the
   experiment they belong to. A non-admin needs the grant listed in
   [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes); with the
   default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold it. Requests that name no

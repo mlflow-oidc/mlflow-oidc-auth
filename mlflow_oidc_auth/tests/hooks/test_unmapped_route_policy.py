@@ -118,14 +118,15 @@ def test_every_mlflow_route_without_a_validator_is_served_to_an_admin(rule_path,
     assert allowed(hook(re.sub(r"<[^>]+>", "x", rule_path), method, ADMIN, body=body))
 
 
-def test_the_sweep_leaves_only_open_filtered_or_tracked_routes_unvalidated():
-    """Precondition for the two tests above: they must exercise both outcomes."""
+def test_every_mlflow_route_without_a_validator_is_open_or_filtered():
+    """Every MLflow route either has a validator or is deliberately open or filtered.
+
+    The refusal itself is exercised by the unmapped-route tests above; a route listed here
+    works for admins only until it gets a validator.
+    """
     refused = [p for p in _UNVALIDATED if not (is_legitimately_open(*p) or is_filtered_in_after_request(*p))]
-    served = [p for p in _UNVALIDATED if p not in refused]
-    assert served, "expected open or filtered routes without a validator"
-    # Today only the artifact routes tracked in #289 remain; they are refused until their
-    # validators land.
-    assert all("artifacts" in path for path, _m in refused), refused
+    assert [p for p in _UNVALIDATED if p not in refused], "expected open or filtered routes without a validator"
+    assert not refused, refused
 
 
 # ---------------------------------------------------------------------------

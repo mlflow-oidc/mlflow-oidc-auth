@@ -407,6 +407,7 @@ _UNION_SPECS = {
     "validate_can_read_traces_from_trace_ids": ("trace_ids", True, {}),
     "validate_can_update_trace_from_run_id": ("run_id", False, {}),
     "validate_can_delete_traces_from_experiment_id": ("experiment_id", False, {}),
+    "validate_can_update_trace_from_experiment_id": ("experiment_id", False, {}),
     "validate_can_read_metric_history_bulk_interval": ("run_ids", True, {}),
     "validate_can_search_datasets": ("experiment_ids", True, {}),
     "validate_can_read_gateway_endpoint": ("name", False, {}),
@@ -418,7 +419,6 @@ _UNION_SPECS = {
     "validate_can_read_gateway_model_definition": ("name", False, {}),
     "validate_can_delete_gateway_model_definition": ("name", False, {}),
     "validate_can_update_gateway_model_definition": ("model_definition_id", False, {}),
-    "validate_can_update_trace_from_experiment_id": ("experiment_id", False, {}),
     "validate_can_read_dataset": ("dataset_id", False, {}),
     "validate_can_update_dataset": ("dataset_id", False, {}),
     "validate_can_delete_dataset": ("dataset_id", False, {}),
@@ -449,8 +449,8 @@ _UNION_EXEMPT = {
     "validate_can_read_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_update_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_delete_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
-    "validate_can_start_trace_v3": "the experiment is nested in trace.trace_info.trace_location; every spelling is "
-    "collected, pinned in test_mutation_route_authz",
+    "validate_can_start_trace_v3": "ids are NESTED under trace.trace_info, which the flat spec cannot express; "
+    "covered by test_start_trace_v3_applies_the_union below",
 }
 
 
@@ -613,6 +613,46 @@ def test_a_second_id_in_another_source_is_authorized_too(union_world, path, meth
     assert _hook(p, method, view_args=view_args, query=query, body=body) is None, f"{method} {path}: plain request denied"
 
 
+def _v3_body(experiment_id, trace_id="new-trace"):
+    return {"trace": {"trace_info": {"trace_id": trace_id, "trace_location": {"mlflow_experiment": {"experiment_id": experiment_id}}}}}
+
+
+class _TraceStoreWithNewIds(_FakeTrackingStore):
+    """As _FakeTrackingStore, but a ``new-*`` trace id does not exist yet."""
+
+    def get_trace_info(self, trace_id):
+        from mlflow.exceptions import MlflowException
+        from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+
+        if trace_id.startswith("new-"):
+            raise MlflowException("not found", RESOURCE_DOES_NOT_EXIST)
+        return super().get_trace_info(trace_id)
+
+
+@pytest.mark.parametrize("prefix", ["/api", "/ajax-api"])
+def test_start_trace_v3_applies_the_union(union_world, monkeypatch, prefix):
+    """StartTraceV3 names its experiment and trace NESTED in the body; a flat id anywhere else
+    (query string, top-level body) must be authorized too — in both orientations."""
+    monkeypatch.setattr("mlflow_oidc_auth.validators.trace._get_tracking_store", lambda: _TraceStoreWithNewIds())
+    path = f"{prefix}/3.0/mlflow/traces"
+    for nested, flat in ((OWN, VICTIM), (VICTIM, OWN)):
+        for field in ("experiment_id", "trace_id"):
+            for where in ("query", "body"):
+                body = _v3_body(nested)
+                query = None
+                if where == "query":
+                    query = {field: flat}
+                else:
+                    body[field] = flat
+                # Either the nested destination or the flat id (an experiment, or an existing
+                # trace living in it) is VICTIM, so the request must be refused.
+                resp = _hook(path, "POST", query=query, body=body)
+                assert resp is not None and resp.status_code == 403, f"nested {nested!r} + {field}={flat!r} in {where} was allowed"
+    # Control: two ids the caller may write are allowed, and the plain request passes.
+    assert _hook(path, "POST", query={"experiment_id": OWN2}, body=_v3_body(OWN)) is None
+    assert _hook(path, "POST", body=_v3_body(OWN)) is None
+
+
 def test_union_covers_both_get_and_non_get_routes():
     """The regression must exercise GET and mutating routes alike, or it proves half the rule."""
     methods = {m for _p, m, _n in _UNION_CASES}
@@ -674,23 +714,15 @@ def test_parser_edge_shapes_are_denied(union_world, path, method, query, data, c
     assert resp is not None and resp.status_code in (400, 403), resp
 
 
-def test_scorer_name_half_of_the_key_is_also_unioned(union_world, monkeypatch):
+def test_scorer_name_half_of_the_key_is_also_unioned(union_world):
     """A scorer is keyed by (experiment_id, name); the name half must be unioned too.
 
-    Resolution is stubbed per (experiment, name) here because the permission cache keys
-    scorer results by experiment id only (resource_type:experiment_id:user), so two
-    scorer names in one experiment share a cached decision. That is a separate,
-    pre-existing defect; this test pins what the validator asks for.
+    Runs against the real store AND the real permission cache: both scorers live in the
+    same experiment and are resolved in the same request, i.e. within one cache TTL.
+    Before the cache key carried the scorer name, the first scorer's MANAGE was served
+    for the second and this request was allowed.
     """
-    from mlflow_oidc_auth.permissions import get_permission
-
-    asked = []
-
-    def scorer_permission(experiment_id, scorer_name, user):
-        asked.append((experiment_id, scorer_name))
-        return SimpleNamespace(permission=get_permission("MANAGE" if scorer_name == "scorer" else "NO_PERMISSIONS"))
-
-    monkeypatch.setattr("mlflow_oidc_auth.validators.scorers.effective_scorer_permission", scorer_permission)
+    union_world.create_scorer_permission(OWN, "theirs", USER, "NO_PERMISSIONS")
     resp = _raw_hook(
         "/api/3.0/mlflow/scorers/delete",
         "DELETE",
@@ -699,7 +731,6 @@ def test_scorer_name_half_of_the_key_is_also_unioned(union_world, monkeypatch):
         content_type="application/json",
     )
     assert resp is not None and resp.status_code == 403
-    assert asked == [(OWN, "scorer"), (OWN, "theirs")]
 
 
 @pytest.mark.parametrize(

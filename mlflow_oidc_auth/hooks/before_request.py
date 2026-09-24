@@ -83,6 +83,7 @@ from mlflow.protos.service_pb2 import (
     GetWorkspace,
     ListArtifacts,
     ListGatewayEndpointBindings,
+    ListLoggedModelArtifacts,
     ListWorkspaces,
     LogBatch,
     LogInputs,
@@ -113,7 +114,6 @@ from mlflow.protos.service_pb2 import (
     SearchPromptOptimizationJobs,
     DeletePromptOptimizationJob,
     CancelPromptOptimizationJob,
-    CreatePresignedDownloadUrl,
     AddDatasetToExperiments,
     CreateDataset,
     DeleteDataset,
@@ -413,8 +413,6 @@ BEFORE_REQUEST_HANDLERS = {
     SearchPromptOptimizationJobs: validate_can_read_experiment,
     DeletePromptOptimizationJob: validate_can_delete_prompt_optimization_job,
     CancelPromptOptimizationJob: validate_can_update_prompt_optimization_job,
-    # Presigned download URL for a run artifact: a read of that run.
-    CreatePresignedDownloadUrl: validate_can_read_run,
     # Evaluation datasets inherit the permission of every experiment they are linked to.
     # A dataset linked to none is admin-only; creating or searching needs experiment_ids.
     CreateDataset: validate_can_create_dataset,
@@ -483,6 +481,21 @@ BEFORE_REQUEST_HANDLERS = {
 # available (forward-compat), so we add them after the dict is defined.
 for _bp in _BUDGET_POLICY_PROTOS:
     BEFORE_REQUEST_HANDLERS[_bp] = _deny_non_admin
+
+# Presigned cloud-storage URLs for a run's artifacts (issue #289). MLflow resolves the run
+# from the caller-supplied run_id and mints a URL straight to the bucket, so without a
+# check an upload URL is a cross-tenant WRITE primitive and a download URL a cross-tenant
+# read. The run validators authorize every run_id / run_uuid the request carries in any
+# source (the union rule, #285/#288). Looked up by name so an MLflow build without one of
+# these protos still imports; without the proto there is no route to guard.
+from mlflow.protos import service_pb2 as _service_pb2
+
+for _proto_name, _validator in (
+    ("CreatePresignedUploadUrl", validate_can_update_run),
+    ("CreatePresignedDownloadUrl", validate_can_read_run),
+):
+    if (_proto := getattr(_service_pb2, _proto_name, None)) is not None:
+        BEFORE_REQUEST_HANDLERS[_proto] = _validator
 
 # `mlflow.server.handlers.get_endpoints()` also includes non-protobuf endpoints like `/graphql`
 # and Gateway discovery routes, whose handlers are *not* our auth validators. We must not treat
@@ -666,6 +679,8 @@ for _suffix, _method, _validator in (
 LOGGED_MODEL_BEFORE_REQUEST_HANDLERS = {
     CreateLoggedModel: validate_can_update_experiment,
     GetLoggedModel: validate_can_read_logged_model,
+    # Lists the logged model's artifact tree: READ on its experiment (issue #289).
+    ListLoggedModelArtifacts: validate_can_read_logged_model,
     DeleteLoggedModel: validate_can_delete_logged_model,
     FinalizeLoggedModel: validate_can_update_logged_model,
     DeleteLoggedModelTag: validate_can_delete_logged_model,
@@ -701,6 +716,26 @@ LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS = {
     for http_path, handler, methods in get_endpoints(get_logged_model_before_request_handler)
     for method in methods
 }
+
+
+# GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files serves a logged model's
+# artifact CONTENT. MLflow registers it with a plain @app.route rather than a protobuf
+# message, so get_endpoints() never yields it and the map above cannot cover it; it used
+# to reach no check at all (issue #289). Derived from the real routing table so every
+# prefix MLflow serves it under is bound.
+LOGGED_MODEL_ARTIFACT_FILES_SUFFIX = "/mlflow/logged-models/<model_id>/artifacts/files"
+
+
+def _logged_model_artifact_files_paths() -> list[str]:
+    """Every Flask rule MLflow registers for the logged-model artifact download route."""
+    from mlflow.server import app as mlflow_flask_app
+
+    return sorted({str(rule) for rule in mlflow_flask_app.url_map.iter_rules() if str(rule).endswith(LOGGED_MODEL_ARTIFACT_FILES_SUFFIX)})
+
+
+LOGGED_MODEL_BEFORE_REQUEST_VALIDATORS.update(
+    {(_re_compile_path(path), "GET"): validate_can_read_logged_model for path in _logged_model_artifact_files_paths()}
+)
 
 # Workspace RPC handlers (per decision WSAUTH-A: regex pattern matching like logged models)
 WORKSPACE_BEFORE_REQUEST_HANDLERS = {

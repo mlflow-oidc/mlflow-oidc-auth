@@ -1,4 +1,5 @@
 import posixpath
+from typing import Optional
 
 from flask import request
 from mlflow.server.handlers import _get_tracking_store
@@ -6,7 +7,7 @@ from mlflow.utils.uri import validate_path_is_safe
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.permissions import Permission, get_permission, intersect_permissions
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission, get_permission, intersect_permissions
 from mlflow_oidc_auth.utils import (
     all_source_values,
     effective_experiment_permission,
@@ -62,6 +63,64 @@ def _experiment_id_from_artifact_path(artifact_path: str):
     Those fall through to the raw value below, which is safe: MLflow rejects such a
     request with 400 before any artifact handler runs (issue #283).
     """
+    segments = _artifact_path_segments(artifact_path)
+    if not segments:
+        return None
+
+    if segments[0] == "workspaces":
+        # workspaces/{workspace_name}/{experiment_id}/...
+        if len(segments) >= 3 and is_experiment_id_segment(segments[2]):
+            return segments[2]
+        return None
+
+    return segments[0] if is_experiment_id_segment(segments[0]) else None
+
+
+def is_experiment_id_segment(segment: str) -> bool:
+    """Whether a path segment is shaped like an MLflow experiment id: ASCII decimal digits.
+
+    ``str.isdigit`` is not enough: it accepts superscripts (``"²"``) and every Unicode
+    decimal script (``"١٢"``), none of which MLflow ever assigns as an id, but which the
+    filesystem happily stores as a directory under the artifact root.
+    """
+    return bool(segment) and segment.isascii() and segment.isdecimal()
+
+
+def get_artifact_experiment(experiment_id: str):
+    """The experiment behind an artifact-path id, or ``None`` when there is none.
+
+    The single "is this an experiment" decision shared by the artifact-path check and the
+    root-listing filter, so the two cannot disagree. Looked up with MLflow's own
+    ``get_experiment``, which uses ``ViewType.ALL``: a soft-deleted experiment still
+    exists (its owner can restore it and its artifacts remain its own). An id with no
+    experiment behind it — the leftover directory of a garbage-collected experiment, or
+    a directory someone created by hand — is NOT an experiment. It must not reach
+    ``effective_experiment_permission``, which falls back to ``DEFAULT_MLFLOW_PERMISSION``
+    for an unknown id: on the shipped MANAGE default that would let any user read,
+    overwrite or delete those leftovers, or create new trees under the root. Any lookup
+    failure is treated as "no experiment" (fail closed).
+    """
+    if not is_experiment_id_segment(str(experiment_id)):
+        return None
+    try:
+        return _get_tracking_store().get_experiment(str(experiment_id))
+    except Exception:
+        return None
+
+
+def _artifact_experiment_permission(experiment_id: Optional[str], username: str) -> Permission:
+    """The caller's permission on an artifact-path experiment; none if it does not exist."""
+    if experiment_id is None or get_artifact_experiment(experiment_id) is None:
+        return NO_PERMISSIONS
+    return effective_experiment_permission(experiment_id, username).permission
+
+
+def _artifact_path_segments(artifact_path: str) -> list:
+    """The normalized, non-empty segments of an artifact path, exactly as MLflow reads it.
+
+    See :func:`_experiment_id_from_artifact_path` for why MLflow's own
+    ``validate_path_is_safe`` is the normalizer.
+    """
     try:
         artifact_path = validate_path_is_safe(artifact_path)
     except Exception:
@@ -82,17 +141,30 @@ def _experiment_id_from_artifact_path(artifact_path: str):
     #
     # ".." is deliberately NOT resolved here — MLflow's validate_path_is_safe rejects it
     # outright, so such a request is never served.
-    segments = [s for s in posixpath.normpath(artifact_path).split("/") if s and s != "."]
+    return [s for s in posixpath.normpath(artifact_path).split("/") if s and s != "."]
+
+
+def _artifact_root_workspace(artifact_path: str) -> tuple[bool, Optional[str]]:
+    """Whether ``artifact_path`` names the artifact ROOT, and the workspace it names if any.
+
+    The root is every shape that normalizes to no segment at all — ``""``, ``"."``,
+    ``"%2e"``, ``"./."``, ``".//"`` — plus ``workspaces/<ws>``, which is the root of one
+    workspace's artifact tree (and what MLflow itself rewrites the root to for a
+    non-default workspace). The root holds one directory per EXPERIMENT, across
+    tenants, so it is never authorized as if it were an experiment's own tree.
+
+    A path MLflow refuses outright (``..``, ``#``) is not a root: MLflow answers 400.
+    """
+    try:
+        validate_path_is_safe(artifact_path)
+    except Exception:
+        return False, None
+    segments = _artifact_path_segments(artifact_path)
     if not segments:
-        return None
-
-    if segments[0] == "workspaces":
-        # workspaces/{workspace_name}/{experiment_id}/...
-        if len(segments) >= 3 and segments[2].isdigit():
-            return segments[2]
-        return None
-
-    return segments[0] if segments[0].isdigit() else None
+        return True, None
+    if len(segments) == 2 and segments[0] == "workspaces":
+        return True, segments[1]
+    return False, None
 
 
 def _get_experiment_id_from_view_args():
@@ -117,9 +189,90 @@ def _get_experiment_id_from_view_args():
 
 
 def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permission:
-    if experiment_id := _get_experiment_id_from_view_args():
-        return effective_experiment_permission(experiment_id, username).permission
-    return get_permission(config.DEFAULT_MLFLOW_PERMISSION)
+    """The caller's permission on the experiment an artifact-proxy request names.
+
+    A path from which no experiment resolves — the artifact root (``.``, ``%2e``,
+    ``./.``, ``.//``, empty), ``workspaces/<ws>``, ``models/...``, any non-numeric first
+    segment — yields ``NO_PERMISSIONS`` (issue #289). It used to yield
+    ``DEFAULT_MLFLOW_PERMISSION``, which ships as MANAGE, so "could not work out which
+    experiment this is" meant "allow": ``DELETE .../artifacts/.`` reached
+    ``delete_artifacts(".")`` and recursively emptied every experiment's artifacts.
+    """
+    experiment_id = _get_experiment_id_from_view_args()
+    permission = _artifact_experiment_permission(experiment_id, username)
+    if permission is NO_PERMISSIONS:
+        logger.warning(f"Denying artifact-proxy {request.method} {request.path}: the artifact path names no existing experiment")
+    return permission
+
+
+_ARTIFACT_LIST_ROUTE_SUFFIX = "/mlflow-artifacts/artifacts"
+
+
+def _is_artifact_list_request() -> bool:
+    """True for the argument-less LIST route (``GET /mlflow-artifacts/artifacts?path=``)."""
+    rule = request.url_rule
+    return rule is not None and rule.rule.endswith(_ARTIFACT_LIST_ROUTE_SUFFIX)
+
+
+def _artifact_list_paths() -> list:
+    """Every ``path`` value the LIST request carries in its query string."""
+    return list(request.args.getlist("path"))
+
+
+def _artifact_listed_path() -> str:
+    """The location MLflow will actually list; ``""`` stands for the root.
+
+    MLflow reads ``path`` from the query string only when the method is literally GET
+    and the query string is non-empty, and then takes the FIRST value (``args.get``).
+    Otherwise (a HEAD, or a bare GET) it parses the body — which the dual-spelling
+    guard has already required to be empty — so ``path`` is unset and it lists the ROOT.
+    """
+    paths = _artifact_list_paths()
+    if request.method == "GET" and request.args and paths:
+        return paths[0]
+    return ""
+
+
+def is_artifact_root_listing() -> Optional[list]:
+    """For a LIST request whose listed location is an artifact root, that root.
+
+    Returns ``None`` for any other request, else a one-element list holding the
+    workspace a ``workspaces/<ws>`` root names, or ``None`` for the plain root. Decided
+    on the location MLflow lists (:func:`_artifact_listed_path`), so a listing inside an
+    experiment is never mistaken for a root and emptied. Used by the after-request
+    filter, which trims a root listing to experiments the caller may read.
+    """
+    if not _is_artifact_list_request():
+        return None
+    is_root, workspace = _artifact_root_workspace(_artifact_listed_path())
+    return [workspace] if is_root else None
+
+
+def _can_list_artifacts(username: str) -> bool:
+    """Authorize the LIST route.
+
+    * The location MLflow lists may be a root (the artifact root or ``workspaces/<ws>``):
+      listing it is legitimate, and its response is trimmed after the request to the
+      experiments the caller can READ (``hooks/after_request.py``), so it no longer
+      enumerates every tenant's experiment ids (issue #289).
+    * Every ``path`` value the request carries is authorized (the union rule): each must
+      name an existing experiment the caller can READ. A root-shaped value that is NOT
+      the listed location is denied — a request that names two locations, one of them a
+      root, is not one a legitimate client sends.
+    * A value that names no existing experiment is denied.
+    """
+    listed_is_root = _artifact_root_workspace(_artifact_listed_path())[0]
+    for path in _artifact_list_paths():
+        if _artifact_root_workspace(path)[0]:
+            if listed_is_root:
+                continue
+            logger.warning(f"Denying artifact list for {username}: a root path is named alongside an experiment path")
+            return False
+        experiment_id = _experiment_id_from_artifact_path(path)
+        if not _artifact_experiment_permission(experiment_id, username).can_read:
+            logger.warning(f"Denying artifact list for {username}: the requested path names no readable experiment")
+            return False
+    return True
 
 
 def validate_can_read_experiment(username: str) -> bool:
@@ -143,6 +296,8 @@ def validate_can_manage_experiment(username: str) -> bool:
 
 
 def validate_can_read_experiment_artifact_proxy(username: str) -> bool:
+    if _is_artifact_list_request():
+        return _can_list_artifacts(username)
     return _get_permission_from_experiment_id_artifact_proxy(username).can_read
 
 
