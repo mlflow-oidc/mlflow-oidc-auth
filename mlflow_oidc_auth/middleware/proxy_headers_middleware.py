@@ -69,14 +69,27 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         from mlflow_oidc_auth.config import config
 
-        self._trusted_networks = _parse_trusted_proxies(config.TRUSTED_PROXIES)
+        configured = [entry for entry in (config.TRUSTED_PROXIES or []) if entry and entry.strip()]
+        self._trusted_networks = _parse_trusted_proxies(configured)
+        # Only an empty setting means "trust every source". A setting whose entries are all
+        # invalid trusts no source, rather than silently falling back to trusting all of them.
+        self._trust_all_sources = not configured
+        if self._trust_all_sources:
+            logger.warning(
+                "TRUSTED_PROXIES is not set: X-Forwarded-* headers (including X-Forwarded-Prefix) "
+                "are honoured from every client. Deployments behind a reverse proxy should set "
+                "TRUSTED_PROXIES to the proxy's address or CIDR range."
+            )
+        elif not self._trusted_networks:
+            logger.warning("TRUSTED_PROXIES contains no valid entry: X-Forwarded-* headers will be ignored from every client")
 
     def _is_trusted_proxy(self, request: Request) -> bool:
         """Check if the connecting client IP is from a trusted proxy.
 
         When TRUSTED_PROXIES is not configured (empty list), all sources are
-        trusted for backward compatibility. When configured, only IPs within
-        the specified CIDR ranges are trusted.
+        trusted for backward compatibility, and a warning is logged at startup.
+        When configured, only IPs within the specified valid CIDR ranges are
+        trusted; a setting with no valid entry trusts no source.
 
         Parameters:
             request: FastAPI request object.
@@ -84,7 +97,7 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
         Returns:
             True if the request comes from a trusted proxy (or no restriction is configured).
         """
-        if not self._trusted_networks:
+        if self._trust_all_sources:
             return True
 
         client = request.client

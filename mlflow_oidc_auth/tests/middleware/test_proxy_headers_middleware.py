@@ -132,6 +132,29 @@ class TestIsTrustedProxy:
         request.client = None
         assert middleware._is_trusted_proxy(request) is False
 
+    def test_only_invalid_entries_trusts_no_source(self):
+        """A setting whose entries are all invalid does not fall back to trusting every source."""
+        middleware = self._make_middleware(["not-a-cidr", "10.0.0.0/99"])
+        assert middleware._is_trusted_proxy(self._make_request("10.1.2.3")) is False
+        assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is False
+
+    def test_blank_entries_count_as_unset(self):
+        """Blank entries alone are the same as an unset TRUSTED_PROXIES."""
+        middleware = self._make_middleware(["", "  "])
+        assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is True
+
+    def test_warns_once_when_unset(self):
+        """An unset TRUSTED_PROXIES is reported at construction, which happens once at startup."""
+        with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
+            self._make_middleware([])
+        assert mock_logger.warning.call_count == 1
+        assert "TRUSTED_PROXIES" in mock_logger.warning.call_args[0][0]
+
+    def test_no_warning_when_configured(self):
+        with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
+            self._make_middleware(["10.0.0.0/8"])
+        mock_logger.warning.assert_not_called()
+
     def test_unparseable_client_ip_returns_false(self):
         """When client IP can't be parsed, proxy is not trusted."""
         middleware = self._make_middleware(["10.0.0.0/8"])
