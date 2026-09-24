@@ -232,3 +232,109 @@ class TestWorkspaceContextMiddleware:
                 mock_clear.assert_called_once()
 
         assert response.status_code == 200
+
+
+class TestWorkspaceResolvedOnRoutedPath:
+    """The workspace is resolved on the routed path — the same one the router and auth use.
+
+    Runs the real ``ProxyHeadersMiddleware`` outside ``WorkspaceContextMiddleware`` (their order
+    in ``add_middleware_stack``) in front of a route that reports the workspace it ran in.
+    """
+
+    PROXY = ("10.0.0.5", 40000)
+    ROUTE = "/api/2.0/mlflow/experiments/search"
+    WORKSPACE = {"X-MLFLOW-WORKSPACE": "team-a"}
+
+    @pytest.fixture
+    def run(self, monkeypatch):
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.middleware.proxy_headers_middleware import ProxyHeadersMiddleware
+
+        resolved_paths = []
+        set_calls = []
+
+        def fake_resolve(path, header_value):
+            resolved_paths.append(path)
+            if path.rstrip("/").endswith("/mlflow/server-info") or not header_value:
+                return None
+            workspace = MagicMock()
+            workspace.name = header_value
+            return workspace
+
+        def _run(path, *, trusted_proxies=(), client=self.PROXY, headers=None, workspaces=True):
+            monkeypatch.setattr(config, "TRUSTED_PROXIES", list(trusted_proxies), raising=False)
+            monkeypatch.setattr("mlflow_oidc_auth.middleware.workspace_context_middleware.config.MLFLOW_ENABLE_WORKSPACES", workspaces, raising=False)
+            resolved_paths.clear()
+            set_calls.clear()
+
+            app = FastAPI()
+            app.add_middleware(WorkspaceContextMiddleware)
+            app.add_middleware(ProxyHeadersMiddleware)
+
+            @app.get("/{full_path:path}")
+            async def catch_all(full_path: str):
+                return {"routed": f"/{full_path}"}
+
+            with (
+                patch("mlflow.server.workspace_helpers.resolve_workspace_for_request_if_enabled", side_effect=fake_resolve),
+                patch("mlflow.utils.workspace_context.set_server_request_workspace", side_effect=set_calls.append),
+                patch("mlflow.utils.workspace_context.clear_server_request_workspace"),
+            ):
+                response = TestClient(app, client=client).get(path, headers=headers or {})
+            assert response.status_code == 200
+            return {"routed": response.json()["routed"], "resolved": list(resolved_paths), "workspace": list(set_calls)}
+
+        return _run
+
+    def test_trusted_prefix_resolves_same_workspace_as_unprefixed(self, run):
+        direct = run(self.ROUTE, headers=self.WORKSPACE)
+        prefixed = run(f"/mlflow{self.ROUTE}", trusted_proxies=["10.0.0.0/8"], headers={**self.WORKSPACE, "X-Forwarded-Prefix": "/mlflow"})
+        assert direct == {"routed": self.ROUTE, "resolved": [self.ROUTE], "workspace": ["team-a"]}
+        assert prefixed == direct
+
+    def test_trusted_prefix_server_info_is_exempt_under_the_prefix(self, run):
+        result = run(
+            "/mlflow/api/2.0/mlflow/server-info",
+            trusted_proxies=["10.0.0.0/8"],
+            headers={"X-MLFLOW-WORKSPACE": "missing", "X-Forwarded-Prefix": "/mlflow"},
+        )
+        assert result == {"routed": "/api/2.0/mlflow/server-info", "resolved": ["/api/2.0/mlflow/server-info"], "workspace": [None]}
+
+    @pytest.mark.parametrize("trusted_proxies", [(), ["192.168.0.0/16"]], ids=["unset", "other-network"])
+    def test_untrusted_prefix_is_not_applied(self, run, trusted_proxies):
+        headers = {**self.WORKSPACE, "X-Forwarded-Prefix": "/mlflow"}
+        # Unprefixed request: resolved on the path as received, the header prefix changes nothing.
+        assert run(self.ROUTE, trusted_proxies=trusted_proxies, headers=headers) == {
+            "routed": self.ROUTE,
+            "resolved": [self.ROUTE],
+            "workspace": ["team-a"],
+        }
+        # Prefixed request: nothing is stripped, and resolution sees what the router sees.
+        result = run(f"/mlflow{self.ROUTE}", trusted_proxies=trusted_proxies, headers=headers)
+        assert result["resolved"] == [result["routed"]] == [f"/mlflow{self.ROUTE}"]
+
+    @pytest.mark.parametrize("trusted_proxies", [(), ["10.0.0.0/8"]])
+    def test_workspaces_disabled_is_untouched(self, run, trusted_proxies):
+        result = run(
+            f"/mlflow{self.ROUTE}",
+            trusted_proxies=trusted_proxies,
+            headers={**self.WORKSPACE, "X-Forwarded-Prefix": "/mlflow"},
+            workspaces=False,
+        )
+        assert result["resolved"] == []
+        assert result["workspace"] == []
+
+    def test_proxy_headers_run_before_workspace_context(self):
+        """``add_middleware_stack`` installs ProxyHeaders outside WorkspaceContext."""
+        from fastapi import FastAPI
+
+        from mlflow_oidc_auth.app import add_middleware_stack
+        from mlflow_oidc_auth.middleware.proxy_headers_middleware import ProxyHeadersMiddleware
+
+        app = FastAPI()
+        add_middleware_stack(app)
+        order = [m.cls for m in app.user_middleware]  # outermost first
+        assert order.index(ProxyHeadersMiddleware) < order.index(WorkspaceContextMiddleware)

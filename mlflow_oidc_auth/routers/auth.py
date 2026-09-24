@@ -531,8 +531,8 @@ def _login_path(request: Request, path: str) -> str:
 
     ``root_path`` is included so a deployment mounted under a prefix gets a URL that resolves.
     It is dropped when it does not look like a path, because it is not always the mount:
-    ``ProxyHeadersMiddleware`` also sets it from ``X-Forwarded-Prefix``, which is trusted from
-    any client while ``TRUSTED_PROXIES`` is empty. A value beginning with ``//`` would otherwise
+    ``ProxyHeadersMiddleware`` also sets it from ``X-Forwarded-Prefix`` when the connecting client
+    is a proxy listed in ``TRUSTED_PROXIES``. A value beginning with ``//`` would otherwise
     make this return a protocol-relative URL — ``//evil.example/login/entra`` is off-origin the
     moment a browser resolves it, which is the one thing this function promises cannot happen.
     A prefix that has to be discarded means a broken link, not a login somewhere else.

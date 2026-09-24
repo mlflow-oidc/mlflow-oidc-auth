@@ -23,6 +23,7 @@ from starlette.types import ASGIApp
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.middleware.route_path import routed_path
 
 logger = get_logger()
 
@@ -33,7 +34,10 @@ class WorkspaceContextMiddleware(BaseHTTPMiddleware):
 
     When ``MLFLOW_ENABLE_WORKSPACES`` is enabled this middleware:
     1. Reads the ``X-MLFLOW-WORKSPACE`` header from the request.
-    2. Resolves the active workspace via MLflow's ``resolve_workspace_for_request_if_enabled``.
+    2. Resolves the active workspace via MLflow's ``resolve_workspace_for_request_if_enabled``,
+       on the routed path (see :func:`~mlflow_oidc_auth.middleware.route_path.routed_path`) — the
+       same path the router dispatches and authorization decides on, with any ``root_path``
+       recorded by the ASGI server or a trusted proxy removed.
     3. Calls ``set_server_request_workspace()`` so that all downstream
        ``_get_tracking_store()`` calls operate in the correct workspace.
     4. Clears the ContextVar in a ``finally`` block after the response is sent.
@@ -58,13 +62,14 @@ class WorkspaceContextMiddleware(BaseHTTPMiddleware):
             resolve_workspace_for_request_if_enabled,
         )
 
+        path = routed_path(request.scope)
         try:
             workspace = resolve_workspace_for_request_if_enabled(
-                request.url.path,
+                path,
                 request.headers.get(WORKSPACE_HEADER_NAME),
             )
         except MlflowException as e:
-            logger.warning(f"Workspace resolution failed for {request.url.path}: {e}")
+            logger.warning(f"Workspace resolution failed for {path}: {e}")
             return JSONResponse(
                 status_code=e.get_http_status_code(),
                 content=json.loads(e.serialize_as_json()),

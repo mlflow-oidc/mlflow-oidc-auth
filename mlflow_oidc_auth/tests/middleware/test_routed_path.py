@@ -25,6 +25,7 @@ from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGI
 from mlflow_oidc_auth.middleware.fastapi_permission_middleware import _dispatches_to_flask_mount
 from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 
+TRUSTED = {"trusted_proxies": ["10.0.0.0/8"], "client": ("10.0.0.5", 40000)}
 USER_BASIC = "Basic " + base64.b64encode(b"user@example.com:user_pass").decode()
 JOBS = "/ajax-api/3.0/jobs"
 GATEWAY = "/gateway/my-ep/mlflow/invocations"
@@ -116,46 +117,79 @@ class TestRoutedPathHelper:
         assert route_path_module._get_route_path(scope) == get_route_path(scope)
 
 
-class TestForwardedPrefixFromAnyClient:
-    """TRUSTED_PROXIES unset: forwarded headers are honoured, decisions follow the routed path."""
+class TestForwardedPrefixWithoutTrustedProxies:
+    """TRUSTED_PROXIES unset: a forwarded prefix is ignored from every client, including loopback."""
+
+    @pytest.fixture(params=[("testclient", 50000), ("127.0.0.1", 50000), ("10.0.0.5", 40000)])
+    def client(self, request, stack):
+        return stack(client=request.param)
+
+    def test_prefix_does_not_change_the_routed_path(self, client):
+        # Routed as-is: /health/ajax-api/... is no FastAPI route, so it never reaches the jobs
+        # handler; it falls through to the Flask mount and is denied there.
+        for headers in ({"X-Forwarded-Prefix": "/health"}, {"X-Forwarded-Prefix": "/health", "Authorization": USER_BASIC}):
+            response = client.get(f"/health{JOBS}", headers=headers)
+            assert response.status_code == 401
+            assert "jobs" not in response.json()
+
+    def test_prefixed_unprotected_route_is_not_stripped(self, client):
+        response = client.get("/mlflow/health", headers={"X-Forwarded-Prefix": "/mlflow"})
+        assert response.status_code == 401
+
+    def test_unprefixed_routes_unchanged(self, client):
+        assert client.get("/health", headers={"X-Forwarded-Prefix": "/mlflow"}).json() == {"status": "ok"}
+        assert client.get(JOBS, headers={"X-Forwarded-Prefix": "/mlflow"}).status_code == 401
+        response = client.get(JOBS, headers={"X-Forwarded-Prefix": "/mlflow", "Authorization": USER_BASIC})
+        assert response.status_code == 200
+        assert response.json() == {"jobs": []}
+
+    def test_login_redirect_uses_no_prefix(self, client):
+        headers = {"Accept": "text/html", "Sec-Fetch-Dest": "document", "X-Forwarded-Prefix": "/mlflow"}
+        response = client.get("/experiments", headers=headers)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/oidc/ui"
+
+
+class TestForwardedPrefixFromTrustedProxy:
+    """A trusted proxy's forwarded prefix is honoured, and decisions follow the routed path."""
 
     def test_protected_fastapi_route_under_unprotected_prefix_requires_credentials(self, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get(f"/health{JOBS}", headers={"X-Forwarded-Prefix": "/health"})
         assert response.status_code == 401
 
     def test_protected_fastapi_route_under_unprotected_prefix_serves_authenticated_user(self, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get(f"/health{JOBS}", headers={"X-Forwarded-Prefix": "/health", "Authorization": USER_BASIC})
         assert response.status_code == 200
         assert response.json() == {"jobs": []}
 
     @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint", return_value=False)
     def test_validator_applied_on_routed_path_denies(self, mock_can_use, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get(f"/login{GATEWAY}", headers={"X-Forwarded-Prefix": "/login", "Authorization": USER_BASIC})
         assert response.status_code == 403
         mock_can_use.assert_called_once_with("my-ep", "user@example.com")
 
     @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint", return_value=True)
     def test_validator_applied_on_routed_path_allows(self, mock_can_use, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get(f"/login{GATEWAY}", headers={"X-Forwarded-Prefix": "/login", "Authorization": USER_BASIC})
         assert response.status_code == 200
         assert response.json() == {"endpoint": "my-ep"}
 
     def test_gateway_route_under_unprotected_prefix_requires_credentials(self, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get(f"/static-files{GATEWAY}", headers={"X-Forwarded-Prefix": "/static-files"})
         assert response.status_code == 401
 
     def test_flask_route_under_unprotected_prefix_requires_credentials(self, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get(f"/health{FLASK_API}", headers={"X-Forwarded-Prefix": "/health"})
         assert response.status_code == 401
 
     def test_flask_route_under_prefix_serves_authenticated_user(self, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get(f"/health{FLASK_API}", headers={"X-Forwarded-Prefix": "/health", "Authorization": USER_BASIC})
         assert response.status_code == 200
         assert response.json()["served_by"] == "flask"
@@ -169,13 +203,13 @@ class TestForwardedPrefixFromAnyClient:
         ],
     )
     def test_unprotected_route_with_and_without_prefix(self, stack, path, headers):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get(path, headers=headers)
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
     def test_protected_route_without_prefix_requires_credentials(self, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         assert client.get(JOBS).status_code == 401
         assert client.get(FLASK_API).status_code == 401
 
@@ -312,7 +346,7 @@ class TestRedirectPrefixFollowsProxyTrust:
         assert response.headers["location"] == "/mlflow/oidc/ui"
 
     def test_non_path_prefix_dropped_from_login_redirect(self, stack):
-        client = stack()
+        client = stack(**TRUSTED)
         response = client.get("/experiments", headers={**self.DOCUMENT, "X-Forwarded-Prefix": "//other.example"})
         assert response.status_code == 302
         assert response.headers["location"] == "/oidc/ui"
@@ -322,7 +356,8 @@ class TestRedirectPrefixFollowsProxyTrust:
         [
             (["10.0.0.0/8"], ("192.0.2.10", 40000), "/mlflow", "/oidc/ui/"),
             (["10.0.0.0/8"], ("10.0.0.5", 40000), "/mlflow", "/mlflow/oidc/ui/"),
-            ([], ("testclient", 50000), "//other.example", "/oidc/ui/"),
+            ([], ("testclient", 50000), "/mlflow", "/oidc/ui/"),
+            (["10.0.0.0/8"], ("10.0.0.5", 40000), "//other.example", "/oidc/ui/"),
         ],
     )
     def test_ui_redirect_prefix(self, stack, trusted, client_addr, prefix, expected):

@@ -354,9 +354,10 @@ class ScimRateLimiter:
 
 scim_rate_limiter = ScimRateLimiter()
 
-#: Failed authentications, keyed by client address. Same multi-replica caveat as above; and the
-#: address is whatever ``ProxyHeadersMiddleware`` resolved, so with an untrusted
-#: ``X-Forwarded-For`` a client can rotate it. It bounds noise and CPU, it is not a lockout.
+#: Failed authentications, keyed by client address. Same multi-replica caveat as above. The
+#: address is the direct connection's, or — when that connection is a proxy listed in
+#: ``TRUSTED_PROXIES`` — the client address ``ProxyHeadersMiddleware`` took from
+#: ``X-Forwarded-For``. It bounds noise and CPU, it is not a lockout.
 scim_auth_failure_limiter = ScimRateLimiter()
 
 
@@ -444,7 +445,9 @@ async def require_scim_token(request: Request):
             # Fail closed. Nothing about the failure is returned to the caller.
             record = None
     if record is None:
-        client = request.client.host if request.client else "unknown"
+        from mlflow_oidc_auth.middleware.proxy_headers_middleware import client_address
+
+        client = client_address(request.scope) or "unknown"
         request.state.scim_auth_failure_recorded = scim_auth_failure_audit.record(client, request.method, request.url.path)
         if not scim_auth_failure_limiter.allow(("auth-failed", client), int(getattr(config, "SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE", 60) or 0)):
             raise HTTPException(status_code=429, detail="Too many failed SCIM authentications", headers={"Retry-After": "60"})
