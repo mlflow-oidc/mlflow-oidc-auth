@@ -6,24 +6,25 @@ from mlflow.utils.uri import validate_path_is_safe
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.permissions import Permission, get_permission
+from mlflow_oidc_auth.permissions import Permission, get_permission, intersect_permissions
 from mlflow_oidc_auth.utils import (
+    all_source_values,
     effective_experiment_permission,
     effective_new_experiment_permission,
-    get_experiment_id,
-    get_request_param,
+    get_experiment_ids,
+    get_request_param_values,
 )
 
 logger = get_logger()
 
 
 def _get_permission_from_experiment_id(username: str) -> Permission:
-    experiment_id = get_experiment_id()
-    return effective_experiment_permission(experiment_id, username).permission
+    # Every experiment the request names, in any source — not only the one MLflow reads
+    # (issue #285). A caller holds a capability only if it holds it on all of them.
+    return intersect_permissions(effective_experiment_permission(experiment_id, username).permission for experiment_id in get_experiment_ids())
 
 
-def _get_permission_from_experiment_name(username: str) -> Permission:
-    experiment_name = get_request_param("experiment_name")
+def _permission_for_experiment_name(experiment_name: str, username: str) -> Permission:
     store_exp = _get_tracking_store().get_experiment_by_name(experiment_name)
     if store_exp is None:
         # The experiment does not exist. This helper only gates read-by-name, so we
@@ -32,6 +33,10 @@ def _get_permission_from_experiment_name(username: str) -> Permission:
         # or creation check — granting MANAGE on a non-existent name would fail open.
         return get_permission("MANAGE")
     return effective_experiment_permission(store_exp.experiment_id, username).permission
+
+
+def _get_permission_from_experiment_name(username: str) -> Permission:
+    return intersect_permissions(_permission_for_experiment_name(name, username) for name in get_request_param_values("experiment_name"))
 
 
 def _experiment_id_from_artifact_path(artifact_path: str):
@@ -152,20 +157,13 @@ def validate_can_delete_experiment_artifact_proxy(username: str) -> bool:
 def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
     """Validate READ permission for requests that include an experiment_ids list.
 
-    proto-JSON accepts both ``experiment_ids`` and ``experimentIds`` and resolves a body
+    Every id in the query string AND the body is authorized. proto-JSON accepts both ``experiment_ids`` and ``experimentIds`` and resolves a body
     carrying both to the last one (caller-controlled), so authorize the union of both
     spellings — a body cannot hide an unreadable experiment under the spelling we skip.
     """
-    experiment_ids = []
-
-    if request.method == "POST" and request.is_json:
-        data = request.get_json(silent=True) or {}
-        for key in ("experiment_ids", "experimentIds"):
-            value = data.get(key)
-            if isinstance(value, list):
-                experiment_ids += value
-    else:
-        experiment_ids = request.args.getlist("experiment_ids")
+    # MLflow reads the body on a POST and the query string on a GET; authorize both, so
+    # neither can carry an experiment the other hides (issue #285).
+    experiment_ids = all_source_values("experiment_ids")
 
     for experiment_id in experiment_ids:
         if not effective_experiment_permission(experiment_id, username).permission.can_read:
@@ -175,8 +173,7 @@ def validate_can_read_experiments_from_experiment_ids(username: str) -> bool:
 
 def validate_can_update_experiment_from_experiment_id(username: str) -> bool:
     """Validate UPDATE permission using an explicit experiment_id parameter."""
-    experiment_id = get_request_param("experiment_id")
-    return effective_experiment_permission(experiment_id, username).permission.can_update
+    return all(effective_experiment_permission(e, username).permission.can_update for e in get_request_param_values("experiment_id"))
 
 
 def validate_can_create_experiment(username: str) -> bool:
@@ -189,5 +186,4 @@ def validate_can_create_experiment(username: str) -> bool:
     """
     if not config.RESTRICT_RESOURCE_CREATION:
         return True
-    experiment_name = get_request_param("name")
-    return effective_new_experiment_permission(experiment_name, username).permission.can_update
+    return all(effective_new_experiment_permission(name, username).permission.can_update for name in get_request_param_values("name"))

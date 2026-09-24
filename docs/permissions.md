@@ -65,6 +65,23 @@ The system checks each source in order and uses the **first permission found**:
 
 Within a single source type (e.g., `group`), if multiple entries match, the **highest permission level wins** (MANAGE > EDIT > USE > READ).
 
+### Which request source is authorized
+
+A resource id can reach MLflow in the URL path, the query string, or the request body.
+The plugin reads the id from the same place MLflow will: on a protobuf API route that is
+the path parameter if there is one, otherwise the query string for a `GET` that has one
+and the JSON body for every other request (the query string is ignored on `POST`,
+`PATCH` and `DELETE`). `/ajax-api/2.0/mlflow/upload-artifact` uses the query string only,
+and `gateway-proxy` uses the query string on `GET` and the body otherwise.
+
+Every other value the request carries for that field — in any source, under either the
+`snake_case` or the `camelCase` spelling — is authorized as well. If a request names two
+different resources for one field, the caller needs the permission on both, or the
+request is denied with `403`. A request that is missing the id where MLflow reads it is
+refused (`400` or `403`); the id is never taken from a source MLflow ignores instead.
+Ordinary clients send each id once, or the same id in two places, so they are not
+affected.
+
 ## Regex Permissions
 
 Regex permissions use Python regular expression syntax to match resource names by pattern rather than by individual resource ID.

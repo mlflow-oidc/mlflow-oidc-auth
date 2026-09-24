@@ -1,3 +1,4 @@
+from typing import Iterable
 from dataclasses import dataclass
 
 from mlflow import MlflowException
@@ -100,3 +101,34 @@ def compare_permissions(permission1: str, permission2: str) -> bool:
     _validate_permission(permission1)
     _validate_permission(permission2)
     return ALL_PERMISSIONS[permission1].priority <= ALL_PERMISSIONS[permission2].priority
+
+
+def intersect_permissions(permissions: Iterable[Permission]) -> Permission:
+    """The capabilities held on EVERY one of ``permissions``.
+
+    Used when a request names more than one resource for a single field — the same id
+    spelled in two request sources with different values (issues #285, #288). The
+    caller may do only what it may do on all of them. An empty input yields
+    ``NO_PERMISSIONS``: resolving nothing must never mean allow.
+
+    Parameters:
+        permissions: The permissions resolved for each referenced resource.
+
+    Returns:
+        The single permission when there is one, otherwise a synthetic permission whose
+        every capability flag is the logical AND across the inputs.
+    """
+    resolved = list(permissions)
+    if not resolved:
+        return NO_PERMISSIONS
+    if len(resolved) == 1:
+        return resolved[0]
+    return Permission(
+        name="+".join(dict.fromkeys(p.name for p in resolved)),
+        priority=max(p.priority for p in resolved),
+        can_read=all(p.can_read for p in resolved),
+        can_use=all(p.can_use for p in resolved),
+        can_update=all(p.can_update for p in resolved),
+        can_delete=all(p.can_delete for p in resolved),
+        can_manage=all(p.can_manage for p in resolved),
+    )

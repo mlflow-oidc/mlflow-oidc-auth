@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import request
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.utils import effective_experiment_permission
+from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, request_body_dict
 
 # ---------------------------------------------------------------------------
 # Dual-spelling extraction (security-critical)
@@ -21,10 +21,11 @@ from mlflow_oidc_auth.utils import effective_experiment_permission
 
 
 def _json_body() -> dict:
-    try:
-        return request.get_json(silent=True) or {}
-    except Exception:
-        return {}
+    # The body exactly as MLflow parses it: on a proto route that is a FORCED parse, so a
+    # DELETE/PATCH body sent without a JSON content type is still read. get_json(silent=
+    # True) returned {} for it, and a check that saw nothing could not deny what MLflow
+    # then acted on.
+    return request_body_dict()
 
 
 def _field_values(container, snake: str, camel: str) -> list:
@@ -69,20 +70,10 @@ def _all_trace_ids_from_batch() -> list:
 def _all_single_trace_ids() -> list:
     """A single-trace route may carry the id in the URL path (safe, one value), the query, or the
     body — and under either spelling. Collect every candidate and check them all."""
-    ids: list = []
-    view_args = request.view_args or {}
-    for key in ("trace_id", "request_id"):
-        if view_args.get(key):
-            ids.append(view_args[key])
-    for key in ("trace_id", "traceId", "request_id", "requestId"):
-        value = request.args.get(key)
-        if value:
-            ids.append(value)
-    body = _json_body()
-    for key in ("trace_id", "traceId", "request_id", "requestId"):
-        value = body.get(key)
-        if value:
-            ids.append(value)
+    # Path, every repetition in the query string, body under either spelling, form.
+    ids = all_source_values("trace_id", "request_id")
+    for key in ("traceId", "requestId"):
+        ids += [v for v in request.args.getlist(key) if v]
     return list(dict.fromkeys(ids))
 
 
@@ -146,18 +137,14 @@ def validate_can_update_trace(username: str) -> bool:
 
 
 def validate_can_update_trace_from_experiment_id(username: str) -> bool:
-    experiment_ids = _field_values(_json_body(), "experiment_id", "experimentId")
-    if request.args.get("experiment_id"):
-        experiment_ids.append(request.args.get("experiment_id"))
+    experiment_ids = all_source_values("experiment_id")
     if not experiment_ids:
         return False
     return all(effective_experiment_permission(e, username).permission.can_update for e in experiment_ids)
 
 
 def validate_can_delete_traces_from_experiment_id(username: str) -> bool:
-    experiment_ids = _field_values(_json_body(), "experiment_id", "experimentId")
-    if request.args.get("experiment_id"):
-        experiment_ids.append(request.args.get("experiment_id"))
+    experiment_ids = all_source_values("experiment_id")
     if not experiment_ids:
         return False
     return all(effective_experiment_permission(e, username).permission.can_delete for e in experiment_ids)
@@ -166,13 +153,10 @@ def validate_can_delete_traces_from_experiment_id(username: str) -> bool:
 def validate_can_update_trace_from_run_id(username: str) -> bool:
     """LinkTracesToRun carries run_id in the body. A run inherits its experiment's permission;
     require UPDATE on every run's experiment across all run_id spellings."""
-    body = _json_body()
-    run_ids: list = []
-    for key in ("run_id", "runId", "run_uuid"):
-        value = body.get(key) or request.args.get(key)
-        if value:
-            run_ids.append(value)
-    run_ids = list(dict.fromkeys(run_ids))
+    # Every source, not "body or query": the former `body.get(k) or args.get(k)` skipped
+    # the query string whenever the body carried the field, so a second run named there
+    # was never checked (issue #285).
+    run_ids = all_source_values("run_id", "run_uuid")
     if not run_ids:
         return False
     store = _get_tracking_store()
