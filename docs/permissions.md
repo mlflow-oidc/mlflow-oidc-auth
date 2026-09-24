@@ -167,8 +167,9 @@ MANAGE.
 **A path that names no experiment is denied** with `403` for every method, whatever
 `DEFAULT_MLFLOW_PERMISSION` is. That covers the artifact root (`.`, `%2e`, `./.`, `.//`, an
 empty path), a workspace root (`workspaces/<ws>`) and any path whose first segment is not an
-experiment id (`models/…`, `workspaces`, …). An experiment id is ASCII decimal digits only,
-and it must name an experiment that exists in the tracking store. A soft-deleted experiment
+experiment id (`models/…`, `workspaces`, …). An experiment id is ASCII decimal digits in
+canonical form, so `012` is not experiment `12`. It must name an experiment that exists in the
+tracking store, and a failed store lookup denies. A soft-deleted experiment
 still exists, so its owner keeps access. A directory with no experiment behind it (for
 example what is left after an experiment is garbage-collected) is denied. Only an
 administrator can download, upload to or delete the root or such leftovers, since the root

@@ -417,11 +417,15 @@ def test_validate_with_very_long_username():
 
 def test_get_experiment_id_from_view_args_edge_cases():
     """Test edge cases for experiment ID extraction"""
-    # Test with leading zeros
+    # Leading zeros are not an experiment id: "0123" would reach experiment 123 through the
+    # store while its grants are keyed on the string "0123" (review of #386).
     mock_request = MagicMock()
     mock_request.view_args = {"artifact_path": "0123/path"}
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
-        assert experiment._get_experiment_id_from_view_args() == "0123"
+        assert experiment._get_experiment_id_from_view_args() is None
+    mock_request.view_args = {"artifact_path": "0/path"}
+    with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
+        assert experiment._get_experiment_id_from_view_args() == "0", "experiment 0 (Default) is canonical"
 
     # Test with very large number
     mock_request.view_args = {"artifact_path": "999999999999999999/path"}

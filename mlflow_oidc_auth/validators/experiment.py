@@ -1,7 +1,9 @@
 import posixpath
 from typing import Optional
 
-from flask import request
+from flask import g, has_request_context, request
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server.handlers import _get_tracking_store
 from mlflow.utils.uri import validate_path_is_safe
 
@@ -77,13 +79,35 @@ def _experiment_id_from_artifact_path(artifact_path: str):
 
 
 def is_experiment_id_segment(segment: str) -> bool:
-    """Whether a path segment is shaped like an MLflow experiment id: ASCII decimal digits.
+    """Whether a path segment is an MLflow experiment id in CANONICAL form.
 
+    ASCII decimal digits with no leading zero (``str(int(segment)) == segment``).
     ``str.isdigit`` is not enough: it accepts superscripts (``"²"``) and every Unicode
-    decimal script (``"١٢"``), none of which MLflow ever assigns as an id, but which the
-    filesystem happily stores as a directory under the artifact root.
+    decimal script (``"١٢"``). Nor is "decimal" alone: the SQL store ``int()``s the id,
+    so ``"012"`` looks up experiment 12 while the permission lookup is keyed on the
+    string ``"012"`` (no grant, so the default applies) and MLflow serves the physical
+    directory ``<root>/012``. None of these is an id MLflow assigns; all of them are
+    directories the filesystem will happily hold under the artifact root.
     """
-    return bool(segment) and segment.isascii() and segment.isdecimal()
+    return bool(segment) and segment.isascii() and segment.isdecimal() and str(int(segment)) == segment
+
+
+def _warn_store_lookup_failure(exc: Exception) -> None:
+    """Log a tracking-store failure during an artifact check, once per request.
+
+    The check still fails closed; this only keeps an outage from hiding behind a
+    misleading "names no existing experiment" denial. Type and message only, never the
+    request path.
+    """
+    if has_request_context():
+        if getattr(g, "_artifact_store_lookup_warned", False):
+            return
+        g._artifact_store_lookup_warned = True
+    logger.warning(f"Tracking-store lookup failed during artifact authorization; denying: {type(exc).__name__}: {exc}")
+
+
+def _is_not_found(exc: Exception) -> bool:
+    return isinstance(exc, MlflowException) and exc.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST)
 
 
 def get_artifact_experiment(experiment_id: str):
@@ -97,15 +121,58 @@ def get_artifact_experiment(experiment_id: str):
     a directory someone created by hand — is NOT an experiment. It must not reach
     ``effective_experiment_permission``, which falls back to ``DEFAULT_MLFLOW_PERMISSION``
     for an unknown id: on the shipped MANAGE default that would let any user read,
-    overwrite or delete those leftovers, or create new trees under the root. Any lookup
-    failure is treated as "no experiment" (fail closed).
+    overwrite or delete those leftovers, or create new trees under the root.
+
+    The id must be canonical (:func:`is_experiment_id_segment`) and the experiment the
+    store returns must carry exactly that id — a store that normalizes the id must not
+    turn one directory name into another experiment. Any lookup failure is treated as
+    "no experiment" (fail closed); a failure other than "not found" is logged.
     """
-    if not is_experiment_id_segment(str(experiment_id)):
+    segment = str(experiment_id)
+    if not is_experiment_id_segment(segment):
         return None
     try:
-        return _get_tracking_store().get_experiment(str(experiment_id))
-    except Exception:
+        experiment = _get_tracking_store().get_experiment(segment)
+    except Exception as exc:
+        if not _is_not_found(exc):
+            _warn_store_lookup_failure(exc)
         return None
+    if experiment is None or str(getattr(experiment, "experiment_id", None)) != segment:
+        return None
+    return experiment
+
+
+def get_active_artifact_experiments(experiment_ids) -> dict:
+    """The ACTIVE experiments among ``experiment_ids``, keyed by id, in bounded store calls.
+
+    For the root-listing filter: one ``search_experiments`` page per 50k active
+    experiments instead of one ``get_experiment`` per listed directory. The same rules as
+    :func:`get_artifact_experiment` apply: only canonical ids, matched exactly against
+    the ids the store returns. On any store failure nothing is returned (fail closed).
+    """
+    wanted = {str(i) for i in experiment_ids if is_experiment_id_segment(str(i))}
+    if not wanted:
+        return {}
+    from mlflow.entities import ViewType
+    from mlflow.store.tracking import SEARCH_MAX_RESULTS_THRESHOLD
+
+    found: dict = {}
+    try:
+        store = _get_tracking_store()
+        page_token = None
+        while True:
+            page = store.search_experiments(view_type=ViewType.ACTIVE_ONLY, max_results=SEARCH_MAX_RESULTS_THRESHOLD, page_token=page_token)
+            for experiment in page:
+                experiment_id = str(experiment.experiment_id)
+                if experiment_id in wanted:
+                    found[experiment_id] = experiment
+            page_token = getattr(page, "token", None)
+            if not page_token or len(found) == len(wanted):
+                break
+    except Exception as exc:
+        _warn_store_lookup_failure(exc)
+        return {}
+    return found
 
 
 def _artifact_experiment_permission(experiment_id: Optional[str], username: str) -> Permission:

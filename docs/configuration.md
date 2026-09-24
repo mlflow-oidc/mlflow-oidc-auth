@@ -442,6 +442,13 @@ upgrade.
   were already denied, and nothing changes except that the root listing is now filtered rather
   than refused. The logged-model artifact routes and the run presigned-URL routes are also
   authorized now; before, they had no check. See [Artifact Access](permissions#artifact-access).
+
+  **Artifacts-only servers** (`mlflow server --artifacts-only`, or any artifact proxy whose
+  tracking store has no experiment table or cannot be reached) are affected too. An artifact
+  path is now authorized only after the plugin confirms, in the tracking store, that the
+  experiment it names exists. A server that cannot answer that denies all non-admin proxy
+  traffic, and logs the store error. Keep the tracking store reachable from the artifact
+  server, or route non-admin artifact traffic through the tracking server.
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.
