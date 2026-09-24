@@ -63,8 +63,9 @@ a process, not as a security boundary. If you need a shared limit, enforce it at
 `SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE` failures per client IP per minute (default 60). Beyond that
 they get `429` instead of `401`. A valid token from the same address is never refused by this
 limit, so an attacker behind the same NAT cannot stop your sync. This limit is also kept per
-process, and the client IP is the one `ProxyHeadersMiddleware` resolved: if `X-Forwarded-For`
-is not restricted to `TRUSTED_PROXIES`, a client can rotate it. The limit reduces noise and CPU
+process. The client IP is the direct connection's, or the one taken from `X-Forwarded-For` when
+that connection is a proxy listed in `TRUSTED_PROXIES` (see
+[Reverse proxies](configuration#reverse-proxies)). The limit reduces noise and CPU
 load. It does not lock anyone out.
 
 **Audit.** Every authenticated SCIM request emits a `scim.request` audit event with the token
