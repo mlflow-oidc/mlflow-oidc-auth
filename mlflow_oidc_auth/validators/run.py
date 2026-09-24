@@ -1,8 +1,8 @@
 from mlflow.server.handlers import _get_tracking_store
 from flask import request
 
-from mlflow_oidc_auth.permissions import Permission
-from mlflow_oidc_auth.utils import effective_experiment_permission, get_request_param
+from mlflow_oidc_auth.permissions import Permission, intersect_permissions
+from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values
 
 
 def _permission_for_run(run_id: str, username: str) -> Permission:
@@ -14,7 +14,9 @@ def _permission_for_run(run_id: str, username: str) -> Permission:
 
 
 def _get_permission_from_run_id(username: str) -> Permission:
-    return _permission_for_run(get_request_param("run_id"), username)
+    # Every run the request names under run_id or run_uuid, in any source — MLflow acts
+    # on one of them, and the union means it does not matter which (issue #285).
+    return intersect_permissions(_permission_for_run(run_id, username) for run_id in get_request_param_values("run_id"))
 
 
 def validate_can_read_run(username: str) -> bool:
@@ -55,11 +57,14 @@ def validate_can_update_run_artifact(username: str) -> bool:
 
     A request with no ``run_uuid`` query parameter is refused rather than passed along:
     MLflow rejects it with 400 regardless, and resolving nothing must never mean allow.
+    Any other run the request names — a repeated ``run_uuid``, or a ``run_uuid`` /
+    ``run_id`` in a JSON or form body — must be updatable too (the union rule).
     """
     run_id = request.args.get("run_uuid")
     if not run_id:
         return False
-    return _permission_for_run(run_id, username).can_update
+    run_ids = list(dict.fromkeys([run_id, *all_source_values("run_uuid", "run_id")]))
+    return all(_permission_for_run(r, username).can_update for r in run_ids)
 
 
 def validate_can_read_metric_history_bulk_interval(username: str) -> bool:
