@@ -323,12 +323,18 @@ How it shows depends on the operation:
   **never** removed by a sync, in any mode, and the request succeeds. The response lists the
   membership as it actually is.
 
-Every refused, skipped or permitted cross-source removal is audited as `user.ownership_conflict`,
-with `detail.operation: "membership.remove"` and `detail.group` (not under `off`).
+Cross-source removals are audited as `user.ownership_conflict` with `detail.group` (not under
+`off`):
+
+- A targeted removal has `detail.operation: "membership.remove"`, with `status: "denied"` when
+  refused and `"success"` when permitted.
+- A row a sync left in place has `detail.operation: "membership.sync_kept"` and
+  `status: "success"`. Nothing was refused, so it does not count as a denial.
 
 A login works the same way from the other side: an `authoritative` login removes its own
 memberships and unowned (`manual`) ones, and **never SCIM's or another provider's, in any mode**.
-Under `report` and `enforce` each membership it leaves in place is recorded. So the directory's
+Under `report` and `enforce` each membership it leaves in place is recorded as
+`membership.sync_kept`. So the directory's
 memberships no longer disappear at each sign-in, and nothing depends on the directory re-sending
 them. Every membership that existed before ownership was recorded is `manual`, so a deployment
 that changes no configuration sees no change.
