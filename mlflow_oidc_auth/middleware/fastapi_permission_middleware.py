@@ -18,10 +18,13 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.routing import Match, Mount
 
 from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
+from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 
 logger = get_logger()
@@ -196,6 +199,41 @@ def _find_fastapi_validator(
 
 
 # ---------------------------------------------------------------------------
+# Which application serves a request
+# ---------------------------------------------------------------------------
+
+
+def _dispatches_to_flask_mount(request: Request) -> bool:
+    """Return True when the router will hand this request to the Flask WSGI mount.
+
+    Walks the application's routes in order, as the router does, and reports whether the first
+    full match is the mount that wraps MLflow's Flask app. That mount authorizes every request
+    itself (``before_request_hook`` denies without an ``AuthContext``); anything else — a FastAPI
+    route, another mount, or no match at all — is the responsibility of this middleware.
+
+    Parameters:
+        request: Incoming request; ``request.scope["app"]`` is the application being served.
+
+    Returns:
+        True only when the request will be served by the Flask mount.
+    """
+    router = getattr(request.scope.get("app"), "router", None)
+    for route in getattr(router, "routes", ()):
+        match, _ = route.matches(request.scope)
+        if match is Match.FULL:
+            return isinstance(route, Mount) and isinstance(route.app, AuthAwareWSGIMiddleware)
+    return False
+
+
+def _authentication_required() -> JSONResponse:
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "Authentication required"},
+        headers={"WWW-Authenticate": 'Basic realm="mlflow"'},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Middleware registration
 # ---------------------------------------------------------------------------
 
@@ -213,21 +251,24 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
 
     @app.middleware("http")
     async def fastapi_permission_middleware(request: Request, call_next):
-        path = request.url.path
+        # Match validators on the path the router dispatches, never the raw request path.
+        path = routed_path(request.scope)
+        username = getattr(request.state, "username", None)
 
         # Find validator for this route — returns None for Flask-handled routes
         validator = _find_fastapi_validator(path)
         if validator is None:
+            # Fail closed: AuthMiddleware only lets a request through without a user on an
+            # unprotected route. Anything else served outside the Flask mount (which authorizes
+            # on its own) must still carry an authenticated user, whether or not a validator
+            # has been written for it yet.
+            if not username and not is_unprotected_route(path) and not _dispatches_to_flask_mount(request):
+                return _authentication_required()
             return await call_next(request)
 
         # Check authentication context (already set by AuthMiddleware)
-        username = getattr(request.state, "username", None)
         if not username:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Authentication required"},
-                headers={"WWW-Authenticate": 'Basic realm="mlflow"'},
-            )
+            return _authentication_required()
 
         # Admins have full access
         is_admin = getattr(request.state, "is_admin", False)

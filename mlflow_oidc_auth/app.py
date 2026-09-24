@@ -225,14 +225,20 @@ def create_app() -> FastAPI:
     # ---------------------------------------------------------------------------
     # Middleware ordering (Starlette executes LAST-added as OUTERMOST):
     #
-    #   Request → Session → WorkspaceContext → Auth → ProxyHeaders
+    #   Request → ProxyHeaders → Session → WorkspaceContext → Auth
     #             → PermissionMiddleware → route handler
+    #
+    # ProxyHeaders MUST be OUTERMOST so the forwarded prefix it records in
+    # scope["root_path"] is known before AuthMiddleware and PermissionMiddleware
+    # decide anything: both make their decisions on the routed path (the path
+    # with root_path removed, which is what the router dispatches on).
     #
     # PermissionMiddleware MUST be added FIRST (innermost) so it runs AFTER
     # AuthMiddleware has set request.state.username / is_admin.
+    #
+    # Session must wrap Auth, which reads request.session.
     # ---------------------------------------------------------------------------
     add_fastapi_permission_middleware(oidc_app)
-    oidc_app.add_middleware(ProxyHeadersMiddleware)
     oidc_app.add_middleware(AuthMiddleware)
     oidc_app.add_middleware(WorkspaceContextMiddleware)
     oidc_app.add_middleware(
@@ -243,6 +249,7 @@ def create_app() -> FastAPI:
         same_site=config.SESSION_COOKIE_SAMESITE,
         https_only=config.SESSION_COOKIE_SECURE,
     )
+    oidc_app.add_middleware(ProxyHeadersMiddleware)
 
     for router in get_all_routers():
         _include_router(oidc_app, router)
