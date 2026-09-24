@@ -405,7 +405,7 @@ Additional session cookie settings:
 
 ## Upgrading to this release
 
-Three behaviour changes ship together in this release. None require a configuration change to
+Four behaviour changes ship together in this release. None require a configuration change to
 keep working; each is called out here because it changes what a running deployment does on
 upgrade.
 
@@ -422,6 +422,19 @@ upgrade.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Artifact paths that name no experiment are denied.** The artifact proxy used to authorize a
+  path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. That setting ships as
+  `MANAGE`, so on a default deployment any authenticated user could download, upload to or
+  delete the artifact root (`DELETE /api/2.0/mlflow-artifacts/artifacts/.` emptied every
+  experiment's artifacts) and list every experiment id. Such paths now get `403` for every
+  method. Listing the root still works, but it returns only the experiments the caller can read.
+  This is a behaviour change only if you run `DEFAULT_MLFLOW_PERMISSION=MANAGE` (or any level
+  above `NO_PERMISSIONS`). Clients that address artifacts by experiment, which covers MLflow's own
+  client and UI, are unaffected. A tool that wrote to or deleted the artifact root as a
+  non-admin must now run as an administrator. On a `NO_PERMISSIONS` deployment these requests
+  were already denied, and nothing changes except that the root listing is now filtered rather
+  than refused. The logged-model artifact routes and the run presigned-URL routes are also
+  authorized now; before, they had no check. See [Artifact Access](permissions#artifact-access).
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.

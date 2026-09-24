@@ -150,8 +150,47 @@ For non-admin users, search and list results are filtered to only include resour
 - `ListGatewaySecretInfos` — removes unreadable gateway secrets
 - `ListGatewayModelDefinitions` — removes unreadable model definitions
 - `ListWorkspaces` — removes workspaces the user has no READ permission for
+- Artifact-root listing (`GET /mlflow-artifacts/artifacts` with no `path`) — keeps only experiments the user can read; see [Artifact Access](#artifact-access)
 
 The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist.
+
+## Artifact Access
+
+Artifacts inherit their experiment's permissions. On the artifact proxy
+(`/{api,ajax-api}/2.0/mlflow-artifacts/{artifacts,mpu,presigned}/…`) the experiment is the
+first segment of the artifact path (`<experiment_id>/<run_id>/artifacts/…`, or
+`workspaces/<ws>/<experiment_id>/…`), normalised exactly as MLflow normalises it before
+serving: repeated percent-decoding, a `file:` scheme, `./` and repeated slashes are all
+resolved first. Reads need READ, uploads and multipart uploads need EDIT, deletes need
+MANAGE.
+
+**A path that names no experiment is denied** with `403` for every method, whatever
+`DEFAULT_MLFLOW_PERMISSION` is. That covers the artifact root (`.`, `%2e`, `./.`, `.//`, an
+empty path), a workspace root (`workspaces/<ws>`) and any path whose first segment is not an
+experiment id (`models/…`, `workspaces`, …). Only an administrator can download, upload to or
+delete the root, which holds every tenant's artifacts.
+
+**Listing the root is filtered, not denied.** `GET /mlflow-artifacts/artifacts` with no
+`path`, an empty `path`, or a root-shaped `path` (including `workspaces/<ws>`) is allowed.
+The response keeps only entries that name an existing experiment the caller can read. With
+workspaces enabled, the experiment must also belong to the listed workspace (the one the
+path names, otherwise the request's workspace), and the caller needs READ on that workspace.
+A `HEAD` on the list route is filtered the same way. Listing a path inside an experiment
+still needs READ on that experiment and is not filtered.
+
+Artifact routes outside the proxy:
+
+| Route | Requires |
+|-------|----------|
+| `GET /get-artifact`, `/{api,ajax-api}/2.0/mlflow/artifacts/list` | READ on the run's experiment |
+| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on the run's experiment (`run_uuid` from the query string) |
+| `GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files` | READ on the logged model's experiment |
+| `GET /{api,ajax-api}/2.0/mlflow/logged-models/<model_id>/artifacts/directories` | READ on the logged model's experiment |
+| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the run's experiment |
+| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-download-url` | READ on the run's experiment |
+
+Every run or model id the request carries is authorized, in any source (see
+[Which request source is authorized](#which-request-source-is-authorized)).
 
 ## HEAD Requests and Route Coverage
 
