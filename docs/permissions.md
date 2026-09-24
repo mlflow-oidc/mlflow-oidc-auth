@@ -136,6 +136,10 @@ For non-admin users, search and list results are filtered to only include resour
 
 The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist.
 
+## HEAD Requests and Route Coverage
+
+A `HEAD` request is authorized exactly like the `GET` it mirrors. werkzeug serves `HEAD` through the `GET` view and keeps the `Content-Length` header, so it gets the same validator and the same search filtering as its `GET` twin. A caller who cannot read a resource cannot use `HEAD` to learn whether it exists or how large it is. Coverage of MLflow's API is enforced by a test, not by convention. `mlflow_oidc_auth/tests/hooks/test_validator_coverage_sweep.py` walks every route and method in MLflow's Flask routing table, with `HEAD` folded onto `GET`, and every protobuf message MLflow registers. The test fails on any route that has no validator, no search filtering, no unprotected prefix and no reasoned entry in its lists. It also fails on any mutating message (`Log*`, `Set*`, `Delete*`, `Create*`, …) that does not reach a validator. Those lists can only shrink, so a new MLflow route cannot go unnoticed. MLflow's own registry webhook API (`/api/2.0/mlflow/webhooks*` and its `/ajax-api` twin) is admin-only. Its deliveries are not scoped to a tenant, so it is gated the same way as the plugin's own webhook API (`/oidc/webhook`).
+
 ## Permission Cascade on Delete/Rename
 
 When resources are deleted or renamed, associated permissions are automatically updated:
