@@ -13,8 +13,8 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission, intersect_permissions
-from mlflow_oidc_auth.utils import all_source_values, get_request_param_values
-from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
+from mlflow_oidc_auth.utils import get_request_param_values
+from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments, values_mlflow_also_reads
 
 
 def dataset_experiment_ids(dataset_id: str) -> list[str]:
@@ -50,8 +50,9 @@ def _dataset_permission(username: str) -> Permission:
 
 
 def _body_experiments_permission(username: str) -> Permission:
-    # ``experiment_ids`` named by the request in any source; empty means NO_PERMISSIONS.
-    return permission_on_all_experiments(all_source_values("experiment_ids"), username)
+    # ``experiment_ids`` is optional to MLflow, so it must be present where MLflow reads it;
+    # then every value in every source is authorized. None means NO_PERMISSIONS.
+    return permission_on_all_experiments(values_mlflow_also_reads("experiment_ids"), username)
 
 
 def validate_can_read_dataset(username: str) -> bool:

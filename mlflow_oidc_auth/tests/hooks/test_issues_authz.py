@@ -177,3 +177,9 @@ def test_issue_detection_needs_use_on_a_named_gateway_endpoint(permission_store)
     flush_permission_cache()
     assert denied(hook(ISSUE_INVOKE, "POST", OUTSIDER, body=_detection(OWN, ["tr-own"], endpoint_name="shared-endpoint")))
     assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], endpoint_name="shared-endpoint")))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_search_issues_scope_only_in_the_query_string_does_not_count(prefix):
+    """MLflow reads the POST body only; with no experiment there it searches every experiment."""
+    assert denied(hook(f"{prefix}/3.0/mlflow/issues/search", "POST", READER, body={}, query={"experiment_id": VICTIM}))

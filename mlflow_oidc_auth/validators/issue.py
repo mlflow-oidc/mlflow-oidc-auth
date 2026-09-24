@@ -14,7 +14,7 @@ from mlflow.server.handlers import _get_tracking_store
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission
 from mlflow_oidc_auth.utils import all_source_values, get_request_param_values
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint, can_use_gateway_secret
-from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments, trace_ids_permission
+from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments, trace_ids_permission, values_mlflow_also_reads
 from mlflow_oidc_auth.validators.gateway import _resolve_secret_name_from_id
 from mlflow_oidc_auth.validators.run import _permission_for_run
 
@@ -45,7 +45,7 @@ def validate_can_create_issue(username: str) -> bool:
 
 def validate_can_search_issues(username: str) -> bool:
     """READ on the experiment; MLflow searches every experiment when none is given, so that is refused."""
-    return permission_on_all_experiments(all_source_values("experiment_id"), username).can_read
+    return permission_on_all_experiments(values_mlflow_also_reads("experiment_id"), username).can_read
 
 
 def _job_request_permission(username: str) -> Permission:

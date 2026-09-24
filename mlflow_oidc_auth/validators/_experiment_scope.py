@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from mlflow.exceptions import MlflowException
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission, intersect_permissions
-from mlflow_oidc_auth.utils import effective_experiment_permission
+from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param
 
 
 def permission_on_all_experiments(experiment_ids: Iterable, username: str) -> Permission:
@@ -48,3 +49,24 @@ def trace_ids_permission(trace_ids: Iterable, username: str) -> Permission:
         except Exception:
             return NO_PERMISSIONS
     return permission_on_all_experiments(experiment_ids, username)
+
+
+def values_mlflow_also_reads(param: str) -> list:
+    """Every value of ``param`` in any source, or ``[]`` if MLflow's own source has none.
+
+    For a proto field that MLflow treats as optional (a search scope, say), a value that
+    only appears in a source MLflow ignores must not satisfy the check: MLflow would act
+    with the field unset, for instance searching every experiment. So the field has to be
+    present where MLflow reads it, and then every value in every source is authorized.
+
+    Parameters:
+        param: The snake_case field name.
+
+    Returns:
+        The distinct values, or ``[]`` when the source MLflow reads has no value.
+    """
+    try:
+        get_request_param(param)
+    except MlflowException:
+        return []
+    return all_source_values(param)

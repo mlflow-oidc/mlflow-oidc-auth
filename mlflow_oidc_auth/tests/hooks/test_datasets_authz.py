@@ -198,3 +198,11 @@ def test_linking_requires_update_on_both_sides(prefix, action):
 @pytest.mark.parametrize("prefix", PREFIXES)
 def test_linking_with_no_experiment_is_refused(prefix):
     assert denied(hook(_ds(prefix, "ds-victim", "/add-experiments"), "POST", MANAGER, body={"experiment_ids": []}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize("action", ["search", "create"])
+def test_a_scope_only_in_the_query_string_of_a_post_does_not_count(prefix, action):
+    """MLflow reads a POST's body only; a query-string scope would leave its search unscoped."""
+    path = f"{prefix}/3.0/mlflow/datasets/{action}"
+    assert denied(hook(path, "POST", READER, body={"name": "d"}, query={"experiment_ids": VICTIM}))
