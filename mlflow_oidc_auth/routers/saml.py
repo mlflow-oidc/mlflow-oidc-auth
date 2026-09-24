@@ -27,6 +27,7 @@ security-relevant, to the audit trail.
 
 import hashlib
 import hmac
+import re
 import secrets
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
@@ -80,6 +81,8 @@ BINDING_COOKIE_PREFIX = "mlflow_saml_binding_"
 BINDING_COOKIE_MAX_AGE_SECONDS = 10 * 60
 #: 256 bits, like the ``state`` itself.
 BINDING_NONCE_BYTES = 32
+#: What ``secrets.token_urlsafe(BINDING_NONCE_BYTES)`` produces (43 characters), with slack.
+_NONCE_SHAPE = re.compile(r"[A-Za-z0-9_-]{16,128}")
 
 
 def _saml_provider(provider_id: str) -> Optional[ProviderConfig]:
@@ -197,7 +200,9 @@ def _binding_holds(request: Request, attempt, cookie_name: str) -> bool:
     if not expected:
         return not config.saml_login_binding_enabled
     nonce = request.cookies.get(cookie_name)
-    if not nonce:
+    # The value is attacker-controlled and Starlette decodes it as latin-1: anything that is not
+    # the shape /login mints is treated as no cookie at all, never passed on to be encoded.
+    if not nonce or not _NONCE_SHAPE.fullmatch(nonce):
         return False
     return hmac.compare_digest(_binding_hash(nonce), expected)
 

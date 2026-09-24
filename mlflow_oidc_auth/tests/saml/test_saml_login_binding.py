@@ -16,6 +16,7 @@ import hashlib
 import logging
 from http.cookies import SimpleCookie
 from typing import Dict, Optional, Tuple
+from urllib.parse import quote
 
 import pytest
 
@@ -170,6 +171,25 @@ class TestCsrfBindingEnforced:
         _assert_no_session(client, store, response)
         assert _events(audit_events, "auth.saml_binding_rejected")
         _assert_cleared(response, cookie_name)
+
+    @pytest.mark.parametrize("value", ["\xff" * 43, "abc\xffdef" + "a" * 40, "not a nonce!", "a" * 500])
+    def test_a_malformed_nonce_is_refused_not_a_server_error(self, client, idp, store, audit_events, bound, value):
+        """Starlette decodes the Cookie header as latin-1, so a non-ASCII value reaches the check intact."""
+        relay_state, cookie_name, _ = _start(client)
+        client.cookies.clear()
+        header = f"{cookie_name}={value}".encode("latin-1")
+
+        response = client.post(
+            ACS_PATH,
+            content=f"SAMLResponse={quote(idp.response(_authn_id(relay_state)), safe='')}&RelayState={quote(relay_state, safe='')}".encode("ascii"),
+            headers=[(b"content-type", b"application/x-www-form-urlencoded"), (b"cookie", header)],
+        )
+
+        assert response.status_code == 400
+        assert response.json() == {"detail": "SAML sign-in failed"}
+        assert len(_events(audit_events, "auth.saml_binding_rejected")) == 1
+        _assert_cleared(response, cookie_name)
+        _assert_no_session(client, store, response)
 
     def test_a_refused_attempt_is_spent(self, client, idp, store, bound):
         """The row is consumed before the binding check: the right cookie cannot rescue it afterwards."""
