@@ -44,6 +44,11 @@ MANUAL = "manual"
 #: The directory source (SCIM, #322).
 SCIM = "scim"
 
+#: Every owner a source presents. The break-glass paths (``PATCH /users/ownership``,
+#: ``reconcile-ownership``) refuse anything else: under ``enforce`` an owner no source presents
+#: conflicts with every writer forever.
+OWNER_PATTERN = r"manual|scim|(?:oidc|saml):[A-Za-z0-9._-]+"
+
 #: Writers that are identity providers performing a login, as ``<kind>:<provider-id>``.
 LOGIN_SOURCE_PREFIXES = ("oidc:", "saml:")
 

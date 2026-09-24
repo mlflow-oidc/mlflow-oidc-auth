@@ -1439,6 +1439,10 @@ class SqlAlchemyStore:
         """Hand every membership of a user to ``managed_by`` (break glass, #360)."""
         return self.group_repo.set_membership_owner(username, managed_by)
 
+    def hand_over_user(self, username: str, managed_by: str, *, memberships: bool = False, actor: Optional[str] = None) -> dict:
+        """Hand a user row, and optionally its memberships, to ``managed_by`` in one transaction."""
+        return self.user_repo.hand_over(username, managed_by, memberships=memberships, actor=actor)
+
     # SCIM /Groups (#323). Group-centric writes change many users' membership at once, so the
     # wiring at the bottom of this module flushes both permission caches after each of them.
 

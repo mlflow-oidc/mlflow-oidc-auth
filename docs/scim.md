@@ -323,12 +323,18 @@ How it shows depends on the operation:
   **never** removed by a sync, in any mode, and the request succeeds. The response lists the
   membership as it actually is.
 
-Every refused, skipped or permitted cross-source removal is audited as `user.ownership_conflict`,
-with `detail.operation: "membership.remove"` and `detail.group` (not under `off`).
+Cross-source removals are audited as `user.ownership_conflict` with `detail.group` (not under
+`off`):
+
+- A targeted removal has `detail.operation: "membership.remove"`, with `status: "denied"` when
+  refused and `"success"` when permitted.
+- A row a sync left in place has `detail.operation: "membership.sync_kept"` and
+  `status: "success"`. Nothing was refused, so it does not count as a denial.
 
 A login works the same way from the other side: an `authoritative` login removes its own
 memberships and unowned (`manual`) ones, and **never SCIM's or another provider's, in any mode**.
-Under `report` and `enforce` each membership it leaves in place is recorded. So the directory's
+Under `report` and `enforce` each membership it leaves in place is recorded as
+`membership.sync_kept`. So the directory's
 memberships no longer disappear at each sign-in, and nothing depends on the directory re-sending
 them. Every membership that existed before ownership was recorded is `manual`, so a deployment
 that changes no configuration sees no change.
@@ -397,16 +403,17 @@ removed. Use it for the rarer "gone for good" case.
 
 On deactivation and on delete (through SCIM or the admin API), the plugin looks for resources
 where the departing user is the **last holder of `MANAGE`**. The departing user holds it directly
-or through a group. Nobody else holds it: no other active user directly or through a regex grant, and
-no group or group regex grant with another active member. A group in which the departing user was
-the last active member does not count. It checks experiments, registered models and prompts, scorers,
+or through a group. No other active user's permission on it resolves to `MANAGE` when their direct,
+group, regex and group regex grants are replayed in `PERMISSION_SOURCE_ORDER`. A group in which the
+departing user was the last active member does not count. It checks experiments, registered models and prompts, scorers,
 gateway endpoints, model definitions and secrets, and workspaces. It emits one `resource.orphaned`
 audit event per resource, with `resource_type`, `resource_id`, `detail.user` and `detail.via`
-(`"direct"` or `"group:<name>"`). Administrators are not counted: an administrator can always recover
+(`"direct"`, `"group:<name>"`, or `"unresolved"` when an MLflow lookup needed to decide failed). Administrators are not counted: an administrator can always recover
 a resource. See [Permissions](permissions#de-provisioning) for how regex grants are matched.
 
 If `ORPHAN_FALLBACK_PRINCIPAL` is set, a hard delete first grants that user `MANAGE` on each
-orphaned resource (`detail.transferred_to` on the event). The fallback must be an existing,
+orphaned resource (`detail.transferred_to` on the event), except unresolved ones, which are never
+handed over. The fallback must be an existing,
 active, non-service-account user other than the one being deleted. Otherwise the hand-over is
 skipped with a warning and orphans are only reported. Grants are keyed by resource name or id, not
 by workspace, so the fallback principal's `MANAGE` on a model name applies to that name in every

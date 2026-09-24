@@ -212,11 +212,30 @@ def reconcile_ownership(
     # An owner string no source will ever present is worse than a rejected one: under 'enforce'
     # every writer then conflicts with it forever, and the operator was usually in the middle of
     # repairing a lockout when they typed it.
-    if not _re.fullmatch(r"manual|scim|oidc:[A-Za-z0-9._-]+", set_owner or ""):
-        raise click.ClickException(f"--set-owner {set_owner!r} is not an owner any source presents. Expected 'manual', 'scim', or 'oidc:<provider-id>'.")
+    from mlflow_oidc_auth.ownership import OWNER_PATTERN
 
-    if not from_owner and not username and not all_rows and not (include_groups and group_name):
-        raise click.ClickException("refusing to re-own every user row without --all. Narrow it with --from-owner or --username, or pass --all deliberately.")
+    if not _re.fullmatch(OWNER_PATTERN, set_owner or ""):
+        raise click.ClickException(
+            f"--set-owner {set_owner!r} is not an owner any source presents. Expected 'manual', 'scim', 'oidc:<provider-id>' or 'saml:<provider-id>'."
+        )
+
+    # Every filter must constrain the table it is given for. A filter that silently does not apply
+    # turns a targeted repair into a rewrite of the whole table: `--groups --username alice` used
+    # to re-own every group.
+    if include_groups:
+        if include_memberships:
+            raise click.ClickException("--groups and --memberships re-own different tables; run them separately.")
+        if username:
+            raise click.ClickException("--username does not apply to --groups. Narrow it with --group or --from-owner.")
+        if not from_owner and not group_name and not all_rows:
+            raise click.ClickException("refusing to re-own every group without --all. Narrow it with --group or --from-owner, or pass --all deliberately.")
+    else:
+        if group_name:
+            raise click.ClickException("--group applies only with --groups. Narrow user rows and memberships with --username or --from-owner.")
+        if not from_owner and not username and not all_rows:
+            raise click.ClickException(
+                "refusing to re-own every user row without --all. Narrow it with --from-owner or --username, or pass --all deliberately."
+            )
 
     engine = sqlalchemy.create_engine(url)
     try:

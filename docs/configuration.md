@@ -226,8 +226,9 @@ An `authoritative` login therefore revokes its own memberships and every `manual
 leaves SCIM's and other providers' in place in every mode. Every membership that predates this is
 `manual`, so revocation keeps working after an upgrade without a backfill, and a deployment that
 changes nothing sees no change. Each membership a sync leaves in place is recorded as
-`user.ownership_conflict` with `detail.operation: "membership.remove"` and `detail.group`, except
-under `off`.
+`user.ownership_conflict` with `detail.operation: "membership.sync_kept"`, `status: "success"`
+and `detail.group`, except under `off`. It is not a denial, so it does not inflate denial counts.
+A refused targeted removal is `detail.operation: "membership.remove"` with `status: "denied"`.
 
 A sync never fails because a row was kept: failing it would lock the user or the group out of
 every future sync. A targeted removal fails with nothing applied (`409` from SCIM).
@@ -264,8 +265,10 @@ runs. `restore-ownership` is also a dry run without `--apply`.
 **This is the repair path when a source is turned off.** Point `--from-owner` at it and
 `--set-owner` at `manual`, and the rows it used to own become editable again.
 
-Add `--groups` (optionally with `--group NAME`) to re-own groups instead of user rows, for
-example to let a directory manage a group that existed before it. Add `--memberships` to re-own
+Add `--groups` with `--group NAME` or `--from-owner` to re-own groups instead of user rows, for
+example to let a directory manage a group that existed before it. Every filter must apply to the
+table being rewritten: `--username` with `--groups`, or `--group` without it, is refused rather
+than ignored. `--set-owner` accepts `manual`, `scim`, `oidc:<id>` and `saml:<id>`. Add `--memberships` to re-own
 group memberships too. `--from-owner` then matches each
 membership's owner, and `--username` the member. The journal records them, and
 `restore-ownership` puts them back. From the API, `PATCH /api/2.0/mlflow/users/ownership` with

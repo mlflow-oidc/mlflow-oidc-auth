@@ -134,14 +134,17 @@ class TestLoginDoesNotStripTheDirectorysGroups:
 
         assert (username, errors) == (ALICE, []), "the login itself must not be refused: that would be a lockout"
         assert owners(store, ALICE) == {"finance": "scim", "mlflow-users": "oidc:default", "eng": "oidc:default"}
-        [event] = conflicts(audit_events, "membership.remove")
-        assert event["status"] == "denied"
+        # Recorded as kept, not as a denial: nothing was refused, the sync simply does not remove
+        # another source's row.
+        assert conflicts(audit_events, "membership.remove") == []
+        [event] = conflicts(audit_events, "membership.sync_kept")
+        assert event["status"] == "success"
         assert event["detail"] | {"reason": None} == {
             "owner": "scim",
             "written_by": "oidc:default",
             "reason": None,
             "permitted": False,
-            "operation": "membership.remove",
+            "operation": "membership.sync_kept",
             "group": "finance",
         }
 
@@ -152,8 +155,9 @@ class TestLoginDoesNotStripTheDirectorysGroups:
         login(ALICE, ["mlflow-users"])
 
         assert owners(store, ALICE) == {"finance": "scim", "mlflow-users": "oidc:default"}
-        [event] = conflicts(audit_events, "membership.remove")
-        assert (event["status"], event["detail"]["permitted"], event["detail"]["group"]) == ("denied", False, "finance")
+        [event] = conflicts(audit_events, "membership.sync_kept")
+        assert (event["status"], event["detail"]["permitted"], event["detail"]["group"]) == ("success", False, "finance")
+        assert not [e for e in audit_events if e["status"] == "denied"], "a kept row is not a denial"
 
     def test_off_keeps_them_silently(self, store, directory_member, audit_events, monkeypatch):
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.OFF)
@@ -253,7 +257,7 @@ class TestTheDirectorysOwnSyncIsNotLockedOut:
         store.set_user_groups(ALICE, [], written_by="scim")
 
         assert owners(store, ALICE) == {"mlflow-users": "oidc:default"}
-        assert [e["status"] for e in conflicts(audit_events, "membership.remove")] == ["denied"]
+        assert [e["status"] for e in conflicts(audit_events, "membership.sync_kept")] == ["success"]
 
     def test_a_directory_may_not_strip_a_hand_made_admins_memberships(self, store, enforce):
         store.add_user_to_group(KEEPER, "legacy")
@@ -447,3 +451,122 @@ class TestBreakGlassForMemberships:
         assert result.exit_code == 0, result.output
         assert "no rows to change" in result.output
         assert owners(store, ALICE) == {"gone:eng": "oidc:gone"}
+
+
+class TestReconcileFiltersMustConstrainTheTable:
+    """A filter that does not apply to the table being rewritten must be refused, not ignored:
+    ``--groups --username alice`` used to re-own every group."""
+
+    @pytest.fixture
+    def seeded(self, store):
+        store.populate_groups(["team-a", "team-b"])
+        store.add_user_to_group(ALICE, "team-a")
+        store.add_user_to_group(KEEPER, "team-b")
+        return store
+
+    def _run(self, store, *args):
+        return CliRunner().invoke(commands, ["reconcile-ownership", "--url", str(store.engine.url), *args])
+
+    def _group_owners(self, store):
+        _, rows = store.list_group_details_page(with_members=False)
+        return {row["group_name"]: row["managed_by"] for row in rows}
+
+    def test_username_is_refused_with_groups(self, seeded):
+        before = self._group_owners(seeded)
+
+        result = self._run(seeded, "--groups", "--username", ALICE, "--set-owner", "scim", "--apply")
+
+        assert result.exit_code != 0
+        assert "--username does not apply to --groups" in result.output
+        assert self._group_owners(seeded) == before, "no group may be re-owned"
+
+    def test_group_is_refused_without_groups(self, seeded):
+        result = self._run(seeded, "--memberships", "--from-owner", "manual", "--group", "team-a", "--set-owner", "scim", "--apply")
+
+        assert result.exit_code != 0
+        assert "--group applies only with --groups" in result.output
+        assert owners(seeded, ALICE) == {"team-a": "manual"} and owners(seeded, KEEPER) == {"team-b": "manual"}
+
+    def test_groups_needs_a_group_filter_or_all(self, seeded):
+        result = self._run(seeded, "--groups", "--set-owner", "scim", "--apply")
+
+        assert result.exit_code != 0
+        assert "--all" in result.output
+
+    def test_groups_and_memberships_are_separate_runs(self, seeded):
+        result = self._run(seeded, "--groups", "--memberships", "--from-owner", "manual", "--set-owner", "scim", "--apply")
+
+        assert result.exit_code != 0
+
+    def test_a_correctly_filtered_group_run(self, seeded):
+        result = self._run(seeded, "--groups", "--group", "team-a", "--set-owner", "scim", "--apply")
+
+        assert result.exit_code == 0, result.output
+        owners_now = self._group_owners(seeded)
+        assert (owners_now["team-a"], owners_now["team-b"]) == ("scim", "manual")
+
+    def test_a_correctly_filtered_membership_run(self, seeded):
+        result = self._run(seeded, "--memberships", "--username", ALICE, "--set-owner", "scim", "--apply")
+
+        assert result.exit_code == 0, result.output
+        assert owners(seeded, ALICE) == {"team-a": "scim"}
+        assert owners(seeded, KEEPER) == {"team-b": "manual"}, "another user's membership is untouched"
+
+    @pytest.mark.parametrize("owner", ["saml:corp", "oidc:entra", "scim", "manual"])
+    def test_every_owner_a_source_presents_is_accepted(self, seeded, owner):
+        """Logins write ``saml:<id>`` for groups and memberships; the break glass must reach them."""
+        result = self._run(seeded, "--groups", "--group", "team-a", "--set-owner", owner, "--apply")
+
+        assert result.exit_code == 0, result.output
+        assert self._group_owners(seeded)["team-a"] == owner
+
+    @pytest.mark.parametrize("owner", ["saml:", "SAML:corp", "ldap:corp", "saml corp"])
+    def test_owners_no_source_presents_are_refused(self, seeded, owner):
+        result = self._run(seeded, "--groups", "--group", "team-a", "--set-owner", owner, "--apply")
+
+        assert result.exit_code != 0
+        assert self._group_owners(seeded)["team-a"] == "manual"
+
+
+class TestHandOverIsOneTransaction:
+    def test_the_api_accepts_a_saml_owner(self, store, admin_api):
+        response = admin_api.patch(f"{USERS_ROUTER_PREFIX}/ownership", json={"username": ALICE, "managed_by": "saml:corp"})
+
+        assert response.status_code == 200, response.text
+        assert store.get_user_detail(ALICE)["managed_by"] == "saml:corp"
+
+    @pytest.mark.parametrize("owner", ["saml:", "ldap:corp"])
+    def test_the_api_refuses_owners_no_source_presents(self, store, admin_api, owner):
+        response = admin_api.patch(f"{USERS_ROUTER_PREFIX}/ownership", json={"username": ALICE, "managed_by": owner})
+
+        assert response.status_code == 400
+        assert store.get_user_detail(ALICE)["managed_by"] == "scim"
+
+    def test_a_failure_re_owning_memberships_rolls_the_user_row_back(self, store, admin_api, audit_events, monkeypatch):
+        from mlflow_oidc_auth.repository.user import UserRepository
+
+        store.add_user_to_group(ALICE, "finance", written_by="scim")
+
+        def explode(session, user, managed_by):
+            raise RuntimeError("membership half failed")
+
+        monkeypatch.setattr(UserRepository, "_reown_memberships", staticmethod(explode))
+
+        response = admin_api.patch(f"{USERS_ROUTER_PREFIX}/ownership", json={"username": ALICE, "managed_by": "manual", "memberships": True})
+
+        assert response.status_code == 500
+        assert store.get_user_detail(ALICE)["managed_by"] == "scim", "the user row must roll back with the memberships"
+        assert owners(store, ALICE) == {"finance": "scim"}
+        [event] = [e for e in audit_events if e["event"] == "user.ownership_set"]
+        assert (event["status"], event["detail"]["applied"]) == ("error", False)
+        assert not conflicts(audit_events), "no override is recorded for a change that did not commit"
+
+    def test_success_is_audited_once(self, store, admin_api, audit_events):
+        store.add_user_to_group(ALICE, "finance", written_by="scim")
+
+        response = admin_api.patch(f"{USERS_ROUTER_PREFIX}/ownership", json={"username": ALICE, "managed_by": "manual", "memberships": True})
+
+        assert response.status_code == 200, response.text
+        assert owners(store, ALICE) == {"finance": "manual"}
+        [event] = [e for e in audit_events if e["event"] == "user.ownership_set"]
+        assert (event["status"], event["detail"]["from"], event["detail"]["memberships"]) == ("success", "scim", [{"group": "finance", "from": "scim"}])

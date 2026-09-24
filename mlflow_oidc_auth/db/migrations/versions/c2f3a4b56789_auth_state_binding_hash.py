@@ -1,7 +1,7 @@
 """auth state binding hash
 
 Revision ID: c2f3a4b56789
-Revises: b1e2f3a45678
+Revises: e4f5a6b7c8d9
 Create Date: 2026-09-23 00:00:00.000000
 
 Binds a SAML login to the browser that started it (issue #374): ``auth_state`` gains a nullable

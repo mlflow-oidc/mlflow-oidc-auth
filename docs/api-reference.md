@@ -575,8 +575,10 @@ and its access token are unchanged. Responses:
 {"username": "alice@example.com", "managed_by": "manual", "memberships": false}
 ```
 
-This sets the user row's `managed_by`. With `"memberships": true` it also hands every group
-membership of the user to the new owner. The response then lists the memberships that changed as
+This sets the user row's `managed_by` to `manual`, `scim`, `oidc:<id>` or `saml:<id>`. With
+`"memberships": true` it also hands every group membership of the user to the new owner, in the
+same transaction: if either half fails, nothing changes, the response is `500`, and a
+`user.ownership_set` event with `status: "error"` is recorded. The response then lists the memberships that changed as
 `"memberships": [{"group": "...", "from": "..."}]`. The change is audited as `user.ownership_set`.
 See [Row ownership](configuration#group-membership).
 

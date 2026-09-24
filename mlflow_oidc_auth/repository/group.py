@@ -60,6 +60,10 @@ class MembershipConflict:
     username: str
     group_name: str
     decision: OwnershipDecision
+    #: A sync left this row in place because another source owns it. Nothing was refused — a sync
+    #: never removes another source's row — so it is recorded as ``membership.sync_kept`` with
+    #: ``status="success"`` rather than as a denial.
+    kept: bool = False
 
 
 @dataclass
@@ -110,10 +114,12 @@ def audit_membership_conflicts(
                 "written_by": written_by or MANUAL,
                 "reason": decision.reason,
                 "permitted": decision.allowed,
-                "operation": operation,
+                "operation": "membership.sync_kept" if conflict.kept else operation,
                 "group": conflict.group_name,
             },
-            status="success" if decision.allowed else "denied",
+            # A kept row is the sync working as designed, not a refusal: counting it as denied would
+            # inflate every denial count by one per foreign membership per sign-in.
+            status="success" if (decision.allowed or conflict.kept) else "denied",
         )
 
 
@@ -342,10 +348,11 @@ class GroupRepository:
         refused_here = False
         for row, user, group_name in rows:
             decision = _foreign_sync_row(row, written_by, admin_override) if sync else None
+            kept = decision is not None and not decision.allowed
             if decision is None:
                 decision = _evaluate_removal(row, user, written_by, admin_override)
             if decision.conflict:
-                outcome.conflicts.append(MembershipConflict(user.username, group_name, decision))
+                outcome.conflicts.append(MembershipConflict(user.username, group_name, decision, kept=kept))
             if decision.allowed:
                 session.delete(row)
                 outcome.removed.append((user.username, group_name))
