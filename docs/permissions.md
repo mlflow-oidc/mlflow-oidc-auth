@@ -285,6 +285,28 @@ Gateway permissions are managed through:
 - **REST API**: `/api/2.0/mlflow/permissions/gateways/` endpoints
 - **Before-request hooks**: Enforce permissions on all gateway operations
 
+### MLflow's gateway page for non-admins
+
+MLflow's own AI Gateway page (`/#/gateway` in the MLflow UI, not this plugin's admin UI) calls
+two configuration routes on load. Both are readable by any authenticated user; neither returns
+a secret value or a resource belonging to anyone else:
+
+| Route | What MLflow returns | What a non-admin receives |
+|---|---|---|
+| `GET /ajax-api/3.0/mlflow/gateway/provider-config?provider=…` | A static catalogue for one provider: its auth modes and the *names* of the secret and config fields it needs. Built from LiteLLM metadata; reads no stored data. | Unchanged. Needed to render the create-secret form, and creating gateway resources is already open to authenticated users. |
+| `GET /ajax-api/3.0/mlflow/gateway/secrets/config` | Two server-wide flags: `secrets_available` and `using_default_passphrase`. No per-secret data. | `{"secrets_available": …}` only. `using_default_passphrase` says whether stored secrets are encrypted under MLflow's well-known default passphrase — operator information the page does not use — so it is removed, as is any field a future MLflow release adds. |
+
+The page shows only its setup guide unless `secrets_available` is `true`, so returning 403
+(or an empty body) here left the page blank for non-admins. With these routes readable, the
+page lists exactly the endpoints `ListGatewayEndpoints` returns for the user — the ones they
+hold `READ` or better on, from any source. Which secrets and model definitions they see is
+still decided per resource by the list filters and `Get*` validators above.
+
+Admins receive both responses unchanged. **Configuration writes stay admin-only:**
+`POST`, `PUT`, `PATCH` and `DELETE` on either path return 403 for non-admins. MLflow registers
+these routes as `GET` only today; the write bindings exist so that a writer added by a future
+MLflow release is denied by default instead of being reachable by every authenticated user.
+
 ## GraphQL Authorization
 
 The plugin enforces permissions on MLflow's GraphQL API (`/graphql`) through a custom middleware:

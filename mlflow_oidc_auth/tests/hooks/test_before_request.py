@@ -708,25 +708,40 @@ class TestNewFlaskRouteValidators:
         assert (GATEWAY_SUPPORTED_MODELS, "GET") in BEFORE_REQUEST_VALIDATORS
         assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_SUPPORTED_MODELS, "GET")] is validate_gateway_proxy
 
-    def test_gateway_provider_config_is_admin_only(self):
-        """GATEWAY_PROVIDER_CONFIG GET route should use _deny_non_admin (admin-only)."""
-        from mlflow_oidc_auth.hooks.before_request import GATEWAY_PROVIDER_CONFIG
+    def test_gateway_provider_config_get_is_open_to_authenticated_users(self):
+        """GATEWAY_PROVIDER_CONFIG GET is a static catalogue; any authenticated user may read it (#366)."""
+        from mlflow_oidc_auth.hooks.before_request import (
+            GATEWAY_PROVIDER_CONFIG,
+            _allow_authenticated_gateway_config_read,
+        )
 
-        assert (GATEWAY_PROVIDER_CONFIG, "GET") in BEFORE_REQUEST_VALIDATORS
-        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_PROVIDER_CONFIG, "GET")] is _deny_non_admin
+        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_PROVIDER_CONFIG, "GET")] is _allow_authenticated_gateway_config_read
 
-    def test_gateway_secrets_config_is_admin_only(self):
-        """GATEWAY_SECRETS_CONFIG GET route should use _deny_non_admin (admin-only)."""
-        from mlflow_oidc_auth.hooks.before_request import GATEWAY_SECRETS_CONFIG
+    def test_gateway_secrets_config_get_is_open_to_authenticated_users(self):
+        """GATEWAY_SECRETS_CONFIG GET is open to authenticated users; after_request redacts it (#366)."""
+        from mlflow_oidc_auth.hooks.before_request import (
+            GATEWAY_SECRETS_CONFIG,
+            _allow_authenticated_gateway_config_read,
+        )
 
-        assert (GATEWAY_SECRETS_CONFIG, "GET") in BEFORE_REQUEST_VALIDATORS
-        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_SECRETS_CONFIG, "GET")] is _deny_non_admin
+        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_SECRETS_CONFIG, "GET")] is _allow_authenticated_gateway_config_read
+
+    @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+    def test_gateway_config_writes_are_admin_only(self, method):
+        """Every mutating verb on both gateway config routes is bound to _deny_non_admin."""
+        from mlflow_oidc_auth.hooks.before_request import (
+            GATEWAY_PROVIDER_CONFIG,
+            GATEWAY_SECRETS_CONFIG,
+        )
+
+        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_PROVIDER_CONFIG, method)] is _deny_non_admin
+        assert BEFORE_REQUEST_VALIDATORS[(GATEWAY_SECRETS_CONFIG, method)] is _deny_non_admin
 
     def test_admin_only_routes_deny_non_admin_users(self, client, mock_bridge):
         """Admin-only routes should return 403 for non-admin users."""
         from mlflow_oidc_auth.hooks.before_request import GATEWAY_PROVIDER_CONFIG
 
-        with app.test_request_context(path=GATEWAY_PROVIDER_CONFIG, method="GET"):
+        with app.test_request_context(path=GATEWAY_PROVIDER_CONFIG, method="POST", json={}):
             with (
                 patch(
                     "mlflow_oidc_auth.hooks.before_request._find_validator",
@@ -745,13 +760,94 @@ class TestNewFlaskRouteValidators:
         """Admin users should bypass _deny_non_admin validators."""
         from mlflow_oidc_auth.hooks.before_request import GATEWAY_PROVIDER_CONFIG
 
-        with app.test_request_context(path=GATEWAY_PROVIDER_CONFIG, method="GET"):
+        with app.test_request_context(path=GATEWAY_PROVIDER_CONFIG, method="POST", json={}):
             with patch(
                 "mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status",
                 return_value=True,
             ):
                 response = before_request_hook()
                 assert response is None  # Admin bypasses all validators
+
+
+class TestGatewayConfigRoutesEndToEnd:
+    """Issue #366: MLflow's gateway page loads both config routes; non-admins must not get 403.
+
+    These drive before_request_hook through the real _find_validator, so they fail if the
+    routing table binds the wrong validator, not just if a validator returns the wrong value.
+    """
+
+    @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
+    @pytest.mark.parametrize("method", ["GET", "HEAD"])
+    def test_non_admin_read_is_allowed(self, client, mock_bridge, path_name, method):
+        from mlflow_oidc_auth.hooks import before_request as br
+
+        path = getattr(br, path_name)
+        query = "?provider=openai" if path_name == "GATEWAY_PROVIDER_CONFIG" else ""
+        with app.test_request_context(path=path + query, method=method):
+            assert before_request_hook() is None
+
+    @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
+    @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+    def test_non_admin_write_is_forbidden(self, client, mock_bridge, path_name, method):
+        from mlflow_oidc_auth.hooks import before_request as br
+
+        path = getattr(br, path_name)
+        with app.test_request_context(path=path, method=method, json={"provider": "openai"}):
+            response = before_request_hook()
+            assert response is not None
+            assert response.status_code == 403
+
+    @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
+    @pytest.mark.parametrize("method", ["POST", "DELETE"])
+    def test_admin_write_is_not_blocked_by_the_hook(self, client, path_name, method):
+        """Admins short-circuit validators; MLflow itself then answers 405 for an unregistered verb."""
+        from mlflow_oidc_auth.hooks import before_request as br
+
+        path = getattr(br, path_name)
+        with (
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="admin"),
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=True),
+            app.test_request_context(path=path, method=method, json={}),
+        ):
+            assert before_request_hook() is None
+
+    @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
+    def test_unauthenticated_read_is_401(self, client, path_name):
+        from mlflow_oidc_auth.hooks import before_request as br
+
+        path = getattr(br, path_name)
+        with (
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value=None),
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+            app.test_request_context(path=path, method="GET"),
+        ):
+            response = before_request_hook()
+            assert response is not None
+            assert response.status_code == 401
+
+    @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
+    def test_unauthenticated_write_is_401(self, client, path_name):
+        from mlflow_oidc_auth.hooks import before_request as br
+
+        path = getattr(br, path_name)
+        with (
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value=None),
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+            app.test_request_context(path=path, method="POST", json={}),
+        ):
+            response = before_request_hook()
+            assert response is not None
+            assert response.status_code == 401
+
+    def test_config_routes_are_bound_for_every_registered_verb(self):
+        """Every verb MLflow registers on either config route has a validator; none falls through."""
+        from mlflow.server import app as mlflow_flask_app
+
+        rules = [r for r in mlflow_flask_app.url_map.iter_rules() if str(r).endswith(("mlflow/gateway/provider-config", "mlflow/gateway/secrets/config"))]
+        assert len(rules) == 2
+        for rule in rules:
+            for method in (rule.methods or set()) - {"HEAD", "OPTIONS"}:
+                assert BEFORE_REQUEST_VALIDATORS.get((str(rule), method)) is not None, f"{method} {rule} is unguarded"
 
 
 class TestRoutePathConstants:
