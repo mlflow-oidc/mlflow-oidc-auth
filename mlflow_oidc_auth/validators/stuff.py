@@ -8,7 +8,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.utils import effective_experiment_permission, get_request_param
+from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values
 
 
 def validate_can_read_metric_history_bulk(username: str, run_ids: Sequence[str] | None = None) -> bool:
@@ -57,11 +57,10 @@ def validate_can_search_datasets(username: str) -> bool:
         True if the user has READ permission for all requested experiments.
     """
 
-    if request.method == "POST" and request.is_json:
-        data = request.get_json(silent=True) or {}
-        experiment_ids = data.get("experiment_ids", []) or []
-    else:
-        experiment_ids = request.args.getlist("experiment_ids")
+    # Every id in the query string AND the body, under either proto spelling — MLflow
+    # proto-parses the body of this POST, and the union means a query string cannot
+    # carry an id the check skips (issue #285).
+    experiment_ids = all_source_values("experiment_ids")
 
     if not experiment_ids:
         raise MlflowException(
@@ -88,7 +87,7 @@ def validate_can_create_promptlab_run(username: str) -> bool:
     """
 
     try:
-        experiment_id = get_request_param("experiment_id")
+        experiment_ids = get_request_param_values("experiment_id")
     except MlflowException as e:
         # Normalize the error message to keep this validator stable.
         raise MlflowException(
@@ -96,7 +95,7 @@ def validate_can_create_promptlab_run(username: str) -> bool:
             INVALID_PARAMETER_VALUE,
         ) from e
 
-    return effective_experiment_permission(experiment_id, username).permission.can_update
+    return all(effective_experiment_permission(e, username).permission.can_update for e in experiment_ids)
 
 
 def validate_can_create_gateway(username: str) -> bool:
@@ -110,6 +109,14 @@ def validate_can_create_gateway(username: str) -> bool:
     # We intentionally allow authenticated users to create gateways. The
     # after-request hook will grant MANAGE permissions to the creator.
     return True
+
+
+def _endpoint_from_gateway_path(gateway_path) -> str | None:
+    """The endpoint name in ``gateway/{name}/invocations``, or None for any other shape."""
+    if not gateway_path:
+        return None
+    match = re.fullmatch(r"gateway/([^/]+)/invocations", str(gateway_path).strip("/"))
+    return match.group(1) if match else None
 
 
 def validate_gateway_proxy(username: str) -> bool:
@@ -156,13 +163,10 @@ def validate_gateway_proxy(username: str) -> bool:
             # MlflowException — so the hook would 500 instead of denying.
             body = request.get_json(silent=True)
             args = body if isinstance(body, dict) else {}
-        gateway_path = args.get("gateway_path")
-        if not gateway_path:
-            return None
-        match = re.fullmatch(r"gateway/([^/]+)/invocations", str(gateway_path).strip("/"))
-        return match.group(1) if match else None
+        return _endpoint_from_gateway_path(args.get("gateway_path"))
 
     gateway_name = _extract_gateway_name()
+    check = can_use_gateway_endpoint if request.method == "GET" else can_update_gateway_endpoint
 
     # Map HTTP method to required capability
     if request.method == "GET":
@@ -173,14 +177,15 @@ def validate_gateway_proxy(username: str) -> bool:
         # AFTER_REQUEST_HANDLERS entry (that map is built from proto endpoints only).
         # That exposure is pre-existing and tracked separately.
         if gateway_name:
-            return can_use_gateway_endpoint(str(gateway_name), username)
-        # Fallback: check if user has any gateway endpoint with use
-        perms = store.list_gateway_endpoint_permissions(username)
-        return any(get_permission(p.permission).can_use for p in perms)
-    else:
+            allowed = check(str(gateway_name), username)
+        else:
+            # Fallback: check if user has any gateway endpoint with use
+            perms = store.list_gateway_endpoint_permissions(username)
+            allowed = any(get_permission(p.permission).can_use for p in perms)
+    elif gateway_name:
         # POST -> UPDATE required
-        if gateway_name:
-            return can_update_gateway_endpoint(str(gateway_name), username)
+        allowed = check(str(gateway_name), username)
+    else:
         # No resolvable endpoint on a mutating proxy call. Previously this fell through
         # to "does the user hold UPDATE on ANY endpoint", which let a caller with one
         # endpoint of their own invoke a path naming somebody else's. MLflow rejects a
@@ -189,6 +194,17 @@ def validate_gateway_proxy(username: str) -> bool:
         # This branch is reachable ONLY for gateway-proxy itself. Every other route that
         # used to share this validator now has its own — see validate_can_invoke_scorer.
         return False
+    if not allowed:
+        return False
+
+    # Union rule (issues #285, #288): any gateway_path the request carries in a source
+    # MLflow ignores — the query string of a POST, a body on a GET, a repeated query
+    # parameter — must also be authorized. Mirroring the handler picks the endpoint
+    # MLflow proxies to; the union means a wrong guess about which one cannot allow.
+    other_names = dict.fromkeys(
+        name for name in (_endpoint_from_gateway_path(path) for path in all_source_values("gateway_path")) if name and name != gateway_name
+    )
+    return all(check(str(name), username) for name in other_names)
 
 
 def validate_can_invoke_scorer(username: str) -> bool:
@@ -215,7 +231,12 @@ def validate_can_invoke_scorer(username: str) -> bool:
         # MLflow raises INVALID_PARAMETER_VALUE for a missing experiment_id, and an
         # unresolvable resource must never mean allow.
         return False
-    permission = effective_experiment_permission(str(experiment_id), username).permission
-    if args.get("log_assessments", False):
-        return permission.can_update
-    return permission.can_read
+    # The body's experiment is the one MLflow acts on; any other experiment_id the
+    # request carries (query string, the camelCase spelling) is authorized too.
+    experiment_ids = list(dict.fromkeys([str(experiment_id), *(str(e) for e in all_source_values("experiment_id"))]))
+    needs_update = bool(args.get("log_assessments", False))
+    for eid in experiment_ids:
+        permission = effective_experiment_permission(eid, username).permission
+        if not (permission.can_update if needs_update else permission.can_read):
+            return False
+    return True

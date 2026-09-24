@@ -31,8 +31,8 @@ def _patch_permission(**kwargs):
 def test__get_permission_from_registered_model_name():
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_name",
-            return_value="modelA",
+            "mlflow_oidc_auth.validators.registered_model.get_model_names",
+            return_value=["modelA"],
         ),
         patch(
             "mlflow_oidc_auth.validators.registered_model.effective_registered_model_permission",
@@ -45,8 +45,8 @@ def test__get_permission_from_registered_model_name():
 
 def test_validate_can_read_registered_model():
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_read=True):
             assert registered_model.validate_can_read_registered_model("alice") is True
@@ -54,8 +54,8 @@ def test_validate_can_read_registered_model():
 
 def test_validate_can_update_registered_model():
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_update=True):
             assert registered_model.validate_can_update_registered_model("alice") is True
@@ -63,8 +63,8 @@ def test_validate_can_update_registered_model():
 
 def test_validate_can_delete_registered_model():
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_delete=True):
             assert registered_model.validate_can_delete_registered_model("alice") is True
@@ -72,8 +72,8 @@ def test_validate_can_delete_registered_model():
 
 def test_validate_can_manage_registered_model():
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_manage=True):
             assert registered_model.validate_can_manage_registered_model("alice") is True
@@ -82,8 +82,8 @@ def test_validate_can_manage_registered_model():
 def test__get_permission_from_model_id():
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -104,8 +104,8 @@ def test__get_permission_from_model_id():
 def test_validate_can_read_logged_model():
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -123,8 +123,8 @@ def test_validate_can_read_logged_model():
 def test_validate_can_update_logged_model():
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -142,8 +142,8 @@ def test_validate_can_update_logged_model():
 def test_validate_can_delete_logged_model():
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -161,8 +161,8 @@ def test_validate_can_delete_logged_model():
 def test_validate_can_manage_logged_model():
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -184,8 +184,8 @@ def test__get_permission_from_registered_model_name_no_permission():
     """Test when user has no permissions for registered model"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_name",
-            return_value="modelA",
+            "mlflow_oidc_auth.validators.registered_model.get_model_names",
+            return_value=["modelA"],
         ),
         patch(
             "mlflow_oidc_auth.validators.registered_model.effective_registered_model_permission",
@@ -203,8 +203,8 @@ def test__get_permission_from_model_id_no_permission():
     """Test when user has no permissions for logged model"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -226,8 +226,8 @@ def test__get_permission_from_model_id_no_permission():
 def test_validate_can_read_registered_model_false():
     """Test when user cannot read registered model"""
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_read=False):
             assert registered_model.validate_can_read_registered_model("alice") is False
@@ -236,8 +236,8 @@ def test_validate_can_read_registered_model_false():
 def test_validate_can_update_registered_model_false():
     """Test when user cannot update registered model"""
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_update=False):
             assert registered_model.validate_can_update_registered_model("alice") is False
@@ -246,8 +246,8 @@ def test_validate_can_update_registered_model_false():
 def test_validate_can_delete_registered_model_false():
     """Test when user cannot delete registered model"""
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_delete=False):
             assert registered_model.validate_can_delete_registered_model("alice") is False
@@ -256,8 +256,8 @@ def test_validate_can_delete_registered_model_false():
 def test_validate_can_manage_registered_model_false():
     """Test when user cannot manage registered model"""
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_manage=False):
             assert registered_model.validate_can_manage_registered_model("alice") is False
@@ -267,8 +267,8 @@ def test_validate_can_read_logged_model_false():
     """Test when user cannot read logged model"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -287,8 +287,8 @@ def test_validate_can_update_logged_model_false():
     """Test when user cannot update logged model"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -307,8 +307,8 @@ def test_validate_can_delete_logged_model_false():
     """Test when user cannot delete logged model"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -327,8 +327,8 @@ def test_validate_can_manage_logged_model_false():
     """Test when user cannot manage logged model"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
         patch(
@@ -349,8 +349,8 @@ def test_validate_can_manage_logged_model_false():
 def test_validate_with_none_username_registered_model():
     """Test validation functions with None username"""
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_read=True):
             assert registered_model.validate_can_read_registered_model(None) is True
@@ -359,8 +359,8 @@ def test_validate_with_none_username_registered_model():
 def test_validate_with_empty_username_registered_model():
     """Test validation functions with empty username"""
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_read=True):
             assert registered_model.validate_can_read_registered_model("") is True
@@ -370,8 +370,8 @@ def test_validate_with_special_characters_username_registered_model():
     """Test validation functions with special characters in username"""
     username = "user@domain.com"
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_read=True):
             assert registered_model.validate_can_read_registered_model(username) is True
@@ -379,7 +379,7 @@ def test_validate_with_special_characters_username_registered_model():
 
 def test_validate_with_malformed_model_name():
     """Test with malformed model name"""
-    with patch("mlflow_oidc_auth.validators.registered_model.get_model_name", return_value=""):
+    with patch("mlflow_oidc_auth.validators.registered_model.get_model_names", return_value=[""]):
         with _patch_permission(can_read=True):
             assert registered_model.validate_can_read_registered_model("alice") is True
 
@@ -388,8 +388,8 @@ def test_validate_with_very_long_model_name():
     """Test with very long model name"""
     long_model_name = "model_" + "a" * 1000
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value=long_model_name,
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=[long_model_name],
     ):
         with _patch_permission(can_read=True):
             assert registered_model.validate_can_read_registered_model("alice") is True
@@ -399,8 +399,8 @@ def test_get_logged_model_store_exception():
     """Test when store raises an exception for logged model"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.registered_model.get_model_id",
-            return_value="model123",
+            "mlflow_oidc_auth.validators.registered_model.get_model_ids",
+            return_value=["model123"],
         ),
         patch("mlflow_oidc_auth.validators.registered_model._get_tracking_store") as mock_store,
     ):
@@ -414,8 +414,8 @@ def test_permission_inheritance_scenarios_registered_model():
     """Test various permission inheritance scenarios for registered models"""
     # Test partial permissions
     with patch(
-        "mlflow_oidc_auth.validators.registered_model.get_model_name",
-        return_value="modelA",
+        "mlflow_oidc_auth.validators.registered_model.get_model_names",
+        return_value=["modelA"],
     ):
         with _patch_permission(can_read=True, can_update=False, can_delete=False, can_manage=False):
             assert registered_model.validate_can_read_registered_model("alice") is True

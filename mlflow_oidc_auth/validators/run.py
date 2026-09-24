@@ -1,8 +1,8 @@
 from mlflow.server.handlers import _get_tracking_store
 from flask import request
 
-from mlflow_oidc_auth.permissions import Permission
-from mlflow_oidc_auth.utils import effective_experiment_permission, get_request_param
+from mlflow_oidc_auth.permissions import Permission, intersect_permissions
+from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values
 
 
 def _permission_for_run(run_id: str, username: str) -> Permission:
@@ -14,7 +14,9 @@ def _permission_for_run(run_id: str, username: str) -> Permission:
 
 
 def _get_permission_from_run_id(username: str) -> Permission:
-    return _permission_for_run(get_request_param("run_id"), username)
+    # Every run the request names under run_id or run_uuid, in any source — MLflow acts
+    # on one of them, and the union means it does not matter which (issue #285).
+    return intersect_permissions(_permission_for_run(run_id, username) for run_id in get_request_param_values("run_id"))
 
 
 def validate_can_read_run(username: str) -> bool:
@@ -55,19 +57,26 @@ def validate_can_update_run_artifact(username: str) -> bool:
 
     A request with no ``run_uuid`` query parameter is refused rather than passed along:
     MLflow rejects it with 400 regardless, and resolving nothing must never mean allow.
+    Every repetition of ``run_uuid`` in the query string must be updatable too (the
+    union rule). The BODY is deliberately not consulted: on this route it is the
+    artifact itself, so reading it as JSON would refuse an owner uploading a JSON file
+    that happens to contain a ``run_id``, and reading it as form data would consume a
+    multipart stream before the handler sees it.
     """
     run_id = request.args.get("run_uuid")
     if not run_id:
         return False
-    return _permission_for_run(run_id, username).can_update
+    run_ids = list(dict.fromkeys([run_id, *(r for r in request.args.getlist("run_uuid") if r)]))
+    return all(_permission_for_run(r, username).can_update for r in run_ids)
 
 
 def validate_can_read_metric_history_bulk_interval(username: str) -> bool:
-    """Checks READ permission on all requested runs for the bulk interval endpoint."""
-    run_ids = request.args.to_dict(flat=False).get("run_ids", [])
-    if not run_ids:
-        # Some clients use run_id instead
-        run_ids = request.args.to_dict(flat=False).get("run_id", [])
+    """Checks READ permission on all requested runs for the bulk interval endpoint.
+
+    Every run named under ``run_ids`` or ``run_id`` (some clients use the latter), in
+    any request source — not only the query string MLflow reads on this GET (#285).
+    """
+    run_ids = all_source_values("run_ids", "run_id")
 
     for run_id in run_ids:
         run = _get_tracking_store().get_run(run_id)

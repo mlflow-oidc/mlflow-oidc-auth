@@ -226,6 +226,20 @@ _ARGS_ONLY_EXEMPT_SUFFIXES = (
     "mlflow/scorer/invoke",
 )
 
+# Gated routes MLflow serves with a plain JSON handler (_get_validated_flask_request_json):
+# fields are read with a dict lookup, not ParseDict, so only the snake_case key is ever
+# honoured and there is no dual-spelling ambiguity. Their validators authorize every value
+# in every source under both spellings (all_source_values), a superset of what MLflow reads.
+# The job routes read only the <job_id> path parameter.
+_PLAIN_JSON_EXEMPT_SUFFIXES = (
+    "mlflow/issues/invoke",
+    "mlflow/genai/evaluate/invoke",
+    "mlflow/scorers/online-config",
+    "mlflow/scorers/online-configs",
+    "mlflow/jobs/<job_id>",
+    "mlflow/jobs/cancel/<job_id>",
+)
+
 
 def test_every_gated_route_is_guard_covered_or_explicitly_exempt():
     """Coverage assertion: no gated route may silently escape the guard.
@@ -244,7 +258,7 @@ def test_every_gated_route_is_guard_covered_or_explicitly_exempt():
             continue
         if validator is _deny_non_admin:
             continue  # admin-only hard deny: no request field feeds the decision
-        if any(path.endswith(suffix) for suffix in _ARGS_ONLY_EXEMPT_SUFFIXES):
+        if any(path.endswith(suffix) for suffix in _ARGS_ONLY_EXEMPT_SUFFIXES + _PLAIN_JSON_EXEMPT_SUFFIXES):
             continue
         gaps.append(f"{method} {path} -> {getattr(validator, '__name__', validator)}")
 
@@ -322,3 +336,60 @@ def test_every_collidable_route_rejects_dual_spelling():
         # And any GET body on a proto route defeats args-only validators.
         with _json_ctx(path, method, {snake: "own"}):
             assert has_unexpected_get_body(request) is True, f"guard missed GET body on {path}"
+
+
+# ---------------------------------------------------------------------------
+# Cross-location: one field, two sources (issues #285, #288)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "query, body",
+    [
+        # Same spelling, different locations.
+        ({"experiment_id": "victim"}, {"experiment_id": "own", "new_name": "x"}),
+        ({"experiment_id": "own"}, {"experiment_id": "victim", "new_name": "x"}),
+        # Different spellings, different locations.
+        ({"experimentId": "victim"}, {"experiment_id": "own", "new_name": "x"}),
+        ({"experiment_id": "victim"}, {"experimentId": "own", "new_name": "x"}),
+    ],
+)
+def test_cross_location_is_not_a_dual_spelling_but_is_still_denied(query, body):
+    """The guard's contract is unchanged: it inspects the one source MLflow parses.
+
+    A field named once in the query string and once in the body is not a dual spelling
+    — each source has a single spelling — so the guard stays silent and does NOT 400.
+    The union rule in the validators is what closes this shape: every value in every
+    source is authorized, so the caller is denied unless it holds the permission on
+    both experiments, whichever one MLflow ends up acting on.
+    """
+    from types import SimpleNamespace
+
+    from mlflow_oidc_auth.hooks.before_request import before_request_hook
+    from mlflow_oidc_auth.permissions import get_permission
+
+    grants = {"own": "MANAGE", "victim": "READ"}
+
+    def permission(experiment_id, username):
+        return SimpleNamespace(permission=get_permission(grants[str(experiment_id)]))
+
+    with _json_ctx(_UPDATE_EXPERIMENT, "POST", body, query=query):
+        assert find_dual_spelling_collision(request) is None
+        with (
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="test_user"),
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission", side_effect=permission),
+        ):
+            resp = before_request_hook()
+    assert resp is not None and resp.status_code == 403
+
+    # Control: the same shape naming only experiments the caller may update is allowed,
+    # so the denial above is the union at work, not a blanket refusal.
+    grants["victim"] = "EDIT"
+    with _json_ctx(_UPDATE_EXPERIMENT, "POST", body, query=query):
+        with (
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_username", return_value="test_user"),
+            patch("mlflow_oidc_auth.hooks.before_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission", side_effect=permission),
+        ):
+            assert before_request_hook() is None

@@ -22,6 +22,7 @@ from starlette.types import ASGIApp
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.routers._prefix import API_PATH_PREFIXES
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
@@ -122,45 +123,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Check if the route is unprotected and doesn't require authentication.
 
         Args:
-            path: Request path
+            path: Routed path (``routed_path(request.scope)``), not the raw request path
 
         Returns:
             True if the route is unprotected, False otherwise
         """
-        unprotected_prefixes = (
-            "/health",
-            "/login",
-            "/callback",
-            "/oidc/static",
-            "/metrics",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
-            "/oidc/ui",
-            # MLflow's React bundle is served from /static-files/<path:path> with
-            # content-addressed (hashed) filenames and ships publicly on PyPI.
-            # Letting it load unauthenticated lets a session-expired SPA finish
-            # loading chunks instead of dying with ChunkLoadError; the next
-            # navigation will redirect through the IdP for re-auth.
-            "/static-files",
-            # SCIM 2.0 (#321). Not unauthenticated: every route under it depends on
-            # ``require_scim_token``, a dedicated credential this chain does not understand, and a
-            # catch-all keeps anything unmatched from reaching the Flask mount. Carved out so that
-            # a user session or token can never authenticate a directory write. The trailing
-            # slash keeps a sibling such as "/scim/v2x" protected.
-            "/scim/v2/",
-            # SAML single logout and SP metadata (#328, #329). The IdP calls the first with no
-            # session of ours — that is the point of IdP-initiated logout — and every message it
-            # accepts must carry the IdP's signature. The second is public by nature: entity id,
-            # endpoint URLs and a public certificate. Trailing slashes keep "/slox" protected.
-            "/slo/",
-            "/saml/metadata/",
-        )
-        # Matched exactly rather than by prefix. A login page has to read this before anyone has
-        # signed in — it is the list of buttons to draw — but "/providers" as a prefix would
-        # silently unprotect any later route whose path merely began with it.
-        unprotected_exact = ("/providers",)
-        return path in unprotected_exact or path.startswith(unprotected_prefixes)
+        return is_unprotected_route(path)
 
     async def _authenticate_basic_auth(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
         """
@@ -683,7 +651,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             Response from the application or an authentication redirect
         """
-        path = request.url.path
+        # Decide on the path the router will dispatch, which excludes any root_path prefix
+        # recorded for the deployment. ProxyHeadersMiddleware runs outside this middleware, so a
+        # forwarded prefix from a trusted proxy is already reflected in the scope here.
+        path = routed_path(request.scope)
 
         # Skip authentication for unprotected routes
         if self._is_unprotected_route(path):

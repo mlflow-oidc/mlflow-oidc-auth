@@ -84,7 +84,7 @@ Fields for an entry with `"type": "saml"` (requires the `[saml]` extra). They ar
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `SECRET_KEY` | String | Auto-generated | Secret key used to sign session cookies. **All replicas must share the same value** in multi-instance deployments. If not set, a random key is generated on startup and a warning is logged — sessions will not survive restarts or work across replicas |
-| `TRUSTED_PROXIES` | String (CSV) | Empty (trust all) | Comma-separated list of trusted proxy IP addresses or CIDR ranges (e.g., `10.0.0.0/8,172.16.0.0/12`). When configured, `X-Forwarded-*` headers from untrusted sources are ignored. When empty, all proxy headers are trusted for backward compatibility |
+| `TRUSTED_PROXIES` | String (CSV) | Empty (trust all) | Comma-separated list of trusted proxy IP addresses or CIDR ranges (e.g., `10.0.0.0/8,172.16.0.0/12`). When configured, `X-Forwarded-*` headers from untrusted sources are ignored; a value with no valid entry trusts no source. When empty, all proxy headers are trusted for backward compatibility and a warning is logged at startup. **Production deployments behind a reverse proxy must set this** to the proxy's address or range — see [Reverse proxies](#reverse-proxies) |
 | `AUTOMATIC_LOGIN_REDIRECT` | Boolean | `false` | When `true`, unauthenticated browser requests are automatically redirected to the OIDC login page instead of showing the login UI |
 
 ### UI Behavior
@@ -403,9 +403,30 @@ Additional session cookie settings:
 | `SESSION_COOKIE_SECURE` | Boolean | `false` | Indicate that the "Secure" flag should be set (can be used with HTTPS only), set this to `true` in production to ensure the session cookie is only sent over HTTPS |
 | `SAML_LOGIN_BINDING` | String | `auto` | Binds a SAML login to the browser that started it with a short-lived `HttpOnly; Secure; SameSite=None` nonce cookie scoped to the ACS (login-CSRF defence). `auto`: on iff `SESSION_COOKIE_SECURE=true`; `on`: forced even over http (loopback test rigs only, logged as a warning); `off`: disabled. Any other value refuses to start. See [SAML: browser binding](saml-auth.md#browser-binding) |
 
+## Reverse proxies
+
+`ProxyHeadersMiddleware` applies `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port`
+and `X-Forwarded-Prefix` to each request so redirects and callback URLs are built correctly
+behind a proxy, and so a deployment served under a sub-path (for example `/mlflow`) routes
+correctly. Authorization is always decided on the routed path — the request path with the
+forwarded prefix removed — which is the same path the application dispatches on.
+
+These headers are only meaningful when they come from your proxy. Set `TRUSTED_PROXIES` to the
+proxy's address or CIDR range in every production deployment behind a reverse proxy:
+
+```bash
+TRUSTED_PROXIES=10.0.0.0/8
+```
+
+When `TRUSTED_PROXIES` is unset, the headers are honoured from every client (the default, kept
+for backward compatibility) and a warning is logged once at startup. When it is set, headers
+from any other client are ignored; a value in which no entry parses as an address or range
+trusts no client at all. Make sure the proxy overwrites, rather than appends to, any
+`X-Forwarded-*` header a client sends.
+
 ## Upgrading to this release
 
-Three behaviour changes ship together in this release. None require a configuration change to
+These behaviour changes ship together in this release. None require a configuration change to
 keep working; each is called out here because it changes what a running deployment does on
 upgrade.
 
@@ -422,6 +443,46 @@ upgrade.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Artifact paths that name no experiment are denied.** The artifact proxy used to authorize a
+  path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. That setting ships as
+  `MANAGE`, so on a default deployment any authenticated user could download, upload to or
+  delete the artifact root (`DELETE /api/2.0/mlflow-artifacts/artifacts/.` emptied every
+  experiment's artifacts) and list every experiment id. Such paths now get `403` for every
+  method. Listing the root still works, but it returns only the experiments the caller can read.
+  This is a behaviour change only if you run `DEFAULT_MLFLOW_PERMISSION=MANAGE` (or any level
+  above `NO_PERMISSIONS`). MLflow's own client and UI are unaffected when experiment artifact
+  locations sit directly under the proxy root (`mlflow-artifacts:/<experiment_id>` or
+  `mlflow-artifacts:/workspaces/<ws>/<experiment_id>`, MLflow's default layout). **If your
+  artifact root or a workspace's `default_artifact_root` adds a prefix** (for example
+  `--default-artifact-root mlflow-artifacts:/mlartifacts`, giving
+  `mlflow-artifacts:/mlartifacts/<experiment_id>`), the plugin cannot tell which experiment such a
+  path belongs to, and non-admin artifact uploads, downloads and listings through the proxy are
+  now denied. Before, they were allowed for everyone, including other tenants. Keep experiment
+  locations at the top of the proxy root to use the proxy as a non-admin. A tool that wrote to or
+  deleted the artifact root as a non-admin must now run as an administrator. On a `NO_PERMISSIONS` deployment these requests
+  were already denied, and nothing changes except that the root listing is now filtered rather
+  than refused. The logged-model artifact routes and the run presigned-URL routes are also
+  authorized now; before, they had no check. See [Artifact Access](permissions#artifact-access).
+
+  **Artifacts-only servers** (`mlflow server --artifacts-only`, or any artifact proxy whose
+  tracking store has no experiment table or cannot be reached) are affected too. An artifact
+  path is now authorized only after the plugin confirms, in the tracking store, that the
+  experiment it names exists. A server that cannot answer that denies all non-admin proxy
+  traffic, and logs the store error. Keep the tracking store reachable from the artifact
+  server, or route non-admin artifact traffic through the tracking server.
+
+- **Routes without a validator are refused to non-admins.** A request to an MLflow route that
+  has no authorization rule now gets `403` for a non-admin user instead of being served. Admins
+  are unaffected. See [Routes without a validator](permissions#routes-without-a-validator).
+- **GenAI routes now need experiment grants.** Evaluation datasets, issues, label schemas,
+  review queues, UI jobs, scorer online-scoring configuration, `issues/invoke` and
+  `genai/evaluate/invoke` now check the permission of the
+  experiment they belong to. A non-admin needs the grant listed in
+  [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes); with the
+  default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold it. Requests that name no
+  experiment (an unscoped dataset or issue search, a dataset linked to no experiment, a job with
+  no recorded experiment) are admin-only. Gateway budget reads (`gateway/budgets/get`, `list`,
+  `windows`) and demo-data generation are admin-only.
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.

@@ -9,7 +9,7 @@ from __future__ import annotations
 from flask import request
 
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils import get_request_param
+from mlflow_oidc_auth.utils import all_source_values, get_request_param
 from mlflow_oidc_auth.utils.permissions import (
     can_manage_gateway_endpoint,
     can_manage_gateway_model_definition,
@@ -51,10 +51,10 @@ def validate_can_update_gateway_endpoint(username: str) -> bool:
     For the permission check we resolve the current endpoint name
     via ``endpoint_id`` since the request ``name`` is the *new* name.
     """
-    name = _get_gateway_endpoint_name_for_update()
-    if not name:
+    names = _get_gateway_endpoint_name_for_update()
+    if not names:
         return False
-    return can_update_gateway_endpoint(name, username)
+    return all(can_update_gateway_endpoint(name, username) for name in names)
 
 
 def validate_can_delete_gateway_endpoint(username: str) -> bool:
@@ -102,10 +102,10 @@ def validate_can_update_gateway_secret(username: str) -> bool:
     resolve the current name from the id rather than trusting a request ``secret_name``
     (issue #270 cross-field bypass).
     """
-    name = _get_gateway_secret_name_for_update()
-    if not name:
+    names = _get_gateway_secret_name_for_update()
+    if not names:
         return False
-    return can_update_gateway_secret(name, username)
+    return all(can_update_gateway_secret(name, username) for name in names)
 
 
 def validate_can_delete_gateway_secret(username: str) -> bool:
@@ -146,11 +146,11 @@ def validate_can_update_gateway_model_definition(username: str) -> bool:
     (the ``name`` field carries the *new* name on a rename), so we resolve the current
     name from the id rather than trusting a request ``name`` (issue #270).
     """
-    name = _get_gateway_model_definition_name_for_update()
-    if not name:
+    names = _get_gateway_model_definition_name_for_update()
+    if not names:
         _logger.warning("Cannot resolve gateway model definition name — denying access (fail-closed)")
         return False
-    return can_update_gateway_model_definition(name, username)
+    return all(can_update_gateway_model_definition(name, username) for name in names)
 
 
 def validate_can_delete_gateway_model_definition(username: str) -> bool:
@@ -216,6 +216,32 @@ def _safe_param(name: str) -> str | None:
     return value or None
 
 
+def _safe_params(name: str) -> list:
+    """Every distinct value of ``name`` the request carries, MLflow's own first.
+
+    The value from the source MLflow reads comes first; then every other value in any
+    request source (issues #285, #288), so a request cannot hide a second resource in
+    the query string or the body the check would otherwise skip.
+    """
+    primary = _safe_param(name)
+    values = [primary] if primary else []
+    for value in all_source_values(name):
+        if str(value) not in {str(v) for v in values}:
+            values.append(value)
+    return values
+
+
+def _resolve_all(ids: list, resolve) -> list[str] | None:
+    """Resolve every id to a name; ``None`` if any of them cannot be resolved (fail closed)."""
+    names: list[str] = []
+    for resource_id in ids:
+        name = resolve(resource_id)
+        if not name:
+            return None
+        names.append(name)
+    return list(dict.fromkeys(names))
+
+
 def _all_gateway_endpoint_names() -> list[str]:
     """Every endpoint name a read/delete request references.
 
@@ -225,79 +251,79 @@ def _all_gateway_endpoint_names() -> list[str]:
     the ``name`` as given and the name resolved from ``endpoint_id`` — so the caller
     must be authorized on every one.
     """
-    names: list[str] = []
-    direct = _safe_param("name")
-    if direct:
-        names.append(direct)
-    endpoint_id = _safe_param("endpoint_id")
-    if endpoint_id:
-        resolved = _resolve_endpoint_name_from_id(endpoint_id)
-        if resolved:
-            names.append(resolved)
+    names: list[str] = list(_safe_params("name"))
+    ids = _safe_params("endpoint_id")
+    if ids:
+        resolved = _resolve_all(ids, _resolve_endpoint_name_from_id)
+        if resolved is None:
+            # An id we cannot resolve is a resource we cannot authorize: deny rather
+            # than decide on the rest of the request alone.
+            return []
+        names.extend(resolved)
     # De-duplicate while preserving order (a legit request naming one resource two ways).
     return list(dict.fromkeys(names))
 
 
-def _get_gateway_endpoint_name_for_update() -> str | None:
-    """Resolve the *current* endpoint name for update requests.
+def _get_gateway_endpoint_name_for_update() -> list[str] | None:
+    """Resolve the *current* endpoint name(s) for update requests, or None (deny).
 
     ``UpdateGatewayEndpoint`` identifies the resource by ``endpoint_id`` (the ``name``
     field holds the *new* name on a rename), so we resolve the current name via the id.
     """
-    endpoint_id = _safe_param("endpoint_id")
-    if not endpoint_id:
+    ids = _safe_params("endpoint_id")
+    if not ids:
         return None
-    return _resolve_endpoint_name_from_id(endpoint_id)
+    return _resolve_all(ids, _resolve_endpoint_name_from_id)
 
 
 def _all_gateway_secret_names() -> list[str]:
     """Every secret name a read/delete request references (see ``_all_gateway_endpoint_names``)."""
-    names: list[str] = []
-    direct = _safe_param("secret_name")
-    if direct:
-        names.append(direct)
-    secret_id = _safe_param("secret_id")
-    if secret_id:
-        resolved = _resolve_secret_name_from_id(secret_id)
-        if resolved:
-            names.append(resolved)
+    names: list[str] = list(_safe_params("secret_name"))
+    ids = _safe_params("secret_id")
+    if ids:
+        resolved = _resolve_all(ids, _resolve_secret_name_from_id)
+        if resolved is None:
+            # An id we cannot resolve is a resource we cannot authorize: deny rather
+            # than decide on the rest of the request alone.
+            return []
+        names.extend(resolved)
     return list(dict.fromkeys(names))
 
 
-def _get_gateway_secret_name_for_update() -> str | None:
-    """Resolve the current secret name for update requests.
+def _get_gateway_secret_name_for_update() -> list[str] | None:
+    """Resolve the current secret name(s) for update requests, or None (deny).
 
     ``UpdateGatewaySecret`` identifies the resource by ``secret_id`` only, so we resolve
     the current name via the id rather than trusting a request ``secret_name``.
     """
-    secret_id = _safe_param("secret_id")
-    if not secret_id:
+    ids = _safe_params("secret_id")
+    if not ids:
         return None
-    return _resolve_secret_name_from_id(secret_id)
+    return _resolve_all(ids, _resolve_secret_name_from_id)
 
 
 def _all_gateway_model_definition_names() -> list[str]:
     """Every model-definition name a read/delete request references (see ``_all_gateway_endpoint_names``)."""
-    names: list[str] = []
-    direct = _safe_param("name")
-    if direct:
-        names.append(direct)
-    model_definition_id = _safe_param("model_definition_id")
-    if model_definition_id:
-        resolved = _resolve_model_definition_name_from_id(model_definition_id)
-        if resolved:
-            names.append(resolved)
+    names: list[str] = list(_safe_params("name"))
+    ids = _safe_params("model_definition_id")
+    if ids:
+        resolved = _resolve_all(ids, _resolve_model_definition_name_from_id)
+        if resolved is None:
+            # An id we cannot resolve is a resource we cannot authorize: deny rather
+            # than decide on the rest of the request alone.
+            return []
+        names.extend(resolved)
     return list(dict.fromkeys(names))
 
 
-def _get_gateway_model_definition_name_for_update() -> str | None:
-    """Resolve the current model-definition name for update requests.
+def _get_gateway_model_definition_name_for_update() -> list[str] | None:
+    """Resolve the current model-definition name(s) for update requests, or None (deny).
 
     ``UpdateGatewayModelDefinition`` identifies the resource by ``model_definition_id``
     (the ``name`` field holds the *new* name on a rename), so we resolve the current
     name via the id rather than trusting a request ``name``.
     """
-    model_definition_id = _safe_param("model_definition_id")
-    if not model_definition_id:
+    ids = _safe_params("model_definition_id")
+    if not ids:
         return None
-    return _resolve_model_definition_name_from_id(model_definition_id)
+    return _resolve_all(ids, _resolve_model_definition_name_from_id)

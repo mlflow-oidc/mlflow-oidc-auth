@@ -32,7 +32,7 @@ def test__get_permission_from_run_id():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
         patch(
             "mlflow_oidc_auth.validators.run.effective_experiment_permission",
@@ -48,7 +48,7 @@ def test_validate_can_read_run():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -60,7 +60,7 @@ def test_validate_can_update_run():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -72,7 +72,7 @@ def test_validate_can_delete_run():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -84,7 +84,7 @@ def test_validate_can_manage_run():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -100,7 +100,7 @@ def test__get_permission_from_run_id_no_permission():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
         patch(
             "mlflow_oidc_auth.validators.run.effective_experiment_permission",
@@ -120,7 +120,7 @@ def test_validate_can_read_run_false():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -133,7 +133,7 @@ def test_validate_can_update_run_false():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -146,7 +146,7 @@ def test_validate_can_delete_run_false():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -159,7 +159,7 @@ def test_validate_can_manage_run_false():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -175,7 +175,7 @@ def test_validate_with_none_username_run():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -188,7 +188,7 @@ def test_validate_with_empty_username_run():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -202,7 +202,7 @@ def test_validate_with_special_characters_username_run():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -215,7 +215,7 @@ def test_validate_with_malformed_run_id():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value=""),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=[""]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -230,8 +230,8 @@ def test_validate_with_very_long_run_id():
     mock_run.info.experiment_id = "exp1"
     with (
         patch(
-            "mlflow_oidc_auth.validators.run.get_request_param",
-            return_value=long_run_id,
+            "mlflow_oidc_auth.validators.run.get_request_param_values",
+            return_value=[long_run_id],
         ),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
@@ -243,7 +243,7 @@ def test_validate_with_very_long_run_id():
 def test_get_run_store_exception():
     """Test when store raises an exception for run"""
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.side_effect = Exception("Store error")
@@ -257,7 +257,7 @@ def test_permission_inheritance_scenarios_run():
     mock_run = MagicMock()
     mock_run.info.experiment_id = "exp1"
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run
@@ -280,7 +280,7 @@ def test_run_with_different_experiment_ids():
     mock_run2.info.experiment_id = "default"
 
     with (
-        patch("mlflow_oidc_auth.validators.run.get_request_param", return_value="run123"),
+        patch("mlflow_oidc_auth.validators.run.get_request_param_values", return_value=["run123"]),
         patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_run.return_value = mock_run1

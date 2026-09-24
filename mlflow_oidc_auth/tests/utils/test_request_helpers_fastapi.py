@@ -376,17 +376,49 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
 
         asyncio.run(test_async())
 
-    def test_get_base_path_with_forwarded_prefix(self):
-        """Test base path extraction with X-Forwarded-Prefix header."""
+    def test_get_base_path_uses_root_path(self):
+        """The prefix recorded in the scope's root_path is the base path."""
 
         async def test_async():
             mock_request = MagicMock(spec=Request)
-            mock_request.headers = {"x-forwarded-prefix": "/my-app/"}
+            mock_request.headers = {}
+            mock_request.scope = {"root_path": "/my-app/"}
             mock_request.base_url = MagicMock()
             mock_request.base_url.path = ""
 
             result = await get_base_path(mock_request)
             self.assertEqual(result, "/my-app")
+
+        asyncio.run(test_async())
+
+    def test_get_base_path_ignores_forwarded_prefix_header(self):
+        """The raw X-Forwarded-Prefix header is not read; only what the proxy middleware recorded counts."""
+
+        async def test_async():
+            mock_request = MagicMock(spec=Request)
+            mock_request.headers = {"x-forwarded-prefix": "/my-app/"}
+            mock_request.scope = {"root_path": ""}
+            mock_request.base_url = MagicMock()
+            mock_request.base_url.path = ""
+
+            result = await get_base_path(mock_request)
+            self.assertEqual(result, "")
+
+        asyncio.run(test_async())
+
+    def test_get_base_path_drops_non_path_prefix(self):
+        """A prefix that does not start with a single slash is dropped."""
+
+        async def test_async():
+            for value in ("//other.example", "//", "my-app", "///x"):
+                mock_request = MagicMock(spec=Request)
+                mock_request.headers = {}
+                mock_request.scope = {"root_path": value}
+                mock_request.base_url = MagicMock()
+                mock_request.base_url.path = ""
+
+                result = await get_base_path(mock_request)
+                self.assertEqual(result, "", value)
 
         asyncio.run(test_async())
 
