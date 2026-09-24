@@ -265,6 +265,19 @@ def validate_can_start_trace_v3(username: str) -> bool:
             if any(existing_experiment != d for d in destinations):
                 need_delete.append(existing_experiment)
 
+    # The union rule: MLflow reads only the nested body fields above, but any flat
+    # experiment / trace id the request also carries (query string, top-level body, form)
+    # is authorized too, so a divergence in what MLflow parses can never widen access.
+    need_update += all_source_values("experiment_id")
+    for trace_id in all_source_values("trace_id", "request_id"):
+        try:
+            need_update.append(_experiment_for_trace(trace_id))
+        except MlflowException as e:
+            if e.error_code != "RESOURCE_DOES_NOT_EXIST":
+                return False
+        except Exception:
+            return False
+
     for experiment_id in dict.fromkeys(need_update):
         if not effective_experiment_permission(experiment_id, username).permission.can_update:
             return False
