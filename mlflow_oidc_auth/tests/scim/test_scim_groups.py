@@ -28,6 +28,22 @@ BOB = "bob@example.com"
 CAROL = "carol@example.com"
 
 
+@pytest.fixture(autouse=True)
+def no_tracking_store(monkeypatch):
+    """Permission resolution falls through to the regex sources, which look the experiment name up
+    in MLflow's tracking store. These tests grant nothing by regex, so give that lookup a stub
+    rather than let it build whatever store ``MLFLOW_TRACKING_URI`` (or its absence) implies."""
+    from types import SimpleNamespace
+
+    import mlflow_oidc_auth.utils.permissions as permissions
+
+    class _Store:
+        def get_experiment(self, experiment_id):
+            return SimpleNamespace(experiment_id=experiment_id, name=f"experiment-{experiment_id}")
+
+    monkeypatch.setattr(permissions, "_get_tracking_store", lambda: _Store())
+
+
 def assert_scim_error(response, status, scim_type=None):
     assert response.status_code == status, response.text
     body = response.json()
@@ -445,7 +461,7 @@ class TestMembershipOwnership:
         assert permissions["2"].kind != "group", "the unowned membership the claims no longer assert is revoked"
         assert permissions["3"].permission.name == "MANAGE"
         skipped = [e for e in audit_events if e["event"] == "user.ownership_conflict" and e["detail"]["group"] == "directory-grp"]
-        assert [(e["status"], e["detail"]["operation"]) for e in skipped] == ([] if mode == Enforcement.OFF else [("success", "membership.sync_kept")])
+        assert [(e["status"], e["detail"]["operation"]) for e in skipped] == [("success", "membership.sync_kept")], "recorded in every mode, never as a denial"
 
     def test_scim_cannot_remove_a_login_derived_membership_under_enforce(self, client, scim, bound_store, shared, enforce, audit_events):
         response = client.patch(
@@ -477,7 +493,7 @@ class TestMembershipOwnership:
         assert owners(bound_store, "shared") == {ALICE: "scim", BOB: "oidc:default"}, "the manual row goes, the login's stays"
         [changed] = [e for e in audit_events if e["event"] == "group.members_changed"]
         assert changed["detail"]["removed"] == [CAROL]
-        assert changed["detail"]["kept"] == ([] if mode == Enforcement.OFF else [BOB])
+        assert changed["detail"]["kept"] == [BOB]
 
     def test_scim_removes_a_manual_membership(self, client, scim, bound_store, shared, enforce):
         """Unowned memberships are revocable by any source — including every pre-#360 row."""
@@ -494,6 +510,19 @@ class TestMembershipOwnership:
 
         assert_scim_error(response, 409, "mutability")
         assert owners(bound_store, "ops") == {ADMIN: "manual"}
+
+    def test_a_put_keeping_a_hand_made_admins_membership_is_not_a_denial(self, client, scim, bound_store, admin, enforce, audit_events):
+        """The PUT returns 200 and the row stays: that is a kept row, not a refused removal."""
+        create_group(client, scim, "ops")
+        bound_store.add_user_to_group(ADMIN, "ops")
+
+        response = client.put(f"{GROUPS}/ops", headers=scim, json=group_body("ops", []))
+
+        assert response.status_code == 200, response.text
+        assert owners(bound_store, "ops") == {ADMIN: "manual"}
+        [event] = [e for e in audit_events if e["event"] == "user.ownership_conflict"]
+        assert (event["status"], event["detail"]["operation"], event["detail"]["owner"]) == ("success", "membership.sync_kept", "manual")
+        assert not [e for e in audit_events if e["status"] == "denied"]
 
     def test_a_scim_add_takes_effect_without_waiting_for_the_cache(self, client, scim, users, bound_store):
         from mlflow_oidc_auth.utils.permissions import effective_experiment_permission
