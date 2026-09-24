@@ -234,6 +234,390 @@ class TestOrphans:
         assert bound_store.list_experiment_permissions("steward@example.com") == []
 
 
+COLLEAGUE = "colleague@example.com"
+REAL_EXPERIMENT_NAMES = orphans._experiment_names
+
+
+def orphaned_events(audit_events):
+    return {(e["resource_type"], e["resource_id"]): e["detail"] for e in events(audit_events, "resource.orphaned")}
+
+
+class TestOrphansThroughGroupsAndRegex:
+    """Issue #375: group-derived and regex MANAGE grants count, on both sides of the question."""
+
+    @pytest.fixture(autouse=True)
+    def mlflow_lookups(self, monkeypatch):
+        """No tracking server here: registered models are models, experiment names unknown."""
+        monkeypatch.setattr(orphans, "_prompt_kinds", lambda names: {n: {False} for n in names})
+        monkeypatch.setattr(orphans, "_experiment_names", lambda ids: {})
+
+    @pytest.fixture
+    def colleague(self, bound_store):
+        bound_store.create_user(COLLEAGUE, "unused-secret", "Colleague")
+        return COLLEAGUE
+
+    def deactivate(self, client, scim):
+        response = client.patch(f"{USERS}/{ALICE}", headers=scim, json=DEACTIVATE)
+        assert response.status_code == 200
+        return response
+
+    def test_direct_orphans_say_so(self, client, scim, alice, bound_store, audit_events):
+        bound_store.create_experiment_permission("1", ALICE, "MANAGE")
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events)[("experiment", "1")]["via"] == "direct"
+
+    def test_a_user_regex_held_by_another_active_user_keeps_it_managed(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_registered_model_permission("team-model", ALICE, "MANAGE")
+        bound_store.create_registered_model_permission("other-model", ALICE, "MANAGE")
+        bound_store.create_registered_model_regex_permission("^team-", 1, "MANAGE", COLLEAGUE)
+
+        self.deactivate(client, scim)
+
+        assert set(orphaned_events(audit_events)) == {("registered_model", "other-model")}, "a pattern that does not match holds nothing"
+
+    def test_a_group_regex_with_another_active_member_keeps_it_managed(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_gateway_endpoint_permission("ep-1", ALICE, "MANAGE")
+        bound_store.populate_groups(["platform"])
+        bound_store.add_user_to_group(COLLEAGUE, "platform")
+        bound_store.create_group_gateway_endpoint_regex_permission("platform", "^ep-", 1, "MANAGE")
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events) == {}
+
+    def test_a_group_regex_whose_only_other_member_is_inactive_holds_nothing(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_gateway_endpoint_permission("ep-1", ALICE, "MANAGE")
+        bound_store.populate_groups(["platform"])
+        bound_store.add_user_to_group(COLLEAGUE, "platform")
+        bound_store.add_user_to_group(ALICE, "platform")
+        bound_store.create_group_gateway_endpoint_regex_permission("platform", "^ep-", 1, "MANAGE")
+        bound_store.update_user(COLLEAGUE, active=False)
+
+        self.deactivate(client, scim)
+
+        assert set(orphaned_events(audit_events)) == {("gateway_endpoint", "ep-1")}
+
+    @pytest.mark.parametrize("holder", ["inactive", "shadowed", "not-manage"])
+    def test_a_regex_that_does_not_resolve_to_manage_holds_nothing(self, client, scim, alice, colleague, bound_store, audit_events, holder):
+        bound_store.create_gateway_secret_permission("key-1", ALICE, "MANAGE")
+        if holder == "inactive":
+            bound_store.create_gateway_secret_regex_permission("^key-", 1, "MANAGE", COLLEAGUE)
+            bound_store.update_user(COLLEAGUE, active=False)
+        elif holder == "shadowed":
+            # The resolver takes the best-priority match: READ at priority 1 wins over MANAGE at 2.
+            bound_store.create_gateway_secret_regex_permission("^key-", 1, "READ", COLLEAGUE)
+            bound_store.create_gateway_secret_regex_permission("^key-1$", 2, "MANAGE", COLLEAGUE)
+        else:
+            bound_store.create_gateway_secret_regex_permission("^key-", 1, "EDIT", COLLEAGUE)
+
+        self.deactivate(client, scim)
+
+        assert set(orphaned_events(audit_events)) == {("gateway_secret", "key-1")}
+
+    @pytest.mark.parametrize(
+        "order, orphaned",
+        [(["user", "group", "regex", "group-regex"], True), (["regex", "group-regex", "user", "group"], False)],
+    )
+    def test_a_direct_grant_the_resolver_reaches_first_shadows_a_manage_pattern(
+        self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch, order, orphaned
+    ):
+        """The colleague's READ grant decides their permission when ``user`` comes first, so their
+        MANAGE pattern does not make them a holder; with patterns first, it does."""
+        monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", order)
+        bound_store.create_registered_model_permission("fraud-v2", ALICE, "MANAGE")
+        bound_store.create_registered_model_permission("fraud-v2", COLLEAGUE, "READ")
+        bound_store.create_registered_model_regex_permission("^fraud-", 1, "MANAGE", COLLEAGUE)
+
+        self.deactivate(client, scim)
+
+        assert (("registered_model", "fraud-v2") in orphaned_events(audit_events)) is orphaned
+
+    def test_a_group_grant_the_resolver_reaches_first_shadows_a_group_pattern(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_gateway_endpoint_permission("ep-1", ALICE, "MANAGE")
+        bound_store.populate_groups(["readers", "platform"])
+        bound_store.add_user_to_group(COLLEAGUE, "readers")
+        bound_store.add_user_to_group(COLLEAGUE, "platform")
+        bound_store.create_group_gateway_endpoint_permission("readers", "ep-1", "READ")
+        bound_store.create_group_gateway_endpoint_regex_permission("platform", "^ep-", 1, "MANAGE")
+
+        self.deactivate(client, scim)
+
+        assert set(orphaned_events(audit_events)) == {("gateway_endpoint", "ep-1")}
+
+    def test_scorer_patterns_match_the_scorer_name(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_scorer_permission("7", "quality", ALICE, "MANAGE")
+        bound_store.create_scorer_permission("7", "latency", ALICE, "MANAGE")
+        bound_store.create_scorer_regex_permission("^qual", 1, "MANAGE", COLLEAGUE)
+
+        self.deactivate(client, scim)
+
+        assert set(orphaned_events(audit_events)) == {("scorer", "7/latency")}
+
+    def test_workspace_regex_grants_count(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_workspace_permission("team-a", ALICE, "MANAGE")
+        bound_store.create_workspace_permission("solo", ALICE, "MANAGE")
+        bound_store.create_workspace_regex_permission("^team-", 1, "MANAGE", COLLEAGUE)
+
+        self.deactivate(client, scim)
+
+        assert set(orphaned_events(audit_events)) == {("workspace", "solo")}
+
+    def test_experiment_patterns_match_the_experiment_name(self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch):
+        """Only the tracking store knows an experiment's name; an id it cannot resolve is reported as unresolved."""
+        bound_store.create_experiment_permission("1", ALICE, "MANAGE")
+        bound_store.create_experiment_permission("2", ALICE, "MANAGE")
+        bound_store.create_experiment_permission("3", ALICE, "MANAGE")
+        bound_store.create_experiment_regex_permission("^team/", 1, "MANAGE", COLLEAGUE)
+        monkeypatch.setattr(orphans, "_experiment_names", lambda ids: {k: v for k, v in {"1": "team/churn", "2": "personal/scratch"}.items() if k in ids})
+
+        self.deactivate(client, scim)
+
+        found = orphaned_events(audit_events)
+        assert set(found) == {("experiment", "2"), ("experiment", "3")}
+        assert (found[("experiment", "2")]["via"], found[("experiment", "3")]["via"]) == ("direct", "unresolved")
+
+    @pytest.mark.parametrize("is_prompt, orphaned", [(True, False), (False, True)])
+    def test_prompt_patterns_apply_only_to_prompts(self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch, is_prompt, orphaned):
+        bound_store.create_registered_model_permission("summarize", ALICE, "MANAGE")
+        bound_store.create_prompt_regex_permission("^sum", 1, "MANAGE", COLLEAGUE)
+        monkeypatch.setattr(orphans, "_prompt_kinds", lambda names: {n: {is_prompt} for n in names})
+
+        self.deactivate(client, scim)
+
+        assert (("registered_model", "summarize") in orphaned_events(audit_events)) is orphaned
+
+    def test_an_unresolvable_prompt_flag_is_reported_not_assumed_held(self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch):
+        bound_store.create_registered_model_permission("summarize", ALICE, "MANAGE")
+        bound_store.create_prompt_regex_permission("^sum", 1, "MANAGE", COLLEAGUE)
+        monkeypatch.setattr(orphans, "_prompt_kinds", lambda names: {})
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events)[("registered_model", "summarize")]["via"] == "unresolved"
+
+    def test_a_name_that_is_a_model_and_a_prompt_must_be_held_as_both(self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch):
+        """Grants are keyed by name; in different workspaces the name can be both kinds."""
+        bound_store.create_registered_model_permission("summarize", ALICE, "MANAGE")
+        bound_store.create_prompt_regex_permission("^sum", 1, "MANAGE", COLLEAGUE)
+        monkeypatch.setattr(orphans, "_prompt_kinds", lambda names: {n: {True, False} for n in names})
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events)[("registered_model", "summarize")]["via"] == "direct"
+
+    def test_last_active_member_of_the_managing_group_orphans_it(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.populate_groups(["solo-team"])
+        bound_store.add_user_to_group(ALICE, "solo-team")
+        bound_store.create_group_model_permission("solo-team", "model-g", "MANAGE")
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events)[("registered_model", "model-g")]["via"] == "group:solo-team"
+
+    @pytest.mark.parametrize("other_member_active, orphaned", [(True, False), (False, True)])
+    def test_group_held_depends_on_another_active_member(self, client, scim, alice, colleague, bound_store, audit_events, other_member_active, orphaned):
+        bound_store.populate_groups(["team"])
+        bound_store.add_user_to_group(ALICE, "team")
+        bound_store.add_user_to_group(COLLEAGUE, "team")
+        bound_store.create_group_experiment_permission("team", "9", "MANAGE")
+        if not other_member_active:
+            bound_store.update_user(COLLEAGUE, active=False)
+
+        self.deactivate(client, scim)
+
+        found = orphaned_events(audit_events)
+        assert (("experiment", "9") in found) is orphaned
+        if orphaned:
+            assert found[("experiment", "9")]["via"] == "group:team"
+
+    def test_direct_and_a_group_with_another_active_member_is_not_orphaned(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_experiment_permission("9", ALICE, "MANAGE")
+        bound_store.populate_groups(["team"])
+        bound_store.add_user_to_group(ALICE, "team")
+        bound_store.add_user_to_group(COLLEAGUE, "team")
+        bound_store.create_group_experiment_permission("team", "9", "MANAGE")
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events) == {}
+
+    def test_a_direct_read_shadows_a_managing_group(self, client, scim, alice, colleague, bound_store, audit_events):
+        """Under the default order the colleague resolves to their direct READ, not the group's
+        MANAGE, so nobody can manage experiment 9 once Alice leaves."""
+        bound_store.create_experiment_permission("9", ALICE, "MANAGE")
+        bound_store.create_experiment_permission("9", COLLEAGUE, "READ")
+        bound_store.populate_groups(["team"])
+        bound_store.add_user_to_group(COLLEAGUE, "team")
+        bound_store.create_group_experiment_permission("team", "9", "MANAGE")
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events)[("experiment", "9")]["via"] == "direct"
+
+    def test_a_direct_manage_shadows_a_reading_group(self, client, scim, alice, colleague, bound_store, audit_events):
+        bound_store.create_experiment_permission("9", ALICE, "MANAGE")
+        bound_store.create_experiment_permission("9", COLLEAGUE, "MANAGE")
+        bound_store.populate_groups(["team"])
+        bound_store.add_user_to_group(COLLEAGUE, "team")
+        bound_store.create_group_experiment_permission("team", "9", "READ")
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events) == {}
+
+    def test_group_order_first_lets_a_managing_group_win_over_a_direct_read(self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch):
+        monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", ["group", "user", "regex", "group-regex"])
+        bound_store.create_experiment_permission("9", ALICE, "MANAGE")
+        bound_store.create_experiment_permission("9", COLLEAGUE, "READ")
+        bound_store.populate_groups(["team"])
+        bound_store.add_user_to_group(COLLEAGUE, "team")
+        bound_store.create_group_experiment_permission("team", "9", "MANAGE")
+
+        self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events) == {}
+
+    def test_hard_delete_hands_a_group_only_orphan_to_the_fallback(self, client, scim, alice, bound_store, monkeypatch, audit_events):
+        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
+        bound_store.populate_groups(["solo-team"])
+        bound_store.add_user_to_group(ALICE, "solo-team")
+        bound_store.create_group_experiment_permission("solo-team", "4", "MANAGE")
+
+        response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+        assert response.status_code == 204
+
+        assert {p.experiment_id: p.permission for p in bound_store.list_experiment_permissions("steward@example.com")} == {"4": "MANAGE"}
+        detail = orphaned_events(audit_events)[("experiment", "4")]
+        assert detail["via"] == "group:solo-team" and detail["transferred_to"] == "steward@example.com"
+
+    def test_a_foreign_workspace_experiment_is_found_and_stays_held(self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch):
+        """With workspaces on, the tracking store only sees the active workspace; the lookup must
+        try each workspace rather than call a foreign experiment orphaned."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from mlflow.exceptions import MlflowException
+        from mlflow.utils.workspace_context import get_request_workspace
+
+        def get_experiment(experiment_id):
+            if get_request_workspace() != "tenant-b":
+                raise MlflowException("No Experiment exists")
+            return SimpleNamespace(name="team/churn")
+
+        monkeypatch.setattr(orphans, "_experiment_names", REAL_EXPERIMENT_NAMES)  # exercise the real lookup
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        bound_store.create_experiment_permission("1", ALICE, "MANAGE")
+        bound_store.create_experiment_regex_permission("^team/", 1, "MANAGE", COLLEAGUE)
+        workspaces = SimpleNamespace(list_workspaces=lambda: [SimpleNamespace(name="default"), SimpleNamespace(name="tenant-b")])
+        with (
+            patch("mlflow.server.handlers._get_workspace_store", return_value=workspaces),
+            patch("mlflow.server.handlers._get_tracking_store", return_value=SimpleNamespace(get_experiment=get_experiment)),
+        ):
+            self.deactivate(client, scim)
+
+        assert orphaned_events(audit_events) == {}
+
+    def test_an_unresolvable_experiment_is_reported_never_handed_over_and_warned(
+        self, client, scim, alice, colleague, bound_store, audit_events, monkeypatch, caplog
+    ):
+        import logging
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from mlflow.exceptions import MlflowException
+
+        def get_experiment(experiment_id):
+            raise MlflowException("No Experiment exists in the active workspace")
+
+        monkeypatch.setattr(orphans, "_experiment_names", REAL_EXPERIMENT_NAMES)  # exercise the real lookup
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
+        bound_store.create_experiment_permission("1", ALICE, "MANAGE")  # regex-held, but unresolvable
+        bound_store.create_registered_model_permission("model-z", ALICE, "MANAGE")  # nobody else: a plain orphan
+        bound_store.create_experiment_regex_permission("^team/", 1, "MANAGE", COLLEAGUE)
+        workspaces = SimpleNamespace(list_workspaces=lambda: [SimpleNamespace(name="default"), SimpleNamespace(name="tenant-b")])
+        with (
+            patch("mlflow.server.handlers._get_workspace_store", return_value=workspaces),
+            patch("mlflow.server.handlers._get_tracking_store", return_value=SimpleNamespace(get_experiment=get_experiment)),
+            caplog.at_level(logging.WARNING, logger=orphans.logger.name),
+        ):
+            response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+            assert response.status_code == 204
+
+        found = orphaned_events(audit_events)
+        assert found[("experiment", "1")]["via"] == "unresolved" and "transferred_to" not in found[("experiment", "1")]
+        assert found[("registered_model", "model-z")]["transferred_to"] == "steward@example.com"
+        assert bound_store.list_experiment_permissions("steward@example.com") == []
+        assert [p.name for p in bound_store.list_registered_model_permissions("steward@example.com")] == ["model-z"]
+        assert any("unresolved" in r.getMessage() and r.levelno >= logging.WARNING for r in caplog.records)
+
+    def test_regex_failure_never_blocks_deactivation(self, client, scim, alice, colleague, bound_store, monkeypatch, audit_events):
+        def explode(*args, **kwargs):
+            raise RuntimeError("regex resolution is down")
+
+        monkeypatch.setattr(orphans, "_judge_all", explode)
+        bound_store.create_experiment_permission("1", ALICE, "MANAGE")
+        client.get(LOGIN, params={"username": ALICE})
+
+        self.deactivate(client, scim)
+
+        assert bound_store.get_user_detail(ALICE)["active"] is False
+        assert client.get(PROTECTED).status_code == 401
+        assert orphaned_events(audit_events) == {}, "a failed check reports nothing rather than something wrong"
+
+    def test_regex_failure_never_blocks_delete_nor_hands_anything_over(self, client, scim, alice, bound_store, monkeypatch, audit_events):
+        def explode(*args, **kwargs):
+            raise RuntimeError("regex resolution is down")
+
+        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
+        monkeypatch.setattr(orphans, "_judge_all", explode)
+        bound_store.create_experiment_permission("1", ALICE, "MANAGE")
+
+        response = client.delete(f"{USERS}/{ALICE}", headers=scim)
+        assert response.status_code == 204
+
+        assert not bound_store.has_user(ALICE)
+        assert bound_store.list_experiment_permissions("steward@example.com") == []
+        assert orphaned_events(audit_events) == {}
+
+    def test_statement_count_does_not_grow_with_resources(self, bound_store, monkeypatch):
+        """Deactivation-time only, but still bounded: statements per run are independent of how
+        many resources, grants and patterns there are."""
+        from sqlalchemy import event
+
+        monkeypatch.setattr(orphans, "_experiment_names", lambda ids: {i: f"exp-{i}" for i in ids})
+        bound_store.create_user(ALICE, "unused-secret", "Alice")
+        bound_store.create_user(COLLEAGUE, "unused-secret", "Colleague")
+        bound_store.populate_groups(["team", "solo"])
+        bound_store.add_user_to_group(COLLEAGUE, "team")
+        bound_store.add_user_to_group(ALICE, "solo")
+        bound_store.create_experiment_regex_permission("^exp-5$", 1, "MANAGE", COLLEAGUE)
+        bound_store.create_group_experiment_regex_permission("team", "^exp-6$", 1, "MANAGE")
+
+        def count(n_start, n):
+            for i in range(n_start, n_start + n):
+                bound_store.create_experiment_permission(str(i), ALICE, "MANAGE")
+                bound_store.create_group_experiment_permission("solo", str(1000 + i), "MANAGE")
+            statements = []
+            listener = lambda *args, **kwargs: statements.append(1)  # noqa: E731
+            event.listen(bound_store.engine, "before_cursor_execute", listener)
+            try:
+                found = orphans.find_orphaned_resources(ALICE, store=bound_store)
+            finally:
+                event.remove(bound_store.engine, "before_cursor_execute", listener)
+            return len(statements), found
+
+        few, found_few = count(10, 3)
+        many, found_many = count(100, 40)
+        assert found_many and len(found_many) > len(found_few)
+        assert many == few
+
+
 class TestHandoverIsPartOfTheDelete:
     def test_a_refused_delete_rolls_the_handover_back(self, client, scim, bound_store, monkeypatch, audit_events):
         """The only active admin cannot be deleted; the hand-over ran in the same transaction and

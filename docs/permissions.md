@@ -186,12 +186,56 @@ access with no re-granting: the user signs in again, or is issued a new access t
 prior grants apply exactly as before.
 
 On deactivation and on hard delete, the plugin looks for resources where the departing user was
-the **last holder of `MANAGE`** — no other active user or group member holds it — across
-experiments, registered models, prompts, scorers, gateway endpoints, model definitions, secrets,
-and workspaces, and emits a `resource.orphaned` audit event per resource. A hard delete additionally
-grants `MANAGE` on each orphaned resource to `ORPHAN_FALLBACK_PRINCIPAL` when it names an active
-user; deactivation never transfers, since a deactivated user may come back. Orphan detection never
-blocks the deprovisioning itself — a failure there is logged, not raised.
+the **last holder of `MANAGE`** across experiments, registered models, prompts, scorers, gateway
+endpoints, model definitions, secrets, and workspaces, and emits a `resource.orphaned` audit event
+per resource.
+
+The departing user's resources are the ones they hold `MANAGE` on **directly** or **through a
+group**; `detail.via` on the event says which (`"direct"` or `"group:<name>"`). A resource they could
+manage only through a regex grant is not enumerated: a pattern matches resources in MLflow, including
+ones that do not exist yet.
+
+Another user still holds the resource, so it is **not** orphaned, when that user is active, is not
+the departing user, and their permission on it resolves to `MANAGE`. That permission is resolved the
+way it is at request time, by replaying `PERMISSION_SOURCE_ORDER`: the first source that has an answer
+decides. The sources are:
+
+| Source | Answer |
+|---|---|
+| `user` | the user's direct grant on the resource |
+| `group` | the most permissive grant any of the user's groups holds on it |
+| `regex` | the user's own patterns |
+| `group-regex` | the patterns of the user's groups |
+
+Some consequences under the default order (`user,group,regex,group-regex`):
+
+- A colleague with a direct `READ` grant is **not** a holder, even if one of their groups holds
+  `MANAGE`, or one of their patterns says `MANAGE`.
+- A colleague with a direct `MANAGE` grant is a holder, even if one of their groups only reads.
+- A group in which the departing user was the **last active member** holds nothing. Resources the
+  departing user managed only through that group are reported as `via: "group:<name>"`.
+
+Patterns resolve as they do at request time. They are tried in priority order and the first match
+wins; for workspaces, the most permissive of the best-priority matches wins. Each pattern is matched
+against the same value the resolver uses:
+
+- experiments: the experiment **name**
+- registered models and prompts: the name, using model patterns for models and prompt patterns for
+  prompts
+- scorers: the scorer name
+- gateway resources and workspaces: their name
+
+Experiment names and the model-or-prompt distinction come from MLflow. With workspaces enabled, each
+lookup is tried in every workspace. A name that is a model in one workspace and a prompt in another
+must be held as both. At most 1000 store calls are made per resource type. When the answer depends on
+a lookup that fails, the resource is reported with `via: "unresolved"` and a warning is logged, and it
+is **never** handed over. Administrators are not counted, because an administrator can always recover
+a resource.
+
+When `ORPHAN_FALLBACK_PRINCIPAL` names an active user, a hard delete also grants that user `MANAGE`
+on each orphaned resource, except unresolved ones. Deactivation never transfers, since a deactivated
+user may come back. Orphan detection never blocks the deprovisioning itself: a failure there is
+logged, not raised.
 
 See [SCIM Provisioning](scim#deprovisioning) for the full mechanics and [Admin UI](admin-ui#user-and-group-lifecycle)
 for the UI actions.

@@ -401,17 +401,22 @@ removed. Use it for the rarer "gone for good" case.
 ### Orphaned resources
 
 On deactivation and on delete (through SCIM or the admin API), the plugin looks for resources
-where the departing user is the **last holder of `MANAGE`**. That means no other *active* user
-holds `MANAGE` directly, and no group holding `MANAGE` has another active member. It checks
-experiments, registered models and prompts, scorers, gateway endpoints, model definitions and
-secrets, and workspaces. It emits one `resource.orphaned` audit event per resource, with
-`resource_type`, `resource_id` and `detail.user`. Regex grants are not resolved against resource
-names, and administrators are not counted: an administrator can always recover a resource.
+where the departing user is the **last holder of `MANAGE`**. The departing user holds it directly
+or through a group. No other active user's permission on it resolves to `MANAGE` when their direct,
+group, regex and group regex grants are replayed in `PERMISSION_SOURCE_ORDER`. A group in which the
+departing user was the last active member does not count. It checks experiments, registered models and prompts, scorers,
+gateway endpoints, model definitions and secrets, and workspaces. It emits one `resource.orphaned`
+audit event per resource, with `resource_type`, `resource_id`, `detail.user` and `detail.via`
+(`"direct"`, `"group:<name>"`, or `"unresolved"` when an MLflow lookup needed to decide failed). Administrators are not counted: an administrator can always recover
+a resource. See [Permissions](permissions#de-provisioning) for how regex grants are matched.
 
 If `ORPHAN_FALLBACK_PRINCIPAL` is set, a hard delete first grants that user `MANAGE` on each
-orphaned resource (`detail.transferred_to` on the event). The fallback must be an existing,
+orphaned resource (`detail.transferred_to` on the event), except unresolved ones, which are never
+handed over. The fallback must be an existing,
 active, non-service-account user other than the one being deleted. Otherwise the hand-over is
-skipped with a warning and orphans are only reported. Deactivation never transfers, because a
+skipped with a warning and orphans are only reported. Grants are keyed by resource name or id, not
+by workspace, so the fallback principal's `MANAGE` on a model name applies to that name in every
+workspace. Treat `ORPHAN_FALLBACK_PRINCIPAL` as a cross-tenant steward. Deactivation never transfers, because a
 deactivated user may come back.
 
 The hand-over runs **inside the delete's own transaction**, before the cascade. A delete that is
