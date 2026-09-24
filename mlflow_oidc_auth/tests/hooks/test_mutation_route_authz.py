@@ -319,3 +319,25 @@ def test_start_trace_v3_non_scalar_experiment_id_is_refused(value):
 def test_start_trace_v3_non_scalar_assessment_ids_are_refused(field, value):
     body = _with_assessments(_v3_body(OWN_EXPERIMENT, "new-t"), [{field: value, "feedback": {"value": 1}}])
     assert _denied(_hook("/api/3.0/mlflow/traces", "POST", OUTSIDER, body=body))
+
+
+def test_start_trace_v3_looks_each_trace_up_once(monkeypatch):
+    """Single-word fields ("trace", "assessments") share both spellings; read them once."""
+    calls = []
+
+    class _Counting(_FakeTrackingStore):
+        def get_trace_info(self, trace_id):
+            calls.append(trace_id)
+            return super().get_trace_info(trace_id)
+
+    monkeypatch.setattr("mlflow.server.handlers._tracking_store", _Counting())
+    body = _with_assessments(_v3_body(VICTIM_EXPERIMENT, "new-t"), [{"trace_id": "new-t", "feedback": {"value": 1}}])
+    assert _hook("/api/3.0/mlflow/traces", "POST", EDITOR, body=body) is None
+    assert calls == ["new-t"]
+
+
+def test_field_values_reads_a_shared_spelling_once():
+    from mlflow_oidc_auth.validators.trace import _field_values
+
+    assert _field_values({"trace": {"a": 1}}, "trace", "trace") == [{"a": 1}]
+    assert _field_values({"trace_id": "a", "traceId": "b"}, "trace_id", "traceId") == ["a", "b"]
