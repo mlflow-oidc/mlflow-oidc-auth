@@ -239,3 +239,45 @@ def test_webhook_route_denies_non_admins(path, method):
 def test_webhook_route_allows_admins(path, method):
     body = {"name": "x", "url": "https://example.com/hook", "events": []} if method in ("POST", "PATCH") else None
     assert _hook(path, method, ADMIN, body=body, is_admin=True) is None, f"{method} {path} denied to an admin"
+
+
+# ---------------------------------------------------------------------------
+# StartTraceV3 merge-on-conflict: re-homing and assessment upserts
+# ---------------------------------------------------------------------------
+
+
+def test_start_trace_v3_rehoming_an_existing_trace_requires_delete_on_its_experiment(permission_store):
+    """The merge moves an existing trace into the destination: a delete on its source.
+
+    The editor holds EDIT (UPDATE, not DELETE) on the victim experiment and on their own.
+    Naming the victim trace with their own experiment as destination must be refused.
+    """
+    permission_store.create_experiment_permission(OWN_EXPERIMENT, EDITOR, "EDIT")
+    from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+    flush_permission_cache()
+    assert _denied(_hook("/api/3.0/mlflow/traces", "POST", EDITOR, body=_v3_body(OWN_EXPERIMENT, "tr-victim")))
+    # Same experiment: no re-homing, UPDATE is enough (the log_spans / start_trace race).
+    assert _hook("/api/3.0/mlflow/traces", "POST", EDITOR, body=_v3_body(VICTIM_EXPERIMENT, "tr-victim")) is None
+
+
+def _with_assessments(body, assessments):
+    body["trace"]["trace_info"]["assessments"] = assessments
+    return body
+
+
+def test_start_trace_v3_cannot_upsert_an_assessment_by_id_into_an_existing_trace():
+    """The merge upserts assessments by assessment_id alone, whose owner cannot be resolved."""
+    body = _with_assessments(_v3_body(VICTIM_EXPERIMENT, "tr-victim"), [{"assessment_id": "a-other", "feedback": {"value": 1}}])
+    assert _denied(_hook("/api/3.0/mlflow/traces", "POST", EDITOR, body=body))
+
+
+def test_start_trace_v3_assessment_naming_another_trace_is_denied():
+    body = _with_assessments(_v3_body(VICTIM_EXPERIMENT, "new-t"), [{"trace_id": "tr-other", "feedback": {"value": 1}}])
+    assert _denied(_hook("/api/3.0/mlflow/traces", "POST", EDITOR, body=body))
+
+
+def test_start_trace_v3_new_trace_with_its_own_assessments_is_allowed():
+    """Exporting / copying a trace with assessments into a fresh id stays allowed."""
+    body = _with_assessments(_v3_body(VICTIM_EXPERIMENT, "new-t"), [{"assessment_id": "a-1", "trace_id": "new-t", "feedback": {"value": 1}}])
+    assert _hook("/api/3.0/mlflow/traces", "POST", EDITOR, body=body) is None

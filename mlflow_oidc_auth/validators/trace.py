@@ -194,49 +194,81 @@ def _start_trace_v3_trace_infos() -> list:
     return infos
 
 
+def _assessments_of(info: dict) -> list:
+    """Every assessment object under a trace_info, across both spellings of the list."""
+    return [a for lst in _field_values(info, "assessments", "assessments") if isinstance(lst, list) for a in lst if isinstance(a, dict)]
+
+
 def validate_can_start_trace_v3(username: str) -> bool:
     """StartTraceV3 (``POST /3.0/mlflow/traces``): UPDATE on the destination experiment,
-    and on the experiment of any existing trace the body names.
+    plus the checks MLflow's merge-on-conflict behaviour requires.
 
     The destination is ``trace.trace_info.trace_location.mlflow_experiment.experiment_id``.
     A body naming no experiment (or a non-experiment location) is denied — there is nothing
     to authorize against.
 
     The body also carries a caller-chosen ``trace_id``. MLflow's SQL store does not reject
-    an id that already exists: it catches the IntegrityError and merges the body's tags,
-    assessments and metadata into the EXISTING trace. Authorizing only the destination
-    experiment would therefore let a caller who can write their own experiment write into
-    any other tenant's trace by naming its id. So an existing trace must also be writable.
-    Only a definite "does not exist" counts as a new trace; any other lookup failure denies.
+    an id that already exists: it catches the IntegrityError and merges the body into the
+    EXISTING trace. So when the named trace exists:
+
+    * UPDATE is required on its current experiment (tags / metadata are written into it);
+    * DELETE is also required there when the destination differs, because the merge
+      re-homes the trace into the destination — it vanishes from its experiment, which is
+      a delete that ``DeleteTraces`` would gate on DELETE;
+    * assessments carrying an ``assessment_id`` are refused, because the merge upserts by
+      ``assessment_id`` alone and the owner of an arbitrary assessment id cannot be
+      resolved here — naming another tenant's assessment would overwrite or move it.
+
+    An assessment that names a different ``trace_id`` than the trace being started is
+    refused outright: no legitimate client sends one, and the store trusts it. Only a
+    definite "does not exist" counts as a new trace; any other lookup failure denies.
 
     Parameters:
         username: The authenticated user.
 
     Returns:
-        True when every referenced experiment grants UPDATE.
+        True when every check above passes.
     """
     from mlflow.exceptions import MlflowException
 
     infos = _start_trace_v3_trace_infos()
-    experiment_ids: list = []
-    trace_ids: list = []
+    destinations: list = []
     for info in infos:
         for location in _field_values(info, "trace_location", "traceLocation"):
             for mlflow_experiment in _field_values(location, "mlflow_experiment", "mlflowExperiment"):
-                experiment_ids += _field_values(mlflow_experiment, "experiment_id", "experimentId")
-        trace_ids += _field_values(info, "trace_id", "traceId")
-    experiment_ids = [e for e in experiment_ids if e]
-    if not experiment_ids:
+                destinations += _field_values(mlflow_experiment, "experiment_id", "experimentId")
+    destinations = list(dict.fromkeys(e for e in destinations if e))
+    if not destinations:
         return False
 
-    for trace_id in dict.fromkeys(t for t in trace_ids if t):
-        try:
-            experiment_ids.append(_experiment_for_trace(trace_id))
-        except MlflowException as e:
-            if e.error_code == "RESOURCE_DOES_NOT_EXIST":
-                continue
-            return False
-        except Exception:
-            return False
+    need_update = list(destinations)
+    need_delete: list = []
+    for info in infos:
+        own_ids = {t for t in _field_values(info, "trace_id", "traceId") if t}
+        assessments = _assessments_of(info)
+        for assessment in assessments:
+            named = {t for t in _field_values(assessment, "trace_id", "traceId") if t}
+            if named - own_ids:
+                return False
+        for trace_id in own_ids:
+            try:
+                existing_experiment = _experiment_for_trace(trace_id)
+            except MlflowException as e:
+                if e.error_code == "RESOURCE_DOES_NOT_EXIST":
+                    continue
+                return False
+            except Exception:
+                return False
+            if any(_field_values(a, "assessment_id", "assessmentId") for a in assessments):
+                return False
+            need_update.append(existing_experiment)
+            if any(existing_experiment != d for d in destinations):
+                need_delete.append(existing_experiment)
 
-    return all(effective_experiment_permission(e, username).permission.can_update for e in dict.fromkeys(experiment_ids))
+    for experiment_id in dict.fromkeys(need_update):
+        if not effective_experiment_permission(experiment_id, username).permission.can_update:
+            return False
+    for experiment_id in dict.fromkeys(need_delete):
+        if not effective_experiment_permission(experiment_id, username).permission.can_delete:
+            return False
+    return True
