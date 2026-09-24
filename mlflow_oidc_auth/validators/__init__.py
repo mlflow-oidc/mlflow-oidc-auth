@@ -38,6 +38,8 @@ from mlflow_oidc_auth.validators.scorers import (
     validate_can_delete_scorer,
     validate_can_manage_scorer,
     validate_can_manage_scorer_permission,
+    validate_can_update_online_scoring_config,
+    validate_can_read_online_scoring_configs,
 )
 
 from mlflow_oidc_auth.validators.trace import (
@@ -48,6 +50,7 @@ from mlflow_oidc_auth.validators.trace import (
     validate_can_update_trace_from_run_id,
     validate_can_update_trace,
     validate_can_delete_traces_from_experiment_id,
+    validate_can_start_trace_v3,
 )
 
 from mlflow_oidc_auth.validators.stuff import (
@@ -86,6 +89,41 @@ from mlflow_oidc_auth.validators.workspace import (
     validate_can_list_workspaces,
 )
 
+from mlflow_oidc_auth.validators.dataset import (
+    validate_can_read_dataset,
+    validate_can_update_dataset,
+    validate_can_delete_dataset,
+    validate_can_create_dataset,
+    validate_can_search_evaluation_datasets,
+    validate_can_link_dataset_experiments,
+)
+
+from mlflow_oidc_auth.validators.issue import (
+    validate_can_read_issue,
+    validate_can_update_issue,
+    validate_can_create_issue,
+    validate_can_search_issues,
+    validate_can_invoke_issue_detection,
+    validate_can_invoke_genai_evaluate,
+)
+
+from mlflow_oidc_auth.validators.review import (
+    validate_can_read_label_schema,
+    validate_can_update_label_schema,
+    validate_can_delete_label_schema,
+    validate_can_get_or_create_user_queue,
+    validate_can_read_review_queue,
+    validate_can_update_review_queue,
+    validate_can_delete_review_queue,
+    validate_can_update_review_queue_items,
+    validate_can_set_review_queue_item_status,
+)
+
+from mlflow_oidc_auth.validators.job import (
+    validate_can_read_job,
+    validate_can_cancel_job,
+)
+
 __all__ = [
     "validate_can_read_experiment",
     "validate_can_read_experiment_by_name",
@@ -117,6 +155,7 @@ __all__ = [
     "validate_can_update_trace_from_run_id",
     "validate_can_update_trace",
     "validate_can_delete_traces_from_experiment_id",
+    "validate_can_start_trace_v3",
     "validate_can_read_scorer",
     "validate_can_update_scorer",
     "validate_can_delete_scorer",
@@ -150,4 +189,29 @@ __all__ = [
     "validate_can_read_prompt_optimization_job",
     "validate_can_update_prompt_optimization_job",
     "validate_can_delete_prompt_optimization_job",
+    "validate_can_read_dataset",
+    "validate_can_update_dataset",
+    "validate_can_delete_dataset",
+    "validate_can_create_dataset",
+    "validate_can_search_evaluation_datasets",
+    "validate_can_link_dataset_experiments",
+    "validate_can_read_issue",
+    "validate_can_update_issue",
+    "validate_can_create_issue",
+    "validate_can_search_issues",
+    "validate_can_invoke_issue_detection",
+    "validate_can_invoke_genai_evaluate",
+    "validate_can_read_label_schema",
+    "validate_can_update_label_schema",
+    "validate_can_delete_label_schema",
+    "validate_can_get_or_create_user_queue",
+    "validate_can_read_review_queue",
+    "validate_can_update_review_queue",
+    "validate_can_delete_review_queue",
+    "validate_can_update_review_queue_items",
+    "validate_can_set_review_queue_item_status",
+    "validate_can_read_job",
+    "validate_can_cancel_job",
+    "validate_can_update_online_scoring_config",
+    "validate_can_read_online_scoring_configs",
 ]

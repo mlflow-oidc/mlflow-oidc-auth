@@ -31,8 +31,8 @@ def _patch_permission(**kwargs):
 def test__get_permission_from_experiment_id():
     with (
         patch(
-            "mlflow_oidc_auth.validators.experiment.get_experiment_id",
-            return_value="123",
+            "mlflow_oidc_auth.validators.experiment.get_experiment_ids",
+            return_value=["123"],
         ),
         patch(
             "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
@@ -48,8 +48,8 @@ def test__get_permission_from_experiment_name_found():
     store_exp.experiment_id = "456"
     with (
         patch(
-            "mlflow_oidc_auth.validators.experiment.get_request_param",
-            return_value="expname",
+            "mlflow_oidc_auth.validators.experiment.get_request_param_values",
+            return_value=["expname"],
         ),
         patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
         patch(
@@ -65,8 +65,8 @@ def test__get_permission_from_experiment_name_found():
 def test__get_permission_from_experiment_name_not_found():
     with (
         patch(
-            "mlflow_oidc_auth.validators.experiment.get_request_param",
-            return_value="expname",
+            "mlflow_oidc_auth.validators.experiment.get_request_param_values",
+            return_value=["expname"],
         ),
         patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
         patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission,
@@ -91,7 +91,7 @@ def test_read_by_name_missing_experiment_proceeds_for_mlflow_404():
     this into a denial.
     """
     with (
-        patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value="does-not-exist"),
+        patch("mlflow_oidc_auth.validators.experiment.get_request_param_values", return_value=["does-not-exist"]),
         patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
     ):
         mock_store.return_value.get_experiment_by_name.return_value = None
@@ -122,6 +122,7 @@ def test__get_experiment_id_from_view_args_none():
 
 def test__get_permission_from_experiment_id_artifact_proxy_with_id():
     with (
+        patch("mlflow_oidc_auth.validators.experiment.get_artifact_experiment", return_value=MagicMock()),
         patch(
             "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
             return_value="123",
@@ -136,25 +137,29 @@ def test__get_permission_from_experiment_id_artifact_proxy_with_id():
 
 
 def test__get_permission_from_experiment_id_artifact_proxy_no_id():
-    dummy_perm = DummyPermission(can_read=True)
+    """No resolvable experiment denies, even under a permissive default (issue #289).
+
+    It used to return DEFAULT_MLFLOW_PERMISSION, which ships as MANAGE.
+    """
+    from mlflow.server import app
+
     with (
+        app.test_request_context("/api/2.0/mlflow-artifacts/artifacts/.", method="DELETE"),
         patch(
             "mlflow_oidc_auth.validators.experiment._get_experiment_id_from_view_args",
             return_value=None,
         ),
         patch("mlflow_oidc_auth.validators.experiment.config") as mock_config,
-        patch(
-            "mlflow_oidc_auth.validators.experiment.get_permission",
-            return_value=dummy_perm,
-        ),
+        patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission") as resolved,
     ):
-        mock_config.DEFAULT_MLFLOW_PERMISSION = "default"
+        mock_config.DEFAULT_MLFLOW_PERMISSION = "MANAGE"
         perm = experiment._get_permission_from_experiment_id_artifact_proxy("alice")
-        assert perm.can_read is True
+        assert not (perm.can_read or perm.can_update or perm.can_delete or perm.can_manage)
+        resolved.assert_not_called()
 
 
 def test_validate_can_read_experiment():
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_read=True):
             assert experiment.validate_can_read_experiment("alice") is True
 
@@ -168,27 +173,30 @@ def test_validate_can_read_experiment_by_name():
 
 
 def test_validate_can_update_experiment():
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_update=True):
             assert experiment.validate_can_update_experiment("alice") is True
 
 
 def test_validate_can_delete_experiment():
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_delete=True):
             assert experiment.validate_can_delete_experiment("alice") is True
 
 
 def test_validate_can_manage_experiment():
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_manage=True):
             assert experiment.validate_can_manage_experiment("alice") is True
 
 
 def test_validate_can_read_experiment_artifact_proxy():
-    with patch(
-        "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
-        return_value=DummyPermission(can_read=True),
+    with (
+        patch("mlflow_oidc_auth.validators.experiment._is_artifact_list_request", return_value=False),
+        patch(
+            "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
+            return_value=DummyPermission(can_read=True),
+        ),
     ):
         assert experiment.validate_can_read_experiment_artifact_proxy("alice") is True
 
@@ -216,8 +224,8 @@ def test__get_permission_from_experiment_id_no_permission():
     """Test when user has no permissions"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.experiment.get_experiment_id",
-            return_value="123",
+            "mlflow_oidc_auth.validators.experiment.get_experiment_ids",
+            return_value=["123"],
         ),
         patch(
             "mlflow_oidc_auth.validators.experiment.effective_experiment_permission",
@@ -234,7 +242,7 @@ def test__get_permission_from_experiment_id_no_permission():
 def test__get_permission_from_experiment_name_empty_name():
     """Test with empty experiment name"""
     with (
-        patch("mlflow_oidc_auth.validators.experiment.get_request_param", return_value=""),
+        patch("mlflow_oidc_auth.validators.experiment.get_request_param_values", return_value=[""]),
         patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
         patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission,
     ):
@@ -249,8 +257,8 @@ def test__get_permission_from_experiment_name_store_exception():
     """Test when store raises an exception"""
     with (
         patch(
-            "mlflow_oidc_auth.validators.experiment.get_request_param",
-            return_value="expname",
+            "mlflow_oidc_auth.validators.experiment.get_request_param_values",
+            return_value=["expname"],
         ),
         patch("mlflow_oidc_auth.validators.experiment._get_tracking_store") as mock_store,
         patch("mlflow_oidc_auth.validators.experiment.get_permission") as mock_get_permission,
@@ -299,7 +307,7 @@ def test__get_experiment_id_from_view_args_complex_path():
 
 def test_validate_can_read_experiment_false():
     """Test when user cannot read experiment"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_read=False):
             assert experiment.validate_can_read_experiment("alice") is False
 
@@ -315,30 +323,33 @@ def test_validate_can_read_experiment_by_name_false():
 
 def test_validate_can_update_experiment_false():
     """Test when user cannot update experiment"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_update=False):
             assert experiment.validate_can_update_experiment("alice") is False
 
 
 def test_validate_can_delete_experiment_false():
     """Test when user cannot delete experiment"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_delete=False):
             assert experiment.validate_can_delete_experiment("alice") is False
 
 
 def test_validate_can_manage_experiment_false():
     """Test when user cannot manage experiment"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_manage=False):
             assert experiment.validate_can_manage_experiment("alice") is False
 
 
 def test_validate_can_read_experiment_artifact_proxy_false():
     """Test when user cannot read experiment artifact proxy"""
-    with patch(
-        "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
-        return_value=DummyPermission(can_read=False),
+    with (
+        patch("mlflow_oidc_auth.validators.experiment._is_artifact_list_request", return_value=False),
+        patch(
+            "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
+            return_value=DummyPermission(can_read=False),
+        ),
     ):
         assert experiment.validate_can_read_experiment_artifact_proxy("alice") is False
 
@@ -366,14 +377,14 @@ def test_validate_can_delete_experiment_artifact_proxy_false():
 
 def test_validate_with_none_username():
     """Test validation functions with None username"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_read=True):
             assert experiment.validate_can_read_experiment(None) is True
 
 
 def test_validate_with_empty_username():
     """Test validation functions with empty username"""
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_read=True):
             assert experiment.validate_can_read_experiment("") is True
 
@@ -381,7 +392,7 @@ def test_validate_with_empty_username():
 def test_validate_with_special_characters_username():
     """Test validation functions with special characters in username"""
     username = "user@domain.com"
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_read=True):
             assert experiment.validate_can_read_experiment(username) is True
 
@@ -389,8 +400,8 @@ def test_validate_with_special_characters_username():
 def test_validate_with_malformed_experiment_id():
     """Test with malformed experiment ID"""
     with patch(
-        "mlflow_oidc_auth.validators.experiment.get_experiment_id",
-        return_value="invalid_id",
+        "mlflow_oidc_auth.validators.experiment.get_experiment_ids",
+        return_value=["invalid_id"],
     ):
         with _patch_permission(can_read=True):
             assert experiment.validate_can_read_experiment("alice") is True
@@ -399,18 +410,22 @@ def test_validate_with_malformed_experiment_id():
 def test_validate_with_very_long_username():
     """Test with very long username"""
     long_username = "a" * 1000
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_read=True):
             assert experiment.validate_can_read_experiment(long_username) is True
 
 
 def test_get_experiment_id_from_view_args_edge_cases():
     """Test edge cases for experiment ID extraction"""
-    # Test with leading zeros
+    # Leading zeros are not an experiment id: "0123" would reach experiment 123 through the
+    # store while its grants are keyed on the string "0123" (review of #386).
     mock_request = MagicMock()
     mock_request.view_args = {"artifact_path": "0123/path"}
     with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
-        assert experiment._get_experiment_id_from_view_args() == "0123"
+        assert experiment._get_experiment_id_from_view_args() is None
+    mock_request.view_args = {"artifact_path": "0/path"}
+    with patch("mlflow_oidc_auth.validators.experiment.request", mock_request):
+        assert experiment._get_experiment_id_from_view_args() == "0", "experiment 0 (Default) is canonical"
 
     # Test with very large number
     mock_request.view_args = {"artifact_path": "999999999999999999/path"}
@@ -421,7 +436,7 @@ def test_get_experiment_id_from_view_args_edge_cases():
 def test_permission_inheritance_scenarios():
     """Test various permission inheritance scenarios"""
     # Test partial permissions
-    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_id", return_value="123"):
+    with patch("mlflow_oidc_auth.validators.experiment.get_experiment_ids", return_value=["123"]):
         with _patch_permission(can_read=True, can_update=False, can_delete=False, can_manage=False):
             assert experiment.validate_can_read_experiment("alice") is True
             assert experiment.validate_can_update_experiment("alice") is False

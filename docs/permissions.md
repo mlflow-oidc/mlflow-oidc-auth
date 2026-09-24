@@ -29,6 +29,7 @@ The permission system covers these MLflow resource types:
 | Prompts | Per prompt name | Uses the model permission infrastructure |
 | Scorers | Per experiment + scorer name | Compound key |
 | Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions |
+| Evaluation datasets, issues, label schemas, review queues, UI jobs | Per linked experiment | See [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes) |
 | Gateway Endpoints | Per endpoint name | AI Gateway routes |
 | Gateway Secrets | Per secret name | AI Gateway secrets |
 | Gateway Model Definitions | Per model definition name | AI Gateway model configs |
@@ -64,6 +65,23 @@ The system checks each source in order and uses the **first permission found**:
    - If workspaces disabled → use `DEFAULT_MLFLOW_PERMISSION`
 
 Within a single source type (e.g., `group`), if multiple entries match, the **highest permission level wins** (MANAGE > EDIT > USE > READ).
+
+### Which request source is authorized
+
+A resource id can reach MLflow in the URL path, the query string, or the request body.
+The plugin reads the id from the same place MLflow will: on a protobuf API route that is
+the path parameter if there is one, otherwise the query string for a `GET` that has one
+and the JSON body for every other request (the query string is ignored on `POST`,
+`PATCH` and `DELETE`). `/ajax-api/2.0/mlflow/upload-artifact` uses the query string only,
+and `gateway-proxy` uses the query string on `GET` and the body otherwise.
+
+Every other value the request carries for that field — in any source, under either the
+`snake_case` or the `camelCase` spelling — is authorized as well. If a request names two
+different resources for one field, the caller needs the permission on both, or the
+request is denied with `403`. A request that is missing the id where MLflow reads it is
+refused (`400` or `403`); the id is never taken from a source MLflow ignores instead.
+Ordinary clients send each id once, or the same id in two places, so they are not
+affected.
 
 ## Regex Permissions
 
@@ -133,8 +151,117 @@ For non-admin users, search and list results are filtered to only include resour
 - `ListGatewaySecretInfos` — removes unreadable gateway secrets
 - `ListGatewayModelDefinitions` — removes unreadable model definitions
 - `ListWorkspaces` — removes workspaces the user has no READ permission for
+- `SearchEvaluationDatasets` — removes datasets linked to any experiment the user cannot read
+- Artifact-root listing (`GET /mlflow-artifacts/artifacts` with no `path`) — keeps only experiments the user can read; see [Artifact Access](#artifact-access)
 
 The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist.
+
+## Artifact Access
+
+Artifacts inherit their experiment's permissions. On the artifact proxy
+(`/{api,ajax-api}/2.0/mlflow-artifacts/{artifacts,mpu,presigned}/…`) the experiment is the
+first segment of the artifact path (`<experiment_id>/<run_id>/artifacts/…`, or
+`workspaces/<ws>/<experiment_id>/…`), normalised exactly as MLflow normalises it before
+serving: repeated percent-decoding, a `file:` scheme, `./` and repeated slashes are all
+resolved first. Reads need READ, uploads and multipart uploads need EDIT, deletes need
+MANAGE.
+
+**A path that names no experiment is denied** with `403` for every method, whatever
+`DEFAULT_MLFLOW_PERMISSION` is. That covers the artifact root (`.`, `%2e`, `./.`, `.//`, an
+empty path), a workspace root (`workspaces/<ws>`) and any path whose first segment is not an
+experiment id (`models/…`, `workspaces`, …). An experiment id is ASCII decimal digits in
+canonical form, so `012` is not experiment `12`. It must name an experiment that exists in the
+tracking store, and a failed store lookup denies. A soft-deleted experiment
+still exists, so its owner keeps access. A directory with no experiment behind it (for
+example what is left after an experiment is garbage-collected) is denied. Only an
+administrator can download, upload to or delete the root or such leftovers, since the root
+holds every tenant's artifacts.
+
+This assumes MLflow's default layout, where experiment locations sit directly under the
+proxy root. If the artifact root or a workspace's `default_artifact_root` adds a prefix
+(`mlflow-artifacts:/mlartifacts/<experiment_id>`), the first segment is not an experiment id,
+so non-admin requests to those paths are denied.
+
+**Listing the root is filtered, not denied.** `GET /mlflow-artifacts/artifacts` with no
+`path`, an empty `path`, or a root-shaped `path` (including `workspaces/<ws>`) is allowed.
+MLflow lists only the first `path` value, and so does this check. Every other `path` value
+must name an experiment the caller can read, and a root-shaped value that is not first is
+denied. The response keeps only entries that name an existing, active experiment the caller
+can read. Soft-deleted experiments and directories with no experiment behind them are left
+out. With
+workspaces enabled, the experiment must also belong to the listed workspace (the one the
+path names, otherwise the request's workspace), and the caller needs READ on that workspace.
+A `HEAD` on the list route is filtered the same way. Listing a path inside an experiment
+still needs READ on that experiment and is not filtered.
+
+Artifact routes outside the proxy:
+
+| Route | Requires |
+|-------|----------|
+| `GET /get-artifact`, `/{api,ajax-api}/2.0/mlflow/artifacts/list` | READ on the run's experiment |
+| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on the run's experiment (`run_uuid` from the query string) |
+| `GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files` | READ on the logged model's experiment |
+| `GET /{api,ajax-api}/2.0/mlflow/logged-models/<model_id>/artifacts/directories` | READ on the logged model's experiment |
+| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the run's experiment |
+| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-download-url` | READ on the run's experiment |
+
+Every run or model id the request carries is authorized, in any source (see
+[Which request source is authorized](#which-request-source-is-authorized)).
+
+## HEAD Requests and Route Coverage
+
+A `HEAD` request is authorized exactly like the `GET` it mirrors. werkzeug serves `HEAD` through the `GET` view and keeps the `Content-Length` header, so it gets the same validator and the same search filtering as its `GET` twin. A caller who cannot read a resource cannot use `HEAD` to learn whether it exists or how large it is. Coverage of MLflow's API is checked by a test, `mlflow_oidc_auth/tests/hooks/test_validator_coverage_sweep.py`. It walks every route and method in MLflow's Flask routing table, with `HEAD` folded onto `GET`, and every protobuf message MLflow registers. The test fails on any route, or any mutating message (`Log*`, `Set*`, `Delete*`, `Create*`, …), that does not fall into one of these groups: mapped to a validator, filtered after the request, admin-only, on the documented list of open routes, or on a list of routes still awaiting a validator. That last list can only shrink, and follow-up changes are emptying it. A route MLflow adds later therefore fails the test until it is classified. MLflow's own registry webhook API is admin-only. Its deliveries are not scoped to a tenant, so it is gated the same way as the plugin's own webhook API.
+
+### Routes without a validator
+
+A route that MLflow serves but that has no validator is refused to non-admin users with
+`403`. It is not served unchecked. The exceptions are a short list of routes that carry no
+tenant data and are open to any authenticated user: the web UI shell and its static assets,
+`/version`, `server-info`, `ui-telemetry`, `/graphql` (authorized per field) and the routes
+MLflow answers with `501`. Search and list routes whose results are filtered for the caller
+are also exempt. The list is `LEGITIMATELY_OPEN` in `mlflow_oidc_auth/hooks/route_policy.py`,
+and the coverage sweep reads the same list. Admins are not affected. Adding a validator for a
+new MLflow route restores access for non-admins who hold the grant it requires.
+
+## Experiment-scoped GenAI routes
+
+These MLflow routes have no permission record of their own. They take their permission from
+the experiment the resource belongs to, under both the `/api` and the `/ajax-api` prefix. As
+everywhere else, a request that names more than one resource needs the permission on every
+one, and a resource that cannot be resolved is refused, never granted by
+`DEFAULT_MLFLOW_PERMISSION`.
+
+The plugin also sets `g.mlflow_authenticated_user` to the caller before MLflow handles a
+request, so MLflow records the caller, not a client-supplied name, as a review queue's owner
+and as the reviewer of an item.
+
+| Route family | Operation | Permission required |
+|---|---|---|
+| Evaluation datasets (`3.0/mlflow/datasets/…`) | get, records `GET`, `experiment-ids` | READ on every linked experiment |
+| | tags `PATCH` / `DELETE`, records `POST` / `DELETE` | EDIT on every linked experiment |
+| | `DELETE datasets/<id>` | MANAGE on every linked experiment |
+| | `create` | EDIT on every experiment in `experiment_ids` (at least one) |
+| | `search` | READ on every experiment in `experiment_ids` (at least one); results filtered as above |
+| | `add-experiments`, `remove-experiments` | EDIT on every linked experiment and on every experiment named |
+| | a dataset linked to no experiment | admin only |
+| Issues (`3.0/mlflow/issues…`) | `GET issues/<id>`, `issues/search` | READ on the experiment (search must name one) |
+| | `POST issues`, `PATCH issues/<id>` | EDIT on the experiment, plus READ on `source_run_id` if given; `created_by`, if given, must be the caller |
+| `issues/invoke`, `genai/evaluate/invoke` | start an issue-detection or evaluation job | EDIT on the experiment, READ on the experiment of every trace in `trace_ids`; for `issues/invoke`, USE on a named gateway secret (`secret_id`) or endpoint (`endpoint_name`) |
+| Label schemas (`3.0/mlflow/label-schemas/…`) | `get`, `get-by-name`, `list` | READ on the experiment |
+| | `create`, `update` | EDIT on the experiment |
+| | `delete` | MANAGE on the experiment |
+| | a schema with no experiment | readable by any authenticated user; writable by admins only |
+| Review queues (`3.0/mlflow/review-queues/…`) | `get`, `get-by-name`, `list`, `items/list` | READ on the experiment |
+| | `create`, `update`, `items/add`, `items/remove` | EDIT on the experiment |
+| | `update` with `new_owner` | MANAGE on the experiment |
+| | `delete` | MANAGE on the experiment |
+| | `get-or-create-user` | EDIT on the experiment; `user` must be an existing, active, non-service account (it may be a teammate) |
+| | `items/set-status` | EDIT on the experiment; `completed_by` must be the caller, and is required for `COMPLETE` / `DECLINED` |
+| UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job, or else on the experiment of the run it records; admin only if neither resolves |
+| Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment and on the scorer (`name`) |
+| | `GET online-configs` | READ on the experiment and on the scorer of every configuration returned for `scorer_ids` |
+| Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
+| Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
 
 ## Permission Cascade on Delete/Rename
 
