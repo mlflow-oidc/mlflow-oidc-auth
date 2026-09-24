@@ -6,11 +6,15 @@ correctly set before request processing and cleared afterward, ensuring that
 downstream tracking-store operations run within the correct workspace scope.
 """
 
+import contextvars
+import threading
+
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
 from fastapi import Response
 
+from mlflow_oidc_auth.middleware import workspace_context_middleware as workspace_module
 from mlflow_oidc_auth.middleware.workspace_context_middleware import (
     WorkspaceContextMiddleware,
 )
@@ -232,3 +236,56 @@ class TestWorkspaceContextMiddleware:
                 mock_clear.assert_called_once()
 
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_resolves_workspace_off_the_event_loop(self, middleware, create_mock_request):
+        """Workspace resolution runs on its worker thread, in a copy of the request's context."""
+        mock_config = MagicMock()
+        mock_config.MLFLOW_ENABLE_WORKSPACES = True
+
+        request = create_mock_request(
+            path="/api/2.0/mlflow/experiments/list",
+            headers={"x-mlflow-workspace": "my-workspace"},
+        )
+        # Stands in for any context variable an outer middleware set before this one ran.
+        outer_marker = contextvars.ContextVar("outer_marker", default=None)
+        outer_marker.set("set-before-dispatch")
+        seen = {}
+
+        mock_workspace = MagicMock()
+        mock_workspace.name = "my-workspace"
+
+        def record_resolution(path, header_value):
+            seen["thread"] = threading.current_thread()
+            seen["marker"] = outer_marker.get()
+            seen["path"] = path
+            return mock_workspace
+
+        async def mock_call_next(req):
+            return Response(content="OK", status_code=200)
+
+        with patch(
+            "mlflow_oidc_auth.middleware.workspace_context_middleware.config",
+            mock_config,
+        ):
+            with (
+                patch("mlflow.utils.workspace_context.set_server_request_workspace") as mock_set,
+                patch("mlflow.utils.workspace_context.clear_server_request_workspace") as mock_clear,
+                patch(
+                    "mlflow.server.workspace_helpers.resolve_workspace_for_request_if_enabled",
+                    side_effect=record_resolution,
+                ),
+            ):
+                response = await middleware.dispatch(request, mock_call_next)
+
+                mock_set.assert_called_once_with("my-workspace")
+                mock_clear.assert_called_once()
+
+        assert response.status_code == 200
+        assert seen["thread"] is not threading.current_thread()
+        assert seen["thread"].name.startswith("mlflow-oidc-workspace")
+        assert seen["marker"] == "set-before-dispatch"
+        assert seen["path"] == "/api/2.0/mlflow/experiments/list"
+        # max_workers=1 keeps the old bound, which also holds for unauthenticated requests:
+        # one workspace resolution per process at a time.
+        assert workspace_module._WORKSPACE_RESOLUTION_EXECUTOR._max_workers == 1

@@ -10,6 +10,7 @@ This module tests authentication middleware behavior including:
 """
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -142,6 +143,60 @@ class TestAuthMiddleware:
         assert verifying_threads[0].name.startswith("mlflow-oidc-basic-auth")
         # max_workers=1 is the security bound: one credential verification per process at a time.
         assert middleware_module._BASIC_AUTH_EXECUTOR._max_workers == 1
+
+    @pytest.mark.asyncio
+    async def test_dispatch_reads_auth_state_off_the_event_loop(self, auth_middleware, create_mock_request, mock_store):
+        """The auth-state read after a basic-auth check must run on its worker thread, not the event loop."""
+        profile_threads = []
+        read_profile = mock_store.get_user_profile.side_effect
+
+        def record_thread(username):
+            profile_threads.append(threading.current_thread())
+            return read_profile(username)
+
+        mock_store.get_user_profile.side_effect = record_thread
+        request = create_mock_request(
+            path="/api/2.0/mlflow/experiments/search",
+            headers={"authorization": "Basic YWRtaW5AZXhhbXBsZS5jb206YWRtaW5fcGFzcw=="},
+        )
+
+        async def mock_call_next(req):
+            return Response(content="OK", status_code=200)
+
+        response = await auth_middleware.dispatch(request, mock_call_next)
+
+        assert response.status_code == 200
+        assert request.state.username == "admin@example.com"
+        assert request.state.is_admin is True
+        assert len(profile_threads) == 1
+        assert profile_threads[0] is not threading.current_thread()
+        assert profile_threads[0].name.startswith("mlflow-oidc-auth-state")
+        # max_workers=1 keeps the old bound: one auth-state read per process at a time.
+        assert middleware_module._AUTH_STATE_EXECUTOR._max_workers == 1
+
+    @pytest.mark.asyncio
+    async def test_dispatch_denies_when_auth_state_read_cannot_run(self, auth_middleware, create_mock_request, mock_store, monkeypatch):
+        """If the auth-state read cannot even be scheduled, the request is denied, never let through."""
+        stopped_executor = ThreadPoolExecutor(max_workers=1)
+        stopped_executor.shutdown()
+        monkeypatch.setattr(middleware_module, "_AUTH_STATE_EXECUTOR", stopped_executor)
+        request = create_mock_request(
+            path="/api/2.0/mlflow/experiments/search",
+            headers={"authorization": "Basic YWRtaW5AZXhhbXBsZS5jb206YWRtaW5fcGFzcw=="},
+        )
+        call_next_called = False
+
+        async def mock_call_next(req):
+            nonlocal call_next_called
+            call_next_called = True
+            return Response(content="OK", status_code=200)
+
+        response = await auth_middleware.dispatch(request, mock_call_next)
+
+        assert call_next_called is False
+        assert response.status_code == 401
+        mock_store.get_user_profile.assert_not_called()
+        assert not hasattr(request.state, "username")
 
     @pytest.mark.asyncio
     async def test_authenticate_basic_auth_malformed_header(self, auth_middleware, mock_store):

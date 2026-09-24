@@ -46,6 +46,14 @@ def _authenticate_basic_auth_sync(username: str, password: str) -> bool:
     return store.authenticate_user(username, password)
 
 
+# The auth-state read (is the user an admin, is the account active) follows every successful
+# basic or bearer credential check. It is a synchronous store read too, so it leaves the event loop
+# the same way (issue #244). A separate executor keeps this cheap read from queueing behind a
+# legacy scrypt verification on _BASIC_AUTH_EXECUTOR; max_workers=1 keeps the old bound of one
+# read per process at a time.
+_AUTH_STATE_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlflow-oidc-auth-state")
+
+
 # Why an authenticated-looking request was turned away. Reported separately because a deleted
 # account and a deactivated one are different operational events, and an operator reading the
 # audit log should not have to guess which happened (issue #306).
@@ -629,6 +637,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return bool(user.is_admin), False, DENIAL_INACTIVE
         return bool(user.is_admin), True, ""
 
+    async def _get_user_auth_state_off_loop(self, username: str) -> Tuple[bool, bool, str]:
+        """Run :meth:`_get_user_auth_state` on its worker thread instead of the event loop.
+
+        Args:
+            username: Username to check
+
+        Returns:
+            The same ``(is_admin, is_active, denial_reason)`` tuple. A failure to run the lookup at
+            all, such as an executor that no longer accepts work, is a lookup error like any other:
+            ``(False, False, DENIAL_LOOKUP_ERROR)``, never a grant.
+        """
+        try:
+            return await asyncio.get_running_loop().run_in_executor(_AUTH_STATE_EXECUTOR, self._get_user_auth_state, username)
+        except Exception as e:
+            logger.error("Error reading auth state for %s: %s", username, e)
+            return False, False, DENIAL_LOOKUP_ERROR
+
     async def _handle_auth_redirect(self, request: Request) -> Response:
         """
         Handle authentication redirect for unauthenticated users.
@@ -693,7 +718,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 is_admin, is_active = resolved.is_admin, resolved.is_active
                 denial_reason = "" if is_active else DENIAL_INACTIVE
             else:
-                is_admin, is_active, denial_reason = self._get_user_auth_state(username)
+                is_admin, is_active, denial_reason = await self._get_user_auth_state_off_loop(username)
 
             # A deprovisioned user holds a signed cookie or a valid token that has not expired
             # yet, so credentials alone still check out. Directories deactivate rather than
