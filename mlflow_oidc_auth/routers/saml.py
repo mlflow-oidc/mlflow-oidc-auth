@@ -27,6 +27,7 @@ security-relevant, to the audit trail.
 
 import hashlib
 import hmac
+import re
 import secrets
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
@@ -75,11 +76,13 @@ LOGOUT_REFUSED = "SAML logout failed"
 #: Name prefix of the per-attempt browser-binding cookie (#374). The rest of the name is derived
 #: from the attempt's RelayState, so the ACS can find the cookie for the attempt it consumed.
 BINDING_COOKIE_PREFIX = "mlflow_saml_binding_"
-#: Lifetime of the binding cookie — and so, in effect, of a bound login attempt. Shorter than the
-#: ``auth_state`` row's 15 minutes: the tighter of the two wins.
+#: Lifetime of the binding cookie and of the bound ``auth_state`` row, kept equal (see
+#: :func:`begin_saml_login`). Unbound SAML attempts keep the row's default 15 minutes.
 BINDING_COOKIE_MAX_AGE_SECONDS = 10 * 60
 #: 256 bits, like the ``state`` itself.
 BINDING_NONCE_BYTES = 32
+#: What ``secrets.token_urlsafe(BINDING_NONCE_BYTES)`` produces (43 characters), with slack.
+_NONCE_SHAPE = re.compile(r"[A-Za-z0-9_-]{16,128}")
 
 
 def _saml_provider(provider_id: str) -> Optional[ProviderConfig]:
@@ -150,7 +153,14 @@ async def begin_saml_login(request: Request, provider: ProviderConfig) -> Redire
 
     next_target = _sanitize_next(request.query_params.get("next"))
     nonce = secrets.token_urlsafe(BINDING_NONCE_BYTES) if config.saml_login_binding_enabled else None
-    relay_state = store.create_auth_state(provider.id, redirect_after_login=next_target, binding_hash=_binding_hash(nonce) if nonce else None)
+    if nonce:
+        # The row lives exactly as long as the cookie: a slow login then fails as an expired
+        # RelayState, never as a live attempt whose cookie is gone (which reads like login CSRF).
+        relay_state = store.create_auth_state(
+            provider.id, redirect_after_login=next_target, binding_hash=_binding_hash(nonce), lifetime_seconds=BINDING_COOKIE_MAX_AGE_SECONDS
+        )
+    else:
+        relay_state = store.create_auth_state(provider.id, redirect_after_login=next_target)
     base_url = sp_base_url(request)
     try:
         url = build_authn_redirect(provider, base_url, relay_state)
@@ -186,20 +196,34 @@ def _binding_cookie_path(provider: ProviderConfig, base_url: str) -> str:
     return urlparse(acs_url(provider, base_url)).path or "/"
 
 
-def _binding_holds(request: Request, attempt, cookie_name: str) -> bool:
+#: :func:`_binding_verdict` outcomes.
+BINDING_OK = "ok"
+BINDING_MISSING = "missing"
+BINDING_MISMATCH = "mismatch"
+
+
+def _binding_verdict(request: Request, attempt, cookie_name: str) -> str:
     """Whether the browser posting to the ACS is the one that started ``attempt``.
+
+    Returns :data:`BINDING_OK`; :data:`BINDING_MISSING` when no binding cookie arrived (the usual
+    cause is a browser that dropped or outlived it, not an attack); or :data:`BINDING_MISMATCH`
+    when one arrived that does not belong to this attempt — the login-CSRF shape. Both refuse.
 
     An attempt recorded with a binding needs the matching cookie, whatever the switch says now.
     An attempt recorded without one passes only while the binding is off: with it on, an unbound
-    row (one started before the switch flipped) is refused rather than trusted.
+    row (one started before the switch flipped) is refused as missing rather than trusted.
     """
     expected = attempt.binding_hash
     if not expected:
-        return not config.saml_login_binding_enabled
+        return BINDING_MISSING if config.saml_login_binding_enabled else BINDING_OK
     nonce = request.cookies.get(cookie_name)
     if not nonce:
-        return False
-    return hmac.compare_digest(_binding_hash(nonce), expected)
+        return BINDING_MISSING
+    # The value is attacker-controlled and Starlette decodes it as latin-1: anything that is not
+    # the shape /login mints is refused, never passed on to be encoded.
+    if not _NONCE_SHAPE.fullmatch(nonce):
+        return BINDING_MISMATCH
+    return BINDING_OK if hmac.compare_digest(_binding_hash(nonce), expected) else BINDING_MISMATCH
 
 
 def _clear_binding_cookie(response: Response, provider: ProviderConfig, base_url: str, cookie_name: str) -> None:
@@ -261,6 +285,12 @@ async def saml_acs(request: Request, provider_id: str):
         if cookie_name not in request.cookies:
             raise
         response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+    except Exception as exc:
+        # Answered here rather than by the default 500 handler, whose response cannot carry the
+        # cookie deletion. The audit gets the exception type only; the traceback goes to the log.
+        logger.exception("Unexpected error in the SAML ACS for provider '%s'", provider.id)
+        emit_audit_event("auth.saml_acs_error", actor="<anonymous>", detail={"provider": provider.id, "error": type(exc).__name__}, status="denied")
+        response = JSONResponse({"detail": REFUSED}, status_code=500)
     if cookie_name in request.cookies:
         _clear_binding_cookie(response, provider, sp_base_url(request), cookie_name)
     return response
@@ -276,9 +306,13 @@ async def _complete_saml_login(request: Request, provider: ProviderConfig, form:
         # for provider A and delivered to B's ACS is the SAML shape of a mix-up.
         raise _refuse("auth.saml_relaystate_rejected", provider, "RelayState names no live login attempt for this provider")
 
-    if not _binding_holds(request, attempt, cookie_name):
-        # A live attempt, delivered by a browser that did not start it: missing cookie, or a
-        # nonce for another attempt. The login-CSRF shape. The row is already consumed.
+    verdict = _binding_verdict(request, attempt, cookie_name)
+    # Either way the row is already consumed. Audited apart so a timeout or a cookie-blocking
+    # browser does not read as an attack in the trail.
+    if verdict == BINDING_MISSING:
+        raise _refuse("auth.saml_binding_missing", provider, "no browser-binding cookie arrived for this login attempt")
+    if verdict != BINDING_OK:
+        # A live attempt, delivered with a nonce that is not this attempt's: login CSRF.
         raise _refuse("auth.saml_binding_rejected", provider, "the browser posting the response did not start this login attempt")
 
     base_url = sp_base_url(request)

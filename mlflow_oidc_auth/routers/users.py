@@ -17,7 +17,7 @@ from mlflow_oidc_auth.models import (
 )
 from mlflow_oidc_auth.models.scim import UserActiveRequest
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
-from mlflow_oidc_auth.ownership import MANUAL
+from mlflow_oidc_auth.ownership import MANUAL, OWNER_PATTERN
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, INVALID_STATE, ErrorCode
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user, generate_token
@@ -293,7 +293,7 @@ async def create_new_user(
 )
 async def set_user_ownership(
     username: str = Body(..., description="The user whose ownership is being changed"),
-    managed_by: str = Body(..., description="The new owner: 'manual', 'scim', or 'oidc:<provider-id>'"),
+    managed_by: str = Body(..., description="The new owner: 'manual', 'scim', 'oidc:<provider-id>' or 'saml:<provider-id>'"),
     memberships: bool = Body(False, description="Also hand every group membership of the user to the new owner"),
     admin_username: str = Depends(check_admin_permission),
 ) -> JSONResponse:
@@ -324,21 +324,34 @@ async def set_user_ownership(
         HTTPException: 400 if the owner is not one a source presents, 404 if there is no such
             user.
     """
-    if not re.fullmatch(r"manual|scim|oidc:[A-Za-z0-9._-]+", managed_by or ""):
-        raise HTTPException(status_code=400, detail="managed_by must be 'manual', 'scim', or 'oidc:<provider-id>'")
+    if not re.fullmatch(OWNER_PATTERN, managed_by or ""):
+        raise HTTPException(status_code=400, detail="managed_by must be 'manual', 'scim', 'oidc:<provider-id>' or 'saml:<provider-id>'")
 
     try:
         store.get_user_profile(username)
     except MlflowException:
         raise HTTPException(status_code=404, detail=f"User {username} not found")
 
-    previous = store.get_user_profile(username).managed_by
-    store.update_user(username=username, managed_by=managed_by, written_by="manual", admin_override=True)
+    try:
+        # One transaction for the user row and its memberships: a failure in either half leaves
+        # both as they were.
+        result = store.hand_over_user(username, managed_by, memberships=memberships is True, actor=admin_username)
+    except Exception as e:
+        logger.error("Handing %s to %s failed: %s", username, managed_by, type(e).__name__)
+        emit_audit_event(
+            "user.ownership_set",
+            actor=admin_username,
+            resource_type="user",
+            resource_id=username,
+            detail={"to": managed_by, "memberships": memberships is True, "applied": False},
+            status="error",
+        )
+        raise HTTPException(status_code=500, detail="Failed to change ownership; nothing was changed")
+    previous = result["previous"]
     detail = {"from": previous, "to": managed_by}
     content = {"username": username, "managed_by": managed_by, "previous": previous}
     if memberships is True:
-        changed = store.set_membership_owner(username, managed_by)
-        detail["memberships"] = [{"group": group, "from": owner} for group, owner in changed]
+        detail["memberships"] = [{"group": group, "from": owner} for group, owner in result["memberships"]]
         content["memberships"] = detail["memberships"]
     emit_audit_event(
         "user.ownership_set",

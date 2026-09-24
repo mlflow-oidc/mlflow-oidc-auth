@@ -347,7 +347,7 @@ def test_an_authoritative_login_keeps_the_directory_membership_and_records_it(ap
     conflicts = [
         e
         for e in app_server.audit_events("user.ownership_conflict")
-        if e.get("detail", {}).get("group") == group and e["detail"].get("operation") == "membership.remove"
+        if e.get("detail", {}).get("group") == group and e["detail"].get("operation") == "membership.sync_kept"
     ]
     assert [(e["detail"]["owner"], e["detail"]["written_by"], e["detail"]["permitted"]) for e in conflicts] == [("scim", "oidc:default", False)]
 
