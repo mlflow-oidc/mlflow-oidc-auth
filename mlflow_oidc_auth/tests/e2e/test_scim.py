@@ -422,7 +422,8 @@ def test_provisioning_status_is_admin_only(app_server, keycloak):
     assert flows.api_get(app_server, "/api/2.0/mlflow/scim/activity", carol).status_code == 403
     assert flows.api_get(app_server, f"/api/2.0/mlflow/users/{ALICE}/sessions", carol).status_code == 403
     carol_headers = {**flows.API_HEADERS, "Cookie": f"{flows.SESSION_COOKIE}={carol}"}
-    assert httpx.delete(f"{app_server.url}/api/2.0/mlflow/users/{ALICE}/sessions", headers=carol_headers, timeout=30.0).status_code == 403
+    response = httpx.delete(f"{app_server.url}/api/2.0/mlflow/users/{ALICE}/sessions", headers=carol_headers, timeout=30.0)
+    assert response.status_code == 403
 
 
 def _session_id(cookie: str) -> str:
@@ -456,6 +457,7 @@ def test_an_admin_revoking_a_session_signs_that_browser_out(app_server, keycloak
     assert events and events[-1]["resource_id"] == ALICE
 
     # Revoke all ends the rest.
-    assert httpx.delete(f"{app_server.url}/api/2.0/mlflow/users/{ALICE}/sessions", headers=root_headers, timeout=30.0).status_code == 200
+    response = httpx.delete(f"{app_server.url}/api/2.0/mlflow/users/{ALICE}/sessions", headers=root_headers, timeout=30.0)
+    assert response.status_code == 200
     assert flows.api_get(app_server, flows.CURRENT_USER, other).status_code == 401
     assert _admin_get(app_server, root_cookie, f"/api/2.0/mlflow/users/{ALICE}/sessions").json()["sessions"] == []

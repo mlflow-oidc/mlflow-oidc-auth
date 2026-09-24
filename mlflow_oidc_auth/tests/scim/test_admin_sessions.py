@@ -96,15 +96,18 @@ class TestRevoke:
     def test_revoking_twice_is_404(self, app, client, admin, bob):
         _browser(app, BOB)
         pk = _sessions(client, admin, BOB)[0]["pk"]
-        assert client.delete(f"{USERS_API}/{BOB}/sessions/{pk}", headers=admin).status_code == 200
-        assert client.delete(f"{USERS_API}/{BOB}/sessions/{pk}", headers=admin).status_code == 404
+        response = client.delete(f"{USERS_API}/{BOB}/sessions/{pk}", headers=admin)
+        assert response.status_code == 200
+        response = client.delete(f"{USERS_API}/{BOB}/sessions/{pk}", headers=admin)
+        assert response.status_code == 404
 
     def test_another_users_pk_is_404_and_revokes_nothing(self, app, client, admin, bob, carol):
         carols = _browser(app, CAROL)
         _browser(app, BOB)
         carol_pk = _sessions(client, admin, CAROL)[0]["pk"]
 
-        assert client.delete(f"{USERS_API}/{BOB}/sessions/{carol_pk}", headers=admin).status_code == 404
+        response = client.delete(f"{USERS_API}/{BOB}/sessions/{carol_pk}", headers=admin)
+        assert response.status_code == 404
         assert carols.get(PROTECTED).status_code == 200
         assert len(_sessions(client, admin, CAROL)) == 1
 
@@ -127,8 +130,10 @@ class TestRevoke:
         assert client.get(PROTECTED, headers=bob).status_code == 200, "basic auth with the user's token still works"
 
     def test_unknown_user_is_404(self, client, admin):
-        assert client.delete(f"{USERS_API}/nobody@example.com/sessions", headers=admin).status_code == 404
-        assert client.delete(f"{USERS_API}/nobody@example.com/sessions/1", headers=admin).status_code == 404
+        response = client.delete(f"{USERS_API}/nobody@example.com/sessions", headers=admin)
+        assert response.status_code == 404
+        response = client.delete(f"{USERS_API}/nobody@example.com/sessions/1", headers=admin)
+        assert response.status_code == 404
 
 
 class TestNonAdmin:
@@ -151,9 +156,11 @@ class TestNonAdmin:
 
     def test_unauthenticated_is_refused(self, client, bob):
         assert client.get(f"{USERS_API}/{BOB}/sessions").status_code == 401
-        assert client.delete(f"{USERS_API}/{BOB}/sessions").status_code == 401
+        response = client.delete(f"{USERS_API}/{BOB}/sessions")
+        assert response.status_code == 401
 
     def test_a_scim_token_cannot_revoke_sessions(self, app, client, bob, scim):
         bobs = _browser(app, BOB)
-        assert client.delete(f"{USERS_API}/{BOB}/sessions", headers={"Authorization": scim["Authorization"]}).status_code == 401
+        response = client.delete(f"{USERS_API}/{BOB}/sessions", headers={"Authorization": scim["Authorization"]})
+        assert response.status_code == 401
         assert bobs.get(PROTECTED).status_code == 200
