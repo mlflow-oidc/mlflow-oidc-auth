@@ -14,7 +14,7 @@ from mlflow.server.handlers import _get_tracking_store
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission
 from mlflow_oidc_auth.utils import all_source_values, get_request_param_values
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint, can_use_gateway_secret
-from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments, trace_ids_permission, values_mlflow_also_reads
+from mlflow_oidc_auth.validators._experiment_scope import names_only_caller, permission_on_all_experiments, trace_ids_permission, values_mlflow_also_reads
 from mlflow_oidc_auth.validators.gateway import _resolve_secret_name_from_id
 from mlflow_oidc_auth.validators.run import _permission_for_run
 
@@ -37,7 +37,10 @@ def validate_can_update_issue(username: str) -> bool:
 
 
 def validate_can_create_issue(username: str) -> bool:
-    """UPDATE on the experiment, and READ on the source run when one is named."""
+    """UPDATE on the experiment, READ on the source run when one is named, and ``created_by``
+    absent or the caller (MLflow stores it verbatim as the issue's author)."""
+    if not names_only_caller("created_by", username):
+        return False
     if not permission_on_all_experiments(get_request_param_values("experiment_id"), username).can_update:
         return False
     return all(_permission_for_run(str(run_id), username).can_read for run_id in all_source_values("source_run_id"))

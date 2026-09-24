@@ -241,7 +241,7 @@ one, and a resource that cannot be resolved is refused, never granted by
 | | `add-experiments`, `remove-experiments` | EDIT on every linked experiment and on every experiment named |
 | | a dataset linked to no experiment | admin only |
 | Issues (`3.0/mlflow/issues…`) | `GET issues/<id>`, `issues/search` | READ on the experiment (search must name one) |
-| | `POST issues`, `PATCH issues/<id>` | EDIT on the experiment, plus READ on `source_run_id` if given |
+| | `POST issues`, `PATCH issues/<id>` | EDIT on the experiment, plus READ on `source_run_id` if given; `created_by`, if given, must be the caller |
 | `issues/invoke`, `genai/evaluate/invoke` | start an issue-detection or evaluation job | EDIT on the experiment, READ on the experiment of every trace in `trace_ids`; for `issues/invoke`, USE on a named gateway secret (`secret_id`) or endpoint (`endpoint_name`) |
 | Label schemas (`3.0/mlflow/label-schemas/…`) | `get`, `get-by-name`, `list` | READ on the experiment |
 | | `create`, `update` | EDIT on the experiment |
@@ -251,7 +251,7 @@ one, and a resource that cannot be resolved is refused, never granted by
 | | `create`, `update`, `items/add`, `items/remove` | EDIT on the experiment |
 | | `update` with `new_owner` | MANAGE on the experiment |
 | | `delete` | MANAGE on the experiment |
-| | `get-or-create-user` | EDIT on the experiment; `user` must be the caller |
+| | `get-or-create-user` | EDIT on the experiment; `user` must be an existing, active, non-service account (it may be a teammate) |
 | | `items/set-status` | EDIT on the experiment; `completed_by`, if given, must be the caller |
 | UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job; admin only if there is none |
 | Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment |

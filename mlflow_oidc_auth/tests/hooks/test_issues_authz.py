@@ -87,6 +87,16 @@ def test_create_issue_authorizes_an_experiment_in_the_query_string_too(prefix):
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
+def test_create_issue_cannot_be_attributed_to_someone_else(prefix):
+    path = f"{prefix}/3.0/mlflow/issues"
+    body = {"experiment_id": VICTIM, "name": "n", "description": "d"}
+    assert allowed(hook(path, "POST", EDITOR, body={**body, "created_by": EDITOR}))
+    assert allowed(hook(path, "POST", EDITOR, body={**body, "created_by": f" {EDITOR.upper()} "}))
+    assert denied(hook(path, "POST", EDITOR, body={**body, "created_by": MANAGER}))
+    assert denied(hook(path, "POST", EDITOR, body={**body, "created_by": EDITOR}, query={"created_by": MANAGER}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
 def test_get_issue_requires_read_on_its_experiment(prefix):
     path = f"{prefix}/3.0/mlflow/issues/iss-victim"
     assert denied(hook(path, "GET", OUTSIDER))

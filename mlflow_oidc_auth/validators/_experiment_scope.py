@@ -70,3 +70,20 @@ def values_mlflow_also_reads(param: str) -> list:
     except MlflowException:
         return []
     return all_source_values(param)
+
+
+def names_only_caller(param: str, username: str) -> bool:
+    """True if every value of ``param`` in any request source is ``username``.
+
+    Used for fields MLflow stores as attribution (who did something). Compared
+    case-insensitively after trimming, as usernames are.
+
+    Parameters:
+        param: The snake_case field name.
+        username: The authenticated user.
+
+    Returns:
+        True when the field is absent or names only the caller.
+    """
+    caller = username.strip().lower()
+    return all(str(value).strip().lower() == caller for value in all_source_values(param))

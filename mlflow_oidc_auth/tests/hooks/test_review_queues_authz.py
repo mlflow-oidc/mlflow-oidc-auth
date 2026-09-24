@@ -1,8 +1,8 @@
 """Review queues (``/3.0/mlflow/review-queues/*``) are scoped by their experiment.
 
 READ to read, UPDATE to create, change or add/remove items, DELETE to delete, MANAGE to
-hand a queue to a new owner. A personal queue can only be fetched or created for the
-caller, and review work can only be attributed to the caller.
+hand a queue to a new owner. A personal queue can be created for any active person (the UI
+assigns work that way), and review work can only be attributed to the caller.
 Driven through the real hook and permission store (see ``authz_harness``).
 """
 
@@ -35,11 +35,20 @@ class _FakeTrackingStore(BaseFakeTrackingStore):
         return SimpleNamespace(queue_id=queue_id, experiment_id=VICTIM)
 
 
+NOBODY = "nobody@example.com"
+INACTIVE = "former@example.com"
+ROBOT = "robot-account"
+
+
 @pytest.fixture(autouse=True)
 def permission_store(tmp_path, monkeypatch):
     from mlflow_oidc_auth.utils.permissions import flush_permission_cache
 
-    yield install_permission_store(tmp_path, monkeypatch, _FakeTrackingStore())
+    s = install_permission_store(tmp_path, monkeypatch, _FakeTrackingStore())
+    s.create_user(INACTIVE, "pw", INACTIVE)
+    s.update_user(INACTIVE, active=False)
+    s.create_user(ROBOT, "pw", ROBOT, is_service_account=True)
+    yield s
     flush_permission_cache()
 
 
@@ -56,14 +65,28 @@ def test_create_requires_update_on_the_experiment(prefix):
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
-def test_personal_queue_is_only_for_the_caller(prefix):
+def test_personal_queue_can_be_assigned_to_a_teammate_with_update(prefix):
+    """MLflow's UI calls get-or-create-user with the ASSIGNEE when it routes a trace."""
     path = _rq(prefix, "get-or-create-user")
     assert allowed(hook(path, "POST", EDITOR, body={"experiment_id": VICTIM, "user": EDITOR}))
-    assert allowed(hook(path, "POST", EDITOR, body={"experiment_id": VICTIM, "user": EDITOR.upper()}))
-    assert denied(hook(path, "POST", EDITOR, body={"experiment_id": VICTIM, "user": READER}))
-    assert denied(hook(path, "POST", EDITOR, body={"experiment_id": VICTIM, "user": EDITOR}, query={"user": READER}))
+    assert allowed(hook(path, "POST", EDITOR, body={"experiment_id": VICTIM, "user": READER}))
+    assert allowed(hook(path, "POST", EDITOR, body={"experiment_id": VICTIM, "user": READER.upper()}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_personal_queue_needs_update_on_the_experiment(prefix):
+    path = _rq(prefix, "get-or-create-user")
     assert denied(hook(path, "POST", READER, body={"experiment_id": VICTIM, "user": READER}))
-    assert denied(hook(path, "POST", OUTSIDER, body={"experiment_id": VICTIM, "user": OUTSIDER}))
+    assert denied(hook(path, "POST", OUTSIDER, body={"experiment_id": VICTIM, "user": EDITOR}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize("assignee", [NOBODY, INACTIVE, ROBOT], ids=["nonexistent", "inactive", "service-account"])
+def test_personal_queue_is_refused_for_anyone_but_an_active_person(prefix, assignee):
+    path = _rq(prefix, "get-or-create-user")
+    assert denied(hook(path, "POST", MANAGER, body={"experiment_id": VICTIM, "user": assignee}))
+    # A second assignee hidden in the query string is checked too.
+    assert denied(hook(path, "POST", MANAGER, body={"experiment_id": VICTIM, "user": READER}, query={"user": assignee}))
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)

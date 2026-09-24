@@ -8,8 +8,9 @@ queue id to its experiment first.
 A label schema normally carries its experiment id. One that does not is readable by any
 authenticated user and writable only by an admin.
 
-MLflow attributes review work to the user a request names (``user`` on a personal queue,
-``completed_by`` on an item). Those must be the caller: naming someone else is refused.
+A personal queue may be created for another user (the UI assigns work this way), but only
+for an existing, active, non-service account. ``completed_by`` on an item records who did
+the review, so it must be the caller.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ, Permission, intersect_permissions
 from mlflow_oidc_auth.utils import all_source_values, get_request_param_values
-from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
+from mlflow_oidc_auth.validators._experiment_scope import names_only_caller, permission_on_all_experiments
 from mlflow_oidc_auth.validators.experiment import validate_can_update_experiment
 
 # ---------------------------------------------------------------------------
@@ -61,15 +62,27 @@ def _review_queue_permission(username: str) -> Permission:
     return permission_on_all_experiments(experiment_ids, username)
 
 
-def _names_only_caller(param: str, username: str) -> bool:
-    """True if every value of ``param`` in the request is ``username`` (MLflow lower-cases users)."""
-    caller = username.strip().lower()
-    return all(str(value).strip().lower() == caller for value in all_source_values(param))
+def _is_assignable_user(name: str) -> bool:
+    """True if ``name`` is an existing, active user account that is not a service account."""
+    from mlflow.exceptions import MlflowException
+
+    from mlflow_oidc_auth.store import store
+
+    try:
+        user = store.get_user_profile(str(name).strip())
+    except MlflowException:
+        return False
+    return bool(user.active) and not user.is_service_account
 
 
 def validate_can_get_or_create_user_queue(username: str) -> bool:
-    """UPDATE on the experiment, for the caller's own personal queue only."""
-    return _names_only_caller("user", username) and validate_can_update_experiment(username)
+    """UPDATE on the experiment; the queue's ``user`` must be an active, non-service account.
+
+    MLflow's UI calls this with the ASSIGNEE as ``user`` when it routes a trace to a
+    teammate, so the user need not be the caller. It must name a real person, though, so a
+    queue cannot be created for an arbitrary string.
+    """
+    return all(_is_assignable_user(name) for name in all_source_values("user")) and validate_can_update_experiment(username)
 
 
 def validate_can_read_review_queue(username: str) -> bool:
@@ -97,4 +110,4 @@ def validate_can_update_review_queue_items(username: str) -> bool:
 
 def validate_can_set_review_queue_item_status(username: str) -> bool:
     """UPDATE on the queue's experiment; ``completed_by``, if given, must be the caller."""
-    return _names_only_caller("completed_by", username) and _review_queue_permission(username).can_update
+    return names_only_caller("completed_by", username) and _review_queue_permission(username).can_update
