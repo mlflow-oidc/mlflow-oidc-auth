@@ -42,6 +42,7 @@ import json
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 from mlflow_oidc_auth.bridge.user import get_auth_context
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.hooks.http_method import authorization_method
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
@@ -822,7 +823,7 @@ def after_request_hook(resp: Response):
     # them was served the unfiltered global result set and leaked its exact size — the
     # existence/size oracle #286 is about. Folding the lookup in before_request alone only
     # closed the authorization half; without this the response half stayed open.
-    method = "GET" if request.method == "HEAD" else request.method
+    method = authorization_method(request.method)
     if handler := AFTER_REQUEST_HANDLERS.get((request.path, method)):
         handler(resp)
     return resp

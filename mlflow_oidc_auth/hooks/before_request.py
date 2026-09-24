@@ -136,6 +136,7 @@ import mlflow_oidc_auth.responses as responses
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.hooks.dual_spelling_guard import find_dual_spelling_collision, has_unexpected_get_body
+from mlflow_oidc_auth.hooks.http_method import authorization_method
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
     validate_can_create_experiment,
@@ -676,8 +677,7 @@ def _get_proxy_artifact_validator(method: str, view_args: Optional[Dict[str, Any
     # werkzeug registers HEAD alongside every GET rule and routes it to the same
     # handler, so it is a read. Without this it fell through to "no validator" and was
     # denied outright — even for a user holding MANAGE.
-    if method == "HEAD":
-        method = "GET"
+    method = authorization_method(method)
 
     if family == "mpu":
         # create / complete / abort all WRITE to the artifact path.
@@ -716,9 +716,10 @@ def _find_validator(req: Request) -> Optional[Callable[[str], bool]]:
     path — so ``HEAD /get-artifact?path=<victim>`` sailed past the 403 its GET twin
     receives and returned the response headers, an existence and exact-size oracle
     over any tenant's data. The same fold is applied in
-    ``dual_spelling_guard._is_proto_route`` and ``_get_proxy_artifact_validator``.
+    ``dual_spelling_guard._is_proto_route``, ``_get_proxy_artifact_validator`` and
+    ``after_request_hook``, all through the one shared ``authorization_method`` helper.
     """
-    method = "GET" if req.method == "HEAD" else req.method
+    method = authorization_method(req.method)
     if "/mlflow/workspaces" in req.path:
         # Workspace routes use path parameters (e.g. /mlflow/workspaces/<workspace_name>)
         validator = next(

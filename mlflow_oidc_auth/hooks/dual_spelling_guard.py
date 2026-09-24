@@ -55,6 +55,7 @@ from flask import Request
 from mlflow.protos.service_pb2 import SearchDatasets
 from mlflow.server.handlers import get_endpoints, _get_normalized_request_json
 
+from mlflow_oidc_auth.hooks.http_method import authorization_method
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
@@ -172,8 +173,7 @@ def _is_proto_route(path: str, method: str) -> bool:
     """True when MLflow will build a proto message for this route."""
     # werkzeug registers HEAD alongside every GET rule and routes it to the same
     # handler, so a HEAD reaches the same proto route as its GET.
-    if method == "HEAD":
-        method = "GET"
+    method = authorization_method(method)
     if (path, method) in _EXACT_PROTO_ROUTES:
         return True
     for compiled, m in _PATTERN_PROTO_ROUTES:
