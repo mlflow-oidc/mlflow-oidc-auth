@@ -779,7 +779,7 @@ class TestGatewayConfigRoutesEndToEnd:
     @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
     @pytest.mark.parametrize("method", ["GET", "HEAD"])
     def test_non_admin_read_is_allowed(self, client, mock_bridge, path_name, method):
-        import mlflow_oidc_auth.hooks.before_request as br
+        from mlflow_oidc_auth.hooks import before_request as br
 
         path = getattr(br, path_name)
         query = "?provider=openai" if path_name == "GATEWAY_PROVIDER_CONFIG" else ""
@@ -789,7 +789,7 @@ class TestGatewayConfigRoutesEndToEnd:
     @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
     @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
     def test_non_admin_write_is_forbidden(self, client, mock_bridge, path_name, method):
-        import mlflow_oidc_auth.hooks.before_request as br
+        from mlflow_oidc_auth.hooks import before_request as br
 
         path = getattr(br, path_name)
         with app.test_request_context(path=path, method=method, json={"provider": "openai"}):
@@ -801,7 +801,7 @@ class TestGatewayConfigRoutesEndToEnd:
     @pytest.mark.parametrize("method", ["POST", "DELETE"])
     def test_admin_write_is_not_blocked_by_the_hook(self, client, path_name, method):
         """Admins short-circuit validators; MLflow itself then answers 405 for an unregistered verb."""
-        import mlflow_oidc_auth.hooks.before_request as br
+        from mlflow_oidc_auth.hooks import before_request as br
 
         path = getattr(br, path_name)
         with (
@@ -813,7 +813,7 @@ class TestGatewayConfigRoutesEndToEnd:
 
     @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
     def test_unauthenticated_read_is_401(self, client, path_name):
-        import mlflow_oidc_auth.hooks.before_request as br
+        from mlflow_oidc_auth.hooks import before_request as br
 
         path = getattr(br, path_name)
         with (
@@ -827,7 +827,7 @@ class TestGatewayConfigRoutesEndToEnd:
 
     @pytest.mark.parametrize("path_name", ["GATEWAY_PROVIDER_CONFIG", "GATEWAY_SECRETS_CONFIG"])
     def test_unauthenticated_write_is_401(self, client, path_name):
-        import mlflow_oidc_auth.hooks.before_request as br
+        from mlflow_oidc_auth.hooks import before_request as br
 
         path = getattr(br, path_name)
         with (
