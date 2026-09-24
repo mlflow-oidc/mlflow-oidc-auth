@@ -44,6 +44,8 @@ CURRENT_USER = "/current"
 USERNAME = "/{username}"
 USERS_DETAILS = "/details"
 USER_ACTIVE = "/{username}/active"
+USER_SESSIONS = "/{username}/sessions"
+USER_SESSION = "/{username}/sessions/{session_pk}"
 
 #: Fields of each object returned by ``GET /users/details`` and ``PATCH /users/{username}/active``.
 USER_DETAIL_FIELDS = ("username", "display_name", "is_admin", "is_service_account", "active", "managed_by")
@@ -511,6 +513,82 @@ async def set_user_active(
 
     updated = store.get_user_detail(target)
     return JSONResponse(content={key: updated[key] for key in USER_DETAIL_FIELDS})
+
+
+def _require_user_detail(username: str) -> dict:
+    detail = store.get_user_detail(username)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"User {username} not found")
+    return detail
+
+
+@users_router.get(
+    USER_SESSIONS,
+    summary="List a user's live sessions",
+    description="Lists a user's live server-side sessions. Returns a short id prefix and an opaque `pk`, never the session id. Admins only.",
+)
+async def list_user_sessions(username: str, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    """A user's live sessions, newest first (issue #325).
+
+    The full session id is a bearer credential, so it is never returned: ``session_id_prefix``
+    tells sessions apart and ``pk`` addresses one for revocation. ``last_seen_at`` is recorded
+    only where something writes it; the per-request authentication path does not.
+
+    Raises:
+        HTTPException: 404 for an unknown user.
+    """
+    target = _require_user_detail(username)["username"]
+    return JSONResponse(
+        content={"sessions": [summary.to_json() for summary in store.list_live_auth_session_details(target)]}, headers={"Cache-Control": "no-store"}
+    )
+
+
+@users_router.delete(
+    USER_SESSION,
+    summary="Revoke one of a user's sessions",
+    description="Revokes one live session of this user, addressed by the `pk` from the session list. Admins only.",
+)
+async def revoke_user_session(username: str, session_pk: int, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    """Revoke one session (issue #325). Effective on the session's next request.
+
+    Raises:
+        HTTPException: 404 for an unknown user, or a ``pk`` that is not a live session of *this*
+            user — another user's session reads exactly like one that does not exist.
+    """
+    target = _require_user_detail(username)["username"]
+    if not store.revoke_auth_session_by_pk(target, session_pk):
+        raise HTTPException(status_code=404, detail="Session not found")
+    emit_audit_event(
+        "session.revoked",
+        actor=admin_username,
+        resource_type="user",
+        resource_id=target,
+        detail={"source": "admin", "sessions": 1, "session_pk": session_pk, "reason": "admin_revoke"},
+    )
+    return JSONResponse(content={"revoked": 1})
+
+
+@users_router.delete(
+    USER_SESSIONS,
+    summary="Revoke all of a user's sessions",
+    description="Revokes every live session of this user. Their access tokens are not affected. Admins only.",
+)
+async def revoke_user_sessions(username: str, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    """Sign a user out everywhere (issue #325). Their account, grants and access token are untouched.
+
+    Raises:
+        HTTPException: 404 for an unknown user.
+    """
+    target = _require_user_detail(username)["username"]
+    count = store.revoke_all_auth_sessions(target)
+    emit_audit_event(
+        "session.revoked",
+        actor=admin_username,
+        resource_type="user",
+        resource_id=target,
+        detail={"source": "admin", "sessions": count, "reason": "admin_revoke_all"},
+    )
+    return JSONResponse(content={"revoked": count})
 
 
 @users_router.get(

@@ -261,6 +261,12 @@ class AppConfig:
         # Failed SCIM authentications allowed per client IP per minute before answering 429.
         # In-process, like the limit above; 0 disables it.
         self.SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE = config_manager.get_int("SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE", default=60)
+        # SCIM activity log (#325): one row per /scim/v2 request for the admin UI's provisioning
+        # status. Rows older than this are swept by `mlflow-oidc db prune-sessions` and, at most
+        # hourly, by the server itself.
+        self.SCIM_ACTIVITY_RETENTION_DAYS = config_manager.get_int("SCIM_ACTIVITY_RETENTION_DAYS", default=30)
+        # Provisioning counts as healthy while a SCIM request succeeded within this many seconds.
+        self.SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS = config_manager.get_int("SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS", default=86400)
         # When set, resources a hard-deleted user was the last MANAGE holder of are granted MANAGE
         # to this username before the delete cascades. Unset means orphans are only reported.
         self.ORPHAN_FALLBACK_PRINCIPAL = config_manager.get("ORPHAN_FALLBACK_PRINCIPAL")

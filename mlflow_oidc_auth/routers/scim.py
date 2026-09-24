@@ -22,12 +22,13 @@ token). ``DELETE`` is a hard delete through the existing cascade.
 
 import json
 import re
+import threading
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -68,9 +69,10 @@ from mlflow_oidc_auth.models.scim import (
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
 from mlflow_oidc_auth.ownership import MANUAL
 from mlflow_oidc_auth.repository.group import UnknownMember
+from mlflow_oidc_auth.repository.scim_activity import MAX_PAGE_SIZE as MAX_ACTIVITY_PAGE_SIZE, OUTCOMES, outcome_for
 from mlflow_oidc_auth.store import store
 
-from ._prefix import SCIM_ROUTER_PREFIX, SCIM_TOKENS_ROUTER_PREFIX
+from ._prefix import SCIM_ADMIN_ROUTER_PREFIX, SCIM_ROUTER_PREFIX, SCIM_TOKENS_ROUTER_PREFIX
 
 logger = get_logger()
 
@@ -111,30 +113,118 @@ def _audit_status(status_code: int) -> str:
     return "error"
 
 
+_ROUTE_PARAM = re.compile(r"\{([^}:]+)(?::[^}]*)?\}")
+#: Anything shaped like a SCIM token that might have found its way into an error message.
+_TOKEN_LIKE = re.compile(r"scim_[0-9a-fA-F]{8}_\S+")
+_SWEEP_INTERVAL_SECONDS = 3600
+_sweep_state = {"last": None}
+_sweep_lock = threading.Lock()
+
+
+def _activity_target(request: Request) -> tuple:
+    """``(path, resource_id)`` for the activity log: the route template and the SCIM id.
+
+    The template (``/Users/{user_id}``) goes in ``path`` so the column never holds a username;
+    the concrete id goes in ``resource_id``, where an administrator expects to find one.
+    """
+    route = request.scope.get("route")
+    template = getattr(route, "path", None) or request.url.path
+    if template.startswith(SCIM_ROUTER_PREFIX):
+        template = template[len(SCIM_ROUTER_PREFIX) :] or "/"
+    params = request.scope.get("path_params") or {}
+    resource_id = next((str(value) for value in params.values() if value not in (None, "")), None)
+    return _ROUTE_PARAM.sub(lambda match: "{" + match.group(1) + "}", template), resource_id
+
+
+def _activity_error(status_code: int, detail: Optional[str], scim_type: Optional[str]) -> Optional[str]:
+    """The short, SCIM-level reason for a failed request. Never a body, never a token."""
+    if status_code < 400:
+        return None
+    text = f"{scim_type}: {detail}" if scim_type and detail else (detail or scim_type or f"HTTP {status_code}")
+    return _TOKEN_LIKE.sub("scim_[redacted]", text)[:500]
+
+
+def _sweep_due() -> bool:
+    import time
+
+    now = time.monotonic()
+    with _sweep_lock:
+        last = _sweep_state["last"]
+        if last is not None and now - last < _SWEEP_INTERVAL_SECONDS:
+            return False
+        _sweep_state["last"] = now
+        return True
+
+
+def _write_activity(fields: Dict[str, Any]) -> None:
+    """Insert the row and, at most hourly per process, sweep what retention has expired."""
+    store.record_scim_activity(**fields)
+    if _sweep_due():
+        days = int(getattr(config, "SCIM_ACTIVITY_RETENTION_DAYS", 30) or 0)
+        if days > 0:
+            store.delete_scim_activity_before(datetime.now(timezone.utc) - timedelta(days=days))
+
+
+async def _record_activity(request: Request, status_code: int, detail: Optional[str], scim_type: Optional[str], started: float) -> None:
+    """One ``scim_activity`` row for this request (#325). Best effort: never raises.
+
+    Unauthenticated requests are recorded on the same throttle as their ``scim.auth_failed``
+    audit event — at most one per client per minute — so an anonymous client cannot fill the
+    table any faster than the audit log.
+    """
+    import asyncio
+    import time
+
+    try:
+        token = getattr(request.state, "scim_token", None)
+        if token is None and not getattr(request.state, "scim_auth_failure_recorded", False):
+            return
+        path, resource_id = _activity_target(request)
+        fields = {
+            "token_id": token.id if token is not None else None,
+            "token_name": token.name if token is not None else None,
+            "method": request.method,
+            "path": path,
+            "resource_id": resource_id,
+            "status": status_code,
+            "outcome": outcome_for(status_code, authenticated=token is not None),
+            "error": _activity_error(status_code, detail, scim_type),
+            "duration_ms": int((time.monotonic() - started) * 1000),
+        }
+        await asyncio.get_running_loop().run_in_executor(None, _write_activity, fields)
+    except Exception:
+        logger.warning("Could not record SCIM activity for %s", request.method, exc_info=True)
+
+
 class ScimRoute(APIRoute):
-    """Renders every error as a SCIM error and audits every request, authenticated or not."""
+    """Renders every error as a SCIM error, and audits and records every request, authenticated or not."""
 
     def get_route_handler(self):
         original = super().get_route_handler()
 
         async def handler(request: Request) -> Response:
+            import time
+
+            started = time.monotonic()
             status_code = 500
+            detail: Optional[str] = None
+            scim_type: Optional[str] = None
             try:
                 response = await original(request)
                 status_code = response.status_code
                 return response
             except ScimHTTPError as exc:
-                status_code = exc.status_code
+                status_code, detail, scim_type = exc.status_code, str(exc.detail), exc.scim_type
                 return scim_error(exc.status_code, str(exc.detail), exc.scim_type, exc.headers)
             except StarletteHTTPException as exc:
-                status_code = exc.status_code
+                status_code, detail = exc.status_code, str(exc.detail)
                 return scim_error(exc.status_code, str(exc.detail), None, exc.headers)
             except RequestValidationError:
-                status_code = 400
+                status_code, detail, scim_type = 400, "The request is not valid SCIM", "invalidSyntax"
                 return scim_error(400, "The request is not valid SCIM", "invalidSyntax")
             except Exception:
                 logger.exception("Unhandled error serving SCIM %s %s", request.method, request.url.path)
-                status_code = 500
+                status_code, detail = 500, "Internal error"
                 return scim_error(500, "Internal error")
             finally:
                 token = getattr(request.state, "scim_token", None)
@@ -150,6 +240,7 @@ class ScimRoute(APIRoute):
                         detail={"token": token.name, "token_id": token.id, "method": request.method, "path": request.url.path, "status": status_code},
                         status=_audit_status(status_code),
                     )
+                await _record_activity(request, status_code, detail, scim_type, started)
 
         return handler
 
@@ -1314,3 +1405,50 @@ async def revoke_scim_token(token_id: int, admin_username: str = Depends(check_a
         raise _token_http_error(exc)
     emit_audit_event("scim_token.revoke", actor=admin_username, resource_type="scim_token", resource_id=str(record.id), detail={"name": record.name})
     return JSONResponse(content=record.to_json())
+
+
+# ---------------------------------------------------------------------------------------------
+# Provisioning status and activity (admin only, #325)
+# ---------------------------------------------------------------------------------------------
+
+scim_admin_router = APIRouter(
+    prefix=SCIM_ADMIN_ROUTER_PREFIX,
+    tags=["scim"],
+    responses={403: {"description": "Forbidden - Administrator privileges required"}},
+)
+
+
+@scim_admin_router.get(
+    "/activity",
+    summary="Recent SCIM requests",
+    description="The SCIM activity log, newest first. Page with `before` set to the last row's `id`. Admins only.",
+)
+async def list_scim_activity(
+    limit: int = Query(50, ge=1, le=MAX_ACTIVITY_PAGE_SIZE),
+    before: Optional[int] = Query(None, ge=1),
+    outcome: Optional[str] = Query(None),
+    token_id: Optional[int] = Query(None),
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """Recorded ``/scim/v2`` requests (see ``docs/scim.md``, "Provisioning status").
+
+    Raises:
+        HTTPException: 400 for an unknown ``outcome``.
+    """
+    if outcome is not None and outcome not in OUTCOMES:
+        raise HTTPException(status_code=400, detail=f"outcome must be one of {', '.join(OUTCOMES)}")
+    entries = store.list_scim_activity(limit=limit, before=before, outcome=outcome, token_id=token_id)
+    return JSONResponse(content={"activity": [entry.to_json() for entry in entries], "next_before": entries[-1].id if len(entries) == limit else None})
+
+
+@scim_admin_router.get(
+    "/status",
+    summary="SCIM provisioning status",
+    description="Whether provisioning is working: last success and last error overall and per token, and 24-hour counts. Admins only.",
+)
+async def get_scim_status(admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    window = int(getattr(config, "SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS", 86400) or 86400)
+    status = store.scim_provisioning_status(window)
+    status["healthy_window_seconds"] = window
+    status["retention_days"] = int(getattr(config, "SCIM_ACTIVITY_RETENTION_DAYS", 30) or 0)
+    return JSONResponse(content=status)

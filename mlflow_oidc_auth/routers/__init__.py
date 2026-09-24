@@ -21,7 +21,7 @@ from mlflow_oidc_auth.routers.registered_model_permissions import (
     registered_model_permissions_router,
 )
 from mlflow_oidc_auth.routers.saml import saml_router
-from mlflow_oidc_auth.routers.scim import scim_router, scim_tokens_router
+from mlflow_oidc_auth.routers.scim import scim_admin_router, scim_router, scim_tokens_router
 from mlflow_oidc_auth.routers.scorers_permissions import scorers_permissions_router
 from mlflow_oidc_auth.routers.gateway_endpoint_permissions import (
     gateway_endpoint_permissions_router,
@@ -51,6 +51,7 @@ __all__ = [
     "prompt_permissions_router",
     "registered_model_permissions_router",
     "saml_router",
+    "scim_admin_router",
     "scim_router",
     "scim_tokens_router",
     "scorers_permissions_router",
@@ -184,6 +185,7 @@ def get_all_routers() -> List[APIRouter]:
         saml_router,
         scim_router,
         scim_tokens_router,
+        scim_admin_router,
         scorers_permissions_router,
         gateway_endpoint_permissions_router,
         gateway_secret_permissions_router,
