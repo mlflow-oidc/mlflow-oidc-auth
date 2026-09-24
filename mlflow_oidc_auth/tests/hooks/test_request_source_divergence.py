@@ -596,7 +596,7 @@ class _TraceStoreWithNewIds(_FakeTrackingStore):
 def test_start_trace_v3_applies_the_union(union_world, monkeypatch, prefix):
     """StartTraceV3 names its experiment and trace NESTED in the body; a flat id anywhere else
     (query string, top-level body) must be authorized too — in both orientations."""
-    monkeypatch.setattr("mlflow_oidc_auth.validators.trace._get_tracking_store", lambda: _TraceStoreWithNewIds())
+    monkeypatch.setattr("mlflow_oidc_auth.validators.trace._get_tracking_store", _TraceStoreWithNewIds)
     path = f"{prefix}/3.0/mlflow/traces"
     for nested, flat in ((OWN, VICTIM), (VICTIM, OWN)):
         for field in ("experiment_id", "trace_id"):
