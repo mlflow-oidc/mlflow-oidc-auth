@@ -1,3 +1,5 @@
+import json
+
 from flask import request
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import BAD_REQUEST, INVALID_PARAMETER_VALUE
@@ -297,7 +299,8 @@ def request_body_dict() -> dict:
     double-encoding aware), exactly as the dual-spelling guard reads it. Off the proto
     surface the body is read only when it is declared JSON: force-parsing an arbitrary
     body would buffer a streamed artifact upload into memory and leave the stream empty
-    for the handler.
+    for the handler. A JSON body that is itself a JSON-encoded string is decoded a second
+    time, as MLflow's plain JSON handlers (``_get_normalized_request_json``) do.
     """
     from mlflow_oidc_auth.hooks.dual_spelling_guard import _is_proto_route, _request_body
 
@@ -306,6 +309,8 @@ def request_body_dict() -> dict:
             data = _request_body(request)
         elif request.is_json:
             data = request.get_json(silent=True)
+            if isinstance(data, str):
+                data = json.loads(data)
         else:
             data = None
     except Exception:

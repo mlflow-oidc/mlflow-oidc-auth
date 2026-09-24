@@ -23,6 +23,7 @@ from mlflow.protos.service_pb2 import (
     ListGatewaySecretInfos,
     ListWorkspaces,
     RegisterScorer,
+    SearchEvaluationDatasets,
     SearchExperiments,
     SearchLoggedModels,
     UpdateGatewayEndpoint,
@@ -759,6 +760,35 @@ def _filter_list_workspaces(response: Response) -> None:
     response.set_data(json.dumps(data))
 
 
+def _filter_search_evaluation_datasets(resp: Response) -> None:
+    """Drop evaluation datasets linked to any experiment the caller cannot read.
+
+    ``before_request`` already requires READ on every experiment the search is scoped to, but
+    a dataset can be linked to more experiments than the one it was found through. Reading
+    it by id requires READ on all of them, so the search shows exactly the datasets a
+    ``GET datasets/<id>`` would serve. A dataset linked to no experiment is admin-only.
+    """
+    if get_fastapi_admin_status():
+        return
+    data = resp.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("datasets"), list):
+        return
+    from mlflow_oidc_auth.validators.dataset import dataset_experiment_ids
+
+    username = get_fastapi_username()
+
+    def _readable(dataset: Any) -> bool:
+        if not isinstance(dataset, dict) or not dataset.get("dataset_id"):
+            return False
+        # MLflow serializes a dataset's links only when they were loaded, which a search
+        # does not do, so resolve them from the store.
+        experiment_ids = dataset_experiment_ids(str(dataset["dataset_id"]))
+        return bool(experiment_ids) and all(_cached_can_read_experiment(e, username) for e in experiment_ids)
+
+    data["datasets"] = [d for d in data["datasets"] if _readable(d)]
+    resp.set_data(json.dumps(data))
+
+
 AFTER_REQUEST_PATH_HANDLERS = {
     CreateExperiment: _set_can_manage_experiment_permission,
     CreateRegisteredModel: _set_can_manage_registered_model_permission,
@@ -781,6 +811,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     ListGatewaySecretInfos: _filter_list_gateway_secrets,
     ListGatewayModelDefinitions: _filter_list_gateway_model_definitions,
     ListWorkspaces: _filter_list_workspaces,
+    SearchEvaluationDatasets: _filter_search_evaluation_datasets,
     CreateWorkspace: _auto_grant_workspace_manage_permission,
     DeleteWorkspace: _cascade_delete_workspace_permissions,
 }

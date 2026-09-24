@@ -418,6 +418,26 @@ _UNION_SPECS = {
     "validate_can_read_gateway_model_definition": ("name", False, {}),
     "validate_can_delete_gateway_model_definition": ("name", False, {}),
     "validate_can_update_gateway_model_definition": ("model_definition_id", False, {}),
+    "validate_can_update_trace_from_experiment_id": ("experiment_id", False, {}),
+    "validate_can_read_dataset": ("dataset_id", False, {}),
+    "validate_can_update_dataset": ("dataset_id", False, {}),
+    "validate_can_delete_dataset": ("dataset_id", False, {}),
+    "validate_can_create_dataset": ("experiment_ids", True, {"name": "ds"}),
+    "validate_can_search_evaluation_datasets": ("experiment_ids", True, {}),
+    "validate_can_link_dataset_experiments": ("experiment_ids", True, {"dataset_id": OWN}),
+    "validate_can_read_issue": ("issue_id", False, {}),
+    "validate_can_update_issue": ("issue_id", False, {}),
+    "validate_can_create_issue": ("experiment_id", False, {"name": "n", "description": "d"}),
+    "validate_can_search_issues": ("experiment_id", False, {}),
+    "validate_can_read_label_schema": ("schema_id", False, {}),
+    "validate_can_update_label_schema": ("schema_id", False, {}),
+    "validate_can_delete_label_schema": ("schema_id", False, {}),
+    "validate_can_get_or_create_user_queue": ("experiment_id", False, {"user": USER}),
+    "validate_can_read_review_queue": ("queue_id", False, {}),
+    "validate_can_update_review_queue": ("queue_id", False, {}),
+    "validate_can_delete_review_queue": ("queue_id", False, {}),
+    "validate_can_update_review_queue_items": ("queue_id", False, {}),
+    "validate_can_set_review_queue_item_status": ("queue_id", False, {}),
 }
 
 # Validators that read no caller-chosen id for an EXISTING resource, with the reason.
@@ -429,6 +449,8 @@ _UNION_EXEMPT = {
     "validate_can_read_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_update_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_delete_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
+    "validate_can_start_trace_v3": "the experiment is nested in trace.trace_info.trace_location; every spelling is "
+    "collected, pinned in test_mutation_route_authz",
 }
 
 
@@ -471,6 +493,18 @@ class _FakeTrackingStore:
     def get_gateway_model_definition(self, model_definition_id=None, **_):
         return SimpleNamespace(name=model_definition_id)
 
+    def get_dataset_experiment_ids(self, dataset_id):
+        return [dataset_id]
+
+    def get_issue(self, issue_id):
+        return SimpleNamespace(experiment_id=issue_id)
+
+    def get_label_schema(self, schema_id):
+        return SimpleNamespace(experiment_id=schema_id)
+
+    def get_review_queue(self, queue_id):
+        return SimpleNamespace(experiment_id=queue_id)
+
 
 @pytest.fixture
 def union_world(store, monkeypatch):
@@ -496,6 +530,10 @@ def union_world(store, monkeypatch):
         "mlflow_oidc_auth.validators.experiment._get_tracking_store",
         "mlflow_oidc_auth.validators.trace._get_tracking_store",
         "mlflow_oidc_auth.utils.request_helpers._get_tracking_store",
+        "mlflow_oidc_auth.validators.dataset._get_tracking_store",
+        "mlflow_oidc_auth.validators.issue._get_tracking_store",
+        "mlflow_oidc_auth.validators.review._get_tracking_store",
+        "mlflow_oidc_auth.validators._experiment_scope._get_tracking_store",
     ):
         monkeypatch.setattr(target, lambda: fake)
     monkeypatch.setattr("mlflow_oidc_auth.hooks.before_request.store", store)
@@ -527,13 +565,15 @@ def _union_request(template, method, field, is_list, extra, first, second):
 
     def fill(match):
         name = match.group(1)
-        view_args[name] = first if name in ("trace_id", "request_id") else "a1"
+        # The field under test takes ``first``; another path parameter takes a value the
+        # spec supplies (so it matches the same field in the body), else a placeholder.
+        view_args[name] = first if name in ("trace_id", "request_id", field) else str(extra.get(name, "a1"))
         return view_args[name]
 
     path = re.sub(r"<([^>]+)>", fill, template)
     query = dict(extra)
     body = dict(extra)
-    if not view_args:
+    if field not in view_args:
         query[field] = first
         body[field] = [second] if is_list else second
     elif method == "GET":

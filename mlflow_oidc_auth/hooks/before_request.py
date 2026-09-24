@@ -113,6 +113,41 @@ from mlflow.protos.service_pb2 import (
     SearchPromptOptimizationJobs,
     DeletePromptOptimizationJob,
     CancelPromptOptimizationJob,
+    CreatePresignedDownloadUrl,
+    AddDatasetToExperiments,
+    CreateDataset,
+    DeleteDataset,
+    DeleteDatasetRecords,
+    DeleteDatasetTag,
+    GetDataset,
+    GetDatasetExperimentIds,
+    GetDatasetRecords,
+    RemoveDatasetFromExperiments,
+    SearchEvaluationDatasets,
+    SetDatasetTags,
+    UpsertDatasetRecords,
+)
+from mlflow.protos.issues_pb2 import CreateIssue, GetIssue, SearchIssues, UpdateIssue
+from mlflow.protos.label_schemas_pb2 import (
+    CreateLabelSchema,
+    DeleteLabelSchema,
+    GetLabelSchema,
+    GetLabelSchemaByName,
+    ListLabelSchemas,
+    UpdateLabelSchema,
+)
+from mlflow.protos.review_queues_pb2 import (
+    AddItemsToReviewQueue,
+    CreateReviewQueue,
+    DeleteReviewQueue,
+    GetOrCreateUserQueue,
+    GetReviewQueue,
+    GetReviewQueueByName,
+    ListReviewQueueItems,
+    ListReviewQueues,
+    RemoveItemsFromReviewQueue,
+    SetReviewQueueItemStatus,
+    UpdateReviewQueue,
 )
 
 from mlflow.server.handlers import catch_mlflow_exception, get_endpoints
@@ -126,12 +161,20 @@ try:
         CreateGatewayBudgetPolicy,
         UpdateGatewayBudgetPolicy,
         DeleteGatewayBudgetPolicy,
+        GetGatewayBudgetPolicy,
+        ListGatewayBudgetPolicies,
+        ListGatewayBudgetWindows,
     )
 
+    # Reads are admin-only as well: budget policies and their spend windows describe every
+    # workspace's usage, and there is no per-tenant scoping to filter them by.
     _BUDGET_POLICY_PROTOS = [
         CreateGatewayBudgetPolicy,
         UpdateGatewayBudgetPolicy,
         DeleteGatewayBudgetPolicy,
+        GetGatewayBudgetPolicy,
+        ListGatewayBudgetPolicies,
+        ListGatewayBudgetWindows,
     ]
 except ImportError:
     pass
@@ -207,6 +250,31 @@ from mlflow_oidc_auth.validators import (
     validate_can_read_prompt_optimization_job,
     validate_can_update_prompt_optimization_job,
     validate_can_delete_prompt_optimization_job,
+    validate_can_read_dataset,
+    validate_can_update_dataset,
+    validate_can_delete_dataset,
+    validate_can_create_dataset,
+    validate_can_search_evaluation_datasets,
+    validate_can_link_dataset_experiments,
+    validate_can_read_issue,
+    validate_can_update_issue,
+    validate_can_create_issue,
+    validate_can_search_issues,
+    validate_can_invoke_issue_detection,
+    validate_can_invoke_genai_evaluate,
+    validate_can_read_label_schema,
+    validate_can_update_label_schema,
+    validate_can_delete_label_schema,
+    validate_can_get_or_create_user_queue,
+    validate_can_read_review_queue,
+    validate_can_update_review_queue,
+    validate_can_delete_review_queue,
+    validate_can_update_review_queue_items,
+    validate_can_set_review_queue_item_status,
+    validate_can_read_job,
+    validate_can_cancel_job,
+    validate_can_update_online_scoring_config,
+    validate_can_read_online_scoring_configs,
 )
 
 
@@ -344,6 +412,45 @@ BEFORE_REQUEST_HANDLERS = {
     SearchPromptOptimizationJobs: validate_can_read_experiment,
     DeletePromptOptimizationJob: validate_can_delete_prompt_optimization_job,
     CancelPromptOptimizationJob: validate_can_update_prompt_optimization_job,
+    # Presigned download URL for a run artifact: a read of that run.
+    CreatePresignedDownloadUrl: validate_can_read_run,
+    # Evaluation datasets inherit the permission of every experiment they are linked to.
+    # A dataset linked to none is admin-only; creating or searching needs experiment_ids.
+    CreateDataset: validate_can_create_dataset,
+    GetDataset: validate_can_read_dataset,
+    DeleteDataset: validate_can_delete_dataset,
+    SearchEvaluationDatasets: validate_can_search_evaluation_datasets,
+    SetDatasetTags: validate_can_update_dataset,
+    DeleteDatasetTag: validate_can_update_dataset,
+    UpsertDatasetRecords: validate_can_update_dataset,
+    GetDatasetRecords: validate_can_read_dataset,
+    DeleteDatasetRecords: validate_can_update_dataset,
+    GetDatasetExperimentIds: validate_can_read_dataset,
+    AddDatasetToExperiments: validate_can_link_dataset_experiments,
+    RemoveDatasetFromExperiments: validate_can_link_dataset_experiments,
+    # Issues belong to one experiment.
+    CreateIssue: validate_can_create_issue,
+    GetIssue: validate_can_read_issue,
+    UpdateIssue: validate_can_update_issue,
+    SearchIssues: validate_can_search_issues,
+    # Label schemas and review queues belong to one experiment.
+    CreateLabelSchema: validate_can_update_experiment,
+    GetLabelSchema: validate_can_read_label_schema,
+    GetLabelSchemaByName: validate_can_read_experiment,
+    ListLabelSchemas: validate_can_read_experiment,
+    UpdateLabelSchema: validate_can_update_label_schema,
+    DeleteLabelSchema: validate_can_delete_label_schema,
+    CreateReviewQueue: validate_can_update_experiment,
+    GetOrCreateUserQueue: validate_can_get_or_create_user_queue,
+    GetReviewQueue: validate_can_read_review_queue,
+    GetReviewQueueByName: validate_can_read_experiment,
+    ListReviewQueues: validate_can_read_experiment,
+    UpdateReviewQueue: validate_can_update_review_queue,
+    DeleteReviewQueue: validate_can_delete_review_queue,
+    AddItemsToReviewQueue: validate_can_update_review_queue_items,
+    RemoveItemsFromReviewQueue: validate_can_update_review_queue_items,
+    ListReviewQueueItems: validate_can_read_review_queue,
+    SetReviewQueueItemStatus: validate_can_set_review_queue_item_status,
     # Routes for gateway endpoints
     CreateGatewayEndpoint: validate_can_create_gateway,
     GetGatewayEndpoint: validate_can_read_gateway_endpoint,
@@ -538,6 +645,19 @@ for _suffix, _method, _validator in (
     ("mlflow/runs/create-promptlab-run", "POST", validate_can_create_promptlab_run),
     ("mlflow/gateway-proxy", "GET", validate_gateway_proxy),
     ("mlflow/gateway-proxy", "POST", validate_gateway_proxy),
+    # UI-started background jobs: a run is created in the experiment and the named traces
+    # are read, so UPDATE on the experiment and READ on every trace's experiment.
+    ("mlflow/issues/invoke", "POST", validate_can_invoke_issue_detection),
+    ("mlflow/genai/evaluate/invoke", "POST", validate_can_invoke_genai_evaluate),
+    # Reading and cancelling those jobs goes through the job's experiment.
+    ("mlflow/jobs/<job_id>", "GET", validate_can_read_job),
+    ("mlflow/jobs/cancel/<job_id>", "PATCH", validate_can_cancel_job),
+    # Online scoring configuration of a registered scorer.
+    ("mlflow/scorers/online-config", "PUT", validate_can_update_online_scoring_config),
+    ("mlflow/scorers/online-configs", "GET", validate_can_read_online_scoring_configs),
+    # Demo data generation creates and hard-deletes a shared experiment: admin-only.
+    ("mlflow/demo/generate", "POST", _deny_non_admin),
+    ("mlflow/demo/delete", "POST", _deny_non_admin),
 ):
     _bind_non_proto_route(_suffix, _method, _validator)
 
