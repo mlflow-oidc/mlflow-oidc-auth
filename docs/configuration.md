@@ -423,8 +423,9 @@ TRUSTED_PROXIES=10.0.0.0/8
 ```
 
 List only proxies: every address inside a listed range can set these headers. IPv4-mapped IPv6
-connection addresses (`::ffff:10.0.0.5`) are matched as their IPv4 form, so list IPv4 ranges in
-IPv4 notation.
+addresses are matched as their IPv4 form, both for the connecting address (`::ffff:10.0.0.5`)
+and for entries: `::ffff:10.0.0.5` is read as `10.0.0.5` and `::ffff:10.0.0.0/104` as
+`10.0.0.0/8`, and each such conversion is logged at startup. Either notation works.
 
 When `TRUSTED_PROXIES` is unset, no proxy is trusted: the plugin ignores the headers from every
 client, and this is logged once at startup at `INFO`. Scheme, host, path and client

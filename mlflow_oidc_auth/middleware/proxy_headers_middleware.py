@@ -85,7 +85,9 @@ def _parse_trusted_proxies(
             Single IPs (e.g., "10.0.0.1") are treated as /32 (IPv4) or /128 (IPv6).
 
     Returns:
-        List of parsed network objects.
+        List of parsed network objects. An IPv4-mapped IPv6 entry (``::ffff:10.0.0.5`` or
+        ``::ffff:10.0.0.0/104``, prefix length 96 or more) is converted to its IPv4 form, since
+        connection and forwarded addresses are compared in IPv4 form (see ``_parse_address``).
     """
     networks = []
     for cidr in proxy_list:
@@ -93,10 +95,37 @@ def _parse_trusted_proxies(
         if not cidr:
             continue
         try:
-            networks.append(ipaddress.ip_network(cidr, strict=False))
+            network = ipaddress.ip_network(cidr, strict=False)
         except ValueError:
             logger.warning("Invalid CIDR in TRUSTED_PROXIES, skipping entry")
+            continue
+        mapped = _ipv4_form_of_mapped_network(network)
+        if mapped is not None:
+            logger.info(f"TRUSTED_PROXIES entry '{cidr}' is IPv4-mapped; matching it as {mapped}")
+            network = mapped
+        networks.append(network)
     return networks
+
+
+_IPV4_MAPPED = ipaddress.IPv6Network("::ffff:0:0/96")
+
+
+def _ipv4_form_of_mapped_network(network: ipaddress.IPv4Network | ipaddress.IPv6Network) -> Optional[ipaddress.IPv4Network]:
+    """Return the IPv4 network an IPv4-mapped IPv6 network covers, or None if it is not one.
+
+    Parameters:
+        network: A parsed TRUSTED_PROXIES entry.
+
+    Returns:
+        The IPv4 network with prefix length ``prefixlen - 96`` when ``network`` lies within
+        ``::ffff:0:0/96``; None otherwise.
+    """
+    if not isinstance(network, ipaddress.IPv6Network) or network.prefixlen < 96 or not network.subnet_of(_IPV4_MAPPED):
+        return None
+    mapped = network.network_address.ipv4_mapped
+    if mapped is None:  # pragma: no cover - guaranteed by subnet_of above
+        return None
+    return ipaddress.IPv4Network((mapped, network.prefixlen - 96))
 
 
 class ProxyHeadersMiddleware(BaseHTTPMiddleware):

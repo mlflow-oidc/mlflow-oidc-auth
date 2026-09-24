@@ -168,6 +168,36 @@ class TestIsTrustedProxy:
             self._make_middleware(["not-a-cidr"])
         assert any("no valid entry" in call.args[0] for call in mock_logger.warning.call_args_list)
 
+    @pytest.mark.parametrize("entry", ["::ffff:10.0.0.5", "::ffff:10.0.0.0/104", "::ffff:a00:5"])
+    @pytest.mark.parametrize("peer", ["10.0.0.5", "::ffff:10.0.0.5"])
+    def test_ipv4_mapped_entry_matches_mapped_and_plain_peer(self, entry, peer):
+        """A mapped entry keeps matching after peers are compared in IPv4 form."""
+        middleware = self._make_middleware([entry])
+        assert middleware._is_trusted_proxy(self._make_request(peer)) is True
+        assert middleware._is_trusted_proxy(self._make_request("192.0.2.1")) is False
+
+    def test_ipv4_mapped_network_prefix_converted(self):
+        assert _parse_trusted_proxies(["::ffff:10.0.0.0/104"]) == [ipaddress.ip_network("10.0.0.0/8")]
+        assert _parse_trusted_proxies(["::ffff:10.0.0.5"]) == [ipaddress.ip_network("10.0.0.5/32")]
+        assert _parse_trusted_proxies(["::ffff:0:0/96"]) == [ipaddress.ip_network("0.0.0.0/0")]
+
+    @pytest.mark.parametrize("entry", ["2001:db8::/32", "::1", "::ffff:0:0/80", "::a00:5"])
+    def test_non_mapped_ipv6_entry_unaffected(self, entry):
+        assert _parse_trusted_proxies([entry]) == [ipaddress.ip_network(entry, strict=False)]
+
+    def test_ipv6_entry_still_matches_ipv6_peer(self):
+        middleware = self._make_middleware(["2001:db8::/32"])
+        assert middleware._is_trusted_proxy(self._make_request("2001:db8::5")) is True
+        assert middleware._is_trusted_proxy(self._make_request("10.0.0.5")) is False
+
+    def test_mapped_entry_conversion_logged_once_per_entry(self):
+        with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
+            _parse_trusted_proxies(["::ffff:10.0.0.5", "10.0.0.0/8", "::ffff:10.0.0.0/104"])
+        messages = [call.args[0] for call in mock_logger.info.call_args_list]
+        assert len(messages) == 2
+        assert "::ffff:10.0.0.5" in messages[0] and "10.0.0.5/32" in messages[0]
+        assert "::ffff:10.0.0.0/104" in messages[1] and "10.0.0.0/8" in messages[1]
+
     def test_unparseable_client_ip_returns_false(self):
         """When client IP can't be parsed, proxy is not trusted."""
         middleware = self._make_middleware(["10.0.0.0/8"])
