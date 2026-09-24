@@ -36,8 +36,11 @@ from sqlalchemy.orm import Session
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
 from mlflow_oidc_auth.entities import User
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.ownership import MANUAL, Enforcement, OwnershipDecision, evaluate_group_write, evaluate_write
 from mlflow_oidc_auth.repository.utils import get_group, get_user
+
+logger = get_logger()
 
 #: What a membership removal changes, for :func:`evaluate_write`. Not in ``LOGIN_WRITABLE_FIELDS``:
 #: a login may re-assert a directory-owned user's admin flag, never remove the directory's grants.
@@ -206,22 +209,43 @@ def _foreign_sync_row(row: SqlUserGroup, written_by: Optional[str], admin_overri
     **A sync never removes another source's membership, in any mode** — only its own and unowned
     (``manual``) ones. Every membership that predates ownership is ``manual``, so a deployment that
     changes nothing sees no change, while a directory's memberships stop vanishing at each sign-in
-    (Entra and Okta do not re-send a membership they believe exists). The skipped row is recorded as
-    a conflict under ``report`` and ``enforce``; ``off`` skips it silently. An administrator override
-    is the one exception: it removes, and is recorded.
+    (Entra and Okta do not re-send a membership they believe exists). The skipped row is recorded in
+    **every** mode as ``membership.sync_kept`` — a success, not a denial — and under ``off`` it is
+    also logged, because ``off`` otherwise evaluates nothing. An administrator override is the one
+    exception: it removes, and is recorded.
     """
     owner = row.managed_by or MANUAL
     if owner in (MANUAL, written_by or MANUAL):
         return None
     if admin_override:
         return OwnershipDecision(allowed=True, conflict=True, owner=owner, reason=f"administrator override: removing a membership owned by {owner!r}")
-    enforcement = config.MANAGED_BY_ENFORCEMENT
     return OwnershipDecision(
         allowed=False,
-        conflict=enforcement != Enforcement.OFF,
+        conflict=True,
         owner=owner,
         reason=f"a sync by {written_by or MANUAL!r} removes only its own and unowned memberships, not one owned by {owner!r}; left in place",
     )
+
+
+def _log_kept_under_off(subject: str, outcome: MembershipOutcome, written_by: Optional[str]) -> None:
+    """Once per sync under ``off``: say which foreign memberships were left in place.
+
+    ``off`` evaluates nothing else, so without this a sync keeping another source's rows would be
+    visible only in the audit log. The usual cause is a renamed provider (``oidc:kc`` →
+    ``oidc:keycloak``) or an OIDC → SAML migration: the old rows now look foreign, and
+    ``reconcile-ownership --memberships --from-owner <old> --set-owner <new>`` is the fix.
+    """
+    if config.MANAGED_BY_ENFORCEMENT != Enforcement.OFF:
+        return
+    kept = [c for c in outcome.conflicts if c.kept]
+    if kept:
+        logger.info(
+            "Sync by %s kept %d membership(s) of %s owned by other sources: %s",
+            written_by or MANUAL,
+            len(kept),
+            subject,
+            sorted({c.decision.owner for c in kept}),
+        )
 
 
 class GroupRepository:
@@ -348,9 +372,13 @@ class GroupRepository:
         refused_here = False
         for row, user, group_name in rows:
             decision = _foreign_sync_row(row, written_by, admin_override) if sync else None
-            kept = decision is not None and not decision.allowed
             if decision is None:
                 decision = _evaluate_removal(row, user, written_by, admin_override)
+            # Outside a strict (targeted) write, a row the guard does not permit removing is simply
+            # left in place and the request succeeds — including a hand-made administrator's
+            # membership a SCIM sync may not strip. That is "kept", never "denied": only a refused
+            # targeted removal is a denial.
+            kept = not decision.allowed and not strict
             if decision.conflict:
                 outcome.conflicts.append(MembershipConflict(user.username, group_name, decision, kept=kept))
             if decision.allowed:
@@ -429,6 +457,7 @@ class GroupRepository:
             session.flush()
         # After the commit: the events describe what the database now holds.
         audit_membership_conflicts(outcome, written_by, actor=actor)
+        _log_kept_under_off(f"user {username}", outcome, written_by)
         return outcome
 
     def list_group_members(self, group_name: str) -> List[User]:
@@ -748,6 +777,7 @@ class GroupRepository:
         if group_decision is not None and group_decision.conflict:
             audit_group_conflict(detail["group_name"], group_decision, written_by, actor=actor, operation="group.write")
         audit_membership_conflicts(outcome, written_by, actor=actor)
+        _log_kept_under_off(f"group {detail['group_name']}", outcome, written_by)
         return outcome, detail
 
     def delete_directory_group(
