@@ -77,7 +77,10 @@ permission check.
 1. **Store singleton.** `from mlflow_oidc_auth.store import store`. Never construct a second store.
 2. **New APIs are FastAPI.** Add a router under `mlflow_oidc_auth/routers/`, register it in
    `routers/__init__.py`, and gate it with `Depends()` from `dependencies.py`.
-3. **Middleware order is load-bearing.** Proxy → Auth → Session, set in `app.py`. Do not reorder.
+3. **Middleware order is load-bearing.** Outermost first: Proxy → Session → WorkspaceContext → Auth →
+   Permission, set in `add_middleware_stack()` in `app.py`. Proxy is outermost so a forwarded
+   prefix is known before Auth and Permission decide on the routed path; Session wraps Auth,
+   which reads the session. Do not reorder.
 4. **Flask hooks stay put** unless the task is specifically about them. They are what keeps the
    MLflow UI and API working.
 5. **Deny by default.** A missing permission grant means no access. Never add a fallback that

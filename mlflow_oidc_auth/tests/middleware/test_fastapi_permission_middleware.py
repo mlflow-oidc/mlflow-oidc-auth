@@ -374,9 +374,23 @@ def _create_app_with_auth(username=None, is_admin=False, workspace=None):
     async def assistant_chat():
         return {"response": "hello"}
 
-    @app.get("/api/2.0/mlflow/experiments/list")
-    async def flask_passthrough():
+    @app.get("/api/2.0/mlflow/plugin-native")
+    async def fastapi_route_without_validator():
+        return {"served_by": "fastapi"}
+
+    # Stand-in for MLflow's Flask app, mounted the way ``create_app`` mounts the real one.
+    # The Flask side authorizes on its own, so the permission middleware passes it through.
+    from flask import Flask
+
+    from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
+
+    flask_app = Flask("permission-middleware-test")
+
+    @flask_app.route("/api/2.0/mlflow/experiments/list")
+    def flask_passthrough():
         return {"experiments": []}
+
+    app.mount("/", AuthAwareWSGIMiddleware(flask_app))
 
     # Register permission middleware FIRST (will be inner)
     add_fastapi_permission_middleware(app)
@@ -481,6 +495,30 @@ class TestFastapiPermissionMiddlewareIntegration:
         client = TestClient(app)
         response = client.get("/api/2.0/mlflow/experiments/list")
         assert response.status_code == 200
+
+    def test_unauthenticated_fastapi_route_without_validator_returns_401(self):
+        """A FastAPI route with no validator mapping still requires an authenticated user."""
+        app = self._create_app_with_middleware()
+        client = TestClient(app)
+        response = client.get("/api/2.0/mlflow/plugin-native")
+        assert response.status_code == 401
+
+    def test_authenticated_fastapi_route_without_validator_passes(self):
+        """With a user, a FastAPI route with no validator is left to its own dependencies."""
+        app = _create_app_with_auth(username="user@example.com", is_admin=False)
+        client = TestClient(app)
+        response = client.get("/api/2.0/mlflow/plugin-native")
+        assert response.status_code == 200
+        assert response.json() == {"served_by": "fastapi"}
+
+    def test_unauthenticated_unmatched_path_returns_401(self):
+        """A path no route serves is not passed through unauthenticated either."""
+        app = FastAPI()
+        from mlflow_oidc_auth.middleware.fastapi_permission_middleware import add_fastapi_permission_middleware
+
+        add_fastapi_permission_middleware(app)
+        response = TestClient(app).get("/api/2.0/mlflow/not-a-route")
+        assert response.status_code == 401
 
     def test_authenticated_user_jobs_passes(self):
         """Test that any authenticated user passes jobs check."""

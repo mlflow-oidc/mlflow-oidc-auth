@@ -84,7 +84,7 @@ Fields for an entry with `"type": "saml"` (requires the `[saml]` extra). They ar
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `SECRET_KEY` | String | Auto-generated | Secret key used to sign session cookies. **All replicas must share the same value** in multi-instance deployments. If not set, a random key is generated on startup and a warning is logged — sessions will not survive restarts or work across replicas |
-| `TRUSTED_PROXIES` | String (CSV) | Empty (trust all) | Comma-separated list of trusted proxy IP addresses or CIDR ranges (e.g., `10.0.0.0/8,172.16.0.0/12`). When configured, `X-Forwarded-*` headers from untrusted sources are ignored. When empty, all proxy headers are trusted for backward compatibility |
+| `TRUSTED_PROXIES` | String (CSV) | Empty (trust all) | Comma-separated list of trusted proxy IP addresses or CIDR ranges (e.g., `10.0.0.0/8,172.16.0.0/12`). When configured, `X-Forwarded-*` headers from untrusted sources are ignored; a value with no valid entry trusts no source. When empty, all proxy headers are trusted for backward compatibility and a warning is logged at startup. **Production deployments behind a reverse proxy must set this** to the proxy's address or range — see [Reverse proxies](#reverse-proxies) |
 | `AUTOMATIC_LOGIN_REDIRECT` | Boolean | `false` | When `true`, unauthenticated browser requests are automatically redirected to the OIDC login page instead of showing the login UI |
 
 ### UI Behavior
@@ -402,6 +402,27 @@ Additional session cookie settings:
 | `SESSION_COOKIE_SAMESITE` | String | `lax` | SameSite flag prevents the browser from sending session cookie along with cross-site requests |
 | `SESSION_COOKIE_SECURE` | Boolean | `false` | Indicate that the "Secure" flag should be set (can be used with HTTPS only), set this to `true` in production to ensure the session cookie is only sent over HTTPS |
 | `SAML_LOGIN_BINDING` | String | `auto` | Binds a SAML login to the browser that started it with a short-lived `HttpOnly; Secure; SameSite=None` nonce cookie scoped to the ACS (login-CSRF defence). `auto`: on iff `SESSION_COOKIE_SECURE=true`; `on`: forced even over http (loopback test rigs only, logged as a warning); `off`: disabled. Any other value refuses to start. See [SAML: browser binding](saml-auth.md#browser-binding) |
+
+## Reverse proxies
+
+`ProxyHeadersMiddleware` applies `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port`
+and `X-Forwarded-Prefix` to each request so redirects and callback URLs are built correctly
+behind a proxy, and so a deployment served under a sub-path (for example `/mlflow`) routes
+correctly. Authorization is always decided on the routed path — the request path with the
+forwarded prefix removed — which is the same path the application dispatches on.
+
+These headers are only meaningful when they come from your proxy. Set `TRUSTED_PROXIES` to the
+proxy's address or CIDR range in every production deployment behind a reverse proxy:
+
+```bash
+TRUSTED_PROXIES=10.0.0.0/8
+```
+
+When `TRUSTED_PROXIES` is unset, the headers are honoured from every client (the default, kept
+for backward compatibility) and a warning is logged once at startup. When it is set, headers
+from any other client are ignored; a value in which no entry parses as an address or range
+trusts no client at all. Make sure the proxy overwrites, rather than appends to, any
+`X-Forwarded-*` header a client sends.
 
 ## Upgrading to this release
 
