@@ -1,9 +1,9 @@
 """Every route MLflow serves must be accounted for by the authorization layer (#286, #291).
 
-A route with no validator is not denied — ``before_request_hook`` falls through and MLflow
-serves it. That is how HEAD (#286), ``runs/log-inputs``, ``runs/outputs`` and MLflow's
-native webhook CRUD (#291) went unchecked. Adding entries one at a time after each report
-has not been durable, so these tests sweep the WHOLE surface instead:
+``before_request_hook`` refuses a non-admin request on a route that has no validator, no
+response filter and no entry on the open list (``hooks/route_policy.py``). That makes a
+missing validator a denial rather than an unchecked route, but a denial is still a broken
+feature for the users who should have access, so these tests sweep the WHOLE surface:
 
 * ``test_every_flask_route_is_accounted_for`` walks every rule in MLflow's Flask
   ``url_map`` and every method it serves (HEAD folded onto GET, exactly as the hook does).
@@ -23,31 +23,13 @@ from flask import request
 from mlflow.server import app as mlflow_app
 from mlflow.server.handlers import get_endpoints
 
-from mlflow_oidc_auth.hooks import after_request, before_request
+from mlflow_oidc_auth.hooks import before_request
 from mlflow_oidc_auth.hooks.http_method import authorization_method
+from mlflow_oidc_auth.hooks.route_policy import LEGITIMATELY_OPEN, is_filtered_in_after_request
 
-# Routes that are open by design. Every entry needs a reason.
-LEGITIMATELY_OPEN = (
-    # The MLflow web UI shell and its bundled static assets. No tenant data.
-    ("/", ("GET",)),
-    ("/build/<path:filename>", ("GET",)),
-    # MLflow's version string.
-    ("/version", ("GET",)),
-    # Server capability flags the UI reads at start-up (e.g. which store backs it).
-    ("/api/3.0/mlflow/server-info", ("GET",)),
-    ("/ajax-api/3.0/mlflow/server-info", ("GET",)),
-    # UI usage-telemetry config and event sink. Carries no tracking data.
-    ("/ajax-api/3.0/mlflow/ui-telemetry", ("GET", "POST")),
-    # GraphQL is authorized per field by our own middleware
-    # (install_mlflow_graphql_authorization_middleware in app.py), not by a route validator.
-    ("/graphql", ("GET", "POST")),
-    # Bound by MLflow to its `_not_implemented` handler: they answer 501 and serve nothing.
-    # test_not_implemented_routes_really_are pins that.
-    ("/api/2.0/mlflow/unified-traces", ("GET",)),
-    ("/ajax-api/2.0/mlflow/unified-traces", ("GET",)),
-    ("/api/2.0/mlflow/get-online-trace-details", ("GET",)),
-    ("/ajax-api/2.0/mlflow/get-online-trace-details", ("GET",)),
-)
+# Routes that are open by design live in production code (hooks/route_policy.py), which
+# before_request_hook consults before refusing a route with no validator. Importing the
+# same list here means the sweep and the hook cannot disagree about what is open.
 
 # Artifact routes without the /mlflow-artifacts/ marker. Tracked in #289 and fixed in the
 # next change of this stack; listed here so this sweep does not block on them.
@@ -102,8 +84,7 @@ def _classify(rule_path: str, method: str) -> str | None:
         if before_request._is_proxy_artifact_path(path):
             # Unrecognised artifact routes are denied by the hook, so any match is gated.
             return "artifact-proxy"
-    handler = after_request.AFTER_REQUEST_HANDLERS.get((rule_path, method))
-    if handler is not None and handler.__name__.startswith("_filter_"):
+    if is_filtered_in_after_request(rule_path, method):
         return "filtered"
     return None
 

@@ -185,6 +185,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.hooks.dual_spelling_guard import find_dual_spelling_collision, has_unexpected_get_body
 from mlflow_oidc_auth.hooks.http_method import authorization_method
+from mlflow_oidc_auth.hooks.route_policy import is_filtered_in_after_request, is_legitimately_open, strip_static_prefix
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators import (
     validate_can_create_experiment,
@@ -1004,9 +1005,32 @@ def before_request_hook():
             return responses.make_forbidden_response()
         if not validator(username):
             return responses.make_forbidden_response()
+    elif not _served_without_validator(request):
+        # AGENTS rule 6: a route MLflow serves with no validator, no response filter and no
+        # entry on the open list is refused to non-admins rather than served unchecked.
+        logger.warning(f"Denying {request.method} {request.path} for {username}: route has no authorization rule")
+        return responses.make_forbidden_response()
 
 
 before_request_hook = catch_mlflow_exception(before_request_hook)
+
+
+def _served_without_validator(req: Request) -> bool:
+    """True if a non-admin may reach this route although no validator matched it.
+
+    That is the case when Flask will not dispatch to a view at all (no matching rule: 404
+    or 405; or an OPTIONS Flask answers itself), when the route is on the open list in
+    ``route_policy``, when ``after_request`` filters its response, or when it sits under an
+    unprotected prefix once MLflow's static prefix is removed. Everything else is refused.
+    """
+    rule = req.url_rule
+    if rule is None:
+        return True
+    if req.method == "OPTIONS" and rule.provide_automatic_options:
+        return True
+    rule_path = str(rule.rule)
+    method = authorization_method(req.method)
+    return is_legitimately_open(rule_path, method) or is_filtered_in_after_request(rule_path, method) or _is_unprotected_route(strip_static_prefix(rule_path))
 
 
 def _stash_gateway_context(validator) -> None:
