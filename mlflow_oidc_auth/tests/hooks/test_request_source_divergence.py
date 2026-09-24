@@ -634,23 +634,15 @@ def test_parser_edge_shapes_are_denied(union_world, path, method, query, data, c
     assert resp is not None and resp.status_code in (400, 403), resp
 
 
-def test_scorer_name_half_of_the_key_is_also_unioned(union_world, monkeypatch):
+def test_scorer_name_half_of_the_key_is_also_unioned(union_world):
     """A scorer is keyed by (experiment_id, name); the name half must be unioned too.
 
-    Resolution is stubbed per (experiment, name) here because the permission cache keys
-    scorer results by experiment id only (resource_type:experiment_id:user), so two
-    scorer names in one experiment share a cached decision. That is a separate,
-    pre-existing defect; this test pins what the validator asks for.
+    Runs against the real store AND the real permission cache: both scorers live in the
+    same experiment and are resolved in the same request, i.e. within one cache TTL.
+    Before the cache key carried the scorer name, the first scorer's MANAGE was served
+    for the second and this request was allowed.
     """
-    from mlflow_oidc_auth.permissions import get_permission
-
-    asked = []
-
-    def scorer_permission(experiment_id, scorer_name, user):
-        asked.append((experiment_id, scorer_name))
-        return SimpleNamespace(permission=get_permission("MANAGE" if scorer_name == "scorer" else "NO_PERMISSIONS"))
-
-    monkeypatch.setattr("mlflow_oidc_auth.validators.scorers.effective_scorer_permission", scorer_permission)
+    union_world.create_scorer_permission(OWN, "theirs", USER, "NO_PERMISSIONS")
     resp = _raw_hook(
         "/api/3.0/mlflow/scorers/delete",
         "DELETE",
@@ -659,7 +651,6 @@ def test_scorer_name_half_of_the_key_is_also_unioned(union_world, monkeypatch):
         content_type="application/json",
     )
     assert resp is not None and resp.status_code == 403
-    assert asked == [(OWN, "scorer"), (OWN, "theirs")]
 
 
 @pytest.mark.parametrize(
