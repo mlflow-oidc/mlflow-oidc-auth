@@ -209,6 +209,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_logged_model,
     validate_can_update_registered_model,
     validate_can_update_run,
+    validate_can_log_metrics,
     validate_can_read_experiments_from_experiment_ids,
     validate_can_update_experiment_from_experiment_id,
     validate_can_read_metric_history_bulk_interval,
@@ -362,8 +363,9 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteRun: validate_can_delete_run,
     RestoreRun: validate_can_delete_run,
     UpdateRun: validate_can_update_run,
-    LogMetric: validate_can_update_run,
-    LogBatch: validate_can_update_run,
+    # UPDATE on the run, plus UPDATE on any logged model the metrics are written to.
+    LogMetric: validate_can_log_metrics,
+    LogBatch: validate_can_log_metrics,
     # Attach datasets / logged-model outputs to a run: a write on that run (#291).
     LogInputs: validate_can_update_run,
     LogOutputs: validate_can_update_run,

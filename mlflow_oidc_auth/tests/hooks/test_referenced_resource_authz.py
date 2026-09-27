@@ -141,3 +141,76 @@ def test_create_model_version_still_needs_update_on_the_destination():
 
 def test_create_model_version_admin_is_not_checked():
     assert allowed(_create_version(ADMIN, run_id="run-victim"))
+
+
+# ---------------------------------------------------------------------------
+# LogMetric / LogBatch: UPDATE on the logged model the metric is written to
+# ---------------------------------------------------------------------------
+
+LOG_METRIC = "{}/2.0/mlflow/runs/log-metric"
+LOG_BATCH = "{}/2.0/mlflow/runs/log-batch"
+
+
+def _metric(**fields):
+    return {"key": "loss", "value": 0.1, "timestamp": 1, "step": 0, **fields}
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize("fields", [{}, {"model_id": "m-own"}, {"modelId": "m-own"}])
+def test_log_metric_to_updatable_logged_model_is_allowed(prefix, fields):
+    body = {"run_id": "run-own", **_metric(**fields)}
+    assert allowed(hook(LOG_METRIC.format(prefix), "POST", OUTSIDER, body=body))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize("fields", [{"model_id": "m-victim"}, {"modelId": "m-victim"}, {"model_id": "m-gone"}])
+def test_log_metric_to_other_logged_model_is_denied(prefix, fields):
+    body = {"run_id": "run-own", **_metric(**fields)}
+    assert denied(hook(LOG_METRIC.format(prefix), "POST", OUTSIDER, body=body))
+
+
+def test_log_metric_logged_model_in_query_string_is_also_checked():
+    body = {"run_id": "run-own", **_metric()}
+    assert denied(hook(LOG_METRIC.format("/api"), "POST", OUTSIDER, body=body, query={"model_id": "m-victim"}))
+
+
+def test_log_metric_read_on_logged_model_is_not_enough():
+    """READER can read the victim experiment but not write to it."""
+    body = {"run_id": "run-victim", **_metric(model_id="m-victim")}
+    assert denied(hook(LOG_METRIC.format("/api"), "POST", READER, body=body))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize(
+    "metrics",
+    [
+        [_metric()],
+        [_metric(model_id="m-own")],
+        [_metric(), _metric(modelId="m-own")],
+    ],
+)
+def test_log_batch_to_updatable_logged_models_is_allowed(prefix, metrics):
+    assert allowed(hook(LOG_BATCH.format(prefix), "POST", OUTSIDER, body={"run_id": "run-own", "metrics": metrics}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize(
+    "metrics",
+    [
+        [_metric(model_id="m-victim")],
+        [_metric(model_id="m-own"), _metric(model_id="m-victim")],
+        [_metric(modelId="m-victim")],
+        [_metric(model_id="m-gone")],
+    ],
+)
+def test_log_batch_to_other_logged_model_is_denied(prefix, metrics):
+    assert denied(hook(LOG_BATCH.format(prefix), "POST", OUTSIDER, body={"run_id": "run-own", "metrics": metrics}))
+
+
+def test_log_batch_still_needs_update_on_the_run():
+    assert denied(hook(LOG_BATCH.format("/api"), "POST", OUTSIDER, body={"run_id": "run-victim", "metrics": [_metric()]}))
+
+
+def test_log_batch_admin_is_not_checked():
+    body = {"run_id": "run-victim", "metrics": [_metric(model_id="m-victim")]}
+    assert allowed(hook(LOG_BATCH.format("/api"), "POST", ADMIN, body=body))

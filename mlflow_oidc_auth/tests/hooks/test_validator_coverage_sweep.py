@@ -175,13 +175,21 @@ def test_every_mutating_proto_is_gated():
     assert not gaps, "mutating protos reaching no validator:\n" + "\n".join(gaps)
 
 
-def test_log_inputs_and_outputs_are_gated_like_log_batch():
-    """The two #291 protos must share LogBatch's validator, not merely have one."""
-    from mlflow.protos.service_pb2 import LogBatch, LogInputs, LogOutputs
+def test_log_inputs_and_outputs_are_gated_like_run_writes():
+    """The two #291 protos must need UPDATE on the run, not merely have a validator.
+
+    LogBatch and LogMetric additionally check the logged models their metrics are written
+    to, so they have a validator of their own that starts with the same run check.
+    """
+    from mlflow.protos.service_pb2 import LogBatch, LogInputs, LogMetric, LogOutputs
+
+    from mlflow_oidc_auth.validators import validate_can_log_metrics, validate_can_update_run
 
     handlers = before_request.BEFORE_REQUEST_HANDLERS
-    assert handlers[LogInputs] is handlers[LogBatch]
-    assert handlers[LogOutputs] is handlers[LogBatch]
+    assert handlers[LogInputs] is validate_can_update_run
+    assert handlers[LogOutputs] is validate_can_update_run
+    assert handlers[LogBatch] is validate_can_log_metrics
+    assert handlers[LogMetric] is validate_can_log_metrics
 
 
 def test_deliberately_unmapped_mutations_are_real_protos():

@@ -26,6 +26,7 @@ from mlflow_oidc_auth.validators.registered_model import (
 )
 from mlflow_oidc_auth.validators.run import (
     validate_can_delete_run,
+    validate_can_log_metrics,
     validate_can_read_run,
     validate_can_update_run,
     validate_can_read_metric_history_bulk_interval,
@@ -142,6 +143,7 @@ __all__ = [
     "validate_can_manage_registered_model",
     "validate_can_create_registered_model",
     "validate_can_create_model_version",
+    "validate_can_log_metrics",
     "validate_can_delete_registered_model",
     "validate_can_delete_logged_model",
     "validate_can_read_logged_model",
