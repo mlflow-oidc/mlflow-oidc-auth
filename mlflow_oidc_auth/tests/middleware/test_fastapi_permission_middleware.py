@@ -520,12 +520,12 @@ class TestFastapiPermissionMiddlewareIntegration:
         response = TestClient(app).get("/api/2.0/mlflow/not-a-route")
         assert response.status_code == 401
 
-    def test_authenticated_user_jobs_passes(self):
-        """Test that any authenticated user passes jobs check."""
+    def test_authenticated_user_other_method_on_jobs_prefix_is_denied(self):
+        """Only POST (submit) is served on the job API prefix; other methods are refused."""
         app = _create_app_with_auth(username="user@example.com", is_admin=False)
         client = TestClient(app)
         response = client.get("/ajax-api/3.0/jobs")
-        assert response.status_code == 200
+        assert response.status_code == 403
 
     def test_authenticated_user_assistant_passes(self):
         """Test that any authenticated user passes assistant check."""
@@ -763,8 +763,9 @@ def _create_jobs_app(username, is_admin=False, jobs=None):
     app = FastAPI()
 
     @app.post("/ajax-api/3.0/jobs/")
-    async def submit_job():
-        return {"job_id": "new"}
+    async def submit_job(request: Request):
+        # Echo the body so tests can see it still reaches the handler after authorization.
+        return {"job_id": "new", "received": await request.json()}
 
     @app.post("/ajax-api/3.0/jobs/search")
     async def search_jobs():
@@ -842,9 +843,28 @@ class TestJobOwnership:
         assert response.status_code == 200
         get_job.assert_not_called()
 
-    def test_any_authenticated_user_can_submit(self):
-        response = _create_jobs_app("bob@example.com").post("/ajax-api/3.0/jobs/", json={})
+    def test_submit_allowed_when_payload_is_authorized(self):
+        payload = {"job_name": "invoke_scorer", "params": {"experiment_id": "1", "serialized_scorer": "{}", "trace_ids": []}}
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_submit_job", return_value=True) as check:
+            response = _create_jobs_app("bob@example.com").post("/ajax-api/3.0/jobs/", json=payload)
         assert response.status_code == 200
+        assert response.json()["received"] == payload
+        check.assert_called_once_with(payload, "bob@example.com")
+
+    def test_submit_denied_when_payload_is_not_authorized(self):
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_submit_job", return_value=False):
+            response = _create_jobs_app("bob@example.com").post("/ajax-api/3.0/jobs/", json={"job_name": "invoke_scorer", "params": {}})
+        assert response.status_code == 403
+
+    def test_submit_with_unparseable_body_is_denied(self):
+        response = _create_jobs_app("bob@example.com").post("/ajax-api/3.0/jobs/", content=b"not json", headers={"content-type": "application/json"})
+        assert response.status_code == 403
+
+    def test_admin_submit_is_not_checked(self):
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_submit_job", return_value=False) as check:
+            response = _create_jobs_app("root@example.com", is_admin=True).post("/ajax-api/3.0/jobs/", json={"job_name": "x", "params": {}})
+        assert response.status_code == 200
+        check.assert_not_called()
 
     def test_search_path_with_other_method_is_denied(self):
         response = _create_jobs_app("bob@example.com").get("/ajax-api/3.0/jobs/search")

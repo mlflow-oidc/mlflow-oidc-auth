@@ -530,6 +530,11 @@ for deployments behind a reverse proxy.
   submitted it, and `jobs/search` returns only the caller's own jobs. Previously any
   authenticated user could do both for every job. Jobs with no recorded creator (submitted
   before MLflow recorded one, or on an MLflow release that does not) are visible to admins only.
+  Submitting a job (`POST /ajax-api/3.0/jobs/`) now requires the permissions its parameters
+  call for: EDIT on every experiment the job acts on, directly or through a run or trace. A job
+  function the plugin does not classify is admin-only. Previously any authenticated user could
+  submit any allowed job with any parameters. MLflow's own UI starts these jobs through
+  experiment-scoped routes, which are unchanged.
   Admins are unaffected. See [Job API](permissions#job-api).
 - **`ListScorers` is filtered per scorer.** Listing scorers without an `experiment_id`, which
   MLflow answers with the scorers of every active experiment, is now allowed for any

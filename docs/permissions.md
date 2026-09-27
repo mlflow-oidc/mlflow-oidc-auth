@@ -274,9 +274,24 @@ auth plugin. Admins are not restricted.
 
 | Route | Permission required |
 |---|---|
-| `POST jobs/` (submit) | any authenticated user; the caller is recorded as the creator |
+| `POST jobs/` (submit) | depends on the job function in `job_name`, see below; the caller is recorded as the creator |
 | `GET jobs/<job_id>`, `PATCH jobs/cancel/<job_id>` | the caller is the job's creator; a job that does not exist or has no recorded creator is refused |
 | `POST jobs/search` | any authenticated user; the results contain only the jobs the caller created |
+
+A submission is authorized against the resources its `params` name. Every experiment the job
+acts on needs EDIT, whether named directly or through a run or trace in the params. A trace,
+run or dataset that cannot be resolved is refused.
+
+| `job_name` | Permission required |
+|---|---|
+| `invoke_scorer` | EDIT on `experiment_id` and on the experiment of every trace in `trace_ids`; `username`, if given, must be the caller |
+| `run_online_trace_scorer`, `run_online_session_scorer` | EDIT on `experiment_id` and on every scorer named in `online_scorers` |
+| `invoke_issue_detection` | EDIT on `experiment_id`, on the experiment of `run_id` and of every trace in `trace_ids`; USE on the endpoint when `model` is `gateway:/<endpoint>` |
+| `invoke_genai_evaluate` | EDIT on the experiment of `run_id`, of every trace in `trace_ids`, and on `experiment_id` if given; `username`, if given, must be the caller |
+| `optimize_prompts` | EDIT on `experiment_id` and on the experiment of `run_id`; EDIT on the prompt in `prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`), which the job registers a new version of; READ on every experiment linked to `dataset_id`, if given |
+| any other job function | admin only |
+
+A parameter the job function does not declare, or a value of the wrong type, is refused.
 
 The UI jobs under `ajax-api/3.0/mlflow/jobs/…` are a separate family, authorized through their
 experiment (see [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes)).

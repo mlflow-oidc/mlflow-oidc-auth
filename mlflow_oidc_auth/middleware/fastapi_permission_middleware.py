@@ -27,6 +27,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
 from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
+from mlflow_oidc_auth.validators.job_submission import can_submit_job
 
 logger = get_logger()
 
@@ -208,8 +209,10 @@ def _get_job_validator(path: str) -> Callable[[str, Request], Awaitable[bool]]:
     Jobs carry no experiment scope on this API, so the recorded creator is the boundary, as in
     MLflow's own auth plugin: fetching or cancelling a job by id requires being its creator
     (admins never reach the validator). A job that does not exist or has no recorded creator is
-    denied. Submitting a job and searching jobs need only authentication; search results are
-    narrowed to the caller's own jobs after the handler runs.
+    denied. Searching jobs needs only authentication; the results are narrowed to the caller's
+    own jobs after the handler runs. Submitting a job (``POST`` on the prefix) is authorized
+    against the resources its params name (see ``validators.job_submission``). Any other method
+    on the prefix is refused.
     """
     job_id = _job_id_from_path(path)
 
@@ -217,7 +220,13 @@ def _get_job_validator(path: str) -> Callable[[str, Request], Awaitable[bool]]:
         if job_id is None:
             if path[len(_JOBS_PREFIX) :].strip("/") == "search":
                 return _is_job_search(path, request)
-            return True
+            if request.method != "POST":
+                return False
+            try:
+                payload = await request.json()
+            except Exception:
+                return False
+            return can_submit_job(payload, username)
         creator = _job_creator(job_id)
         return creator is not None and creator == username
 
