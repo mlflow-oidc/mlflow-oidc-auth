@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { http, extractErrorMessage, _resetReauthForTests } from "./http";
+import {
+  http,
+  httpWithStatus,
+  extractErrorMessage,
+  _resetReauthForTests,
+} from "./http";
 
 vi.mock("../../shared/context/active-workspace", () => ({
   getActiveWorkspace: vi.fn(() => null),
@@ -125,6 +130,52 @@ describe("http", () => {
         credentials: "include",
       }),
     );
+  });
+
+  describe("httpWithStatus", () => {
+    it("returns the parsed body alongside a 201 status", async () => {
+      const mockResponse = { message: "created" };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 201,
+        statusText: "Created",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(mockResponse),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      } as Response);
+
+      const result = await httpWithStatus("/test");
+      expect(result).toEqual({ data: mockResponse, status: 201 });
+    });
+
+    it("returns the parsed body alongside a 200 status", async () => {
+      const mockResponse = { message: "already exists" };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(mockResponse),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      } as Response);
+
+      const result = await httpWithStatus("/test");
+      expect(result).toEqual({ data: mockResponse, status: 200 });
+    });
+
+    it("still throws on error status, same as http()", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        headers: new Headers(),
+        text: () => Promise.resolve('{"detail": "bad name"}'),
+      } as Response);
+
+      await expect(httpWithStatus("/test")).rejects.toThrow(
+        'HTTP 400: {"detail": "bad name"}',
+      );
+    });
   });
 
   describe("401 reauth redirect", () => {
