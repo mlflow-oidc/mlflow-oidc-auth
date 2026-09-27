@@ -2,7 +2,7 @@ import {
   createStaticApiFetcher,
   createDynamicApiFetcher,
 } from "./create-api-fetcher.ts";
-import { request } from "./api-utils";
+import { requestWithStatus } from "./api-utils";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import type {
   EntityPermission,
@@ -31,14 +31,21 @@ export const fetchAllGroupDetails = createStaticApiFetcher<GroupDetails[]>({
 /**
  * Create a group up front, admin-only (issues #64, #201). Idempotent: creating a group that
  * already exists (including one a directory already owns) succeeds without changing it.
+ *
+ * `status` is 201 when this call created the group and 200 when it already existed — the caller
+ * uses it rather than the response message to tell the two apart.
  */
 export const createGroup = async (
   groupName: string,
-): Promise<{ message: string }> => {
-  return request<{ message: string }>(STATIC_API_ENDPOINTS.ALL_GROUPS, {
-    method: "POST",
-    body: JSON.stringify({ group_name: groupName }),
-  });
+): Promise<{ message: string; status: number }> => {
+  const { data, status } = await requestWithStatus<{ message: string }>(
+    STATIC_API_ENDPOINTS.ALL_GROUPS,
+    {
+      method: "POST",
+      body: JSON.stringify({ group_name: groupName }),
+    },
+  );
+  return { message: data.message, status };
 };
 
 export const fetchAllExperiments = createStaticApiFetcher<ExperimentListItem[]>(

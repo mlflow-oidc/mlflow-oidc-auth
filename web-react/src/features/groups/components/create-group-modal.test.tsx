@@ -32,9 +32,10 @@ describe("CreateGroupModal", () => {
     expect(screen.getByRole("button", { name: "Create" })).not.toBeDisabled();
   });
 
-  it("creates the group and calls onCreated on success", async () => {
+  it("shows 'created' and calls onCreated when the backend returns 201", async () => {
     vi.spyOn(entityService, "createGroup").mockResolvedValue({
       message: "Group data-team successfully created",
+      status: 201,
     });
     const onCreated = vi.fn();
 
@@ -61,9 +62,44 @@ describe("CreateGroupModal", () => {
     );
   });
 
-  it("shows an error toast and does not call onCreated when the request fails", async () => {
+  it("shows 'already exists' (not 'created') when the backend returns 200", async () => {
+    vi.spyOn(entityService, "createGroup").mockResolvedValue({
+      message: "Group data-team already exists",
+      status: 200,
+    });
+    const onCreated = vi.fn();
+
+    render(
+      <CreateGroupModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onCreated={onCreated}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Group name\*/i), {
+      target: { value: "data-team" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalled();
+    });
+    expect(showToast).toHaveBeenCalledWith(
+      'Group "data-team" already exists',
+      "success",
+    );
+    expect(showToast).not.toHaveBeenCalledWith(
+      expect.stringContaining("created"),
+      expect.anything(),
+    );
+  });
+
+  it("shows the backend's error message and does not call onCreated on a 400", async () => {
     vi.spyOn(entityService, "createGroup").mockRejectedValue(
-      new Error("Group name must not contain '/', '?', '#' or '%'"),
+      new Error(
+        `HTTP 400: ${JSON.stringify({ detail: "Group name must not contain '/', '?', '#' or '%'" })}`,
+      ),
     );
     const onCreated = vi.fn();
 
@@ -82,6 +118,35 @@ describe("CreateGroupModal", () => {
 
     await waitFor(() => {
       expect(entityService.createGroup).toHaveBeenCalledWith("bad/name");
+    });
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      "Group name must not contain '/', '?', '#' or '%'",
+      "error",
+    );
+  });
+
+  it("falls back to a generic error message when the failure carries no detail", async () => {
+    vi.spyOn(entityService, "createGroup").mockRejectedValue(
+      new Error("Network error"),
+    );
+    const onCreated = vi.fn();
+
+    render(
+      <CreateGroupModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onCreated={onCreated}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Group name\*/i), {
+      target: { value: "data-team" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(entityService.createGroup).toHaveBeenCalledWith("data-team");
     });
     expect(onCreated).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith("Failed to create group", "error");

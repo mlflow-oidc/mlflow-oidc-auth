@@ -5,10 +5,9 @@ This router handles permission management endpoints for groups, including
 experiment, model, and prompt permissions at the group level.
 """
 
-import unicodedata
 from typing import List
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Response
 from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
@@ -48,6 +47,7 @@ from mlflow_oidc_auth.utils import (
     get_is_admin,
     get_username,
 )
+from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
 
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
@@ -65,38 +65,27 @@ GROUPS_ROOT = ""
 # Matched before the "/{group_name:path}/..." routes only because none of them is a bare name.
 LIST_GROUP_DETAILS = "/details"
 
-#: Same bound SCIM enforces on a group's ``displayName`` (``routers/scim.py``): the two ways of
-#: creating a group must accept the same names.
-MAX_GROUP_NAME_LENGTH = 255
-#: A group name becomes a path segment (this router's ``{group_name:path}`` and SCIM's
-#: ``/Groups/{id}``), so none of these may appear in it.
-_GROUP_NAME_RESERVED_CHARS = frozenset("/?#%")
-
 
 def _validate_group_name(value: str) -> str:
     """Validate and normalize a group name for the admin create-group endpoint.
 
-    Mirrors the SCIM ``displayName`` validation in ``routers/scim.py`` so a group created through
+    Delegates to :func:`~mlflow_oidc_auth.utils.group_name.validate_group_name_chars`, the same
+    rule SCIM's ``displayName`` validation (``routers/scim.py``) uses, so a group created through
     either path is held to the same rule: stripped, non-empty, at most
-    :data:`MAX_GROUP_NAME_LENGTH` characters, no control or non-printing characters, valid
-    Unicode, and none of ``/ ? # %``.
+    :data:`~mlflow_oidc_auth.utils.group_name.MAX_GROUP_NAME_LENGTH` characters, no control or
+    non-printing characters, valid Unicode, and none of ``/ ? # %`` (this router's
+    ``{group_name:path}`` route parameter, like SCIM's ``/Groups/{id}``, would otherwise treat one
+    of those as a path separator or query delimiter).
 
     :param value: The raw, client-supplied group name.
     :return: The stripped, validated group name.
     :raises HTTPException: With status 400 if the name fails any of these checks.
     """
-    name = value.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Group name must not be empty")
-    if len(name) > MAX_GROUP_NAME_LENGTH:
-        raise HTTPException(status_code=400, detail=f"Group name must be at most {MAX_GROUP_NAME_LENGTH} characters")
-    if any(unicodedata.category(ch).startswith("C") for ch in name):
-        raise HTTPException(status_code=400, detail="Group name must not contain control or non-printing characters")
     try:
-        name.encode("utf-8")
-    except UnicodeError:
-        raise HTTPException(status_code=400, detail="Group name is not valid Unicode")
-    if any(ch in _GROUP_NAME_RESERVED_CHARS for ch in name):
+        name = validate_group_name_chars(value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Group name {e}")
+    if any(ch in GROUP_NAME_RESERVED_CHARS for ch in name):
         raise HTTPException(status_code=400, detail="Group name must not contain '/', '?', '#' or '%'")
     return name
 
@@ -187,12 +176,14 @@ async def list_groups(username: str = Depends(get_username)) -> GroupListRespons
     GROUPS_ROOT,
     summary="Create a group",
     description="Creates a group in the system. Only admins can create groups. Creating a group that already exists is a no-op.",
+    response_model=StatusMessageResponse,
     tags=["groups"],
 )
 async def create_group(
+    response: Response,
     group_request: CreateGroupRequest = Body(..., description="Group creation details"),
     admin_username: str = Depends(check_admin_permission),
-) -> JSONResponse:
+) -> StatusMessageResponse:
     """
     Create a group in the system.
 
@@ -203,6 +194,9 @@ async def create_group(
 
     Parameters:
     -----------
+    response : Response
+        The FastAPI response, used to set 201 on creation and leave the default 200 otherwise
+        (injected by dependency).
     group_request : CreateGroupRequest
         The group creation request containing the group name.
     admin_username : str
@@ -210,8 +204,8 @@ async def create_group(
 
     Returns:
     --------
-    JSONResponse
-        A JSON response reporting whether the group was created or already existed.
+    StatusMessageResponse
+        A message reporting whether the group was created or already existed.
 
     Raises:
     -------
@@ -221,21 +215,27 @@ async def create_group(
     group_name = _validate_group_name(group_request.group_name)
 
     try:
-        if group_name in store.get_groups():
-            return JSONResponse(content={"message": f"Group {group_name} already exists"})
+        # A targeted lookup, not the full group list: existence is all this needs.
+        if store.get_group_detail(group_name, with_members=False) is not None:
+            return StatusMessageResponse(message=f"Group {group_name} already exists")
 
         # Same idempotent, ownership-aware upsert the login flow uses (GroupRepository.create_groups):
-        # a group created concurrently between the lookup above and this call is not an error, and a
-        # group already owned by another source (e.g. SCIM) keeps that ownership untouched.
-        store.populate_groups([group_name], written_by=MANUAL)
+        # a group already owned by another source (e.g. SCIM) keeps that ownership untouched. A
+        # concurrent creation of this same name (e.g. a member's first login racing this request)
+        # is tolerated inside create_groups and reported back here as "not created by this call",
+        # so this request still returns 200 rather than surfacing the race as an error.
+        created = store.populate_groups([group_name], written_by=MANUAL)
+        if group_name not in created:
+            return StatusMessageResponse(message=f"Group {group_name} already exists")
+
         emit_audit_event(
             "group.create",
             actor=admin_username,
             resource_type="group",
             resource_id=group_name,
         )
-
-        return JSONResponse(content={"message": f"Group {group_name} successfully created"}, status_code=201)
+        response.status_code = 201
+        return StatusMessageResponse(message=f"Group {group_name} successfully created")
 
     except HTTPException:
         raise

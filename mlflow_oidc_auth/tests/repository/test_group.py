@@ -44,13 +44,42 @@ def test_create_group_integrity_error(repo, session):
 
 
 def test_create_groups(repo, session):
+    """Only the group that does not already exist is inserted, and it is the one reported back."""
     session.query().filter().first.side_effect = [None, MagicMock()]
     session.add = MagicMock()
-    session.flush = MagicMock()
     with patch("mlflow_oidc_auth.db.models.SqlGroup", return_value=MagicMock()):
-        repo.create_groups(["g3", "g4"])
+        created = repo.create_groups(["g3", "g4"])
         assert session.add.call_count == 1
-        session.flush.assert_called_once()
+        assert created == ["g3"]
+
+
+def test_create_groups_tolerates_concurrent_insert(repo, session):
+    """A concurrent writer creating the same group first (e.g. a member's first login racing an
+    admin's create-group call) is tolerated: the insert's unique-constraint violation is caught,
+    the name is reported as not created by this call — the same as if the existence check above
+    had found it — and the rest of the batch is unaffected.
+    """
+    # Neither name exists yet at the initial per-row check.
+    session.query().filter().first.return_value = None
+    session.add = MagicMock()
+
+    # The first name's nested insert loses a concurrent race when its SAVEPOINT is released (a
+    # real flush would raise IntegrityError there); the second name's insert succeeds normally.
+    lost_race = MagicMock()
+    lost_race.__enter__.return_value = None
+    lost_race.__exit__.side_effect = Exception("UNIQUE constraint failed: groups.group_name")
+    won_race = MagicMock()
+    won_race.__enter__.return_value = None
+    won_race.__exit__.return_value = None
+    session.begin_nested = MagicMock(side_effect=[lost_race, won_race])
+
+    with (
+        patch("mlflow_oidc_auth.db.models.SqlGroup", return_value=MagicMock()),
+        patch("mlflow_oidc_auth.repository.group.IntegrityError", Exception),
+    ):
+        created = repo.create_groups(["raced-group", "clean-group"])
+
+    assert created == ["clean-group"]
 
 
 def test_list_groups(repo, session):

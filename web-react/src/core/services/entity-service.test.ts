@@ -5,6 +5,7 @@ import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 
 vi.mock("./api-utils", () => ({
   request: vi.fn(),
+  requestWithStatus: vi.fn(),
 }));
 
 describe("entity-service", () => {
@@ -36,20 +37,38 @@ describe("entity-service", () => {
     );
   });
 
-  it("createGroup posts the group name to the groups endpoint", async () => {
-    (apiUtils.request as Mock).mockResolvedValue({
-      message: "Group analysts successfully created",
+  it("createGroup posts the group name to the groups endpoint and surfaces the status", async () => {
+    (apiUtils.requestWithStatus as Mock).mockResolvedValue({
+      data: { message: "Group analysts successfully created" },
+      status: 201,
     });
 
     const result = await entityService.createGroup("analysts");
 
-    expect(apiUtils.request).toHaveBeenCalledWith(
+    expect(apiUtils.requestWithStatus).toHaveBeenCalledWith(
       STATIC_API_ENDPOINTS.ALL_GROUPS,
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ group_name: "analysts" }),
       }),
     );
-    expect(result).toEqual({ message: "Group analysts successfully created" });
+    expect(result).toEqual({
+      message: "Group analysts successfully created",
+      status: 201,
+    });
+  });
+
+  it("createGroup surfaces a 200 status when the group already existed", async () => {
+    (apiUtils.requestWithStatus as Mock).mockResolvedValue({
+      data: { message: "Group analysts already exists" },
+      status: 200,
+    });
+
+    const result = await entityService.createGroup("analysts");
+
+    expect(result).toEqual({
+      message: "Group analysts already exists",
+      status: 200,
+    });
   });
 });

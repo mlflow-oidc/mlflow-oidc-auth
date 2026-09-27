@@ -4,6 +4,7 @@ import { Button } from "../../../shared/components/button";
 import { Input } from "../../../shared/components/input";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { createGroup } from "../../../core/services/entity-service";
+import { extractErrorMessage } from "../../../core/services/http";
 
 interface CreateGroupModalProps {
   isOpen: boolean;
@@ -36,13 +37,18 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
     if (!name) return;
     setIsSubmitting(true);
     try {
-      await createGroup(name);
-      showToast(`Group "${name}" created`, "success");
+      const { status } = await createGroup(name);
+      showToast(
+        status === 201
+          ? `Group "${name}" created`
+          : `Group "${name}" already exists`,
+        "success",
+      );
       setGroupName("");
       onCreated();
     } catch (err) {
       console.error("Failed to create group:", err);
-      showToast("Failed to create group", "error");
+      showToast(extractErrorMessage(err, "Failed to create group"), "error");
     } finally {
       setIsSubmitting(false);
     }
