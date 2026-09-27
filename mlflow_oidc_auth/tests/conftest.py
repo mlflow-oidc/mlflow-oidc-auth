@@ -28,26 +28,47 @@ os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
 
 # Imported once, here, before any test runs — the reference identity `_config_module_guard`
 # below checks every test against (#353).
+import mlflow_oidc_auth
 import mlflow_oidc_auth.config as _config_module
+import mlflow_oidc_auth.oauth as _oauth_module
 
 
 @pytest.fixture(autouse=True)
 def _config_module_guard():
-    """Fail the test that leaves a second ``mlflow_oidc_auth.config`` in the process.
+    """Fail the test that leaves a second ``mlflow_oidc_auth.config``/``oauth`` in the process.
 
-    A couple of tests delete ``mlflow_oidc_auth.config`` from ``sys.modules`` to force a
-    fresh read of an env-driven setting, then restore the original module object on
-    teardown (via ``monkeypatch.delitem(..., raising=False)`` or an equivalent
-    ``addCleanup``). If a future test does the deletion without restoring it, every import
-    of ``mlflow_oidc_auth.config`` from that point on resolves to a second, orphaned
-    ``AppConfig`` instance, and which copy a given test sees becomes dependent on run order
-    under pytest-randomly — see #353. This check is a single identity comparison, so it adds
-    no meaningful overhead to the suite.
+    A couple of tests delete ``mlflow_oidc_auth.config`` (and, in ``test_oauth.py``,
+    ``mlflow_oidc_auth.oauth``) from ``sys.modules`` to force a fresh read of an env-driven
+    setting, then restore the original module object on teardown (via
+    ``monkeypatch.delitem(..., raising=False)`` or an equivalent ``addCleanup``). If a future
+    test does the deletion without restoring it, every import of the module from that point on
+    resolves to a second, orphaned instance, and which copy a given test sees becomes
+    dependent on run order under pytest-randomly — see #353.
+
+    Restoring the ``sys.modules`` entry alone is not sufficient: reimporting a deleted
+    submodule also makes the import system ``setattr`` the parent package (e.g.
+    ``mlflow_oidc_auth.config = <new module>``), so code that reaches the module via the
+    package attribute (``from mlflow_oidc_auth import oauth as oauth_mod``) would still see
+    the duplicate even after ``sys.modules`` was put back. Check both. This is four identity
+    comparisons, so it adds no meaningful overhead to the suite.
     """
     yield
-    current = sys.modules.get("mlflow_oidc_auth.config")
-    assert current is _config_module, (
+    assert sys.modules.get("mlflow_oidc_auth.config") is _config_module, (
         "mlflow_oidc_auth.config was replaced in sys.modules and not restored — use "
         "monkeypatch.delitem(sys.modules, 'mlflow_oidc_auth.config', raising=False), or "
         "restore the original module object explicitly, instead of a bare `del`/`pop`"
+    )
+    assert mlflow_oidc_auth.config is _config_module, (
+        "mlflow_oidc_auth.config (the package attribute) was left pointing at a duplicate "
+        "module — restoring sys.modules is not enough; also restore the attribute the import "
+        "system sets on the parent package (e.g. monkeypatch.setattr(mlflow_oidc_auth, "
+        "'config', <original>))"
+    )
+    assert (
+        sys.modules.get("mlflow_oidc_auth.oauth") is _oauth_module
+    ), "mlflow_oidc_auth.oauth was replaced in sys.modules and not restored — restore the original module object instead of a bare `del`/`pop`"
+    assert mlflow_oidc_auth.oauth is _oauth_module, (
+        "mlflow_oidc_auth.oauth (the package attribute) was left pointing at a duplicate "
+        "module — restoring sys.modules is not enough; also restore the attribute the import "
+        "system sets on the parent package"
     )

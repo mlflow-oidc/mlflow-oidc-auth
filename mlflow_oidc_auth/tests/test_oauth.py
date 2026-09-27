@@ -25,8 +25,23 @@ def _force_reimport(*names: str) -> Callable[[], None]:
     fixture directly, so register the returned callback with `self.addCleanup` instead —
     it runs even if the test fails, exactly like `monkeypatch.delitem(..., raising=False)`
     does for the plain pytest-style tests elsewhere in this suite.
+
+    Restoring the ``sys.modules`` entry is not enough on its own: when the deleted name gets
+    reimported, the import system also does ``setattr(parent_package, attr, new_module)`` on
+    the parent package object (e.g. ``setattr(mlflow_oidc_auth, "oauth", <new module>)``), and
+    a bare ``sys.modules`` restore does not touch that attribute. Code that reaches the module
+    via ``mlflow_oidc_auth.oauth`` (rather than looking it up in ``sys.modules`` again) would
+    keep seeing the duplicate. Snapshot and restore that attribute too.
     """
     originals = {name: sys.modules.get(name) for name in names}
+    attr_originals = {}
+    for name in names:
+        if "." not in name:
+            continue
+        parent_name, _, attr = name.rpartition(".")
+        parent = sys.modules.get(parent_name)
+        if parent is not None and hasattr(parent, attr):
+            attr_originals[(parent_name, attr)] = getattr(parent, attr)
 
     def _restore() -> None:
         for name, module in originals.items():
@@ -34,6 +49,10 @@ def _force_reimport(*names: str) -> Callable[[], None]:
                 sys.modules[name] = module
             else:
                 sys.modules.pop(name, None)
+        for (parent_name, attr), value in attr_originals.items():
+            parent = sys.modules.get(parent_name)
+            if parent is not None:
+                setattr(parent, attr, value)
 
     for name in names:
         sys.modules.pop(name, None)
