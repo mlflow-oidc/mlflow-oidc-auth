@@ -13,6 +13,7 @@ import re
 from typing import Any
 
 from mlflow.server.jobs import get_job
+from mlflow.store.artifact.utils.models import _parse_model_uri
 
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import Permission
@@ -49,8 +50,16 @@ def can_update_prompt_uri(prompt_uri: Any, username: str) -> bool:
     match = _PROMPT_URI.match(prompt_uri.strip())
     if match is None:
         return False
+    # Authorize the name MLflow will load, not the raw text: MLflow parses prompt URIs with
+    # urlparse, which drops some characters (tab, CR, LF). Refuse any URI where the two differ.
     try:
-        return bool(effective_prompt_permission(match.group("name"), username).permission.can_update)
+        parsed_name = _parse_model_uri(prompt_uri.strip(), scheme="prompts").name
+    except Exception:
+        return False
+    if parsed_name != match.group("name"):
+        return False
+    try:
+        return bool(effective_prompt_permission(parsed_name, username).permission.can_update)
     except Exception:
         logger.debug("Prompt permission lookup failed")
         return False
