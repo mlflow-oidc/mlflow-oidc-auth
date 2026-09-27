@@ -155,23 +155,34 @@ export default function TrashPage() {
 
       // The endpoint returns 200 even when some items could not be permanently deleted
       // (e.g. their artifacts could not be removed, so the item was kept rather than
-      // risking orphaned artifacts) - surface that instead of reporting full success.
+      // risking orphaned artifacts - and, transitively, an experiment that still owns such a
+      // run is kept too and reported in `failed_experiments`) - surface that instead of
+      // reporting full success.
+      //
+      // The endpoint can also report failures for items outside this request: when only
+      // `run_ids` is sent it still sweeps every other trashed experiment (and their runs), so
+      // `failed_runs`/`failed_experiments` may include ids we never asked to delete. Only count
+      // and display failures for the ids the user actually selected, and never let the
+      // "succeeded" count go negative because of an unrelated failure.
       const failures =
         activeTab === "experiments"
           ? result.failed_experiments
           : result.failed_runs;
-      const failedCount = failures?.length ?? 0;
-      const succeededCount = ids.length - failedCount;
+      const selectedIds = new Set(ids);
+      const relevantFailures = (failures ?? []).filter((f) =>
+        selectedIds.has(
+          (activeTab === "experiments" ? f.experiment_id : f.run_id) ?? "",
+        ),
+      );
+      const failedCount = relevantFailures.length;
+      const succeededCount = Math.max(ids.length - failedCount, 0);
 
       if (failedCount > 0) {
+        const reasons = relevantFailures.map((f) => f.error).join("; ");
         showToast(
           succeededCount > 0
-            ? `Deleted ${succeededCount} item(s); ${failedCount} could not be deleted and were kept: ${failures
-                ?.map((f) => f.error)
-                .join("; ")}`
-            : `Failed to delete ${failedCount} item(s): ${failures
-                ?.map((f) => f.error)
-                .join("; ")}`,
+            ? `Deleted ${succeededCount} item(s); ${failedCount} could not be deleted and were kept: ${reasons}`
+            : `Failed to delete ${failedCount} item(s): ${reasons}`,
           "error",
         );
       } else {

@@ -535,10 +535,13 @@ for deployments behind a reverse proxy.
   process-global tracking URI there is the backend-store URI, not an HTTP endpoint) — that failure
   is now fixed by resolving such URIs against `--artifacts-destination`, the same way MLflow's own
   server does. When artifact deletion still fails for some other reason, the run's metadata is now
-  kept and the failure is reported in the response's `failed_runs` (or `failed_experiments`) list
-  instead of being silently discarded. A deployment that automates cleanup and only checks the
-  HTTP status code should also check that list; runs that fail to clean up stay in the trash
-  instead of disappearing with orphaned artifacts. See [Trash Management](api-reference#trash-management).
+  kept and the failure is reported in the response's `failed_runs` list instead of being silently
+  discarded. An experiment with a kept run is also kept — hard-deleting it would cascade-delete
+  the run's metadata through MLflow's own experiment/run relationship — and reported in
+  `failed_experiments` instead. A deployment that automates cleanup and only checks the HTTP
+  status code should also check those lists; runs and experiments that fail to clean up stay in
+  the trash instead of disappearing with orphaned artifacts. See
+  [Trash Management](api-reference#trash-management).
 
 ## MLflow Server Environment Variables
 

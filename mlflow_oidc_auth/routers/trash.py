@@ -4,7 +4,7 @@ import re
 import urllib.parse
 import warnings
 from datetime import timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -353,6 +353,11 @@ async def permanently_delete_all_trashed_entities(
         # Delete runs
         deleted_runs = []
         failed_runs = []
+        # Experiment ids with at least one run kept because its artifact deletion failed. MLflow's
+        # SqlRun -> SqlExperiment relationship cascades on delete, so hard-deleting the experiment
+        # would delete these kept runs' metadata too. Track them by experiment so the experiment
+        # loop below can skip hard-deleting an experiment that still owns a kept run.
+        runs_kept_by_experiment: Dict[str, int] = {}
 
         for run_id in set(target_run_ids):
             try:
@@ -396,6 +401,7 @@ async def permanently_delete_all_trashed_entities(
                     # of hard-deleting a run whose artifacts were not actually removed.
                     logger.error(f"Error deleting artifacts for run {run_id}: {str(e)}")
                     failed_runs.append({"run_id": run_id, "error": f"Failed to delete artifacts: {str(e)}"})
+                    runs_kept_by_experiment[run.info.experiment_id] = runs_kept_by_experiment.get(run.info.experiment_id, 0) + 1
                     continue
 
                 # Hard delete the run
@@ -413,6 +419,20 @@ async def permanently_delete_all_trashed_entities(
 
         if not skip_experiments:
             for experiment_id in target_experiment_ids:
+                kept_run_count = runs_kept_by_experiment.get(experiment_id, 0)
+                if kept_run_count:
+                    # Hard-deleting the experiment would cascade-delete the run(s) above that
+                    # were deliberately kept (MLflow's SqlRun -> SqlExperiment relationship
+                    # cascades on delete), undoing the fail-safe. Skip it and report why.
+                    logger.warning(f"Skipping hard delete of experiment {experiment_id}: {kept_run_count} run(s) kept because artifact deletion failed")
+                    failed_experiments.append(
+                        {
+                            "experiment_id": experiment_id,
+                            "error": f"{kept_run_count} run(s) kept: artifact deletion failed",
+                        }
+                    )
+                    continue
+
                 try:
                     backend_store._hard_delete_experiment(experiment_id)
                     deleted_experiments.append(experiment_id)

@@ -1210,6 +1210,100 @@ class TestAdditionalTrashBehaviour:
         assert _split_csv(None) == []
         assert _split_csv("a, b, ,c") == ["a", "b", "c"]
 
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_keeps_experiment_when_its_run_was_kept(self, mock_get_store, mock_get_artifact_repo):
+        """An experiment must not be hard-deleted while one of its runs was kept because its
+        artifact deletion failed - MLflow's SqlRun/SqlExperiment relationship cascades on
+        delete, so hard-deleting the experiment would delete the kept run's metadata too
+        (#239, review round 1)."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["r1"]
+
+        run = MagicMock()
+        run.info.run_id = "r1"
+        run.info.lifecycle_stage = "deleted"
+        run.info.artifact_uri = "some://"
+        run.info.experiment_id = "exp-1"
+
+        exp = MagicMock()
+        exp.experiment_id = "exp-1"
+        exp.lifecycle_stage = "deleted"
+        exp.last_update_time = 0
+
+        backend_store.get_run.return_value = run
+        backend_store.get_experiment.return_value = exp
+        mock_get_store.return_value = backend_store
+
+        mock_repo = MagicMock()
+        mock_repo.delete_artifacts.side_effect = Exception("boom-artifact")
+        mock_get_artifact_repo.return_value = mock_repo
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids="exp-1",
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == []
+        assert payload["deleted_experiments"] == []
+        assert any(f["run_id"] == "r1" for f in payload.get("failed_runs", []))
+
+        failed_exp = next((f for f in payload.get("failed_experiments", []) if f["experiment_id"] == "exp-1"), None)
+        assert failed_exp is not None
+        assert "run(s) kept" in failed_exp["error"]
+        backend_store._hard_delete_experiment.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_deletes_experiment_when_its_kept_run_is_in_a_different_experiment(self, mock_get_store, mock_get_artifact_repo):
+        """Only the experiment that actually owns a kept run is skipped - an unrelated
+        experiment targeted in the same request still gets hard-deleted normally."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["r1"]
+
+        run = MagicMock()
+        run.info.run_id = "r1"
+        run.info.lifecycle_stage = "deleted"
+        run.info.artifact_uri = "some://"
+        run.info.experiment_id = "exp-owner"
+
+        exp_unrelated = MagicMock()
+        exp_unrelated.experiment_id = "exp-unrelated"
+        exp_unrelated.lifecycle_stage = "deleted"
+        exp_unrelated.last_update_time = 0
+
+        backend_store.get_run.return_value = run
+        backend_store.get_experiment.return_value = exp_unrelated
+        mock_get_store.return_value = backend_store
+
+        mock_repo = MagicMock()
+        mock_repo.delete_artifacts.side_effect = Exception("boom-artifact")
+        mock_get_artifact_repo.return_value = mock_repo
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids="exp-unrelated",
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_experiments"] == ["exp-unrelated"]
+        backend_store._hard_delete_experiment.assert_called_once_with("exp-unrelated")
+
 
 class TestResolveRunArtifactRepository:
     """Unit coverage for _resolve_run_artifact_repository (#239)."""
