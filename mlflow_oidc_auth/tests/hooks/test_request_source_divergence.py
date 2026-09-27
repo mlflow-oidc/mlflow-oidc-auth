@@ -397,6 +397,7 @@ _UNION_SPECS = {
     "validate_can_update_registered_model": ("name", False, {}),
     "validate_can_delete_registered_model": ("name", False, {}),
     "validate_can_manage_registered_model": ("name", False, {}),
+    "validate_can_list_scorers": ("experiment_id", False, {}),
     "validate_can_read_scorer": ("experiment_id", False, {"name": "scorer"}),
     "validate_can_update_scorer": ("experiment_id", False, {"name": "scorer"}),
     "validate_can_delete_scorer": ("experiment_id", False, {"name": "scorer"}),

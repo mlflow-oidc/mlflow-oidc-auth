@@ -33,6 +33,7 @@ from mlflow_oidc_auth.validators.run import (
 )
 
 from mlflow_oidc_auth.validators.scorers import (
+    validate_can_list_scorers,
     validate_can_read_scorer,
     validate_can_update_scorer,
     validate_can_delete_scorer,
@@ -156,6 +157,7 @@ __all__ = [
     "validate_can_update_trace",
     "validate_can_delete_traces_from_experiment_id",
     "validate_can_start_trace_v3",
+    "validate_can_list_scorers",
     "validate_can_read_scorer",
     "validate_can_update_scorer",
     "validate_can_delete_scorer",

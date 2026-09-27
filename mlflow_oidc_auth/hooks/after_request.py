@@ -22,6 +22,7 @@ from mlflow.protos.service_pb2 import (
     ListGatewayEndpoints,
     ListGatewayModelDefinitions,
     ListGatewaySecretInfos,
+    ListScorers,
     ListWorkspaces,
     RegisterScorer,
     SearchEvaluationDatasets,
@@ -53,6 +54,7 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
     can_read_experiment,
     can_read_registered_model,
+    effective_scorer_permission,
     get_model_name,
 )
 from mlflow_oidc_auth.utils.permissions import (
@@ -611,6 +613,51 @@ def _set_can_manage_gateway_model_definition_permission(resp: Response):
     store.create_gateway_model_definition_permission(name, username, MANAGE.name)
 
 
+# Permission kinds that come from a grant on the scorer itself (user, group, regex or
+# group-regex), as opposed to the default or workspace fallback.
+_NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
+
+
+def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str) -> bool:
+    """Whether a ``ListScorers`` row is visible to ``username``.
+
+    READ on the scorer's experiment is always required. A grant on the scorer itself then
+    decides: READ or better keeps the row, ``NO_PERMISSIONS`` hides it. A scorer with no grant
+    of its own follows its experiment. Any lookup error hides the row.
+    """
+    try:
+        if not _cached_can_read_experiment(experiment_id, username):
+            return False
+        result = effective_scorer_permission(experiment_id=experiment_id, scorer_name=scorer_name, user=username)
+        if result.kind in _NON_EXPLICIT_PERMISSION_KINDS:
+            return True
+        return bool(result.permission.can_read)
+    except Exception:
+        get_logger().debug("Scorer permission lookup failed while filtering ListScorers")
+        return False
+
+
+def _filter_list_scorers(resp: Response) -> None:
+    """Remove the scorers the caller cannot read from a ``ListScorers`` response.
+
+    Applies to both forms of the request: with an ``experiment_id`` (already gated on READ
+    for that experiment, so this removes scorers hidden by a ``NO_PERMISSIONS`` grant on the
+    scorer) and without one, where MLflow lists the scorers of every active experiment.
+    """
+    if get_fastapi_admin_status():
+        return
+
+    response_message = ListScorers.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    username = get_fastapi_username()
+
+    for scorer in list(response_message.scorers):
+        if not _can_read_listed_scorer(str(scorer.experiment_id), scorer.scorer_name, username):
+            response_message.scorers.remove(scorer)
+
+    resp.data = message_to_json(response_message)
+
+
 def _filter_list_gateway_endpoints(resp: Response) -> None:
     """Filter out gateway endpoints the user cannot read."""
     if get_fastapi_admin_status():
@@ -900,6 +947,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     RenameRegisteredModel: _rename_registered_model_permission,
     RegisterScorer: _set_can_manage_scorer_permission,
     DeleteScorer: _delete_scorer_permissions_cascade,
+    ListScorers: _filter_list_scorers,
     CreateGatewayEndpoint: _set_can_manage_gateway_endpoint_permission,
     CreateGatewaySecret: _set_can_manage_gateway_secret_permission,
     CreateGatewayModelDefinition: _set_can_manage_gateway_model_definition_permission,

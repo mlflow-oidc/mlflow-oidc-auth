@@ -531,6 +531,11 @@ for deployments behind a reverse proxy.
   authenticated user could do both for every job. Jobs with no recorded creator (submitted
   before MLflow recorded one, or on an MLflow release that does not) are visible to admins only.
   Admins are unaffected. See [Job API](permissions#job-api).
+- **`ListScorers` is filtered per scorer.** Listing scorers without an `experiment_id`, which
+  MLflow answers with the scorers of every active experiment, is now allowed for any
+  authenticated user instead of being refused, and both forms of the request omit scorers the
+  caller cannot read: a scorer needs READ on its experiment, and a `NO_PERMISSIONS` grant on the
+  scorer itself hides it. Admins are unaffected.
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.

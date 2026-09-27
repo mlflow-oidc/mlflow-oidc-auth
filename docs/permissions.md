@@ -261,6 +261,8 @@ and as the reviewer of an item.
 | UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job, or else on the experiment of the run it records; admin only if neither resolves |
 | Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment and on the scorer (`name`) |
 | | `GET online-configs` | READ on the experiment and on the scorer of every configuration returned for `scorer_ids` |
+| Scorer list (`3.0/mlflow/scorers/list`) | with `experiment_id` | READ on the experiment; the result then omits every scorer the caller holds `NO_PERMISSIONS` on |
+| | without `experiment_id` (all active experiments) | any authenticated user; each scorer is listed only with READ on its experiment and, when the scorer has a grant of its own, READ on the scorer. A scorer whose permission cannot be resolved is omitted |
 | Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
 | Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
 
