@@ -449,3 +449,25 @@ def test_attach_model_needs_use_on_the_model_definition(prefix):
     assert denied(hook(path, "POST", OUTSIDER, body=body("ep-own", "md-gone")))
     assert denied(hook(path, "POST", OUTSIDER, body=body("ep-victim", "md-own")))
     assert allowed(hook(path, "POST", ADMIN, body=body("ep-victim", "md-victim")))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize("key", ["experiment_id", "experimentId"])
+def test_endpoint_usage_experiment_needs_update(prefix, key):
+    """Usage traces are logged to ``experiment_id``: UPDATE on it is required."""
+    create = CREATE_ENDPOINT.format(prefix)
+    update = UPDATE_ENDPOINT.format(prefix)
+    configs = {"model_configs": _configs("md-own")}
+    assert allowed(hook(create, "POST", OUTSIDER, body={"name": "new-ep", **configs, key: OWN}))
+    assert allowed(hook(update, "POST", OUTSIDER, body={"endpoint_id": "ep-own", key: OWN}))
+    assert denied(hook(create, "POST", OUTSIDER, body={"name": "new-ep", **configs, key: VICTIM}))
+    assert denied(hook(update, "POST", OUTSIDER, body={"endpoint_id": "ep-own", key: VICTIM}))
+    assert denied(hook(create, "POST", READER, body={"name": "new-ep", **configs, key: VICTIM})), "READ is not enough"
+    assert allowed(hook(create, "POST", EDITOR, body={"name": "new-ep", **configs, key: VICTIM}))
+    assert denied(hook(create, "POST", OUTSIDER, body={"name": "new-ep", **configs, key: "999"})), "no such experiment"
+    assert allowed(hook(create, "POST", ADMIN, body={"name": "new-ep", **configs, key: VICTIM}))
+
+
+def test_endpoint_usage_experiment_in_query_string_is_also_checked():
+    body = {"endpoint_id": "ep-own", "experiment_id": OWN}
+    assert denied(hook(UPDATE_ENDPOINT.format("/api"), "POST", OUTSIDER, body=body, query={"experiment_id": VICTIM}))

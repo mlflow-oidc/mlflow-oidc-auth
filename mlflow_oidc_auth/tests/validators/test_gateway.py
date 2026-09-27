@@ -630,3 +630,35 @@ class TestReferencedModelDefinitions:
         ):
             assert gateway_validators.validate_can_attach_model_to_gateway_endpoint("u") is can_use
             use.assert_called_once_with("md-a", "u")
+
+
+class TestEndpointUsageExperiment:
+    CREATE = "/api/3.0/mlflow/gateway/endpoints/create"
+    UPDATE = "/api/3.0/mlflow/gateway/endpoints/update"
+
+    @pytest.mark.parametrize("can_update, expected", [(True, True), (False, False)])
+    def test_create_checks_update_on_experiment(self, can_update, expected):
+        with (
+            _ref_ctx(self.CREATE, {"name": "ep", "experiment_id": "7"}),
+            patch.object(gateway_validators, "referenced_experiment_permission", return_value=MagicMock(can_update=can_update)) as perm,
+        ):
+            assert gateway_validators.validate_can_create_gateway_endpoint("u") is expected
+            perm.assert_called_once_with("7", "u")
+
+    def test_update_checks_update_on_experiment(self):
+        with (
+            _ref_ctx(self.UPDATE, {"endpoint_id": "ep1", "experimentId": "7"}),
+            patch.object(gateway_validators, "_resolve_endpoint_name_from_id", _names({"ep1": "ep-a"})),
+            patch.object(gateway_validators, "can_update_gateway_endpoint", return_value=True),
+            patch.object(gateway_validators, "referenced_experiment_permission", return_value=MagicMock(can_update=False)) as perm,
+        ):
+            assert gateway_validators.validate_can_update_gateway_endpoint_config("u") is False
+            perm.assert_called_once_with("7", "u")
+
+    def test_no_experiment_is_not_checked(self):
+        with (
+            _ref_ctx(self.CREATE, {"name": "ep"}),
+            patch.object(gateway_validators, "referenced_experiment_permission") as perm,
+        ):
+            assert gateway_validators.validate_can_create_gateway_endpoint("u") is True
+            perm.assert_not_called()
