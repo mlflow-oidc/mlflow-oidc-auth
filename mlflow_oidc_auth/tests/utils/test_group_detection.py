@@ -113,3 +113,35 @@ def test_signature_is_inspected_once_and_cached(monkeypatch):
     call_group_detection_plugin("_test_plugin_cache", "tok-3", {"access_token": "tok-3"})
 
     assert call_count["n"] == 1
+
+
+@pytest.mark.parametrize("declares_token_response", [False, True])
+def test_unhashable_callable_plugin_is_still_called(monkeypatch, declares_token_response):
+    """A callable object defining ``__eq__`` without ``__hash__`` cannot be a cache key."""
+    received = {}
+
+    class OldDetector:
+        def __eq__(self, other):
+            return NotImplemented
+
+        def __call__(self, access_token):
+            received["args"] = (access_token,)
+            return ["team-x"]
+
+    class NewDetector(OldDetector):
+        def __call__(self, access_token, token_response=None):
+            received["args"] = (access_token, token_response)
+            return ["team-x"]
+
+    detector = NewDetector() if declares_token_response else OldDetector()
+    with pytest.raises(TypeError):
+        hash(detector)
+    _install_module(monkeypatch, "_test_plugin_unhashable", detector)
+
+    result = call_group_detection_plugin("_test_plugin_unhashable", "tok", {"access_token": "tok"})
+
+    assert result == ["team-x"]
+    if declares_token_response:
+        assert received["args"] == ("tok", {"access_token": "tok"})
+    else:
+        assert received["args"] == ("tok",)

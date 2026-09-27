@@ -42,6 +42,19 @@ def _accepts_token_response(get_user_groups: Callable) -> bool:
     return False
 
 
+def _plugin_accepts_token_response(get_user_groups: Callable) -> bool:
+    """``_accepts_token_response`` for any callable, including unhashable ones.
+
+    A plugin may expose ``get_user_groups`` as a callable object that defines ``__eq__`` without
+    ``__hash__``. Such an object cannot be an ``lru_cache`` key, so it is introspected uncached
+    rather than failing every login.
+    """
+    try:
+        return _accepts_token_response(get_user_groups)
+    except TypeError:
+        return _accepts_token_response.__wrapped__(get_user_groups)
+
+
 def call_group_detection_plugin(plugin_path: str, access_token: str, token_response: Dict[str, Any]) -> Any:
     """Call the configured group-detection plugin, passing the token response when it accepts one.
 
@@ -61,6 +74,6 @@ def call_group_detection_plugin(plugin_path: str, access_token: str, token_respo
         Whatever the plugin's ``get_user_groups`` returns.
     """
     get_user_groups = importlib.import_module(plugin_path).get_user_groups
-    if _accepts_token_response(get_user_groups):
+    if _plugin_accepts_token_response(get_user_groups):
         return get_user_groups(access_token, token_response=token_response)
     return get_user_groups(access_token)
