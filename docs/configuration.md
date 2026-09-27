@@ -525,6 +525,17 @@ for deployments behind a reverse proxy.
   experiment (an unscoped dataset or issue search, a dataset linked to no experiment, a job with
   no recorded experiment) are admin-only. Gateway budget reads (`gateway/budgets/get`, `list`,
   `windows`) and demo-data generation are admin-only.
+- **Review queues and label schemas follow MLflow's own authorization rules.** Creating,
+  updating or deleting a label schema needs MANAGE on the experiment (before: EDIT to create or
+  update). Opening a review queue (`get`, `get-by-name`, `items/list`) needs, besides READ,
+  MANAGE, being assigned to the queue, or EDIT and owning it. Updating a queue needs MANAGE, or
+  EDIT and ownership (before: any EDIT user). Removing items needs MANAGE, or EDIT and ownership
+  of a custom queue (before: any EDIT user). Submitting a review (`items/set-status`) needs EDIT
+  and being assigned to the queue, for every non-admin including one with MANAGE. The queue
+  list shows a READ-only user only the queues they are assigned to. A custom queue can no longer
+  be created with, or renamed to, a registered username, by anyone including an administrator.
+  One operation becomes available: the EDIT owner of a custom queue may now delete it (before:
+  MANAGE only). See [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes).
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.

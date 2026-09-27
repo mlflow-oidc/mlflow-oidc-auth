@@ -187,6 +187,7 @@ from mlflow_oidc_auth.hooks.dual_spelling_guard import find_dual_spelling_collis
 from mlflow_oidc_auth.hooks.http_method import authorization_method
 from mlflow_oidc_auth.hooks.route_policy import is_filtered_in_after_request, is_legitimately_open, strip_static_prefix
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.validators.review import enforce_review_queue_name_not_username
 from mlflow_oidc_auth.validators import (
     validate_can_create_experiment,
     validate_can_delete_experiment,
@@ -264,13 +265,15 @@ from mlflow_oidc_auth.validators import (
     validate_can_invoke_issue_detection,
     validate_can_invoke_genai_evaluate,
     validate_can_read_label_schema,
-    validate_can_update_label_schema,
-    validate_can_delete_label_schema,
+    validate_can_manage_label_schema,
+    validate_can_create_review_queue,
     validate_can_get_or_create_user_queue,
-    validate_can_read_review_queue,
+    validate_can_view_review_queue,
+    validate_can_view_review_queue_by_name,
     validate_can_update_review_queue,
     validate_can_delete_review_queue,
-    validate_can_update_review_queue_items,
+    validate_can_add_items_to_review_queue,
+    validate_can_remove_items_from_review_queue,
     validate_can_set_review_queue_item_status,
     validate_can_read_job,
     validate_can_cancel_job,
@@ -458,22 +461,23 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateIssue: validate_can_update_issue,
     SearchIssues: validate_can_search_issues,
     # Label schemas and review queues belong to one experiment.
-    CreateLabelSchema: validate_can_update_experiment,
+    CreateLabelSchema: validate_can_manage_experiment,
     GetLabelSchema: validate_can_read_label_schema,
     GetLabelSchemaByName: validate_can_read_experiment,
     ListLabelSchemas: validate_can_read_experiment,
-    UpdateLabelSchema: validate_can_update_label_schema,
-    DeleteLabelSchema: validate_can_delete_label_schema,
-    CreateReviewQueue: validate_can_update_experiment,
+    UpdateLabelSchema: validate_can_manage_label_schema,
+    DeleteLabelSchema: validate_can_manage_label_schema,
+    CreateReviewQueue: validate_can_create_review_queue,
     GetOrCreateUserQueue: validate_can_get_or_create_user_queue,
-    GetReviewQueue: validate_can_read_review_queue,
-    GetReviewQueueByName: validate_can_read_experiment,
+    GetReviewQueue: validate_can_view_review_queue,
+    GetReviewQueueByName: validate_can_view_review_queue_by_name,
+    # Narrowed in after_request for a caller without EDIT.
     ListReviewQueues: validate_can_read_experiment,
     UpdateReviewQueue: validate_can_update_review_queue,
     DeleteReviewQueue: validate_can_delete_review_queue,
-    AddItemsToReviewQueue: validate_can_update_review_queue_items,
-    RemoveItemsFromReviewQueue: validate_can_update_review_queue_items,
-    ListReviewQueueItems: validate_can_read_review_queue,
+    AddItemsToReviewQueue: validate_can_add_items_to_review_queue,
+    RemoveItemsFromReviewQueue: validate_can_remove_items_from_review_queue,
+    ListReviewQueueItems: validate_can_view_review_queue,
     SetReviewQueueItemStatus: validate_can_set_review_queue_item_status,
     # Routes for gateway endpoints
     CreateGatewayEndpoint: validate_can_create_gateway,
@@ -1035,6 +1039,10 @@ def before_request_hook():
         logger.warning(f"Denying {request.method} {request.path} for {username}: no permission record yet, cannot own the created resource (issue #262)")
         return responses.make_forbidden_response()
     if is_admin:
+        # Admins skip validators, but a custom review queue may still not take a
+        # registered username as its name (a data-integrity rule, as in MLflow's own auth
+        # plugin). Non-admins meet the rule inside the validator, after the permission check.
+        enforce_review_queue_name_not_username(validator)
         return
     # Workspace creation gating (per WSAUTH-F / WSAUTH-03)
     if config.MLFLOW_ENABLE_WORKSPACES and _is_workspace_gated_creation(request.path, request.method):

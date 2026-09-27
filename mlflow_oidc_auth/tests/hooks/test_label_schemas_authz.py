@@ -1,7 +1,8 @@
 """Label schemas (``/3.0/mlflow/label-schemas/*``) are scoped by their experiment.
 
-READ to read, UPDATE to create or update, DELETE to delete. A schema that carries no
-experiment id is readable by any authenticated user and writable only by an admin.
+READ to read; MANAGE to create, update or delete, as in MLflow's own auth plugin. A schema
+that carries no experiment id is readable by any authenticated user and writable only by an
+admin.
 Driven through the real hook and permission store (see ``authz_harness``).
 """
 
@@ -50,11 +51,12 @@ def _ls(prefix, action):
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
-def test_create_requires_update_on_the_experiment(prefix):
+def test_create_requires_manage_on_the_experiment(prefix):
     body = {"experiment_id": VICTIM, "name": "quality"}
     assert denied(hook(_ls(prefix, "create"), "POST", OUTSIDER, body=body))
     assert denied(hook(_ls(prefix, "create"), "POST", READER, body=body))
-    assert allowed(hook(_ls(prefix, "create"), "POST", EDITOR, body=body))
+    assert denied(hook(_ls(prefix, "create"), "POST", EDITOR, body=body))
+    assert allowed(hook(_ls(prefix, "create"), "POST", MANAGER, body=body))
     assert denied(hook(_ls(prefix, "create"), "POST", OUTSIDER, body={"experiment_id": OWN, "name": "q"}, query={"experiment_id": VICTIM}))
 
 
@@ -72,13 +74,14 @@ def test_reading_an_experiment_s_schemas_requires_read(prefix, action, query):
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
-def test_update_requires_update_on_the_schema_experiment(prefix):
+def test_update_requires_manage_on_the_schema_experiment(prefix):
     assert denied(hook(_ls(prefix, "update"), "PATCH", READER, body={"schema_id": "ls-victim", "name": "x"}))
-    assert allowed(hook(_ls(prefix, "update"), "PATCH", EDITOR, body={"schema_id": "ls-victim", "name": "x"}))
+    assert denied(hook(_ls(prefix, "update"), "PATCH", EDITOR, body={"schema_id": "ls-victim", "name": "x"}))
+    assert allowed(hook(_ls(prefix, "update"), "PATCH", MANAGER, body={"schema_id": "ls-victim", "name": "x"}))
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
-def test_delete_requires_delete_on_the_schema_experiment(prefix):
+def test_delete_requires_manage_on_the_schema_experiment(prefix):
     assert denied(hook(_ls(prefix, "delete"), "DELETE", EDITOR, body={"schema_id": "ls-victim"}))
     assert allowed(hook(_ls(prefix, "delete"), "DELETE", MANAGER, body={"schema_id": "ls-victim"}))
 
