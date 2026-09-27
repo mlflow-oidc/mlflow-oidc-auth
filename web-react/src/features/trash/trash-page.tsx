@@ -148,12 +148,35 @@ export default function TrashPage() {
     const ids = itemsToDelete.map((item) => item.id);
 
     try {
-      if (activeTab === "experiments") {
-        await cleanupTrash({ experiment_ids: ids.join(",") });
+      const result =
+        activeTab === "experiments"
+          ? await cleanupTrash({ experiment_ids: ids.join(",") })
+          : await cleanupTrash({ run_ids: ids.join(",") });
+
+      // The endpoint returns 200 even when some items could not be permanently deleted
+      // (e.g. their artifacts could not be removed, so the item was kept rather than
+      // risking orphaned artifacts) - surface that instead of reporting full success.
+      const failures =
+        activeTab === "experiments"
+          ? result.failed_experiments
+          : result.failed_runs;
+      const failedCount = failures?.length ?? 0;
+      const succeededCount = ids.length - failedCount;
+
+      if (failedCount > 0) {
+        showToast(
+          succeededCount > 0
+            ? `Deleted ${succeededCount} item(s); ${failedCount} could not be deleted and were kept: ${failures
+                ?.map((f) => f.error)
+                .join("; ")}`
+            : `Failed to delete ${failedCount} item(s): ${failures
+                ?.map((f) => f.error)
+                .join("; ")}`,
+          "error",
+        );
       } else {
-        await cleanupTrash({ run_ids: ids.join(",") });
+        showToast(`Successfully deleted ${ids.length} item(s)`, "success");
       }
-      showToast(`Successfully deleted ${ids.length} item(s)`, "success");
       setSelectedIds(new Set());
       setItemsToDelete(null);
       refresh();

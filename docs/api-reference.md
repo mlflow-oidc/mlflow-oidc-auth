@@ -282,6 +282,14 @@ All trash endpoints require **admin** permissions.
 
 When workspaces are enabled, trash operations are automatically scoped to the active workspace.
 
+`POST /oidc/trash/cleanup` deletes a run's artifacts before hard-deleting its metadata. A run
+whose artifact URI uses the proxied `mlflow-artifacts:` scheme (the tracking server serves the
+artifacts itself) is resolved against the server's `--artifacts-destination` root, the same way
+MLflow's own server resolves proxied artifacts. If artifact deletion fails for a run, that run's
+metadata is **not** deleted — it stays in the trash and is reported in the response's
+`failed_runs` (or `failed_experiments`) list with the error, so a run is never hard-deleted while
+its artifacts are still known to exist.
+
 ---
 
 ## Webhook Management

@@ -160,9 +160,12 @@ describe("TrashPage", () => {
   });
 
   it("handles permanent deletion (single item)", async () => {
-    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue(
-      {} as unknown as { message: string },
-    );
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_runs: [],
+      deleted_experiments: ["exp2"],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 1,
+    });
     renderWithRouter();
 
     const deleteIcons = screen.getAllByTitle("Delete Permanently");
@@ -238,6 +241,72 @@ describe("TrashPage", () => {
       expect(trashService.restoreRun).toHaveBeenCalledWith("run1");
     });
     expect(mockRefreshRuns).toHaveBeenCalled();
+  });
+
+  it("surfaces a per-run failure instead of reporting full success (#239)", async () => {
+    // The endpoint returns 200 even when a run's artifacts could not be deleted - the run is
+    // kept (not hard-deleted) and reported in `failed_runs` instead. The UI must not tell the
+    // user the item was deleted when it was not.
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_runs: [],
+      deleted_experiments: [],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 0,
+      failed_runs: [
+        { run_id: "run1", error: "Failed to delete artifacts: boom" },
+      ],
+    });
+    renderWithRouter("/trash/runs");
+
+    const deleteIcons = screen.getAllByTitle("Delete Permanently");
+    fireEvent.click(deleteIcons[0]);
+
+    const confirmButton = screen
+      .getByText("Delete Permanently", { selector: "button span" })
+      .closest("button")!;
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(trashService.cleanupTrash).toHaveBeenCalledWith({
+        run_ids: "run1",
+      });
+    });
+    expect(mockShowToast).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to delete artifacts: boom"),
+      "error",
+    );
+  });
+
+  it("reports a mixed batch of successes and failures on bulk delete (#239)", async () => {
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_experiments: ["exp1"],
+      deleted_runs: [],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 1,
+      failed_experiments: [{ experiment_id: "exp2", error: "boom" }],
+    });
+    renderWithRouter();
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]); // exp1
+    fireEvent.click(checkboxes[2]); // exp2
+
+    const deleteButton = screen.getAllByRole("button", {
+      name: /^Delete$/i,
+    })[0];
+    fireEvent.click(deleteButton);
+
+    const confirmButton = screen
+      .getByText("Delete Permanently", { selector: "button span" })
+      .closest("button")!;
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(
+        expect.stringContaining("Deleted 1 item(s); 1 could not be deleted"),
+        "error",
+      );
+    });
   });
 
   it("renders loading and error states", () => {

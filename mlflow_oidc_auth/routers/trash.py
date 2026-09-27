@@ -1,4 +1,7 @@
+import os
+import posixpath
 import re
+import urllib.parse
 import warnings
 from datetime import timedelta
 from typing import List, Optional
@@ -375,14 +378,25 @@ async def permanently_delete_all_trashed_entities(
                     )
                     continue
 
-                # Delete artifacts
+                # Delete artifacts. Resolve proxied `mlflow-artifacts:` URIs to this server's
+                # configured artifact destination first (see _resolve_run_artifact_repository) so
+                # that hard-deleting the run's metadata does not orphan artifacts we never
+                # actually removed.
                 try:
-                    artifact_repo = get_artifact_repository(run.info.artifact_uri)
+                    artifact_repo = _resolve_run_artifact_repository(run.info.artifact_uri)
                     artifact_repo.delete_artifacts()
                 except InvalidUrlException as e:
+                    # The artifact URI itself is malformed or uses an unsupported scheme, so
+                    # there is no storage location to act on - matches `mlflow gc`'s own
+                    # behavior of bypassing artifact deletion and continuing.
                     logger.warning(f"Could not delete artifacts for run {run_id}: {str(e)}")
                 except Exception as e:
-                    logger.warning(f"Error deleting artifacts for run {run_id}: {str(e)}")
+                    # A real resolution or deletion failure: the artifacts may still exist.
+                    # Fail safe by keeping the run's metadata and reporting the failure instead
+                    # of hard-deleting a run whose artifacts were not actually removed.
+                    logger.error(f"Error deleting artifacts for run {run_id}: {str(e)}")
+                    failed_runs.append({"run_id": run_id, "error": f"Failed to delete artifacts: {str(e)}"})
+                    continue
 
                 # Hard delete the run
                 backend_store._hard_delete_run(run_id)
@@ -550,6 +564,57 @@ async def restore_run(
     except Exception:
         logger.exception("Error restoring run %s", run_id)
         raise HTTPException(status_code=500, detail="Failed to restore run")
+
+
+def _resolve_run_artifact_repository(artifact_uri: str):
+    """
+    Resolve the artifact repository backing a run's artifact root, translating a proxied
+    ``mlflow-artifacts:`` URI to this server's configured artifact destination.
+
+    A run's ``artifact_uri`` uses the ``mlflow-artifacts`` scheme when the tracking server
+    serves artifacts itself (``mlflow server --serve-artifacts``): the real storage location
+    (e.g. ``s3://bucket/...``) is rewritten to ``mlflow-artifacts:/<path>`` and resolved back
+    to the real location at request time using the server's ``--artifacts-destination`` root.
+    ``get_artifact_repository`` alone cannot do this translation here: it falls back to
+    resolving ``mlflow-artifacts:`` relative to the process-global tracking URI, which inside
+    this server process is the backend-store URI (a database), not an HTTP(S) endpoint, so it
+    raises. Resolve it the same way ``mlflow.server.handlers`` does when it serves or deletes
+    proxied artifacts instead.
+
+    Parameters
+    ----------
+    artifact_uri : str
+        The run's artifact root URI, as returned by the backend store.
+
+    Returns
+    -------
+    ArtifactRepository
+        The repository backing the run's real artifact storage location.
+
+    Raises
+    ------
+    MlflowException
+        If ``artifact_uri`` uses the ``mlflow-artifacts`` scheme but this server has no
+        ``--artifacts-destination`` configured, so the real storage location is unknown.
+    """
+    if urllib.parse.urlparse(artifact_uri).scheme != "mlflow-artifacts":
+        return get_artifact_repository(artifact_uri)
+
+    from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+    from mlflow.server.handlers import _get_proxied_run_artifact_destination_path
+
+    destination_root = os.environ.get(ARTIFACTS_DESTINATION_ENV_VAR)
+    if not destination_root:
+        raise MlflowException(
+            f"Cannot resolve proxied artifact URI '{artifact_uri}': this server is not "
+            "configured with --artifacts-destination, so the underlying storage location "
+            "for proxied artifacts is unknown.",
+            error_code=INVALID_PARAMETER_VALUE,
+        )
+
+    relative_path = _get_proxied_run_artifact_destination_path(artifact_uri)
+    resolved_uri = posixpath.join(destination_root, relative_path) if relative_path else destination_root
+    return get_artifact_repository(resolved_uri)
 
 
 def _parse_time_delta(older_than: str) -> int:

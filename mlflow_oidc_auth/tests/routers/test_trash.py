@@ -937,7 +937,10 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_artifact_delete_exception_is_handled(self, mock_get_store, mock_get_artifact_repo):
+    async def test_cleanup_artifact_delete_exception_keeps_run(self, mock_get_store, mock_get_artifact_repo):
+        """A real artifact-deletion failure must fail safe: the run's metadata is kept (not
+        hard-deleted) and the failure is reported, so artifacts that may still exist are not
+        orphaned by removing the only record that points at them (#239)."""
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
         backend_store._hard_delete_experiment = MagicMock()
@@ -966,7 +969,9 @@ class TestAdditionalTrashBehaviour:
         import json
 
         payload = json.loads(result.body)
-        assert payload["deleted_runs"] == ["r1"]
+        assert payload["deleted_runs"] == []
+        assert any(f["run_id"] == "r1" and "boom-artifact" in f["error"] for f in payload.get("failed_runs", []))
+        backend_store._hard_delete_run.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
@@ -1001,6 +1006,93 @@ class TestAdditionalTrashBehaviour:
 
         payload = json.loads(result.body)
         assert any(f["run_id"] == "r1" and "boom-delete" in f["error"] for f in payload.get("failed_runs", []))
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_resolves_proxied_mlflow_artifacts_uri(self, mock_get_store, mock_get_artifact_repo, monkeypatch):
+        """A run's proxied `mlflow-artifacts:` artifact URI must resolve against this server's
+        `--artifacts-destination` root, not the process-global tracking URI (which on a server
+        is the backend-store DB URI) (#239)."""
+        import posixpath
+
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        monkeypatch.setenv(ARTIFACTS_DESTINATION_ENV_VAR, "s3://bucket/dest")
+
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["r1"]
+
+        run = MagicMock()
+        run.info.run_id = "r1"
+        run.info.lifecycle_stage = "deleted"
+        run.info.artifact_uri = "mlflow-artifacts:/exp-1/r1/artifacts"
+        run.info.experiment_id = "e1"
+
+        backend_store.get_run.return_value = run
+        mock_get_store.return_value = backend_store
+
+        mock_repo = MagicMock()
+        mock_get_artifact_repo.return_value = mock_repo
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids=None,
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == ["r1"]
+
+        expected_uri = posixpath.join("s3://bucket/dest", "exp-1/r1/artifacts")
+        mock_get_artifact_repo.assert_called_once_with(expected_uri)
+        mock_repo.delete_artifacts.assert_called_once()
+        backend_store._hard_delete_run.assert_called_once_with("r1")
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_proxied_uri_without_artifacts_destination_keeps_run(self, mock_get_store, mock_get_artifact_repo, monkeypatch):
+        """When this server has no `--artifacts-destination` configured, a proxied
+        `mlflow-artifacts:` URI cannot be resolved to a real storage location. Fail safe: keep
+        the run and report the failure instead of hard-deleting metadata for artifacts that may
+        still exist (#239)."""
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        monkeypatch.delenv(ARTIFACTS_DESTINATION_ENV_VAR, raising=False)
+
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["r1"]
+
+        run = MagicMock()
+        run.info.run_id = "r1"
+        run.info.lifecycle_stage = "deleted"
+        run.info.artifact_uri = "mlflow-artifacts:/exp-1/r1/artifacts"
+        run.info.experiment_id = "e1"
+
+        backend_store.get_run.return_value = run
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids=None,
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == []
+        assert any(f["run_id"] == "r1" for f in payload.get("failed_runs", []))
+        mock_get_artifact_repo.assert_not_called()
+        backend_store._hard_delete_run.assert_not_called()
 
     def test_parse_time_delta_more_cases(self):
         from mlflow.exceptions import MlflowException
@@ -1117,3 +1209,44 @@ class TestAdditionalTrashBehaviour:
         # _split_csv
         assert _split_csv(None) == []
         assert _split_csv("a, b, ,c") == ["a", "b", "c"]
+
+
+class TestResolveRunArtifactRepository:
+    """Unit coverage for _resolve_run_artifact_repository (#239)."""
+
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    def test_non_proxied_uri_passes_through_unchanged(self, mock_get_artifact_repo):
+        from mlflow_oidc_auth.routers.trash import _resolve_run_artifact_repository
+
+        mock_get_artifact_repo.return_value = "repo"
+        result = _resolve_run_artifact_repository("s3://bucket/exp/run/artifacts")
+
+        mock_get_artifact_repo.assert_called_once_with("s3://bucket/exp/run/artifacts")
+        assert result == "repo"
+
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    def test_proxied_uri_resolves_against_artifacts_destination(self, mock_get_artifact_repo, monkeypatch):
+        import posixpath
+
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        from mlflow_oidc_auth.routers.trash import _resolve_run_artifact_repository
+
+        monkeypatch.setenv(ARTIFACTS_DESTINATION_ENV_VAR, "s3://bucket/dest")
+        mock_get_artifact_repo.return_value = "repo"
+
+        result = _resolve_run_artifact_repository("mlflow-artifacts:/exp-1/run-1/artifacts")
+
+        mock_get_artifact_repo.assert_called_once_with(posixpath.join("s3://bucket/dest", "exp-1/run-1/artifacts"))
+        assert result == "repo"
+
+    def test_proxied_uri_without_destination_raises(self, monkeypatch):
+        from mlflow.exceptions import MlflowException
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        from mlflow_oidc_auth.routers.trash import _resolve_run_artifact_repository
+
+        monkeypatch.delenv(ARTIFACTS_DESTINATION_ENV_VAR, raising=False)
+
+        with pytest.raises(MlflowException):
+            _resolve_run_artifact_repository("mlflow-artifacts:/exp-1/run-1/artifacts")

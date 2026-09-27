@@ -528,6 +528,17 @@ for deployments behind a reverse proxy.
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.
+- **Trash cleanup no longer hard-deletes a run whose artifacts could not be removed.**
+  `POST /oidc/trash/cleanup` used to log a warning and hard-delete the run's metadata anyway when
+  artifact deletion failed, orphaning the artifacts. It also could not resolve a run whose
+  artifact URI used the proxied `mlflow-artifacts:` scheme, which always failed on a server (the
+  process-global tracking URI there is the backend-store URI, not an HTTP endpoint) — that failure
+  is now fixed by resolving such URIs against `--artifacts-destination`, the same way MLflow's own
+  server does. When artifact deletion still fails for some other reason, the run's metadata is now
+  kept and the failure is reported in the response's `failed_runs` (or `failed_experiments`) list
+  instead of being silently discarded. A deployment that automates cleanup and only checks the
+  HTTP status code should also check that list; runs that fail to clean up stay in the trash
+  instead of disappearing with orphaned artifacts. See [Trash Management](api-reference#trash-management).
 
 ## MLflow Server Environment Variables
 
