@@ -71,6 +71,10 @@ from .oidc_field_extraction import (
     extract_display_name,
 )
 
+from .group_detection import (
+    call_group_detection_plugin,
+)
+
 # Export everything for backward compatibility
 __all__ = [
     # Data fetching
@@ -124,4 +128,6 @@ __all__ = [
     "extract_field_from_payload",
     "extract_username",
     "extract_display_name",
+    # Group detection plugins
+    "call_group_detection_plugin",
 ]
