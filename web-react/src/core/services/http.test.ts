@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, extractErrorMessage, _resetReauthForTests } from "./http";
 
-vi.mock("../../shared/context/workspace-context", () => ({
+vi.mock("../../shared/context/active-workspace", () => ({
   getActiveWorkspace: vi.fn(() => null),
 }));
 
-import { getActiveWorkspace } from "../../shared/context/workspace-context";
+import { getActiveWorkspace } from "../../shared/context/active-workspace";
 
 globalThis.fetch = vi.fn<typeof fetch>();
 
@@ -150,10 +150,8 @@ describe("http", () => {
       delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;
     });
 
-    afterEachRestoreLocation: {
-      // jsdom limitation: the location stub is replaced per-test in beforeEach,
-      // so explicit restore isn't required.
-    }
+    // jsdom limitation: the location stub is replaced per-test in beforeEach,
+    // so explicit restore isn't required.
 
     it("redirects to /login with ?next= on 401 from a non-auth page", async () => {
       vi.mocked(fetch).mockResolvedValue({
