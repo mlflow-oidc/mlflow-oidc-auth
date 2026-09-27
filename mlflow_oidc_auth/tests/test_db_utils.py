@@ -225,10 +225,11 @@ class TestMigrate:
 
 class TestModifiedVersionTable:
     @patch.dict(os.environ, {"OIDC_ALEMBIC_VERSION_TABLE": "alembic_modified_version"})
-    def test_different_alembic_version_table(self):
-        # Force reload of the config module
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+    def test_different_alembic_version_table(self, monkeypatch):
+        # Force reload of the config module. `monkeypatch.delitem` restores the original
+        # module object to `sys.modules` on teardown, so this test does not leave a second
+        # `mlflow_oidc_auth.config` instance behind for later tests to pick up (#353).
+        monkeypatch.delitem(sys.modules, "mlflow_oidc_auth.config", raising=False)
 
         # Create temporary file
         _, db_file = mkstemp()
@@ -256,10 +257,11 @@ class TestModifiedVersionTable:
 
 
 class TestDefaultVersionTable:
-    def test_default_alembic_table(self):
-        # Force reload of the config module
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+    def test_default_alembic_table(self, monkeypatch):
+        # Force reload of the config module. `monkeypatch.delitem` restores the original
+        # module object to `sys.modules` on teardown, so this test does not leave a second
+        # `mlflow_oidc_auth.config` instance behind for later tests to pick up (#353).
+        monkeypatch.delitem(sys.modules, "mlflow_oidc_auth.config", raising=False)
 
         # Create temporary file
         _, db_file = mkstemp()
