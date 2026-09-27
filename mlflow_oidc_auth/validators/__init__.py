@@ -11,8 +11,8 @@ from mlflow_oidc_auth.validators.experiment import (
     validate_can_read_experiments_from_experiment_ids,
     validate_can_update_experiment_from_experiment_id,
 )
+from mlflow_oidc_auth.validators.model_version import validate_can_create_model_version
 from mlflow_oidc_auth.validators.registered_model import (
-    validate_can_create_model_version,
     validate_can_create_registered_model,
     validate_can_delete_logged_model,
     validate_can_delete_registered_model,

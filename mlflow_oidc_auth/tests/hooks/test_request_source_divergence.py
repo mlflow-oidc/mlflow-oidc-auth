@@ -422,7 +422,7 @@ _UNION_SPECS = {
     "validate_can_create_gateway_model_definition": ("secret_id", False, {"name": "md", "provider": "openai", "model_name": "gpt"}),
     "validate_can_update_gateway_endpoint_config": ("endpoint_id", False, {}),
     "validate_can_attach_model_to_gateway_endpoint": ("endpoint_id", False, {}),
-    "validate_can_create_model_version": ("name", False, {"source": "s3://bucket/model"}),
+    "validate_can_create_model_version": ("name", False, {"source": "runs:/own/model"}),
     "validate_can_log_metrics": ("run_id", False, {}),
     "validate_can_update_run_or_logged_model": ("run_id", False, {"path": "model.pkl"}),
     "validate_can_read_dataset": ("dataset_id", False, {}),

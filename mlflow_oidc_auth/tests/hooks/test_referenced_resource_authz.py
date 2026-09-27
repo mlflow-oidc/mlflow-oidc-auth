@@ -46,12 +46,25 @@ def _gateway_name(resource_id: str) -> str:
     return f"{owner}-{kind}"
 
 
+def _run_root(run_id: str) -> str:
+    return f"s3://bucket/{_experiment_for(run_id)}/{run_id}/artifacts"
+
+
+def _model_root(model_id: str) -> str:
+    return f"s3://bucket/{_experiment_for(model_id)}/models/{model_id}/artifacts"
+
+
 class _FakeTrackingStore(BaseFakeTrackingStore):
+    def get_experiment(self, experiment_id):
+        if str(experiment_id) not in (VICTIM, OWN):
+            raise MlflowException(f"Experiment '{experiment_id}' not found", RESOURCE_DOES_NOT_EXIST)
+        return super().get_experiment(experiment_id)
+
     def get_run(self, run_id):
-        return SimpleNamespace(info=SimpleNamespace(run_id=run_id, experiment_id=_experiment_for(run_id)))
+        return SimpleNamespace(info=SimpleNamespace(run_id=run_id, experiment_id=_experiment_for(run_id), artifact_uri=_run_root(run_id)))
 
     def get_logged_model(self, model_id):
-        return SimpleNamespace(model_id=model_id, experiment_id=_experiment_for(model_id))
+        return SimpleNamespace(model_id=model_id, experiment_id=_experiment_for(model_id), artifact_location=_model_root(model_id))
 
     def get_secret_info(self, secret_id=None, **_):
         return SimpleNamespace(secret_id=secret_id, secret_name=_gateway_name(secret_id))
@@ -63,11 +76,30 @@ class _FakeTrackingStore(BaseFakeTrackingStore):
         return SimpleNamespace(endpoint_id=endpoint_id, name=_gateway_name(endpoint_id))
 
 
+# own-model versions: 1 was built from OUTSIDER's logged model, 2 from the victim's (a copy
+# of a version someone shared). The alias "champion" points at version 2.
+REGISTRY_VERSIONS = {(OWN_MODEL, "1"): "m-own", (OWN_MODEL, "2"): "m-victim"}
+
+
+class _FakeRegistryStore:
+    def get_model_version(self, name, version):
+        if (name, str(version)) not in REGISTRY_VERSIONS:
+            raise MlflowException("not found", RESOURCE_DOES_NOT_EXIST)
+        return SimpleNamespace(name=name, version=str(version), model_id=REGISTRY_VERSIONS[(name, str(version))])
+
+    def get_model_version_by_alias(self, name, alias):
+        return self.get_model_version(name, "2")
+
+    def get_latest_versions(self, name, stages=None):
+        return [SimpleNamespace(version=v) for (n, v) in REGISTRY_VERSIONS if n == name]
+
+
 @pytest.fixture(autouse=True)
 def permission_store(tmp_path, monkeypatch):
     from mlflow_oidc_auth.utils.permissions import flush_permission_cache
 
     s = install_permission_store(tmp_path, monkeypatch, _FakeTrackingStore())
+    monkeypatch.setattr("mlflow_oidc_auth.validators.model_version._get_model_registry_store", _FakeRegistryStore)
     s.create_registered_model_permission(OWN_MODEL, OUTSIDER, "EDIT")
     s.create_registered_model_permission(VICTIM_MODEL, OUTSIDER, "NO_PERMISSIONS")
     s.create_registered_model_permission(OWN_MODEL, READER, "EDIT")
@@ -90,84 +122,135 @@ def permission_store(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 CREATE_MODEL_VERSION = "{}/2.0/mlflow/model-versions/create"
+PROXY_URL = "https://mlflow.example.com/api/2.0/mlflow-artifacts/artifacts/"
 
 
-def _create_version(username, prefix="/api", query=None, **fields):
-    body = {"name": OWN_MODEL, "source": "s3://bucket/path/model", **fields}
+def _create_version(username, source, prefix="/api", query=None, **fields):
+    body = {"name": OWN_MODEL, "source": source, **fields}
     return hook(CREATE_MODEL_VERSION.format(prefix), "POST", username, body=body, query=query)
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
 @pytest.mark.parametrize(
-    "fields",
+    "source, fields",
     [
-        {"run_id": "run-own"},
-        {"model_id": "m-own"},
-        {"runId": "run-own", "modelId": "m-own"},
-        {"source": "runs:/run-own/model"},
-        {"source": "models:/m-own"},
-        {"source": f"models:/{OWN_MODEL}/1", "run_id": "run-victim"},
-        {"source": f"models:/{OWN_MODEL}/1", "run_id": "run-victim", "model_id": "m-own"},
-        {"run_id": None, "model_id": None},
-        {},
+        # mlflow.register_model("runs:/...") on a server with direct artifact storage
+        (_run_root("run-own") + "/model", {"run_id": "run-own"}),
+        (_run_root("run-own"), {"run_id": "run-own"}),
+        (_model_root("m-own"), {"model_id": "m-own"}),
+        (_run_root("run-own") + "/model", {"runId": "run-own", "modelId": "m-own"}),
+        # ... and on a server proxying artifacts (MLflow's default layout)
+        (f"mlflow-artifacts:/{OWN}/run-own/artifacts/model", {"run_id": "run-own"}),
+        (f"mlflow-artifacts://host:5000/{OWN}/run-own/artifacts/model", {"run_id": "run-own"}),
+        (f"mlflow-artifacts:/workspaces/team/{OWN}/run-own/artifacts/model", {"run_id": "run-own"}),
+        (f"{PROXY_URL}{OWN}/run-own/artifacts/model", {"run_id": "run-own"}),
+        # log_model(registered_model_name=...) and register_model("models:/<model_id>")
+        ("models:/m-own", {"model_id": "m-own", "run_id": "run-own"}),
+        ("runs:/run-own/model", {}),
+        ("runs:/run-own/model", {"run_id": None, "model_id": None}),
+        # copy_model_version: the copy carries the source version's run_id and model_id
+        (f"models:/{OWN_MODEL}/1", {"run_id": "run-victim", "model_id": "m-own"}),
+        (f"models:/{OWN_MODEL}/2", {"run_id": "run-victim", "model_id": "m-victim"}),
+        (f"models:/{OWN_MODEL}@champion", {"run_id": "run-victim", "model_id": "m-victim"}),
+        (f"models:/{OWN_MODEL}/latest", {"model_id": "m-victim"}),
     ],
 )
-def test_create_model_version_from_readable_source_is_allowed(prefix, fields):
-    assert allowed(_create_version(OUTSIDER, prefix, **fields))
+def test_create_model_version_from_readable_source_is_allowed(prefix, source, fields):
+    assert allowed(_create_version(OUTSIDER, source, prefix, **fields))
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
 @pytest.mark.parametrize(
-    "fields",
+    "source, fields",
     [
-        {"run_id": "run-victim"},
-        {"runId": "run-victim"},
-        {"model_id": "m-victim"},
-        {"modelId": "m-victim"},
-        {"run_id": "run-own", "model_id": "m-victim"},
-        {"source": "runs:/run-victim/model"},
-        {"source": "models:/m-victim"},
-        {"source": f"models:/{VICTIM_MODEL}/1"},
-        {"source": f"models:/{VICTIM_MODEL}@champion", "run_id": "run-own"},
-        {"source": f"models:/{OWN_MODEL}/1", "model_id": "m-victim"},
+        (_run_root("run-victim"), {"run_id": "run-victim"}),
+        (_run_root("run-victim"), {"runId": "run-victim"}),
+        (_model_root("m-victim"), {"model_id": "m-victim"}),
+        (_model_root("m-victim"), {"modelId": "m-victim"}),
+        (_run_root("run-own"), {"run_id": "run-own", "model_id": "m-victim"}),
+        ("runs:/run-victim/model", {}),
+        ("models:/m-victim", {}),
+        (f"models:/{VICTIM_MODEL}/1", {}),
+        (f"models:/{VICTIM_MODEL}@champion", {"run_id": "run-own"}),
+        # A copy naming a logged model other than the source version's own needs UPDATE on it.
+        (f"models:/{OWN_MODEL}/1", {"model_id": "m-victim"}),
+        # A storage location outside the named run's artifacts.
+        (_run_root("run-victim") + "/model", {"run_id": "run-own"}),
+        (_model_root("m-victim"), {"run_id": "run-own"}),
+        ("s3://bucket/2/run-own/artifacts-other/model", {"run_id": "run-own"}),
+        ("s3://other-bucket/2/run-own/artifacts/model", {"run_id": "run-own"}),
+        ("gs://bucket/2/run-own/artifacts/model", {"run_id": "run-own"}),
+        (_run_root("run-own") + "/../../1/run-victim/artifacts", {"run_id": "run-own"}),
+        (_run_root("run-own") + "/%2e%2e/%2e%2e/1/run-victim/artifacts", {"run_id": "run-own"}),
+        # A proxied location on an experiment the caller cannot read, or on none at all.
+        (f"mlflow-artifacts:/{VICTIM}/run-victim/artifacts/model", {"run_id": "run-own"}),
+        (f"mlflow-artifacts:/workspaces/team/{VICTIM}/run-victim/artifacts/model", {"run_id": "run-own"}),
+        (f"{PROXY_URL}{VICTIM}/run-victim/artifacts/model", {"run_id": "run-own"}),
+        ("mlflow-artifacts:/999/run/artifacts/model", {"run_id": "run-own"}),
+        ("mlflow-artifacts:/", {"run_id": "run-own"}),
+        ("mlflow-artifacts:/models/m-victim", {"run_id": "run-own"}),
     ],
 )
-def test_create_model_version_from_unreadable_source_is_denied(prefix, fields):
-    assert denied(_create_version(OUTSIDER, prefix, **fields))
+def test_create_model_version_from_unreadable_source_is_denied(prefix, source, fields):
+    assert denied(_create_version(OUTSIDER, source, prefix, **fields))
 
 
 @pytest.mark.parametrize(
-    "fields",
+    "source",
+    ["s3://bucket/2/run-own/artifacts/model", "file:///tmp/model", "/tmp/model", "https://example.com/model.tar.gz", "dummy-source"],
+)
+def test_create_model_version_from_storage_without_a_run_or_logged_model_is_admin_only(source):
+    assert denied(_create_version(OUTSIDER, source))
+    assert allowed(_create_version(ADMIN, source))
+
+
+@pytest.mark.parametrize("source", ["dummy-source", "prompt-template"])
+def test_create_prompt_version_with_placeholder_source_is_allowed(source):
+    tags = [{"key": "mlflow.prompt.is_prompt", "value": "true"}, {"key": "mlflow.prompt.text", "value": "hi"}]
+    assert allowed(_create_version(OUTSIDER, source, tags=tags))
+    assert denied(_create_version(OUTSIDER, "s3://bucket/1/run-victim/artifacts", tags=tags))
+
+
+@pytest.mark.parametrize(
+    "source, fields",
     [
-        {"run_id": "run-gone"},
-        {"model_id": "m-gone"},
-        {"run_id": ""},
-        {"model_id": ""},
-        {"source": "runs:/"},
-        {"source": "models:/"},
+        (_run_root("run-own"), {"run_id": "run-gone"}),
+        (_run_root("run-own"), {"model_id": "m-gone"}),
+        (_run_root("run-own"), {"run_id": ""}),
+        (_run_root("run-own"), {"run_id": "run-own", "model_id": ""}),
+        ("runs:/", {}),
+        ("models:/", {}),
     ],
 )
-def test_create_model_version_with_unresolvable_source_is_denied(fields):
-    assert denied(_create_version(OUTSIDER, **fields))
+def test_create_model_version_with_unresolvable_source_is_denied(source, fields):
+    assert denied(_create_version(OUTSIDER, source, **fields))
 
 
-def test_create_model_version_lineage_exemption_needs_every_source_to_be_a_registered_model():
+def test_create_model_version_copy_exemption_needs_every_source_to_be_a_registered_model():
     """A ``models:/<name>`` source elsewhere in the request does not waive the run check."""
-    resp = _create_version(OUTSIDER, query={"source": f"models:/{OWN_MODEL}/1"}, run_id="run-victim")
+    resp = _create_version(OUTSIDER, _run_root("run-victim"), query={"source": f"models:/{OWN_MODEL}/1"}, run_id="run-victim")
     assert denied(resp)
 
 
+def test_create_model_version_copy_with_other_model_id_needs_update_on_it():
+    """READER reads the victim experiment, which is enough for lineage but not to tag another model."""
+    assert allowed(_create_version(READER, f"models:/{OWN_MODEL}/2", model_id="m-victim"))
+    assert denied(_create_version(READER, f"models:/{OWN_MODEL}/1", model_id="m-victim"))
+
+
 def test_create_model_version_read_on_the_source_is_enough():
-    assert allowed(_create_version(READER, run_id="run-victim"))
-    assert allowed(_create_version(READER, model_id="m-victim"))
+    assert allowed(_create_version(READER, _run_root("run-victim"), run_id="run-victim"))
+    assert allowed(_create_version(READER, _model_root("m-victim"), model_id="m-victim"))
+    assert allowed(_create_version(READER, f"mlflow-artifacts:/{VICTIM}/run-victim/artifacts/model", run_id="run-victim"))
 
 
 def test_create_model_version_still_needs_update_on_the_destination():
-    assert denied(hook(CREATE_MODEL_VERSION.format("/api"), "POST", OUTSIDER, body={"name": VICTIM_MODEL, "source": "s3://b/p", "run_id": "run-own"}))
+    body = {"name": VICTIM_MODEL, "source": _run_root("run-own"), "run_id": "run-own"}
+    assert denied(hook(CREATE_MODEL_VERSION.format("/api"), "POST", OUTSIDER, body=body))
 
 
 def test_create_model_version_admin_is_not_checked():
-    assert allowed(_create_version(ADMIN, run_id="run-victim"))
+    assert allowed(_create_version(ADMIN, _run_root("run-victim"), run_id="run-victim"))
 
 
 # ---------------------------------------------------------------------------

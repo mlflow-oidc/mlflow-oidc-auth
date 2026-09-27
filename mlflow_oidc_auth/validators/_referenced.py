@@ -21,12 +21,55 @@ from mlflow.server.handlers import _get_tracking_store
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission
 from mlflow_oidc_auth.utils import effective_experiment_permission, request_body_dict
+from mlflow_oidc_auth.validators.experiment import get_artifact_experiment
 
 logger = get_logger()
 
 
 def _is_not_found(error: MlflowException) -> bool:
     return error.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST)
+
+
+def referenced_run(run_id: str):
+    """The referenced run, or ``None`` when it does not exist.
+
+    Parameters:
+        run_id: The run the request references.
+
+    Returns:
+        The run entity, or ``None``.
+
+    Raises:
+        MlflowException: For any tracking-store error other than "does not exist".
+    """
+    try:
+        return _get_tracking_store().get_run(str(run_id))
+    except MlflowException as e:
+        if _is_not_found(e):
+            logger.debug("Referenced run could not be resolved; denying")
+            return None
+        raise
+
+
+def referenced_logged_model(model_id: str):
+    """The referenced logged model, or ``None`` when it does not exist.
+
+    Parameters:
+        model_id: The logged model the request references.
+
+    Returns:
+        The logged model entity, or ``None``.
+
+    Raises:
+        MlflowException: For any tracking-store error other than "does not exist".
+    """
+    try:
+        return _get_tracking_store().get_logged_model(str(model_id))
+    except MlflowException as e:
+        if _is_not_found(e):
+            logger.debug("Referenced logged model could not be resolved; denying")
+            return None
+        raise
 
 
 def referenced_run_permission(run_id: str, username: str) -> Permission:
@@ -38,17 +81,10 @@ def referenced_run_permission(run_id: str, username: str) -> Permission:
 
     Returns:
         The experiment permission, or ``NO_PERMISSIONS`` when the run does not exist.
-
-    Raises:
-        MlflowException: For any tracking-store error other than "does not exist".
     """
-    try:
-        run = _get_tracking_store().get_run(str(run_id))
-    except MlflowException as e:
-        if _is_not_found(e):
-            logger.debug("Referenced run could not be resolved; denying")
-            return NO_PERMISSIONS
-        raise
+    run = referenced_run(run_id)
+    if run is None:
+        return NO_PERMISSIONS
     return effective_experiment_permission(run.info.experiment_id, username).permission
 
 
@@ -61,18 +97,30 @@ def referenced_logged_model_permission(model_id: str, username: str) -> Permissi
 
     Returns:
         The experiment permission, or ``NO_PERMISSIONS`` when the model does not exist.
-
-    Raises:
-        MlflowException: For any tracking-store error other than "does not exist".
     """
-    try:
-        model = _get_tracking_store().get_logged_model(str(model_id))
-    except MlflowException as e:
-        if _is_not_found(e):
-            logger.debug("Referenced logged model could not be resolved; denying")
-            return NO_PERMISSIONS
-        raise
+    model = referenced_logged_model(model_id)
+    if model is None:
+        return NO_PERMISSIONS
     return effective_experiment_permission(model.experiment_id, username).permission
+
+
+def referenced_experiment_permission(experiment_id: str, username: str) -> Permission:
+    """The permission ``username`` holds on a referenced experiment that must exist.
+
+    Unlike a plain permission lookup, an id with no experiment behind it (or a
+    non-canonical id such as ``"012"``) yields ``NO_PERMISSIONS`` rather than
+    ``DEFAULT_MLFLOW_PERMISSION``.
+
+    Parameters:
+        experiment_id: The experiment the request references.
+        username: The authenticated user.
+
+    Returns:
+        The experiment permission, or ``NO_PERMISSIONS``.
+    """
+    if experiment_id is None or get_artifact_experiment(str(experiment_id)) is None:
+        return NO_PERMISSIONS
+    return effective_experiment_permission(str(experiment_id), username).permission
 
 
 def _spellings(field: str) -> tuple[str, ...]:
