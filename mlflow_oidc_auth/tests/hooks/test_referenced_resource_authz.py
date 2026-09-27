@@ -150,9 +150,6 @@ def _create_version(username, source, prefix="/api", query=None, **fields):
         ("runs:/run-own/model", {"run_id": None, "model_id": None}),
         # copy_model_version: the copy carries the source version's run_id and model_id
         (f"models:/{OWN_MODEL}/1", {"run_id": "run-victim", "model_id": "m-own"}),
-        (f"models:/{OWN_MODEL}/2", {"run_id": "run-victim", "model_id": "m-victim"}),
-        (f"models:/{OWN_MODEL}@champion", {"run_id": "run-victim", "model_id": "m-victim"}),
-        (f"models:/{OWN_MODEL}/latest", {"model_id": "m-victim"}),
     ],
 )
 def test_create_model_version_from_readable_source_is_allowed(prefix, source, fields):
@@ -174,6 +171,10 @@ def test_create_model_version_from_readable_source_is_allowed(prefix, source, fi
         (f"models:/{VICTIM_MODEL}@champion", {"run_id": "run-own"}),
         # A copy naming a logged model other than the source version's own needs UPDATE on it.
         (f"models:/{OWN_MODEL}/1", {"model_id": "m-victim"}),
+        # A copy tags the source version's own logged model too, so it needs READ on it.
+        (f"models:/{OWN_MODEL}/2", {"run_id": "run-victim", "model_id": "m-victim"}),
+        (f"models:/{OWN_MODEL}@champion", {"run_id": "run-victim", "model_id": "m-victim"}),
+        (f"models:/{OWN_MODEL}/latest", {"model_id": "m-victim"}),
         # A storage location outside the named run's artifacts.
         (_run_root("run-victim") + "/model", {"run_id": "run-own"}),
         (_model_root("m-victim"), {"run_id": "run-own"}),
@@ -182,6 +183,7 @@ def test_create_model_version_from_readable_source_is_allowed(prefix, source, fi
         ("gs://bucket/2/run-own/artifacts/model", {"run_id": "run-own"}),
         (_run_root("run-own") + "/../../1/run-victim/artifacts", {"run_id": "run-own"}),
         (_run_root("run-own") + "/%2e%2e/%2e%2e/1/run-victim/artifacts", {"run_id": "run-own"}),
+        (_run_root("run-own") + "/.\t./.\n./1/run-victim/artifacts", {"run_id": "run-own"}),
         # A proxied location on an experiment the caller cannot read, or on none at all.
         (f"mlflow-artifacts:/{VICTIM}/run-victim/artifacts/model", {"run_id": "run-own"}),
         (f"mlflow-artifacts:/workspaces/team/{VICTIM}/run-victim/artifacts/model", {"run_id": "run-own"}),
@@ -235,7 +237,15 @@ def test_create_model_version_copy_exemption_needs_every_source_to_be_a_register
 def test_create_model_version_copy_with_other_model_id_needs_update_on_it():
     """READER reads the victim experiment, which is enough for lineage but not to tag another model."""
     assert allowed(_create_version(READER, f"models:/{OWN_MODEL}/2", model_id="m-victim"))
+    assert allowed(_create_version(READER, f"models:/{OWN_MODEL}@champion", run_id="run-victim", model_id="m-victim"))
+    assert allowed(_create_version(READER, f"models:/{OWN_MODEL}/latest", model_id="m-victim"))
     assert denied(_create_version(READER, f"models:/{OWN_MODEL}/1", model_id="m-victim"))
+
+
+def test_create_model_version_copy_with_its_own_model_id_needs_read_on_it():
+    """The source version's own logged model is tagged with the copy, so READ on it is required."""
+    assert denied(_create_version(OUTSIDER, f"models:/{OWN_MODEL}/2", model_id="m-victim"))
+    assert allowed(_create_version(OUTSIDER, f"models:/{OWN_MODEL}/2"))
 
 
 def test_create_model_version_read_on_the_source_is_enough():

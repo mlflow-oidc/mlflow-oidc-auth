@@ -85,12 +85,17 @@ def test_copy_needs_read_on_source_registered_model():
     assert _create_version({"name": "m", "source": "models:/other/1"}, source_model_perm=NO_PERMISSIONS)[0] is False
 
 
-def test_copy_with_lineage_model_id_skips_run_and_model_checks():
+def test_copy_with_lineage_model_id_skips_run_check_and_needs_read_on_the_model():
     body = {"name": "m", "source": "models:/other/1", "run_id": "r1", "model_id": "m-1"}
     result, run_check, model_check, _ = _create_version(body, lineage_model_id="m-1")
     assert result is True
     run_check.assert_not_called()
-    model_check.assert_not_called()
+    model_check.assert_called_once_with("m-1", "alice")
+
+
+def test_copy_with_unreadable_lineage_model_id_is_denied():
+    body = {"name": "m", "source": "models:/other/1", "model_id": "m-1"}
+    assert _create_version(body, lineage_model_id="m-1", model_perm=NO_PERMISSIONS)[0] is False
 
 
 @pytest.mark.parametrize("perm, expected", [(READ, False), (EDIT, True)])

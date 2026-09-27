@@ -10,6 +10,7 @@ registered model, so creating a version requires a grant on everything its ``sou
 from __future__ import annotations
 
 import posixpath
+import re
 import urllib.parse
 from typing import NamedTuple, Optional
 
@@ -57,6 +58,8 @@ def _has_relative_segment(source: str) -> bool:
     """True when the fully unquoted source has a ``..`` segment or a NUL (MLflow refuses both)."""
     while (unquoted := urllib.parse.unquote_plus(source)) != source:
         source = unquoted
+    # urlsplit drops tab, CR and LF, so a segment split by them still reads as ".." later.
+    source = re.sub(r"[\t\r\n]", "", source)
     return "\x00" in source or any(part == ".." for part in source.replace("\\", "/").split("/"))
 
 
@@ -197,7 +200,7 @@ def validate_can_create_model_version(username: str) -> bool:
       When every source is such a URI (a copy, as ``copy_model_version`` makes), the
       registered model is the access boundary: ``run_id`` is lineage metadata and is not
       checked, and a ``model_id`` equal to the source version's own ``model_id`` needs
-      nothing more. Any other ``model_id`` needs UPDATE on its logged model, because
+      READ on that logged model. Any other ``model_id`` needs UPDATE on its logged model, because
       MLflow tags the logged model named by ``model_id`` with the new version.
     - ``models:/<model_id>``: READ on that logged model.
     - ``runs:/<run_id>/...``: READ on that run.
@@ -240,7 +243,14 @@ def validate_can_create_model_version(username: str) -> bool:
     copy_only = bool(sources) and len(refs.registry_uris) == len(sources)
     if copy_only:
         lineage_ids = {mid for mid in (_source_model_version_model_id(uri) for uri in refs.registry_uris) if mid}
-        return all(model_id in lineage_ids or referenced_logged_model_permission(model_id, username).can_update for model_id in dict.fromkeys(model_ids))
+        return all(
+            (
+                referenced_logged_model_permission(model_id, username).can_read
+                if model_id in lineage_ids
+                else referenced_logged_model_permission(model_id, username).can_update
+            )
+            for model_id in dict.fromkeys(model_ids)
+        )
 
     run_ids = [str(r) for r in all_source_values("run_id")]
     if body_has_field("run_id") and not run_ids:

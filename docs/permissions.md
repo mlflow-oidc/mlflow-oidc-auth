@@ -238,7 +238,7 @@ value:
 
 | `source` | Also required |
 |---|---|
-| `models:/<name>/<version>`, `@<alias>`, `/<stage>`, `/latest` (a copy, as `copy_model_version` makes) | READ on registered model `<name>`. `run_id` is not checked. A `model_id` equal to the source version's own `model_id` needs nothing more; any other `model_id` needs EDIT on its logged model's experiment, because MLflow tags that logged model with the new version. |
+| `models:/<name>/<version>`, `@<alias>`, `/<stage>`, `/latest` (a copy, as `copy_model_version` makes) | READ on registered model `<name>`. `run_id` is not checked. A `model_id` equal to the source version's own `model_id` needs READ on that logged model's experiment; any other `model_id` needs EDIT on its logged model's experiment, because MLflow tags that logged model with the new version. |
 | `models:/<model_id>` | READ on the logged model's experiment |
 | `runs:/<run_id>/…` | READ on the run's experiment |
 | `mlflow-artifacts:/…`, or `http(s)://…/api/2.0/mlflow-artifacts/artifacts/…` | READ on the experiment the artifact path names (`<experiment_id>/…` or `workspaces/<ws>/<experiment_id>/…`). A path naming no existing experiment is refused. |
