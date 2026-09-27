@@ -209,9 +209,9 @@ describe("workspace-service", () => {
       // Instead, we test via the public API by mocking the underlying fetchers.
 
       // Mock request to respond differently based on the URL
-      mockRequest.mockImplementation(async (endpoint: string) => {
+      mockRequest.mockImplementation((endpoint: string) => {
         if (endpoint.includes("/users")) {
-          return [
+          return Promise.resolve([
             {
               workspace: "ws1",
               username: "user1",
@@ -222,18 +222,18 @@ describe("workspace-service", () => {
               username: "user2",
               permission: "MANAGE",
             },
-          ];
+          ]);
         }
         if (endpoint.includes("/groups")) {
-          return [
+          return Promise.resolve([
             {
               workspace: "ws1",
               group_name: "group1",
               permission: "READ",
             },
-          ];
+          ]);
         }
-        return [];
+        return Promise.resolve([]);
       });
 
       const result = await fetchWorkspaceMemberCounts("ws1");

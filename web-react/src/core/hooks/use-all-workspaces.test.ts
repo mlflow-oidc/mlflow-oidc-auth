@@ -101,9 +101,10 @@ describe("useAllWorkspaces", () => {
     vi.spyOn(
       workspaceService,
       "fetchWorkspaceMemberCounts",
-    ).mockImplementation(async (name: string) => {
-      if (name === "workspace-1") return { users: 5, groups: 2 };
-      return { users: 3, groups: 1 };
+    ).mockImplementation((name: string) => {
+      if (name === "workspace-1")
+        return Promise.resolve({ users: 5, groups: 2 });
+      return Promise.resolve({ users: 3, groups: 1 });
     });
 
     const { result } = renderHook(() => useAllWorkspaces());

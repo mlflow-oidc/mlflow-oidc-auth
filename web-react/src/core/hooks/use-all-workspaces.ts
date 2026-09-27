@@ -27,7 +27,6 @@ export function useAllWorkspaces() {
 
   useEffect(() => {
     if (!allWorkspaces?.length) {
-      setMemberCounts(null);
       return;
     }
     const controller = new AbortController();
@@ -51,5 +50,15 @@ export function useAllWorkspaces() {
     return () => controller.abort();
   }, [allWorkspaces]);
 
-  return { allWorkspaces, memberCounts, isLoading, error, refresh };
+  // Derived rather than reset via an effect: keeps the "no workspaces -> no
+  // counts" invariant true on the same render, with no extra setState call.
+  const effectiveMemberCounts = allWorkspaces?.length ? memberCounts : null;
+
+  return {
+    allWorkspaces,
+    memberCounts: effectiveMemberCounts,
+    isLoading,
+    error,
+    refresh,
+  };
 }

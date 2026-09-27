@@ -1,18 +1,8 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { WorkspaceContext } from "./use-workspace";
+import { setActiveWorkspace } from "./active-workspace";
 
 const STORAGE_KEY = "mlflow-oidc-workspace";
-
-// Module-level state for http.ts integration (non-React consumers)
-let _activeWorkspace: string | null = null;
-
-export function getActiveWorkspace(): string | null {
-  return _activeWorkspace;
-}
-
-export function setActiveWorkspace(workspace: string | null): void {
-  _activeWorkspace = workspace;
-}
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [selectedWorkspace, setSelectedWorkspaceState] = useState<
