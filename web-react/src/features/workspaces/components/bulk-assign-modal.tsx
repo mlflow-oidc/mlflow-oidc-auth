@@ -22,7 +22,7 @@ interface BulkAssignResult {
 
 export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, nameLabel, options }: BulkAssignModalProps) {
   const { showToast } = useToast();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [permission, setPermission] = useState<PermissionLevel>("READ");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [results, setResults] = useState<BulkAssignResult[] | null>(null);
