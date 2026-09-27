@@ -119,6 +119,22 @@ def test_issue_detection():
     assert can_submit_job(_issues(), OUTSIDER)
     assert can_submit_job(_issues(model="gateway:/open-endpoint"), OUTSIDER)
     assert not can_submit_job(_issues(model="gateway:/hidden-endpoint"), OUTSIDER)
+
+
+@pytest.mark.parametrize("model", ["gateway:/hidden-endpoint", "gateway://hidden-endpoint", "gateway:///hidden-endpoint", "Gateway:/hidden-endpoint"])
+def test_issue_detection_checks_the_endpoint_mlflow_calls(model):
+    # MLflow splits on the first ":/" and strips leading slashes, so all of these call hidden-endpoint.
+    assert not can_submit_job(_issues(model=model), OUTSIDER)
+
+
+@pytest.mark.parametrize("model", ["gateway:/open-endpoint", "gateway://open-endpoint", "gateway:///open-endpoint", "openai:/gpt"])
+def test_issue_detection_allows_usable_models(model):
+    assert can_submit_job(_issues(model=model), OUTSIDER)
+
+
+@pytest.mark.parametrize("model", ["gateway:/", "gateway:///", "no-provider", ":/x", ""])
+def test_issue_detection_denies_a_malformed_model(model):
+    assert not can_submit_job(_issues(model=model), OUTSIDER)
     assert not can_submit_job(_issues(run_id="r-victim"), OUTSIDER)
     assert not can_submit_job(_issues(run_id="r-missing"), OUTSIDER)
     assert not can_submit_job(_issues(trace_ids=["t-victim"]), OUTSIDER)

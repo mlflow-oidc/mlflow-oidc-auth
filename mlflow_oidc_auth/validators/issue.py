@@ -14,6 +14,7 @@ from mlflow.server.handlers import _get_tracking_store
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission
 from mlflow_oidc_auth.utils import all_source_values, get_request_param_values
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint, can_use_gateway_secret
+from mlflow_oidc_auth.validators._model_uri import gateway_endpoint_for_name
 from mlflow_oidc_auth.validators._experiment_scope import names_only_caller, permission_on_all_experiments, trace_ids_permission, values_mlflow_also_reads
 from mlflow_oidc_auth.validators.gateway import _resolve_secret_name_from_id
 from mlflow_oidc_auth.validators.run import _permission_for_run
@@ -70,7 +71,13 @@ def validate_can_invoke_issue_detection(username: str) -> bool:
         secret_name = _resolve_secret_name_from_id(str(secret_id))
         if not secret_name or not can_use_gateway_secret(secret_name, username):
             return False
-    return all(can_use_gateway_endpoint(str(name), username) for name in all_source_values("endpoint_name"))
+    for name in all_source_values("endpoint_name"):
+        # MLflow calls the endpoint parsed from ``gateway:/<endpoint_name>``, which strips
+        # leading slashes; the name as given is checked too.
+        called = gateway_endpoint_for_name(str(name))
+        if called is None or not (can_use_gateway_endpoint(called, username) and can_use_gateway_endpoint(str(name), username)):
+            return False
+    return True
 
 
 def validate_can_invoke_genai_evaluate(username: str) -> bool:

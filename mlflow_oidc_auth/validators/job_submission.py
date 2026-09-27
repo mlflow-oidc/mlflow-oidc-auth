@@ -28,12 +28,11 @@ from mlflow.server.handlers import _get_tracking_store
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils import effective_scorer_permission
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
+from mlflow_oidc_auth.validators._model_uri import is_gateway_provider, split_model_uri
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments, trace_ids_permission
 from mlflow_oidc_auth.validators.prompt_optimization_job import can_read_dataset_experiments, can_update_prompt_uri
 
 logger = get_logger()
-
-_GATEWAY_MODEL_PREFIX = "gateway:/"
 
 
 class _Unauthorized(Exception):
@@ -85,14 +84,16 @@ def _caller_or_absent(value: Any, username: str) -> None:
 
 
 def _gateway_model(model: Any, username: str) -> None:
-    """A ``gateway:/<endpoint>`` model needs USE on the endpoint; a provider model is unchecked,
-    as on MLflow's ``issues/invoke`` route."""
+    """A gateway model needs USE on the endpoint MLflow will call; another provider's model is
+    unchecked, as on MLflow's ``issues/invoke`` route. A malformed model URI denies."""
     if model is None:
         return
     _require(isinstance(model, str) and bool(model))
-    if model.startswith(_GATEWAY_MODEL_PREFIX):
-        endpoint = model[len(_GATEWAY_MODEL_PREFIX) :]
-        _require(bool(endpoint) and can_use_gateway_endpoint(endpoint, username))
+    parsed = split_model_uri(model)
+    _require(parsed is not None)
+    provider, name = parsed
+    if is_gateway_provider(provider):
+        _require(can_use_gateway_endpoint(name, username))
 
 
 def _check_invoke_scorer(params: dict[str, Any], username: str) -> None:
