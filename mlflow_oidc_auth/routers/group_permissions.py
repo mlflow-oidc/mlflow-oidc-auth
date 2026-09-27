@@ -100,6 +100,7 @@ def _validate_group_name(value: str) -> str:
         raise HTTPException(status_code=400, detail="Group name must not contain '/', '?', '#' or '%'")
     return name
 
+
 GROUP_EXPERIMENT_PERMISSIONS = "/{group_name:path}/experiments"
 GROUP_EXPERIMENT_PERMISSION_DETAIL = "/{group_name:path}/experiments/{experiment_id}"
 GROUP_EXPERIMENT_PATTERN_PERMISSIONS = "/{group_name:path}/experiment-patterns"

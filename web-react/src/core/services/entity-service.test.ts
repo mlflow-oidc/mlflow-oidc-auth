@@ -35,4 +35,21 @@ describe("entity-service", () => {
       expect.objectContaining({ method: "GET" }),
     );
   });
+
+  it("createGroup posts the group name to the groups endpoint", async () => {
+    (apiUtils.request as Mock).mockResolvedValue({
+      message: "Group analysts successfully created",
+    });
+
+    const result = await entityService.createGroup("analysts");
+
+    expect(apiUtils.request).toHaveBeenCalledWith(
+      STATIC_API_ENDPOINTS.ALL_GROUPS,
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ group_name: "analysts" }),
+      }),
+    );
+    expect(result).toEqual({ message: "Group analysts successfully created" });
+  });
 });

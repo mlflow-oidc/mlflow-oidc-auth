@@ -129,7 +129,7 @@ class TestCreateGroup:
         mock_store.get_groups.return_value = ["devs"]
         resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
         assert resp.status_code == 201
-        mock_store.populate_groups.assert_called_once_with(["analysts"])
+        mock_store.populate_groups.assert_called_once_with(["analysts"], written_by="manual")
 
     def test_create_group_already_exists(self, authenticated_client, mock_store):
         """Test creating a group that already exists leaves it untouched."""
@@ -143,7 +143,7 @@ class TestCreateGroup:
         mock_store.get_groups.return_value = []
         resp = authenticated_client.post(GROUP_BASE, json={"group_name": "  analysts  "})
         assert resp.status_code == 201
-        mock_store.populate_groups.assert_called_once_with(["analysts"])
+        mock_store.populate_groups.assert_called_once_with(["analysts"], written_by="manual")
 
     def test_create_group_blank_name(self, authenticated_client, mock_store):
         """Test rejecting a group name that is empty once trimmed."""
@@ -157,6 +157,39 @@ class TestCreateGroup:
         mock_store.populate_groups.side_effect = Exception("DB error")
         resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
         assert resp.status_code == 500
+
+    def test_create_group_name_too_long(self, authenticated_client, mock_store):
+        """Test rejecting a group name over the shared SCIM/admin-API length bound."""
+        mock_store.get_groups.return_value = []
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "a" * 256})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_reserved_character(self, authenticated_client, mock_store):
+        """Test rejecting a name that would collide with the path-segment reserved characters."""
+        mock_store.get_groups.return_value = []
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "devs/prod"})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_does_not_reown_scim_managed_group(self, authenticated_client, mock_store):
+        """Creating a group that already exists (e.g. SCIM-managed) must not touch its ownership."""
+        mock_store.get_groups.return_value = ["directory-team"]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "directory-team"})
+        assert resp.status_code == 200
+        # No write at all reaches the store, so a group another source owns keeps that owner.
+        mock_store.populate_groups.assert_not_called()
+
+
+@pytest.mark.usefixtures("authenticated_session")
+class TestCreateGroupDenied:
+    """Non-admins cannot create groups."""
+
+    def test_create_group_denied_for_non_admin(self, authenticated_client, mock_store):
+        """Test that a non-admin user cannot create a group."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 403
+        mock_store.populate_groups.assert_not_called()
 
 
 # ========================================================================================
