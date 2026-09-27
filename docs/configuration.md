@@ -513,6 +513,16 @@ for deployments behind a reverse proxy.
   traffic, and logs the store error. Keep the tracking store reachable from the artifact
   server, or route non-admin artifact traffic through the tracking server.
 
+- **Some requests also need a grant on the resource they reference.** Creating a model version
+  needs READ on the run and logged model it is created from (for a `models:/<name>/…` source,
+  READ on that registered model replaces the run check); logging a metric to a logged model (`LogMetric` /
+  `LogBatch` with `model_id`) and minting a presigned upload URL for a logged model need EDIT on
+  that logged model's experiment; creating or updating a gateway model definition needs USE on
+  its secret; and creating or updating a gateway endpoint, or attaching a model to one, needs
+  USE on every model definition it routes to. Admins are unaffected. With the default
+  `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these grants; on a deny-by-default
+  deployment, grant them before upgrading. See
+  [Resources a request references](permissions#resources-a-request-references).
 - **Routes without a validator are refused to non-admins.** A request to an MLflow route that
   has no authorization rule now gets `403` for a non-admin user instead of being served. Admins
   are unaffected. See [Routes without a validator](permissions#routes-without-a-validator).

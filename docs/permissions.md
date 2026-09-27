@@ -202,11 +202,32 @@ Artifact routes outside the proxy:
 | `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on the run's experiment (`run_uuid` from the query string) |
 | `GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files` | READ on the logged model's experiment |
 | `GET /{api,ajax-api}/2.0/mlflow/logged-models/<model_id>/artifacts/directories` | READ on the logged model's experiment |
-| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the run's experiment |
+| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the experiment of the run (`run_id`) or logged model (`model_id`); a request naming neither is refused |
 | `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-download-url` | READ on the run's experiment |
 
 Every run or model id the request carries is authorized, in any source (see
 [Which request source is authorized](#which-request-source-is-authorized)).
+
+## Resources a request references
+
+Some requests act on one resource but draw on another. The caller then needs a grant on both,
+as in MLflow's own auth plugin. Admins are not checked. A referenced resource that does not
+exist, or an id that is present but empty, is refused with `403`.
+
+| Request | Target check | Also required |
+|---|---|---|
+| `model-versions/create` | EDIT on the registered model (`name`) | READ on the experiment of the logged model (`model_id`, or a `models:/<model_id>` source). READ on the experiment of the run (`run_id`, or a `runs:/<run_id>/…` source), except that when every `source` is `models:/<name>/…`, READ on that registered model is required instead of the run check. |
+| `runs/log-metric` | EDIT on the run's experiment | EDIT on the experiment of the logged model in `model_id` |
+| `runs/log-batch` | EDIT on the run's experiment | EDIT on the experiment of every logged model in `metrics[].model_id` |
+| `artifacts/presigned-upload-url` | — | EDIT on the experiment of the run (`run_id`) or logged model (`model_id`) |
+| `gateway/model-definitions/create` | — (open to authenticated users) | USE on the secret in `secret_id` |
+| `gateway/model-definitions/update` | EDIT on the model definition | USE on the secret in `secret_id`, if given |
+| `gateway/endpoints/create` | — (open to authenticated users) | USE on every model definition in `model_configs[].model_definition_id` |
+| `gateway/endpoints/update` | EDIT on the endpoint | USE on every model definition in `model_configs[].model_definition_id` |
+| `gateway/endpoints/models/attach` | EDIT on the endpoint | USE on the model definition in `model_config.model_definition_id` |
+
+Every value is read under both spellings (`model_id` / `modelId`) and from every request
+source, as described in [Which request source is authorized](#which-request-source-is-authorized).
 
 ## HEAD Requests and Route Coverage
 
