@@ -525,6 +525,12 @@ for deployments behind a reverse proxy.
   experiment (an unscoped dataset or issue search, a dataset linked to no experiment, a job with
   no recorded experiment) are admin-only. Gateway budget reads (`gateway/budgets/get`, `list`,
   `windows`) and demo-data generation are admin-only.
+- **Job API jobs belong to their creator.** On MLflow's FastAPI job API
+  (`/ajax-api/3.0/jobs/…`), fetching or cancelling a job by id now requires being the user who
+  submitted it, and `jobs/search` returns only the caller's own jobs. Previously any
+  authenticated user could do both for every job. Jobs with no recorded creator (submitted
+  before MLflow recorded one, or on an MLflow release that does not) are visible to admins only.
+  Admins are unaffected. See [Job API](permissions#job-api).
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.

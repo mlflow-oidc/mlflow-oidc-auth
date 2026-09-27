@@ -30,6 +30,7 @@ The permission system covers these MLflow resource types:
 | Scorers | Per experiment + scorer name | Compound key |
 | Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions |
 | Evaluation datasets, issues, label schemas, review queues, UI jobs | Per linked experiment | See [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes) |
+| Job API jobs (`ajax-api/3.0/jobs/…`) | Per job creator | See [Job API](#job-api) |
 | Gateway Endpoints | Per endpoint name | AI Gateway routes |
 | Gateway Secrets | Per secret name | AI Gateway secrets |
 | Gateway Model Definitions | Per model definition name | AI Gateway model configs |
@@ -262,6 +263,21 @@ and as the reviewer of an item.
 | | `GET online-configs` | READ on the experiment and on the scorer of every configuration returned for `scorer_ids` |
 | Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
 | Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
+
+## Job API
+
+MLflow's FastAPI job API (`/ajax-api/3.0/jobs/…`) records the user who submitted a job as its
+creator. Jobs on this API carry no experiment, so the creator is the boundary, as in MLflow's own
+auth plugin. Admins are not restricted.
+
+| Route | Permission required |
+|---|---|
+| `POST jobs/` (submit) | any authenticated user; the caller is recorded as the creator |
+| `GET jobs/<job_id>`, `PATCH jobs/cancel/<job_id>` | the caller is the job's creator; a job that does not exist or has no recorded creator is refused |
+| `POST jobs/search` | any authenticated user; the results contain only the jobs the caller created |
+
+The UI jobs under `ajax-api/3.0/mlflow/jobs/…` are a separate family, authorized through their
+experiment (see [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes)).
 
 ## Permission Cascade on Delete/Rename
 
