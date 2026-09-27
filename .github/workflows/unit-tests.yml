@@ -46,6 +46,10 @@ jobs:
         run: |
           yarn install
         working-directory: web-react
+      - name: Lint
+        run: |
+          yarn lint
+        working-directory: web-react
       - name: Run tests
         run: |
           yarn test:coverage

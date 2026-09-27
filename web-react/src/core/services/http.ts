@@ -1,4 +1,4 @@
-import { getActiveWorkspace } from "../../shared/context/workspace-context";
+import { getActiveWorkspace } from "../../shared/context/active-workspace";
 
 export type RequestOptions = Omit<RequestInit, "body"> & {
   params?: Record<string, string>;

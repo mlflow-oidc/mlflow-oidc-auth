@@ -1,9 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  CreateWorkspaceModal,
-  validateWorkspaceName,
-} from "./create-workspace-modal";
+import { CreateWorkspaceModal } from "./create-workspace-modal";
+import { validateWorkspaceName } from "../validate-workspace-name";
 import * as useToastModule from "../../../shared/components/toast/use-toast";
 import * as workspaceServiceModule from "../../../core/services/workspace-service";
 
