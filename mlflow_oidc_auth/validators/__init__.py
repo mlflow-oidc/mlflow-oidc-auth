@@ -68,6 +68,9 @@ from mlflow_oidc_auth.validators.stuff import (
 from mlflow_oidc_auth.validators.gateway import (
     validate_can_read_gateway_endpoint,
     validate_can_update_gateway_endpoint,
+    validate_can_create_gateway_endpoint,
+    validate_can_update_gateway_endpoint_config,
+    validate_can_attach_model_to_gateway_endpoint,
     validate_can_delete_gateway_endpoint,
     validate_can_manage_gateway_endpoint_validator,
     validate_can_read_gateway_secret,
@@ -75,6 +78,7 @@ from mlflow_oidc_auth.validators.gateway import (
     validate_can_delete_gateway_secret,
     validate_can_read_gateway_model_definition,
     validate_can_update_gateway_model_definition,
+    validate_can_create_gateway_model_definition,
     validate_can_delete_gateway_model_definition,
 )
 
@@ -179,6 +183,9 @@ __all__ = [
     "validate_can_invoke_scorer",
     "validate_can_read_gateway_endpoint",
     "validate_can_update_gateway_endpoint",
+    "validate_can_create_gateway_endpoint",
+    "validate_can_update_gateway_endpoint_config",
+    "validate_can_attach_model_to_gateway_endpoint",
     "validate_can_delete_gateway_endpoint",
     "validate_can_manage_gateway_endpoint_validator",
     "validate_can_read_gateway_secret",
@@ -186,6 +193,7 @@ __all__ = [
     "validate_can_delete_gateway_secret",
     "validate_can_read_gateway_model_definition",
     "validate_can_update_gateway_model_definition",
+    "validate_can_create_gateway_model_definition",
     "validate_can_delete_gateway_model_definition",
     "validate_can_create_workspace",
     "validate_can_read_workspace",

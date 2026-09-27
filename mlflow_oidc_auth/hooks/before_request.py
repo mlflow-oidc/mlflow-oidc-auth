@@ -238,12 +238,16 @@ from mlflow_oidc_auth.validators import (
     validate_can_invoke_scorer,
     validate_can_read_gateway_endpoint,
     validate_can_update_gateway_endpoint,
+    validate_can_create_gateway_endpoint,
+    validate_can_update_gateway_endpoint_config,
+    validate_can_attach_model_to_gateway_endpoint,
     validate_can_delete_gateway_endpoint,
     validate_can_read_gateway_secret,
     validate_can_update_gateway_secret,
     validate_can_delete_gateway_secret,
     validate_can_read_gateway_model_definition,
     validate_can_update_gateway_model_definition,
+    validate_can_create_gateway_model_definition,
     validate_can_delete_gateway_model_definition,
     validate_can_create_gateway,
     validate_can_create_workspace,
@@ -482,9 +486,10 @@ BEFORE_REQUEST_HANDLERS = {
     ListReviewQueueItems: validate_can_read_review_queue,
     SetReviewQueueItemStatus: validate_can_set_review_queue_item_status,
     # Routes for gateway endpoints
-    CreateGatewayEndpoint: validate_can_create_gateway,
+    # Creating or reconfiguring an endpoint also needs USE on every model definition it routes to.
+    CreateGatewayEndpoint: validate_can_create_gateway_endpoint,
     GetGatewayEndpoint: validate_can_read_gateway_endpoint,
-    UpdateGatewayEndpoint: validate_can_update_gateway_endpoint,
+    UpdateGatewayEndpoint: validate_can_update_gateway_endpoint_config,
     DeleteGatewayEndpoint: validate_can_delete_gateway_endpoint,
     # Routes for gateway secrets
     CreateGatewaySecret: validate_can_create_gateway,
@@ -492,12 +497,13 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateGatewaySecret: validate_can_update_gateway_secret,
     DeleteGatewaySecret: validate_can_delete_gateway_secret,
     # Routes for gateway model definitions
-    CreateGatewayModelDefinition: validate_can_create_gateway,
+    # Creating or updating a model definition also needs USE on the secret it references.
+    CreateGatewayModelDefinition: validate_can_create_gateway_model_definition,
     GetGatewayModelDefinition: validate_can_read_gateway_model_definition,
     UpdateGatewayModelDefinition: validate_can_update_gateway_model_definition,
     DeleteGatewayModelDefinition: validate_can_delete_gateway_model_definition,
     # Routes for gateway endpoint-model mappings
-    AttachModelToGatewayEndpoint: validate_can_update_gateway_endpoint,
+    AttachModelToGatewayEndpoint: validate_can_attach_model_to_gateway_endpoint,
     DetachModelFromGatewayEndpoint: validate_can_update_gateway_endpoint,
     # Routes for gateway endpoint bindings
     CreateGatewayEndpointBinding: validate_can_update_gateway_endpoint,
@@ -1139,6 +1145,7 @@ def _stash_gateway_context(validator) -> None:
     # --- Gateway endpoint: update (rename) or delete ---
     if validator in (
         validate_can_update_gateway_endpoint,
+        validate_can_update_gateway_endpoint_config,
         validate_can_delete_gateway_endpoint,
     ):
         data = request.get_json(force=True, silent=True) or {}
@@ -1146,7 +1153,7 @@ def _stash_gateway_context(validator) -> None:
         if endpoint_id:
             name = _resolve_endpoint_name_from_id(endpoint_id)
             if name:
-                if validator is validate_can_update_gateway_endpoint:
+                if validator is not validate_can_delete_gateway_endpoint:
                     g._updating_gateway_endpoint_old_name = name
                 else:
                     g._deleting_gateway_endpoint_name = name

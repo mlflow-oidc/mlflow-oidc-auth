@@ -20,7 +20,10 @@ from mlflow_oidc_auth.utils.permissions import (
     can_update_gateway_endpoint,
     can_update_gateway_model_definition,
     can_update_gateway_secret,
+    can_use_gateway_model_definition,
+    can_use_gateway_secret,
 )
+from mlflow_oidc_auth.validators._referenced import nested_body_values
 
 _logger = get_logger()
 
@@ -55,6 +58,53 @@ def validate_can_update_gateway_endpoint(username: str) -> bool:
     if not names:
         return False
     return all(can_update_gateway_endpoint(name, username) for name in names)
+
+
+def validate_can_create_gateway_endpoint(username: str) -> bool:
+    """Validate CreateGatewayEndpoint: USE on every model definition it routes to.
+
+    Creating an endpoint is open to any authenticated user (the creator is granted MANAGE
+    afterwards), but each ``model_configs[].model_definition_id`` is a resource of its own,
+    and MLflow's auth plugin requires USE on it. A model definition that cannot be resolved
+    is denied.
+
+    Parameters:
+        username: The authenticated user.
+
+    Returns:
+        True when the caller may use every referenced model definition.
+    """
+    return _can_use_model_definitions(nested_body_values("model_configs", "model_definition_id"), username)
+
+
+def validate_can_update_gateway_endpoint_config(username: str) -> bool:
+    """Validate UpdateGatewayEndpoint: UPDATE on the endpoint and USE on its model definitions.
+
+    Parameters:
+        username: The authenticated user.
+
+    Returns:
+        True when the caller may update the endpoint and use every model definition named
+        in ``model_configs``.
+    """
+    if not validate_can_update_gateway_endpoint(username):
+        return False
+    return _can_use_model_definitions(nested_body_values("model_configs", "model_definition_id"), username)
+
+
+def validate_can_attach_model_to_gateway_endpoint(username: str) -> bool:
+    """Validate AttachModelToGatewayEndpoint: UPDATE on the endpoint and USE on the model definition.
+
+    Parameters:
+        username: The authenticated user.
+
+    Returns:
+        True when the caller may update the endpoint and use the model definition named by
+        ``model_config.model_definition_id``.
+    """
+    if not validate_can_update_gateway_endpoint(username):
+        return False
+    return _can_use_model_definitions(nested_body_values("model_config", "model_definition_id"), username)
 
 
 def validate_can_delete_gateway_endpoint(username: str) -> bool:
@@ -150,7 +200,26 @@ def validate_can_update_gateway_model_definition(username: str) -> bool:
     if not names:
         _logger.warning("Cannot resolve gateway model definition name — denying access (fail-closed)")
         return False
-    return all(can_update_gateway_model_definition(name, username) for name in names)
+    if not all(can_update_gateway_model_definition(name, username) for name in names):
+        return False
+    # A new secret_id points the definition at another credential: USE on it is required.
+    return _can_use_secrets(_safe_params("secret_id"), username)
+
+
+def validate_can_create_gateway_model_definition(username: str) -> bool:
+    """Validate CreateGatewayModelDefinition: USE on the secret it references.
+
+    Creating a model definition is open to any authenticated user (the creator is granted
+    MANAGE afterwards), but the ``secret_id`` it uses is a credential owned by someone, and
+    MLflow's auth plugin requires USE on it. A secret that cannot be resolved is denied.
+
+    Parameters:
+        username: The authenticated user.
+
+    Returns:
+        True when the caller may use every referenced secret.
+    """
+    return _can_use_secrets(_safe_params("secret_id"), username)
 
 
 def validate_can_delete_gateway_model_definition(username: str) -> bool:
@@ -240,6 +309,28 @@ def _resolve_all(ids: list, resolve) -> list[str] | None:
             return None
         names.append(name)
     return list(dict.fromkeys(names))
+
+
+def _can_use_secrets(secret_ids: list, username: str) -> bool:
+    """USE on every referenced secret; no ids means nothing to check; an unresolvable id denies."""
+    if not secret_ids:
+        return True
+    names = _resolve_all(secret_ids, _resolve_secret_name_from_id)
+    if names is None:
+        _logger.warning("Cannot resolve referenced gateway secret — denying access (fail-closed)")
+        return False
+    return all(can_use_gateway_secret(name, username) for name in names)
+
+
+def _can_use_model_definitions(model_definition_ids: list, username: str) -> bool:
+    """USE on every referenced model definition; no ids means nothing to check; an unresolvable id denies."""
+    if not model_definition_ids:
+        return True
+    names = _resolve_all(model_definition_ids, _resolve_model_definition_name_from_id)
+    if names is None:
+        _logger.warning("Cannot resolve referenced gateway model definition — denying access (fail-closed)")
+        return False
+    return all(can_use_gateway_model_definition(name, username) for name in names)
 
 
 def _all_gateway_endpoint_names() -> list[str]:

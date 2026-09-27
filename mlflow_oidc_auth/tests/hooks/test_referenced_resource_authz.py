@@ -13,6 +13,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.tests.hooks.authz_harness import (
     ADMIN,
+    EDITOR,
     OUTSIDER,
     OWN,
     PREFIXES,
@@ -37,12 +38,29 @@ def _experiment_for(resource_id: str) -> str:
     raise MlflowException(f"'{resource_id}' not found", RESOURCE_DOES_NOT_EXIST)
 
 
+def _gateway_name(resource_id: str) -> str:
+    """``sec-victim`` -> ``victim-sec``; ids ending in ``-gone`` do not exist."""
+    kind, _, owner = resource_id.partition("-")
+    if owner not in ("victim", "own"):
+        raise MlflowException(f"'{resource_id}' not found", RESOURCE_DOES_NOT_EXIST)
+    return f"{owner}-{kind}"
+
+
 class _FakeTrackingStore(BaseFakeTrackingStore):
     def get_run(self, run_id):
         return SimpleNamespace(info=SimpleNamespace(run_id=run_id, experiment_id=_experiment_for(run_id)))
 
     def get_logged_model(self, model_id):
         return SimpleNamespace(model_id=model_id, experiment_id=_experiment_for(model_id))
+
+    def get_secret_info(self, secret_id=None, **_):
+        return SimpleNamespace(secret_id=secret_id, secret_name=_gateway_name(secret_id))
+
+    def get_gateway_model_definition(self, model_definition_id=None, **_):
+        return SimpleNamespace(model_definition_id=model_definition_id, name=_gateway_name(model_definition_id))
+
+    def get_gateway_endpoint(self, endpoint_id=None, **_):
+        return SimpleNamespace(endpoint_id=endpoint_id, name=_gateway_name(endpoint_id))
 
 
 @pytest.fixture(autouse=True)
@@ -53,6 +71,15 @@ def permission_store(tmp_path, monkeypatch):
     s.create_registered_model_permission(OWN_MODEL, OUTSIDER, "EDIT")
     s.create_registered_model_permission(VICTIM_MODEL, OUTSIDER, "NO_PERMISSIONS")
     s.create_registered_model_permission(OWN_MODEL, READER, "EDIT")
+    # Gateway: OUTSIDER holds nothing on the victim's resources and MANAGE (the default) on
+    # its own; READER holds READ (below USE) and EDITOR holds USE on the victim's secret and
+    # model definition, but nothing on the victim's endpoint.
+    for kind in ("sec", "md"):
+        create = s.create_gateway_secret_permission if kind == "sec" else s.create_gateway_model_definition_permission
+        create(f"victim-{kind}", OUTSIDER, "NO_PERMISSIONS")
+        create(f"victim-{kind}", READER, "READ")
+        create(f"victim-{kind}", EDITOR, "USE")
+    s.create_gateway_endpoint_permission("victim-ep", OUTSIDER, "NO_PERMISSIONS")
     flush_permission_cache()
     yield s
     flush_permission_cache()
@@ -257,3 +284,85 @@ def test_presigned_upload_logged_model_in_query_string_is_also_checked():
 
 def test_presigned_upload_admin_is_not_checked():
     assert allowed(hook(PRESIGNED_UPLOAD.format("/api"), "POST", ADMIN, body={"path": "x", "model_id": "m-victim"}))
+
+
+# ---------------------------------------------------------------------------
+# Gateway: USE on the secret / model definitions a resource is built from
+# ---------------------------------------------------------------------------
+
+GW = "{}/3.0/mlflow/gateway/"
+CREATE_MODEL_DEF = GW + "model-definitions/create"
+UPDATE_MODEL_DEF = GW + "model-definitions/update"
+CREATE_ENDPOINT = GW + "endpoints/create"
+UPDATE_ENDPOINT = GW + "endpoints/update"
+ATTACH_MODEL = GW + "endpoints/models/attach"
+
+
+def _model_def_body(**fields):
+    return {"name": "new-md", "provider": "openai", "model_name": "gpt-4o", **fields}
+
+
+def _configs(*ids, key="model_definition_id"):
+    return [{key: i, "linkage_type": "PRIMARY", "weight": 1.0} for i in ids]
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_create_model_definition_needs_use_on_the_secret(prefix):
+    path = CREATE_MODEL_DEF.format(prefix)
+    assert allowed(hook(path, "POST", OUTSIDER, body=_model_def_body(secret_id="sec-own")))
+    assert allowed(hook(path, "POST", EDITOR, body=_model_def_body(secret_id="sec-victim"))), "USE is enough"
+    assert denied(hook(path, "POST", READER, body=_model_def_body(secret_id="sec-victim"))), "READ is not enough"
+    assert denied(hook(path, "POST", OUTSIDER, body=_model_def_body(secret_id="sec-victim")))
+    assert denied(hook(path, "POST", OUTSIDER, body=_model_def_body(secretId="sec-victim")))
+    assert denied(hook(path, "POST", OUTSIDER, body=_model_def_body(secret_id="sec-gone")))
+    assert denied(hook(path, "POST", OUTSIDER, body=_model_def_body(secret_id="sec-own"), query={"secret_id": "sec-victim"}))
+    assert allowed(hook(path, "POST", ADMIN, body=_model_def_body(secret_id="sec-victim")))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_update_model_definition_needs_use_on_a_new_secret(prefix):
+    path = UPDATE_MODEL_DEF.format(prefix)
+    own = {"model_definition_id": "md-own"}
+    assert allowed(hook(path, "POST", OUTSIDER, body=own))
+    assert allowed(hook(path, "POST", OUTSIDER, body={**own, "secret_id": "sec-own"}))
+    assert denied(hook(path, "POST", OUTSIDER, body={**own, "secret_id": "sec-victim"}))
+    assert denied(hook(path, "POST", OUTSIDER, body={**own, "secret_id": "sec-gone"}))
+    # The target check is unchanged.
+    assert denied(hook(path, "POST", OUTSIDER, body={"model_definition_id": "md-victim", "secret_id": "sec-own"}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_create_endpoint_needs_use_on_every_model_definition(prefix):
+    path = CREATE_ENDPOINT.format(prefix)
+    assert allowed(hook(path, "POST", OUTSIDER, body={"name": "new-ep", "model_configs": _configs("md-own")}))
+    assert allowed(hook(path, "POST", EDITOR, body={"name": "new-ep", "model_configs": _configs("md-victim")}))
+    assert denied(hook(path, "POST", READER, body={"name": "new-ep", "model_configs": _configs("md-victim")}))
+    assert denied(hook(path, "POST", OUTSIDER, body={"name": "new-ep", "model_configs": _configs("md-own", "md-victim")}))
+    assert denied(hook(path, "POST", OUTSIDER, body={"name": "new-ep", "modelConfigs": _configs("md-victim", key="modelDefinitionId")}))
+    assert denied(hook(path, "POST", OUTSIDER, body={"name": "new-ep", "model_configs": _configs("md-gone")}))
+    assert allowed(hook(path, "POST", ADMIN, body={"name": "new-ep", "model_configs": _configs("md-victim")}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_update_endpoint_needs_use_on_every_model_definition(prefix):
+    path = UPDATE_ENDPOINT.format(prefix)
+    assert allowed(hook(path, "POST", OUTSIDER, body={"endpoint_id": "ep-own"}))
+    assert allowed(hook(path, "POST", OUTSIDER, body={"endpoint_id": "ep-own", "model_configs": _configs("md-own")}))
+    assert denied(hook(path, "POST", OUTSIDER, body={"endpoint_id": "ep-own", "model_configs": _configs("md-victim")}))
+    assert denied(hook(path, "POST", OUTSIDER, body={"endpoint_id": "ep-own", "model_configs": _configs("md-gone")}))
+    assert denied(hook(path, "POST", OUTSIDER, body={"endpoint_id": "ep-victim", "model_configs": _configs("md-own")}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_attach_model_needs_use_on_the_model_definition(prefix):
+    path = ATTACH_MODEL.format(prefix)
+
+    def body(endpoint_id, md_id, key="model_config"):
+        return {"endpoint_id": endpoint_id, key: _configs(md_id)[0]}
+
+    assert allowed(hook(path, "POST", OUTSIDER, body=body("ep-own", "md-own")))
+    assert denied(hook(path, "POST", OUTSIDER, body=body("ep-own", "md-victim")))
+    assert denied(hook(path, "POST", OUTSIDER, body=body("ep-own", "md-victim", key="modelConfig")))
+    assert denied(hook(path, "POST", OUTSIDER, body=body("ep-own", "md-gone")))
+    assert denied(hook(path, "POST", OUTSIDER, body=body("ep-victim", "md-own")))
+    assert allowed(hook(path, "POST", ADMIN, body=body("ep-victim", "md-victim")))

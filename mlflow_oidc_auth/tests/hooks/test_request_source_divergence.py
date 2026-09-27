@@ -419,6 +419,9 @@ _UNION_SPECS = {
     "validate_can_read_gateway_model_definition": ("name", False, {}),
     "validate_can_delete_gateway_model_definition": ("name", False, {}),
     "validate_can_update_gateway_model_definition": ("model_definition_id", False, {}),
+    "validate_can_create_gateway_model_definition": ("secret_id", False, {"name": "md", "provider": "openai", "model_name": "gpt"}),
+    "validate_can_update_gateway_endpoint_config": ("endpoint_id", False, {}),
+    "validate_can_attach_model_to_gateway_endpoint": ("endpoint_id", False, {}),
     "validate_can_create_model_version": ("name", False, {"source": "s3://bucket/model"}),
     "validate_can_log_metrics": ("run_id", False, {}),
     "validate_can_update_run_or_logged_model": ("run_id", False, {"path": "model.pkl"}),
@@ -449,6 +452,8 @@ _UNION_EXEMPT = {
     "validate_can_create_experiment": "creation: no existing resource; name-gated only under RESTRICT_RESOURCE_CREATION",
     "validate_can_create_registered_model": "creation: no existing resource; name-gated only under RESTRICT_RESOURCE_CREATION",
     "validate_can_create_gateway": "creation: allowed for any authenticated user",
+    "validate_can_create_gateway_endpoint": "creation: the only ids are NESTED under model_configs, which the flat spec "
+    "cannot express; covered by test_referenced_resource_authz",
     "validate_can_read_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_update_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_delete_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
