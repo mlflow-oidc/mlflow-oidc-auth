@@ -193,6 +193,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_delete_experiment_artifact_proxy,
     validate_can_delete_logged_model,
     validate_can_create_registered_model,
+    validate_can_create_model_version,
     validate_can_delete_registered_model,
     validate_can_delete_run,
     validate_can_manage_experiment,
@@ -413,7 +414,9 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateRegisteredModel: validate_can_update_registered_model,
     RenameRegisteredModel: validate_can_update_registered_model,
     GetLatestVersions: validate_can_read_registered_model,
-    CreateModelVersion: validate_can_update_registered_model,
+    # UPDATE on the destination model plus READ on the run / logged model / registered
+    # model the version is created from.
+    CreateModelVersion: validate_can_create_model_version,
     GetModelVersion: validate_can_read_registered_model,
     DeleteModelVersion: validate_can_delete_registered_model,
     UpdateModelVersion: validate_can_update_registered_model,

@@ -419,6 +419,7 @@ _UNION_SPECS = {
     "validate_can_read_gateway_model_definition": ("name", False, {}),
     "validate_can_delete_gateway_model_definition": ("name", False, {}),
     "validate_can_update_gateway_model_definition": ("model_definition_id", False, {}),
+    "validate_can_create_model_version": ("name", False, {"source": "s3://bucket/model"}),
     "validate_can_read_dataset": ("dataset_id", False, {}),
     "validate_can_update_dataset": ("dataset_id", False, {}),
     "validate_can_delete_dataset": ("dataset_id", False, {}),
@@ -534,6 +535,7 @@ def union_world(store, monkeypatch):
         "mlflow_oidc_auth.validators.issue._get_tracking_store",
         "mlflow_oidc_auth.validators.review._get_tracking_store",
         "mlflow_oidc_auth.validators._experiment_scope._get_tracking_store",
+        "mlflow_oidc_auth.validators._referenced._get_tracking_store",
     ):
         monkeypatch.setattr(target, lambda: fake)
     monkeypatch.setattr("mlflow_oidc_auth.hooks.before_request.store", store)

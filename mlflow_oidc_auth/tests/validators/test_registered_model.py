@@ -422,3 +422,104 @@ def test_permission_inheritance_scenarios_registered_model():
             assert registered_model.validate_can_update_registered_model("alice") is False
             assert registered_model.validate_can_delete_registered_model("alice") is False
             assert registered_model.validate_can_manage_registered_model("alice") is False
+
+
+# ---------------------------------------------------------------------------
+# validate_can_create_model_version: READ on the source it references
+# ---------------------------------------------------------------------------
+
+from flask import Flask  # noqa: E402
+
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ  # noqa: E402
+
+_cmv_app = Flask(__name__)
+
+
+def _create_version(body, *, can_update=True, run_perm=READ, model_perm=READ, source_model_perm=READ):
+    with (
+        _cmv_app.test_request_context("/api/2.0/mlflow/model-versions/create", method="POST", json=body),
+        patch.object(registered_model, "validate_can_update_registered_model", return_value=can_update),
+        patch.object(registered_model, "referenced_run_permission", return_value=run_perm) as run_check,
+        patch.object(registered_model, "referenced_logged_model_permission", return_value=model_perm) as model_check,
+        patch.object(
+            registered_model,
+            "effective_registered_model_permission",
+            return_value=MagicMock(permission=source_model_perm),
+        ),
+    ):
+        result = registered_model.validate_can_create_model_version("alice")
+        return result, run_check, model_check
+
+
+def test_create_model_version_requires_update_on_destination():
+    result, run_check, _ = _create_version({"name": "m", "source": "s3://b/p", "run_id": "r1"}, can_update=False)
+    assert result is False
+    run_check.assert_not_called()
+
+
+def test_create_model_version_checks_run_and_model_ids():
+    result, run_check, model_check = _create_version({"name": "m", "source": "s3://b/p", "run_id": "r1", "model_id": "m-1"})
+    assert result is True
+    run_check.assert_called_once_with("r1", "alice")
+    model_check.assert_called_once_with("m-1", "alice")
+
+
+def test_create_model_version_denied_without_read_on_run():
+    result, _, _ = _create_version({"name": "m", "source": "s3://b/p", "run_id": "r1"}, run_perm=NO_PERMISSIONS)
+    assert result is False
+
+
+def test_create_model_version_denied_without_read_on_logged_model():
+    result, _, _ = _create_version({"name": "m", "source": "s3://b/p", "model_id": "m-1"}, model_perm=NO_PERMISSIONS)
+    assert result is False
+
+
+@pytest.mark.parametrize("field", ["run_id", "model_id", "runId", "modelId"])
+def test_create_model_version_denies_present_but_empty_id(field):
+    result, _, _ = _create_version({"name": "m", "source": "s3://b/p", field: ""})
+    assert result is False
+
+
+def test_create_model_version_checks_run_named_by_runs_uri():
+    result, run_check, _ = _create_version({"name": "m", "source": "runs:/r9/model"})
+    assert result is True
+    run_check.assert_called_once_with("r9", "alice")
+
+
+def test_create_model_version_checks_logged_model_named_by_models_uri():
+    result, _, model_check = _create_version({"name": "m", "source": "models:/m-9"})
+    assert result is True
+    model_check.assert_called_once_with("m-9", "alice")
+
+
+def test_create_model_version_registered_model_source_needs_read_and_skips_lineage():
+    result, run_check, _ = _create_version({"name": "m", "source": "models:/other/1", "run_id": "r1"})
+    assert result is True
+    run_check.assert_not_called()
+
+
+def test_create_model_version_registered_model_source_still_checks_model_id():
+    result, run_check, model_check = _create_version({"name": "m", "source": "models:/other/1", "run_id": "r1", "model_id": "m-1"})
+    assert result is True
+    run_check.assert_not_called()
+    model_check.assert_called_once_with("m-1", "alice")
+    result, _, _ = _create_version({"name": "m", "source": "models:/other/1", "model_id": "m-1"}, model_perm=NO_PERMISSIONS)
+    assert result is False
+
+
+def test_create_model_version_null_ids_are_absent():
+    result, run_check, model_check = _create_version({"name": "m", "source": "s3://b/p", "run_id": None, "model_id": None})
+    assert result is True
+    run_check.assert_not_called()
+    model_check.assert_not_called()
+
+
+def test_create_model_version_registered_model_source_denied_without_read():
+    result, _, _ = _create_version({"name": "m", "source": "models:/other/1"}, source_model_perm=NO_PERMISSIONS)
+    assert result is False
+
+
+@pytest.mark.parametrize("source", ["runs:/", "models:/", "runs:abc/model"])
+def test_create_model_version_denies_unparseable_source(source):
+    result, _, _ = _create_version({"name": "m", "source": source})
+    assert result is False
