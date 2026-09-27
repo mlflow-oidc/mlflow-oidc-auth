@@ -421,6 +421,7 @@ _UNION_SPECS = {
     "validate_can_update_gateway_model_definition": ("model_definition_id", False, {}),
     "validate_can_create_model_version": ("name", False, {"source": "s3://bucket/model"}),
     "validate_can_log_metrics": ("run_id", False, {}),
+    "validate_can_update_run_or_logged_model": ("run_id", False, {"path": "model.pkl"}),
     "validate_can_read_dataset": ("dataset_id", False, {}),
     "validate_can_update_dataset": ("dataset_id", False, {}),
     "validate_can_delete_dataset": ("dataset_id", False, {}),

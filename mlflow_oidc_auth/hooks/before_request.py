@@ -210,6 +210,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_registered_model,
     validate_can_update_run,
     validate_can_log_metrics,
+    validate_can_update_run_or_logged_model,
     validate_can_read_experiments_from_experiment_ids,
     validate_can_update_experiment_from_experiment_id,
     validate_can_read_metric_history_bulk_interval,
@@ -513,15 +514,16 @@ for _bp in _BUDGET_POLICY_PROTOS:
     BEFORE_REQUEST_HANDLERS[_bp] = _deny_non_admin
 
 # Presigned cloud-storage URLs for a run's artifacts (issue #289). MLflow resolves the run
-# from the caller-supplied run_id and mints a URL straight to the bucket, so without a
-# check an upload URL is a cross-tenant WRITE primitive and a download URL a cross-tenant
-# read. The run validators authorize every run_id / run_uuid the request carries in any
-# source (the union rule, #285/#288). Looked up by name so an MLflow build without one of
-# these protos still imports; without the proto there is no route to guard.
+# from the caller-supplied run_id and mints a URL straight to the bucket, so an upload URL
+# needs UPDATE and a download URL READ on the run. Newer MLflow also accepts a logged
+# model's model_id for uploads, so the upload validator requires UPDATE on every run and
+# every logged model the request names, and denies a request naming neither. Every value
+# in any source is authorized (the union rule, #285/#288). Looked up by name so an MLflow
+# build without one of these protos still imports; without the proto there is no route.
 from mlflow.protos import service_pb2 as _service_pb2
 
 for _proto_name, _validator in (
-    ("CreatePresignedUploadUrl", validate_can_update_run),
+    ("CreatePresignedUploadUrl", validate_can_update_run_or_logged_model),
     ("CreatePresignedDownloadUrl", validate_can_read_run),
 ):
     if (_proto := getattr(_service_pb2, _proto_name, None)) is not None:

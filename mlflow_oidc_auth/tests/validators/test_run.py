@@ -364,3 +364,44 @@ def test_referenced_permission_uses_the_experiment():
         store.return_value.get_logged_model.return_value = MagicMock(experiment_id="7")
         assert _referenced.referenced_logged_model_permission("m-1", "alice") is READ
         perm.assert_called_once_with("7", "alice")
+
+
+def _presigned(body, *, run_perm=EDIT, model_perm=EDIT):
+    with (
+        _log_app.test_request_context("/api/2.0/mlflow/artifacts/presigned-upload-url", method="POST", json=body),
+        patch.object(run, "referenced_run_permission", return_value=run_perm) as run_check,
+        patch.object(run, "referenced_logged_model_permission", return_value=model_perm) as model_check,
+    ):
+        return run.validate_can_update_run_or_logged_model("alice"), run_check, model_check
+
+
+def test_presigned_upload_by_run_checks_the_run():
+    result, run_check, model_check = _presigned({"run_id": "r1", "path": "x"})
+    assert result is True
+    run_check.assert_called_once_with("r1", "alice")
+    model_check.assert_not_called()
+
+
+def test_presigned_upload_by_logged_model_checks_the_logged_model():
+    result, run_check, model_check = _presigned({"model_id": "m-1", "path": "x"})
+    assert result is True
+    run_check.assert_not_called()
+    model_check.assert_called_once_with("m-1", "alice")
+
+
+def test_presigned_upload_without_a_target_is_denied():
+    result, run_check, model_check = _presigned({"path": "x"})
+    assert result is False
+    run_check.assert_not_called()
+    model_check.assert_not_called()
+
+
+@pytest.mark.parametrize("perm", [READ, NO_PERMISSIONS])
+def test_presigned_upload_denied_without_update_on_logged_model(perm):
+    result, _, _ = _presigned({"model_id": "m-1", "path": "x"}, model_perm=perm)
+    assert result is False
+
+
+def test_presigned_upload_denied_without_update_on_run():
+    result, _, _ = _presigned({"run_id": "r1", "path": "x"}, run_perm=READ)
+    assert result is False

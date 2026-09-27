@@ -214,3 +214,46 @@ def test_log_batch_still_needs_update_on_the_run():
 def test_log_batch_admin_is_not_checked():
     body = {"run_id": "run-victim", "metrics": [_metric(model_id="m-victim")]}
     assert allowed(hook(LOG_BATCH.format("/api"), "POST", ADMIN, body=body))
+
+
+# ---------------------------------------------------------------------------
+# CreatePresignedUploadUrl: UPDATE on the run or on the logged model
+# ---------------------------------------------------------------------------
+
+PRESIGNED_UPLOAD = "{}/2.0/mlflow/artifacts/presigned-upload-url"
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize("ids", [{"run_id": "run-own"}, {"model_id": "m-own"}, {"modelId": "m-own"}])
+def test_presigned_upload_to_updatable_target_is_allowed(prefix, ids):
+    assert allowed(hook(PRESIGNED_UPLOAD.format(prefix), "POST", OUTSIDER, body={"path": "model.pkl", **ids}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize(
+    "ids",
+    [
+        {"model_id": "m-victim"},
+        {"modelId": "m-victim"},
+        {"model_id": "m-gone"},
+        {"run_id": "run-gone"},
+        {"run_id": "run-own", "model_id": "m-victim"},
+        {"run_id": "run-victim", "model_id": "m-own"},
+        {},
+    ],
+)
+def test_presigned_upload_to_other_or_missing_target_is_denied(prefix, ids):
+    assert denied(hook(PRESIGNED_UPLOAD.format(prefix), "POST", OUTSIDER, body={"path": "model.pkl", **ids}))
+
+
+def test_presigned_upload_logged_model_needs_update_not_read():
+    assert denied(hook(PRESIGNED_UPLOAD.format("/api"), "POST", READER, body={"path": "x", "model_id": "m-victim"}))
+
+
+def test_presigned_upload_logged_model_in_query_string_is_also_checked():
+    resp = hook(PRESIGNED_UPLOAD.format("/api"), "POST", OUTSIDER, body={"path": "x", "run_id": "run-own"}, query={"model_id": "m-victim"})
+    assert denied(resp)
+
+
+def test_presigned_upload_admin_is_not_checked():
+    assert allowed(hook(PRESIGNED_UPLOAD.format("/api"), "POST", ADMIN, body={"path": "x", "model_id": "m-victim"}))
