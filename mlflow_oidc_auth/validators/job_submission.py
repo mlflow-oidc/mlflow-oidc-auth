@@ -20,23 +20,20 @@ the wrong type denies. This covers the job functions MLflow 3.16.1 allows
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from typing import Any
 
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils import effective_prompt_permission, effective_scorer_permission
+from mlflow_oidc_auth.utils import effective_scorer_permission
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments, trace_ids_permission
-from mlflow_oidc_auth.validators.dataset import dataset_experiment_ids
+from mlflow_oidc_auth.validators.prompt_optimization_job import can_read_dataset_experiments, can_update_prompt_uri
 
 logger = get_logger()
 
 _GATEWAY_MODEL_PREFIX = "gateway:/"
-# prompts:/<name>/<version> or prompts:/<name>@<alias>
-_PROMPT_URI = re.compile(r"^prompts:/(?P<name>[^/@]+)(?:/[^/@]+|@[^/@]+)$")
 
 
 class _Unauthorized(Exception):
@@ -132,16 +129,11 @@ def _check_genai_evaluate(params: dict[str, Any], username: str) -> None:
 def _check_optimize_prompts(params: dict[str, Any], username: str) -> None:
     _update_on_experiment(params.get("experiment_id"), username)
     _update_on_run(params.get("run_id"), username)
-    prompt_uri = params.get("prompt_uri")
-    _require(isinstance(prompt_uri, str))
-    match = _PROMPT_URI.match(prompt_uri)
-    _require(match is not None)
     # The job registers the optimized template as a new version of this prompt.
-    _require(effective_prompt_permission(match.group("name"), username).permission.can_update)
+    _require(can_update_prompt_uri(params.get("prompt_uri"), username))
     dataset_id = params.get("dataset_id")
     if dataset_id:
-        experiment_ids = dataset_experiment_ids(_id(dataset_id))
-        _require(bool(experiment_ids) and permission_on_all_experiments(experiment_ids, username).can_read)
+        _require(can_read_dataset_experiments(dataset_id, username))
 
 
 # job name -> (parameters the job function declares, check)

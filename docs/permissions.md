@@ -28,7 +28,7 @@ The permission system covers these MLflow resource types:
 | Registered Models | Per model name | Includes model versions |
 | Prompts | Per prompt name | Uses the model permission infrastructure |
 | Scorers | Per experiment + scorer name | Compound key |
-| Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions |
+| Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions. Creating a job needs EDIT on the experiment and on the prompt in `source_prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`; the job registers a new version of it), and READ on every experiment linked to `config.dataset_id` when one is given |
 | Evaluation datasets, issues, label schemas, review queues, UI jobs | Per linked experiment | See [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes) |
 | Job API jobs (`ajax-api/3.0/jobs/…`) | Per job creator | See [Job API](#job-api) |
 | Gateway Endpoints | Per endpoint name | AI Gateway routes |

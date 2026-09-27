@@ -153,13 +153,13 @@ class TestBeforeRequestHandlerMappings:
         handler = BEFORE_REQUEST_HANDLERS[CancelPromptOptimizationJob]
         assert handler.__name__ == "validate_can_update_prompt_optimization_job"
 
-    def test_create_prompt_optimization_job_still_uses_experiment_validator(self):
-        """CreatePromptOptimizationJob should still use validate_can_update_experiment (carries experiment_id, no job yet)."""
+    def test_create_prompt_optimization_job_uses_create_validator(self):
+        """CreatePromptOptimizationJob checks the experiment, the source prompt and the dataset."""
         from mlflow.protos.service_pb2 import CreatePromptOptimizationJob
         from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_HANDLERS
 
         handler = BEFORE_REQUEST_HANDLERS[CreatePromptOptimizationJob]
-        assert handler.__name__ == "validate_can_update_experiment"
+        assert handler.__name__ == "validate_can_create_prompt_optimization_job"
 
     def test_search_prompt_optimization_jobs_still_uses_experiment_validator(self):
         """SearchPromptOptimizationJobs should still use validate_can_read_experiment (searches by experiment_id)."""

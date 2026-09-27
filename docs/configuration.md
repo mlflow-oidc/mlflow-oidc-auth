@@ -536,6 +536,11 @@ for deployments behind a reverse proxy.
   submit any allowed job with any parameters. MLflow's own UI starts these jobs through
   experiment-scoped routes, which are unchanged.
   Admins are unaffected. See [Job API](permissions#job-api).
+- **Creating a prompt optimization job checks the prompt and dataset.**
+  `POST 3.0/mlflow/prompt-optimization/jobs` now needs EDIT on the source prompt, which the job
+  registers a new version of, and READ on the experiments of the training dataset, in addition
+  to EDIT on the experiment. A `source_prompt_uri` that is not a `prompts:/` URI, or a dataset
+  that cannot be resolved, is refused. Admins are unaffected.
 - **`ListScorers` is filtered per scorer.** Listing scorers without an `experiment_id`, which
   MLflow answers with the scorers of every active experiment, is now allowed for any
   authenticated user instead of being refused, and both forms of the request omit scorers the
