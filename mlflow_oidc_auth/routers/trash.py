@@ -276,7 +276,7 @@ async def permanently_delete_all_trashed_entities(
             deleted_run_ids_older_than = []
 
         # Determine which run IDs to delete
-        target_run_ids = _split_csv(run_ids) if run_ids else deleted_run_ids_older_than
+        target_run_ids = _split_csv(run_ids) if run_ids else list(deleted_run_ids_older_than)
 
         # Handle experiment deletion
         target_experiment_ids: List[str] = []

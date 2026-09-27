@@ -2,6 +2,7 @@
 Tests for the trash router.
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1532,3 +1533,58 @@ class TestResolveRunArtifactRepository:
                 _resolve_run_artifact_repository(empty_path_uri)
 
         mock_get_artifact_repo.assert_not_called()
+
+
+class TestCleanupRunAgeWithinTargetedExperiment:
+    """``older_than`` still applies to every run of an experiment being emptied."""
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_recently_deleted_run_in_old_experiment_is_kept(self, mock_get_store, mock_get_artifact_repo):
+        backend_store = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["old-run"]
+
+        experiment = MagicMock()
+        experiment.experiment_id = "e1"
+        experiment.lifecycle_stage = "deleted"
+        experiment.last_update_time = 0
+        backend_store.get_experiment.return_value = experiment
+
+        def make_run(run_id):
+            run = MagicMock()
+            run.info.run_id = run_id
+            run.info.lifecycle_stage = "deleted"
+            run.info.artifact_uri = f"s3://bucket/e1/{run_id}/artifacts"
+            run.info.experiment_id = "e1"
+            return run
+
+        runs = {run_id: make_run(run_id) for run_id in ("old-run", "new-run")}
+        backend_store.get_run.side_effect = lambda run_id: runs[run_id]
+
+        class Page(list):
+            token = None
+
+        def search_runs(**kwargs):
+            if kwargs.get("run_view_type") == ViewType.ALL:
+                return Page([runs["new-run"]])
+            return Page(list(runs.values()))
+
+        backend_store.search_runs.side_effect = search_runs
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            older_than="1d",
+            run_ids=None,
+            experiment_ids="e1",
+        )
+
+        assert result.status_code == 200
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == ["old-run"]
+        assert [f["run_id"] for f in payload["failed_runs"]] == ["new-run"]
+        assert "not older than" in payload["failed_runs"][0]["error"]
+        assert [f["experiment_id"] for f in payload["failed_experiments"]] == ["e1"]
+        backend_store._hard_delete_run.assert_called_once_with("old-run")
+        backend_store._hard_delete_experiment.assert_not_called()
