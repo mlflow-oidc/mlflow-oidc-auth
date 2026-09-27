@@ -124,4 +124,4 @@ class TestMssqlCompilation:
         compiled = str(stmt.compile(dialect=mssql.dialect(), compile_kwargs={"literal_binds": True}))
 
         assert "TRUE" not in compiled.upper() and "FALSE" not in compiled.upper()
-        assert "IS_SERVICE_ACCOUNT = 1" in compiled.upper()
+        assert "IS_SERVICE_ACCOUNT=1" in compiled.upper().replace(" ", "")
