@@ -329,6 +329,7 @@ The plugin enforces permissions on MLflow's GraphQL API (`/graphql`) through a c
 
 - **Protected operations**: `mlflowGetExperiment`, `mlflowGetRun`, `mlflowListArtifacts`, `mlflowSearchRuns`, `mlflowSearchDatasets`, `mlflowSearchModelVersions`, and related fields
 - **Behavior**: Returns `null` for unauthorized fields (does not raise errors)
+- **Nested model versions**: `modelVersions` on a run (and on a model-version search response) lists only the versions whose registered model the caller can READ. The run's experiment must also be readable. A version whose model permission cannot be resolved is left out
 - **Admin users**: Bypass all GraphQL authorization checks
 
 ## Workspace Permissions
