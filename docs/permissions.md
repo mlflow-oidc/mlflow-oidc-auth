@@ -216,18 +216,41 @@ exist, or an id that is present but empty, is refused with `403`.
 
 | Request | Target check | Also required |
 |---|---|---|
-| `model-versions/create` | EDIT on the registered model (`name`) | READ on the experiment of the logged model (`model_id`, or a `models:/<model_id>` source). READ on the experiment of the run (`run_id`, or a `runs:/<run_id>/…` source), except that when every `source` is `models:/<name>/…`, READ on that registered model is required instead of the run check. |
+| `model-versions/create` | EDIT on the registered model (`name`) | See [Creating a model version](#creating-a-model-version) |
 | `runs/log-metric` | EDIT on the run's experiment | EDIT on the experiment of the logged model in `model_id` |
 | `runs/log-batch` | EDIT on the run's experiment | EDIT on the experiment of every logged model in `metrics[].model_id` |
 | `artifacts/presigned-upload-url` | — | EDIT on the experiment of the run (`run_id`) or logged model (`model_id`) |
 | `gateway/model-definitions/create` | — (open to authenticated users) | USE on the secret in `secret_id` |
 | `gateway/model-definitions/update` | EDIT on the model definition | USE on the secret in `secret_id`, if given |
-| `gateway/endpoints/create` | — (open to authenticated users) | USE on every model definition in `model_configs[].model_definition_id` |
-| `gateway/endpoints/update` | EDIT on the endpoint | USE on every model definition in `model_configs[].model_definition_id` |
+| `gateway/endpoints/create` | — (open to authenticated users) | USE on every model definition in `model_configs[].model_definition_id`; EDIT on the experiment in `experiment_id` (where usage traces are logged), if given |
+| `gateway/endpoints/update` | EDIT on the endpoint | USE on every model definition in `model_configs[].model_definition_id`; EDIT on the experiment in `experiment_id`, if given |
 | `gateway/endpoints/models/attach` | EDIT on the endpoint | USE on the model definition in `model_config.model_definition_id` |
 
 Every value is read under both spellings (`model_id` / `modelId`) and from every request
 source, as described in [Which request source is authorized](#which-request-source-is-authorized).
+
+### Creating a model version
+
+Reading a model version's artifacts (`model-versions/get-artifact`, the download URI) needs
+only READ on its registered model. So creating a version needs a grant on everything the
+version points at, not only EDIT on the registered model it is created in. For each `source`
+value:
+
+| `source` | Also required |
+|---|---|
+| `models:/<name>/<version>`, `@<alias>`, `/<stage>`, `/latest` (a copy, as `copy_model_version` makes) | READ on registered model `<name>`. `run_id` is not checked. A `model_id` equal to the source version's own `model_id` needs nothing more; any other `model_id` needs EDIT on its logged model's experiment, because MLflow tags that logged model with the new version. |
+| `models:/<model_id>` | READ on the logged model's experiment |
+| `runs:/<run_id>/…` | READ on the run's experiment |
+| `mlflow-artifacts:/…`, or `http(s)://…/api/2.0/mlflow-artifacts/artifacts/…` | READ on the experiment the artifact path names (`<experiment_id>/…` or `workspaces/<ws>/<experiment_id>/…`). A path naming no existing experiment is refused. |
+| `dummy-source` or `prompt-template` on a prompt version (MLflow's placeholder sources) | nothing more |
+| anything else (`s3://`, `gs://`, `abfss://`, a local path, another URL) | the location must be the artifact root, or lie beneath it, of a run (`run_id`) or logged model (`model_id`) the request names. With neither id, the request is admin-only. |
+
+Outside the copy case, READ on the experiment of every `run_id` and `model_id` is required as
+well. A source with a `..` segment (after decoding) or one that cannot be parsed is refused.
+MLflow's own clients satisfy these rules: `mlflow.register_model("runs:/…")`,
+`log_model(registered_model_name=…)`, `register_model("models:/<model_id>")` and
+`copy_model_version` all send a source under the run or logged model they also name, or a
+`runs:/`, `models:/` URI.
 
 ## HEAD Requests and Route Coverage
 

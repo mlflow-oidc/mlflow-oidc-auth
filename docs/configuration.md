@@ -514,15 +514,23 @@ for deployments behind a reverse proxy.
   server, or route non-admin artifact traffic through the tracking server.
 
 - **Some requests also need a grant on the resource they reference.** Creating a model version
-  needs READ on the run and logged model it is created from (for a `models:/<name>/…` source,
-  READ on that registered model replaces the run check); logging a metric to a logged model (`LogMetric` /
-  `LogBatch` with `model_id`) and minting a presigned upload URL for a logged model need EDIT on
-  that logged model's experiment; creating or updating a gateway model definition needs USE on
-  its secret; and creating or updating a gateway endpoint, or attaching a model to one, needs
-  USE on every model definition it routes to. Admins are unaffected. With the default
-  `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these grants; on a deny-by-default
-  deployment, grant them before upgrading. See
+  needs READ on the run, logged model, experiment or registered model its `source`, `run_id`
+  and `model_id` point at; logging a metric to a logged model (`LogMetric` / `LogBatch` with
+  `model_id`) and minting a presigned upload URL for a logged model need EDIT on that logged
+  model's experiment; creating or updating a gateway model definition needs USE on its secret;
+  creating or updating a gateway endpoint, or attaching a model to one, needs USE on every model
+  definition it routes to, and EDIT on the experiment named in `experiment_id`. Admins are
+  unaffected. With the default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these
+  grants; on a deny-by-default deployment, grant them before upgrading. See
   [Resources a request references](permissions#resources-a-request-references).
+- **Model version sources are checked.** A model version whose `source` is a storage location
+  (`s3://`, `gs://`, a local path, a URL other than the artifact proxy) must lie under the
+  artifact root of the `run_id` or `model_id` the request names; with neither id, creating it
+  is admin-only. A prompt version's source must be MLflow's placeholder (`dummy-source` or
+  `prompt-template`, which MLflow's own clients send) unless it follows the same rules. A client
+  that registers models from arbitrary storage locations, or creates prompt versions with
+  another placeholder, must run as an administrator or send the source through a run or
+  logged model. See [Creating a model version](permissions#creating-a-model-version).
 - **Routes without a validator are refused to non-admins.** A request to an MLflow route that
   has no authorization rule now gets `403` for a non-admin user instead of being served. Admins
   are unaffected. See [Routes without a validator](permissions#routes-without-a-validator).
