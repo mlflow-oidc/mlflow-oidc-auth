@@ -250,7 +250,7 @@ and as the reviewer of an item.
 | Label schemas (`3.0/mlflow/label-schemas/…`) | `get`, `get-by-name`, `list` | READ on the experiment |
 | | `create`, `update`, `delete` | MANAGE on the experiment |
 | | a schema with no experiment | readable by any authenticated user; writable by admins only |
-| Review queues (`3.0/mlflow/review-queues/…`) | `create` | EDIT on the experiment; the caller becomes the queue's owner. A custom queue's name may not be a registered username (see below) |
+| Review queues (`3.0/mlflow/review-queues/…`) | `create` | EDIT on the experiment; the caller becomes the queue's owner. A custom queue's name may not be a registered username (see below); a user queue's name must be an existing, active, non-service account |
 | | `get`, `get-by-name`, `items/list` | READ on the experiment, and one of: MANAGE on the experiment, being an assigned user of the queue, or EDIT and owning the queue |
 | | `list` | READ on the experiment; a caller without EDIT sees only the queues they are assigned to |
 | | `update` | MANAGE on the experiment, or EDIT and owning the queue. A custom queue may not be renamed to a registered username |

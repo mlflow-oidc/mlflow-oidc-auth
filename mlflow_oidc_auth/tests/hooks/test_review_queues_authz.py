@@ -141,6 +141,15 @@ def test_a_user_queue_is_named_after_its_user(prefix, caller):
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize("assignee", [NOBODY, INACTIVE, ROBOT], ids=["nonexistent", "inactive", "service-account"])
+def test_a_user_queue_is_created_only_for_an_active_person(prefix, assignee):
+    body = {"experiment_id": VICTIM, "name": assignee, "queue_type": "USER"}
+    assert denied(hook(_rq(prefix, "create"), "POST", EDITOR, body=body))
+    assert denied(hook(_rq(prefix, "create"), "POST", EDITOR, body={**body, "name": READER}, query={"name": assignee}))
+    assert denied(hook(_rq(prefix, "create"), "POST", EDITOR, body={**body, "queue_type": 1}))
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
 def test_the_username_rule_is_checked_only_after_the_permission(prefix):
     """A caller without the permission gets 403, not a hint about which usernames exist."""
     body = {"experiment_id": VICTIM, "name": READER, "queue_type": "CUSTOM"}

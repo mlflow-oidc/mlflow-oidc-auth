@@ -225,8 +225,16 @@ def reject_rename_review_queue_shadowing_user() -> None:
 
 
 def validate_can_create_review_queue(username: str) -> bool:
-    """EDIT on the experiment; a custom queue's name may not be a registered username."""
+    """EDIT on the experiment; a custom queue's name may not be a registered username.
+
+    A user queue (a personal queue created directly rather than through
+    ``get-or-create-user``) must be named after an active, non-service account, as
+    :func:`validate_can_get_or_create_user_queue` requires.
+    """
     if not validate_can_update_experiment(username):
+        return False
+    queue_types = {str(value).strip().upper() for value in all_source_values("queue_type")}
+    if queue_types & _USER_QUEUE_TYPE and not all(_is_assignable_user(name) for name in all_source_values("name")):
         return False
     reject_create_review_queue_shadowing_user()
     return True
