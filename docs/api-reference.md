@@ -288,10 +288,20 @@ artifacts itself) is resolved against the server's `--artifacts-destination` roo
 MLflow's own server resolves proxied artifacts. If artifact deletion fails for a run, that run's
 metadata is **not** deleted — it stays in the trash and is reported in the response's
 `failed_runs` list with the error, so a run is never hard-deleted while its artifacts are still
-known to exist. If any of an experiment's runs were kept this way, the experiment itself is also
-kept (hard-deleting it would cascade-delete the kept run's metadata) and reported in
-`failed_experiments` with a `"N run(s) kept: artifact deletion failed"` reason, even when the
-experiment's own hard-delete would otherwise have succeeded.
+known to exist. Before hard-deleting an experiment, the endpoint always checks whether it still
+owns any run — for any reason a run above was kept (a failed artifact deletion, an age or
+lifecycle-stage check, or a lookup failure), not only an artifact-deletion failure. If one does,
+the experiment is kept too (MLflow's own run/experiment relationship cascades a hard delete onto
+every run it still owns) and reported in `failed_experiments` instead, even when the experiment's
+own hard-delete would otherwise have succeeded.
+
+Query parameters interact as follows:
+- Neither `run_ids` nor `experiment_ids` (an "empty trash" call): every deleted run and every
+  deleted experiment older than `older_than` (default: all of them) is a candidate.
+- `experiment_ids` given: those experiments and all of their runs are candidates, in addition to
+  any `run_ids` also given.
+- `run_ids` given without `experiment_ids`: **only** those runs are touched. No other trashed
+  experiment, or any run other than the ones named, is read or deleted.
 
 ---
 

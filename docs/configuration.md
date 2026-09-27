@@ -536,12 +536,19 @@ for deployments behind a reverse proxy.
   is now fixed by resolving such URIs against `--artifacts-destination`, the same way MLflow's own
   server does. When artifact deletion still fails for some other reason, the run's metadata is now
   kept and the failure is reported in the response's `failed_runs` list instead of being silently
-  discarded. An experiment with a kept run is also kept — hard-deleting it would cascade-delete
-  the run's metadata through MLflow's own experiment/run relationship — and reported in
+  discarded. Before hard-deleting an experiment, cleanup now always confirms it owns no run at
+  all (for any reason a run was kept, not only a failed artifact deletion — hard-deleting the
+  experiment would otherwise cascade-delete that run's metadata through MLflow's own
+  experiment/run relationship); an experiment that still owns a run is kept too and reported in
   `failed_experiments` instead. A deployment that automates cleanup and only checks the HTTP
   status code should also check those lists; runs and experiments that fail to clean up stay in
-  the trash instead of disappearing with orphaned artifacts. See
-  [Trash Management](api-reference#trash-management).
+  the trash instead of disappearing with orphaned artifacts.
+- **Cleanup with only `run_ids` no longer sweeps every other trashed experiment.** Calling
+  `POST /oidc/trash/cleanup?run_ids=...` without `experiment_ids` used to also hard-delete every
+  experiment in the deleted lifecycle stage (and, through it, every run of those experiments too)
+  as a side effect, regardless of `older_than`. It now touches only the named runs. Calls that
+  name `experiment_ids` (with or without `run_ids`), or name neither (the "empty trash" case),
+  are unaffected. See [Trash Management](api-reference#trash-management).
 
 ## MLflow Server Environment Variables
 

@@ -4,7 +4,7 @@ import re
 import urllib.parse
 import warnings
 from datetime import timedelta
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -314,8 +314,11 @@ async def permanently_delete_all_trashed_entities(
                             status_code=400,
                             content={"error": f"Experiments {non_old_experiment_ids} are not older than {older_than}"},
                         )
-            else:
-                # Get all deleted experiments
+            elif not run_ids:
+                # Neither run_ids nor experiment_ids was given ("empty trash"): sweep every
+                # deleted experiment. When run_ids is given without experiment_ids (e.g. the UI's
+                # "delete selected runs"), leave target_experiment_ids empty instead - the caller
+                # asked to delete specific runs only, not every other trashed experiment.
                 filter_string = f"last_update_time < {time_threshold}" if older_than else None
 
                 def fetch_experiments(token=None):
@@ -353,11 +356,6 @@ async def permanently_delete_all_trashed_entities(
         # Delete runs
         deleted_runs = []
         failed_runs = []
-        # Experiment ids with at least one run kept because its artifact deletion failed. MLflow's
-        # SqlRun -> SqlExperiment relationship cascades on delete, so hard-deleting the experiment
-        # would delete these kept runs' metadata too. Track them by experiment so the experiment
-        # loop below can skip hard-deleting an experiment that still owns a kept run.
-        runs_kept_by_experiment: Dict[str, int] = {}
 
         for run_id in set(target_run_ids):
             try:
@@ -401,7 +399,6 @@ async def permanently_delete_all_trashed_entities(
                     # of hard-deleting a run whose artifacts were not actually removed.
                     logger.error(f"Error deleting artifacts for run {run_id}: {str(e)}")
                     failed_runs.append({"run_id": run_id, "error": f"Failed to delete artifacts: {str(e)}"})
-                    runs_kept_by_experiment[run.info.experiment_id] = runs_kept_by_experiment.get(run.info.experiment_id, 0) + 1
                     continue
 
                 # Hard delete the run
@@ -419,18 +416,31 @@ async def permanently_delete_all_trashed_entities(
 
         if not skip_experiments:
             for experiment_id in target_experiment_ids:
-                kept_run_count = runs_kept_by_experiment.get(experiment_id, 0)
-                if kept_run_count:
-                    # Hard-deleting the experiment would cascade-delete the run(s) above that
-                    # were deliberately kept (MLflow's SqlRun -> SqlExperiment relationship
-                    # cascades on delete), undoing the fail-safe. Skip it and report why.
-                    logger.warning(f"Skipping hard delete of experiment {experiment_id}: {kept_run_count} run(s) kept because artifact deletion failed")
-                    failed_experiments.append(
-                        {
-                            "experiment_id": experiment_id,
-                            "error": f"{kept_run_count} run(s) kept: artifact deletion failed",
-                        }
+                # A run can be kept above for many reasons (artifact deletion failure, age
+                # requirement not met, wrong lifecycle stage, a get_run error, or the paged
+                # fetch helpers above silently swallowing a search error and returning no
+                # runs). Rather than track every one of those paths individually, check
+                # directly, right before hard-deleting the experiment, whether it still owns
+                # any run at all: MLflow's SqlRun -> SqlExperiment relationship cascades on
+                # delete, so hard-deleting an experiment that still has a run - kept for any
+                # reason - would delete that run's metadata along with it.
+                try:
+                    remaining_runs = backend_store.search_runs(
+                        experiment_ids=[experiment_id],
+                        filter_string="",
+                        run_view_type=ViewType.ALL,
+                        max_results=1,
                     )
+                except Exception as e:
+                    # Can't confirm the experiment has no runs left - fail safe and skip it
+                    # rather than risk cascading a hard delete onto a run we never checked.
+                    logger.error(f"Could not verify experiment {experiment_id} has no remaining runs: {str(e)}")
+                    failed_experiments.append({"experiment_id": experiment_id, "error": f"Could not verify no runs remain: {str(e)}"})
+                    continue
+
+                if remaining_runs:
+                    logger.warning(f"Skipping hard delete of experiment {experiment_id}: run(s) remain")
+                    failed_experiments.append({"experiment_id": experiment_id, "error": "Run(s) remain in this experiment"})
                     continue
 
                 try:
@@ -615,7 +625,9 @@ def _resolve_run_artifact_repository(artifact_uri: str):
     ------
     MlflowException
         If ``artifact_uri`` uses the ``mlflow-artifacts`` scheme but this server has no
-        ``--artifacts-destination`` configured, so the real storage location is unknown.
+        ``--artifacts-destination`` configured, so the real storage location is unknown, or if
+        it has no path component of its own, so it cannot be mapped to anything narrower than
+        the whole ``--artifacts-destination`` root.
     """
     if urllib.parse.urlparse(artifact_uri).scheme != "mlflow-artifacts":
         return get_artifact_repository(artifact_uri)
@@ -633,7 +645,19 @@ def _resolve_run_artifact_repository(artifact_uri: str):
         )
 
     relative_path = _get_proxied_run_artifact_destination_path(artifact_uri)
-    resolved_uri = posixpath.join(destination_root, relative_path) if relative_path else destination_root
+    if not relative_path:
+        # An empty relative path means the URI names no location under the destination root at
+        # all (e.g. "mlflow-artifacts:/" or "mlflow-artifacts://host"). Falling back to the
+        # destination root itself would treat every other run's artifacts under it as this
+        # run's own - raise instead so the run is kept rather than deleting unrelated artifacts.
+        raise MlflowException(
+            f"Cannot resolve proxied artifact URI '{artifact_uri}': it has no path component, "
+            "so it cannot be mapped to a location under --artifacts-destination without "
+            "resolving to the destination root itself.",
+            error_code=INVALID_PARAMETER_VALUE,
+        )
+
+    resolved_uri = posixpath.join(destination_root, relative_path)
     return get_artifact_repository(resolved_uri)
 
 

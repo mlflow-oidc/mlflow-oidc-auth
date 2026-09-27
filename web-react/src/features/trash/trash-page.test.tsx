@@ -340,18 +340,19 @@ describe("TrashPage", () => {
     });
   });
 
-  it("ignores failures for ids outside the request and never reports a negative success count (#239 review round 1)", async () => {
-    // The backend sweeps every other trashed experiment's runs when only `run_ids` is sent, so
-    // `failed_runs` can include ids the user never selected. Only failures for the selected ids
-    // should count toward the failed/succeeded totals shown to the user.
+  it("never reports a negative success count even if a response carries more failures than requested (#239 review round 2)", async () => {
+    // Deleting by run_ids alone no longer sweeps other trashed experiments (#239 review round
+    // 2), so the backend can no longer report a failure for an id outside this request. Keep a
+    // defensive clamp anyway: a response with more failure entries than selected ids must never
+    // read as a negative "succeeded" count.
     vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
-      deleted_runs: ["run1"],
+      deleted_runs: [],
       deleted_experiments: [],
-      total_deleted_runs: 1,
+      total_deleted_runs: 0,
       total_deleted_experiments: 0,
       failed_runs: [
-        { run_id: "run-not-selected-1", error: "unrelated failure 1" },
-        { run_id: "run-not-selected-2", error: "unrelated failure 2" },
+        { run_id: "run1", error: "failure 1" },
+        { run_id: "run1", error: "failure 2" },
       ],
     });
     renderWithRouter("/trash/runs");
@@ -369,11 +370,13 @@ describe("TrashPage", () => {
         run_ids: "run1",
       });
     });
-    // Only 1 item was selected and none of the reported failures match it, so this must read
-    // as a full success (not "-1 could not be deleted" or a mention of the unrelated failures).
     expect(mockShowToast).toHaveBeenCalledWith(
-      "Successfully deleted 1 item(s)",
-      "success",
+      expect.stringContaining("Failed to delete 2 item(s)"),
+      "error",
+    );
+    expect(mockShowToast).not.toHaveBeenCalledWith(
+      expect.stringMatching(/-\d/),
+      expect.anything(),
     );
   });
 
