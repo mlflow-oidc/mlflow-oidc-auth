@@ -92,7 +92,7 @@ Regex pattern permissions are managed separately from direct permissions, with p
 ### Access token tabs
 
 Your own **User Profile** page (`/user`) has a **Tokens** tab: a table of your access tokens
-(name, prefix — shown as "legacy" for a secret carried over from before this feature — created,
+(name, prefix — shown as "Carried over" for a secret from before this feature — created,
 expires, last used, and status), a **+ Create token** button next to the search box, and a delete
 action with a confirmation. Creating a token shows its plaintext **once** in a dedicated
 dialog — copy it immediately, since it cannot be retrieved again.

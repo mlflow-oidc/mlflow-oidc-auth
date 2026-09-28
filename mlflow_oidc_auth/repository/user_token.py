@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, List, Optional, Tuple
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import INTERNAL_ERROR, INVALID_PARAMETER_VALUE, INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -197,14 +197,18 @@ class UserTokenRepository:
             raise MlflowException(f"User with username={username} not found", RESOURCE_DOES_NOT_EXIST)
         return user
 
+    @staticmethod
+    def _purge_expired(session, user: SqlUser, now: datetime) -> None:
+        """Delete the user's expired tokens. They can never authenticate again; clearing them on
+        every issue keeps the table bounded by the cap, however short the lifetimes a user keeps
+        requesting, and frees their names for reuse."""
+        session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id, SqlUserToken.expires_at <= now).delete(synchronize_session=False)
+
     def _insert(self, session, user: SqlUser, name: str, expires_at: datetime, created_by: Optional[str], now: datetime) -> Tuple[SqlUserToken, str]:
         if not user.active:
             # A deactivated account keeps no credentials; a token issued now would come back to
             # life on reactivation without anyone having issued it to an active user.
             raise MlflowException(f"'{user.username}' is deactivated; tokens cannot be issued", INVALID_STATE)
-        # Expired tokens can never authenticate again. Clearing them here keeps the table bounded
-        # by the cap below, however short the lifetimes a user keeps requesting.
-        session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id, SqlUserToken.expires_at <= now).delete(synchronize_session=False)
         # By now ``create`` has refused an existing name and ``replace`` has deleted it, so every
         # remaining row is another live token.
         if session.query(SqlUserToken.id).filter(SqlUserToken.user_id == user.id).count() >= MAX_LIVE_TOKENS_PER_USER:
@@ -238,9 +242,9 @@ class UserTokenRepository:
                     continue
                 if "uq_user_tokens_user_id_name" in constraint or "user_tokens.name" in constraint:
                     raise MlflowException(f"a token named '{name}' already exists", RESOURCE_ALREADY_EXISTS) from None
-                raise MlflowException("could not issue the token", INVALID_STATE) from None
+                raise MlflowException("could not issue the token", INTERNAL_ERROR) from None
             return row, plaintext
-        raise MlflowException("could not allocate a unique token prefix", INVALID_STATE)
+        raise MlflowException("could not allocate a unique token prefix", INTERNAL_ERROR)
 
     def create(self, username: str, name: str, expires_at: datetime, created_by: Optional[str]) -> Tuple[UserTokenRecord, str]:
         """Issue a new named token. Returns the record and the plaintext, never retrievable again.
@@ -258,6 +262,7 @@ class UserTokenRepository:
         expires_at = _validate_expiry(expires_at, now)
         with self._Session(read_only=False) as session:
             user = self._lock_user(session, username)
+            self._purge_expired(session, user, now)
             if session.query(SqlUserToken.id).filter(SqlUserToken.user_id == user.id, SqlUserToken.name == name).first() is not None:
                 raise MlflowException(f"a token named '{name}' already exists", RESOURCE_ALREADY_EXISTS)
             row, plaintext = self._insert(session, user, name, expires_at, created_by, now)
@@ -279,6 +284,7 @@ class UserTokenRepository:
         expires_at = _validate_expiry(expires_at, now)
         with self._Session(read_only=False) as session:
             user = self._lock_user(session, username)
+            self._purge_expired(session, user, now)
             replaced = session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id, SqlUserToken.name == name).delete(synchronize_session=False)
             session.flush()
             row, plaintext = self._insert(session, user, name, expires_at, created_by, now)

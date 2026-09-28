@@ -125,7 +125,8 @@ def test_update_all_fields(repo, session):
     with (patch("mlflow_oidc_auth.repository.user.get_user", return_value=user),):
         result = repo.update("user", revoke_tokens=True, is_admin=True, is_service_account=True)
         assert result == "entity"
-        session.flush.assert_called_once()
+        # The users row is flushed before the tokens are deleted, then again (#189 review).
+        assert session.flush.call_count == 2
 
 
 def test_delete(repo, session):

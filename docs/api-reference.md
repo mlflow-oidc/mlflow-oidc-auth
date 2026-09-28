@@ -1,6 +1,6 @@
 # API Reference
 
-The plugin exposes ~198 REST API endpoints for authentication, permission management, workspace management, webhooks, and trash operations. This reference covers the plugin's own endpoints — MLflow's native tracking/registry API is not documented here (see [MLflow docs](https://mlflow.org/docs/latest/rest-api.html)).
+The plugin exposes ~205 REST API endpoints for authentication, permission management, workspace management, webhooks, and trash operations. This reference covers the plugin's own endpoints — MLflow's native tracking/registry API is not documented here (see [MLflow docs](https://mlflow.org/docs/latest/rest-api.html)).
 
 ## Authentication
 
@@ -80,13 +80,13 @@ Base path: `/api/2.0/mlflow/users`
 | GET | `/api/2.0/mlflow/users/current` | Authenticated | Get current user's profile |
 | GET | `/api/2.0/mlflow/users/{username}` | Admin | Get a specific user's profile |
 | GET | `/api/2.0/mlflow/users/tokens` | Authenticated | List the caller's access tokens |
-| POST | `/api/2.0/mlflow/users/tokens` | Signed-in session | Create a named access token for the caller |
+| POST | `/api/2.0/mlflow/users/tokens` | Session or IdP bearer token | Create a named access token for the caller |
 | DELETE | `/api/2.0/mlflow/users/tokens/{token_id}` | Authenticated | Delete one of the caller's access tokens |
 | GET | `/api/2.0/mlflow/users/{username}/tokens` | Admin | List a user's or service account's access tokens |
-| POST | `/api/2.0/mlflow/users/{username}/tokens` | Admin, signed-in session | Create a named access token for a user or service account |
+| POST | `/api/2.0/mlflow/users/{username}/tokens` | Admin, session or IdP bearer token | Create a named access token for a user or service account |
 | DELETE | `/api/2.0/mlflow/users/{username}/tokens/{token_id}` | Admin | Delete one of a user's access tokens |
 | DELETE | `/api/2.0/mlflow/users/{username}/tokens` | Admin | Revoke every access token of a user |
-| PATCH | `/api/2.0/mlflow/users/access-token` | Signed-in session | Issue a new `default` access token, replacing the previous one |
+| PATCH | `/api/2.0/mlflow/users/access-token` | Session or IdP bearer token | Issue a new `default` access token, replacing the previous one |
 
 **`POST /api/2.0/mlflow/users` request:**
 ```json
@@ -123,8 +123,10 @@ and the plaintext is returned exactly once, at creation. Every token must expire
 stored).
 
 Issuing a token — any endpoint that returns a new one, including `PATCH /access-token` — requires
-a signed-in session or an IdP bearer token: a request authenticated with an access token gets
-`403`, so a leaked token cannot mint its own replacement. Listing and deleting tokens works with
+a signed-in session or a user's bearer token from an interactive IdP. A request authenticated with
+an access token, or with a bearer token from a non-interactive provider (a Kubernetes service
+account, a provider configured `interactive: false`), gets `403`: a leaked or short-lived
+credential cannot mint a year-long replacement. Listing and deleting tokens works with
 any credential.
 
 **`GET /api/2.0/mlflow/users/tokens` response** (own tokens; `/{username}/tokens` for an admin
@@ -170,8 +172,10 @@ another user or a service account):
 }
 ```
 
-`400` for a bad name or expiration, `403` when authenticated with an access token, `409` for a
-duplicate name or at the 20-token cap, `422` for a missing field.
+`400` for a bad name or expiration, `403` when not an interactive sign-in (see above) or, on
+`/{username}/tokens`, not an admin, `404` for an unknown user, `409` for a duplicate name, at the
+20-token cap, or for a deactivated user, `422` for a missing field. Issuing a token also deletes the
+user's expired tokens, which frees their names.
 
 `DELETE /api/2.0/mlflow/users/tokens/{token_id}` (own) or `/{username}/tokens/{token_id}` (admin)
 returns `{"deleted": 1}`; `404` if it is not that user's token — another user's token id reads
@@ -185,20 +189,31 @@ revoke all) returns `{"revoked": <count>}`.
 
 Issues a token named `default`, deleting the previous `default` token in the same transaction;
 the user's other named tokens are untouched. `username` for another user is admin-only. An
-omitted `expiration` now means one year from now (previously: never expires). Response:
+omitted `expiration` now means one year from now (previously: never expires). `400` for a bad
+expiration, `403` when not an interactive sign-in or for a non-admin naming another user, `404` for
+an unknown user, `409` at the cap or for a deactivated user. Response:
 ```json
 {"token": "mlf_...", "expires_at": "2027-01-01T00:00:00+00:00", "message": "Token for alice@example.com has been created"}
 ```
 
-Token issuance and deletion are audited as `user.token_create`, `user.token_delete`,
-`user.tokens_revoked` (admin revoke-all) and `user.token_rotate` (`PATCH /access-token`), carrying
-the token's id, name, prefix and expiry — never the secret.
+Token issuance and deletion are audited; no event ever carries a secret. `detail` per event:
+
+| Event | When | `detail` |
+|-------|------|----------|
+| `user.token_create` | `POST .../tokens` | `token_id`, `token_prefix`, `name`, `expiration` |
+| `user.token_rotate` | `PATCH /access-token` | `token_id`, `token_prefix`, `name`, `expiration`, `expiration_defaulted`, `replaced` |
+| `user.token_delete` | `DELETE .../tokens/{token_id}` | `token_id`, `token_prefix`, `name` |
+| `user.tokens_revoked` | `DELETE /{username}/tokens` | `tokens` (count), `reason: "admin_revoke_all"` |
 
 **Upgrading.** Migration `f6a7b8c9d0e1` carries each user's existing unexpired secret over as a
 token named `default` with no prefix; it keeps working unchanged, and a secret that never expired
-is given an expiry one year from the upgrade. Breaking changes:
+is given an expiry one year from the upgrade. Before this release every user was created with a
+random secret nobody was shown, and it cannot be told apart from one a person was issued, so
+almost every user will see a `default` token labelled "Carried over" in the Tokens tab. It is
+harmless — nobody knows it — and can be deleted. Breaking changes:
 
-- `PATCH /access-token` now requires a signed-in session (`403` with basic auth).
+- `PATCH /access-token` now requires a signed-in session or an interactive IdP bearer token
+  (`403` with basic auth or a workload token), so automation can no longer rotate its own token.
 - Every token now expires (at most one year); a previously non-expiring secret gets a one-year
   expiry at upgrade.
 - `password_expiration` is no longer returned from `GET /users/current` or `GET /users/{username}`.

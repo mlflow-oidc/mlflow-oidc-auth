@@ -258,9 +258,20 @@ class TestCreate:
         with pytest.raises(MlflowException) as exc:
             store.create_user_token(ALICE, "ci", _in(30), created_by="admin@example.com")
         assert exc.value.error_code == "INVALID_STATE"
-        with pytest.raises(MlflowException):
+        with pytest.raises(MlflowException) as exc:
             store.replace_user_token(ALICE, "default", _in(30), created_by="admin@example.com")
+        assert exc.value.error_code == "INVALID_STATE"
         assert store.list_user_tokens(ALICE) == []
+
+    def test_the_name_of_an_expired_token_can_be_reused(self, store):
+        """The expired row is cleared before the duplicate-name check, not after."""
+        old, _ = store.create_user_token(ALICE, "ci", _in(30), created_by=ALICE)
+        _expire(store, old.id)
+
+        record, plaintext = store.create_user_token(ALICE, "ci", _in(30), created_by=ALICE)
+
+        assert record.token_prefix != old.token_prefix
+        assert store.authenticate_user(ALICE, plaintext) is True
 
     def test_the_lifetime_limit_is_exactly_366_days(self, store):
         store.create_user_token(ALICE, "edge", _in(365.99), created_by=ALICE)
@@ -268,7 +279,7 @@ class TestCreate:
         with pytest.raises(MlflowException):
             store.create_user_token(ALICE, "over", _in(366.01), created_by=ALICE)
 
-    def test_a_prefix_collision_is_retried_not_reported_as_a_duplicate(self, store):
+    def test_a_prefix_seen_by_the_pre_check_is_retried(self, store):
         taken, _ = store.create_user_token(ALICE, "first", _in(30), created_by=ALICE)
         fresh = ("0f0f0f0f", "mlf_0f0f0f0f_fresh-secret")
         with patch.object(user_token_module, "generate_token", side_effect=[(taken.token_prefix, "mlf_x_y"), fresh]):

@@ -157,10 +157,10 @@ def _seed(store, n_users: int, n_groups: int, hash_method: Optional[str] = None)
     Returns:
         The seeded usernames.
     """
-    from sqlalchemy import insert
-    from werkzeug.security import generate_password_hash
-
     from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import insert, select
+    from werkzeug.security import generate_password_hash
 
     from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup, SqlUserToken
     from mlflow_oidc_auth.repository.user_token import TOKEN_HASH_METHOD
@@ -175,7 +175,7 @@ def _seed(store, n_users: int, n_groups: int, hash_method: Optional[str] = None)
             [{"username": u, "display_name": u, "is_admin": False, "is_service_account": False} for u in usernames],
         )
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        seeded_ids = [r[0] for r in conn.exec_driver_sql("SELECT id FROM users ORDER BY id").fetchall()]
+        seeded_ids = [r[0] for r in conn.execute(select(SqlUser.id).where(SqlUser.username.in_(usernames))).fetchall()]
         conn.execute(
             insert(SqlUserToken),
             [

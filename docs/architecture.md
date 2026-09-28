@@ -97,8 +97,9 @@ updated, at most once a minute per token.
 Issuing a new token (`POST /users/tokens`, `POST /users/{username}/tokens`, or
 `PATCH /users/access-token`) is refused when the request itself was authenticated this way:
 `require_interactive_login` checks `request.state.auth_method`, set by `AuthMiddleware`, and
-requires a session or an IdP bearer token instead. A leaked access token must not be able to mint
-a replacement for itself.
+requires a session or a bearer token from an interactive IdP instead. A bearer token from a
+non-interactive provider (Kubernetes, `interactive: false`) is labelled `workload` and refused too.
+A leaked or short-lived credential must not be able to mint a year-long replacement.
 
 ### 2. JWT Bearer Token
 

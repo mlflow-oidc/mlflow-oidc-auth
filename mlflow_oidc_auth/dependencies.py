@@ -67,8 +67,9 @@ async def require_interactive_login(request: Request) -> None:
 
     Issuing an access token needs a sign-in through the identity provider — a browser session or
     an IdP bearer token. Otherwise a leaked access token could mint replacements for itself that
-    outlive its own deletion. A Kubernetes service-account token is refused for the same reason:
-    a short-lived pod credential must not mint a year-long one. Deny by default: a request whose
+    outlive its own deletion. A token from a non-interactive provider — a Kubernetes service
+    account, a CI workload-identity issuer — is refused for the same reason: a short-lived
+    workload credential must not mint a year-long one. Deny by default: a request whose
     method is unknown is refused too.
 
     Raises:
@@ -77,7 +78,7 @@ async def require_interactive_login(request: Request) -> None:
     if getattr(request.state, "auth_method", None) not in (AUTH_METHOD_SESSION, AUTH_METHOD_BEARER):
         raise HTTPException(
             status_code=403,
-            detail="Access tokens can only be issued from a signed-in session, not with an access token",
+            detail="Access tokens can only be issued from an interactive sign-in (a signed-in session or an IdP user token)",
         )
 
 

@@ -50,9 +50,9 @@ class TestReplacingATokenNeverInheritsItsExpiry:
         set_known_token(store, "exp@example.com", TOKEN, expires_at=_past().replace(tzinfo=None))
         assert store.authenticate_user("exp@example.com", TOKEN) is False, "precondition: the old token is expired"
 
-        _, plaintext, replaced = store.replace_user_token("exp@example.com", "default", _future(), created_by=None)
+        _, plaintext, _ = store.replace_user_token("exp@example.com", "default", _future(), created_by=None)
 
-        assert replaced is True
+        assert [r.name for r in store.list_user_tokens("exp@example.com")] == ["default"]
         assert store.authenticate_user("exp@example.com", plaintext) is True
         assert store.authenticate_user("exp@example.com", TOKEN) is False
 

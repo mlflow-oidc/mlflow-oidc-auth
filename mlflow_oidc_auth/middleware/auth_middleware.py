@@ -25,7 +25,7 @@ from mlflow_oidc_auth.entities.auth_context import (
     AUTH_CONTEXT_KEY,
     AUTH_METHOD_BASIC,
     AUTH_METHOD_BEARER,
-    AUTH_METHOD_KUBERNETES,
+    AUTH_METHOD_WORKLOAD,
     AUTH_METHOD_SESSION,
     AuthContext,
 )
@@ -56,20 +56,21 @@ def _authenticate_basic_auth_sync(username: str, password: str) -> bool:
     return store.authenticate_user(username, password)
 
 
-#: Set while authenticating when a bearer token was a Kubernetes service-account token. Such a
-#: token is a workload's credential, not a person signing in, so it is labelled apart from an IdP
-#: token and may not issue access tokens (issue #189).
-_KUBERNETES_BEARER: ContextVar[bool] = ContextVar("mlflow_oidc_auth_kubernetes_bearer", default=False)
+#: Set while authenticating when a bearer token came from a non-interactive provider (a Kubernetes
+#: service account, a CI workload-identity issuer). Such a token is a workload's credential, not a
+#: person signing in, so it is labelled apart from an IdP user token and may not issue access
+#: tokens (issue #189).
+_WORKLOAD_BEARER: ContextVar[bool] = ContextVar("mlflow_oidc_auth_workload_bearer", default=False)
 
 
-def _auth_method(request: Request, kubernetes_bearer: bool = False) -> str:
+def _auth_method(request: Request, workload_bearer: bool = False) -> str:
     """The credential :meth:`AuthMiddleware._authenticate_user` tried, in the order it tries them."""
     auth_header = request.headers.get("authorization") or ""
     # Must stay in step with the scheme checks in ``_authenticate_user``.
     if auth_header.startswith("Basic "):
         return AUTH_METHOD_BASIC
     if auth_header.startswith("Bearer "):
-        return AUTH_METHOD_KUBERNETES if kubernetes_bearer else AUTH_METHOD_BEARER
+        return AUTH_METHOD_WORKLOAD if workload_bearer else AUTH_METHOD_BEARER
     return AUTH_METHOD_SESSION
 
 
@@ -411,6 +412,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             payload = validate_token(token)
 
             provider = self._provider_for(token)
+            if provider is not None and not getattr(provider, "interactive", True):
+                # A token-only issuer (Kubernetes, a CI workload-identity issuer) vouches for a
+                # workload, not a person signing in; such a token may not issue access tokens.
+                _WORKLOAD_BEARER.set(True)
 
             if provider is not None and provider.type == "k8s":
                 # A service-account token names itself in ``sub`` and carries no email or
@@ -418,7 +423,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # identity is derived here rather than from OIDC_USERNAME_FIELD: a global field
                 # list that had to include ``sub`` to make this work would also change how every
                 # other provider's tokens are named.
-                _KUBERNETES_BEARER.set(True)
+                _WORKLOAD_BEARER.set(True)
                 return self._authenticate_service_account(token, payload, provider)
 
             # Extract username from configured fields. extract_username guarantees a
@@ -687,12 +692,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Attempt authentication
-        kubernetes_marker = _KUBERNETES_BEARER.set(False)
+        workload_marker = _WORKLOAD_BEARER.set(False)
         try:
             is_authenticated, username, error_msg = await self._authenticate_user(request)
-            kubernetes_bearer = _KUBERNETES_BEARER.get()
+            workload_bearer = _WORKLOAD_BEARER.get()
         finally:
-            _KUBERNETES_BEARER.reset(kubernetes_marker)
+            _WORKLOAD_BEARER.reset(workload_marker)
 
         if is_authenticated and username:
             resolved = getattr(request.state, "resolved_session", None)
@@ -725,7 +730,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.is_admin = is_admin
             # Which credential authenticated this request. Token issuance refuses a request that
             # authenticated with an access token (issue #189); see ``require_interactive_login``.
-            request.state.auth_method = _auth_method(request, kubernetes_bearer=kubernetes_bearer)
+            request.state.auth_method = _auth_method(request, workload_bearer=workload_bearer)
 
             # ROBUST: Store user info in ASGI scope for WSGI compatibility
             # This ensures Flask RBAC middleware can access user information reliably

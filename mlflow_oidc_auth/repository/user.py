@@ -439,8 +439,6 @@ class UserRepository:
                     INVALID_PARAMETER_VALUE,
                 )
 
-            if revoke_tokens:
-                session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id).delete(synchronize_session=False)
             # Deactivating or demoting the last active admin locks everyone out just as surely
             # as deleting them, so both go through the same guard — checked before the change
             # is applied, since afterwards the user would no longer count as an active admin
@@ -479,6 +477,14 @@ class UserRepository:
                 session.flush()
             except IntegrityError as e:
                 raise MlflowException(f"external id {external_id!r} is already bound to another user", RESOURCE_ALREADY_EXISTS) from e
+            if revoke_tokens:
+                # After the users row has been written and flushed, not before: issuing a token
+                # holds that row locked (``UserTokenRepository._lock_user``), so the write above
+                # waits for an in-flight issue to commit, and this DELETE — a fresh statement —
+                # then sees its token. Deleting first would miss it and leave a token that comes
+                # back to life on reactivation (#189 review).
+                session.query(SqlUserToken).filter(SqlUserToken.user_id == user.id).delete(synchronize_session=False)
+                session.flush()
             entity = user.to_mlflow_entity()
 
         # Past the ``with``: the transaction has committed, so the events are true when written.
@@ -695,8 +701,8 @@ class UserRepository:
             # Group memberships
             session.query(SqlUserGroup).filter(SqlUserGroup.user_id == user_id).delete(synchronize_session=False)
 
-            # Access tokens (#189). The foreign key cascades on PostgreSQL; SQLite does not
-            # enforce foreign keys here, so the rows are deleted explicitly on both.
+            # Access tokens (#189). The foreign key cascades on delete; they are removed explicitly
+            # anyway, like every other dependent here, so the delete does not rest on the pragma.
             session.query(SqlUserToken).filter(SqlUserToken.user_id == user_id).delete(synchronize_session=False)
 
             session.delete(user)

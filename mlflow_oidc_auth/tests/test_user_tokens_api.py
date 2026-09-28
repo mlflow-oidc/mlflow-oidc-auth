@@ -219,6 +219,75 @@ class TestATokenCannotMintAnother:
         assert exc.value.status_code == 403
 
 
+class TestIssuingRules:
+    def test_a_deactivated_user_cannot_be_issued_a_token_by_an_admin(self, admin, store):
+        store.update_user(BOB, active=False)
+
+        assert admin.post(_of(BOB), json={"name": "ci", "expiration": _expiry()}).status_code == 409
+        assert admin.patch(ACCESS_TOKEN, json={"username": BOB}).status_code == 409
+        assert store.list_user_tokens(BOB) == []
+
+    def test_issuing_clears_expired_tokens_and_frees_their_names(self, alice, store):
+        from mlflow_oidc_auth.db.models import SqlUserToken
+
+        first = alice.post(TOKENS, json={"name": "ci", "expiration": _expiry()}).json()
+        table = SqlUserToken.__table__
+        with store.engine.begin() as conn:
+            conn.execute(
+                table.update().where(table.c.id == first["id"]).values(expires_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1))
+            )
+        assert [t["active"] for t in alice.get(TOKENS).json()["tokens"]] == [False]
+
+        again = alice.post(TOKENS, json={"name": "ci", "expiration": _expiry()})
+
+        assert again.status_code == 201
+        assert [t["id"] for t in alice.get(TOKENS).json()["tokens"]] == [again.json()["id"]]
+
+
+class TestWorkloadBearerThroughTheMiddleware:
+    """The wiring, not just the pieces: dispatch labels a workload bearer and issuance refuses it."""
+
+    @pytest.fixture
+    def bearer(self, app, store):
+        from unittest.mock import MagicMock
+
+        from mlflow_oidc_auth.middleware import auth_middleware as middleware_module
+
+        def install(interactive: bool, provider_type: str):
+            provider = MagicMock(type=provider_type, interactive=interactive)
+            patches = [
+                patch.object(middleware_module, "validate_token", return_value={"email": ALICE}),
+                patch.object(middleware_module.AuthMiddleware, "_provider_for", return_value=provider),
+                patch.object(middleware_module.AuthMiddleware, "_authenticate_service_account", return_value=(True, ALICE, "")),
+                patch.object(middleware_module, "extract_username", return_value=(ALICE, None)),
+            ]
+            for p in patches:
+                p.start()
+            return patches
+
+        started = []
+        yield lambda interactive, provider_type="oidc": started.extend(install(interactive, provider_type))
+        for p in started:
+            p.stop()
+
+    @pytest.mark.parametrize("provider_type", ["k8s", "oidc"])
+    def test_a_workload_bearer_cannot_issue(self, anonymous, bearer, store, provider_type):
+        bearer(interactive=False, provider_type=provider_type)
+        headers = {"Authorization": "Bearer workload-token"}
+
+        assert anonymous.get(TOKENS, headers=headers).status_code == 200, "precondition: it authenticates"
+        assert anonymous.post(TOKENS, headers=headers, json={"name": "x", "expiration": _expiry()}).status_code == 403
+        assert anonymous.patch(ACCESS_TOKEN, headers=headers).status_code == 403
+        assert store.list_user_tokens(ALICE) == []
+
+    def test_an_interactive_idp_user_token_can_issue(self, anonymous, bearer, store):
+        bearer(interactive=True)
+
+        response = anonymous.post(TOKENS, headers={"Authorization": "Bearer user-token"}, json={"name": "x", "expiration": _expiry()})
+
+        assert response.status_code == 201
+
+
 class TestIsolationBetweenUsers:
     def test_a_user_lists_only_their_own_tokens(self, alice, store):
         issue_token(store, BOB, name="bobs")
@@ -330,20 +399,20 @@ class TestAuthMethodMarker:
         assert _auth_method(request) == expected
 
 
-class TestKubernetesTokensCannotMint:
-    """A short-lived pod credential must not mint a year-long access token."""
+class TestWorkloadTokensCannotMint:
+    """A short-lived workload credential (Kubernetes, CI identity) must not mint a year-long access token."""
 
-    def test_the_marker_distinguishes_a_kubernetes_bearer(self):
+    def test_the_marker_distinguishes_a_workload_bearer(self):
         from starlette.requests import Request as StarletteRequest
 
         from mlflow_oidc_auth.middleware.auth_middleware import _auth_method
 
         request = StarletteRequest({"type": "http", "method": "GET", "path": "/", "headers": [(b"authorization", b"Bearer eyJ")]})
 
-        assert _auth_method(request, kubernetes_bearer=True) == "kubernetes"
-        assert _auth_method(request, kubernetes_bearer=False) == "bearer"
+        assert _auth_method(request, workload_bearer=True) == "workload"
+        assert _auth_method(request, workload_bearer=False) == "bearer"
 
-    @pytest.mark.parametrize("method, allowed", [("session", True), ("bearer", True), ("kubernetes", False), ("basic", False)])
+    @pytest.mark.parametrize("method, allowed", [("session", True), ("bearer", True), ("workload", False), ("basic", False)])
     def test_only_an_interactive_sign_in_may_issue(self, method, allowed):
         import asyncio
 
@@ -363,8 +432,8 @@ class TestKubernetesTokensCannotMint:
             with pytest.raises(HTTPException):
                 asyncio.run(require_interactive_login(_Request()))
 
-    def test_the_bearer_path_flags_a_kubernetes_token(self):
-        """``_authenticate_bearer_token`` marks the request when it took the service-account branch."""
+    def test_the_bearer_path_flags_a_workload_token(self):
+        """``_authenticate_bearer_token`` marks a token from a non-interactive provider."""
         import asyncio
         from unittest.mock import MagicMock
 
@@ -373,20 +442,22 @@ class TestKubernetesTokensCannotMint:
         middleware = middleware_module.AuthMiddleware(app=MagicMock())
         provider = MagicMock(type="k8s")
 
-        async def run(provider_type):
+        async def run(provider_type, interactive=True):
             provider.type = provider_type
+            provider.interactive = interactive
             with (
                 patch.object(middleware_module, "validate_token", return_value={"sub": "x"}),
                 patch.object(middleware, "_provider_for", return_value=provider),
                 patch.object(middleware, "_authenticate_service_account", return_value=(True, "svc", "")),
                 patch.object(middleware_module, "extract_username", return_value=("person@example.com", None)),
             ):
-                marker = middleware_module._KUBERNETES_BEARER.set(False)
+                marker = middleware_module._WORKLOAD_BEARER.set(False)
                 try:
                     await middleware._authenticate_bearer_token("Bearer tok")
-                    return middleware_module._KUBERNETES_BEARER.get()
+                    return middleware_module._WORKLOAD_BEARER.get()
                 finally:
-                    middleware_module._KUBERNETES_BEARER.reset(marker)
+                    middleware_module._WORKLOAD_BEARER.reset(marker)
 
-        assert asyncio.run(run("k8s")) is True
+        assert asyncio.run(run("k8s", interactive=False)) is True
+        assert asyncio.run(run("oidc", interactive=False)) is True, "a token-only OIDC issuer is a workload too"
         assert asyncio.run(run("oidc")) is False
