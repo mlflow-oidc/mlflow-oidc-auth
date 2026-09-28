@@ -87,10 +87,11 @@ jobs:
       - name: Run tests
         env:
           MLFLOW_OIDC_TEST_POSTGRES_URI: postgresql+psycopg2://mlflow_oidc:mlflow_oidc@localhost:5432/mlflow_oidc_test
+          SHARD_INDEX: ${{ matrix.shard }}
         run: |
           python -m pip install --upgrade pip
           pip install tox
-          tox -e py -- --shard-count=${SHARD_COUNT} --shard-index=${{ matrix.shard }} --shard-report=shard-report.json --junitxml=junit.xml
+          tox -e py -- "--shard-count=${SHARD_COUNT}" "--shard-index=${SHARD_INDEX}" --shard-report=shard-report.json --junitxml=junit.xml
       - name: Upload shard report
         if: always()
         uses: actions/upload-artifact@v7
