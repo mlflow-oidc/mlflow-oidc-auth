@@ -14,7 +14,7 @@ from html.parser import HTMLParser
 from typing import Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
-import httpx
+import httpx2 as httpx
 
 # ``routers._prefix.UI_ROUTER_PREFIX``, spelled out: importing it would import every router, and
 # with them the app's configuration, into the test process that only plays the browser.

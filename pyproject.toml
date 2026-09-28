@@ -35,7 +35,7 @@ dependencies = [
   "uvicorn>=0.41.0",
   "fastapi>=0.132.0",
   "asgiref>=3.11.1",
-  "httpx>=0.28.1",
+  "httpx2>=2.0.0",
   "cachetools>=5.5.0"
 ]
 
@@ -50,7 +50,7 @@ test = [
   "pytest<9,>=8.3.2",
   "pytest-cov<6,>=5.0.0",
   "pytest-asyncio<2",
-  "httpx<1,>=0.28.1",
+  "httpx2<3,>=2.0.0",
 ]
 # Cloud provider optional dependencies for pluggable config
 aws = [
