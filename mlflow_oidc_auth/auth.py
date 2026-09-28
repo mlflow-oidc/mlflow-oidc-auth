@@ -4,12 +4,15 @@ import json
 import threading
 
 import requests
-from authlib.jose import JsonWebToken
-from authlib.jose.errors import BadSignatureError
 from cachetools import TTLCache
+from joserfc import jws, jwt
+from joserfc.errors import BadSignatureError, DecodeError, InvalidClaimError, InvalidPayloadError, MissingClaimError
+from joserfc.jwk import JWKRegistry, Key
+from joserfc.jws import JWSRegistry
 
-from typing import Optional
+from typing import Any, Optional
 
+from mlflow_oidc_auth import http_client
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.kubernetes import in_cluster_credentials, load_inline_jwks
 from mlflow_oidc_auth.logger import get_logger
@@ -124,7 +127,7 @@ def _load_jwks(
             jwks_uri = url
         else:
             logger.debug("Fetching OIDC discovery metadata for %s", label)
-            metadata = requests.get(url, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
+            metadata = http_client.get(url, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
             jwks_uri = metadata.get("jwks_uri")
             if not jwks_uri:
                 raise ValueError(f"No jwks_uri found in OIDC discovery metadata for {label}")
@@ -132,7 +135,7 @@ def _load_jwks(
         logger.debug("Fetching JWKS from %s", jwks_uri)
         # Redirects are not followed on either fetch: this decides which signatures are valid,
         # so a 302 must be a visible configuration error rather than a silent change of source.
-        jwks = requests.get(jwks_uri, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
+        jwks = http_client.get(jwks_uri, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
     except requests.exceptions.RequestException as e:
         logger.error("Failed to fetch JWKS for %s: %s", label, e)
         raise
@@ -326,7 +329,7 @@ def _claims_options_for(provider) -> dict | None:
     provider may carry none, which is the pre-#313 behaviour for a deployment that never set
     ``OIDC_AUDIENCE``, preserved so upgrading changes nothing.
 
-    ``exp`` is essential for every provider (#356). authlib's expiry check is a no-op when the
+    ``exp`` is essential for every provider (#356). The expiry check alone is a no-op when the
     claim is absent, so without this a token minted with no ``exp`` validates forever. The only
     way out is a provider that sets ``allow_tokens_without_expiry`` — refused by the registry on
     anything but a token provider, and logged at load — for legacy Kubernetes service-account
@@ -342,7 +345,215 @@ def _claims_options_for(provider) -> dict | None:
     return options or None
 
 
-def _jwt_for(provider) -> JsonWebToken:
+# The largest compact token accepted, in bytes. The per-segment limits below are raised to it so
+# the only size bound is this one: joserfc's defaults (512-byte header, 1024-byte signature) would
+# refuse a header carrying an ``x5c`` chain or an RSA-8192 signature that has always validated.
+_MAX_TOKEN_LENGTH = 256000
+
+
+class _ClaimsRegistry(jwt.JWTClaimsRegistry):
+    """joserfc's claim checks, with ``iss``, ``sub`` and ``aud`` held to the rules they have always had.
+
+    ``exp``, ``nbf`` and ``iat`` use joserfc's checks unchanged: they accept exactly what was
+    accepted before. joserfc additionally requires ``iss``, ``sub`` and ``aud`` to be strings
+    even when nothing is configured for them; those three are compared here only against a
+    configured value, as before, so a token that validated before still validates and one that
+    was refused is still refused.
+    """
+
+    def validate(self, claims: dict[str, Any]) -> None:
+        """Check essential claims, then every claim present.
+
+        An essential claim must be present *and* non-empty: ``""``, ``0``, ``[]`` and ``False``
+        are refused as invalid, not accepted as present.
+
+        Raises:
+            MissingClaimError: An essential claim is absent.
+            InvalidClaimError: An essential claim is empty, or a claim fails its check.
+            joserfc.errors.ExpiredTokenError: ``exp`` has passed.
+        """
+        for name, option in self.options.items():
+            if option.get("essential"):
+                if name not in claims:
+                    raise MissingClaimError(name)
+                if not claims.get(name):
+                    raise InvalidClaimError(name)
+        super().validate(claims)
+
+    def _expected(self, name: str) -> list | None:
+        option = self.options.get(name) or {}
+        values = option.get("values")
+        if not values and option.get("value"):
+            values = [option["value"]]
+        return values or None
+
+    def validate_iss(self, value: Any) -> None:
+        """``iss`` must equal the configured issuer, when one is configured."""
+        expected = self._expected("iss")
+        if expected and value not in expected:
+            raise InvalidClaimError("iss")
+
+    def validate_sub(self, value: Any) -> None:
+        """``sub`` must equal a configured value, when one is configured (none is, today)."""
+        expected = self._expected("sub")
+        if expected and value not in expected:
+            raise InvalidClaimError("sub")
+
+    def validate_aud(self, value: Any) -> None:
+        """At least one of the token's audiences must be the configured audience.
+
+        ``aud`` may be a string or a list. With no audience configured it is not checked.
+        """
+        expected = self._expected("aud")
+        if not expected or not value:
+            return
+        audiences = value if isinstance(value, list) else [value]
+        if not any(candidate in audiences for candidate in expected):
+            raise InvalidClaimError("aud")
+
+
+class _ValidatedClaims(dict):
+    """The claims of a token whose signature has been verified, plus the checks still to run.
+
+    Shaped like the claims object the decoder has always returned — a ``dict`` of claims with a
+    ``header`` and a ``validate()`` — so every caller that reads claims keeps working unchanged.
+    The signature is checked before this object exists; ``validate()`` then applies the claim
+    rules and must be called before any claim is trusted.
+    """
+
+    def __init__(self, claims: dict[str, Any], header: dict[str, Any], options: dict | None):
+        super().__init__(claims)
+        self.header = header
+        self.options = options or {}
+
+    def __eq__(self, other: object) -> bool:
+        """Equal to a plain dict of the same claims; between two, header and options count too."""
+        if isinstance(other, _ValidatedClaims):
+            return dict.__eq__(self, other) and self.header == other.header and self.options == other.options
+        return dict.__eq__(self, other)
+
+    __hash__ = None  # type: ignore[assignment]  # mutable, like dict
+
+    def validate(self) -> None:
+        """Apply the claim rules: essential claims, ``iss``, ``aud``, ``exp``, ``nbf``, ``iat``.
+
+        No leeway, as before. ``exp``, ``nbf`` and ``iat`` are checked whenever present, and
+        ``iss``/``aud`` against the values in ``options``.
+
+        Raises:
+            joserfc.errors.ClaimError: A claim is missing, malformed, or does not match.
+        """
+        _ClaimsRegistry(leeway=0, **self.options).validate(dict(self))
+
+
+def _select_jwk(jwks: Any, header: dict[str, Any]) -> dict:
+    """The single key in ``jwks`` that ``header`` names, or an error.
+
+    The token's ``kid`` must match a key's own ``kid`` exactly. A token with no ``kid`` is
+    accepted only when the set holds exactly one key. Nothing is derived — in particular no
+    thumbprint is computed for a key that publishes no ``kid``, so a key the provider did not
+    label cannot be selected by naming its thumbprint.
+
+    Raises:
+        ValueError: No key, or more than one candidate, matches.
+    """
+    if isinstance(jwks, (list, tuple)):
+        jwks = {"keys": jwks}
+    if not isinstance(jwks, dict):
+        raise ValueError("Invalid JSON Web Key Set")
+    if "keys" not in jwks:
+        # A bare JWK rather than a set.
+        return jwks
+
+    keys = jwks["keys"]
+    kid = header.get("kid")
+    if kid is not None:
+        for candidate in keys:
+            if candidate.get("kid") == kid:
+                return candidate
+    elif len(keys) == 1:
+        return keys[0]
+    raise ValueError("Invalid JSON Web Key Set")
+
+
+def _strict_json_segment(segment: str, name: str) -> None:
+    """Refuse a base64url segment that is not a UTF-8 JSON object with no byte-order mark.
+
+    Raises:
+        DecodeError: The segment does not decode as such.
+    """
+    try:
+        text = base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)).decode("utf-8")
+        if not isinstance(json.loads(text), dict):
+            raise ValueError(f"{name} is not a JSON object")
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise DecodeError(f"Invalid {name}") from exc
+
+
+class _TokenDecoder:
+    """Verify a compact JWS against a key set, accepting only a pinned set of algorithms.
+
+    The algorithm is chosen by the verifier: ``alg`` in the token header must be one of
+    ``algorithms`` or the token is refused before any key is used.
+    """
+
+    def __init__(self, algorithms: list[str]):
+        self.algorithms = list(algorithms)
+        # Header parameters outside the JWS registry are ignored rather than refused (some IdPs
+        # add their own, such as Entra's ``nonce``); ``crit`` still refuses any it does not know.
+        self._registry = JWSRegistry(algorithms=self.algorithms, strict_check_header=False)
+        # RFC 7797 unencoded payloads are not accepted: removing ``b64`` from the registry makes a
+        # token that lists it in ``crit`` fail the critical-header check.
+        self._registry.header_registry.pop("b64", None)
+        self._registry.max_header_length = _MAX_TOKEN_LENGTH
+        self._registry.max_payload_length = _MAX_TOKEN_LENGTH
+        self._registry.max_signature_length = _MAX_TOKEN_LENGTH
+
+    def decode(self, token: str, jwks: Any, claims_options: dict | None = None) -> _ValidatedClaims:
+        """Verify ``token``'s signature with the key its header names in ``jwks``.
+
+        Parameters:
+            token: A compact-serialised JWS.
+            jwks: The provider's key set (``{"keys": [...]}``), a list of keys, or one JWK.
+            claims_options: Rules applied by :meth:`_ValidatedClaims.validate`.
+
+        Returns:
+            The claims, not yet validated.
+
+        Raises:
+            joserfc.errors.BadSignatureError: The signature does not verify.
+            joserfc.errors.JoseError: The token is malformed or names a disallowed algorithm.
+            ValueError: No key in ``jwks`` matches, or the token is too large.
+        """
+        if isinstance(token, bytes):
+            token = token.decode("utf-8")
+        if len(token) > _MAX_TOKEN_LENGTH:
+            raise ValueError("Serialization is too long.")
+        # Only JWS. A five-segment value is a JWE, which is never a valid token here.
+        if token.count(".") != 2:
+            raise DecodeError("Invalid input segments length")
+
+        def load_key(obj) -> Key:
+            data = _select_jwk(jwks, obj.headers())
+            if not isinstance(data, dict):
+                raise ValueError("Invalid JSON Web Key")
+            return JWKRegistry.import_key(data)
+
+        # The header is JSON in UTF-8 and nothing else. ``json.loads`` on bytes would also guess
+        # UTF-16, UTF-32 and a UTF-8 BOM, so the header is checked here before joserfc reads it.
+        _strict_json_segment(token.split(".", 1)[0], "header")
+
+        verified = jws.deserialize_compact(token, load_key, algorithms=self.algorithms, registry=self._registry)
+        try:
+            claims = json.loads(verified.payload.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise InvalidPayloadError("Invalid payload value") from exc
+        if not isinstance(claims, dict):
+            raise InvalidPayloadError("Invalid payload type")
+        return _ValidatedClaims(claims, verified.headers(), claims_options)
+
+
+def _jwt_for(provider) -> _TokenDecoder:
     """A decoder pinned to this provider's accepted algorithms.
 
     Per-provider rather than global because a Kubernetes issuer and an Entra tenant need not
@@ -352,7 +563,7 @@ def _jwt_for(provider) -> JsonWebToken:
     algorithms = [algorithm for algorithm in provider.allowed_algorithms if algorithm in _ACCEPTED_ALGORITHMS]
     if not algorithms:
         raise ValueError(f"Provider '{provider.id}' has no usable signing algorithm")
-    return JsonWebToken(algorithms)
+    return _TokenDecoder(algorithms)
 
 
 def validate_token(token: str):
@@ -368,7 +579,7 @@ def validate_token(token: str):
 
     Raises:
         ValueError: If no provider matches the token's issuer.
-        Exception: Whatever authlib raises for a token that does not validate.
+        Exception: Whatever joserfc raises for a token that does not validate.
     """
     provider = _resolve_provider(token)
     claims_options = _claims_options_for(provider)

@@ -63,7 +63,7 @@ class AuthAwareWSGIMiddleware:
             auth_injecting_app = AuthInjectingWSGIApp(self.flask_app, scope)
 
             # Use asgiref's WsgiToAsgi adapter to handle ASGI-to-WSGI conversion.
-            # This avoids the deprecated starlette.middleware.wsgi dependency.
+            # This avoids depending on Starlette's deprecated WSGI adapter.
             wsgi_adapter = WSGIMiddleware(auth_injecting_app)
             await wsgi_adapter(scope, receive, send)
         else:

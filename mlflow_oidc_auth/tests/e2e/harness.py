@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
-import httpx
+import httpx2 as httpx
 
 REALM = "mlflow-e2e"
 

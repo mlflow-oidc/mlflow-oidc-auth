@@ -1,4 +1,4 @@
-import requests
+from mlflow_oidc_auth import http_client
 
 
 def get_user_groups(access_token):
@@ -11,7 +11,7 @@ def get_user_groups(access_token):
 
     while graph_url:
         # Make the request to get the user's groups
-        group_response = requests.get(graph_url, headers=headers)
+        group_response = http_client.get(graph_url, headers=headers)
 
         # Check if the response is successful
         if not group_response.ok:

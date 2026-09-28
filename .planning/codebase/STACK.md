@@ -70,7 +70,8 @@
 - `alembic` <2, !=1.18.4 - Database migrations (`mlflow_oidc_auth/db/utils.py`)
 - `flask` <4 - MLflow's web layer, hooks registered directly (`mlflow_oidc_auth/app.py`)
 - `requests` >=2.32.5, <3 - HTTP client for OIDC discovery/JWKS (`mlflow_oidc_auth/auth.py`)
-- `httpx` >=0.28.1 - Async HTTP client (`pyproject.toml`)
+- `httpx2` >=2.0.0 - Async HTTP client, used by `authlib`'s Starlette OAuth client and by
+  `starlette.testclient`/`fastapi.testclient` (`pyproject.toml`)
 - `python-dotenv` <2 - `.env` file loading (`mlflow_oidc_auth/config.py`)
 - `asgiref` >=3.11.1 - ASGI utilities (`pyproject.toml`)
 - `gunicorn` <24 - WSGI server for non-Windows (`pyproject.toml`, platform conditional)

@@ -10,7 +10,7 @@ from mlflow.protos.databricks_pb2 import (
 )
 from mlflow.utils.validation import _validate_username
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import load_only, noload, selectinload
+from sqlalchemy.orm import load_only, raiseload, selectinload
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -313,12 +313,16 @@ class UserRepository:
                         SqlUser.managed_by,
                     ),
                     selectinload(SqlUser.groups).load_only(SqlGroup.id, SqlGroup.group_name),
-                    noload(SqlUser.experiment_permissions),
-                    noload(SqlUser.registered_model_permissions),
-                    noload(SqlUser.scorer_permissions),
-                    noload(SqlUser.gateway_endpoint_permissions),
-                    noload(SqlUser.gateway_model_definition_permissions),
-                    noload(SqlUser.gateway_secret_permissions),
+                    # The User entity below is built by hand with these lists hardcoded to [],
+                    # so nothing here should ever touch the ORM relationships. raiseload makes an
+                    # accidental access fail loudly instead of silently loading them (which would
+                    # add a query) or silently returning empty results.
+                    raiseload(SqlUser.experiment_permissions),
+                    raiseload(SqlUser.registered_model_permissions),
+                    raiseload(SqlUser.scorer_permissions),
+                    raiseload(SqlUser.gateway_endpoint_permissions),
+                    raiseload(SqlUser.gateway_model_definition_permissions),
+                    raiseload(SqlUser.gateway_secret_permissions),
                 )
                 .filter(SqlUser.username == username)
                 .one_or_none()

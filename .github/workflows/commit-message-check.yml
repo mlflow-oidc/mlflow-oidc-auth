@@ -16,11 +16,10 @@ jobs:
       pull-requests: read
     steps:
       - name: Check Commit Type
-        uses: gsactions/commit-message-checker@v2
+        # Pinned to the commit of v1.4.2: a small third-party action that reads fork PR metadata.
+        uses: webiny/action-conventional-commits@7f91b1595ca1951cdb671ddc9f07a49081ec5b69 # v1.4.2
         with:
-          pattern: '^(|feat|fix|chore|docs|style|ci|refactor|perf|test|build)(\([\w-]+\))?:\s.+$|^(Merge\sbranch)|^(Merge\sremote)'
-          error: 'Your first line has to contain a commit type like "feat|fix|chore|docs|style|ci|refactor|perf|test".'
-          excludeDescription: "true"
-          excludeTitle: "true"
-          checkAllCommitMessages: "true"
-          accessToken: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Must include every type pr-validate-title.yml allows for PR titles (these are a superset).
+          # The action also accepts subjects git writes itself ("Merge ...", "Revert ...", "Reapply ...").
+          allowed-commit-types: "feat,fix,chore,docs,style,ci,refactor,perf,test,build,revert"

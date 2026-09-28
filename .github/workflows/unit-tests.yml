@@ -33,9 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Install dependencies
@@ -79,21 +79,22 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: 3.12
       - name: Run tests
         env:
           MLFLOW_OIDC_TEST_POSTGRES_URI: postgresql+psycopg2://mlflow_oidc:mlflow_oidc@localhost:5432/mlflow_oidc_test
+          SHARD_INDEX: ${{ matrix.shard }}
         run: |
           python -m pip install --upgrade pip
           pip install tox
-          tox -e py -- --shard-count=${SHARD_COUNT} --shard-index=${{ matrix.shard }} --shard-report=shard-report.json --junitxml=junit.xml
+          tox -e py -- "--shard-count=${SHARD_COUNT}" "--shard-index=${SHARD_INDEX}" --shard-report=shard-report.json --junitxml=junit.xml
       - name: Upload shard report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-shard-${{ matrix.shard }}
           path: |
@@ -111,9 +112,9 @@ jobs:
     if: always()
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Download shard reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: unit-test-shard-*
           path: shards

@@ -13,7 +13,7 @@ from __future__ import annotations
 import base64
 import uuid
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from .users import get_admin_users, get_mlflow_users, get_non_mlflow_users

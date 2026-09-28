@@ -241,7 +241,7 @@ tox -e integration-live
 `mlflow_oidc_auth/tests/e2e/` drives real OIDC, SAML and SCIM flows against a real **Keycloak
 26.7.4**. Nothing is mocked: the plugin is started as a real server (`mlflow server --app-name
 oidc-auth`) in a subprocess on a free loopback port, and the suite plays the browser with plain
-`httpx` — it follows redirects, fills in Keycloak's login form and submits the SAML POST-binding
+`httpx2` — it follows redirects, fills in Keycloak's login form and submits the SAML POST-binding
 form itself, with no browser engine. CI runs it on every pull request as the required job
 **E2E identity (Keycloak)** (`.github/workflows/e2e-identity.yml`), with the auth database on
 PostgreSQL.

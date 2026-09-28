@@ -16,7 +16,7 @@ import json
 import time
 
 import pytest
-from authlib.jose import JsonWebKey, jwt
+from mlflow_oidc_auth.tests.jose_helpers import encode_jwt, generate_rsa_key
 from cryptography.hazmat.primitives import serialization
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -36,8 +36,8 @@ def _b64(raw: bytes) -> bytes:
 
 @pytest.fixture
 def signing_key():
-    key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-    private, public = key.as_dict(is_private=True), key.as_dict(is_private=False)
+    key = generate_rsa_key()
+    private, public = key.as_dict(private=True), key.as_dict(private=False)
     kid = public.get("kid") or key.thumbprint()
     public["kid"] = private["kid"] = kid
     return key, private, public, kid
@@ -154,7 +154,7 @@ class TestAlgorithmConfusionIsRejected:
     @pytest.mark.parametrize("algorithm", ["HS256", "HS384", "HS512"])
     def test_public_key_pem_as_hmac_secret_is_rejected(self, validate, signing_key, claims, algorithm):
         key, _, _, kid = signing_key
-        pem = key.get_public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        pem = key.public_key.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
 
         with pytest.raises(Exception):
             validate(hmac_token(claims, kid, pem, algorithm))
@@ -175,7 +175,7 @@ class TestAlgorithmConfusionIsRejected:
 
     def test_algorithm_confusion_does_not_authenticate(self, client, signing_key, claims):
         key, _, _, kid = signing_key
-        pem = key.get_public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        pem = key.public_key.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
 
         response = client.get(PROTECTED, headers={"Authorization": f"Bearer {hmac_token(claims, kid, pem)}"})
 
@@ -189,11 +189,11 @@ class TestAttackerSuppliedKeysAreIgnored:
     @pytest.mark.parametrize("header_name", ["jku", "x5u"])
     def test_a_token_signed_by_an_attacker_key_is_rejected(self, validate, signing_key, claims, header_name):
         _, _, _, kid = signing_key
-        attacker = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-        token = jwt.encode({"alg": "RS256", "kid": kid, header_name: "https://attacker.invalid/keys"}, claims, attacker.as_dict(is_private=True))
+        attacker = generate_rsa_key()
+        token = encode_jwt({"alg": "RS256", "kid": kid, header_name: "https://attacker.invalid/keys"}, claims, attacker.as_dict(private=True))
 
         with pytest.raises(Exception):
-            validate(token.decode())
+            validate(token)
 
     def test_the_url_is_never_fetched(self, validate, signing_key, claims, monkeypatch):
         """Not merely rejected — not requested. A fetch would be SSRF regardless of the outcome."""
@@ -203,12 +203,14 @@ class TestAttackerSuppliedKeysAreIgnored:
             raise AssertionError(f"validation fetched an attacker-supplied URL: {args} {kwargs}")
 
         monkeypatch.setattr(requests, "get", explode)
+        # Every requests call, including the system-trust session in http_client, goes through here.
+        monkeypatch.setattr(requests.Session, "request", explode)
         _, _, _, kid = signing_key
-        attacker = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-        token = jwt.encode({"alg": "RS256", "kid": kid, "jku": "https://attacker.invalid/keys"}, claims, attacker.as_dict(is_private=True))
+        attacker = generate_rsa_key()
+        token = encode_jwt({"alg": "RS256", "kid": kid, "jku": "https://attacker.invalid/keys"}, claims, attacker.as_dict(private=True))
 
         with pytest.raises(Exception):
-            validate(token.decode())
+            validate(token)
 
 
 class TestGenuineTokensStillWork:
@@ -218,13 +220,13 @@ class TestGenuineTokensStillWork:
     def test_a_genuine_token_validates(self, validate, signing_key, claims):
         _, private, _, kid = signing_key
 
-        payload = validate(jwt.encode({"alg": "RS256", "kid": kid}, claims, private).decode())
+        payload = validate(encode_jwt({"alg": "RS256", "kid": kid}, claims, private))
 
         assert payload["email"] == USERNAME
 
     def test_a_genuine_token_authenticates(self, client, signing_key, claims):
         _, private, _, kid = signing_key
-        token = jwt.encode({"alg": "RS256", "kid": kid}, claims, private).decode()
+        token = encode_jwt({"alg": "RS256", "kid": kid}, claims, private)
 
         response = client.get(PROTECTED, headers={"Authorization": f"Bearer {token}"})
 
@@ -234,13 +236,13 @@ class TestGenuineTokensStillWork:
     @pytest.mark.parametrize("algorithm", ["RS256", "RS384", "RS512", "PS256"])
     def test_the_supported_asymmetric_algorithms_are_accepted(self, validate, claims, monkeypatch, algorithm):
         """Pinning the set must not quietly narrow it to whatever one IdP happens to use."""
-        key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-        private, public = key.as_dict(is_private=True), key.as_dict(is_private=False)
+        key = generate_rsa_key()
+        private, public = key.as_dict(private=True), key.as_dict(private=False)
         kid = public.get("kid") or key.thumbprint()
         public["kid"] = private["kid"] = kid
         monkeypatch.setattr(auth_module, "_get_oidc_jwks", lambda force_refresh=False: {"keys": [public]})
 
-        payload = validate(jwt.encode({"alg": algorithm, "kid": kid}, claims, private).decode())
+        payload = validate(encode_jwt({"alg": algorithm, "kid": kid}, claims, private))
 
         assert payload["email"] == USERNAME
 

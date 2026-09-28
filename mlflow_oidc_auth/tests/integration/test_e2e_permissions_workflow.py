@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 from urllib.parse import quote, urljoin
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 

@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Optional
 
-from authlib.jose import JsonWebKey, jwt
+from mlflow_oidc_auth.tests.jose_helpers import encode_jwt, generate_rsa_key
 
 
 def b64(raw: bytes) -> bytes:
@@ -44,9 +44,9 @@ class Issuer:
 
     def __post_init__(self):
         if self.key is None:
-            self.key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-        self._private = self.key.as_dict(is_private=True)
-        self._public = self.key.as_dict(is_private=False)
+            self.key = generate_rsa_key()
+        self._private = self.key.as_dict(private=True)
+        self._public = self.key.as_dict(private=False)
         kid = self._public.get("kid") or self.key.thumbprint()
         self._public["kid"] = self._private["kid"] = kid
 
@@ -96,7 +96,7 @@ class Issuer:
             header.update(extra_header)
         payload = dict(claims) if claims is not None else self.claims()
         payload.update(overrides)
-        return jwt.encode(header, payload, self._private).decode("utf-8")
+        return encode_jwt(header, payload, self._private)
 
 
 def unsigned_token(claims: dict) -> str:
@@ -199,7 +199,7 @@ class TokenAdversarySuite:
         shared secret, anyone who can read the JWKS can mint tokens.
 
         **Defence in depth, and not falsifiable here.** Two independent things reject this: the
-        pinned algorithm set, and authlib refusing to use a key it resolved as RSA for an HMAC
+        pinned algorithm set, and the decoder refusing to use a key it resolved as RSA for an HMAC
         verification. Widening the pinned set to include ``HS256`` therefore does *not* make this
         case fail, so passing it is not evidence that the pin is in place. The falsifiable
         assertion — that no symmetric algorithm is in the accepted set at all — is a structural
@@ -207,7 +207,7 @@ class TokenAdversarySuite:
         end-to-end property is still worth stating, and because a future provider might resolve
         keys differently and lose the second defence without anyone noticing.
         """
-        public_pem = trusted.key.as_pem(is_private=False) if hasattr(trusted.key, "as_pem") else json.dumps(trusted.jwks["keys"][0]).encode()
+        public_pem = trusted.key.as_pem(private=False) if hasattr(trusted.key, "as_pem") else json.dumps(trusted.jwks["keys"][0]).encode()
 
         with rejects():
             verify(hmac_token(trusted.claims(), trusted.kid, public_pem))
@@ -221,7 +221,7 @@ class TokenAdversarySuite:
     def test_a_token_with_no_expiry_is_rejected(self, verify, trusted):
         """A token minted without ``exp`` would otherwise be valid forever (#356).
 
-        authlib's ``validate_exp`` is a no-op when the claim is absent, so an expiry check alone
+        The ``exp`` check is a no-op when the claim is absent, so an expiry check alone
         refuses only tokens that *say* they have expired. A leaked token that never says so is a
         permanent credential. Every provider requires ``exp`` unless it opts out explicitly with
         ``allow_tokens_without_expiry`` — which no provider under this suite does.
@@ -245,6 +245,8 @@ class TokenAdversarySuite:
 
         monkeypatch.setattr(requests, "get", explode, raising=False)
         monkeypatch.setattr(requests, "request", explode, raising=False)
+        # Every requests call, including the system-trust session in http_client, goes through here.
+        monkeypatch.setattr(requests.Session, "request", explode, raising=False)
 
         for header in ("jku", "x5u"):
             # In the signed header, so the signature is genuine under the attacker's key and the

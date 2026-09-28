@@ -7,7 +7,7 @@ import threading
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
-import httpx
+import httpx2 as httpx
 
 from mlflow_oidc_auth.tests.e2e.browser import Browser, is_ui_redirect, parse_forms
 from mlflow_oidc_auth.tests.e2e.harness import PASSWORDS, AppServer, keycloak_verify

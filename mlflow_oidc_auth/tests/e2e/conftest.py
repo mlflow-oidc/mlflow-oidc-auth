@@ -38,7 +38,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, Iterator, List
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from mlflow_oidc_auth.tests.e2e.harness import (

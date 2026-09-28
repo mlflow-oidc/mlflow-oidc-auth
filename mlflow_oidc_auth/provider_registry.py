@@ -795,16 +795,20 @@ def _fetch_idp_metadata(url: str, idp_entity_id: str) -> Dict[str, Any]:
     import requests
     from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
 
-    try:
-        response = requests.get(url, timeout=SAML_METADATA_TIMEOUT_SECONDS, allow_redirects=False, stream=True)
-    except requests.RequestException as exc:
-        raise ValueError(f"the request failed ({type(exc).__name__})")
-    try:
-        if response.status_code != 200:
-            raise ValueError(f"the server answered HTTP {response.status_code}")
-        body = response.raw.read(SAML_METADATA_MAX_BYTES + 1, decode_content=True)
-    finally:
-        response.close()
+    from mlflow_oidc_auth.http_client import system_trust_session
+
+    # The operating system's trust store, as for every other outbound call (see http_client).
+    with system_trust_session() as session:
+        try:
+            response = session.get(url, timeout=SAML_METADATA_TIMEOUT_SECONDS, allow_redirects=False, stream=True)
+        except requests.RequestException as exc:
+            raise ValueError(f"the request failed ({type(exc).__name__})")
+        try:
+            if response.status_code != 200:
+                raise ValueError(f"the server answered HTTP {response.status_code}")
+            body = response.raw.read(SAML_METADATA_MAX_BYTES + 1, decode_content=True)
+        finally:
+            response.close()
     if len(body) > SAML_METADATA_MAX_BYTES:
         raise ValueError("the document is larger than 1 MiB")
 
