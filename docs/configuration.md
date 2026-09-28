@@ -111,7 +111,7 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 |----------|------|---------|-------------|
 | `OIDC_JWKS_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for the JWKS key set cache. The OIDC provider's signing keys are fetched once and cached for this duration. This is always a local in-process cache (not affected by `CACHE_BACKEND`) because JWKS data is identical across replicas |
 | `OIDC_HTTP_TIMEOUT_SECONDS` | Integer | `10` | Timeout (seconds) applied to OIDC discovery and JWKS HTTP fetches. Set lower for faster failover when the IdP is unreachable; without a timeout a hung IdP can block request threads until the OS-level TCP timeout (~2 minutes), causing cascading auth failures |
-| `OIDC_VERIFY_SSL` | Boolean | `true` | Verify the OIDC provider's TLS certificate on discovery, JWKS, and token requests. Only set to `false` for providers using self-signed certificates in a trusted network |
+| `OIDC_VERIFY_SSL` | Boolean | `true` | Verify the OIDC provider's TLS certificate on discovery, JWKS, and token requests. Only set to `false` for providers using self-signed certificates in a trusted network. Certificates are checked against the operating system's trust store (plus `REQUESTS_CA_BUNDLE` when set), so a private or TLS-inspection root CA installed system-wide is trusted |
 | `OIDC_CODE_CHALLENGE` | String | `S256` | PKCE code-challenge method for the authorization-code flow. `S256` (or `true`/`yes`/`on`/`1`), or `none`/`off`/`false`/`no`/`0` to disable. An unrecognised value warns and falls back to `S256`. See [PKCE](#pkce) |
 | `MANAGED_BY_ENFORCEMENT` | String | `report` | What happens when one source writes a row another owns: `off`, `report` (audit only) or `enforce`. See [Row ownership](#row-ownership) |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
@@ -485,6 +485,14 @@ for deployments behind a reverse proxy.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Outbound HTTPS trusts the operating system's certificate store.** Calls to identity
+  providers now verify TLS against the operating system's store instead of certifi's bundled
+  list: OIDC discovery, token and userinfo requests (via `httpx2`), bearer-token discovery and
+  JWKS fetches, SAML metadata, and the bundled Entra group plugin. A private or TLS-inspection
+  (DLP/DPI) root CA installed system-wide is therefore trusted without extra configuration. A
+  minimal container image must ship the OS CA bundle (e.g. `ca-certificates`).
+  `REQUESTS_CA_BUNDLE`, when set, is trusted in addition. The Kubernetes provider's cluster CA is
+  still trusted on its own, never combined with the system store.
 - **Bearer tokens are verified with `joserfc`.** Token validation moved from the deprecated
   `authlib.jose` module to `joserfc`, which is now a direct dependency. Accepted algorithms, the
   `iss`, `aud`, `exp`, `nbf` and `iat` checks, `kid` selection and the key refresh on a failed

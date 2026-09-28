@@ -245,6 +245,8 @@ class TokenAdversarySuite:
 
         monkeypatch.setattr(requests, "get", explode, raising=False)
         monkeypatch.setattr(requests, "request", explode, raising=False)
+        # Every requests call, including the system-trust session in http_client, goes through here.
+        monkeypatch.setattr(requests.Session, "request", explode, raising=False)
 
         for header in ("jku", "x5u"):
             # In the signed header, so the signature is genuine under the attacker's key and the

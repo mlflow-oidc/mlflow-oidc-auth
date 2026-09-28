@@ -203,6 +203,8 @@ class TestAttackerSuppliedKeysAreIgnored:
             raise AssertionError(f"validation fetched an attacker-supplied URL: {args} {kwargs}")
 
         monkeypatch.setattr(requests, "get", explode)
+        # Every requests call, including the system-trust session in http_client, goes through here.
+        monkeypatch.setattr(requests.Session, "request", explode)
         _, _, _, kid = signing_key
         attacker = generate_rsa_key()
         token = encode_jwt({"alg": "RS256", "kid": kid, "jku": "https://attacker.invalid/keys"}, claims, attacker.as_dict(private=True))

@@ -12,6 +12,7 @@ from joserfc.jws import JWSRegistry
 
 from typing import Any, Optional
 
+from mlflow_oidc_auth import http_client
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.kubernetes import in_cluster_credentials, load_inline_jwks
 from mlflow_oidc_auth.logger import get_logger
@@ -126,7 +127,7 @@ def _load_jwks(
             jwks_uri = url
         else:
             logger.debug("Fetching OIDC discovery metadata for %s", label)
-            metadata = requests.get(url, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
+            metadata = http_client.get(url, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
             jwks_uri = metadata.get("jwks_uri")
             if not jwks_uri:
                 raise ValueError(f"No jwks_uri found in OIDC discovery metadata for {label}")
@@ -134,7 +135,7 @@ def _load_jwks(
         logger.debug("Fetching JWKS from %s", jwks_uri)
         # Redirects are not followed on either fetch: this decides which signatures are valid,
         # so a 302 must be a visible configuration error rather than a silent change of source.
-        jwks = requests.get(jwks_uri, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
+        jwks = http_client.get(jwks_uri, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
     except requests.exceptions.RequestException as e:
         logger.error("Failed to fetch JWKS for %s: %s", label, e)
         raise
@@ -424,6 +425,14 @@ class _ValidatedClaims(dict):
         super().__init__(claims)
         self.header = header
         self.options = options or {}
+
+    def __eq__(self, other: object) -> bool:
+        """Equal to a plain dict of the same claims; between two, header and options count too."""
+        if isinstance(other, _ValidatedClaims):
+            return dict.__eq__(self, other) and self.header == other.header and self.options == other.options
+        return dict.__eq__(self, other)
+
+    __hash__ = None  # type: ignore[assignment]  # mutable, like dict
 
     def validate(self) -> None:
         """Apply the claim rules: essential claims, ``iss``, ``aud``, ``exp``, ``nbf``, ``iat``.

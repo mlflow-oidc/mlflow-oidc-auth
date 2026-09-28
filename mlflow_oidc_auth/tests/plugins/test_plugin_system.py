@@ -61,7 +61,7 @@ class TestPluginSystem(unittest.TestCase):
 
         # Verify the plugin has its own namespace
         self.assertTrue(hasattr(group_detection_microsoft_entra_id, "get_user_groups"))
-        self.assertTrue(hasattr(group_detection_microsoft_entra_id, "requests"))
+        self.assertTrue(hasattr(group_detection_microsoft_entra_id, "http_client"))
 
         # Verify plugin doesn't pollute global namespace
         import mlflow_oidc_auth.plugins
@@ -70,7 +70,7 @@ class TestPluginSystem(unittest.TestCase):
 
         # Should not have plugin-specific functions in the main plugins namespace
         self.assertNotIn("get_user_groups", plugin_attrs)
-        self.assertNotIn("requests", plugin_attrs)
+        self.assertNotIn("http_client", plugin_attrs)
 
     def test_plugin_security_imports(self):
         """Test that plugins only import necessary and safe modules."""
@@ -79,8 +79,8 @@ class TestPluginSystem(unittest.TestCase):
         # Verify only expected modules are imported
         module_globals = dir(plugin_module)
 
-        # Check that requests is imported (expected)
-        self.assertIn("requests", module_globals)
+        # Check that the shared HTTPS helper is imported (expected)
+        self.assertIn("http_client", module_globals)
 
         # Verify no dangerous imports
         dangerous_imports = ["os", "sys", "subprocess", "eval", "exec", "__import__"]
@@ -93,7 +93,7 @@ class TestPluginSystem(unittest.TestCase):
 
     def test_plugin_error_handling_isolation(self):
         """Test that plugin errors don't crash the main application."""
-        with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get") as mock_get:
+        with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get") as mock_get:
             # Simulate a plugin that raises an exception
             mock_get.side_effect = Exception("Plugin internal error")
 
@@ -114,7 +114,7 @@ class TestPluginSystem(unittest.TestCase):
         )
 
         # Test with mock to verify interface compliance
-        with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get") as mock_get:
+        with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get") as mock_get:
             mock_response = Mock()
             mock_response.ok = True
             mock_response.json.return_value = {"value": [{"displayName": "Test Group"}]}
@@ -163,13 +163,12 @@ class TestPluginSystem(unittest.TestCase):
 
     def test_plugin_dependency_management(self):
         """Test that plugin dependencies are properly managed."""
-        # Verify that the plugin's requests dependency is available
-        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import requests
+        # The plugin calls Microsoft Graph through the shared HTTPS helper, which verifies TLS
+        # against the operating system's trust store.
+        from mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id import http_client
 
-        # Verify requests module has expected attributes
-        self.assertTrue(hasattr(requests, "get"), "requests module should have get method")
-        self.assertTrue(hasattr(requests, "ConnectionError"), "requests should have ConnectionError")
-        self.assertTrue(hasattr(requests, "Timeout"), "requests should have Timeout")
+        self.assertTrue(hasattr(http_client, "get"), "http_client should have get")
+        self.assertTrue(hasattr(http_client, "system_trust_session"), "http_client should have system_trust_session")
 
     def test_plugin_configuration_isolation(self):
         """Test that plugin configurations don't interfere with each other."""
@@ -235,7 +234,7 @@ class TestPluginSecurityAndIsolation(unittest.TestCase):
             get_user_groups,
         )
 
-        with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get") as mock_get:
+        with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get") as mock_get:
             mock_response = Mock()
             mock_response.ok = True
             mock_response.json.return_value = {"value": []}
@@ -261,7 +260,7 @@ class TestPluginSecurityAndIsolation(unittest.TestCase):
 
         def worker(token_suffix):
             try:
-                with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get") as mock_get:
+                with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get") as mock_get:
                     mock_response = Mock()
                     mock_response.ok = True
                     mock_response.json.return_value = {"value": [{"displayName": f"Group_{token_suffix}"}]}
