@@ -5,9 +5,10 @@ import * as useCurrentUserModule from "../../core/hooks/use-current-user";
 import React from "react";
 
 const mockUseUser = vi.fn();
+const mockUseParams = vi.fn(() => ({ tab: "info" }));
 
 vi.mock("react-router", () => ({
-  useParams: () => ({ tab: "info" }),
+  useParams: () => mockUseParams(),
   Link: ({
     children,
     to,
@@ -86,15 +87,17 @@ vi.mock("./components/user-details-card", () => ({
   ),
 }));
 
-vi.mock("../../shared/components/token-info-block", () => ({
-  TokenInfoBlock: () => <div>Token Info</div>,
+vi.mock("../tokens/components/user-tokens-panel", () => ({
+  UserTokensPanel: ({ username }: { username?: string }) => (
+    <div data-testid="tokens-panel">{username ?? "self"}</div>
+  ),
 }));
 
 describe("UserPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseUser.mockReturnValue({
-      currentUser: { username: "testuser", password_expiration: 123 },
+      currentUser: { username: "testuser" },
       isLoading: false,
       error: null,
     });
@@ -128,5 +131,17 @@ describe("UserPage", () => {
       "href",
       "/user/ai-secrets",
     );
+  });
+
+  it("has a Tokens tab that shows the signed-in user's own tokens", () => {
+    mockUseParams.mockReturnValue({ tab: "tokens" });
+    render(<UserPage />);
+    expect(screen.getByText("Tokens").closest("a")).toHaveAttribute(
+      "href",
+      "/user/tokens",
+    );
+    expect(screen.getByTestId("tokens-panel")).toHaveTextContent("self");
+    expect(screen.queryByText("Details for testuser")).not.toBeInTheDocument();
+    mockUseParams.mockReturnValue({ tab: "info" });
   });
 });

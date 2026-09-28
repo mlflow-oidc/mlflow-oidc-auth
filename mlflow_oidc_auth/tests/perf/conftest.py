@@ -13,7 +13,6 @@ pg_stat seq_scan counters do not. Nothing here should be read as a claim about
 Postgres planner behaviour.
 """
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -90,7 +89,7 @@ def seeded_store(store):
     """
     username = "alice@example.com"
     group_names = [f"group-{i}" for i in range(1, 9)]  # 8 groups
-    store.create_user(username, "pw", "Alice")
+    store.create_user(username, "Alice")
     store.populate_groups(group_names)
     store.set_user_groups(username, group_names)
     return store, username, group_names

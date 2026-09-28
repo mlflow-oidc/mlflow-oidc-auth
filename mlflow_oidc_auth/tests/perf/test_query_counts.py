@@ -45,7 +45,7 @@ class TestUserGroupLookups:
         for n_groups in (1, 4, 8):
             username = f"user{n_groups}@example.com"
             groups = [f"g{n_groups}-{i}" for i in range(n_groups)]
-            store.create_user(username, "pw", username)
+            store.create_user(username, username)
             store.populate_groups(groups)
             store.set_user_groups(username, groups)
 
@@ -85,7 +85,7 @@ class TestGroupPermissionResolution:
         for n_groups in (1, 4, 8):
             username = f"perm{n_groups}@example.com"
             groups = [f"pg{n_groups}-{i}" for i in range(n_groups)]
-            store.create_user(username, "pw", username)
+            store.create_user(username, username)
             store.populate_groups(groups)
             store.set_user_groups(username, groups)
             store.create_group_experiment_permission(groups[0], f"exp-{n_groups}", "READ")
@@ -132,8 +132,8 @@ class TestFoldedQueriesDoNotOverGrant:
     """
 
     def test_experiment_fold_ignores_groups_the_user_is_not_in(self, store, counter):
-        store.create_user("owner@example.com", "pw", "Owner")
-        store.create_user("outsider@example.com", "pw", "Outsider")
+        store.create_user("owner@example.com", "Owner")
+        store.create_user("outsider@example.com", "Outsider")
         store.populate_groups(["insiders", "outsiders"])
         store.set_user_groups("owner@example.com", ["insiders"])
         store.set_user_groups("outsider@example.com", ["outsiders"])
@@ -147,8 +147,8 @@ class TestFoldedQueriesDoNotOverGrant:
         assert owner.permission == "MANAGE"
 
     def test_registered_model_fold_ignores_groups_the_user_is_not_in(self, store):
-        store.create_user("mowner@example.com", "pw", "M Owner")
-        store.create_user("moutsider@example.com", "pw", "M Outsider")
+        store.create_user("mowner@example.com", "M Owner")
+        store.create_user("moutsider@example.com", "M Outsider")
         store.populate_groups(["m-insiders", "m-outsiders"])
         store.set_user_groups("mowner@example.com", ["m-insiders"])
         store.set_user_groups("moutsider@example.com", ["m-outsiders"])
@@ -162,7 +162,7 @@ class TestFoldedQueriesDoNotOverGrant:
 
     def test_registered_model_fold_keys_on_the_model_name(self, store):
         """The resource predicate must survive the fold — a grant on one model is not another."""
-        store.create_user("m2@example.com", "pw", "M2")
+        store.create_user("m2@example.com", "M2")
         store.populate_groups(["m2-group"])
         store.set_user_groups("m2@example.com", ["m2-group"])
         store.create_group_model_permission("m2-group", "model-a", "MANAGE")
@@ -172,8 +172,8 @@ class TestFoldedQueriesDoNotOverGrant:
             store.registered_model_group_repo.get_for_user("model-b", "m2@example.com")
 
     def test_scorer_fold_ignores_groups_the_user_is_not_in(self, store):
-        store.create_user("sowner@example.com", "pw", "S Owner")
-        store.create_user("soutsider@example.com", "pw", "S Outsider")
+        store.create_user("sowner@example.com", "S Owner")
+        store.create_user("soutsider@example.com", "S Outsider")
         store.populate_groups(["s-insiders", "s-outsiders"])
         store.set_user_groups("sowner@example.com", ["s-insiders"])
         store.set_user_groups("soutsider@example.com", ["s-outsiders"])
@@ -187,7 +187,7 @@ class TestFoldedQueriesDoNotOverGrant:
 
     def test_scorer_fold_keys_on_both_experiment_and_scorer_name(self, store):
         """The scorer fold has a 2-part key; both predicates must survive."""
-        store.create_user("s2@example.com", "pw", "S2")
+        store.create_user("s2@example.com", "S2")
         store.populate_groups(["s2-group"])
         store.set_user_groups("s2@example.com", ["s2-group"])
         store.create_group_scorer_permission("s2-group", "exp-1", "scorer-x", "MANAGE")
@@ -232,7 +232,7 @@ class TestPermissionContextBuild:
             for n_groups in (1, 4, 8):
                 username = f"ctx{n_groups}@example.com"
                 groups = [f"cg{n_groups}-{i}" for i in range(n_groups)]
-                store.create_user(username, "pw", username)
+                store.create_user(username, username)
                 store.populate_groups(groups)
                 store.set_user_groups(username, groups)
 
@@ -297,8 +297,8 @@ class TestListFoldsDoNotLeakAcrossUsers:
     """
 
     def _seed_two_users(self, store):
-        store.create_user("victim@example.com", "pw", "Victim")
-        store.create_user("alice@example.com", "pw", "Alice")
+        store.create_user("victim@example.com", "Victim")
+        store.create_user("alice@example.com", "Alice")
         # Decoy groups first so membership-row PKs diverge from group ids — otherwise a
         # join on the wrong column (SqlUserGroup.id instead of .group_id) is invisible.
         store.populate_groups(["decoy-a", "decoy-b", "decoy-c", "victim-grp", "alice-grp"])
@@ -335,7 +335,7 @@ class TestListFoldsDoNotLeakAcrossUsers:
 
         Seeded so the two diverge, so using the wrong column returns a non-member group.
         """
-        store.create_user("carol@example.com", "pw", "Carol")
+        store.create_user("carol@example.com", "Carol")
         groups = [f"grp{i}" for i in range(6)]
         store.populate_groups(groups)
         store.set_user_groups("carol@example.com", ["grp5"])  # membership row PK 1, group id 6
@@ -353,7 +353,7 @@ class TestGroupPermissionCollapse:
         """The batch path used a last-wins dict; the per-resource path folds by precedence."""
         import mlflow_oidc_auth.utils.batch_permissions as bp
 
-        store.create_user("dora@example.com", "pw", "Dora")
+        store.create_user("dora@example.com", "Dora")
         store.populate_groups(["hi", "lo"])
         store.set_user_groups("dora@example.com", ["hi", "lo"])
         store.create_group_experiment_permission("hi", "e0", "MANAGE")
@@ -373,7 +373,7 @@ class TestGroupPermissionCollapse:
     def test_collapse_is_independent_of_membership_order(self, store):
         import mlflow_oidc_auth.utils.batch_permissions as bp
 
-        store.create_user("eve@example.com", "pw", "Eve")
+        store.create_user("eve@example.com", "Eve")
         store.populate_groups(["ga", "gz"])
         store.create_group_experiment_permission("ga", "e0", "MANAGE")
         store.create_group_experiment_permission("gz", "e0", "READ")

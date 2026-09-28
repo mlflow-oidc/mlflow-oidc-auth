@@ -1,7 +1,8 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import GroupsPage from "./groups-page";
+import type { GroupDetails } from "../../shared/types/entity";
 
 import type { Mock } from "vitest";
 
@@ -11,6 +12,15 @@ const mockUseAllGroups: Mock<
     error: Error | null;
     refresh: () => void;
     allGroups: string[] | null;
+  }
+> = vi.fn();
+
+const mockUseAllGroupDetails: Mock<
+  () => {
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+    groups: GroupDetails[];
   }
 > = vi.fn();
 
@@ -24,12 +34,23 @@ const mockUseSearch: Mock<
   }
 > = vi.fn();
 
+const mockUseUser: Mock<() => { currentUser: { is_admin: boolean } | null }> =
+  vi.fn();
+
 vi.mock("../../core/hooks/use-all-groups", () => ({
   useAllGroups: () => mockUseAllGroups(),
 }));
 
+vi.mock("../../core/hooks/use-all-group-details", () => ({
+  useAllGroupDetails: () => mockUseAllGroupDetails(),
+}));
+
 vi.mock("../../core/hooks/use-search", () => ({
   useSearch: () => mockUseSearch(),
+}));
+
+vi.mock("../../core/hooks/use-user", () => ({
+  useUser: () => mockUseUser(),
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
@@ -65,14 +86,21 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({
+  EntityListTable: <T extends { id: string }>({
     data,
+    columns,
   }: {
-    data: { id: string; groupName: string }[];
+    data: T[];
+    columns: { render: (item: T) => React.ReactNode }[];
   }) => (
     <div data-testid="entity-list">
       {data.map((item) => (
-        <div key={item.id}>{item.groupName}</div>
+        <div key={item.id} data-testid={`row-${item.id}`}>
+          {columns.map((col, i) => (
+            // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
+            <span key={i}>{col.render(item)}</span>
+          ))}
+        </div>
       ))}
     </div>
   ),
@@ -82,8 +110,25 @@ vi.mock("../../shared/components/row-action-button", () => ({
   RowActionButton: () => <button>Manage permissions</button>,
 }));
 
+const mockOnCreated = { current: (() => {}) as () => void };
+
+vi.mock("./components/create-group-modal", () => ({
+  CreateGroupModal: ({
+    isOpen,
+    onCreated,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onCreated: () => void;
+  }) => {
+    mockOnCreated.current = onCreated;
+    return isOpen ? <div data-testid="create-group-modal" /> : null;
+  },
+}));
+
 describe("GroupsPage", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mockUseSearch.mockReturnValue({
       searchTerm: "",
       submittedTerm: "",
@@ -97,6 +142,13 @@ describe("GroupsPage", () => {
       refresh: vi.fn(),
       allGroups: [],
     });
+    mockUseAllGroupDetails.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      groups: [],
+    });
+    mockUseUser.mockReturnValue({ currentUser: { is_admin: false } });
   });
 
   it("renders correctly with groups", () => {
@@ -202,5 +254,115 @@ describe("GroupsPage", () => {
 
     render(<GroupsPage />);
     expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+  });
+
+  describe("admin", () => {
+    beforeEach(() => {
+      mockUseUser.mockReturnValue({ currentUser: { is_admin: true } });
+    });
+
+    const manualGroup: GroupDetails = {
+      group_name: "data-team",
+      external_id: null,
+      member_count: 3,
+    };
+    const scimGroup: GroupDetails = {
+      group_name: "platform",
+      external_id: "okta-123",
+      member_count: 7,
+    };
+
+    it("does not call the legacy string-list hook", () => {
+      mockUseAllGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        groups: [manualGroup],
+      });
+
+      render(<GroupsPage />);
+      expect(mockUseAllGroups).not.toHaveBeenCalled();
+    });
+
+    it("renders member count and Manual source badge", () => {
+      mockUseAllGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        groups: [manualGroup],
+      });
+
+      render(<GroupsPage />);
+      expect(screen.getByText("data-team")).toBeInTheDocument();
+      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.getByText("Manual")).toBeInTheDocument();
+    });
+
+    it("renders SCIM source badge when external_id is set", () => {
+      mockUseAllGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        groups: [scimGroup],
+      });
+
+      render(<GroupsPage />);
+      expect(screen.getByText("platform")).toBeInTheDocument();
+      expect(screen.getByText("7")).toBeInTheDocument();
+      expect(screen.getByText("SCIM")).toBeInTheDocument();
+    });
+
+    it("filters groups based on search", () => {
+      mockUseSearch.mockReturnValue({
+        searchTerm: "data",
+        submittedTerm: "data",
+        handleInputChange: vi.fn(),
+        handleSearchSubmit: vi.fn(),
+        handleClearSearch: vi.fn(),
+      });
+      mockUseAllGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        groups: [manualGroup, scimGroup],
+      });
+
+      render(<GroupsPage />);
+      expect(screen.getByText("data-team")).toBeInTheDocument();
+      expect(screen.queryByText("platform")).not.toBeInTheDocument();
+    });
+
+    it("opens the create-group modal from the Create group button", () => {
+      mockUseAllGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        groups: [manualGroup],
+      });
+
+      render(<GroupsPage />);
+
+      expect(screen.queryByTestId("create-group-modal")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "+ Create group" }));
+      expect(screen.getByTestId("create-group-modal")).toBeInTheDocument();
+    });
+
+    it("refreshes the group list when a group is created", () => {
+      const refresh = vi.fn();
+      mockUseAllGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh,
+        groups: [manualGroup],
+      });
+
+      render(<GroupsPage />);
+      fireEvent.click(screen.getByRole("button", { name: "+ Create group" }));
+      act(() => {
+        mockOnCreated.current();
+      });
+
+      expect(refresh).toHaveBeenCalled();
+    });
   });
 });

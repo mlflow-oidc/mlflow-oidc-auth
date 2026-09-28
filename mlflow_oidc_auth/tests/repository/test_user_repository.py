@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import IntegrityError
 from mlflow_oidc_auth.repository.user import UserRepository
 from mlflow.exceptions import MlflowException
-from datetime import datetime, timedelta
 
 
 @pytest.fixture
@@ -30,16 +29,14 @@ def test_create_success(repo, session):
     user.to_mlflow_entity.return_value = "entity"
     session.add = MagicMock()
     session.flush = MagicMock()
+    # No existing row: create refuses one, and never re-owns it (#360).
+    session.query.return_value.filter.return_value.one_or_none.return_value = None
 
     with (
         patch("mlflow_oidc_auth.db.models.SqlUser", return_value=user),
-        patch(
-            "mlflow_oidc_auth.repository.user.generate_password_hash",
-            return_value="hashed",
-        ),
         patch("mlflow_oidc_auth.repository.user._validate_username"),
     ):
-        result = repo.create("user", "pw", "disp")
+        result = repo.create("user", "disp")
         assert result is not None
         session.add.assert_called_once()
         session.flush.assert_called_once()
@@ -50,16 +47,28 @@ def test_create_integrity_error(repo, session):
     session.flush = MagicMock(side_effect=IntegrityError("statement", "params", "orig"))
     with (
         patch("mlflow_oidc_auth.db.models.SqlUser", return_value=MagicMock()),
-        patch(
-            "mlflow_oidc_auth.repository.user.generate_password_hash",
-            return_value="hashed",
-        ),
         patch("mlflow_oidc_auth.repository.user._validate_username"),
     ):
         with pytest.raises(MlflowException) as exc:
-            repo.create("user", "pw", "disp")
+            repo.create("user", "disp")
         assert "User 'user' already exists" in str(exc.value)
         assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
+
+
+def test_create_integrity_error_message_carries_no_sql_or_parameters(repo, session):
+    """The message reaches API clients, so the driver's SQL and bound parameters must stay out of it."""
+    # No existing row, so the insert itself is what collides (a concurrent create).
+    session.query.return_value.filter.return_value.one_or_none.return_value = None
+    session.add = MagicMock()
+    session.flush = MagicMock(side_effect=IntegrityError("INSERT INTO users (username) VALUES (?)", ("secret-hash",), Exception("UNIQUE")))
+    with (
+        patch("mlflow_oidc_auth.db.models.SqlUser", return_value=MagicMock()),
+        patch("mlflow_oidc_auth.repository.user._validate_username"),
+    ):
+        with pytest.raises(MlflowException) as exc:
+            repo.create("user", "disp")
+    message = str(exc.value)
+    assert "secret-hash" not in message and "INSERT" not in message
 
 
 def test_get_found(repo, session):
@@ -103,14 +112,8 @@ def test_update_partial_fields(repo, session):
     user = MagicMock()
     user.to_mlflow_entity.return_value = "entity"
     session.flush = MagicMock()
-    with (
-        patch("mlflow_oidc_auth.repository.user.get_user", return_value=user),
-        patch(
-            "mlflow_oidc_auth.repository.user.generate_password_hash",
-            return_value="hashed",
-        ),
-    ):
-        result = repo.update("user", password=None, is_admin=None, is_service_account=None)
+    with (patch("mlflow_oidc_auth.repository.user.get_user", return_value=user),):
+        result = repo.update("user", is_admin=None, is_service_account=None)
         assert result == "entity"
         session.flush.assert_called_once()
 
@@ -119,34 +122,16 @@ def test_update_all_fields(repo, session):
     user = MagicMock()
     user.to_mlflow_entity.return_value = "entity"
     session.flush = MagicMock()
-    with (
-        patch("mlflow_oidc_auth.repository.user.get_user", return_value=user),
-        patch(
-            "mlflow_oidc_auth.repository.user.generate_password_hash",
-            return_value="hashed",
-        ),
-    ):
-        result = repo.update("user", password="new_pw", is_admin=True, is_service_account=True)
+    with (patch("mlflow_oidc_auth.repository.user.get_user", return_value=user),):
+        result = repo.update("user", revoke_tokens=True, is_admin=True, is_service_account=True)
         assert result == "entity"
-        session.flush.assert_called_once()
-
-
-def test_update_password_expiration(repo, session):
-    """Test update with password_expiration to cover line 71"""
-    user = MagicMock()
-    user.to_mlflow_entity.return_value = "entity"
-    session.flush = MagicMock()
-    expiration_date = datetime.now() + timedelta(days=30)
-
-    with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user):
-        result = repo.update("user", password_expiration=expiration_date)
-        assert result == "entity"
-        assert user.password_expiration == expiration_date
-        session.flush.assert_called_once()
+        # The users row is flushed before the tokens are deleted, then again (#189 review).
+        assert session.flush.call_count == 2
 
 
 def test_delete(repo, session):
     user = MagicMock()
+    user.is_admin = False  # not the last-admin path; that has its own tests
     session.delete = MagicMock()
     session.flush = MagicMock()
     with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user):
@@ -163,30 +148,6 @@ def test_delete_non_existent_user(repo, session):
             repo.delete("non_existent_user")
         session.delete.assert_not_called()
         session.flush.assert_not_called()
-
-
-def test_authenticate_success(repo, session):
-    user = MagicMock()
-    user.password_hash = "hashed"
-    user.password_expiration = None
-    with (
-        patch("mlflow_oidc_auth.repository.user.get_user", return_value=user),
-        patch("mlflow_oidc_auth.repository.user.check_password_hash", return_value=True),
-    ):
-        assert repo.authenticate("user", "pw") is True
-
-
-def test_authenticate_fail(repo, session):
-    with patch("mlflow_oidc_auth.repository.user.get_user", side_effect=MlflowException("fail")):
-        assert repo.authenticate("user", "pw") is False
-
-
-def test_authenticate_expired_password(repo, session):
-    user = MagicMock()
-    user.password_hash = "hashed"
-    user.password_expiration = datetime.now() - timedelta(days=1)
-    with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user):
-        assert repo.authenticate("user", "pw") is False
 
 
 class TestUsernameCaseNormalization:
@@ -214,12 +175,12 @@ class TestUsernameCaseNormalization:
         """#219: an admin-created service account with capitals is stored lowercase."""
         session.add = MagicMock()
         session.flush = MagicMock()
+        session.query.return_value.filter.return_value.one_or_none.return_value = None
         with (
             patch("mlflow_oidc_auth.repository.user.SqlUser") as sql_user,
-            patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"),
             patch("mlflow_oidc_auth.repository.user._validate_username"),
         ):
-            repo.create("Xyz_Abc", "pw", "Xyz Abc Display")
+            repo.create("Xyz_Abc", "Xyz Abc Display")
             assert sql_user.call_args.kwargs["username"] == "xyz_abc"
             # The human-readable display name is left untouched.
             assert sql_user.call_args.kwargs["display_name"] == "Xyz Abc Display"
@@ -231,18 +192,6 @@ class TestUsernameCaseNormalization:
         assert "xyz_abc" in str(exc.value)
         assert "Xyz_Abc" not in str(exc.value)
 
-    def test_authenticate_looks_up_lowercased_username(self, repo, session):
-        """#219: authenticating a mixed-case service account resolves the lowercase row."""
-        user = MagicMock()
-        user.password_hash = "hashed"
-        user.password_expiration = None
-        with (
-            patch("mlflow_oidc_auth.repository.user.get_user", return_value=user) as get_user_mock,
-            patch("mlflow_oidc_auth.repository.user.check_password_hash", return_value=True),
-        ):
-            assert repo.authenticate("Xyz_Abc", "pw") is True
-            assert get_user_mock.call_args.args[1] == "xyz_abc"
-
     def test_update_normalizes_username(self, repo, session):
         user = MagicMock()
         with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user) as get_user_mock:
@@ -251,6 +200,7 @@ class TestUsernameCaseNormalization:
 
     def test_delete_normalizes_username(self, repo, session):
         user = MagicMock()
+        user.is_admin = False
         with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user) as get_user_mock:
             repo.delete("Xyz_Abc")
             assert get_user_mock.call_args.args[1] == "xyz_abc"

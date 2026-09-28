@@ -1,49 +1,17 @@
-```instructions
 ---
 applyTo: 'web-react/**/*.{ts,tsx,js,jsx,css,scss}'
-description: React (TypeScript) coding conventions and guidelines
+description: React/TypeScript conventions — see AGENTS.md for the full set
 ---
 
-# React Coding Conventions
+Frontend conventions for this repository live in [`AGENTS.md`](../../AGENTS.md) and
+[`web-react/AGENTS.md`](../../web-react/AGENTS.md). Read those; this file only exists so Copilot
+applies them to the frontend.
 
-## Components and Props
+The short version:
 
-- Use function components with hooks; keep components focused and prefer composition over prop drilling.
-- Type props with explicit interfaces; avoid `any` and prefer discriminated unions for variants.
-- Memoize only when needed (`React.memo`, `useMemo`, `useCallback`) and keep dependency arrays accurate.
-
-## State, Effects, and Data
-
-- Keep state minimal and derived when possible; use `useReducer` for multi-step state machines.
-- Prefer the `async`/`await` pattern with `fetch` plus `AbortController` for cancellable requests.
-- Handle loading/error/empty states explicitly and surface actionable messages in the UI.
-
-## Routing and Navigation
-
-- Use `react-router` loaders/actions sparingly; colocate route-level data fetching with the route component.
-- Keep navigation accessible with semantic links and buttons; avoid div-based click targets.
-
-## Templates and Markup
-
-- Keep JSX expressions simple; extract helpers for complex conditionals or mapping logic.
-- Use `key` that is stable and unique for lists; prefer `trackBy`-style identifiers over array indices.
-- Sanitize any dynamic HTML with `DOMPurify` before using `dangerouslySetInnerHTML`.
-
-## Styling
-
-- Prefer Tailwind utility classes first; keep custom CSS/SCSS minimal and scoped to components.
-- Keep className strings readable (group related utilities) and factor repeated patterns into small helpers.
-- Avoid global selectors; when necessary, isolate with :global blocks and document why.
-
-## Testing
-
-- Write tests with Vitest and Testing Library; assert via `screen` queries and user-centric interactions (`userEvent`).
-- Use accessible queries (`getByRole`, `getByLabelText`) over brittle CSS selectors; avoid snapshot-only tests for behavior.
-- Mock network boundaries deterministically; keep tests isolated and free of real timers when not required.
-
-## General Quality
-
-- Enforce strict TypeScript settings; prefer `readonly` props and never ignore type errors with `// @ts-ignore`.
-- Avoid inline anonymous functions in hot paths when they cause unnecessary renders; measure before optimizing.
-- Keep side effects inside `useEffect` and return cleanup functions for subscriptions or timers.
-```
+- Function components with hooks. Props typed explicitly; no `any` in new code.
+- Files `kebab-case.tsx`; components `PascalCase`; hooks `useCamelCase` in `use-*.ts`.
+- Tests co-located as `*.test.tsx` using Testing Library. A new component ships with its test.
+- Side effects inside `useEffect`, with cleanup returned for subscriptions and timers.
+- **The UI is not a security boundary.** Hiding a control is not authorization — the server
+  decides. Disable what the server would reject, and say why.

@@ -74,9 +74,9 @@ class RegisteredModelPermissionRegexRepository(BaseRegexPermissionRepository[Sql
                 return perm.to_mlflow_entity()
             except IntegrityError as e:
                 raise MlflowException(
-                    f"Registered model perm exists ({regex},{username}): {e}",
+                    f"Registered model perm exists ({regex},{username})",
                     RESOURCE_ALREADY_EXISTS,
-                )
+                ) from e
 
     def get(self, id: int, username: str, prompt: bool = False) -> RegisteredModelRegexPermission:  # type: ignore[override]
         with self._Session() as session:

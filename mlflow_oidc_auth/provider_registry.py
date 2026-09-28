@@ -1,0 +1,1305 @@
+"""Identity provider registry (issue #308).
+
+Configuration is a flat set of ``OIDC_*`` singletons and cannot express more than one identity
+provider. This module adds a structured registry that can, while leaving the flat variables as
+the sole source of truth for deployments that have not adopted it.
+
+**Nothing consumes this yet.** It is the shape the rest of the enterprise-identity epic (#304)
+is built against; login, callback and token validation are unchanged by this module.
+
+Two ways to configure it, both read through the existing ``config_providers`` chain so secrets
+managers keep working:
+
+``AUTH_PROVIDERS``
+    A JSON array of provider objects.
+``AUTH_PROVIDERS_FILE``
+    A path to a file containing the same JSON.
+
+With neither set, a single provider ``default`` is synthesised from the flat ``OIDC_*``
+variables with ``jit`` / ``every_login`` / ``authoritative`` — which is what the plugin does
+today, so an existing deployment sees no change.
+
+Invalid entries are **dropped, not repaired**, and the reasons are reported so startup can log
+them. Dropping rather than raising follows the ``_warn_if_*`` precedent in ``config.py``:
+``AppConfig`` is a module-level singleton imported by tooling with nothing to do with login —
+Alembic's migration environment, for one — so raising here would take that tooling down over a
+provider it never uses. Dropping is also the deny-by-default answer: an entry that cannot be
+validated does not exist, so nobody can authenticate through it.
+"""
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
+
+from mlflow_oidc_auth.kubernetes import load_inline_jwks, valid_dns_label
+from mlflow_oidc_auth.logger import get_logger
+
+logger = get_logger()
+
+# The provider id synthesised from the flat OIDC_* variables.
+DEFAULT_PROVIDER_ID = "default"
+
+PROVIDER_TYPES = ("oidc", "saml", "k8s")
+
+# Provider types that can carry a browser login flow. ``k8s`` cannot: a projected
+# service-account token is presented directly as a bearer credential — there is no
+# authorization endpoint to redirect a human to, no consent, and no callback. This is a
+# different axis from ``type``, which describes how a credential is *verified*: a k8s provider
+# verifies tokens the same way an OIDC one does (JWT against the cluster's JWKS), it just can
+# never appear on a login page.
+INTERACTIVE_BY_DEFAULT = {"oidc": True, "saml": True, "k8s": False}
+PROVISIONING_MODES = ("jit", "scim", "none")
+GROUP_SYNC_MODES = ("none", "first_login", "every_login")
+GROUP_SYNC_STRATEGIES = ("additive", "authoritative")
+# Provider types whose credentials are bearer tokens verified against a JWKS. They carry the
+# extra requirements in _validate: an issuer to pin, and a key source of their own.
+TOKEN_PROVIDER_TYPES = ("oidc", "k8s")
+
+# Fields that only a Kubernetes provider may carry. They decide where signing keys come from and
+# what credential is presented to fetch them, so on any other type they are refused rather than
+# ignored (#314).
+KUBERNETES_ONLY_FIELDS = ("jwks_inline", "jwks_uri", "in_cluster", "ca_bundle_path", "namespace_allowlist")
+
+# Fields that only a SAML provider may carry (#328, #329). They name the IdP, the certificate its
+# assertions are verified with, and the key this service signs with — so on any other type they
+# are refused rather than ignored, for the same reason as KUBERNETES_ONLY_FIELDS.
+SAML_ONLY_FIELDS = (
+    "entity_id",
+    "idp_entity_id",
+    "idp_sso_url",
+    "idp_slo_url",
+    "idp_x509_cert",
+    "idp_metadata_url",
+    "sp_x509_cert",
+    "sp_private_key",
+    "sp_private_key_file",
+    "name_id_format",
+    "attribute_username",
+    "attribute_groups",
+    "attribute_display_name",
+    "want_assertions_signed",
+    "want_response_signed",
+    "clock_skew_seconds",
+    "sign_requests",
+)
+
+# Fields a SAML provider refuses. Each configures bearer-token validation — an audience, an
+# issuer to pin, a key set, the algorithms a JWT may use — and SAML never validates a bearer
+# token. An operator who wrote one believes it constrains something; on a SAML entry it would
+# not. ``allow_tokens_without_expiry`` is absent only because it has its own refusal above.
+SAML_REFUSED_FIELDS = ("audience", "issuer", "discovery_url", "client_id", "allowed_algorithms") + KUBERNETES_ONLY_FIELDS
+
+DEFAULT_SAML_NAME_ID_FORMAT = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+
+# python3-saml checks ``Conditions`` against a fixed 300 s drift of its own; a configured skew is
+# enforced on top of that, so a larger one could never take effect and is refused as misleading.
+MAX_SAML_CLOCK_SKEW_SECONDS = 300
+DEFAULT_SAML_CLOCK_SKEW_SECONDS = 60
+
+# IdP metadata is fetched once, at registry build, with a bound on both time and size.
+SAML_METADATA_TIMEOUT_SECONDS = 10
+SAML_METADATA_MAX_BYTES = 1024 * 1024
+
+# "scim" is deliberately absent — see _validate_admin_source.
+ADMIN_SOURCES = ("claims", "none")
+IDENTITY_BINDINGS = ("subject", "email")
+
+# Symmetric algorithms: the verifier holds the same secret the signer does. Combined with a
+# JWKS source this is the classic algorithm-confusion setup, where a public verification key is
+# replayed as an HMAC secret and any caller can mint a valid token.
+HMAC_ALGORITHMS = ("HS256", "HS384", "HS512")
+
+# Asymmetric algorithms this plugin can actually verify: signatures are checked against keys
+# fetched from the provider's JWKS.
+ASYMMETRIC_ALGORITHMS = (
+    "RS256",
+    "RS384",
+    "RS512",
+    "PS256",
+    "PS384",
+    "PS512",
+    "ES256",
+    "ES384",
+    "ES512",
+    "EdDSA",
+)
+
+# Canonical spelling by uppercase name, so "rs256" and "eddsa" resolve to "RS256" and "EdDSA".
+# Storing the canonical form matters: a consumer comparing against "RS256" would otherwise miss
+# a provider configured as "rs256", and silently fall through to whatever its own default is.
+_CANONICAL_ALGORITHMS = {algorithm.upper(): algorithm for algorithm in ASYMMETRIC_ALGORITHMS + HMAC_ALGORITHMS}
+
+# ``alg: none`` means the token carries no signature at all. Rejected by name and with its own
+# message because it is the single most dangerous value this field can take, and because it is
+# easy to arrive at innocently by copying an example.
+NONE_ALGORITHM = "NONE"
+
+DEFAULT_ALGORITHMS = ("RS256",)
+
+
+@dataclass(frozen=True)
+class ProviderConfig:
+    """One identity provider and the policy that applies to it.
+
+    Frozen because the registry is read at startup and shared; a consumer mutating a provider
+    in place would change authentication policy for every later request.
+
+    Attributes:
+        id: Stable identifier, unique across the registry. Used as ``provider_id`` on
+            ``user_identities`` rows (#333).
+        type: One of ``oidc``, ``saml``, ``k8s``.
+        display_name: Human-readable label for the login picker.
+        provisioning: ``jit`` creates users on first login, ``scim`` expects an external
+            directory to create them, ``none`` requires them to exist already.
+        group_sync: When group membership is refreshed from provider claims.
+        group_sync_mode: ``authoritative`` replaces local membership with the claim,
+            ``additive`` only adds.
+        admin_source: Where administrator status may come from. Never ``scim``.
+        interactive: Whether this provider can carry a browser login flow, and so whether it
+            belongs on the login page (#317, #330). Independent of ``type``, which describes how
+            a credential is *verified*: a ``k8s`` provider verifies tokens exactly as an
+            ``oidc`` one does, but a projected service-account token is presented directly as a
+            bearer credential — there is no authorization endpoint to redirect to. Defaults
+            from the type and cannot be set True for a type that has no browser flow.
+        identity_binding: Which token field identifies the user.
+        allowed_email_domains: Required when binding on ``email``; an email-bound provider
+            with no domain restriction lets anyone who can prove any address take an account.
+        allowed_algorithms: Accepted JWT signing algorithms.
+        audience: Expected ``aud``. Required — a token with no audience check is valid for
+            any relying party the issuer serves.
+        issuer: Expected ``iss``, when known.
+        discovery_url: OIDC discovery document, for ``oidc`` providers.
+        client_id: OAuth client id, for ``oidc`` providers.
+        public_client: ``oidc`` only. The client was issued without a client secret, so PKCE
+            authenticates its token exchange instead (#300). Opt-in: a missing secret on a
+            provider that does not declare this is a configuration error, not a public client.
+            False by default; for the synthesised ``default`` provider it comes from
+            ``OIDC_PUBLIC_CLIENT``.
+        userinfo_groups: ``oidc`` only. Whether the groups and workspace claims may be read from
+            the provider's UserInfo endpoint when the ID token lacks them. They decide access,
+            administrator status and workspace membership, so this is opt-in: by default only
+            identity claims (username, email, display name) are completed from UserInfo. False by
+            default; for the synthesised ``default`` provider it comes from ``OIDC_USERINFO_GROUPS``.
+        jwks_inline: Key set written into configuration, for a cluster whose JWKS cannot be
+            fetched. The only mode that needs no network at all.
+        jwks_uri: Key set URL, when it is known and discovery is not readable.
+        ca_bundle_path: CA bundle for fetching from the cluster's API server.
+        in_cluster: Fetch keys from the API server using the pod's own service-account token.
+        namespace_allowlist: Namespaces whose service accounts may be provisioned. Empty means
+            none — a service-account token carries no group claim, so nothing else narrows who
+            may become a user.
+        allow_tokens_without_expiry: Accept a bearer token that carries no ``exp`` claim (#356).
+            False by default, so every such token is refused — otherwise it would be valid
+            forever. Exists for legacy (non-bound) Kubernetes service-account tokens, which have
+            no ``exp``; accepted only on a token provider type and logged at load when set.
+        entity_id: SAML only. This service's SP entity id, the audience every assertion must
+            name.
+        idp_entity_id: SAML only. The IdP's entity id; every ``Issuer`` must equal it.
+        idp_sso_url: SAML only. The IdP's HTTP-Redirect SingleSignOnService.
+        idp_slo_url: SAML only. The IdP's HTTP-Redirect SingleLogoutService, when it has one.
+        idp_x509_certs: SAML only. Certificates an IdP signature may verify against (more than
+            one during a rotation), as base64 DER.
+        idp_metadata_url: SAML only. Where the IdP's metadata was read from, when it was.
+        sp_x509_cert: SAML only. This service's signing certificate, published in its metadata.
+        sp_private_key: SAML only. The key for ``sp_x509_cert``. Never in a repr or a log line.
+        name_id_format: SAML only. The ``NameIDPolicy`` format requested.
+        attribute_username: SAML only. Attribute naming the local account.
+        attribute_groups: SAML only. Attribute carrying group names.
+        attribute_display_name: SAML only. Attribute carrying the display name.
+        want_assertions_signed: SAML only. Require the assertion itself to be signed.
+        want_response_signed: SAML only. Require the enclosing Response to be signed.
+        clock_skew_seconds: SAML only. Allowance applied to assertion validity windows.
+        sign_requests: SAML only. Sign AuthnRequests, LogoutRequests and LogoutResponses.
+    """
+
+    id: str
+    type: str = "oidc"
+    display_name: str = ""
+    provisioning: str = "jit"
+    group_sync: str = "every_login"
+    group_sync_mode: str = "authoritative"
+    admin_source: str = "claims"
+    identity_binding: str = "subject"
+    interactive: bool = True
+    allowed_email_domains: Tuple[str, ...] = ()
+    allowed_algorithms: Tuple[str, ...] = DEFAULT_ALGORITHMS
+    audience: Optional[str] = None
+    issuer: Optional[str] = None
+    discovery_url: Optional[str] = None
+    client_id: Optional[str] = None
+    # Opt-in (#300): registered without a client secret, PKCE authenticating the token exchange.
+    public_client: bool = False
+    # Opt-in: groups and workspace claims may come from UserInfo when the ID token lacks them.
+    userinfo_groups: bool = False
+    # Kubernetes service-account providers (#314). A cluster's JWKS is often not anonymously
+    # readable and often unreachable from wherever MLflow runs, so the keys can come from
+    # discovery, from configuration, or from the API server using the pod's own credentials.
+    jwks_inline: Optional[str] = None
+    jwks_uri: Optional[str] = None
+    ca_bundle_path: Optional[str] = None
+    in_cluster: bool = False
+    namespace_allowlist: Tuple[str, ...] = ()
+    # Deny by default (#356): a token without ``exp`` is refused unless the operator opts in.
+    allow_tokens_without_expiry: bool = False
+    # SAML 2.0 service provider (#328, #329). Unset on every other type — _validate refuses them.
+    entity_id: Optional[str] = None
+    idp_entity_id: Optional[str] = None
+    idp_sso_url: Optional[str] = None
+    idp_slo_url: Optional[str] = None
+    idp_x509_certs: Tuple[str, ...] = ()
+    idp_metadata_url: Optional[str] = None
+    sp_x509_cert: Optional[str] = None
+    sp_private_key: Optional[str] = field(default=None, repr=False)
+    name_id_format: str = DEFAULT_SAML_NAME_ID_FORMAT
+    attribute_username: str = "email"
+    attribute_groups: str = "groups"
+    attribute_display_name: str = "displayName"
+    want_assertions_signed: bool = True
+    want_response_signed: bool = False
+    clock_skew_seconds: int = DEFAULT_SAML_CLOCK_SKEW_SECONDS
+    sign_requests: bool = False
+
+    def has_own_key_source(self) -> bool:
+        """Whether this entry names its own JWKS source rather than inheriting the flat one.
+
+        Reports only what the entry says. It is deliberately *not* used to decide whether an
+        algorithm is safe: an entry naming no source still resolves keys somehow — from the
+        deployment-wide ``OIDC_DISCOVERY_URL`` — so gating the algorithm checks on this was
+        evadable by simply omitting two optional fields. Algorithms are validated on their own
+        merits instead (see :func:`_validate_algorithms`).
+        """
+        return bool(self.discovery_url or self.issuer)
+
+
+@dataclass
+class RegistryLoadResult:
+    """Providers that validated, plus why anything else did not.
+
+    Attributes:
+        providers: Entries that passed every check, in configuration order.
+        errors: One human-readable line per rejected entry or per structural problem.
+        source: Where the registry came from — ``legacy``, ``env`` or ``file``.
+    """
+
+    providers: List[ProviderConfig] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    source: str = "legacy"
+
+    def interactive_providers(self) -> List[ProviderConfig]:
+        """Providers that belong on the login page.
+
+        What #317 renders one button per. Excludes machine-only providers such as a Kubernetes
+        service-account issuer, which verifies tokens like any other OIDC provider but has no
+        flow a browser can start.
+        """
+        return [provider for provider in self.providers if provider.interactive]
+
+    def by_id(self, provider_id: str) -> Optional[ProviderConfig]:
+        """Return the provider with ``provider_id``, or None."""
+        for provider in self.providers:
+            if provider.id == provider_id:
+                return provider
+        return None
+
+
+def _as_tuple(value: Any) -> Tuple[str, ...]:
+    """Coerce a JSON scalar or list into a tuple of non-blank strings.
+
+    A single string is treated as a one-element list, which is what an operator writing
+    ``"allowed_email_domains": "example.com"`` means.
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
+
+
+def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optional[ProviderConfig], List[str]]:
+    """Validate one registry entry.
+
+    Returns:
+        ``(provider, errors)``. ``provider`` is None whenever ``errors`` is non-empty — an
+        entry is never partially accepted, because a provider missing half its policy is more
+        dangerous than one that does not exist.
+    """
+    errors: List[str] = []
+    label = f"provider[{index}]"
+
+    provider_id = entry.get("id")
+    if not isinstance(provider_id, str) or not provider_id.strip():
+        return None, [f"{label}: 'id' is required and must be a non-empty string"]
+    provider_id = provider_id.strip()
+    label = f"provider '{provider_id}'"
+
+    if provider_id in seen_ids:
+        # Both copies are rejected by the caller: with two entries claiming one id there is no
+        # way to tell which policy the operator meant, and guessing would silently apply the
+        # wrong one.
+        return None, [f"{label}: duplicate id"]
+
+    # Before anything else touches these values. See _validate_field_types.
+    type_errors = _validate_field_types(entry, label)
+    if type_errors:
+        return None, type_errors
+
+    provider_type = entry.get("type", "oidc")
+    if provider_type not in PROVIDER_TYPES:
+        errors.append(f"{label}: unknown type {provider_type!r}; expected one of {', '.join(PROVIDER_TYPES)}")
+
+    provisioning = entry.get("provisioning", "jit")
+    if provisioning not in PROVISIONING_MODES:
+        errors.append(f"{label}: unknown provisioning {provisioning!r}; expected one of {', '.join(PROVISIONING_MODES)}")
+
+    group_sync = entry.get("group_sync", "every_login")
+    if group_sync not in GROUP_SYNC_MODES:
+        errors.append(f"{label}: unknown group_sync {group_sync!r}; expected one of {', '.join(GROUP_SYNC_MODES)}")
+
+    group_sync_mode = entry.get("group_sync_mode", "authoritative")
+    if group_sync_mode not in GROUP_SYNC_STRATEGIES:
+        errors.append(f"{label}: unknown group_sync_mode {group_sync_mode!r}; expected one of {', '.join(GROUP_SYNC_STRATEGIES)}")
+
+    errors.extend(_validate_admin_source(entry.get("admin_source", "claims"), label))
+
+    identity_binding = entry.get("identity_binding", "subject")
+    if identity_binding not in IDENTITY_BINDINGS:
+        errors.append(f"{label}: unknown identity_binding {identity_binding!r}; expected one of {', '.join(IDENTITY_BINDINGS)}")
+
+    interactive_default = INTERACTIVE_BY_DEFAULT.get(provider_type, True)
+    interactive = entry.get("interactive", interactive_default)
+    if not isinstance(interactive, bool):
+        errors.append(f"{label}: 'interactive' must be true or false, got {interactive!r}")
+    elif interactive and not interactive_default:
+        # Rejected rather than silently corrected: an operator who asked for this expects a
+        # login button, and #317 would render one that cannot complete a flow.
+        errors.append(
+            f"{label}: type {provider_type!r} has no browser login flow, so 'interactive' cannot be true; "
+            "its credentials are presented directly as bearer tokens"
+        )
+    allow_tokens_without_expiry = entry.get("allow_tokens_without_expiry", False)
+    if not isinstance(allow_tokens_without_expiry, bool):
+        # Strict rather than truthy: the string "false" is truthy, and reading it as true would
+        # switch an expiry check off for an operator who wrote the opposite.
+        errors.append(f"{label}: 'allow_tokens_without_expiry' must be true or false, got {allow_tokens_without_expiry!r}")
+    elif allow_tokens_without_expiry and provider_type not in TOKEN_PROVIDER_TYPES:
+        # Refused rather than ignored, for the same reason as KUBERNETES_ONLY_FIELDS: an operator
+        # who wrote it believes it does something, and on a type that does not verify bearer
+        # tokens it would not — or, worse, would once that type learned to.
+        errors.append(f"{label}: 'allow_tokens_without_expiry' applies only to a token provider ({', '.join(TOKEN_PROVIDER_TYPES)}), not to {provider_type!r}")
+
+    public_client = entry.get("public_client", False)
+    if not isinstance(public_client, bool):
+        # Strict rather than truthy, as for allow_tokens_without_expiry: the string "false" is
+        # truthy, and reading it as true would register a client without its secret.
+        errors.append(f"{label}: 'public_client' must be true or false, got {public_client!r}")
+    elif public_client and provider_type != "oidc":
+        # Only an OIDC provider has an OAuth client to register. Refused rather than ignored: an
+        # operator who wrote it believes it changes something.
+        errors.append(f"{label}: 'public_client' applies only to an 'oidc' provider, not to {provider_type!r}")
+
+    userinfo_groups = entry.get("userinfo_groups", False)
+    if not isinstance(userinfo_groups, bool):
+        # Strict rather than truthy: the string "false" is truthy, and reading it as true would let
+        # UserInfo decide group membership and administrator status.
+        errors.append(f"{label}: 'userinfo_groups' must be true or false, got {userinfo_groups!r}")
+    elif userinfo_groups and provider_type != "oidc":
+        # Only an OIDC provider has a UserInfo endpoint. Refused rather than ignored: an operator
+        # who wrote it believes it changes something.
+        errors.append(f"{label}: 'userinfo_groups' applies only to an 'oidc' provider, not to {provider_type!r}")
+
+    allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
+    if identity_binding == "email" and not allowed_email_domains:
+        errors.append(
+            f"{label}: identity_binding 'email' requires allowed_email_domains; without it any account at any domain "
+            "the provider will assert can claim a local user"
+        )
+
+    allowed_algorithms, algorithm_errors = _validate_algorithms(entry.get("allowed_algorithms"), label)
+    errors.extend(algorithm_errors)
+
+    audience = entry.get("audience")
+    issuer = entry.get("issuer")
+    discovery_url = entry.get("discovery_url")
+    client_id = entry.get("client_id")
+
+    # Not on a SAML entry, which refuses it (SAML_REFUSED_FIELDS): an assertion's audience is the
+    # SP's ``entity_id``, checked against the signed AudienceRestriction instead.
+    if provider_type != "saml" and (not isinstance(audience, str) or not audience.strip()):
+        errors.append(f"{label}: 'audience' is required; a token validated with no audience check is valid for every relying party of that issuer")
+
+    if provider_type in TOKEN_PROVIDER_TYPES:
+        # Both required for the same reason ``audience`` is, and both became load-bearing when
+        # validation went per-provider (#313).
+        #
+        # Without ``issuer`` nothing pins ``iss``, so every tenant of a shared key set is
+        # accepted: an Entra ``common`` endpoint, a multi-tenant Keycloak realm and a cluster
+        # issuer fronting several namespaces all publish one JWKS for many issuers, and a token
+        # from any of them carries a valid signature. The attacker needs only their own tenant.
+        #
+        # Without ``discovery_url`` the provider inherits the deployment-wide key source and its
+        # single-entry cache, so two such providers share one cache slot: a rotation refresh for
+        # one evicts the other's keys, and an unauthenticated caller sending bad signatures can
+        # hold that slot permanently cold. Naming a source keeps each provider's keys its own.
+        if not isinstance(issuer, str) or not issuer.strip():
+            errors.append(
+                f"{label}: 'issuer' is required for a '{provider_type}' provider; without it no 'iss' check is performed and "
+                "every issuer sharing that key set is accepted"
+            )
+        # Scoped to OIDC deliberately. A cluster's keys usually come from the API server's
+        # ``/openid/v1/jwks``, reached with the in-cluster service account and CA bundle rather
+        # than through a public discovery document, and legacy service-account tokens have no
+        # discovery document at all. #314 is where that provider learns how it sources keys, and
+        # it can state its own rule then — no k8s provider can be configured before it lands.
+        if provider_type == "k8s":
+            errors.extend(_validate_kubernetes(entry, label))
+        else:
+            # These four change how keys are fetched, and _get_provider_jwks consults them before
+            # discovery_url. On an OIDC entry a pasted 'jwks_inline' would silently pin the keys
+            # forever — a revoked signing key would keep verifying tokens — and 'in_cluster' would
+            # send the pod's Kubernetes credential to a public IdP's endpoints.
+            for field in KUBERNETES_ONLY_FIELDS:
+                if entry.get(field):
+                    errors.append(f"{label}: '{field}' applies only to a 'k8s' provider, not to '{provider_type}'")
+
+        if provider_type == "oidc" and (not isinstance(discovery_url, str) or not discovery_url.strip()):
+            errors.append(
+                f"{label}: 'discovery_url' is required for an 'oidc' provider; without it the provider shares the "
+                "deployment-wide key cache with every other provider that omits one"
+            )
+
+    saml_fields: Dict[str, Any] = {}
+    if provider_type == "saml":
+        extra_installed = _saml_extra_installed()
+        if not extra_installed:
+            errors.append(f"{label}: type 'saml' requires the [saml] extra to be installed")
+        # Metadata is fetched only for an entry that is otherwise valid: a network round trip at
+        # startup for an entry that is dropped anyway would only slow the drop down.
+        saml_fields, saml_errors = _validate_saml(entry, label, fetch_metadata=extra_installed and not errors)
+        errors.extend(saml_errors)
+    else:
+        for field_name in SAML_ONLY_FIELDS:
+            if _is_set(entry.get(field_name)):
+                errors.append(f"{label}: '{field_name}' applies only to a 'saml' provider, not to '{provider_type}'")
+
+    if errors:
+        return None, errors
+
+    return (
+        ProviderConfig(
+            id=provider_id,
+            type=provider_type,
+            display_name=entry.get("display_name") or provider_id,
+            provisioning=provisioning,
+            group_sync=group_sync,
+            group_sync_mode=group_sync_mode,
+            # Defaults to ``none`` for anything but the deployment's own provider: the admin
+            # group name is deployment-wide, so a partner tenant that happens to name a group
+            # the same thing would otherwise confer administrator rights across the deployment.
+            # The operator opts in per provider, deliberately.
+            admin_source=entry.get("admin_source", "claims" if provider_id == DEFAULT_PROVIDER_ID else "none"),
+            identity_binding=identity_binding,
+            interactive=bool(interactive),
+            allowed_email_domains=allowed_email_domains,
+            allowed_algorithms=allowed_algorithms,
+            audience=audience.strip() if isinstance(audience, str) and audience.strip() else None,
+            jwks_inline=entry.get("jwks_inline") if isinstance(entry.get("jwks_inline"), (str, dict)) else None,
+            jwks_uri=entry.get("jwks_uri").strip() if isinstance(entry.get("jwks_uri"), str) and entry.get("jwks_uri").strip() else None,
+            ca_bundle_path=(
+                entry.get("ca_bundle_path").strip() if isinstance(entry.get("ca_bundle_path"), str) and entry.get("ca_bundle_path").strip() else None
+            ),
+            # ``is True``, never truthiness: validated as a real boolean above for a k8s entry,
+            # and refused as a k8s-only field on any other type.
+            in_cluster=entry.get("in_cluster", False) is True,
+            namespace_allowlist=_as_tuple(entry.get("namespace_allowlist")),
+            allow_tokens_without_expiry=allow_tokens_without_expiry,
+            issuer=issuer.strip() if isinstance(issuer, str) else None,
+            discovery_url=discovery_url.strip() if isinstance(discovery_url, str) else None,
+            client_id=client_id.strip() if isinstance(client_id, str) else None,
+            public_client=public_client is True,
+            userinfo_groups=userinfo_groups is True,
+            **saml_fields,
+        ),
+        [],
+    )
+
+
+# Entry fields that must be strings when present. Checked up front, before any of them is used
+# as a dict key or has a string method called on it: JSON can put a list or object in any of
+# these, and this module must report that rather than raise. ``AppConfig`` is instantiated at
+# import time, so an exception here does not degrade login — it stops the plugin and Alembic
+# from importing at all, which is the opposite of what dropping invalid entries is for.
+_STRING_FIELDS = (
+    "type",
+    "display_name",
+    "provisioning",
+    "group_sync",
+    "group_sync_mode",
+    "admin_source",
+    "identity_binding",
+    "audience",
+    "issuer",
+    "discovery_url",
+    "client_id",
+)
+
+# Fields that may be a single string or a list of them.
+_LIST_FIELDS = ("allowed_email_domains", "allowed_algorithms")
+
+
+def _validate_field_types(entry: Dict[str, Any], label: str) -> List[str]:
+    """Check that every field is the shape the rest of validation assumes.
+
+    Runs before any other check and short-circuits it, so no later line can call ``.strip()`` on
+    a list or use one as a dict key. Reporting the wrong type is also more useful to an operator
+    than the downstream symptom: ``'type' must be a string, got list`` points at the mistake,
+    whereas ``unhashable type: 'list'`` points at our dictionary.
+    """
+    errors = []
+    for key in _STRING_FIELDS:
+        value = entry.get(key)
+        if value is not None and not isinstance(value, str):
+            errors.append(f"{label}: '{key}' must be a string, got {type(value).__name__}")
+    for key in _LIST_FIELDS:
+        value = entry.get(key)
+        if value is not None and not isinstance(value, (str, list, tuple)):
+            errors.append(f"{label}: '{key}' must be a string or a list of strings, got {type(value).__name__}")
+    return errors
+
+
+def _validate_algorithms(value: Any, label: str) -> Tuple[Tuple[str, ...], List[str]]:
+    """Resolve ``allowed_algorithms`` to canonical names, rejecting anything unverifiable.
+
+    Three rules, in descending order of how badly they end:
+
+    * ``none`` is rejected outright. It means the token carries no signature, so accepting it
+      lets anyone mint a token for that provider. It is worse than the algorithm-confusion case
+      below, which at least requires a key to confuse.
+    * Symmetric (HMAC) algorithms are rejected outright, not merely when a JWKS source appears
+      on the same entry. This plugin has no symmetric-key verification path at all — signatures
+      are checked against keys fetched from the provider's JWKS — so an HMAC entry cannot work,
+      and the only question is whether it fails safely. Gating on whether the *entry* names a
+      key source was evadable by omitting ``issuer``/``discovery_url`` while the deployment's
+      flat ``OIDC_DISCOVERY_URL`` still supplied one, which is the confusion setup restored.
+      This is stricter than issue #308 asked for, deliberately.
+    * Anything not in the supported set is rejected rather than passed through, so a typo
+      becomes a startup message instead of an algorithm a consumer silently does not honour.
+
+    Returns:
+        ``(algorithms, errors)``. Names are canonically spelled, so a consumer comparing against
+        ``"RS256"`` matches an entry written as ``"rs256"``.
+    """
+    if value is None:
+        return DEFAULT_ALGORITHMS, []
+
+    # Present but unusable is reported rather than quietly defaulted. Falling back to RS256 is
+    # the safe direction, but an operator who believes they narrowed or widened the accepted
+    # set needs to find out that they did not — silently discarding a configured value leaves
+    # nothing to debug from.
+    items = [value] if isinstance(value, str) else list(value)
+    non_strings = [item for item in items if not isinstance(item, str)]
+    if non_strings:
+        return DEFAULT_ALGORITHMS, [f"{label}: 'allowed_algorithms' must contain only strings; got {type(non_strings[0]).__name__}"]
+
+    raw = _as_tuple(value)
+    if not raw:
+        return DEFAULT_ALGORITHMS, [f"{label}: 'allowed_algorithms' is set but lists no algorithm; omit it to accept the default {DEFAULT_ALGORITHMS[0]}"]
+
+    algorithms: List[str] = []
+    errors: List[str] = []
+    for algorithm in raw:
+        upper = algorithm.upper()
+        if upper == NONE_ALGORITHM:
+            errors.append(f"{label}: algorithm 'none' is never allowed; it means the token carries no signature, so anyone could mint one for this provider")
+            continue
+        if upper in HMAC_ALGORITHMS:
+            errors.append(
+                f"{label}: symmetric algorithm {algorithm!r} is not supported; this plugin verifies signatures against the provider's JWKS, "
+                "and accepting an HMAC algorithm alongside a fetched public key is the algorithm-confusion setup where that key is replayed "
+                "as a shared secret"
+            )
+            continue
+        canonical = _CANONICAL_ALGORITHMS.get(upper)
+        if canonical is None:
+            errors.append(f"{label}: unknown algorithm {algorithm!r}; expected one of {', '.join(ASYMMETRIC_ALGORITHMS)}")
+            continue
+        algorithms.append(canonical)
+
+    if errors:
+        return DEFAULT_ALGORITHMS, errors
+    return tuple(algorithms), []
+
+
+def _validate_kubernetes(entry: Dict[str, Any], label: str) -> List[str]:
+    """Checks that only apply to a Kubernetes service-account provider (#314).
+
+    Two, both of which are the difference between a usable provider and an open door:
+
+    * **Some key source.** Unlike an OIDC provider, a cluster's discovery document is usually not
+      anonymously readable, so ``discovery_url`` alone is not assumed — but *something* has to
+      say where the keys come from, or the provider can never verify a signature.
+    * **A namespace allowlist.** Service-account tokens carry no groups claim, so the group gate
+      that guards OIDC bearer provisioning cannot apply to them. Without an allowlist every pod
+      in the cluster that can read its own projected token becomes an MLflow user.
+    """
+    errors: List[str] = []
+
+    in_cluster = entry.get("in_cluster", False)
+    if not isinstance(in_cluster, bool):
+        # Strict, as for allow_tokens_without_expiry: the string "false" is truthy, and reading it
+        # as true would attach the pod's service-account token to key fetches against whatever
+        # external 'jwks_uri' the entry names.
+        errors.append(f"{label}: 'in_cluster' must be true or false, got {in_cluster!r}")
+
+    sources = [
+        bool(entry.get("discovery_url")),
+        bool(entry.get("jwks_inline")),
+        bool(entry.get("jwks_uri")),
+        in_cluster is True,
+    ]
+    if not any(sources):
+        errors.append(
+            f"{label}: a 'k8s' provider needs a key source — one of 'discovery_url', 'jwks_uri', 'jwks_inline' or "
+            "'in_cluster' — because a cluster's discovery document is usually not readable anonymously"
+        )
+
+    if entry.get("jwks_inline"):
+        try:
+            load_inline_jwks(entry["jwks_inline"])
+        except ValueError as exc:
+            errors.append(f"{label}: {exc}")
+
+    allowlist = _as_tuple(entry.get("namespace_allowlist"))
+    if not allowlist:
+        errors.append(
+            f"{label}: 'namespace_allowlist' is required for a 'k8s' provider; a service-account token carries no group "
+            "claim, so without it every pod in the cluster that can read its own token becomes a user"
+        )
+
+    # An entry no namespace could ever equal is worse than a rejected one: it passes validation
+    # and then silently denies every pod in the namespace the operator meant to allow. Kubernetes
+    # namespaces are DNS labels, so anything else — 'Team-A', 'team_a', a whole
+    # 'system:serviceaccount:...' subject — can only ever fail to match.
+    for namespace in allowlist:
+        if not valid_dns_label(namespace):
+            errors.append(
+                f"{label}: namespace_allowlist entry {namespace!r} is not a Kubernetes namespace (a DNS label: lowercase "
+                "alphanumerics and '-', up to 63 characters), so it can never match a real token"
+            )
+
+    return errors
+
+
+def _validate_admin_source(admin_source: Any, label: str) -> List[str]:
+    """Reject ``admin_source: scim``, and anything else outside the allowed set.
+
+    SCIM is rejected on purpose rather than as an oversight. If administrator status can be
+    derived from a SCIM-provisioned group, then whoever can create groups in the external
+    directory — or influence their naming — can grant themselves admin here. Grafana shipped
+    exactly that privilege-escalation flaw. Admin group names stay server-side configuration.
+    """
+    if admin_source == "scim":
+        return [
+            f"{label}: admin_source 'scim' is not allowed; it would let whoever controls group naming in the external "
+            "directory grant themselves administrator. Keep admin group names in server-side configuration."
+        ]
+    if admin_source not in ADMIN_SOURCES:
+        return [f"{label}: unknown admin_source {admin_source!r}; expected one of {', '.join(ADMIN_SOURCES)}"]
+    return []
+
+
+# The ``[saml]`` extra is python3-saml (#327). Detected by actually importing it rather than by
+# ``find_spec``: python3-saml imports ``xmlsec``, a native extension, at module load, so a package
+# that is present but whose native library cannot load is as unusable as one that is absent — and
+# accepting the provider would leave a login button that fails on every click.
+#
+# Without the extra every ``type: saml`` entry is dropped with a reason, and the plugin starts.
+_SAML_MODULE = "onelogin.saml2.auth"
+_saml_import_result: Optional[bool] = None
+
+
+def _saml_extra_installed() -> bool:
+    """Whether python3-saml (and its native ``xmlsec``) can be imported. Cached after the first try."""
+    global _saml_import_result
+    if _saml_import_result is None:
+        import importlib
+
+        try:
+            importlib.import_module(_SAML_MODULE)
+            _saml_import_result = True
+        except Exception as exc:  # ImportError, or the native library failing to load
+            logger.debug("SAML support unavailable: %s", type(exc).__name__)
+            _saml_import_result = False
+    return _saml_import_result
+
+
+def _is_set(value: Any) -> bool:
+    """Whether a field was given a value that could mean something. ``False`` and blanks do not."""
+    if value is None or value is False:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, dict)):
+        return bool(value)
+    return True
+
+
+def _https_url(value: Any) -> bool:
+    """Whether ``value`` is an absolute ``https`` URL with a host."""
+    from urllib.parse import urlparse
+
+    if not isinstance(value, str) or not value.strip():
+        return False
+    parsed = urlparse(value.strip())
+    return parsed.scheme == "https" and bool(parsed.netloc)
+
+
+def _certificate_body(value: Any) -> Optional[str]:
+    """Normalise one X.509 certificate to its base64 DER body, or None if it is not one.
+
+    Accepts PEM with or without the armour lines, which is how IdPs hand certificates out: a
+    ``.pem`` download, or the bare base64 from their metadata. Parsed, not pattern-matched, so a
+    truncated paste is refused here rather than at the first login.
+    """
+    import base64
+    import re
+
+    from cryptography import x509
+
+    if not isinstance(value, str):
+        return None
+    body = "".join(re.sub(r"-----(BEGIN|END) CERTIFICATE-----", "", value).split())
+    if not body:
+        return None
+    try:
+        x509.load_der_x509_certificate(base64.b64decode(body, validate=True))
+    except Exception:
+        return None
+    return body
+
+
+def _load_sp_private_key(value: str) -> Tuple[Optional[str], Any]:
+    """Parse this service's RSA signing key. Returns ``(pem, key)``, or ``(None, None)``.
+
+    Accepts PEM, or the bare base64 of a DER key; either way the key is re-serialised as
+    unencrypted PKCS#8 PEM, the one form python3-saml reads. Nothing about the value is ever
+    echoed: a caller reporting the failure names the field only.
+    """
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    text = value.strip()
+    try:
+        if "-----BEGIN" in text:
+            key = serialization.load_pem_private_key(text.encode(), password=None)
+        else:
+            key = serialization.load_der_private_key(base64.b64decode("".join(text.split()), validate=True), password=None)
+    except Exception:
+        return None, None
+    if not isinstance(key, rsa.RSAPrivateKey):
+        return None, None
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    return pem, key
+
+
+# Metadata fetched this process, by (url, entity id). Registry builds are rare, but a test suite or
+# a config reload can run several, and the IdP should not be fetched for each.
+_METADATA_CACHE: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+
+def _fetch_idp_metadata(url: str, idp_entity_id: str) -> Dict[str, Any]:
+    """Fetch the IdP's metadata and return what it says about ``idp_entity_id``.
+
+    Bounded: a 10 s timeout, 1 MiB, no redirects (a redirect could leave ``https``, and the
+    certificate read here is what every assertion is verified against). Parsed with python3-saml's
+    own parser, which refuses DTDs and entities.
+
+    Returns:
+        ``{"sso_url", "slo_url", "certs"}``.
+
+    Raises:
+        ValueError: With a reason safe to log, when anything about it fails.
+    """
+    key = (url, idp_entity_id)
+    if key in _METADATA_CACHE:
+        return _METADATA_CACHE[key]
+
+    import requests
+    from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
+
+    from mlflow_oidc_auth.http_client import system_trust_session
+
+    # The operating system's trust store, as for every other outbound call (see http_client).
+    with system_trust_session() as session:
+        try:
+            response = session.get(url, timeout=SAML_METADATA_TIMEOUT_SECONDS, allow_redirects=False, stream=True)
+        except requests.RequestException as exc:
+            raise ValueError(f"the request failed ({type(exc).__name__})")
+        try:
+            if response.status_code != 200:
+                raise ValueError(f"the server answered HTTP {response.status_code}")
+            body = response.raw.read(SAML_METADATA_MAX_BYTES + 1, decode_content=True)
+        finally:
+            response.close()
+    if len(body) > SAML_METADATA_MAX_BYTES:
+        raise ValueError("the document is larger than 1 MiB")
+
+    try:
+        parsed = OneLogin_Saml2_IdPMetadataParser.parse(body, entity_id=idp_entity_id)
+    except Exception as exc:
+        raise ValueError(f"the document is not usable SAML metadata ({type(exc).__name__})")
+    idp = parsed.get("idp") or {}
+    if idp.get("entityId") != idp_entity_id:
+        raise ValueError("it does not describe the configured 'idp_entity_id'")
+
+    certs = idp.get("x509cert") or (idp.get("x509certMulti") or {}).get("signing") or []
+    result = {
+        "sso_url": (idp.get("singleSignOnService") or {}).get("url"),
+        "slo_url": (idp.get("singleLogoutService") or {}).get("url"),
+        "certs": [certs] if isinstance(certs, str) else list(certs),
+    }
+    _METADATA_CACHE[key] = result
+    return result
+
+
+def _validate_saml(entry: Dict[str, Any], label: str, fetch_metadata: bool) -> Tuple[Dict[str, Any], List[str]]:
+    """Checks that only apply to a SAML provider (#328, #329).
+
+    What makes a SAML provider safe to accept is that every assertion it can produce is verified
+    against something the operator wrote down: the IdP's entity id (``Issuer``), its certificate
+    (the signature), and this service's entity id (the audience). All three are required; the
+    certificate may come from ``idp_metadata_url`` instead, fetched once, here.
+
+    Returns:
+        ``(fields, errors)``. ``fields`` are ``ProviderConfig`` keyword arguments.
+    """
+    errors: List[str] = []
+
+    for field_name in SAML_REFUSED_FIELDS:
+        if _is_set(entry.get(field_name)):
+            errors.append(f"{label}: '{field_name}' does not apply to a 'saml' provider; SAML identity arrives in a signed assertion, never in a bearer token")
+
+    if isinstance(entry.get("id"), str) and entry["id"].strip() == DEFAULT_PROVIDER_ID:
+        # ``default`` is the synthesised legacy OIDC provider's id, and provisioning treats it
+        # specially: it may adopt existing unbound accounts by name, confers admin from claims by
+        # default, and its groups are not namespaced. On a SAML entry that would let an assertion
+        # attribute the user can influence name — and take over — an existing account.
+        errors.append(f"{label}: a 'saml' provider cannot use the id '{DEFAULT_PROVIDER_ID}', which is reserved for the legacy OIDC provider")
+
+    if entry.get("identity_binding", "subject") == "email":
+        # Email binding links to an existing account only on a verified address. SAML has no
+        # equivalent of ``email_verified``, so the binding could never succeed — and faking the
+        # assertion would let any IdP that lets users edit their own mail attribute claim an account.
+        errors.append(f"{label}: identity_binding 'email' is not supported for a 'saml' provider; SAML asserts no verified-email flag")
+
+    def _string(name: str, default: Optional[str] = None) -> Optional[str]:
+        value = entry.get(name, default)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{label}: '{name}' must be a non-empty string")
+            return None
+        return value.strip()
+
+    def _flag(name: str, default: bool) -> bool:
+        value = entry.get(name, default)
+        if not isinstance(value, bool):
+            # Strict, as for allow_tokens_without_expiry: the string "false" is truthy.
+            errors.append(f"{label}: '{name}' must be true or false, got {type(value).__name__}")
+            return default
+        return value
+
+    entity_id = _string("entity_id")
+    idp_entity_id = _string("idp_entity_id")
+    if entry.get("entity_id") is None:
+        errors.append(f"{label}: 'entity_id' is required for a 'saml' provider; it is the audience every assertion must name")
+    if entry.get("idp_entity_id") is None:
+        errors.append(f"{label}: 'idp_entity_id' is required for a 'saml' provider; an assertion from any other entity is refused")
+
+    metadata_url = _string("idp_metadata_url")
+    if metadata_url is not None and not _https_url(metadata_url):
+        errors.append(f"{label}: 'idp_metadata_url' must be an https URL; the IdP certificate is read from it")
+
+    sso_url = _string("idp_sso_url")
+    if sso_url is not None and not _https_url(sso_url):
+        errors.append(f"{label}: 'idp_sso_url' must be an https URL")
+    elif entry.get("idp_sso_url") is None and metadata_url is None:
+        errors.append(f"{label}: 'idp_sso_url' is required for a 'saml' provider unless 'idp_metadata_url' supplies it")
+
+    slo_url = _string("idp_slo_url")
+    if slo_url is not None and not _https_url(slo_url):
+        errors.append(f"{label}: 'idp_slo_url' must be an https URL")
+
+    raw_certs = entry.get("idp_x509_cert")
+    certs: List[str] = []
+    if raw_certs is not None:
+        for index, value in enumerate([raw_certs] if isinstance(raw_certs, str) else raw_certs if isinstance(raw_certs, list) else [None]):
+            body = _certificate_body(value)
+            if body is None:
+                errors.append(f"{label}: 'idp_x509_cert' entry {index} is not an X.509 certificate")
+            else:
+                certs.append(body)
+        if raw_certs == []:
+            errors.append(f"{label}: 'idp_x509_cert' lists no certificate")
+    elif metadata_url is None:
+        errors.append(
+            f"{label}: 'idp_x509_cert' is required for a 'saml' provider unless 'idp_metadata_url' supplies it; without it no signature can be verified"
+        )
+
+    errors_before_sp = len(errors)
+    sp_cert = None
+    if entry.get("sp_x509_cert") is not None:
+        sp_cert = _certificate_body(entry.get("sp_x509_cert"))
+        if sp_cert is None:
+            errors.append(f"{label}: 'sp_x509_cert' is not an X.509 certificate")
+
+    sp_key_pem, sp_key = None, None
+    inline_key, key_file = entry.get("sp_private_key"), entry.get("sp_private_key_file")
+    if inline_key is not None and key_file is not None:
+        errors.append(f"{label}: set 'sp_private_key' or 'sp_private_key_file', not both")
+    elif inline_key is not None:
+        if isinstance(inline_key, str):
+            sp_key_pem, sp_key = _load_sp_private_key(inline_key)
+        if sp_key is None:
+            errors.append(f"{label}: 'sp_private_key' is not an unencrypted RSA private key in PEM form")
+    elif key_file is not None:
+        try:
+            with open(os.path.expanduser(str(key_file).strip()), "r", encoding="utf-8") as handle:
+                sp_key_pem, sp_key = _load_sp_private_key(handle.read())
+        except OSError as exc:
+            errors.append(f"{label}: 'sp_private_key_file' could not be read ({type(exc).__name__})")
+        else:
+            if sp_key is None:
+                errors.append(f"{label}: 'sp_private_key_file' does not hold an unencrypted RSA private key in PEM form")
+
+    sp_errors = len(errors) > errors_before_sp
+    if (sp_cert is None) != (sp_key is None) and not sp_errors:
+        errors.append(f"{label}: 'sp_x509_cert' and a private key must be configured together")
+    elif sp_cert is not None and sp_key is not None:
+        import base64
+
+        from cryptography import x509
+
+        certificate = x509.load_der_x509_certificate(base64.b64decode(sp_cert))
+        if certificate.public_key().public_numbers() != sp_key.public_key().public_numbers():
+            errors.append(f"{label}: 'sp_x509_cert' does not match the configured private key")
+
+    sign_requests = _flag("sign_requests", False)
+    if sign_requests and sp_key is None and not sp_errors:
+        errors.append(f"{label}: 'sign_requests' needs 'sp_x509_cert' and 'sp_private_key' (or 'sp_private_key_file')")
+
+    want_assertions_signed = _flag("want_assertions_signed", True)
+    want_response_signed = _flag("want_response_signed", False)
+    if not want_assertions_signed and not want_response_signed:
+        errors.append(f"{label}: at least one of 'want_assertions_signed' and 'want_response_signed' must be true; an unsigned assertion proves nothing")
+
+    skew = entry.get("clock_skew_seconds", DEFAULT_SAML_CLOCK_SKEW_SECONDS)
+    if isinstance(skew, bool) or not isinstance(skew, int) or not 0 <= skew <= MAX_SAML_CLOCK_SKEW_SECONDS:
+        errors.append(f"{label}: 'clock_skew_seconds' must be a whole number from 0 to {MAX_SAML_CLOCK_SKEW_SECONDS}")
+        skew = DEFAULT_SAML_CLOCK_SKEW_SECONDS
+
+    name_id_format = _string("name_id_format", DEFAULT_SAML_NAME_ID_FORMAT)
+    attribute_username = _string("attribute_username", "email")
+    attribute_groups = _string("attribute_groups", "groups")
+    attribute_display_name = _string("attribute_display_name", "displayName")
+
+    if fetch_metadata and not errors and metadata_url is not None and (not certs or sso_url is None or slo_url is None):
+        # Explicit configuration wins; metadata fills only what was left out.
+        try:
+            metadata = _fetch_idp_metadata(metadata_url, idp_entity_id)
+        except ValueError as exc:
+            errors.append(f"{label}: could not load IdP metadata from 'idp_metadata_url': {exc}")
+        else:
+            if not certs:
+                certs = [body for body in (_certificate_body(value) for value in metadata["certs"]) if body]
+                if not certs:
+                    errors.append(f"{label}: the IdP metadata carries no usable signing certificate")
+            if sso_url is None:
+                sso_url = metadata["sso_url"]
+                if not _https_url(sso_url):
+                    errors.append(f"{label}: the IdP metadata names no https HTTP-Redirect SingleSignOnService")
+            if slo_url is None and _https_url(metadata["slo_url"]):
+                slo_url = metadata["slo_url"]
+
+    return (
+        {
+            "entity_id": entity_id,
+            "idp_entity_id": idp_entity_id,
+            "idp_sso_url": sso_url,
+            "idp_slo_url": slo_url,
+            "idp_x509_certs": tuple(certs),
+            "idp_metadata_url": metadata_url,
+            "sp_x509_cert": sp_cert,
+            "sp_private_key": sp_key_pem,
+            "name_id_format": name_id_format or DEFAULT_SAML_NAME_ID_FORMAT,
+            "attribute_username": attribute_username or "email",
+            "attribute_groups": attribute_groups or "groups",
+            "attribute_display_name": attribute_display_name or "displayName",
+            "want_assertions_signed": want_assertions_signed,
+            "want_response_signed": want_response_signed,
+            "clock_skew_seconds": skew,
+            "sign_requests": sign_requests,
+        },
+        errors,
+    )
+
+
+def _is_present(value: Any) -> bool:
+    """Whether a configuration value was actually supplied.
+
+    A blank or whitespace-only string counts as absent, matching how the rest of the config
+    layer treats an unset variable; an empty list or dict does not, because writing one is a
+    deliberate statement that there are no providers.
+    """
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def _parse_entries(raw: Any, origin: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Parse the payload into a list of entry dicts.
+
+    ``raw`` may already be a list or dict rather than a JSON string. Providers in the
+    ``config_providers`` chain are typed ``-> Any``, and the AWS Secrets Manager provider in
+    particular ``json.loads`` its whole secret, so a registry stored as nested JSON — the
+    natural way to write one in a secrets manager — arrives already parsed. Treating that as
+    "not a string, therefore not configured" silently ignored the operator's entire
+    configuration.
+    """
+    if isinstance(raw, (list, dict)):
+        parsed: Any = raw
+    else:
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError) as exc:
+            return [], [f"{origin}: could not be parsed as JSON ({exc})"]
+
+    if isinstance(parsed, dict):
+        # Tolerate {"providers": [...]}, which is what most people write first.
+        parsed = parsed.get("providers", parsed)
+    if not isinstance(parsed, list):
+        return [], [f"{origin}: expected a JSON array of provider objects"]
+
+    entries = []
+    errors = []
+    for index, entry in enumerate(parsed):
+        if isinstance(entry, dict):
+            entries.append(entry)
+        else:
+            errors.append(f"{origin}: provider[{index}] is not an object")
+    return entries, errors
+
+
+def _legacy_entry(app_config: Any) -> Dict[str, Any]:
+    """Describe the flat ``OIDC_*`` configuration as a single registry entry.
+
+    The policy values are the behaviour the plugin has today, stated explicitly: users are
+    created on first login, groups are re-read from the claim on every login, and that claim
+    replaces local membership.
+    """
+    return {
+        "id": DEFAULT_PROVIDER_ID,
+        "type": "oidc",
+        "display_name": getattr(app_config, "OIDC_PROVIDER_DISPLAY_NAME", "") or DEFAULT_PROVIDER_ID,
+        "provisioning": "jit",
+        "group_sync": "every_login",
+        "group_sync_mode": "authoritative",
+        "admin_source": "claims",
+        "identity_binding": "subject",
+        # The set the synthesised provider is built with below — the whole asymmetric set, which
+        # is what validation accepted before it became per-provider.
+        "allowed_algorithms": list(ASYMMETRIC_ALGORITHMS),
+        "audience": getattr(app_config, "OIDC_AUDIENCE", None),
+        "issuer": getattr(app_config, "OIDC_ISSUER", None),
+        "discovery_url": getattr(app_config, "OIDC_DISCOVERY_URL", None),
+        "client_id": getattr(app_config, "OIDC_CLIENT_ID", None),
+        # Never true for the synthesised provider: there is no flat variable to opt in with,
+        # and a token without ``exp`` is refused like any other (#356).
+        "allow_tokens_without_expiry": False,
+        # OIDC_PUBLIC_CLIENT (#300). ``is True`` rather than truthiness: the config layer parses
+        # it as a boolean, and anything else must not register a client without its secret.
+        "public_client": getattr(app_config, "OIDC_PUBLIC_CLIENT", False) is True,
+        # OIDC_USERINFO_GROUPS. ``is True`` for the same reason: anything but a real boolean must
+        # not let UserInfo decide group membership.
+        "userinfo_groups": getattr(app_config, "OIDC_USERINFO_GROUPS", False) is True,
+    }
+
+
+def _reject_duplicate_issuers(providers: List[ProviderConfig]) -> Tuple[List[ProviderConfig], List[str]]:
+    """Drop every provider after the first that claims a given issuer.
+
+    Token validation selects a provider by exact ``iss`` match and takes the first hit, so two
+    entries claiming one issuer means the second's policy — its audience, its binding, its group
+    rules — is never applied, and no error says so. Rejecting the later entries makes the
+    collision visible instead of resolving it by configuration order.
+    """
+    kept: List[ProviderConfig] = []
+    errors: List[str] = []
+    seen: Dict[str, str] = {}
+    for provider in providers:
+        if provider.issuer and provider.issuer in seen:
+            errors.append(
+                f"provider '{provider.id}': issuer {provider.issuer!r} is already claimed by provider '{seen[provider.issuer]}'; "
+                "a token can only be validated under one policy, so the later entry is ignored"
+            )
+            continue
+        if provider.issuer:
+            seen[provider.issuer] = provider.id
+        kept.append(provider)
+    return kept, errors
+
+
+def build_provider_registry(config_manager: Any, app_config: Any) -> RegistryLoadResult:
+    """Build the provider registry from configuration.
+
+    Resolution order: ``AUTH_PROVIDERS`` (inline JSON), then ``AUTH_PROVIDERS_FILE``, then the
+    legacy flat variables. Both registry sources are read through ``config_manager`` so a
+    secrets manager can supply them.
+
+    Parameters:
+        config_manager: The chain used to resolve configuration keys.
+        app_config: The partially built :class:`~mlflow_oidc_auth.config.AppConfig`, read for
+            the flat ``OIDC_*`` values when synthesising the legacy provider.
+
+    Returns:
+        RegistryLoadResult: Valid providers, plus a reason for every rejection.
+    """
+    raw = config_manager.get("AUTH_PROVIDERS")
+    source = "env"
+    origin = "AUTH_PROVIDERS"
+
+    if _is_present(raw) and not isinstance(raw, (str, list, dict)):
+        # Configured, but as something no reading of it can turn into providers. Say so rather
+        # than falling through to legacy as though it had never been set.
+        return RegistryLoadResult(
+            providers=_legacy_providers(app_config),
+            errors=[
+                f"{origin}: expected a JSON array (or an already-parsed list) but got {type(raw).__name__}; " "falling back to the legacy OIDC_* configuration"
+            ],
+            source="legacy",
+        )
+
+    if not _is_present(raw):
+        path = config_manager.get("AUTH_PROVIDERS_FILE")
+        if isinstance(path, str) and path.strip():
+            source = "file"
+            origin = f"AUTH_PROVIDERS_FILE ({path})"
+            try:
+                with open(os.path.expanduser(path.strip()), "r", encoding="utf-8") as handle:
+                    raw = handle.read()
+            except OSError as exc:
+                # Fall back to legacy rather than leaving the deployment with no providers at
+                # all: an unreadable file is an operator error, not a reason to lock everyone
+                # out of a working installation.
+                return RegistryLoadResult(
+                    providers=_legacy_providers(app_config),
+                    errors=[f"{origin}: could not be read ({exc}); falling back to the legacy OIDC_* configuration"],
+                    source="legacy",
+                )
+        else:
+            return RegistryLoadResult(providers=_legacy_providers(app_config), errors=[], source="legacy")
+
+    entries, errors = _parse_entries(raw, origin)
+    if not entries and errors:
+        # Malformed payload: keep the legacy provider working rather than silently ending up
+        # with an empty registry, and report why.
+        return RegistryLoadResult(
+            providers=_legacy_providers(app_config),
+            errors=errors + [f"{origin}: falling back to the legacy OIDC_* configuration"],
+            source="legacy",
+        )
+
+    providers: List[ProviderConfig] = []
+    seen_ids: set = set()
+    duplicate_ids: set = set()
+
+    # First pass records ids so a duplicate can reject *both* copies rather than keeping
+    # whichever happened to be written first.
+    id_counts: Dict[str, int] = {}
+    for entry in entries:
+        entry_id = entry.get("id")
+        if isinstance(entry_id, str) and entry_id.strip():
+            id_counts[entry_id.strip()] = id_counts.get(entry_id.strip(), 0) + 1
+    duplicate_ids = {entry_id for entry_id, count in id_counts.items() if count > 1}
+
+    for index, entry in enumerate(entries):
+        entry_id = entry.get("id")
+        if isinstance(entry_id, str) and entry_id.strip() in duplicate_ids:
+            if entry_id.strip() not in seen_ids:
+                errors.append(f"provider '{entry_id.strip()}': duplicate id; every entry using it is ignored")
+                seen_ids.add(entry_id.strip())
+            continue
+        provider, entry_errors = _validate(entry, index, seen_ids)
+        if provider is None:
+            errors.extend(entry_errors)
+            continue
+        seen_ids.add(provider.id)
+        providers.append(provider)
+        if provider.allow_tokens_without_expiry:
+            logger.warning(
+                "Provider '%s' accepts bearer tokens with no 'exp' claim (allow_tokens_without_expiry); such a token "
+                "stays valid until its signing key is rotated or its credential revoked",
+                provider.id,
+            )
+
+    providers, issuer_errors = _reject_duplicate_issuers(providers)
+    errors.extend(issuer_errors)
+
+    return RegistryLoadResult(providers=providers, errors=errors, source=source)
+
+
+def _legacy_providers(app_config: Any) -> List[ProviderConfig]:
+    """The single ``default`` provider synthesised from the flat ``OIDC_*`` variables.
+
+    Built directly rather than run through :func:`_validate`, and the difference is deliberate:
+    ``audience`` is **required of an explicitly configured entry but not of this one**.
+
+    ``OIDC_AUDIENCE`` is optional today, and a deployment that leaves it unset performs no
+    audience check — that is the current behaviour, whatever one thinks of it. Holding the
+    synthesised provider to the stricter rule would produce an empty registry for most existing
+    installations, which is precisely the back-compat break this synthesis exists to prevent.
+
+    New configuration is held to the higher standard; existing configuration is described
+    faithfully, including where it is weak. Tightening it is a behaviour change and belongs
+    with whichever task first consumes the registry, not here.
+    """
+    entry = _legacy_entry(app_config)
+    audience = entry.get("audience")
+    if not (isinstance(audience, str) and audience.strip()):
+        logger.debug(
+            "OIDC_AUDIENCE is not set, so the synthesised 'default' provider carries no audience — matching today's behaviour, "
+            "in which no audience check is performed."
+        )
+    return [
+        ProviderConfig(
+            id=DEFAULT_PROVIDER_ID,
+            type="oidc",
+            display_name=entry["display_name"],
+            provisioning="jit",
+            group_sync="every_login",
+            group_sync_mode="authoritative",
+            admin_source="claims",
+            identity_binding="subject",
+            # The full asymmetric set, not DEFAULT_ALGORITHMS. Before the registry existed, token
+            # validation accepted every asymmetric algorithm, so a deployment whose IdP signs with
+            # ES256 or RS512 — Auth0, several Okta and Keycloak configurations, Kubernetes — is
+            # working today. Narrowing that here would lock them out on upgrade with no
+            # configuration change of their own, which is the one thing the synthesised entry
+            # exists to prevent. An *explicitly* configured entry still defaults to RS256: there
+            # the operator is writing the policy, and can widen it deliberately.
+            allowed_algorithms=ASYMMETRIC_ALGORITHMS,
+            audience=audience.strip() if isinstance(audience, str) and audience.strip() else None,
+            issuer=entry["issuer"],
+            discovery_url=entry["discovery_url"],
+            client_id=entry["client_id"],
+            public_client=entry["public_client"],
+            userinfo_groups=entry["userinfo_groups"],
+            allow_tokens_without_expiry=False,
+        )
+    ]

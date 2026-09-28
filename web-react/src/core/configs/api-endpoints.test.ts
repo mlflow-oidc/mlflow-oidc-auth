@@ -13,6 +13,22 @@ describe("API Endpoints", () => {
     );
   });
 
+  it("SCIM status and activity endpoints", () => {
+    expect(STATIC_API_ENDPOINTS.SCIM_STATUS).toBe("/api/2.0/mlflow/scim/status");
+    expect(STATIC_API_ENDPOINTS.SCIM_ACTIVITY).toBe(
+      "/api/2.0/mlflow/scim/activity",
+    );
+  });
+
+  it("user session endpoints encode the username and pk", () => {
+    expect(DYNAMIC_API_ENDPOINTS.USER_SESSIONS("a b@x.com")).toBe(
+      "/api/2.0/mlflow/users/a%20b%40x.com/sessions",
+    );
+    expect(DYNAMIC_API_ENDPOINTS.USER_SESSION("bob@x.com", 7)).toBe(
+      "/api/2.0/mlflow/users/bob%40x.com/sessions/7",
+    );
+  });
+
   describe("Dynamic Endpoints", () => {
     // Test a sample of dynamic endpoints to ensure they return strings and boost coverage
     it("returns correct user details URL", () => {

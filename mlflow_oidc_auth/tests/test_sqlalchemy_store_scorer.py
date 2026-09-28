@@ -4,7 +4,7 @@ Covers the delegation from SqlAlchemyStore scorer methods to the underlying
 repository classes, plus ping() and get_user_profile().
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

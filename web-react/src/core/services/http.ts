@@ -1,4 +1,4 @@
-import { getActiveWorkspace } from "../../shared/context/workspace-context";
+import { getActiveWorkspace } from "../../shared/context/active-workspace";
 
 export type RequestOptions = Omit<RequestInit, "body"> & {
   params?: Record<string, string>;
@@ -65,8 +65,13 @@ export function extractErrorMessage(
         const body = JSON.parse(match[1]) as {
           message?: string;
           error_code?: string;
+          detail?: string;
         };
         if (body.message) return body.message;
+        // Plain FastAPI HTTPException responses use {"detail": "..."} rather
+        // than the {"message": ...} shape emitted by the MlflowException
+        // handler — fall back to it so 4xx refusals still surface verbatim.
+        if (typeof body.detail === "string") return body.detail;
       } catch {
         // Response body was not JSON — use the raw text after "HTTP NNN: "
         return match[1];
@@ -76,10 +81,15 @@ export function extractErrorMessage(
   return fallback;
 }
 
-export async function http<T = unknown>(
+export interface HttpResult<T> {
+  data: T;
+  status: number;
+}
+
+async function httpRaw<T = unknown>(
   url: string,
   options: RequestOptions = {},
-): Promise<T> {
+): Promise<HttpResult<T>> {
   const { params, ...rest } = options;
 
   const workspace = getActiveWorkspace();
@@ -106,9 +116,33 @@ export async function http<T = unknown>(
   }
 
   // 204 No Content — nothing to parse
-  if (res.status === 204) return undefined as unknown as T;
+  if (res.status === 204) {
+    return { data: undefined as unknown as T, status: res.status };
+  }
 
   const contentType = res.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) return (await res.json()) as T;
-  return (await res.text()) as unknown as T;
+  const data = contentType.includes("application/json")
+    ? ((await res.json()) as T)
+    : ((await res.text()) as unknown as T);
+  return { data, status: res.status };
+}
+
+export async function http<T = unknown>(
+  url: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const { data } = await httpRaw<T>(url, options);
+  return data;
+}
+
+/**
+ * Like {@link http}, but also returns the response's HTTP status — for the rare endpoint whose
+ * status code itself is part of the response (e.g. an idempotent create returning 201 when it
+ * created the resource and 200 when it already existed).
+ */
+export async function httpWithStatus<T = unknown>(
+  url: string,
+  options: RequestOptions = {},
+): Promise<HttpResult<T>> {
+  return httpRaw<T>(url, options);
 }

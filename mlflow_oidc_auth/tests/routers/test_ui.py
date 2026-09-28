@@ -10,7 +10,6 @@ import tempfile
 import pytest
 from pathlib import Path
 from unittest.mock import patch
-from fastapi import HTTPException
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from mlflow_oidc_auth.routers.ui import (

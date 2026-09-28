@@ -2,17 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>MLflow OIDC Auth - OIDC Plugin for MLflow</title>
+  <title>MLflow Access Control</title>
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
-  <meta name="description" content="OpenID Connect authentication and authorization plugin for MLflow. Not affiliated with the MLflow Project, Databricks, the Linux Foundation, or LF Projects, LLC.">
+  <meta name="description" content="Authentication and access control for MLflow: SSO (OIDC, SAML), SCIM provisioning, service accounts and per-resource permissions. Not affiliated with the MLflow Project, Databricks, the Linux Foundation, or LF Projects, LLC.">
+  <meta name="author" content="Kharkevich Engineering Lab">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
+  <!-- The admin UI's colours and fonts on top of the docsify theme. -->
+  <link rel="stylesheet" href="theme.css">
 </head>
 <body>
   <div id="app"></div>
   <script>
     window.$docsify = {
-      name: 'mlflow-oidc-auth',
+      name: '<img src="logo.svg" alt=""> MLflow Access Control',
       repo: 'https://github.com/mlflow-oidc/mlflow-oidc-auth',
       loadSidebar: true,
       loadNavbar: true,

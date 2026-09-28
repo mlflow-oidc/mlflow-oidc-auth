@@ -1,7 +1,5 @@
 """Tests for workspace permission entity classes."""
 
-import pytest
-
 from mlflow_oidc_auth.entities.workspace import (
     WorkspacePermission,
     WorkspaceGroupPermission,

@@ -15,7 +15,7 @@ class TestGetUserGroups(unittest.TestCase):
         }
         self.graph_url = "https://graph.microsoft.com/v1.0/me/memberOf"
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_success_single_page(self, mock_get):
         """Test successful group retrieval with single page response."""
         mock_response = Mock()
@@ -37,7 +37,7 @@ class TestGetUserGroups(unittest.TestCase):
         expected_groups = ["Group 1", "Group 2", "Group 3"]
         self.assertEqual(groups, expected_groups)
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_success_multiple_pages(self, mock_get):
         """Test successful group retrieval with pagination."""
         # First page response
@@ -76,7 +76,7 @@ class TestGetUserGroups(unittest.TestCase):
         expected_groups = ["Group 1", "Group 2", "Group 3", "Group 4"]
         self.assertEqual(groups, expected_groups)
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_empty_response(self, mock_get):
         """Test handling of empty group response."""
         mock_response = Mock()
@@ -89,7 +89,7 @@ class TestGetUserGroups(unittest.TestCase):
         mock_get.assert_called_once_with(self.graph_url, headers=self.base_headers)
         self.assertEqual(groups, [])
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_all_none_display_names(self, mock_get):
         """Test handling when all groups have None displayName."""
         mock_response = Mock()
@@ -108,7 +108,7 @@ class TestGetUserGroups(unittest.TestCase):
         mock_get.assert_called_once_with(self.graph_url, headers=self.base_headers)
         self.assertEqual(groups, [])
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_http_error_401(self, mock_get):
         """Test handling of HTTP 401 Unauthorized error."""
         mock_response = Mock()
@@ -126,7 +126,7 @@ class TestGetUserGroups(unittest.TestCase):
         )
         mock_get.assert_called_once_with(self.graph_url, headers=self.base_headers)
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_http_error_403(self, mock_get):
         """Test handling of HTTP 403 Forbidden error."""
         mock_response = Mock()
@@ -143,7 +143,7 @@ class TestGetUserGroups(unittest.TestCase):
             str(context.exception),
         )
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_http_error_500(self, mock_get):
         """Test handling of HTTP 500 Internal Server Error."""
         mock_response = Mock()
@@ -160,7 +160,7 @@ class TestGetUserGroups(unittest.TestCase):
             str(context.exception),
         )
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_network_error(self, mock_get):
         """Test handling of network connectivity errors."""
         import requests
@@ -170,7 +170,7 @@ class TestGetUserGroups(unittest.TestCase):
         with self.assertRaises(requests.ConnectionError):
             get_user_groups(self.access_token)
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_timeout_error(self, mock_get):
         """Test handling of request timeout errors."""
         import requests
@@ -180,7 +180,7 @@ class TestGetUserGroups(unittest.TestCase):
         with self.assertRaises(requests.Timeout):
             get_user_groups(self.access_token)
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_json_decode_error(self, mock_get):
         """Test handling of invalid JSON response."""
         mock_response = Mock()
@@ -191,7 +191,7 @@ class TestGetUserGroups(unittest.TestCase):
         with self.assertRaises(ValueError):
             get_user_groups(self.access_token)
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_malformed_response_no_value(self, mock_get):
         """Test handling of malformed response without 'value' key."""
         mock_response = Mock()
@@ -202,7 +202,7 @@ class TestGetUserGroups(unittest.TestCase):
         with self.assertRaises(KeyError):
             get_user_groups(self.access_token)
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_pagination_error_on_second_page(self, mock_get):
         """Test error handling when second page request fails."""
         # First page response succeeds
@@ -230,7 +230,7 @@ class TestGetUserGroups(unittest.TestCase):
         )
         self.assertEqual(mock_get.call_count, 2)
 
-    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get")
+    @patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get")
     def test_get_user_groups_complex_pagination_scenario(self, mock_get):
         """Test complex pagination scenario with multiple pages and mixed data."""
         # Page 1
@@ -288,7 +288,7 @@ class TestGetUserGroups(unittest.TestCase):
         """Test that the function accepts various token formats."""
         # Test with different token formats - this tests the function signature
         # and parameter handling without making actual HTTP requests
-        with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.requests.get") as mock_get:
+        with patch("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id.http_client.get") as mock_get:
             mock_response = Mock()
             mock_response.ok = True
             mock_response.json.return_value = {"value": []}

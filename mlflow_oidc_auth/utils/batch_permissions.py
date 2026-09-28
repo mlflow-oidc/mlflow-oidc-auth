@@ -14,10 +14,8 @@ from mlflow.server.handlers import _get_tracking_store
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities import (
     ExperimentGroupRegexPermission,
-    ExperimentPermission,
     ExperimentRegexPermission,
     RegisteredModelGroupRegexPermission,
-    RegisteredModelPermission,
     RegisteredModelRegexPermission,
 )
 from mlflow_oidc_auth.logger import get_logger

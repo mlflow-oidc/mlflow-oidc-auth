@@ -160,9 +160,12 @@ describe("TrashPage", () => {
   });
 
   it("handles permanent deletion (single item)", async () => {
-    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue(
-      {} as unknown as { message: string },
-    );
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_runs: [],
+      deleted_experiments: ["exp2"],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 1,
+    });
     renderWithRouter();
 
     const deleteIcons = screen.getAllByTitle("Delete Permanently");
@@ -238,6 +241,143 @@ describe("TrashPage", () => {
       expect(trashService.restoreRun).toHaveBeenCalledWith("run1");
     });
     expect(mockRefreshRuns).toHaveBeenCalled();
+  });
+
+  it("surfaces a per-run failure instead of reporting full success (#239)", async () => {
+    // The endpoint returns 200 even when a run's artifacts could not be deleted - the run is
+    // kept (not hard-deleted) and reported in `failed_runs` instead. The UI must not tell the
+    // user the item was deleted when it was not.
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_runs: [],
+      deleted_experiments: [],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 0,
+      failed_runs: [
+        { run_id: "run1", error: "Failed to delete artifacts" },
+      ],
+    });
+    renderWithRouter("/trash/runs");
+
+    const deleteIcons = screen.getAllByTitle("Delete Permanently");
+    fireEvent.click(deleteIcons[0]);
+
+    const confirmButton = screen
+      .getByText("Delete Permanently", { selector: "button span" })
+      .closest("button")!;
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(trashService.cleanupTrash).toHaveBeenCalledWith({
+        run_ids: "run1",
+      });
+    });
+    expect(mockShowToast).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to delete artifacts"),
+      "error",
+    );
+  });
+
+  it("reports a mixed batch of successes and failures on bulk delete (#239)", async () => {
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_experiments: ["exp1"],
+      deleted_runs: [],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 1,
+      failed_experiments: [{ experiment_id: "exp2", error: "boom" }],
+    });
+    renderWithRouter();
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]); // exp1
+    fireEvent.click(checkboxes[2]); // exp2
+
+    const deleteButton = screen.getAllByRole("button", {
+      name: /^Delete$/i,
+    })[0];
+    fireEvent.click(deleteButton);
+
+    const confirmButton = screen
+      .getByText("Delete Permanently", { selector: "button span" })
+      .closest("button")!;
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(
+        expect.stringContaining("Deleted 1 item(s); 1 could not be deleted"),
+        "error",
+      );
+    });
+  });
+
+  it("surfaces an experiment kept because one of its runs was kept (#239 review round 1)", async () => {
+    // When a run's artifacts could not be deleted, the run is kept, and so is its experiment
+    // (hard-deleting the experiment would cascade-delete the kept run). The backend reports
+    // that under `failed_experiments`, which is exactly what the Experiments tab reads.
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_runs: [],
+      deleted_experiments: [],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 0,
+      failed_experiments: [
+        { experiment_id: "exp1", error: "1 run(s) kept: artifact deletion failed" },
+      ],
+    });
+    renderWithRouter();
+
+    const deleteIcons = screen.getAllByTitle("Delete Permanently");
+    fireEvent.click(deleteIcons[0]); // exp1
+
+    const confirmButton = screen
+      .getByText("Delete Permanently", { selector: "button span" })
+      .closest("button")!;
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(
+        expect.stringContaining("run(s) kept: artifact deletion failed"),
+        "error",
+      );
+    });
+  });
+
+  it("never reports a negative success count even if a response carries more failures than requested (#239 review round 2)", async () => {
+    // Deleting by run_ids alone no longer sweeps other trashed experiments (#239 review round
+    // 2), so the backend can no longer report a failure for an id outside this request. Keep a
+    // defensive clamp anyway: a response with more failure entries than selected ids must never
+    // read as a negative "succeeded" count.
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_runs: [],
+      deleted_experiments: [],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 0,
+      failed_runs: [
+        { run_id: "run1", error: "failure 1" },
+        { run_id: "run1", error: "failure 2" },
+      ],
+    });
+    renderWithRouter("/trash/runs");
+
+    const deleteIcons = screen.getAllByTitle("Delete Permanently");
+    fireEvent.click(deleteIcons[0]); // run1
+
+    const confirmButton = screen
+      .getByText("Delete Permanently", { selector: "button span" })
+      .closest("button")!;
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(trashService.cleanupTrash).toHaveBeenCalledWith({
+        run_ids: "run1",
+      });
+    });
+    expect(mockShowToast).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to delete 2 item(s)"),
+      "error",
+    );
+    expect(mockShowToast).not.toHaveBeenCalledWith(
+      expect.stringMatching(/-\d/),
+      expect.anything(),
+    );
   });
 
   it("renders loading and error states", () => {

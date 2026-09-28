@@ -43,6 +43,12 @@ from .request_helpers import (
     get_experiment_id,
     get_model_id,
     get_model_name,
+    get_request_param_values,
+    get_experiment_ids,
+    get_model_ids,
+    get_model_names,
+    all_source_values,
+    request_body_dict,
     _experiment_id_from_name,
 )
 
@@ -63,6 +69,15 @@ from .oidc_field_extraction import (
     extract_field_from_payload,
     extract_username,
     extract_display_name,
+)
+
+from .group_detection import (
+    call_group_detection_plugin,
+)
+from .group_name import (
+    MAX_GROUP_NAME_LENGTH,
+    GROUP_NAME_RESERVED_CHARS,
+    validate_group_name_chars,
 )
 
 # Export everything for backward compatibility
@@ -102,6 +117,12 @@ __all__ = [
     "get_experiment_id",
     "get_model_id",
     "get_model_name",
+    "get_request_param_values",
+    "get_experiment_ids",
+    "get_model_ids",
+    "get_model_names",
+    "all_source_values",
+    "request_body_dict",
     "_experiment_id_from_name",
     # URI utilities
     "get_configured_or_dynamic_redirect_uri",
@@ -112,4 +133,10 @@ __all__ = [
     "extract_field_from_payload",
     "extract_username",
     "extract_display_name",
+    # Group detection plugins
+    "call_group_detection_plugin",
+    # Group name validation
+    "MAX_GROUP_NAME_LENGTH",
+    "GROUP_NAME_RESERVED_CHARS",
+    "validate_group_name_chars",
 ]

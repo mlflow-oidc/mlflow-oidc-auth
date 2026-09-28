@@ -228,9 +228,7 @@ web-react/src/
 │   └── setup.tsx                   # Test setup (jest-dom, dialog polyfill)
 ├── core/
 │   ├── components/
-│   │   ├── main-layout.test.tsx
-│   │   ├── access-token-modal.test.tsx
-│   │   └── create-access-token-button.test.tsx
+│   │   └── main-layout.test.tsx
 │   ├── configs/
 │   │   └── api-endpoints.test.ts
 │   ├── context/
@@ -273,17 +271,29 @@ web-react/src/
 │   │   └── services/
 │   │       └── auth-service.test.ts
 │   ├── [... other features with co-located tests]
-│   └── permissions/
+│   ├── permissions/
+│   │   ├── components/
+│   │   │   ├── add-regex-rule-modal.test.tsx
+│   │   │   ├── entity-permissions-manager.test.tsx
+│   │   │   ├── entity-permissions-page-layout.test.tsx
+│   │   │   ├── grant-permission-modal.test.tsx
+│   │   │   ├── normal-permissions-view.test.tsx
+│   │   │   └── regex-permissions-view.test.tsx
+│   │   ├── utils/
+│   │   │   └── permission-utils.test.ts
+│   │   └── shared-permissions-page.test.tsx
+│   └── tokens/
 │       ├── components/
-│       │   ├── add-regex-rule-modal.test.tsx
-│       │   ├── entity-permissions-manager.test.tsx
-│       │   ├── entity-permissions-page-layout.test.tsx
-│       │   ├── grant-permission-modal.test.tsx
-│       │   ├── normal-permissions-view.test.tsx
-│       │   └── regex-permissions-view.test.tsx
-│       ├── utils/
-│       │   └── permission-utils.test.ts
-│       └── shared-permissions-page.test.tsx
+│       │   ├── create-user-token-modal.test.tsx
+│       │   ├── delete-user-token-modal.test.tsx
+│       │   ├── revoke-all-user-tokens-modal.test.tsx
+│       │   └── user-tokens-panel.test.tsx
+│       ├── hooks/
+│       │   └── use-user-tokens.test.ts
+│       ├── services/
+│       │   └── user-token-service.test.ts
+│       └── utils/
+│           └── token-expiration.test.ts
 └── shared/
     ├── components/
     │   ├── button.test.tsx
@@ -447,7 +457,7 @@ def _patch_router_stores(mock_store):
 ```python
 def create_test_user(username="testuser", display_name="Test User", is_admin=False):
     """Helper function to create test User entities with correct constructor"""
-    return User(id_=1, username=username, password_hash="hashed_password", ...)
+    return User(id_=1, username=username, ...)
 ```
 
 ### React - Vitest mocking
@@ -597,7 +607,7 @@ beforeAll(() => {
 - **Dependencies:**
   - Running mlflow-oidc-auth server (configurable via `MLFLOW_OIDC_E2E_BASE_URL`)
   - **Playwright** (Chromium) for browser-based tests
-  - **httpx** for API-level tests
+  - **httpx2** for API-level tests
 - **Excluded from default test run** via `norecursedirs = ["integration"]` in `pyproject.toml`
 - **Session-scoped fixtures** for server health check, admin/user HTTP clients
 - **Skip or fail behavior** configurable via `MLFLOW_OIDC_E2E_REQUIRE` env var

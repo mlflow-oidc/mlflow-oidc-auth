@@ -5,7 +5,7 @@ permission management, including full cache flush behavior (D-09).
 """
 
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 
 class TestRouterConfiguration:

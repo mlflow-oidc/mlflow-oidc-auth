@@ -23,7 +23,6 @@ from mlflow_oidc_auth.permissions import _validate_permission, compare_permissio
 from mlflow_oidc_auth.repository.utils import (
     get_group,
     get_user,
-    list_user_groups,
     validate_regex,
 )
 
@@ -100,7 +99,7 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
                 return perm.to_mlflow_entity()
             except IntegrityError as e:
                 raise MlflowException(
-                    f"Permission already exists ({resource_id}, {username}): {e}",
+                    f"Permission already exists ({resource_id}, {username})",
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
@@ -289,7 +288,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
                 return perm.to_mlflow_entity()
             except IntegrityError as e:
                 raise MlflowException(
-                    f"Group permission already exists ({resource_id}, {group_name}): {e}",
+                    f"Group permission already exists ({resource_id}, {group_name})",
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
@@ -523,7 +522,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
                 return perm.to_mlflow_entity()
             except IntegrityError as e:
                 raise MlflowException(
-                    f"Regex perm exists ({regex},{username}): {e}",
+                    f"Regex perm exists ({regex},{username})",
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 
@@ -676,7 +675,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
                 return perm.to_mlflow_entity()
             except IntegrityError as e:
                 raise MlflowException(
-                    f"Group regex perm exists ({regex},{group_name}): {e}",
+                    f"Group regex perm exists ({regex},{group_name})",
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 

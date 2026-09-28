@@ -1,5 +1,6 @@
 """Tests for the Redis cache backend (using mocked redis)."""
 
+import importlib
 import pickle
 from unittest.mock import MagicMock, patch
 
@@ -63,13 +64,31 @@ class TestRedisCacheBackend:
             with pytest.raises(ConnectionError, match="Cannot connect to Redis"):
                 RedisCacheBackend(url="redis://bad:6379/0", prefix="t:", ttl=30)
 
+    def test_url_password_not_logged_or_raised(self, mock_redis, caplog):
+        """Neither the connect log line nor the connection error carries the URL or its password."""
+        import logging
+
+        mock_redis_module, mock_client = mock_redis
+        url = "redis://:r3dis-s3cr3t@cache.example.com:6379/0"
+
+        with patch.dict("sys.modules", {"redis": mock_redis_module}), caplog.at_level(logging.DEBUG):
+            from mlflow_oidc_auth.cache.redis_backend import RedisCacheBackend
+
+            RedisCacheBackend(url=url, prefix="t:", ttl=30)
+            mock_client.ping.side_effect = ConnectionError("Connection refused")
+            with pytest.raises(ConnectionError) as excinfo:
+                RedisCacheBackend(url=url, prefix="t:", ttl=30)
+
+        assert "Redis cache backend connected" in caplog.text
+        assert "r3dis-s3cr3t" not in caplog.text
+        assert "r3dis-s3cr3t" not in str(excinfo.value)
+        assert "ConnectionError" in str(excinfo.value)
+
     def test_init_raises_import_error_without_redis(self):
         """Constructor raises ImportError when redis package is missing."""
         with patch.dict("sys.modules", {"redis": None}):
             # Need to reimport to trigger the ImportError check
-            import importlib
-
-            import mlflow_oidc_auth.cache.redis_backend as rb_module
+            rb_module = importlib.import_module("mlflow_oidc_auth.cache.redis_backend")
 
             importlib.reload(rb_module)
 

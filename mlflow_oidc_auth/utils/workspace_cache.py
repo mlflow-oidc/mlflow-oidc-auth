@@ -10,7 +10,7 @@ import re
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.permissions import MANAGE, Permission, get_permission
+from mlflow_oidc_auth.permissions import Permission, get_permission
 
 logger = get_logger()
 

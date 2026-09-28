@@ -17,11 +17,14 @@ See config_providers/ for detailed configuration of each provider.
 """
 
 import secrets
+from typing import Optional
 
 from dotenv import load_dotenv
 
 from mlflow_oidc_auth.config_providers import config_manager
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.ownership import parse_enforcement
+from mlflow_oidc_auth.provider_registry import build_provider_registry
 
 load_dotenv()  # take environment variables from .env.
 logger = get_logger()
@@ -84,6 +87,17 @@ class AppConfig:
             )
             _secret_key = secrets.token_hex(16)
         self.SECRET_KEY = _secret_key
+        # Key for the provider tokens (refresh token, IdP expiry, id_token) that a server-side
+        # session keeps encrypted on its row (issue #367). One or more comma-separated
+        # urlsafe-base64 32-byte Fernet keys; the first encrypts, all decrypt, so a key can be
+        # rotated. Unset: a key is derived from SECRET_KEY with HKDF, and rotating SECRET_KEY then
+        # makes stored tokens unreadable (sessions re-login once their IdP expiry passes).
+        self.SESSION_TOKEN_ENCRYPTION_KEY = config_manager.get("SESSION_TOKEN_ENCRYPTION_KEY")
+        # Fail at startup, not on the first login: a malformed key would otherwise surface as
+        # every session being refused. The error never includes the value.
+        from mlflow_oidc_auth.session.token_vault import validate_encryption_key
+
+        validate_encryption_key(self.SESSION_TOKEN_ENCRYPTION_KEY)
         self.OIDC_CLIENT_SECRET = config_manager.get("OIDC_CLIENT_SECRET")
 
         # Session cookie settings
@@ -94,6 +108,17 @@ class AppConfig:
             raise ValueError(f"Invalid SESSION_COOKIE_SAMESITE value: '{_session_cookie_samesite}'")
         self.SESSION_COOKIE_SAMESITE = _session_cookie_samesite
         self.SESSION_COOKIE_SECURE = config_manager.get_bool("SESSION_COOKIE_SECURE", default=False)
+        # Binds a SAML login to the browser that started it with a nonce cookie (issue #374).
+        # ``auto`` (default): on exactly when SESSION_COOKIE_SECURE is — the cookie is
+        # ``SameSite=None; Secure``, which a browser only returns over https. ``on`` forces it
+        # without secure session cookies, for http test rigs; ``off`` disables it. Raises on
+        # anything else, like SESSION_COOKIE_SAMESITE: a typo in a CSRF switch must not
+        # silently pick a mode.
+        _saml_login_binding = str(config_manager.get("SAML_LOGIN_BINDING", "auto") or "auto").strip().lower()
+        if _saml_login_binding not in self.SAML_LOGIN_BINDING_MODES:
+            # The value itself is not repeated: config values may come from a secrets provider.
+            raise ValueError("Invalid SAML_LOGIN_BINDING value (expected one of auto, on, off)")
+        self.SAML_LOGIN_BINDING = _saml_login_binding
 
         # Database settings (sensitive)
         self.OIDC_USERS_DB_URI = config_manager.get("OIDC_USERS_DB_URI", "sqlite:///auth.db")
@@ -130,10 +155,34 @@ class AppConfig:
         # TLS verification for OIDC discovery/JWKS and the token endpoint. Default True;
         # only disable for providers with self-signed certs in trusted networks.
         self.OIDC_VERIFY_SSL = config_manager.get_bool("OIDC_VERIFY_SSL", default=True)
-        # PKCE code challenge method (e.g. "S256"). None disables PKCE.
-        self.OIDC_CODE_CHALLENGE = config_manager.get("OIDC_CODE_CHALLENGE", None)
+        # PKCE (RFC 7636), on by default since #312. Binding the authorization code to a
+        # per-attempt secret is what stops a code intercepted from a redirect — through a
+        # browser log, a proxy, a shared machine — from being redeemed by anyone else.
+        #
+        # Opt out with any of the disabling words below, for a provider that rejects the extra
+        # parameters. An unrecognised value warns and falls back to S256 rather than taking the
+        # process down — this module is imported by migration tooling that has no interest in
+        # login, and the secure direction is the safe one to fall back to.
+        _code_challenge = config_manager.get("OIDC_CODE_CHALLENGE", "S256")
+        self.OIDC_CODE_CHALLENGE = self._parse_code_challenge(_code_challenge)
+        # Declares the flat-configured client a *public* client: one the provider issued without a
+        # client secret, whose token exchange PKCE authenticates instead. Opt-in rather than
+        # inferred from a missing OIDC_CLIENT_SECRET, so a secret that failed to load from a
+        # secrets manager is reported as missing instead of silently turning the deployment into a
+        # public client. Requires PKCE, and refuses a client secret configured alongside it.
+        self.OIDC_PUBLIC_CLIENT = config_manager.get_bool("OIDC_PUBLIC_CLIENT", default=False)
+        # Whether the flat-configured provider's groups and workspace claims may be read from its
+        # UserInfo endpoint when the ID token lacks them. Off by default: those claims decide
+        # access and administrator status. Identity claims are completed from UserInfo either way.
+        self.OIDC_USERINFO_GROUPS = config_manager.get_bool("OIDC_USERINFO_GROUPS", default=False)
 
         # Permission cache settings
+        # Whether a write from one source may overwrite a row another source owns (#319).
+        # ``report`` by default and deliberately: the guard's failure mode is lockout, so the
+        # telemetry ships a release before the enforcement and an operator can look at their own
+        # traffic before turning it on.
+        self.MANAGED_BY_ENFORCEMENT = parse_enforcement(config_manager.get("MANAGED_BY_ENFORCEMENT", "report"))
+
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
 
         # username source
@@ -210,11 +259,165 @@ class AppConfig:
         # API documentation settings
         self.ENABLE_API_DOCS = config_manager.get_bool("ENABLE_API_DOCS", default=False)
 
+        # SCIM
+        # Provisioning endpoint at /scim/v2 (#321, #322, #324). Inert until an administrator
+        # issues a SCIM token: the endpoint accepts nothing else, so a deployment that never
+        # issues one is unaffected.
+        # How long a rotated SCIM token keeps working alongside its replacement, so the new one
+        # can be pasted into the directory without a sync failing in between.
+        self.SCIM_TOKEN_ROTATION_OVERLAP_SECONDS = config_manager.get_int("SCIM_TOKEN_ROTATION_OVERLAP_SECONDS", default=3600)
+        # Per-token request budget. In-process: with N replicas the effective ceiling is N times
+        # this. A value of 0 disables the limit.
+        self.SCIM_RATE_LIMIT_PER_MINUTE = config_manager.get_int("SCIM_RATE_LIMIT_PER_MINUTE", default=600)
+        # Failed SCIM authentications allowed per client IP per minute before answering 429.
+        # In-process, like the limit above; 0 disables it.
+        self.SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE = config_manager.get_int("SCIM_AUTH_FAILURE_LIMIT_PER_MINUTE", default=60)
+        # SCIM activity log (#325): one row per /scim/v2 request for the admin UI's provisioning
+        # status. Rows older than this are swept by `mlflow-oidc db prune-sessions` and, at most
+        # hourly, by the server itself.
+        self.SCIM_ACTIVITY_RETENTION_DAYS = config_manager.get_int("SCIM_ACTIVITY_RETENTION_DAYS", default=30)
+        # Provisioning counts as healthy while a SCIM request succeeded within this many seconds.
+        self.SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS = config_manager.get_int("SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS", default=86400)
+        # When set, resources a hard-deleted user was the last MANAGE holder of are granted MANAGE
+        # to this username before the delete cascades. Unset means orphans are only reported.
+        self.ORPHAN_FALLBACK_PRINCIPAL = config_manager.get("ORPHAN_FALLBACK_PRINCIPAL")
+        # Placeholder for a future purge of deactivated users. 0 means never purge; nothing
+        # reads this yet.
+        self.USER_RETENTION_DAYS = config_manager.get_int("USER_RETENTION_DAYS", default=0)
+
+        # Identity provider registry (issue #308). Built from AUTH_PROVIDERS /
+        # AUTH_PROVIDERS_FILE, falling back to a single "default" provider synthesised from the
+        # flat OIDC_* values above — so a deployment that sets neither behaves exactly as it
+        # does today. Nothing consumes this yet; the flat variables remain authoritative.
+        # Must run after the OIDC_* block, which it reads.
+        self.AUTH_PROVIDERS = build_provider_registry(config_manager, self)
+
         # Run last: these read settings loaded above.
         self._warn_if_resource_creation_restriction_is_inert()
         self._warn_if_default_permission_is_permissive()
         self._warn_if_username_field_unusable()
         self._warn_if_group_name_unusable()
+        self._warn_if_provider_registry_invalid()
+        self._log_saml_login_binding()
+
+    #: Accepted ``SAML_LOGIN_BINDING`` values.
+    SAML_LOGIN_BINDING_MODES = ("auto", "on", "off")
+
+    @property
+    def saml_login_binding_enabled(self) -> bool:
+        """Whether SAML logins are bound to the starting browser by a nonce cookie (#374).
+
+        ``auto`` follows ``SESSION_COOKIE_SECURE``: the binding cookie is ``Secure``, so with
+        secure cookies off (plain-http development) it would never come back and every SAML
+        login would fail.
+        """
+        mode = getattr(self, "SAML_LOGIN_BINDING", "auto")
+        if mode == "on":
+            return True
+        if mode == "off":
+            return False
+        return bool(getattr(self, "SESSION_COOKIE_SECURE", False))
+
+    def _log_saml_login_binding(self) -> None:
+        """Say once, at startup, when a configured SAML provider logs in without the binding.
+
+        Silent when no SAML provider is configured: the setting has nothing to act on then.
+        """
+        if not any(provider.type == "saml" for provider in self.AUTH_PROVIDERS.providers):
+            return
+        # Fixed messages only: no config value is ever interpolated into these lines.
+        if self.SAML_LOGIN_BINDING == "on" and not self.SESSION_COOKIE_SECURE:
+            logger.warning(
+                "SAML login binding is forced on without secure cookies. This is for http test rigs only; production "
+                "deployments must serve https and enable secure session cookies."
+            )
+        elif not self.saml_login_binding_enabled:
+            logger.warning(
+                "SAML login binding is disabled while a SAML provider is configured: a SAML response is not bound to the "
+                "browser that started the login, so login CSRF is possible. Serve https and enable secure session "
+                "cookies to turn it on."
+            )
+
+    #: Values that turn PKCE off. Both the words and the boolean spellings, because operators
+    #: reach for whichever their config tooling already uses and a rejected value stops the
+    #: server from starting.
+    CODE_CHALLENGE_DISABLED_VALUES = frozenset({"", "none", "off", "false", "no", "disabled", "0"})
+
+    #: Values that mean "leave it on", accepted for the same reason.
+    CODE_CHALLENGE_ENABLED_VALUES = frozenset({"true", "yes", "on", "enabled", "1"})
+
+    #: The only method that can actually be applied. RFC 7636 also defines ``plain``, but authlib
+    #: emits a challenge for S256 alone ("only S256 is supported" — ``authlib/oauth2/client.py``),
+    #: so a client configured for ``plain`` sends a request with *no* code_challenge at all.
+    #: Accepting it would report PKCE as enabled while nothing was bound to the code.
+    CODE_CHALLENGE_METHODS = ("S256",)
+
+    @classmethod
+    def _parse_code_challenge(cls, value) -> Optional[str]:
+        """Normalize ``OIDC_CODE_CHALLENGE`` into a method name, or None to disable PKCE.
+
+        Parameters:
+            value: The configured value. ``None`` means "not set", which now means S256 rather
+                than off (issue #312).
+
+        Accepted: ``S256`` and the affirmative words for on; the disabling words for off. Every
+        other value — a typo, or ``plain``, which earlier versions accepted and did nothing
+        useful with — falls back to ``S256`` with a warning naming the value.
+
+        **Falls back rather than raising**, deliberately. ``AppConfig`` is a module-level
+        singleton imported by tooling that has nothing to do with login: raising here stops
+        ``mlflow-oidc db upgrade`` and every other entry point, so a stale value in a Helm chart
+        would block the very upgrade that introduced the check. The fallback is the secure
+        direction — PKCE ends up on — and the warning is what the operator acts on. This matches
+        the treatment of the other unusable-configuration cases in this class.
+
+        Returns:
+            ``"S256"``, or None when PKCE is explicitly disabled.
+        """
+        if value is None:
+            return "S256"
+
+        normalized = str(value).strip()
+        lowered = normalized.lower()
+
+        if lowered in cls.CODE_CHALLENGE_DISABLED_VALUES:
+            # Said out loud, because an environment variable that is *set but empty* lands here
+            # too — a Helm value that rendered blank, or a compose file with a trailing "=".
+            # Without this, a deployment silently runs without PKCE while the docs say it is on
+            # by default, and nothing anywhere reports the difference.
+            logger.warning(
+                "PKCE is disabled (OIDC_CODE_CHALLENGE=%r). Authorization codes will not be bound to the login "
+                "attempt that requested them. Unset the variable to restore the S256 default.",
+                normalized,
+            )
+            return None
+
+        if lowered in cls.CODE_CHALLENGE_ENABLED_VALUES:
+            return "S256"
+
+        for method in cls.CODE_CHALLENGE_METHODS:
+            if lowered == method.lower():
+                return method
+
+        if lowered == "plain":
+            # Accepted by earlier versions, so a live deployment may be carrying it. It never
+            # did anything: authlib emits a challenge for S256 only, so 'plain' produced an
+            # authorization request with no challenge at all.
+            logger.warning(
+                "OIDC_CODE_CHALLENGE=plain is not supported and has been ignored; using S256. The pinned authlib "
+                "emits a code challenge for S256 only, so 'plain' sent no challenge at all and gave no PKCE "
+                "protection. Set OIDC_CODE_CHALLENGE=none if this provider cannot do PKCE."
+            )
+            return "S256"
+
+        logger.warning(
+            "Unrecognised OIDC_CODE_CHALLENGE value %r; using S256. Expected %s (or one of %s) to enable PKCE, " "or one of %s to disable it.",
+            normalized,
+            ", ".join(cls.CODE_CHALLENGE_METHODS),
+            ", ".join(sorted(cls.CODE_CHALLENGE_ENABLED_VALUES)),
+            ", ".join(sorted(v for v in cls.CODE_CHALLENGE_DISABLED_VALUES if v)),
+        )
+        return "S256"
 
     @staticmethod
     def _has_usable_entry(field_list) -> bool:
@@ -231,6 +434,23 @@ class AppConfig:
             return any(isinstance(field, str) and field.strip() for field in field_list)
         except TypeError:
             return False
+
+    def _warn_if_provider_registry_invalid(self) -> None:
+        """Report registry entries that were rejected at startup (issue #308).
+
+        Warns rather than raises, for the same reason as the checks around it: ``AppConfig`` is
+        a module-level singleton imported by tooling with nothing to do with login, and taking
+        Alembic down over a malformed provider it never reads would be worse than the
+        misconfiguration. Rejected entries are already absent from the registry, so nothing
+        unvalidated is reachable — this only makes the reason visible.
+
+        Logged at WARNING per entry: an operator who wrote a provider and cannot use it needs
+        the specific reason, and each of these is a security-relevant rejection (a missing
+        audience, an admin source that would allow privilege escalation, an email binding with
+        no domain restriction), not a formatting nit.
+        """
+        for message in self.AUTH_PROVIDERS.errors:
+            logger.warning("Identity provider registry: %s", message)
 
     def _warn_if_username_field_unusable(self) -> None:
         """Warn at startup when OIDC_USERNAME_FIELD or OIDC_DISPLAY_NAME_FIELD is unusable.

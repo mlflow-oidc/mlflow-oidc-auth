@@ -7,7 +7,6 @@ correctly handle configurable fields and fallback logic.
 
 from unittest.mock import patch
 
-import pytest
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.utils.oidc_field_extraction import (

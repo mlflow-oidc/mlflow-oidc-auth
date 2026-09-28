@@ -185,7 +185,7 @@ describe("BulkAssignModal", () => {
     });
   });
 
-  it("shows no items selected toast when submitting without selection", async () => {
+  it("shows no items selected toast when submitting without selection", () => {
     // Force-enable the button by selecting and then deselecting
     render(<BulkAssignModal {...defaultProps} />);
 

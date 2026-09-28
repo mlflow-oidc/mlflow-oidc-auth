@@ -1,8 +1,10 @@
+import types
+
 import pytest
 import requests
-from authlib.jose.errors import BadSignatureError
+from joserfc.errors import BadSignatureError
 
-from mlflow_oidc_auth import auth
+from mlflow_oidc_auth import auth, http_client
 from mlflow_oidc_auth.auth import _jwks_cache
 from mlflow_oidc_auth.config import config
 
@@ -13,6 +15,18 @@ def clear_jwks_cache():
     _jwks_cache.clear()
     yield
     _jwks_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def single_provider(monkeypatch):
+    """A one-provider registry, the shape of every deployment that has not adopted a multi-
+    provider configuration. Since #313 validation resolves the provider first, so without this
+    there is nothing to validate against."""
+    from mlflow_oidc_auth.provider_registry import ASYMMETRIC_ALGORITHMS, ProviderConfig, RegistryLoadResult
+
+    provider = ProviderConfig(id="default", type="oidc", allowed_algorithms=ASYMMETRIC_ALGORITHMS)
+    monkeypatch.setattr(config, "AUTH_PROVIDERS", RegistryLoadResult(providers=[provider], errors=[], source="legacy"))
+    return provider
 
 
 class DummyResponse:
@@ -35,7 +49,7 @@ def test_get_oidc_jwks_missing_jwks_uri(monkeypatch):
     def fake_get(url, **kwargs):
         return DummyResponse({})
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(http_client, "get", fake_get)
 
     with pytest.raises(ValueError):
         auth._get_oidc_jwks()
@@ -54,7 +68,7 @@ def test_get_oidc_jwks_success(monkeypatch):
             return DummyResponse({"keys": []})
         raise RuntimeError("unexpected url")
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(http_client, "get", fake_get)
 
     jwks = auth._get_oidc_jwks()
     assert jwks == {"keys": []}
@@ -67,7 +81,7 @@ def test_get_oidc_jwks_request_exception(monkeypatch):
     def fake_get(url, **kwargs):
         raise requests.exceptions.RequestException("boom")
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(http_client, "get", fake_get)
 
     with pytest.raises(requests.exceptions.RequestException):
         auth._get_oidc_jwks()
@@ -90,7 +104,7 @@ def test_validate_token_success(monkeypatch):
         assert jwks == {"keys": []}
         return payload
 
-    monkeypatch.setattr(auth.jwt, "decode", fake_decode)
+    monkeypatch.setattr(auth, "_jwt_for", lambda provider: types.SimpleNamespace(decode=fake_decode))
 
     result = auth.validate_token("tok")
     assert result is payload
@@ -109,7 +123,7 @@ def test_validate_token_bad_signature_retries(monkeypatch):
             raise BadSignatureError("bad sig")
         return payload
 
-    monkeypatch.setattr(auth.jwt, "decode", fake_decode)
+    monkeypatch.setattr(auth, "_jwt_for", lambda provider: types.SimpleNamespace(decode=fake_decode))
 
     result = auth.validate_token("tok")
     assert result is payload
@@ -123,7 +137,7 @@ def test_validate_token_other_exception_propagates(monkeypatch):
     def fake_decode(token, jwks, claims_options=None):
         raise ValueError("boom")
 
-    monkeypatch.setattr(auth.jwt, "decode", fake_decode)
+    monkeypatch.setattr(auth, "_jwt_for", lambda provider: types.SimpleNamespace(decode=fake_decode))
 
     with pytest.raises(ValueError):
         auth.validate_token("tok")

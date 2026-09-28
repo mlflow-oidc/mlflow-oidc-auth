@@ -86,11 +86,16 @@ class TestIsTrustedProxy:
         request.client.host = client_host
         return request
 
-    def test_no_trusted_proxies_trusts_all(self):
-        """When TRUSTED_PROXIES is empty, all requests are trusted."""
+    @pytest.mark.parametrize("client_host", ["1.2.3.4", "127.0.0.1", "10.0.0.1", "::1"])
+    def test_no_trusted_proxies_trusts_none(self, client_host):
+        """When TRUSTED_PROXIES is empty, no client is trusted."""
         middleware = self._make_middleware([])
-        request = self._make_request("1.2.3.4")
-        assert middleware._is_trusted_proxy(request) is True
+        assert middleware._is_trusted_proxy(self._make_request(client_host)) is False
+
+    def test_none_trusted_proxies_trusts_none(self):
+        """A missing TRUSTED_PROXIES value behaves like an empty one."""
+        middleware = self._make_middleware(None)
+        assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is False
 
     def test_trusted_ip_in_cidr(self):
         """Request from an IP within a trusted CIDR is trusted."""
@@ -131,6 +136,77 @@ class TestIsTrustedProxy:
         request = MagicMock()
         request.client = None
         assert middleware._is_trusted_proxy(request) is False
+
+    def test_only_invalid_entries_trusts_no_source(self):
+        """A setting whose entries are all invalid does not fall back to trusting every source."""
+        middleware = self._make_middleware(["not-a-cidr", "10.0.0.0/99"])
+        assert middleware._is_trusted_proxy(self._make_request("10.1.2.3")) is False
+        assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is False
+
+    def test_blank_entries_count_as_unset(self):
+        """Blank entries alone are the same as an unset TRUSTED_PROXIES: no client is trusted."""
+        middleware = self._make_middleware(["", "  "])
+        assert middleware._is_trusted_proxy(self._make_request("1.2.3.4")) is False
+
+    def test_logs_info_once_when_unset(self):
+        """An unset TRUSTED_PROXIES is reported at INFO at construction, which happens once at startup."""
+        with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
+            self._make_middleware([])
+        assert mock_logger.info.call_count == 1
+        message = mock_logger.info.call_args[0][0]
+        assert "TRUSTED_PROXIES" in message and "ignored" in message
+        mock_logger.warning.assert_not_called()
+
+    def test_no_warning_when_configured(self):
+        with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
+            self._make_middleware(["10.0.0.0/8"])
+        mock_logger.warning.assert_not_called()
+        mock_logger.info.assert_not_called()
+
+    def test_warns_when_every_entry_is_invalid(self):
+        with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
+            self._make_middleware(["not-a-cidr"])
+        assert any("no valid entry" in call.args[0] for call in mock_logger.warning.call_args_list)
+
+    @pytest.mark.parametrize("entry", ["::ffff:10.0.0.5", "::ffff:10.0.0.0/104", "::ffff:a00:5"])
+    @pytest.mark.parametrize("peer", ["10.0.0.5", "::ffff:10.0.0.5"])
+    def test_ipv4_mapped_entry_matches_mapped_and_plain_peer(self, entry, peer):
+        """A mapped entry keeps matching after peers are compared in IPv4 form."""
+        middleware = self._make_middleware([entry])
+        assert middleware._is_trusted_proxy(self._make_request(peer)) is True
+        assert middleware._is_trusted_proxy(self._make_request("192.0.2.1")) is False
+
+    def test_ipv4_mapped_network_prefix_converted(self):
+        assert _parse_trusted_proxies(["::ffff:10.0.0.0/104"]) == [ipaddress.ip_network("10.0.0.0/8")]
+        assert _parse_trusted_proxies(["::ffff:10.0.0.5"]) == [ipaddress.ip_network("10.0.0.5/32")]
+        assert _parse_trusted_proxies(["::ffff:0:0/96"]) == [ipaddress.ip_network("0.0.0.0/0")]
+
+    @pytest.mark.parametrize("entry", ["2001:db8::/32", "::1", "::ffff:0:0/80", "::a00:5"])
+    def test_non_mapped_ipv6_entry_unaffected(self, entry):
+        assert _parse_trusted_proxies([entry]) == [ipaddress.ip_network(entry, strict=False)]
+
+    def test_ipv6_entry_still_matches_ipv6_peer(self):
+        middleware = self._make_middleware(["2001:db8::/32"])
+        assert middleware._is_trusted_proxy(self._make_request("2001:db8::5")) is True
+        assert middleware._is_trusted_proxy(self._make_request("10.0.0.5")) is False
+
+    def test_mapped_entry_conversion_logged_once_per_entry(self):
+        with patch("mlflow_oidc_auth.middleware.proxy_headers_middleware.logger") as mock_logger:
+            _parse_trusted_proxies(["::ffff:10.0.0.5", "10.0.0.0/8", "::ffff:10.0.0.0/104"])
+        messages = [call.args[0] for call in mock_logger.info.call_args_list]
+        assert len(messages) == 2
+        # The configured value is not written to the log.
+        assert not any("10.0.0" in message for message in messages)
+
+    @pytest.mark.parametrize("entry", ["::/0", "::ffff:0:0/80", "::/64"])
+    def test_wide_ipv6_entry_still_matches_mapped_peer(self, entry):
+        """A wide IPv6 entry covers the mapped range, so a dual-stack peer keeps matching."""
+        middleware = self._make_middleware([entry])
+        assert middleware._is_trusted_proxy(self._make_request("::ffff:10.0.0.5")) is True
+
+    def test_ipv4_entry_does_not_match_unrelated_ipv6_peer(self):
+        middleware = self._make_middleware(["10.0.0.0/8"])
+        assert middleware._is_trusted_proxy(self._make_request("2001:db8::5")) is False
 
     def test_unparseable_client_ip_returns_false(self):
         """When client IP can't be parsed, proxy is not trusted."""
@@ -221,8 +297,8 @@ class TestProxyHeadersDispatch:
         assert request.scope["scheme"] == "https"
 
     @pytest.mark.asyncio
-    async def test_empty_trusted_proxies_processes_all(self):
-        """When TRUSTED_PROXIES is empty, all proxy headers are processed (backward compat)."""
+    async def test_empty_trusted_proxies_processes_none(self):
+        """When TRUSTED_PROXIES is empty, proxy headers are ignored from every client."""
         middleware = self._make_middleware([])
 
         scope = {
@@ -253,5 +329,5 @@ class TestProxyHeadersDispatch:
 
         await middleware.dispatch(request, call_next)
 
-        # Scheme should have been updated (all proxies trusted)
-        assert request.scope["scheme"] == "https"
+        # Scheme should NOT have been updated (no client is trusted)
+        assert request.scope["scheme"] == "http"

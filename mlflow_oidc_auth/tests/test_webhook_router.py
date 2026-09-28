@@ -5,7 +5,6 @@ from cryptography.fernet import InvalidToken
 from fastapi.testclient import TestClient
 
 import mlflow_oidc_auth.routers.webhook as webhook_module
-from mlflow_oidc_auth.app import create_app
 
 
 @pytest.fixture
@@ -25,6 +24,12 @@ class FakePage(list):
     def __init__(self, items, token=None):
         super().__init__(items)
         self.token = token
+
+    # Compares as the list it wraps; ``token`` is pagination metadata, as in MLflow's PagedList.
+    def __eq__(self, other):
+        return list.__eq__(self, other)
+
+    __hash__ = None
 
 
 def make_webhook_stub(webhook_id="w1"):

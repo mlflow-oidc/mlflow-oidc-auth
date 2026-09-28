@@ -44,7 +44,7 @@ class TestGroupScopedWorkspaceRevocation:
     """BUG 1: group-scoped workspace CUD used to invalidate nothing (decision D-15)."""
 
     def test_revoking_group_permission_is_visible_immediately(self, ws_store):
-        ws_store.create_user("alice@example.com", "pw", "Alice")
+        ws_store.create_user("alice@example.com", "Alice")
         ws_store.populate_groups(["team-a"])
         ws_store.set_user_groups("alice@example.com", ["team-a"])
         ws_store.create_workspace_group_permission("ws-prod", "team-a", "EDIT")
@@ -56,7 +56,7 @@ class TestGroupScopedWorkspaceRevocation:
         assert _cached("alice@example.com", "ws-prod") is None, "revoked group access still served (fail-open)"
 
     def test_downgrading_group_permission_is_visible_immediately(self, ws_store):
-        ws_store.create_user("bob@example.com", "pw", "Bob")
+        ws_store.create_user("bob@example.com", "Bob")
         ws_store.populate_groups(["team-b"])
         ws_store.set_user_groups("bob@example.com", ["team-b"])
         ws_store.create_workspace_group_permission("ws-prod", "team-b", "MANAGE")
@@ -71,7 +71,7 @@ class TestMembershipRevocation:
     """BUG 2: membership mutations flushed the permission cache but not the workspace cache."""
 
     def test_removing_user_from_group_revokes_group_derived_access(self, ws_store):
-        ws_store.create_user("carol@example.com", "pw", "Carol")
+        ws_store.create_user("carol@example.com", "Carol")
         ws_store.populate_groups(["team-c"])
         ws_store.set_user_groups("carol@example.com", ["team-c"])
         ws_store.create_workspace_group_permission("ws-prod", "team-c", "EDIT")
@@ -84,7 +84,7 @@ class TestMembershipRevocation:
     def test_invalidation_is_targeted_to_the_mutated_user(self, ws_store):
         """Other users' entries must survive — OIDC re-syncs membership on every login."""
         for name in ("dave@example.com", "erin@example.com"):
-            ws_store.create_user(name, "pw", name)
+            ws_store.create_user(name, name)
         ws_store.populate_groups(["team-d"])
         ws_store.set_user_groups("dave@example.com", ["team-d"])
         ws_store.set_user_groups("erin@example.com", ["team-d"])
@@ -106,7 +106,7 @@ class TestUserScopedWorkspaceRevocation:
     """BUG 3: user workspace CUD invalidated only in the router, so direct store calls leaked."""
 
     def test_revoking_user_permission_via_store_is_visible_immediately(self, ws_store):
-        ws_store.create_user("frank@example.com", "pw", "Frank")
+        ws_store.create_user("frank@example.com", "Frank")
         ws_store.create_workspace_permission("ws-prod", "frank@example.com", "EDIT")
         assert _cached("frank@example.com", "ws-prod").name == "EDIT"
 
@@ -125,7 +125,7 @@ class TestUserScopedWorkspaceRevocation:
         monkeypatch.setattr("mlflow_oidc_auth.bridge.user.get_request_workspace", lambda: "ws-prod")
         monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", ["user", "group"])
 
-        ws_store.create_user("grace@example.com", "pw", "Grace")
+        ws_store.create_user("grace@example.com", "Grace")
         ws_store.create_workspace_permission("ws-prod", "grace@example.com", "EDIT")
 
         warm = perms.resolve_permission("registered_model", "some-model", "grace@example.com")
@@ -147,7 +147,7 @@ class TestWorkspaceWipe:
         monkeypatch.setattr("mlflow_oidc_auth.bridge.user.get_request_workspace", lambda: "ws-doomed")
         monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", ["user", "group"])
 
-        ws_store.create_user("hank@example.com", "pw", "Hank")
+        ws_store.create_user("hank@example.com", "Hank")
         ws_store.create_workspace_permission("ws-doomed", "hank@example.com", "MANAGE")
 
         warm = perms.resolve_permission("registered_model", "prod-model", "hank@example.com")
@@ -171,7 +171,7 @@ class TestPrefixInvalidationDoesNotOverDelete:
 
     def test_similar_usernames_are_not_collaterally_invalidated(self, ws_store):
         for name in ("bob", "bob2", "bobby"):
-            ws_store.create_user(name, "pw", name)
+            ws_store.create_user(name, name)
             ws_store.create_workspace_permission("ws-prod", name, "EDIT")
             assert _cached(name, "ws-prod").name == "EDIT"
 

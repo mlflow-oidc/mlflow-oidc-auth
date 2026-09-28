@@ -15,7 +15,7 @@ import { EntityListTable } from "../../shared/components/entity-list-table";
 import { SearchInput } from "../../shared/components/search-input";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { PermissionItem } from "../../shared/types/entity";
-import { TokenInfoBlock } from "../../shared/components/token-info-block";
+import { UserTokensPanel } from "../tokens/components/user-tokens-panel";
 import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 
 export const UserPage = () => {
@@ -34,6 +34,7 @@ export const UserPage = () => {
   const activeHook =
     {
       info: null,
+      tokens: null,
       experiments: experimentHook,
       models: modelHook,
       prompts: promptHook,
@@ -43,6 +44,7 @@ export const UserPage = () => {
     }[
       tab as
         | "info"
+        | "tokens"
         | "experiments"
         | "models"
         | "prompts"
@@ -65,6 +67,7 @@ export const UserPage = () => {
 
   const tabs = [
     { id: "info", label: "Info" },
+    { id: "tokens", label: "Tokens" },
     { id: "experiments", label: "Experiments" },
     { id: "prompts", label: "Prompts" },
     { id: "models", label: "Models" },
@@ -100,13 +103,6 @@ export const UserPage = () => {
 
   return (
     <PageContainer title="User Page">
-      {currentUser && (
-        <TokenInfoBlock
-          username={currentUser.username}
-          passwordExpiration={currentUser.password_expiration}
-        />
-      )}
-
       <div className="flex space-x-2 justify-between items-center border-b border-btn-secondary-border dark:border-btn-secondary-border-dark mb-3 min-w-0">
         <div className="flex space-x-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
           {tabs.map((tabItem) => (
@@ -128,17 +124,18 @@ export const UserPage = () => {
       <PageStatus
         isLoading={
           isLoading &&
-          (!currentUser || (tab !== "info" && !activeHook?.permissions))
+          (!currentUser || (activeHook !== null && !activeHook.permissions))
         }
         loadingText="Loading information..."
         error={error}
-        onRetry={tab === "info" ? undefined : activeHook?.refresh}
+        onRetry={activeHook?.refresh}
       />
 
       {!isLoading && !error && currentUser && (
         <>
           {tab === "info" && <UserDetailsCard currentUser={currentUser} />}
-          {tab !== "info" && activeHook && (
+          {tab === "tokens" && <UserTokensPanel />}
+          {activeHook && (
             <>
               <div className="mb-2">
                 <SearchInput

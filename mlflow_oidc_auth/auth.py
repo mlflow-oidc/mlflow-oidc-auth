@@ -1,23 +1,60 @@
+import base64
+import hashlib
+import json
 import threading
 
 import requests
-from authlib.jose import jwt
-from authlib.jose.errors import BadSignatureError
 from cachetools import TTLCache
+from joserfc import jws, jwt
+from joserfc.errors import BadSignatureError, DecodeError, InvalidClaimError, InvalidPayloadError, MissingClaimError
+from joserfc.jwk import JWKRegistry, Key
+from joserfc.jws import JWSRegistry
 
+from typing import Any, Optional
+
+from mlflow_oidc_auth import http_client
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.kubernetes import in_cluster_credentials, load_inline_jwks
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.user import create_user, populate_groups, update_user
+
+# TOKEN_PROVIDER_TYPES is imported rather than restated: the registry uses it to decide which
+# providers must pin an issuer and a key source, and this module uses it to decide which may
+# validate a token. Two copies could disagree, and the dangerous direction is silent — a type
+# routed here but never required there is a provider with no ``iss`` check.
+from mlflow_oidc_auth.provider_registry import ASYMMETRIC_ALGORITHMS, TOKEN_PROVIDER_TYPES
 
 logger = get_logger()
 
-# JWKS cache: single-entry TTL cache shared across all token validations.
-# TTL is configured via OIDC_JWKS_CACHE_TTL_SECONDS (default 300s).
-# Thread-safe via a lock since multiple ASGI workers may validate concurrently.
+# Signing algorithms accepted when validating a token.
+#
+# Passed explicitly so the algorithm is chosen by *us*, never by the token's own header. A JWT
+# names its algorithm in an unauthenticated header, so a decoder that trusts that field lets the
+# presenter decide how — or whether — their token is verified. RFC 8725 §3.1 is explicit that the
+# set must be pinned by the verifier.
+#
+# The same asymmetric set the provider registry accepts (#308): signatures are checked against
+# keys fetched from the provider's JWKS, so a symmetric algorithm has no legitimate use here and
+# an unsigned token none at all.
+# The ceiling. A provider's own ``allowed_algorithms`` narrows within this set (see
+# :func:`_jwt_for`); nothing widens it. There is deliberately no module-level decoder built from
+# it any more — one would look like the live verifier while every validation used a per-provider
+# decoder instead, so a change made here would appear to take effect and would not.
+_ACCEPTED_ALGORITHMS = list(ASYMMETRIC_ALGORITHMS)
+
+# JWKS cache for the deployment-wide ``OIDC_DISCOVERY_URL``. TTL from
+# OIDC_JWKS_CACHE_TTL_SECONDS (default 300s). Thread-safe via a lock, since multiple ASGI
+# workers validate concurrently.
 _jwks_cache: TTLCache = TTLCache(maxsize=1, ttl=config.OIDC_JWKS_CACHE_TTL_SECONDS)
 _jwks_cache_lock = threading.Lock()
 
 _JWKS_CACHE_KEY = "jwks"
+
+# Per-provider JWKS, keyed by provider id (#313). Separate from the cache above so a rotation
+# retry for one issuer cannot evict another's keys: sharing one entry across issuers would mean
+# every failed signature refetched whichever provider happened to be there, and two issuers with
+# different rotation schedules would thrash each other indefinitely.
+_provider_jwks_cache: TTLCache = TTLCache(maxsize=32, ttl=config.OIDC_JWKS_CACHE_TTL_SECONDS)
+_provider_jwks_lock = threading.Lock()
 
 
 def _get_oidc_jwks(force_refresh: bool = False) -> dict:
@@ -37,71 +74,526 @@ def _get_oidc_jwks(force_refresh: bool = False) -> dict:
     if config.OIDC_DISCOVERY_URL is None:
         raise ValueError("OIDC_DISCOVERY_URL is not set in the configuration")
 
-    with _jwks_cache_lock:
-        if force_refresh:
-            _jwks_cache.pop(_JWKS_CACHE_KEY, None)
+    return _load_jwks(
+        config.OIDC_DISCOVERY_URL,
+        cache=_jwks_cache,
+        lock=_jwks_cache_lock,
+        cache_key=_JWKS_CACHE_KEY,
+        force_refresh=force_refresh,
+        label="the configured OIDC provider",
+    )
 
-        cached = _jwks_cache.get(_JWKS_CACHE_KEY)
+
+def _load_jwks(
+    url: str,
+    *,
+    cache: TTLCache,
+    lock: threading.Lock,
+    cache_key,
+    force_refresh: bool,
+    label: str,
+    direct: bool = False,
+    verify=None,
+    auth_token: Optional[str] = None,
+) -> dict:
+    """Discovery-then-JWKS fetch, cached in ``cache`` under ``cache_key``.
+
+    One implementation for both callers on purpose. They differ only in which cache the result
+    lands in, and a deployment silently takes one or the other depending on whether its provider
+    names a key source — so two implementations would mean a fix applied to the branch under
+    test having no effect on the branch a real deployment runs.
+    """
+    with lock:
+        if force_refresh:
+            cache.pop(cache_key, None)
+        cached = cache.get(cache_key)
         if cached is not None:
             return cached
 
-    # Fetch outside the lock to avoid blocking other threads during HTTP I/O.
-    # Timeouts are essential: without them, a hung IdP can block request threads
-    # until the OS-level TCP timeout (~2 minutes), causing cascading auth failures.
+    # Fetched outside the lock, so HTTP I/O does not block other threads. Timeouts are
+    # essential: without them a hung IdP holds request threads until the OS-level TCP timeout
+    # (~2 minutes), and authentication failures cascade.
     timeout = config.OIDC_HTTP_TIMEOUT_SECONDS
+    if verify is None:
+        verify = config.OIDC_VERIFY_SSL
+    # Only sent when there is one: the API server needs the pod's credential, a public IdP must
+    # never be handed it, and the ordinary call keeps its exact shape.
+    extra = {"headers": {"Authorization": f"Bearer {auth_token}"}} if auth_token else {}
     try:
-        logger.debug("Fetching OIDC discovery metadata")
-        metadata = requests.get(config.OIDC_DISCOVERY_URL, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
-        jwks_uri = metadata.get("jwks_uri")
-        if not jwks_uri:
-            raise ValueError("No jwks_uri found in OIDC discovery metadata")
+        if direct:
+            # ``url`` is already the key set — a cluster that does not serve discovery anonymously
+            # but whose JWKS endpoint is known (#314).
+            jwks_uri = url
+        else:
+            logger.debug("Fetching OIDC discovery metadata for %s", label)
+            metadata = http_client.get(url, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
+            jwks_uri = metadata.get("jwks_uri")
+            if not jwks_uri:
+                raise ValueError(f"No jwks_uri found in OIDC discovery metadata for {label}")
 
         logger.debug("Fetching JWKS from %s", jwks_uri)
-        jwks = requests.get(jwks_uri, timeout=timeout, verify=config.OIDC_VERIFY_SSL).json()
+        # Redirects are not followed on either fetch: this decides which signatures are valid,
+        # so a 302 must be a visible configuration error rather than a silent change of source.
+        jwks = http_client.get(jwks_uri, timeout=timeout, verify=verify, allow_redirects=False, **extra).json()
     except requests.exceptions.RequestException as e:
-        logger.error("Failed to fetch OIDC JWKS: %s", e)
+        logger.error("Failed to fetch JWKS for %s: %s", label, e)
         raise
 
-    with _jwks_cache_lock:
-        _jwks_cache[_JWKS_CACHE_KEY] = jwks
+    with lock:
+        cache[cache_key] = jwks
 
     return jwks
 
 
-def _get_claims_options() -> dict | None:
-    """Build JWT claims validation options.
+def _get_provider_jwks(provider, force_refresh: bool = False) -> dict:
+    """Fetch the JWKS for one provider, cached per provider id (#313).
+
+    A provider that names no key source of its own inherits the deployment-wide
+    ``OIDC_DISCOVERY_URL``, so it goes through :func:`_get_oidc_jwks` and shares that cache —
+    which is what keeps a single-provider deployment behaving exactly as before.
+
+    Parameters:
+        provider: The resolved :class:`ProviderConfig`.
+        force_refresh: Drop this provider's cached keys first. Used on ``BadSignatureError`` to
+            pick up a rotated key — and only ever for the provider whose signature failed.
 
     Returns:
-        A claims_options dict for authlib jwt.decode if audience validation
-        is configured, otherwise None.
+        The JWKS payload.
+    """
+    # A cluster's keys may be written into configuration rather than fetched (#314): the only
+    # mode that works when the API server is unreachable from wherever MLflow runs, and the only
+    # one with no network in the authentication path at all.
+    if getattr(provider, "jwks_inline", None):
+        # Parsed once and kept, rather than re-read on every request. It is immutable
+        # configuration, and this is the mode whose whole point is that it does no work in the
+        # authentication path.
+        # Keyed on the material as well as the id: two key sets configured under one provider id
+        # — a rotation, or a second deployment reusing the id — must not serve each other's keys.
+        cache_key = (provider.id, "jwks_inline", hashlib.sha256(str(provider.jwks_inline).encode()).hexdigest())
+        with _provider_jwks_lock:
+            cached = _provider_jwks_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        parsed = load_inline_jwks(provider.jwks_inline)
+        with _provider_jwks_lock:
+            _provider_jwks_cache[cache_key] = parsed
+        return parsed
+
+    # A known key-set URL, for a cluster whose discovery document is not anonymously readable —
+    # the common case, since system:service-account-issuer-discovery is rarely bound to
+    # system:unauthenticated.
+    if getattr(provider, "jwks_uri", None):
+        return _load_jwks(
+            provider.jwks_uri,
+            cache=_provider_jwks_cache,
+            lock=_provider_jwks_lock,
+            cache_key=(provider.id, provider.jwks_uri),
+            force_refresh=force_refresh,
+            label=f"provider {provider.id}",
+            direct=True,
+            verify=_verify_for(provider),
+            # The only path that presents the pod's own credential: this URL comes from the
+            # operator's configuration. It is deliberately not sent on the discovery path, where
+            # the second request goes to whatever host the discovery *body* names.
+            auth_token=_in_cluster_token(provider),
+        )
+
+    if not provider.discovery_url:
+        # A provider that names no source of its own inherits the deployment-wide one. Only the
+        # synthesised legacy provider can be in this state, and only when OIDC_DISCOVERY_URL is
+        # itself unset — with it set, that provider carries it and takes the cache below.
+        return _get_oidc_jwks(force_refresh=force_refresh)
+
+    # Keyed on the source as well as the id, so repointing a provider at a different IdP does
+    # not keep serving the previous one's keys for the rest of the TTL.
+    return _load_jwks(
+        provider.discovery_url,
+        cache=_provider_jwks_cache,
+        lock=_provider_jwks_lock,
+        cache_key=(provider.id, provider.discovery_url),
+        force_refresh=force_refresh,
+        label=f"provider {provider.id}",
+        verify=_verify_for(provider),
+    )
+
+
+def _verify_for(provider):
+    """TLS verification for this provider's key fetch.
+
+    A cluster's API server presents a certificate signed by the cluster CA, which no public trust
+    store knows, so a CA bundle is a *stricter* setting than the default rather than a looser one
+    — it names the single authority allowed to sign, instead of every public root.
+    """
+    ca_bundle = getattr(provider, "ca_bundle_path", None)
+    if ca_bundle:
+        return ca_bundle
+    if getattr(provider, "in_cluster", False):
+        _, ca = in_cluster_credentials()
+        if ca:
+            return ca
+        # Never fall through to the global flag here. OIDC_VERIFY_SSL is commonly set False to
+        # work around a private-CA IdP, and inheriting it would mean fetching a cluster's signing
+        # keys — and presenting the pod's credential — over an unverified connection. Whoever can
+        # answer for the API server's address would then choose which tokens are valid.
+        raise ValueError(
+            f"Provider '{provider.id}' fetches keys in-cluster but no CA bundle is available: mount "
+            "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt or set 'ca_bundle_path'"
+        )
+    return config.OIDC_VERIFY_SSL
+
+
+def _in_cluster_token(provider):
+    """The pod's own service-account token, when this provider fetches from the API server.
+
+    Kubernetes does not serve ``/openid/v1/jwks`` anonymously on most clusters, so the fetch has
+    to authenticate as something — and the pod already holds a credential for exactly this.
+    """
+    if not getattr(provider, "in_cluster", False):
+        return None
+    token, _ = in_cluster_credentials()
+    if token is None:
+        logger.warning(
+            "Provider '%s' is configured with in_cluster key fetching, but no service-account token is mounted; "
+            "MLflow does not appear to be running in a cluster",
+            provider.id,
+        )
+    return token
+
+
+def _unverified_issuer(token: str) -> str | None:
+    """Read ``iss`` from a token **without verifying anything**.
+
+    This is the one place unverified token content is read, and it is read for exactly one
+    purpose: choosing which validator to apply. That is safe only because the choice can never
+    grant anything — an unrecognised value selects no validator and the token is refused, and a
+    recognised one selects a provider whose keys, algorithms, issuer and audience are then all
+    enforced. Nothing here is trusted; it is a lookup key.
+    """
+    try:
+        payload = token.split(".")[1]
+        decoded = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+        issuer = json.loads(decoded).get("iss")
+    except Exception:
+        return None
+    return issuer if isinstance(issuer, str) else None
+
+
+def resolve_token_provider(token: str):
+    """The provider whose policy applies to ``token``. See :func:`_resolve_provider`."""
+    return _resolve_provider(token)
+
+
+def _resolve_provider(token: str):
+    """Pick the provider whose validator applies to ``token``.
+
+    A deployment with one provider has nothing to choose between: the single validator applies,
+    and no unverified token content is consulted at all. This is also what keeps every existing
+    single-provider deployment byte-for-byte unchanged.
+
+    With more than one, the token's unverified ``iss`` selects the provider by **exact match**,
+    and an issuer that matches nothing is refused. There is deliberately no fallback validator:
+    a default would be the one an attacker aims at, since reaching it requires only an ``iss``
+    that matches nothing.
+
+    Raises:
+        ValueError: If no provider matches, or the registry has none at all.
+    """
+    providers = [provider for provider in config.AUTH_PROVIDERS.providers if provider.type in TOKEN_PROVIDER_TYPES]
+    if not providers:
+        raise ValueError("No token-validating provider is configured")
+
+    if len(providers) == 1:
+        return providers[0]
+
+    issuer = _unverified_issuer(token)
+    if not issuer:
+        raise ValueError("Token carries no issuer, and this deployment has more than one provider to choose between")
+
+    for provider in providers:
+        if provider.issuer and provider.issuer == issuer:
+            return provider
+
+    # Deliberately not logged with the issuer at error level in a way that would let an
+    # unauthenticated caller fill the log with arbitrary strings; debug carries the detail.
+    logger.debug("No configured provider claims issuer %r", issuer)
+    raise ValueError("Token issuer does not match any configured provider")
+
+
+def _claims_options_for(provider) -> dict | None:
+    """Build the claims constraints for one provider.
+
+    Audience is required of every explicitly configured provider (the registry refuses an entry
+    without one), so a multi-provider deployment always pins it. The synthesised ``default``
+    provider may carry none, which is the pre-#313 behaviour for a deployment that never set
+    ``OIDC_AUDIENCE``, preserved so upgrading changes nothing.
+
+    ``exp`` is essential for every provider (#356). The expiry check alone is a no-op when the
+    claim is absent, so without this a token minted with no ``exp`` validates forever. The only
+    way out is a provider that sets ``allow_tokens_without_expiry`` — refused by the registry on
+    anything but a token provider, and logged at load — for legacy Kubernetes service-account
+    tokens, which carry no ``exp`` at all.
     """
     options = {}
-    if config.OIDC_AUDIENCE:
-        options["aud"] = {"essential": True, "value": config.OIDC_AUDIENCE}
-    if config.OIDC_ISSUER:
-        options["iss"] = {"essential": True, "value": config.OIDC_ISSUER}
-    if options:
-        return options
-    return None
+    if not getattr(provider, "allow_tokens_without_expiry", False):
+        options["exp"] = {"essential": True}
+    if provider.audience:
+        options["aud"] = {"essential": True, "value": provider.audience}
+    if provider.issuer:
+        options["iss"] = {"essential": True, "value": provider.issuer}
+    return options or None
+
+
+# The largest compact token accepted, in bytes. The per-segment limits below are raised to it so
+# the only size bound is this one: joserfc's defaults (512-byte header, 1024-byte signature) would
+# refuse a header carrying an ``x5c`` chain or an RSA-8192 signature that has always validated.
+_MAX_TOKEN_LENGTH = 256000
+
+
+class _ClaimsRegistry(jwt.JWTClaimsRegistry):
+    """joserfc's claim checks, with ``iss``, ``sub`` and ``aud`` held to the rules they have always had.
+
+    ``exp``, ``nbf`` and ``iat`` use joserfc's checks unchanged: they accept exactly what was
+    accepted before. joserfc additionally requires ``iss``, ``sub`` and ``aud`` to be strings
+    even when nothing is configured for them; those three are compared here only against a
+    configured value, as before, so a token that validated before still validates and one that
+    was refused is still refused.
+    """
+
+    def validate(self, claims: dict[str, Any]) -> None:
+        """Check essential claims, then every claim present.
+
+        An essential claim must be present *and* non-empty: ``""``, ``0``, ``[]`` and ``False``
+        are refused as invalid, not accepted as present.
+
+        Raises:
+            MissingClaimError: An essential claim is absent.
+            InvalidClaimError: An essential claim is empty, or a claim fails its check.
+            joserfc.errors.ExpiredTokenError: ``exp`` has passed.
+        """
+        for name, option in self.options.items():
+            if option.get("essential"):
+                if name not in claims:
+                    raise MissingClaimError(name)
+                if not claims.get(name):
+                    raise InvalidClaimError(name)
+        super().validate(claims)
+
+    def _expected(self, name: str) -> list | None:
+        option = self.options.get(name) or {}
+        values = option.get("values")
+        if not values and option.get("value"):
+            values = [option["value"]]
+        return values or None
+
+    def validate_iss(self, value: Any) -> None:
+        """``iss`` must equal the configured issuer, when one is configured."""
+        expected = self._expected("iss")
+        if expected and value not in expected:
+            raise InvalidClaimError("iss")
+
+    def validate_sub(self, value: Any) -> None:
+        """``sub`` must equal a configured value, when one is configured (none is, today)."""
+        expected = self._expected("sub")
+        if expected and value not in expected:
+            raise InvalidClaimError("sub")
+
+    def validate_aud(self, value: Any) -> None:
+        """At least one of the token's audiences must be the configured audience.
+
+        ``aud`` may be a string or a list. With no audience configured it is not checked.
+        """
+        expected = self._expected("aud")
+        if not expected or not value:
+            return
+        audiences = value if isinstance(value, list) else [value]
+        if not any(candidate in audiences for candidate in expected):
+            raise InvalidClaimError("aud")
+
+
+class _ValidatedClaims(dict):
+    """The claims of a token whose signature has been verified, plus the checks still to run.
+
+    Shaped like the claims object the decoder has always returned — a ``dict`` of claims with a
+    ``header`` and a ``validate()`` — so every caller that reads claims keeps working unchanged.
+    The signature is checked before this object exists; ``validate()`` then applies the claim
+    rules and must be called before any claim is trusted.
+    """
+
+    def __init__(self, claims: dict[str, Any], header: dict[str, Any], options: dict | None):
+        super().__init__(claims)
+        self.header = header
+        self.options = options or {}
+
+    def __eq__(self, other: object) -> bool:
+        """Equal to a plain dict of the same claims; between two, header and options count too."""
+        if isinstance(other, _ValidatedClaims):
+            return dict.__eq__(self, other) and self.header == other.header and self.options == other.options
+        return dict.__eq__(self, other)
+
+    __hash__ = None  # type: ignore[assignment]  # mutable, like dict
+
+    def validate(self) -> None:
+        """Apply the claim rules: essential claims, ``iss``, ``aud``, ``exp``, ``nbf``, ``iat``.
+
+        No leeway, as before. ``exp``, ``nbf`` and ``iat`` are checked whenever present, and
+        ``iss``/``aud`` against the values in ``options``.
+
+        Raises:
+            joserfc.errors.ClaimError: A claim is missing, malformed, or does not match.
+        """
+        _ClaimsRegistry(leeway=0, **self.options).validate(dict(self))
+
+
+def _select_jwk(jwks: Any, header: dict[str, Any]) -> dict:
+    """The single key in ``jwks`` that ``header`` names, or an error.
+
+    The token's ``kid`` must match a key's own ``kid`` exactly. A token with no ``kid`` is
+    accepted only when the set holds exactly one key. Nothing is derived — in particular no
+    thumbprint is computed for a key that publishes no ``kid``, so a key the provider did not
+    label cannot be selected by naming its thumbprint.
+
+    Raises:
+        ValueError: No key, or more than one candidate, matches.
+    """
+    if isinstance(jwks, (list, tuple)):
+        jwks = {"keys": jwks}
+    if not isinstance(jwks, dict):
+        raise ValueError("Invalid JSON Web Key Set")
+    if "keys" not in jwks:
+        # A bare JWK rather than a set.
+        return jwks
+
+    keys = jwks["keys"]
+    kid = header.get("kid")
+    if kid is not None:
+        for candidate in keys:
+            if candidate.get("kid") == kid:
+                return candidate
+    elif len(keys) == 1:
+        return keys[0]
+    raise ValueError("Invalid JSON Web Key Set")
+
+
+def _strict_json_segment(segment: str, name: str) -> None:
+    """Refuse a base64url segment that is not a UTF-8 JSON object with no byte-order mark.
+
+    Raises:
+        DecodeError: The segment does not decode as such.
+    """
+    try:
+        text = base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4)).decode("utf-8")
+        if not isinstance(json.loads(text), dict):
+            raise ValueError(f"{name} is not a JSON object")
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise DecodeError(f"Invalid {name}") from exc
+
+
+class _TokenDecoder:
+    """Verify a compact JWS against a key set, accepting only a pinned set of algorithms.
+
+    The algorithm is chosen by the verifier: ``alg`` in the token header must be one of
+    ``algorithms`` or the token is refused before any key is used.
+    """
+
+    def __init__(self, algorithms: list[str]):
+        self.algorithms = list(algorithms)
+        # Header parameters outside the JWS registry are ignored rather than refused (some IdPs
+        # add their own, such as Entra's ``nonce``); ``crit`` still refuses any it does not know.
+        self._registry = JWSRegistry(algorithms=self.algorithms, strict_check_header=False)
+        # RFC 7797 unencoded payloads are not accepted: removing ``b64`` from the registry makes a
+        # token that lists it in ``crit`` fail the critical-header check.
+        self._registry.header_registry.pop("b64", None)
+        self._registry.max_header_length = _MAX_TOKEN_LENGTH
+        self._registry.max_payload_length = _MAX_TOKEN_LENGTH
+        self._registry.max_signature_length = _MAX_TOKEN_LENGTH
+
+    def decode(self, token: str, jwks: Any, claims_options: dict | None = None) -> _ValidatedClaims:
+        """Verify ``token``'s signature with the key its header names in ``jwks``.
+
+        Parameters:
+            token: A compact-serialised JWS.
+            jwks: The provider's key set (``{"keys": [...]}``), a list of keys, or one JWK.
+            claims_options: Rules applied by :meth:`_ValidatedClaims.validate`.
+
+        Returns:
+            The claims, not yet validated.
+
+        Raises:
+            joserfc.errors.BadSignatureError: The signature does not verify.
+            joserfc.errors.JoseError: The token is malformed or names a disallowed algorithm.
+            ValueError: No key in ``jwks`` matches, or the token is too large.
+        """
+        if isinstance(token, bytes):
+            token = token.decode("utf-8")
+        if len(token) > _MAX_TOKEN_LENGTH:
+            raise ValueError("Serialization is too long.")
+        # Only JWS. A five-segment value is a JWE, which is never a valid token here.
+        if token.count(".") != 2:
+            raise DecodeError("Invalid input segments length")
+
+        def load_key(obj) -> Key:
+            data = _select_jwk(jwks, obj.headers())
+            if not isinstance(data, dict):
+                raise ValueError("Invalid JSON Web Key")
+            return JWKRegistry.import_key(data)
+
+        # The header is JSON in UTF-8 and nothing else. ``json.loads`` on bytes would also guess
+        # UTF-16, UTF-32 and a UTF-8 BOM, so the header is checked here before joserfc reads it.
+        _strict_json_segment(token.split(".", 1)[0], "header")
+
+        verified = jws.deserialize_compact(token, load_key, algorithms=self.algorithms, registry=self._registry)
+        try:
+            claims = json.loads(verified.payload.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise InvalidPayloadError("Invalid payload value") from exc
+        if not isinstance(claims, dict):
+            raise InvalidPayloadError("Invalid payload type")
+        return _ValidatedClaims(claims, verified.headers(), claims_options)
+
+
+def _jwt_for(provider) -> _TokenDecoder:
+    """A decoder pinned to this provider's accepted algorithms.
+
+    Per-provider rather than global because a Kubernetes issuer and an Entra tenant need not
+    agree on an algorithm set, and the registry already refuses a symmetric one — so whatever is
+    here is asymmetric, and the token's own header still chooses nothing.
+    """
+    algorithms = [algorithm for algorithm in provider.allowed_algorithms if algorithm in _ACCEPTED_ALGORITHMS]
+    if not algorithms:
+        raise ValueError(f"Provider '{provider.id}' has no usable signing algorithm")
+    return _TokenDecoder(algorithms)
 
 
 def validate_token(token: str):
-    """Validate JWT token using OIDC JWKS.
+    """Validate a bearer token against the provider that issued it.
 
-    When OIDC_AUDIENCE is configured, the ``aud`` claim is validated
-    against the expected audience value during ``payload.validate()``.
+    The provider is chosen first (see :func:`_resolve_provider`), and everything after that —
+    keys, accepted algorithms, expected issuer, expected audience — comes from that provider
+    alone. No union of keys across providers is ever offered to the decoder, so a ``kid`` can
+    only ever select a key belonging to the issuer the token claims.
+
+    Returns:
+        The validated claims.
+
+    Raises:
+        ValueError: If no provider matches the token's issuer.
+        Exception: Whatever joserfc raises for a token that does not validate.
     """
-    claims_options = _get_claims_options()
+    provider = _resolve_provider(token)
+    claims_options = _claims_options_for(provider)
+    decoder = _jwt_for(provider)
+
     try:
-        jwks = _get_oidc_jwks()
-        payload = jwt.decode(token, jwks, claims_options=claims_options)
+        jwks = _get_provider_jwks(provider)
+        payload = decoder.decode(token, jwks, claims_options=claims_options)
         payload.validate()
         return payload
     except BadSignatureError as e:
-        logger.error("Token validation failed with bad signature: %s", str(e))
-        # Force-refresh JWKS and retry once. This handles key rotation.
-        jwks = _get_oidc_jwks(force_refresh=True)
-        payload = jwt.decode(token, jwks, claims_options=claims_options)
+        logger.error("Token validation failed with bad signature for provider %s: %s", provider.id, str(e))
+        # Refresh *this* provider's keys and retry once, for key rotation.
+        jwks = _get_provider_jwks(provider, force_refresh=True)
+        payload = decoder.decode(token, jwks, claims_options=claims_options)
         payload.validate()
         return payload
     except Exception as e:

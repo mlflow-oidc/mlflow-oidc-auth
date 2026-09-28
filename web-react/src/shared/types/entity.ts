@@ -13,6 +13,12 @@ export type ModelListItem = {
 
 export type PromptListItem = ModelListItem;
 
+export type GroupDetails = {
+  group_name: string;
+  external_id: string | null;
+  member_count: number;
+};
+
 export type PermissionLevel =
   | "READ"
   | "USE"
@@ -95,6 +101,21 @@ export type DeletedRun = {
   start_time: number;
   end_time: number | null;
   lifecycle_stage: string;
+};
+
+export type CleanupFailure = {
+  run_id?: string;
+  experiment_id?: string;
+  error: string;
+};
+
+export type CleanupTrashResponse = {
+  deleted_runs: string[];
+  deleted_experiments: string[];
+  total_deleted_runs: number;
+  total_deleted_experiments: number;
+  failed_runs?: CleanupFailure[];
+  failed_experiments?: CleanupFailure[];
 };
 
 export type WebhookStatus = "ACTIVE" | "DISABLED";

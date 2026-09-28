@@ -1,11 +1,42 @@
 """Layer 2 of the #262 fix: opt-in, hardened auto-provisioning on bearer authentication."""
 
+import importlib
+import sys
+import types
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from mlflow_oidc_auth.config import config as real_config
 from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
+from mlflow_oidc_auth.utils.group_detection import _accepts_token_response
+
+
+@pytest.fixture(autouse=True)
+def provider_carries_the_configured_scoping(monkeypatch):
+    """Resolve the token's provider from whatever scoping the test configured.
+
+    Since #313 the provisioning gate asks the provider that validated the token whether it pins
+    an audience and an issuer, rather than reading the flat variables — those no longer describe
+    what was enforced. These tests describe a single-provider deployment, where the synthesised
+    provider carries exactly those flat values, so resolution mirrors them and every case keeps
+    meaning what it did.
+    """
+    import mlflow_oidc_auth.auth as auth_module
+
+    middleware_module = importlib.import_module("mlflow_oidc_auth.middleware.auth_middleware")
+
+    def resolve(token):
+        cfg = middleware_module.config
+        # ``type`` matters since #314: a k8s provider takes the service-account path instead of
+        # the group gate these cases describe.
+        # ``admin_source`` matters since #318: a provider that may not assert administrator
+        # status cannot mint one through this path either. These cases describe the deployment's
+        # own provider, which may.
+        return SimpleNamespace(id="default", type="oidc", admin_source="claims", audience=cfg.OIDC_AUDIENCE, issuer=cfg.OIDC_ISSUER)
+
+    monkeypatch.setattr(auth_module, "resolve_token_provider", resolve)
 
 
 def _mw():
@@ -102,9 +133,75 @@ class TestAuthorizationGate:
             _cfg(cfg)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice"})
-            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False)
-            populate_groups.assert_called_once_with(group_names=["mlflow-users"])
-            update_user.assert_called_once_with(username="a@x.com", group_names=["mlflow-users"])
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False, written_by="oidc:default")
+            populate_groups.assert_called_once_with(group_names=["mlflow-users"], written_by="oidc:default")
+            update_user.assert_called_once_with(username="a@x.com", group_names=["mlflow-users"], written_by="oidc:default")
+
+
+class TestGroupDetectionPlugin:
+    """#250: the bearer path calls ``OIDC_GROUP_DETECTION_PLUGIN`` with the token and, when the
+    plugin declares it, a ``token_response`` dict carrying the token plus the validated claims.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_signature_cache(self):
+        _accepts_token_response.cache_clear()
+        yield
+        _accepts_token_response.cache_clear()
+
+    def _install_plugin(self, monkeypatch, name, get_user_groups):
+        module = types.ModuleType(name)
+        module.get_user_groups = get_user_groups
+        monkeypatch.setitem(sys.modules, name, module)
+
+    def test_old_single_argument_plugin_still_works(self, monkeypatch):
+        calls = []
+
+        def get_user_groups(access_token):
+            calls.append(access_token)
+            return ["mlflow-users"]
+
+        self._install_plugin(monkeypatch, "_test_bearer_plugin_old_sig", get_user_groups)
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+        ):
+            _cfg(cfg, OIDC_GROUP_DETECTION_PLUGIN="_test_bearer_plugin_old_sig")
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok-old", {"name": "Alice"})
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False, written_by="oidc:default")
+
+        assert calls == ["tok-old"]
+
+    def test_plugin_declaring_token_response_receives_token_and_claims(self, monkeypatch):
+        received = {}
+
+        def get_user_groups(access_token, token_response=None):
+            received["access_token"] = access_token
+            received["token_response"] = token_response
+            return ["mlflow-users"]
+
+        self._install_plugin(monkeypatch, "_test_bearer_plugin_token_response", get_user_groups)
+
+        payload = {"name": "Alice", "sub": "alice-sub"}
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+        ):
+            _cfg(cfg, OIDC_GROUP_DETECTION_PLUGIN="_test_bearer_plugin_token_response")
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok-new", payload)
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False, written_by="oidc:default")
+
+        assert received["access_token"] == "tok-new"
+        assert received["token_response"] == {"access_token": "tok-new", "claims": payload}
 
     def test_group_pattern_member_is_provisioned(self):
         with (
@@ -138,7 +235,7 @@ class TestAdminElevation:
             _cfg(cfg, OIDC_TRUST_BEARER_GROUP_CLAIMS=False)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
-            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False)
+            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False, written_by="oidc:default")
 
     def test_admin_group_with_trust_on_confers_admin(self):
         with (
@@ -151,7 +248,7 @@ class TestAdminElevation:
             _cfg(cfg, OIDC_TRUST_BEARER_GROUP_CLAIMS=True)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
-            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=True)
+            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=True, written_by="oidc:default")
 
 
 class TestConfigurableDisplayName:
@@ -170,7 +267,7 @@ class TestConfigurableDisplayName:
             _cfg(cfg)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice", "full_name": "Alice Anderson"})
-            create_user.assert_called_once_with(username="a@x.com", display_name="Alice Anderson", is_admin=False)
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice Anderson", is_admin=False, written_by="oidc:default")
 
     def test_provisioning_falls_back_to_username_when_configured_field_missing(self, monkeypatch):
         """A present-but-unconfigured field (e.g. 'name') must not be used as a fallback source."""
@@ -186,7 +283,7 @@ class TestConfigurableDisplayName:
             store.has_user.return_value = False
             # "name" is present but not the configured field, so it must not be used.
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"], "name": "Alice"})
-            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False)
+            create_user.assert_called_once_with(username="a@x.com", display_name="a@x.com", is_admin=False, written_by="oidc:default")
 
 
 class TestRobustness:
@@ -201,7 +298,7 @@ class TestRobustness:
             _cfg(cfg)
             store.has_user.return_value = False
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": "mlflow-users"})
-            populate_groups.assert_called_once_with(group_names=["mlflow-users"])
+            populate_groups.assert_called_once_with(group_names=["mlflow-users"], written_by="oidc:default")
 
     def test_provisioning_error_is_swallowed(self):
         """A concurrent-insert IntegrityError (or any provisioning failure) must not raise."""
@@ -216,3 +313,30 @@ class TestRobustness:
             store.has_user.return_value = False
             # must not raise
             _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"]})
+
+
+class TestTheProviderMustBeAllowedToConferAdmin:
+    """#318: ``OIDC_TRUST_BEARER_GROUP_CLAIMS`` says the operator trusts group claims; the
+    provider's ``admin_source`` says whether *this* provider's claims may say "administrator"."""
+
+    def test_a_provider_with_no_admin_source_cannot_mint_an_admin(self, monkeypatch):
+        import mlflow_oidc_auth.auth as auth_module
+
+        monkeypatch.setattr(
+            auth_module,
+            "resolve_token_provider",
+            lambda token: SimpleNamespace(id="partner", type="oidc", admin_source="none", audience="mlflow", issuer="https://partner.invalid"),
+        )
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+        ):
+            _cfg(cfg, OIDC_TRUST_BEARER_GROUP_CLAIMS=True)
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
+
+        assert create_user.call_args.kwargs["is_admin"] is False

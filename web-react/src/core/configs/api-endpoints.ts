@@ -1,5 +1,6 @@
 export const STATIC_API_ENDPOINTS = {
   ALL_GROUPS: "/api/2.0/mlflow/permissions/groups",
+  GROUPS_DETAILS: "/api/2.0/mlflow/permissions/groups/details",
   ALL_EXPERIMENTS: "/api/2.0/mlflow/permissions/experiments",
   ALL_MODELS: "/api/2.0/mlflow/permissions/registered-models",
   ALL_PROMPTS: "/api/2.0/mlflow/permissions/prompts",
@@ -13,9 +14,11 @@ export const STATIC_API_ENDPOINTS = {
   ALL_WORKSPACES: "/api/3.0/mlflow/workspaces",
 
   // User management
-  CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
   USERS_RESOURCE: "/api/2.0/mlflow/users",
+  USERS_DETAILS: "/api/2.0/mlflow/users/details",
+  // The signed-in user's own API tokens
+  CURRENT_USER_TOKENS: "/api/2.0/mlflow/users/current/tokens",
 
   // Trash management
   TRASH_EXPERIMENTS: "/oidc/trash/experiments",
@@ -24,12 +27,31 @@ export const STATIC_API_ENDPOINTS = {
 
   // Webhook management
   WEBHOOKS_RESOURCE: "/oidc/webhook",
+
+  // SCIM token management
+  SCIM_TOKENS_RESOURCE: "/api/2.0/mlflow/scim/tokens",
+  // SCIM provisioning status and activity log
+  SCIM_STATUS: "/api/2.0/mlflow/scim/status",
+  SCIM_ACTIVITY: "/api/2.0/mlflow/scim/activity",
 } as const;
 
 export const DYNAMIC_API_ENDPOINTS = {
   // User permissions for resources
   GET_USER_DETAILS: (userName: string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}`,
+  USER_ACTIVE: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/active`,
+  USER_SESSIONS: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions`,
+  USER_SESSION: (userName: string, sessionPk: number | string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions/${encodeURIComponent(String(sessionPk))}`,
+  CURRENT_USER_TOKEN: (tokenId: number | string) =>
+    `/api/2.0/mlflow/users/current/tokens/${encodeURIComponent(String(tokenId))}`,
+  // Admin: another user's (or service account's) API tokens
+  USER_TOKENS: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/tokens`,
+  USER_TOKEN: (userName: string, tokenId: number | string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/tokens/${encodeURIComponent(String(tokenId))}`,
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiments`,
   USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>
@@ -224,6 +246,12 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/oidc/webhook/${encodeURIComponent(webhookId)}`,
   TEST_WEBHOOK: (webhookId: string) =>
     `/oidc/webhook/${encodeURIComponent(webhookId)}/test`,
+
+  // SCIM token management
+  SCIM_TOKEN_DETAIL: (tokenId: number | string) =>
+    `/api/2.0/mlflow/scim/tokens/${encodeURIComponent(String(tokenId))}`,
+  SCIM_TOKEN_ROTATE: (tokenId: number | string) =>
+    `/api/2.0/mlflow/scim/tokens/${encodeURIComponent(String(tokenId))}/rotate`,
 } as const;
 
 export type StaticEndpointKey = keyof typeof STATIC_API_ENDPOINTS;

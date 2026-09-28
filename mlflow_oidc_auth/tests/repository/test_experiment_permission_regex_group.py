@@ -117,8 +117,6 @@ def test_revoke_not_found(repo, session):
 
 def test_list_permissions_for_user_groups(repo, session):
     user = MagicMock()
-    group1 = MagicMock(id=1)
-    group2 = MagicMock(id=2)
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
     session.query().filter().order_by().all.return_value = [perm]
@@ -126,10 +124,6 @@ def test_list_permissions_for_user_groups(repo, session):
         patch(
             "mlflow_oidc_auth.repository._base.get_user",
             return_value=user,
-        ),
-        patch(
-            "mlflow_oidc_auth.repository._base.list_user_groups",
-            return_value=[group1, group2],
         ),
     ):
         result = repo.list_permissions_for_user_groups("user")

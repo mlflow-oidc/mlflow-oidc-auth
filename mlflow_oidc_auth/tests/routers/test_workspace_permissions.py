@@ -5,7 +5,7 @@ including cache invalidation behavior (user CUD invalidates, group CUD does not)
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from mlflow_oidc_auth.routers.workspace_permissions import (
     workspace_permissions_router,

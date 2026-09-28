@@ -9,7 +9,7 @@ import json
 import logging
 from unittest.mock import MagicMock, patch
 
-import mlflow_oidc_auth.audit as audit_module
+from mlflow_oidc_auth import audit as audit_module
 from mlflow_oidc_auth.audit import (
     _get_audit_logger,
     _is_enabled,
@@ -48,7 +48,6 @@ class TestEmitAuditEvent:
 
             mock_logger.log.assert_called_once()
             call_args = mock_logger.log.call_args
-            level = call_args[0][0]
             message = call_args[0][1]
 
             record = json.loads(message)
