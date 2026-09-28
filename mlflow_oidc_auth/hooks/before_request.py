@@ -1090,7 +1090,7 @@ def before_request_hook():
         if request.method == "OPTIONS":
             # Flask answers OPTIONS itself (provide_automatic_options); it never reaches
             # an artifact handler and carries no data, so it must not be gated.
-            return
+            return None
         validator = _get_proxy_artifact_validator(request.method, request.view_args, request.path)
         if validator is None:
             # An artifact route we do not recognise must not be served unchecked — that
