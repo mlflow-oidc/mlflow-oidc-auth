@@ -132,6 +132,23 @@ line-length = 160
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["mlflow_oidc_auth/tests"]
+# A deprecation (or an un-awaited coroutine) raised from this package fails the suite, so new
+# ones are fixed when introduced instead of piling up in the warnings summary (#407). Known
+# third-party warnings we cannot fix here are ignored by message; drop each filter once a
+# release within our supported range fixes it.
+filterwarnings = [
+  "error::DeprecationWarning:mlflow_oidc_auth",
+  "error::PendingDeprecationWarning:mlflow_oidc_auth",
+  "error::RuntimeWarning:mlflow_oidc_auth",
+  # python3-saml 1.16.0: datetime.utcnow()/utcfromtimestamp(); fixed upstream in
+  # SAML-Toolkits/python3-saml#420, not yet released.
+  "ignore:datetime.datetime.utcnow\\(\\) is deprecated:DeprecationWarning:onelogin",
+  "ignore:datetime.datetime.utcfromtimestamp\\(\\) is deprecated:DeprecationWarning:onelogin",
+  # MLflow's own tracking store uses the deprecated noload loader strategy.
+  "ignore:The ``noload`` loader strategy is deprecated:DeprecationWarning",
+  # MLflow's fastapi_app imports starlette.middleware.wsgi (mlflow/mlflow#24074).
+  "ignore:starlette.middleware.wsgi is deprecated:UserWarning:mlflow",
+]
 markers = [
   "integration: end-to-end tests that require a running server",
   "e2e: identity end-to-end tests against a real Keycloak and a real app server (tox -e e2e)",
