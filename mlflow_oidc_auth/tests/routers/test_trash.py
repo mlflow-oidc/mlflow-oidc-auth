@@ -2,6 +2,7 @@
 Tests for the trash router.
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -468,6 +469,9 @@ class TestAdditionalTrashBehaviour:
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
         backend_store._hard_delete_experiment = MagicMock()
+        # No runs remain anywhere: the "get runs from target experiments" fetch and the
+        # pre-hard-delete "does this experiment still own a run" check both see this.
+        backend_store.search_runs.return_value = []
 
         # Setup run to be deleted
         run = MagicMock()
@@ -640,8 +644,15 @@ class TestAdditionalTrashBehaviour:
         run.info.start_time = 1
         run.info.end_time = 2
 
+        def search_runs(experiment_ids, filter_string, run_view_type, max_results=None, page_token=None):
+            # The pre-hard-delete "does this experiment still own a run" check queries with
+            # ViewType.ALL after r1 has already been hard-deleted, so none remain by then.
+            if run_view_type == ViewType.ALL:
+                return Page([], token=None)
+            return Page([run], token=None)
+
         backend_store.search_experiments.return_value = Page([exp], token=None)
-        backend_store.search_runs.return_value = Page([run], token=None)
+        backend_store.search_runs.side_effect = search_runs
         backend_store._get_deleted_runs.return_value = ["r1"]
         backend_store.get_run.return_value = run
 
@@ -838,7 +849,11 @@ class TestAdditionalTrashBehaviour:
             return Page([exp2], token=None)
 
         # make search_runs return page per experiments group
-        def search_runs(experiment_ids, filter_string, run_view_type, page_token=None):
+        def search_runs(experiment_ids, filter_string, run_view_type, max_results=None, page_token=None):
+            # The pre-hard-delete "does this experiment still own a run" check queries with
+            # ViewType.ALL after the run has already been hard-deleted, so none remain by then.
+            if run_view_type == ViewType.ALL:
+                return Page([], token=None)
             if experiment_ids == ["e1"]:
                 return Page([run1], token=None)
             if experiment_ids == ["e2"]:
@@ -937,7 +952,10 @@ class TestAdditionalTrashBehaviour:
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_cleanup_artifact_delete_exception_is_handled(self, mock_get_store, mock_get_artifact_repo):
+    async def test_cleanup_artifact_delete_exception_keeps_run(self, mock_get_store, mock_get_artifact_repo):
+        """A real artifact-deletion failure must fail safe: the run's metadata is kept (not
+        hard-deleted) and the failure is reported, so artifacts that may still exist are not
+        orphaned by removing the only record that points at them (#239)."""
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
         backend_store._hard_delete_experiment = MagicMock()
@@ -966,7 +984,9 @@ class TestAdditionalTrashBehaviour:
         import json
 
         payload = json.loads(result.body)
-        assert payload["deleted_runs"] == ["r1"]
+        assert payload["deleted_runs"] == []
+        assert any(f["run_id"] == "r1" and "boom-artifact" in f["error"] for f in payload.get("failed_runs", []))
+        backend_store._hard_delete_run.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
@@ -1001,6 +1021,93 @@ class TestAdditionalTrashBehaviour:
 
         payload = json.loads(result.body)
         assert any(f["run_id"] == "r1" and "boom-delete" in f["error"] for f in payload.get("failed_runs", []))
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_resolves_proxied_mlflow_artifacts_uri(self, mock_get_store, mock_get_artifact_repo, monkeypatch):
+        """A run's proxied `mlflow-artifacts:` artifact URI must resolve against this server's
+        `--artifacts-destination` root, not the process-global tracking URI (which on a server
+        is the backend-store DB URI) (#239)."""
+        import posixpath
+
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        monkeypatch.setenv(ARTIFACTS_DESTINATION_ENV_VAR, "s3://bucket/dest")
+
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["r1"]
+
+        run = MagicMock()
+        run.info.run_id = "r1"
+        run.info.lifecycle_stage = "deleted"
+        run.info.artifact_uri = "mlflow-artifacts:/exp-1/r1/artifacts"
+        run.info.experiment_id = "e1"
+
+        backend_store.get_run.return_value = run
+        mock_get_store.return_value = backend_store
+
+        mock_repo = MagicMock()
+        mock_get_artifact_repo.return_value = mock_repo
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids=None,
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == ["r1"]
+
+        expected_uri = posixpath.join("s3://bucket/dest", "exp-1/r1/artifacts")
+        mock_get_artifact_repo.assert_called_once_with(expected_uri)
+        mock_repo.delete_artifacts.assert_called_once()
+        backend_store._hard_delete_run.assert_called_once_with("r1")
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_proxied_uri_without_artifacts_destination_keeps_run(self, mock_get_store, mock_get_artifact_repo, monkeypatch):
+        """When this server has no `--artifacts-destination` configured, a proxied
+        `mlflow-artifacts:` URI cannot be resolved to a real storage location. Fail safe: keep
+        the run and report the failure instead of hard-deleting metadata for artifacts that may
+        still exist (#239)."""
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        monkeypatch.delenv(ARTIFACTS_DESTINATION_ENV_VAR, raising=False)
+
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["r1"]
+
+        run = MagicMock()
+        run.info.run_id = "r1"
+        run.info.lifecycle_stage = "deleted"
+        run.info.artifact_uri = "mlflow-artifacts:/exp-1/r1/artifacts"
+        run.info.experiment_id = "e1"
+
+        backend_store.get_run.return_value = run
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids=None,
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == []
+        assert any(f["run_id"] == "r1" for f in payload.get("failed_runs", []))
+        mock_get_artifact_repo.assert_not_called()
+        backend_store._hard_delete_run.assert_not_called()
 
     def test_parse_time_delta_more_cases(self):
         from mlflow.exceptions import MlflowException
@@ -1117,3 +1224,367 @@ class TestAdditionalTrashBehaviour:
         # _split_csv
         assert _split_csv(None) == []
         assert _split_csv("a, b, ,c") == ["a", "b", "c"]
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_keeps_experiment_when_its_run_was_kept(self, mock_get_store, mock_get_artifact_repo):
+        """An experiment must not be hard-deleted while one of its runs was kept because its
+        artifact deletion failed - MLflow's SqlRun/SqlExperiment relationship cascades on
+        delete, so hard-deleting the experiment would delete the kept run's metadata too
+        (#239, review round 1). The pre-hard-delete existence check (round 2) sees the kept
+        run via the default MagicMock `search_runs` (truthy), so it does not need to be
+        configured explicitly here."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["r1"]
+
+        run = MagicMock()
+        run.info.run_id = "r1"
+        run.info.lifecycle_stage = "deleted"
+        run.info.artifact_uri = "some://"
+        run.info.experiment_id = "exp-1"
+
+        exp = MagicMock()
+        exp.experiment_id = "exp-1"
+        exp.lifecycle_stage = "deleted"
+        exp.last_update_time = 0
+
+        backend_store.get_run.return_value = run
+        backend_store.get_experiment.return_value = exp
+        mock_get_store.return_value = backend_store
+
+        mock_repo = MagicMock()
+        mock_repo.delete_artifacts.side_effect = Exception("boom-artifact")
+        mock_get_artifact_repo.return_value = mock_repo
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids="exp-1",
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == []
+        assert payload["deleted_experiments"] == []
+        assert any(f["run_id"] == "r1" for f in payload.get("failed_runs", []))
+
+        failed_exp = next((f for f in payload.get("failed_experiments", []) if f["experiment_id"] == "exp-1"), None)
+        assert failed_exp is not None
+        assert "remain" in failed_exp["error"].lower()
+        backend_store._hard_delete_experiment.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_deletes_experiment_when_its_kept_run_is_in_a_different_experiment(self, mock_get_store, mock_get_artifact_repo):
+        """Only the experiment that actually owns a kept run is skipped - an unrelated
+        experiment targeted in the same request still gets hard-deleted normally."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["r1"]
+        # exp-unrelated owns no runs at all, so the pre-hard-delete existence check must see
+        # none remaining for it (the kept run r1 belongs to exp-owner, never queried here).
+        backend_store.search_runs.return_value = []
+
+        run = MagicMock()
+        run.info.run_id = "r1"
+        run.info.lifecycle_stage = "deleted"
+        run.info.artifact_uri = "some://"
+        run.info.experiment_id = "exp-owner"
+
+        exp_unrelated = MagicMock()
+        exp_unrelated.experiment_id = "exp-unrelated"
+        exp_unrelated.lifecycle_stage = "deleted"
+        exp_unrelated.last_update_time = 0
+
+        backend_store.get_run.return_value = run
+        backend_store.get_experiment.return_value = exp_unrelated
+        mock_get_store.return_value = backend_store
+
+        mock_repo = MagicMock()
+        mock_repo.delete_artifacts.side_effect = Exception("boom-artifact")
+        mock_get_artifact_repo.return_value = mock_repo
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids="exp-unrelated",
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_experiments"] == ["exp-unrelated"]
+        backend_store._hard_delete_experiment.assert_called_once_with("exp-unrelated")
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_keeps_experiment_when_a_run_is_kept_for_age_not_artifact_failure(self, mock_get_store, mock_get_artifact_repo):
+        """The pre-hard-delete existence check must catch every reason a run can be kept, not
+        just an artifact-deletion failure. Here the experiment (and one of its two runs) is old
+        enough to delete, but the other run is not - deleting the experiment must not
+        cascade-delete that too-recent run's metadata (#239, review round 2)."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        # Only the old run qualifies under --older-than.
+        backend_store._get_deleted_runs.return_value = ["r-old"]
+
+        run_old = MagicMock()
+        run_old.info.run_id = "r-old"
+        run_old.info.lifecycle_stage = "deleted"
+        run_old.info.artifact_uri = "s3://bucket/e/r-old/artifacts"
+        run_old.info.experiment_id = "exp-1"
+
+        run_new = MagicMock()
+        run_new.info.run_id = "r-new"
+        run_new.info.lifecycle_stage = "deleted"
+        run_new.info.artifact_uri = "s3://bucket/e/r-new/artifacts"
+        run_new.info.experiment_id = "exp-1"
+
+        def get_run(run_id):
+            return {"r-old": run_old, "r-new": run_new}[run_id]
+
+        backend_store.get_run.side_effect = get_run
+
+        exp = MagicMock()
+        exp.experiment_id = "exp-1"
+        exp.lifecycle_stage = "deleted"
+        exp.last_update_time = 0
+        backend_store.get_experiment.return_value = exp
+
+        # "Get runs from target experiments" surfaces both runs of exp-1 (DELETED_ONLY); the
+        # pre-hard-delete existence check (ViewType.ALL) still finds r-new, which was kept.
+        from mlflow.store.entities import PagedList
+
+        def search_runs(experiment_ids, filter_string, run_view_type, max_results=None, page_token=None):
+            if run_view_type == ViewType.ALL:
+                return PagedList([run_new], token=None)
+            return PagedList([run_old, run_new], token=None)
+
+        backend_store.search_runs.side_effect = search_runs
+
+        mock_repo = MagicMock()
+        mock_get_artifact_repo.return_value = mock_repo
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            # Mirrors the reported reproduction: the caller names the old run explicitly, but
+            # naming experiment_ids also pulls in every other run of that experiment (r-new)
+            # via the "get runs from target experiments" step below.
+            run_ids="r-old",
+            experiment_ids="exp-1",
+            older_than="1d",
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == ["r-old"]
+        assert payload["deleted_experiments"] == []
+        assert any(f["run_id"] == "r-new" and "not older than" in f["error"] for f in payload.get("failed_runs", []))
+
+        failed_exp = next((f for f in payload.get("failed_experiments", []) if f["experiment_id"] == "exp-1"), None)
+        assert failed_exp is not None
+        assert "remain" in failed_exp["error"].lower()
+        backend_store._hard_delete_experiment.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_keeps_experiment_when_existence_check_fails(self, mock_get_store, mock_get_artifact_repo):
+        """If the pre-hard-delete existence check itself cannot be answered, fail safe: skip the
+        experiment rather than risk cascading a hard delete onto a run that was never checked
+        (#239, review round 2)."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = []
+
+        exp = MagicMock()
+        exp.experiment_id = "exp-1"
+        exp.lifecycle_stage = "deleted"
+        exp.last_update_time = 0
+        backend_store.get_experiment.return_value = exp
+
+        backend_store.search_runs.side_effect = Exception("db unavailable")
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids=None,
+            experiment_ids="exp-1",
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_experiments"] == []
+        failed_exp = next((f for f in payload.get("failed_experiments", []) if f["experiment_id"] == "exp-1"), None)
+        assert failed_exp is not None
+        assert "db unavailable" in failed_exp["error"]
+        backend_store._hard_delete_experiment.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_with_only_run_ids_does_not_sweep_other_experiments(self, mock_get_store, mock_get_artifact_repo):
+        """When the request gives run_ids but no experiment_ids (the UI's "delete selected
+        runs"), only those runs are touched - no other trashed experiment (or its runs) may be
+        hard-deleted as a side effect (#239, review round 2)."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+
+        run_a = MagicMock()
+        run_a.info.run_id = "ra"
+        run_a.info.lifecycle_stage = "deleted"
+        run_a.info.artifact_uri = "s3://bucket/ea/ra/artifacts"
+        run_a.info.experiment_id = "ea"
+        backend_store.get_run.return_value = run_a
+
+        mock_repo = MagicMock()
+        mock_get_artifact_repo.return_value = mock_repo
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="ra",
+            experiment_ids=None,
+            older_than=None,
+        )
+        assert result.status_code == 200
+        import json
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == ["ra"]
+        assert payload["deleted_experiments"] == []
+        # Only the selected run's own experiment lookups happen - search_experiments (used only
+        # to sweep "all deleted experiments") is never called.
+        backend_store.search_experiments.assert_not_called()
+        backend_store._hard_delete_experiment.assert_not_called()
+
+
+class TestResolveRunArtifactRepository:
+    """Unit coverage for _resolve_run_artifact_repository (#239)."""
+
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    def test_non_proxied_uri_passes_through_unchanged(self, mock_get_artifact_repo):
+        from mlflow_oidc_auth.routers.trash import _resolve_run_artifact_repository
+
+        mock_get_artifact_repo.return_value = "repo"
+        result = _resolve_run_artifact_repository("s3://bucket/exp/run/artifacts")
+
+        mock_get_artifact_repo.assert_called_once_with("s3://bucket/exp/run/artifacts")
+        assert result == "repo"
+
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    def test_proxied_uri_resolves_against_artifacts_destination(self, mock_get_artifact_repo, monkeypatch):
+        import posixpath
+
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        from mlflow_oidc_auth.routers.trash import _resolve_run_artifact_repository
+
+        monkeypatch.setenv(ARTIFACTS_DESTINATION_ENV_VAR, "s3://bucket/dest")
+        mock_get_artifact_repo.return_value = "repo"
+
+        result = _resolve_run_artifact_repository("mlflow-artifacts:/exp-1/run-1/artifacts")
+
+        mock_get_artifact_repo.assert_called_once_with(posixpath.join("s3://bucket/dest", "exp-1/run-1/artifacts"))
+        assert result == "repo"
+
+    def test_proxied_uri_without_destination_raises(self, monkeypatch):
+        from mlflow.exceptions import MlflowException
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        from mlflow_oidc_auth.routers.trash import _resolve_run_artifact_repository
+
+        monkeypatch.delenv(ARTIFACTS_DESTINATION_ENV_VAR, raising=False)
+
+        with pytest.raises(MlflowException):
+            _resolve_run_artifact_repository("mlflow-artifacts:/exp-1/run-1/artifacts")
+
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    def test_proxied_uri_with_no_path_raises_instead_of_resolving_to_destination_root(self, mock_get_artifact_repo, monkeypatch):
+        """A `mlflow-artifacts:` URI with no path of its own (e.g. "mlflow-artifacts:/") must
+        not silently resolve to the whole --artifacts-destination root - that would treat every
+        other run's artifacts under it as this run's own and delete them all (#239, review
+        round 2)."""
+        from mlflow.exceptions import MlflowException
+        from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR
+
+        from mlflow_oidc_auth.routers.trash import _resolve_run_artifact_repository
+
+        monkeypatch.setenv(ARTIFACTS_DESTINATION_ENV_VAR, "s3://bucket/dest")
+
+        for empty_path_uri in ("mlflow-artifacts:/", "mlflow-artifacts://host", "mlflow-artifacts:///"):
+            with pytest.raises(MlflowException):
+                _resolve_run_artifact_repository(empty_path_uri)
+
+        mock_get_artifact_repo.assert_not_called()
+
+
+class TestCleanupRunAgeWithinTargetedExperiment:
+    """``older_than`` still applies to every run of an experiment being emptied."""
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_recently_deleted_run_in_old_experiment_is_kept(self, mock_get_store, mock_get_artifact_repo):
+        backend_store = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["old-run"]
+
+        experiment = MagicMock()
+        experiment.experiment_id = "e1"
+        experiment.lifecycle_stage = "deleted"
+        experiment.last_update_time = 0
+        backend_store.get_experiment.return_value = experiment
+
+        def make_run(run_id):
+            run = MagicMock()
+            run.info.run_id = run_id
+            run.info.lifecycle_stage = "deleted"
+            run.info.artifact_uri = f"s3://bucket/e1/{run_id}/artifacts"
+            run.info.experiment_id = "e1"
+            return run
+
+        runs = {run_id: make_run(run_id) for run_id in ("old-run", "new-run")}
+        backend_store.get_run.side_effect = lambda run_id: runs[run_id]
+
+        class Page(list):
+            token = None
+
+        def search_runs(**kwargs):
+            if kwargs.get("run_view_type") == ViewType.ALL:
+                return Page([runs["new-run"]])
+            return Page(list(runs.values()))
+
+        backend_store.search_runs.side_effect = search_runs
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            older_than="1d",
+            run_ids=None,
+            experiment_ids="e1",
+        )
+
+        assert result.status_code == 200
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == ["old-run"]
+        assert [f["run_id"] for f in payload["failed_runs"]] == ["new-run"]
+        assert "not older than" in payload["failed_runs"][0]["error"]
+        assert [f["experiment_id"] for f in payload["failed_experiments"]] == ["e1"]
+        backend_store._hard_delete_run.assert_called_once_with("old-run")
+        backend_store._hard_delete_experiment.assert_not_called()

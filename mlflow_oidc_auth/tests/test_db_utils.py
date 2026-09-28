@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from alembic.config import Config
 
+import mlflow_oidc_auth
 from mlflow_oidc_auth.db.utils import (
     migrate,
     migrate_if_needed,
@@ -225,10 +226,18 @@ class TestMigrate:
 
 class TestModifiedVersionTable:
     @patch.dict(os.environ, {"OIDC_ALEMBIC_VERSION_TABLE": "alembic_modified_version"})
-    def test_different_alembic_version_table(self):
-        # Force reload of the config module
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+    def test_different_alembic_version_table(self, monkeypatch):
+        # Force reload of the config module. `monkeypatch.delitem` restores the original
+        # module object to `sys.modules` on teardown, so this test does not leave a second
+        # `mlflow_oidc_auth.config` instance behind for later tests to pick up (#353).
+        #
+        # That alone is not enough: the import system also does
+        # `setattr(mlflow_oidc_auth, "config", <new module>)` on the parent package when the
+        # deleted submodule gets reimported, and `monkeypatch.delitem` does not know about
+        # that attribute. Pin it back explicitly so `mlflow_oidc_auth.config` (the attribute,
+        # not just the `sys.modules` entry) also ends the test pointing at the original.
+        monkeypatch.setattr(mlflow_oidc_auth, "config", mlflow_oidc_auth.config)
+        monkeypatch.delitem(sys.modules, "mlflow_oidc_auth.config", raising=False)
 
         # Create temporary file
         _, db_file = mkstemp()
@@ -256,10 +265,18 @@ class TestModifiedVersionTable:
 
 
 class TestDefaultVersionTable:
-    def test_default_alembic_table(self):
-        # Force reload of the config module
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+    def test_default_alembic_table(self, monkeypatch):
+        # Force reload of the config module. `monkeypatch.delitem` restores the original
+        # module object to `sys.modules` on teardown, so this test does not leave a second
+        # `mlflow_oidc_auth.config` instance behind for later tests to pick up (#353).
+        #
+        # That alone is not enough: the import system also does
+        # `setattr(mlflow_oidc_auth, "config", <new module>)` on the parent package when the
+        # deleted submodule gets reimported, and `monkeypatch.delitem` does not know about
+        # that attribute. Pin it back explicitly so `mlflow_oidc_auth.config` (the attribute,
+        # not just the `sys.modules` entry) also ends the test pointing at the original.
+        monkeypatch.setattr(mlflow_oidc_auth, "config", mlflow_oidc_auth.config)
+        monkeypatch.delitem(sys.modules, "mlflow_oidc_auth.config", raising=False)
 
         # Create temporary file
         _, db_file = mkstemp()

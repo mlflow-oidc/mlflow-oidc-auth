@@ -103,6 +103,21 @@ export type DeletedRun = {
   lifecycle_stage: string;
 };
 
+export type CleanupFailure = {
+  run_id?: string;
+  experiment_id?: string;
+  error: string;
+};
+
+export type CleanupTrashResponse = {
+  deleted_runs: string[];
+  deleted_experiments: string[];
+  total_deleted_runs: number;
+  total_deleted_experiments: number;
+  failed_runs?: CleanupFailure[];
+  failed_experiments?: CleanupFailure[];
+};
+
 export type WebhookStatus = "ACTIVE" | "DISABLED";
 
 export type Webhook = {

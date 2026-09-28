@@ -4,7 +4,11 @@ import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
 } from "../configs/api-endpoints";
-import type { DeletedExperiment, DeletedRun } from "../../shared/types/entity";
+import type {
+  CleanupTrashResponse,
+  DeletedExperiment,
+  DeletedRun,
+} from "../../shared/types/entity";
 
 export const fetchDeletedExperiments = createStaticApiFetcher<{
   deleted_experiments: DeletedExperiment[];
@@ -29,7 +33,7 @@ export const cleanupTrash = async (params: {
   run_ids?: string;
   experiment_ids?: string;
 }) => {
-  return request(STATIC_API_ENDPOINTS.TRASH_CLEANUP, {
+  return request<CleanupTrashResponse>(STATIC_API_ENDPOINTS.TRASH_CLEANUP, {
     queryParams: params,
     method: "POST",
   });

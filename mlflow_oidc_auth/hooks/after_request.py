@@ -8,6 +8,7 @@ from mlflow.protos.model_registry_pb2 import (
     SearchRegisteredModels,
 )
 from mlflow.protos.mlflow_artifacts_pb2 import ListArtifacts as ListArtifactsMlflowArtifacts
+from mlflow.protos.review_queues_pb2 import ListReviewQueues
 from mlflow.protos.service_pb2 import (
     CreateExperiment,
     CreateGatewayEndpoint,
@@ -55,6 +56,7 @@ from mlflow_oidc_auth.utils import (
     can_read_experiment,
     can_read_registered_model,
     effective_scorer_permission,
+    get_experiment_ids,
     get_model_name,
 )
 from mlflow_oidc_auth.utils.permissions import (
@@ -62,7 +64,9 @@ from mlflow_oidc_auth.utils.permissions import (
     can_read_gateway_model_definition,
     can_read_gateway_secret,
 )
+from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
 from mlflow_oidc_auth.validators.experiment import get_active_artifact_experiments, is_artifact_root_listing
+from mlflow_oidc_auth.validators.review import is_review_queue_member
 from mlflow_oidc_auth.utils.workspace_cache import (
     flush_workspace_cache,
     get_workspace_permission_cached,
@@ -933,6 +937,32 @@ def _redact_gateway_secrets_config(resp: Response) -> None:
     resp.set_data(json.dumps({"secrets_available": data.get("secrets_available") is True}))
 
 
+def _filter_list_review_queues(resp: Response) -> None:
+    """Narrow a ``ListReviewQueues`` response to the queues the caller may see.
+
+    Admins and callers with EDIT (or MANAGE) on the experiment see every queue; opening
+    one is gated separately in before_request. Anyone else, who holds READ, sees only the
+    queues they are assigned to. Matches MLflow's own auth plugin.
+
+    Parameters:
+        resp: The response from MLflow's ``ListReviewQueues`` handler.
+    """
+    if get_fastapi_admin_status():
+        return
+
+    username = get_fastapi_username()
+    # before_request already required READ on every experiment the request names.
+    if permission_on_all_experiments(get_experiment_ids(), username).can_update:
+        return
+
+    response_message = ListReviewQueues.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    visible = [queue for queue in response_message.review_queues if is_review_queue_member(queue, username)]
+    response_message.ClearField("review_queues")
+    response_message.review_queues.extend(visible)
+    resp.data = message_to_json(response_message)
+
+
 GATEWAY_SECRETS_CONFIG_PATH = _get_ajax_path("/mlflow/gateway/secrets/config", version=3)
 
 
@@ -961,6 +991,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     ListWorkspaces: _filter_list_workspaces,
     SearchEvaluationDatasets: _filter_search_evaluation_datasets,
     ListArtifactsMlflowArtifacts: _filter_list_artifact_root,
+    ListReviewQueues: _filter_list_review_queues,
     CreateWorkspace: _auto_grant_workspace_manage_permission,
     DeleteWorkspace: _cascade_delete_workspace_permissions,
 }

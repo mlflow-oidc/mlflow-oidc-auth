@@ -11,6 +11,7 @@ from mlflow_oidc_auth.validators.experiment import (
     validate_can_read_experiments_from_experiment_ids,
     validate_can_update_experiment_from_experiment_id,
 )
+from mlflow_oidc_auth.validators.model_version import validate_can_create_model_version
 from mlflow_oidc_auth.validators.registered_model import (
     validate_can_create_registered_model,
     validate_can_delete_logged_model,
@@ -25,6 +26,8 @@ from mlflow_oidc_auth.validators.registered_model import (
 )
 from mlflow_oidc_auth.validators.run import (
     validate_can_delete_run,
+    validate_can_log_metrics,
+    validate_can_update_run_or_logged_model,
     validate_can_read_run,
     validate_can_update_run,
     validate_can_read_metric_history_bulk_interval,
@@ -66,6 +69,9 @@ from mlflow_oidc_auth.validators.stuff import (
 from mlflow_oidc_auth.validators.gateway import (
     validate_can_read_gateway_endpoint,
     validate_can_update_gateway_endpoint,
+    validate_can_create_gateway_endpoint,
+    validate_can_update_gateway_endpoint_config,
+    validate_can_attach_model_to_gateway_endpoint,
     validate_can_delete_gateway_endpoint,
     validate_can_manage_gateway_endpoint_validator,
     validate_can_read_gateway_secret,
@@ -73,6 +79,7 @@ from mlflow_oidc_auth.validators.gateway import (
     validate_can_delete_gateway_secret,
     validate_can_read_gateway_model_definition,
     validate_can_update_gateway_model_definition,
+    validate_can_create_gateway_model_definition,
     validate_can_delete_gateway_model_definition,
 )
 
@@ -111,13 +118,15 @@ from mlflow_oidc_auth.validators.issue import (
 
 from mlflow_oidc_auth.validators.review import (
     validate_can_read_label_schema,
-    validate_can_update_label_schema,
-    validate_can_delete_label_schema,
+    validate_can_manage_label_schema,
+    validate_can_create_review_queue,
     validate_can_get_or_create_user_queue,
-    validate_can_read_review_queue,
+    validate_can_view_review_queue,
+    validate_can_view_review_queue_by_name,
     validate_can_update_review_queue,
     validate_can_delete_review_queue,
-    validate_can_update_review_queue_items,
+    validate_can_add_items_to_review_queue,
+    validate_can_remove_items_from_review_queue,
     validate_can_set_review_queue_item_status,
 )
 
@@ -142,6 +151,9 @@ __all__ = [
     "validate_can_update_registered_model",
     "validate_can_manage_registered_model",
     "validate_can_create_registered_model",
+    "validate_can_create_model_version",
+    "validate_can_log_metrics",
+    "validate_can_update_run_or_logged_model",
     "validate_can_delete_registered_model",
     "validate_can_delete_logged_model",
     "validate_can_read_logged_model",
@@ -176,6 +188,9 @@ __all__ = [
     "validate_can_invoke_scorer",
     "validate_can_read_gateway_endpoint",
     "validate_can_update_gateway_endpoint",
+    "validate_can_create_gateway_endpoint",
+    "validate_can_update_gateway_endpoint_config",
+    "validate_can_attach_model_to_gateway_endpoint",
     "validate_can_delete_gateway_endpoint",
     "validate_can_manage_gateway_endpoint_validator",
     "validate_can_read_gateway_secret",
@@ -183,6 +198,7 @@ __all__ = [
     "validate_can_delete_gateway_secret",
     "validate_can_read_gateway_model_definition",
     "validate_can_update_gateway_model_definition",
+    "validate_can_create_gateway_model_definition",
     "validate_can_delete_gateway_model_definition",
     "validate_can_create_workspace",
     "validate_can_read_workspace",
@@ -206,13 +222,15 @@ __all__ = [
     "validate_can_invoke_issue_detection",
     "validate_can_invoke_genai_evaluate",
     "validate_can_read_label_schema",
-    "validate_can_update_label_schema",
-    "validate_can_delete_label_schema",
+    "validate_can_manage_label_schema",
+    "validate_can_create_review_queue",
     "validate_can_get_or_create_user_queue",
-    "validate_can_read_review_queue",
+    "validate_can_view_review_queue",
+    "validate_can_view_review_queue_by_name",
     "validate_can_update_review_queue",
     "validate_can_delete_review_queue",
-    "validate_can_update_review_queue_items",
+    "validate_can_add_items_to_review_queue",
+    "validate_can_remove_items_from_review_queue",
     "validate_can_set_review_queue_item_status",
     "validate_can_read_job",
     "validate_can_cancel_job",

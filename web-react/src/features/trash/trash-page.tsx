@@ -148,12 +148,36 @@ export default function TrashPage() {
     const ids = itemsToDelete.map((item) => item.id);
 
     try {
-      if (activeTab === "experiments") {
-        await cleanupTrash({ experiment_ids: ids.join(",") });
+      const result =
+        activeTab === "experiments"
+          ? await cleanupTrash({ experiment_ids: ids.join(",") })
+          : await cleanupTrash({ run_ids: ids.join(",") });
+
+      // The endpoint returns 200 even when some items could not be permanently deleted
+      // (e.g. their artifacts could not be removed, so the item was kept rather than
+      // risking orphaned artifacts - and, transitively, an experiment that still owns such a
+      // run is kept too and reported in `failed_experiments`) - surface that instead of
+      // reporting full success. The endpoint only ever reports failures for ids in this
+      // request (deleting by run_ids alone no longer sweeps other trashed experiments), but
+      // clamp at zero anyway so a malformed response can never show a negative success count.
+      const failures =
+        activeTab === "experiments"
+          ? result.failed_experiments
+          : result.failed_runs;
+      const failedCount = failures?.length ?? 0;
+      const succeededCount = Math.max(ids.length - failedCount, 0);
+
+      if (failedCount > 0) {
+        const reasons = failures?.map((f) => f.error).join("; ");
+        showToast(
+          succeededCount > 0
+            ? `Deleted ${succeededCount} item(s); ${failedCount} could not be deleted and were kept: ${reasons}`
+            : `Failed to delete ${failedCount} item(s): ${reasons}`,
+          "error",
+        );
       } else {
-        await cleanupTrash({ run_ids: ids.join(",") });
+        showToast(`Successfully deleted ${ids.length} item(s)`, "success");
       }
-      showToast(`Successfully deleted ${ids.length} item(s)`, "success");
       setSelectedIds(new Set());
       setItemsToDelete(null);
       refresh();

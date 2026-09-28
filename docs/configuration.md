@@ -62,7 +62,7 @@ Fields for an entry with `"type": "saml"` (requires the `[saml]` extra). They ar
 |----------|------|---------|-------------|
 | `OIDC_GROUP_NAME` | String | `mlflow` | Comma-separated list of allowed groups. Users must belong to at least one of these groups (or an admin group) to log in. **Note:** leaving this effectively empty logs a startup warning — no user could ever be recognized as a member of an allowed group |
 | `OIDC_ADMIN_GROUP_NAME` | String | `mlflow-admin` | Comma-separated list of admin groups. Members have full admin privileges and bypass all permission checks. **Note:** leaving this effectively empty logs a startup warning — no user could ever be granted admin access via group membership |
-| `OIDC_GROUP_DETECTION_PLUGIN` | String | None | Python module path for a custom group detection plugin. When set, groups are extracted from the access token using this plugin instead of the ID token's groups attribute |
+| `OIDC_GROUP_DETECTION_PLUGIN` | String | None | Python module path for a custom group detection plugin. When set, groups are extracted from the access token using this plugin instead of the ID token's groups attribute. The plugin must expose `get_user_groups(access_token)`. If its signature also declares a `token_response` parameter (or accepts `**kwargs`), it is additionally called with `token_response=` — on interactive login this is the full authlib token response (`id_token`, `access_token`, `userinfo`, etc.); on the bearer-token path it is `{"access_token": <token>, "claims": <validated JWT claims>}`. Detected once per plugin via `inspect.signature` and cached, so a plugin written against the original single-argument signature keeps working unchanged (issue #250) |
 
 ### Permissions
 
@@ -513,6 +513,24 @@ for deployments behind a reverse proxy.
   traffic, and logs the store error. Keep the tracking store reachable from the artifact
   server, or route non-admin artifact traffic through the tracking server.
 
+- **Some requests also need a grant on the resource they reference.** Creating a model version
+  needs READ on the run, logged model, experiment or registered model its `source`, `run_id`
+  and `model_id` point at; logging a metric to a logged model (`LogMetric` / `LogBatch` with
+  `model_id`) and minting a presigned upload URL for a logged model need EDIT on that logged
+  model's experiment; creating or updating a gateway model definition needs USE on its secret;
+  creating or updating a gateway endpoint, or attaching a model to one, needs USE on every model
+  definition it routes to, and EDIT on the experiment named in `experiment_id`. Admins are
+  unaffected. With the default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these
+  grants; on a deny-by-default deployment, grant them before upgrading. See
+  [Resources a request references](permissions#resources-a-request-references).
+- **Model version sources are checked.** A model version whose `source` is a storage location
+  (`s3://`, `gs://`, a local path, a URL other than the artifact proxy) must lie under the
+  artifact root of the `run_id` or `model_id` the request names; with neither id, creating it
+  is admin-only. A prompt version's source must be MLflow's placeholder (`dummy-source` or
+  `prompt-template`, which MLflow's own clients send) unless it follows the same rules. A client
+  that registers models from arbitrary storage locations, or creates prompt versions with
+  another placeholder, must run as an administrator or send the source through a run or
+  logged model. See [Creating a model version](permissions#creating-a-model-version).
 - **Routes without a validator are refused to non-admins.** A request to an MLflow route that
   has no authorization rule now gets `403` for a non-admin user instead of being served. Admins
   are unaffected. See [Routes without a validator](permissions#routes-without-a-validator).
@@ -546,9 +564,41 @@ for deployments behind a reverse proxy.
   authenticated user instead of being refused, and both forms of the request omit scorers the
   caller cannot read: a scorer needs READ on its experiment, and a `NO_PERMISSIONS` grant on the
   scorer itself hides it. Admins are unaffected.
+- **Review queues and label schemas follow MLflow's own authorization rules.** Creating,
+  updating or deleting a label schema needs MANAGE on the experiment (before: EDIT to create or
+  update). Opening a review queue (`get`, `get-by-name`, `items/list`) needs, besides READ,
+  MANAGE, being assigned to the queue, or EDIT and owning it. Updating a queue needs MANAGE, or
+  EDIT and ownership (before: any EDIT user). Removing items needs MANAGE, or EDIT and ownership
+  of a custom queue (before: any EDIT user). Submitting a review (`items/set-status`) needs EDIT
+  and being assigned to the queue, for every non-admin including one with MANAGE. The queue
+  list shows a READ-only user only the queues they are assigned to. A custom queue can no longer
+  be created with, or renamed to, a registered username, by anyone including an administrator.
+  One operation becomes available: the EDIT owner of a custom queue may now delete it (before:
+  MANAGE only). See [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes).
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.
+- **Trash cleanup no longer hard-deletes a run whose artifacts could not be removed.**
+  `POST /oidc/trash/cleanup` used to log a warning and hard-delete the run's metadata anyway when
+  artifact deletion failed, orphaning the artifacts. It also could not resolve a run whose
+  artifact URI used the proxied `mlflow-artifacts:` scheme, which always failed on a server (the
+  process-global tracking URI there is the backend-store URI, not an HTTP endpoint) — that failure
+  is now fixed by resolving such URIs against `--artifacts-destination`, the same way MLflow's own
+  server does. When artifact deletion still fails for some other reason, the run's metadata is now
+  kept and the failure is reported in the response's `failed_runs` list instead of being silently
+  discarded. Before hard-deleting an experiment, cleanup now always confirms it owns no run at
+  all (for any reason a run was kept, not only a failed artifact deletion — hard-deleting the
+  experiment would otherwise cascade-delete that run's metadata through MLflow's own
+  experiment/run relationship); an experiment that still owns a run is kept too and reported in
+  `failed_experiments` instead. A deployment that automates cleanup and only checks the HTTP
+  status code should also check those lists; runs and experiments that fail to clean up stay in
+  the trash instead of disappearing with orphaned artifacts.
+- **Cleanup with only `run_ids` no longer sweeps every other trashed experiment.** Calling
+  `POST /oidc/trash/cleanup?run_ids=...` without `experiment_ids` used to also hard-delete every
+  experiment in the deleted lifecycle stage (and, through it, every run of those experiments too)
+  as a side effect, regardless of `older_than`. It now touches only the named runs. Calls that
+  name `experiment_ids` (with or without `run_ids`), or name neither (the "empty trash" case),
+  are unaffected. See [Trash Management](api-reference#trash-management).
 
 ## MLflow Server Environment Variables
 

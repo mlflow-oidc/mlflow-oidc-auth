@@ -203,11 +203,55 @@ Artifact routes outside the proxy:
 | `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on the run's experiment (`run_uuid` from the query string) |
 | `GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files` | READ on the logged model's experiment |
 | `GET /{api,ajax-api}/2.0/mlflow/logged-models/<model_id>/artifacts/directories` | READ on the logged model's experiment |
-| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the run's experiment |
+| `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the experiment of the run (`run_id`) or logged model (`model_id`); a request naming neither is refused |
 | `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-download-url` | READ on the run's experiment |
 
 Every run or model id the request carries is authorized, in any source (see
 [Which request source is authorized](#which-request-source-is-authorized)).
+
+## Resources a request references
+
+Some requests act on one resource but draw on another. The caller then needs a grant on both,
+as in MLflow's own auth plugin. Admins are not checked. A referenced resource that does not
+exist, or an id that is present but empty, is refused with `403`.
+
+| Request | Target check | Also required |
+|---|---|---|
+| `model-versions/create` | EDIT on the registered model (`name`) | See [Creating a model version](#creating-a-model-version) |
+| `runs/log-metric` | EDIT on the run's experiment | EDIT on the experiment of the logged model in `model_id` |
+| `runs/log-batch` | EDIT on the run's experiment | EDIT on the experiment of every logged model in `metrics[].model_id` |
+| `artifacts/presigned-upload-url` | — | EDIT on the experiment of the run (`run_id`) or logged model (`model_id`) |
+| `gateway/model-definitions/create` | — (open to authenticated users) | USE on the secret in `secret_id` |
+| `gateway/model-definitions/update` | EDIT on the model definition | USE on the secret in `secret_id`, if given |
+| `gateway/endpoints/create` | — (open to authenticated users) | USE on every model definition in `model_configs[].model_definition_id`; EDIT on the experiment in `experiment_id` (where usage traces are logged), if given |
+| `gateway/endpoints/update` | EDIT on the endpoint | USE on every model definition in `model_configs[].model_definition_id`; EDIT on the experiment in `experiment_id`, if given |
+| `gateway/endpoints/models/attach` | EDIT on the endpoint | USE on the model definition in `model_config.model_definition_id` |
+
+Every value is read under both spellings (`model_id` / `modelId`) and from every request
+source, as described in [Which request source is authorized](#which-request-source-is-authorized).
+
+### Creating a model version
+
+Reading a model version's artifacts (`model-versions/get-artifact`, the download URI) needs
+only READ on its registered model. So creating a version needs a grant on everything the
+version points at, not only EDIT on the registered model it is created in. For each `source`
+value:
+
+| `source` | Also required |
+|---|---|
+| `models:/<name>/<version>`, `@<alias>`, `/<stage>`, `/latest` (a copy, as `copy_model_version` makes) | READ on registered model `<name>`. `run_id` is not checked. A `model_id` equal to the source version's own `model_id` needs READ on that logged model's experiment; any other `model_id` needs EDIT on its logged model's experiment, because MLflow tags that logged model with the new version. |
+| `models:/<model_id>` | READ on the logged model's experiment |
+| `runs:/<run_id>/…` | READ on the run's experiment |
+| `mlflow-artifacts:/…`, or `http(s)://…/api/2.0/mlflow-artifacts/artifacts/…` | READ on the experiment the artifact path names (`<experiment_id>/…` or `workspaces/<ws>/<experiment_id>/…`). A path naming no existing experiment is refused. |
+| `dummy-source` or `prompt-template` on a prompt version (MLflow's placeholder sources) | nothing more |
+| anything else (`s3://`, `gs://`, `abfss://`, a local path, another URL) | the location must be the artifact root, or lie beneath it, of a run (`run_id`) or logged model (`model_id`) the request names. With neither id, the request is admin-only. |
+
+Outside the copy case, READ on the experiment of every `run_id` and `model_id` is required as
+well. A source with a `..` segment (after decoding) or one that cannot be parsed is refused.
+MLflow's own clients satisfy these rules: `mlflow.register_model("runs:/…")`,
+`log_model(registered_model_name=…)`, `register_model("models:/<model_id>")` and
+`copy_model_version` all send a source under the run or logged model they also name, or a
+`runs:/`, `models:/` URI.
 
 ## HEAD Requests and Route Coverage
 
@@ -249,15 +293,17 @@ and as the reviewer of an item.
 | | `POST issues`, `PATCH issues/<id>` | EDIT on the experiment, plus READ on `source_run_id` if given; `created_by`, if given, must be the caller |
 | `issues/invoke`, `genai/evaluate/invoke` | start an issue-detection or evaluation job | EDIT on the experiment, READ on the experiment of every trace in `trace_ids`; for `issues/invoke`, USE on a named gateway secret (`secret_id`) or endpoint (`endpoint_name`) |
 | Label schemas (`3.0/mlflow/label-schemas/…`) | `get`, `get-by-name`, `list` | READ on the experiment |
-| | `create`, `update` | EDIT on the experiment |
-| | `delete` | MANAGE on the experiment |
+| | `create`, `update`, `delete` | MANAGE on the experiment |
 | | a schema with no experiment | readable by any authenticated user; writable by admins only |
-| Review queues (`3.0/mlflow/review-queues/…`) | `get`, `get-by-name`, `list`, `items/list` | READ on the experiment |
-| | `create`, `update`, `items/add`, `items/remove` | EDIT on the experiment |
+| Review queues (`3.0/mlflow/review-queues/…`) | `create` | EDIT on the experiment; the caller becomes the queue's owner. A custom queue's name may not be a registered username (see below); a user queue's name must be an existing, active, non-service account |
+| | `get`, `get-by-name`, `items/list` | READ on the experiment, and one of: MANAGE on the experiment, being an assigned user of the queue, or EDIT and owning the queue |
+| | `list` | READ on the experiment; a caller without EDIT sees only the queues they are assigned to |
+| | `update` | MANAGE on the experiment, or EDIT and owning the queue. A custom queue may not be renamed to a registered username |
 | | `update` with `new_owner` | MANAGE on the experiment |
-| | `delete` | MANAGE on the experiment |
+| | `delete`, `items/remove` | MANAGE on the experiment, or EDIT and owning the queue if it is a custom queue (a user queue needs MANAGE) |
+| | `items/add` | EDIT on the experiment |
 | | `get-or-create-user` | EDIT on the experiment; `user` must be an existing, active, non-service account (it may be a teammate) |
-| | `items/set-status` | EDIT on the experiment; `completed_by` must be the caller, and is required for `COMPLETE` / `DECLINED` |
+| | `items/set-status` | EDIT on the experiment and being an assigned user of the queue (MANAGE alone is not enough); `completed_by` must be the caller, and is required for `COMPLETE` / `DECLINED` |
 | UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job, or else on the experiment of the run it records; admin only if neither resolves |
 | Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment and on the scorer (`name`) |
 | | `GET online-configs` | READ on the experiment and on the scorer of every configuration returned for `scorer_ids` |
@@ -265,6 +311,16 @@ and as the reviewer of an item.
 | | without `experiment_id` (all active experiments) | any authenticated user; each scorer is listed only with READ on its experiment and, when the scorer has a grant of its own, READ on the scorer. A scorer whose permission cannot be resolved is omitted |
 | Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
 | Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
+
+Review queues and label schemas follow the rules of MLflow's own auth plugin. A queue's owner
+is its `created_by` and its assigned users are its `users`, both as MLflow stores them, and
+both are compared case-insensitively. A queue with no owner recorded is owned by nobody. Owning
+a queue adds to EDIT; it never stands in for it.
+
+A custom review queue may not use a registered username (a user or service account, compared
+case-insensitively) as its name, on create or on rename, because user queues are named after
+their user. This applies to administrators too. A request that breaks the rule gets `400`; a
+non-admin without the permission for the operation gets `403` first.
 
 ## Job API
 

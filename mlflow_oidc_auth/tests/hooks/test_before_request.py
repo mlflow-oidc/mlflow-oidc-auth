@@ -545,6 +545,27 @@ class TestStashGatewayContext:
                 _stash_gateway_context(validate_can_update_gateway_endpoint)
                 assert g._updating_gateway_endpoint_old_name == "old-endpoint-name"
 
+    def test_stash_update_endpoint_old_name_for_the_update_endpoint_route(self):
+        """UpdateGatewayEndpoint's own validator stashes the old name too (the rename cascade needs it)."""
+        from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_HANDLERS
+        from mlflow.protos.service_pb2 import UpdateGatewayEndpoint
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/endpoints/update",
+            method="POST",
+            json={"endpoint_id": "ep-uuid-123", "name": "new-name"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_endpoint_name_from_id",
+                return_value="old-endpoint-name",
+            ):
+                _stash_gateway_context(BEFORE_REQUEST_HANDLERS[UpdateGatewayEndpoint])
+                assert g._updating_gateway_endpoint_old_name == "old-endpoint-name"
+                assert not hasattr(g, "_deleting_gateway_endpoint_name")
+
     def test_stash_delete_endpoint_name(self):
         """Stashes endpoint name on delete via endpoint_id resolution."""
         from mlflow_oidc_auth.validators.gateway import (

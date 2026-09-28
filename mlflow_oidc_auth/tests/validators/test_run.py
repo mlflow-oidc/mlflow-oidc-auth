@@ -290,3 +290,118 @@ def test_run_with_different_experiment_ids():
         mock_store.return_value.get_run.return_value = mock_run2
         with _patch_permission(can_read=True):
             assert run.validate_can_read_run("alice") is True
+
+
+# ---------------------------------------------------------------------------
+# validate_can_log_metrics and the referenced-resource helpers
+# ---------------------------------------------------------------------------
+
+from flask import Flask  # noqa: E402
+from mlflow.exceptions import MlflowException  # noqa: E402
+from mlflow.protos.databricks_pb2 import INTERNAL_ERROR, RESOURCE_DOES_NOT_EXIST  # noqa: E402
+
+from mlflow_oidc_auth.permissions import EDIT, NO_PERMISSIONS, READ  # noqa: E402
+from mlflow_oidc_auth.validators import _referenced  # noqa: E402
+
+_log_app = Flask(__name__)
+
+
+def _log_metrics(body, *, run_ok=True, model_perm=EDIT):
+    with (
+        _log_app.test_request_context("/api/2.0/mlflow/runs/log-batch", method="POST", json=body),
+        patch.object(run, "validate_can_update_run", return_value=run_ok),
+        patch.object(run, "referenced_logged_model_permission", return_value=model_perm) as model_check,
+    ):
+        return run.validate_can_log_metrics("alice"), model_check
+
+
+def test_log_metrics_without_model_ids_checks_only_the_run():
+    result, model_check = _log_metrics({"run_id": "r1", "metrics": [{"key": "k", "value": 1, "timestamp": 1}]})
+    assert result is True
+    model_check.assert_not_called()
+
+
+def test_log_metrics_denied_without_update_on_run():
+    result, model_check = _log_metrics({"run_id": "r1", "model_id": "m-1"}, run_ok=False)
+    assert result is False
+    model_check.assert_not_called()
+
+
+def test_log_metrics_checks_top_level_and_nested_model_ids():
+    body = {"run_id": "r1", "model_id": "m-1", "metrics": [{"model_id": "m-2"}, {"modelId": "m-3"}, {"model_id": "m-2"}]}
+    result, model_check = _log_metrics(body)
+    assert result is True
+    assert [c.args[0] for c in model_check.call_args_list] == ["m-1", "m-2", "m-3"]
+
+
+@pytest.mark.parametrize("perm", [READ, NO_PERMISSIONS])
+def test_log_metrics_denied_without_update_on_logged_model(perm):
+    result, _ = _log_metrics({"run_id": "r1", "metrics": [{"model_id": "m-1"}]}, model_perm=perm)
+    assert result is False
+
+
+def test_referenced_permission_of_missing_resource_is_no_permissions():
+    missing = MlflowException("gone", RESOURCE_DOES_NOT_EXIST)
+    with patch.object(_referenced, "_get_tracking_store") as store:
+        store.return_value.get_run.side_effect = missing
+        store.return_value.get_logged_model.side_effect = missing
+        assert _referenced.referenced_run_permission("r1", "alice") is NO_PERMISSIONS
+        assert _referenced.referenced_logged_model_permission("m-1", "alice") is NO_PERMISSIONS
+
+
+def test_referenced_permission_reraises_other_store_errors():
+    with patch.object(_referenced, "_get_tracking_store") as store:
+        store.return_value.get_run.side_effect = MlflowException("boom", INTERNAL_ERROR)
+        with pytest.raises(MlflowException):
+            _referenced.referenced_run_permission("r1", "alice")
+
+
+def test_referenced_permission_uses_the_experiment():
+    with (
+        patch.object(_referenced, "_get_tracking_store") as store,
+        patch.object(_referenced, "effective_experiment_permission", return_value=MagicMock(permission=READ)) as perm,
+    ):
+        store.return_value.get_logged_model.return_value = MagicMock(experiment_id="7")
+        assert _referenced.referenced_logged_model_permission("m-1", "alice") is READ
+        perm.assert_called_once_with("7", "alice")
+
+
+def _presigned(body, *, run_perm=EDIT, model_perm=EDIT):
+    with (
+        _log_app.test_request_context("/api/2.0/mlflow/artifacts/presigned-upload-url", method="POST", json=body),
+        patch.object(run, "referenced_run_permission", return_value=run_perm) as run_check,
+        patch.object(run, "referenced_logged_model_permission", return_value=model_perm) as model_check,
+    ):
+        return run.validate_can_update_run_or_logged_model("alice"), run_check, model_check
+
+
+def test_presigned_upload_by_run_checks_the_run():
+    result, run_check, model_check = _presigned({"run_id": "r1", "path": "x"})
+    assert result is True
+    run_check.assert_called_once_with("r1", "alice")
+    model_check.assert_not_called()
+
+
+def test_presigned_upload_by_logged_model_checks_the_logged_model():
+    result, run_check, model_check = _presigned({"model_id": "m-1", "path": "x"})
+    assert result is True
+    run_check.assert_not_called()
+    model_check.assert_called_once_with("m-1", "alice")
+
+
+def test_presigned_upload_without_a_target_is_denied():
+    result, run_check, model_check = _presigned({"path": "x"})
+    assert result is False
+    run_check.assert_not_called()
+    model_check.assert_not_called()
+
+
+@pytest.mark.parametrize("perm", [READ, NO_PERMISSIONS])
+def test_presigned_upload_denied_without_update_on_logged_model(perm):
+    result, _, _ = _presigned({"model_id": "m-1", "path": "x"}, model_perm=perm)
+    assert result is False
+
+
+def test_presigned_upload_denied_without_update_on_run():
+    result, _, _ = _presigned({"run_id": "r1", "path": "x"}, run_perm=READ)
+    assert result is False

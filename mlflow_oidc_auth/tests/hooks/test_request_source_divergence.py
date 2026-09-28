@@ -378,6 +378,7 @@ def test_head_on_a_proto_get_route_fails_closed():
 # ---------------------------------------------------------------------------
 
 from types import SimpleNamespace  # noqa: E402
+from mlflow.genai.review_queues import ReviewQueueType  # noqa: E402
 
 USER = "alice@example.com"
 OWN, OWN2, VICTIM = "own", "own2", "victim"
@@ -421,6 +422,12 @@ _UNION_SPECS = {
     "validate_can_read_gateway_model_definition": ("name", False, {}),
     "validate_can_delete_gateway_model_definition": ("name", False, {}),
     "validate_can_update_gateway_model_definition": ("model_definition_id", False, {}),
+    "validate_can_create_gateway_model_definition": ("secret_id", False, {"name": "md", "provider": "openai", "model_name": "gpt"}),
+    "validate_can_update_gateway_endpoint_config": ("endpoint_id", False, {}),
+    "validate_can_attach_model_to_gateway_endpoint": ("endpoint_id", False, {}),
+    "validate_can_create_model_version": ("name", False, {"source": "runs:/own/model"}),
+    "validate_can_log_metrics": ("run_id", False, {}),
+    "validate_can_update_run_or_logged_model": ("run_id", False, {"path": "model.pkl"}),
     "validate_can_read_dataset": ("dataset_id", False, {}),
     "validate_can_update_dataset": ("dataset_id", False, {}),
     "validate_can_delete_dataset": ("dataset_id", False, {}),
@@ -432,13 +439,15 @@ _UNION_SPECS = {
     "validate_can_create_issue": ("experiment_id", False, {"name": "n", "description": "d"}),
     "validate_can_search_issues": ("experiment_id", False, {}),
     "validate_can_read_label_schema": ("schema_id", False, {}),
-    "validate_can_update_label_schema": ("schema_id", False, {}),
-    "validate_can_delete_label_schema": ("schema_id", False, {}),
+    "validate_can_manage_label_schema": ("schema_id", False, {}),
+    "validate_can_create_review_queue": ("experiment_id", False, {"name": "q", "queue_type": "CUSTOM"}),
     "validate_can_get_or_create_user_queue": ("experiment_id", False, {"user": USER}),
-    "validate_can_read_review_queue": ("queue_id", False, {}),
+    "validate_can_view_review_queue": ("queue_id", False, {}),
+    "validate_can_view_review_queue_by_name": ("experiment_id", False, {"name": "q"}),
     "validate_can_update_review_queue": ("queue_id", False, {}),
     "validate_can_delete_review_queue": ("queue_id", False, {}),
-    "validate_can_update_review_queue_items": ("queue_id", False, {}),
+    "validate_can_add_items_to_review_queue": ("queue_id", False, {}),
+    "validate_can_remove_items_from_review_queue": ("queue_id", False, {}),
     "validate_can_set_review_queue_item_status": ("queue_id", False, {}),
 }
 
@@ -448,6 +457,8 @@ _UNION_EXEMPT = {
     "validate_can_create_experiment": "creation: no existing resource; name-gated only under RESTRICT_RESOURCE_CREATION",
     "validate_can_create_registered_model": "creation: no existing resource; name-gated only under RESTRICT_RESOURCE_CREATION",
     "validate_can_create_gateway": "creation: allowed for any authenticated user",
+    "validate_can_create_gateway_endpoint": "creation: the only ids are NESTED under model_configs, which the flat spec "
+    "cannot express; covered by test_referenced_resource_authz",
     "validate_can_read_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_update_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_delete_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
@@ -505,7 +516,11 @@ class _FakeTrackingStore:
         return SimpleNamespace(experiment_id=schema_id)
 
     def get_review_queue(self, queue_id):
-        return SimpleNamespace(experiment_id=queue_id)
+        # Alice is the owner and an assigned user, so only the experiment grant decides.
+        return SimpleNamespace(experiment_id=queue_id, created_by=USER, users=[USER], queue_type=ReviewQueueType.CUSTOM)
+
+    def get_review_queue_by_name(self, experiment_id, *, name):
+        return self.get_review_queue(experiment_id)
 
 
 @pytest.fixture
@@ -536,6 +551,7 @@ def union_world(store, monkeypatch):
         "mlflow_oidc_auth.validators.issue._get_tracking_store",
         "mlflow_oidc_auth.validators.review._get_tracking_store",
         "mlflow_oidc_auth.validators._experiment_scope._get_tracking_store",
+        "mlflow_oidc_auth.validators._referenced._get_tracking_store",
     ):
         monkeypatch.setattr(target, lambda: fake)
     monkeypatch.setattr("mlflow_oidc_auth.hooks.before_request.store", store)

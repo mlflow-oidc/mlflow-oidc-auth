@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import GroupsPage from "./groups-page";
 import type { GroupDetails } from "../../shared/types/entity";
@@ -108,6 +108,22 @@ vi.mock("../../shared/components/entity-list-table", () => ({
 
 vi.mock("../../shared/components/row-action-button", () => ({
   RowActionButton: () => <button>Manage permissions</button>,
+}));
+
+const mockOnCreated = { current: (() => {}) as () => void };
+
+vi.mock("./components/create-group-modal", () => ({
+  CreateGroupModal: ({
+    isOpen,
+    onCreated,
+  }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onCreated: () => void;
+  }) => {
+    mockOnCreated.current = onCreated;
+    return isOpen ? <div data-testid="create-group-modal" /> : null;
+  },
 }));
 
 describe("GroupsPage", () => {
@@ -314,6 +330,39 @@ describe("GroupsPage", () => {
       render(<GroupsPage />);
       expect(screen.getByText("data-team")).toBeInTheDocument();
       expect(screen.queryByText("platform")).not.toBeInTheDocument();
+    });
+
+    it("opens the create-group modal from the Create group button", () => {
+      mockUseAllGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        groups: [manualGroup],
+      });
+
+      render(<GroupsPage />);
+
+      expect(screen.queryByTestId("create-group-modal")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "+ Create group" }));
+      expect(screen.getByTestId("create-group-modal")).toBeInTheDocument();
+    });
+
+    it("refreshes the group list when a group is created", () => {
+      const refresh = vi.fn();
+      mockUseAllGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh,
+        groups: [manualGroup],
+      });
+
+      render(<GroupsPage />);
+      fireEvent.click(screen.getByRole("button", { name: "+ Create group" }));
+      act(() => {
+        mockOnCreated.current();
+      });
+
+      expect(refresh).toHaveBeenCalled();
     });
   });
 });
