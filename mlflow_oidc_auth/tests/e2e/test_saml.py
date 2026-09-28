@@ -18,7 +18,7 @@ import base64
 import json
 from urllib.parse import urlparse
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from mlflow_oidc_auth.tests.e2e import flows

@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 
-import httpx
+import httpx2 as httpx
 import mlflow
 from mlflow.entities import Feedback
 from mlflow.genai.scorers import scorer as scorer_decorator

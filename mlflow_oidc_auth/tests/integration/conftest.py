@@ -11,7 +11,7 @@ import uuid
 from typing import TYPE_CHECKING, Generator
 from urllib.parse import urljoin
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 if TYPE_CHECKING:

@@ -597,7 +597,7 @@ beforeAll(() => {
 - **Dependencies:**
   - Running mlflow-oidc-auth server (configurable via `MLFLOW_OIDC_E2E_BASE_URL`)
   - **Playwright** (Chromium) for browser-based tests
-  - **httpx** for API-level tests
+  - **httpx2** for API-level tests
 - **Excluded from default test run** via `norecursedirs = ["integration"]` in `pyproject.toml`
 - **Session-scoped fixtures** for server health check, admin/user HTTP clients
 - **Skip or fail behavior** configurable via `MLFLOW_OIDC_E2E_REQUIRE` env var

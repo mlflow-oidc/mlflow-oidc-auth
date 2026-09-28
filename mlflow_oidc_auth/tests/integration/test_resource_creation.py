@@ -14,7 +14,7 @@ import time
 import uuid
 from urllib.parse import quote, urljoin
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from .users import get_mlflow_users
@@ -309,7 +309,7 @@ def test_user_registers_scorers_at_experiment_level(
         assert exp_success, f"Failed to create experiment: {experiment_id}"
 
     # Use the utility function for scorer registration
-    cookies = pytest.importorskip("httpx").Cookies()
+    cookies = pytest.importorskip("httpx2").Cookies()
     # We need the cookies from the client - use user_cookies_factory instead
     from .utils import register_sample_scorers
 
