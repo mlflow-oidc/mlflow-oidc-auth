@@ -28,6 +28,7 @@ from mlflow_oidc_auth.session.refresh_lock import local_refresh_turn
 from mlflow_oidc_auth.session.token_vault import SessionTokens, get_token_vault
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name, call_group_detection_plugin
+from mlflow_oidc_auth.group_patterns import BY_PATTERN, admitting_rule, normalize_group_values
 
 from ._prefix import UI_ROUTER_PREFIX
 
@@ -1225,8 +1226,10 @@ def _provision_login(
     # Whether this provider may confer administrator rights at all, and whether these
     # claims do (#318). ``admin_source: none`` is the answer for a partner tenant whose
     # group names you do not control; the admin group name itself stays server-side.
+    user_groups = normalize_group_values(user_groups)
     is_admin = admin_from_claims(provider, user_groups, config.OIDC_ADMIN_GROUP_NAME)
-    if not is_admin and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+    admission = None if is_admin else admitting_rule(user_groups, config.OIDC_GROUP_NAME, config.OIDC_GROUP_NAME_PATTERN)
+    if not is_admin and admission is None:
         errors.append("User is not allowed to login")
         return None, errors
 
@@ -1425,6 +1428,18 @@ def _provision_login(
             except Exception:
                 # Permission already exists — not an error (idempotent)
                 logger.debug(f"Workspace permission already exists for {username} in '{ws_name}'")
+
+    if admission is not None and admission.kind == BY_PATTERN:
+        # A pattern admits groups nobody listed by name (#78), so say which one let this user in.
+        # Recorded only once the login has succeeded, naming the account it reached.
+        logger.info("Login of %s admitted by OIDC_GROUP_NAME_PATTERN %r (group %r)", username, admission.rule, admission.group)
+        emit_audit_event(
+            "auth.admitted_by_group_pattern",
+            actor=username,
+            resource_type="user",
+            resource_id=username,
+            detail={"provider": provider.id, "method": method, "pattern": admission.rule, "group": admission.group},
+        )
 
     logger.info(f"User {username} successfully processed with groups: {user_groups}")
     return username, []
@@ -1776,10 +1791,9 @@ async def _process_oidc_callback_fastapi(request: Request, session, provider_id:
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
 
-            # With jumpcloud, if the groups attribute is a single group, it will be sent as a string.
-            # To process the groups correctly, bring the group into a list of groups.
-            if isinstance(user_groups, str):
-                user_groups = [user_groups]
+            # A lone group arrives as a string (JumpCloud); non-string and empty entries are
+            # dropped, so an unusable claim admits nobody (#78).
+            user_groups = normalize_group_values(user_groups)
 
             logger.debug(f"User groups: {user_groups}")
 

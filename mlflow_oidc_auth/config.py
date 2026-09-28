@@ -189,8 +189,11 @@ class AppConfig:
         self.OIDC_USERNAME_FIELD = config_manager.get_list("OIDC_USERNAME_FIELD", default=["email", "preferred_username"])
         self.OIDC_DISPLAY_NAME_FIELD = config_manager.get_list("OIDC_DISPLAY_NAME_FIELD", default=["name"])
 
-        # Group settings
+        # Group settings. OIDC_GROUP_NAME is exact names; OIDC_GROUP_NAME_PATTERN is opt-in
+        # shell-style patterns (issue #78), kept separate so a name containing a pattern
+        # character keeps meaning only itself.
         self.OIDC_GROUP_NAME = config_manager.get_list("OIDC_GROUP_NAME", default=["mlflow"])
+        self.OIDC_GROUP_NAME_PATTERN = config_manager.get_list("OIDC_GROUP_NAME_PATTERN", default=[])
         self.OIDC_ADMIN_GROUP_NAME = config_manager.get_list("OIDC_ADMIN_GROUP_NAME", default=["mlflow-admin"])
         self.OIDC_GROUP_DETECTION_PLUGIN = config_manager.get("OIDC_GROUP_DETECTION_PLUGIN")
         # Optional issuer (iss) validation for JWTs. When set, tokens must carry a matching
@@ -490,8 +493,19 @@ class AppConfig:
         reason as _warn_if_username_field_unusable: this is a module-level singleton
         imported by tooling that has nothing to do with OIDC login.
         """
-        if not self._has_usable_entry(self.OIDC_GROUP_NAME):
-            logger.warning("OIDC_GROUP_NAME is empty; no user will ever be recognized as a member of an allowed group and be able to log in.")
+        if not self._has_usable_entry(self.OIDC_GROUP_NAME) and not self._has_usable_entry(self.OIDC_GROUP_NAME_PATTERN):
+            logger.warning(
+                "OIDC_GROUP_NAME and OIDC_GROUP_NAME_PATTERN are empty; no user will ever be recognized as a member of an allowed group and be able to log in."
+            )
+        from mlflow_oidc_auth.group_patterns import matches_everything
+
+        everything = [p for p in self.OIDC_GROUP_NAME_PATTERN if isinstance(p, str) and matches_everything(p)]
+        if everything:
+            logger.warning(
+                "OIDC_GROUP_NAME_PATTERN contains %r, which admits every user whose token carries any group at all. "
+                "Prefer a scoped pattern such as 'mlflow-*'.",
+                everything[0],
+            )
         if not self._has_usable_entry(self.OIDC_ADMIN_GROUP_NAME):
             logger.warning("OIDC_ADMIN_GROUP_NAME is empty; no user will ever be granted admin access via group membership.")
 

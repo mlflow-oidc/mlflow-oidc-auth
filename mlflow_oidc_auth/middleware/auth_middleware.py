@@ -39,6 +39,7 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.group_detection import call_group_detection_plugin
+from mlflow_oidc_auth.group_patterns import BY_PATTERN, admitting_rule, normalize_group_values
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
 
 logger = get_logger()
@@ -257,8 +258,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 user_groups = call_group_detection_plugin(config.OIDC_GROUP_DETECTION_PLUGIN, token, {"access_token": token, "claims": payload})
             else:
                 user_groups = payload.get(config.OIDC_GROUPS_ATTRIBUTE, [])
-            if isinstance(user_groups, str):
-                user_groups = [user_groups]
+            user_groups = normalize_group_values(user_groups)
         except Exception as e:
             logger.warning("Failed to read groups for bearer provisioning of %s: %s", username, type(e).__name__)
             return
@@ -267,7 +267,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # admin-group or allowed-group member. Otherwise do NOT provision — a bearer token must
         # never be able to create an account that interactive login would reject.
         is_admin_claim = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
-        if not is_admin_claim and not any(group in user_groups for group in config.OIDC_GROUP_NAME):
+        admission = None if is_admin_claim else admitting_rule(user_groups, config.OIDC_GROUP_NAME, config.OIDC_GROUP_NAME_PATTERN)
+        if not is_admin_claim and admission is None:
             logger.info("Bearer user %s is in no authorized group; not provisioning (parity with interactive login)", username)
             return
 
@@ -292,6 +293,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             user_module.populate_groups(group_names=user_groups, written_by=written_by)
             user_module.update_user(username=username, group_names=user_groups, written_by=written_by)
             logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(user_groups))
+            if admission is not None and admission.kind == BY_PATTERN:
+                emit_audit_event(
+                    "auth.admitted_by_group_pattern",
+                    actor=username,
+                    resource_type="user",
+                    resource_id=username,
+                    detail={"provider": provider.id, "method": "bearer", "pattern": admission.rule, "group": admission.group},
+                )
         except Exception as e:
             # A concurrent first request may have inserted the row (unique constraint) — benign.
             logger.warning("Bearer provisioning of %s did not complete (may already exist): %s", username, type(e).__name__)
