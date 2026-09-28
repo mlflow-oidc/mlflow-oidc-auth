@@ -64,7 +64,7 @@ These pages require admin privileges:
 
 | Page | Path | Description |
 |------|------|-------------|
-| User Profile | `/user` | View your profile, permissions, and manage your access token |
+| User Profile | `/user` | View your profile, permissions, and manage your access tokens (see [Access token tabs](#access-token-tabs)) |
 
 ## Managing Permissions
 
@@ -89,6 +89,19 @@ When you click a user or group, you see their permissions across all resource ty
 
 Regex pattern permissions are managed separately from direct permissions, with priority ordering.
 
+### Access token tabs
+
+Your own **User Profile** page (`/user`) has a **Tokens** tab: a table of your access tokens
+(name, prefix — shown as "legacy" for a secret carried over from before this feature — created,
+expires, last used, and status), a **+ Create token** button next to the search box, and a delete
+action with a confirmation. Creating a token shows its plaintext **once** in a dedicated
+dialog — copy it immediately, since it cannot be retrieved again.
+
+Admins see the same **Tokens** tab on a user's permission page and on a service account's
+permission page, with the same table plus create, delete, and a **Revoke all tokens** action for
+the leaked-token case. This replaces the older single "access token" block and its rotate modal,
+which are gone.
+
 ## User and Group Lifecycle
 
 Admins see lifecycle state on the Users and Groups pages that non-admins do not (both fall back
@@ -99,13 +112,15 @@ badge — Manual, SCIM, or OIDC · `<provider>` — naming the source that owns 
 inactive" toggle above the table controls whether deactivated users are listed at all. Hovering a
 row reveals a **Deactivate** or **Reactivate** action:
 
-- **Deactivate** revokes the user's live sessions and access token immediately; their permission
-  grants are kept, so reactivating restores access with no re-granting needed.
+- **Deactivate** revokes the user's live sessions and deletes all of their access tokens
+  immediately; their permission grants are kept, so reactivating restores access with no
+  re-granting needed. Reactivation does not bring the deleted tokens back — the user creates new
+  ones, or an admin issues one for a service account.
 - **Reactivate** restores access; the user signs in again or is issued a new access token.
 - **Sessions** opens the user's live sign-in sessions: a short id prefix, the provider, when it
   was opened and when it expires. **Revoke** ends one session and **Revoke all** ends every one,
   each after a confirmation; the list refreshes afterwards. The session is signed out on its next
-  request. The account, its grants and its access token are not affected; use Deactivate for that.
+  request. The account, its grants and its access tokens are not affected; use Deactivate for that.
 
 If the target account is directory-managed (SCIM or OIDC), the deactivate dialog shows an
 **"Override ownership guard"** switch, since a later directory sync could otherwise overwrite the
