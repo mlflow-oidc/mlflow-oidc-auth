@@ -62,7 +62,7 @@ export const Switch: React.FC<SwitchProps> = ({
       </div>
       {label && (
         <span
-          className={`text-sm font-medium select-none ${!labelClassName ? "text-btn-primary-text dark:text-btn-primary-text-dark" : ""} ${labelClassName}`}
+          className={`text-sm font-medium select-none ${!labelClassName ? "text-text-primary dark:text-text-primary-dark" : ""} ${labelClassName}`}
         >
           {label}
         </span>
