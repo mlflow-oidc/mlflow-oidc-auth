@@ -1,0 +1,223 @@
+/*
+ * MLflow Access Control docs theme: docsify's "vue" theme recoloured with the admin UI's tokens
+ * (web-react/src/index.css), so the docs and the app look like one product. Light by default,
+ * dark when the reader's system prefers it.
+ */
+
+:root {
+  --mac-bg: rgb(255, 255, 255);
+  --mac-text: rgb(17, 23, 28);
+  --mac-muted: rgb(95, 114, 129);
+  --mac-secondary-bg: rgb(246, 247, 249);
+  --mac-border: rgb(192, 205, 216);
+  --mac-primary: rgb(34, 114, 180);
+  --mac-primary-hover: rgb(14, 83, 139);
+  --mac-primary-soft: rgba(34, 114, 180, 0.08);
+  --mac-code-bg: rgb(246, 247, 249);
+  --mac-danger: rgb(220, 38, 38);
+  --mac-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mac-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* docsify reads this for links, active sidebar items and the progress bar. */
+  --theme-color: var(--mac-primary);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --mac-bg: rgb(17, 23, 28);
+    --mac-text: rgb(232, 236, 240);
+    --mac-muted: rgb(146, 164, 179);
+    --mac-secondary-bg: rgb(31, 39, 45);
+    --mac-border: rgb(55, 68, 79);
+    --mac-primary: rgb(66, 153, 224);
+    --mac-primary-hover: rgb(138, 202, 255);
+    --mac-primary-soft: rgba(138, 202, 255, 0.08);
+    --mac-code-bg: rgb(31, 39, 45);
+    --mac-danger: rgb(248, 113, 113);
+  }
+}
+
+body {
+  background: var(--mac-bg);
+  color: var(--mac-text);
+  font-family: var(--mac-font);
+}
+
+/* Sidebar, like the app's navigation panel. */
+.sidebar {
+  background: var(--mac-secondary-bg);
+  border-right: 1px solid var(--mac-border);
+  color: var(--mac-text);
+}
+
+.sidebar > h1 a,
+.sidebar > h1 {
+  color: var(--mac-text);
+  font-weight: 600;
+}
+
+.sidebar > h1 img {
+  height: 1.6em;
+  vertical-align: middle;
+}
+
+.sidebar ul li a {
+  color: var(--mac-muted);
+  border-radius: 4px;
+}
+
+.sidebar ul li a:hover {
+  color: var(--mac-primary-hover);
+  text-decoration: none;
+}
+
+.sidebar ul li.active > a {
+  color: var(--mac-primary);
+  border-right: 2px solid var(--mac-primary);
+  background: var(--mac-primary-soft);
+  font-weight: 600;
+}
+
+.sidebar-toggle {
+  background-color: var(--mac-secondary-bg);
+}
+
+.sidebar-toggle span {
+  background-color: var(--mac-primary);
+}
+
+/* Content. */
+.markdown-section {
+  color: var(--mac-text);
+}
+
+.markdown-section h1,
+.markdown-section h2,
+.markdown-section h3,
+.markdown-section h4,
+.markdown-section strong {
+  color: var(--mac-text);
+}
+
+.markdown-section h2 {
+  border-bottom: 1px solid var(--mac-border);
+  padding-bottom: 0.3rem;
+}
+
+.markdown-section a {
+  color: var(--mac-primary);
+}
+
+.markdown-section a:hover {
+  color: var(--mac-primary-hover);
+}
+
+.markdown-section code,
+.markdown-section pre,
+.markdown-section pre > code {
+  background-color: var(--mac-code-bg);
+  font-family: var(--mac-mono);
+}
+
+.markdown-section code {
+  color: var(--mac-primary-hover);
+  border-radius: 4px;
+}
+
+.markdown-section pre > code {
+  color: var(--mac-text);
+}
+
+.markdown-section pre {
+  border: 1px solid var(--mac-border);
+  border-radius: 6px;
+}
+
+.markdown-section table {
+  display: table;
+  width: 100%;
+}
+
+.markdown-section tr {
+  border-top: 1px solid var(--mac-border);
+}
+
+.markdown-section td,
+.markdown-section th {
+  border: 1px solid var(--mac-border);
+}
+
+.markdown-section th {
+  background: var(--mac-secondary-bg);
+}
+
+.markdown-section tr:nth-child(2n) {
+  background-color: transparent;
+}
+
+.markdown-section tbody tr:hover {
+  background-color: var(--mac-primary-soft);
+}
+
+.markdown-section blockquote {
+  border-left: 4px solid var(--mac-primary);
+  background: var(--mac-primary-soft);
+  color: var(--mac-muted);
+  padding: 0.5rem 1rem;
+}
+
+.markdown-section hr {
+  border-bottom: 1px solid var(--mac-border);
+}
+
+/* Top navbar and the GitHub corner. */
+.app-nav a {
+  color: var(--mac-muted);
+}
+
+.app-nav a:hover,
+.app-nav a.active {
+  color: var(--mac-primary);
+  border-bottom-color: var(--mac-primary);
+}
+
+.github-corner svg {
+  fill: var(--mac-primary);
+  color: var(--mac-bg);
+}
+
+/* Keep syntax-highlighted code readable on both backgrounds. */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: var(--mac-muted);
+}
+
+.token.keyword,
+.token.boolean,
+.token.important {
+  color: var(--mac-primary);
+}
+
+.token.string,
+.token.attr-value {
+  color: rgb(21, 128, 61);
+}
+
+.token.number,
+.token.function {
+  color: rgb(180, 83, 9);
+}
+
+@media (prefers-color-scheme: dark) {
+  .token.string,
+  .token.attr-value {
+    color: rgb(134, 239, 172);
+  }
+
+  .token.number,
+  .token.function {
+    color: rgb(253, 186, 116);
+  }
+}
