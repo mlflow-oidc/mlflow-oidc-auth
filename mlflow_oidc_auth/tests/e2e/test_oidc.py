@@ -314,7 +314,8 @@ class TestPublicClient:
 
     The same client releases its ``groups`` claim from the UserInfo endpoint only, not in the ID
     token, as many academic IdPs do with email, name or groups: a login through it passes the
-    group gate only if the callback completes its claims from UserInfo.
+    group gate only if the callback completes its claims from UserInfo, which the provider allows
+    with ``"userinfo_groups": true``.
     """
 
     def test_a_public_client_logs_in_refreshes_and_logs_out_without_a_secret(self, app_server, public_keycloak):

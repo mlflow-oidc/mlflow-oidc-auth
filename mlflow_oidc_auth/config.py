@@ -171,6 +171,10 @@ class AppConfig:
         # secrets manager is reported as missing instead of silently turning the deployment into a
         # public client. Requires PKCE, and refuses a client secret configured alongside it.
         self.OIDC_PUBLIC_CLIENT = config_manager.get_bool("OIDC_PUBLIC_CLIENT", default=False)
+        # Whether the flat-configured provider's groups and workspace claims may be read from its
+        # UserInfo endpoint when the ID token lacks them. Off by default: those claims decide
+        # access and administrator status. Identity claims are completed from UserInfo either way.
+        self.OIDC_USERINFO_GROUPS = config_manager.get_bool("OIDC_USERINFO_GROUPS", default=False)
 
         # Permission cache settings
         # Whether a write from one source may overwrite a row another source owns (#319).

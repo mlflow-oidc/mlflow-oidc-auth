@@ -108,10 +108,10 @@ def login(monkeypatch):
 
     clients: dict = {}
 
-    def _install(client, provider_id="default", issuer=ISSUER):
-        clients[provider_id] = (client, issuer)
+    def _install(client, provider_id="default", issuer=ISSUER, userinfo_groups=False):
+        clients[provider_id] = (client, issuer, userinfo_groups)
         registry = RegistryLoadResult(
-            providers=[ProviderConfig(id=pid, type="oidc", audience="mlflow", issuer=iss) for pid, (_, iss) in clients.items()],
+            providers=[ProviderConfig(id=pid, type="oidc", audience="mlflow", issuer=iss, userinfo_groups=ug) for pid, (_, iss, ug) in clients.items()],
             errors=[],
             source="env",
         )
@@ -166,8 +166,8 @@ class TestMissingClaimsAreFilled:
     async def test_email_missing_from_the_id_token_is_taken_from_userinfo(self, login):
         client = login.install(
             FakeClient(
-                {"sub": SUB, "iss": ISSUER, "aud": "mlflow"},
-                userinfo={"sub": SUB, "email": "alice@corp.com", "name": "Alice", "groups": ["mlflow"]},
+                {"sub": SUB, "iss": ISSUER, "aud": "mlflow", "groups": ["mlflow"]},
+                userinfo={"sub": SUB, "email": "alice@corp.com", "name": "Alice"},
             )
         )
 
@@ -182,8 +182,8 @@ class TestMissingClaimsAreFilled:
         assert login.identities.links == [("default", SUB, "alice@corp.com")]
 
     @pytest.mark.asyncio
-    async def test_groups_missing_from_the_id_token_are_taken_from_userinfo(self, login):
-        client = login.install(FakeClient(_complete_id_claims(groups=None), userinfo={"sub": SUB, "groups": ["mlflow"]}))
+    async def test_groups_missing_from_the_id_token_are_taken_from_userinfo_when_the_provider_opts_in(self, login):
+        client = login.install(FakeClient(_complete_id_claims(groups=None), userinfo={"sub": SUB, "groups": ["mlflow"]}), userinfo_groups=True)
 
         username, errors = await login.run()
 
@@ -199,7 +199,8 @@ class TestMissingClaimsAreFilled:
             FakeClient(
                 {"sub": SUB, "preferred_username": "alice", "name": "Alice"},
                 userinfo={"sub": SUB, "email": "alice@corp.com", "groups": ["mlflow"]},
-            )
+            ),
+            userinfo_groups=True,
         )
 
         username, errors = await login.run()
@@ -232,7 +233,7 @@ class TestTheSubjectMustMatch:
 
     @pytest.mark.asyncio
     async def test_a_mismatched_sub_refuses_even_when_the_id_token_would_have_sufficed_for_the_username(self, login):
-        login.install(FakeClient(_complete_id_claims(groups=None), userinfo={"sub": "someone-else", "groups": ["mlflow-admin"]}))
+        login.install(FakeClient(_complete_id_claims(groups=None), userinfo={"sub": "someone-else", "groups": ["mlflow-admin"]}), userinfo_groups=True)
 
         username, errors = await login.run()
 
@@ -242,7 +243,7 @@ class TestTheSubjectMustMatch:
     @pytest.mark.asyncio
     async def test_an_id_token_without_sub_is_not_completed_from_userinfo(self, login):
         """Nothing to bind the response to, so it is not requested at all."""
-        client = login.install(FakeClient({"preferred_username": "alice", "name": "Alice"}, userinfo={"sub": "x", "groups": ["mlflow"]}))
+        client = login.install(FakeClient({"preferred_username": "alice", "name": "Alice"}, userinfo={"sub": "x", "groups": ["mlflow"]}), userinfo_groups=True)
 
         username, errors = await login.run()
 
@@ -292,6 +293,88 @@ class TestTheIdTokenAlwaysWins:
 
         assert merged["email"] == "alice@corp.com"
         assert merged["email_verified"] is True
+
+
+class TestGroupsFromUserinfoAreOptIn:
+    """The groups and workspace claims decide access, so UserInfo supplies them only when the
+    provider opts in with ``userinfo_groups`` (``OIDC_USERINFO_GROUPS``)."""
+
+    @pytest.mark.asyncio
+    async def test_without_the_flag_missing_groups_trigger_no_call_and_stay_empty(self, login):
+        client = login.install(FakeClient(_complete_id_claims(groups=None), userinfo={"sub": SUB, "groups": ["mlflow", "mlflow-admin"]}))
+
+        username, errors = await login.run()
+
+        assert client.userinfo_calls == []
+        assert username is None
+        assert errors == ["User is not allowed to login"]
+        assert login.created == []
+
+    @pytest.mark.asyncio
+    async def test_without_the_flag_identity_claims_are_filled_but_groups_are_not(self, login, monkeypatch):
+        seen = {}
+        real_provision = auth_router_mod._provision_login
+
+        def _spy(provider, **kwargs):
+            seen.update(kwargs)
+            return real_provision(provider, **kwargs)
+
+        monkeypatch.setattr(auth_router_mod, "_provision_login", _spy)
+        client = login.install(
+            FakeClient(
+                {"sub": SUB, "iss": ISSUER, "aud": "mlflow"},
+                userinfo={"sub": SUB, "email": "alice@corp.com", "email_verified": True, "name": "Alice", "groups": ["mlflow", "mlflow-admin"]},
+            )
+        )
+
+        username, errors = await login.run()
+
+        assert len(client.userinfo_calls) == 1
+        # The identity came from UserInfo...
+        assert seen["username"] == "alice@corp.com"
+        assert seen["display_name"] == "Alice"
+        assert seen["userinfo"]["email_verified"] is True
+        # ...its groups did not, so the group gate refuses.
+        assert "groups" not in seen["userinfo"] and seen["user_groups"] == []
+        assert username is None
+        assert errors == ["User is not allowed to login"]
+        assert login.created == []
+
+    def test_without_the_flag_the_merge_drops_groups_and_workspace(self, monkeypatch):
+        monkeypatch.setattr(auth_router_mod.config, "OIDC_GROUPS_ATTRIBUTE", "roles", raising=False)
+        monkeypatch.setattr(auth_router_mod.config, "OIDC_WORKSPACE_CLAIM_NAME", "tenant", raising=False)
+        userinfo = {"sub": SUB, "email": "alice@corp.com", "email_verified": True, "name": "Alice", "roles": ["mlflow-admin"], "tenant": "acme"}
+
+        merged = auth_router_mod._merge_userinfo_claims({"sub": SUB}, userinfo)
+        opted_in = auth_router_mod._merge_userinfo_claims({"sub": SUB}, userinfo, userinfo_groups=True)
+
+        assert merged == {"sub": SUB, "email": "alice@corp.com", "email_verified": True, "name": "Alice"}
+        assert opted_in["roles"] == ["mlflow-admin"] and opted_in["tenant"] == "acme"
+
+    @pytest.mark.asyncio
+    async def test_with_the_flag_groups_are_taken(self, login):
+        client = login.install(
+            FakeClient({"sub": SUB, "iss": ISSUER, "aud": "mlflow"}, userinfo={"sub": SUB, "email": "alice@corp.com", "groups": ["mlflow"]}),
+            userinfo_groups=True,
+        )
+
+        username, errors = await login.run()
+
+        assert len(client.userinfo_calls) == 1
+        assert errors == []
+        assert username == "alice@corp.com"
+
+    @pytest.mark.asyncio
+    async def test_with_the_flag_userinfo_groups_never_override_the_id_tokens(self, login):
+        login.install(
+            FakeClient(_complete_id_claims(name=None), userinfo={"sub": SUB, "name": "Alice", "groups": ["mlflow-admin"]}),
+            userinfo_groups=True,
+        )
+
+        username, errors = await login.run()
+
+        assert errors == []
+        assert login.created[0]["is_admin"] is False
 
 
 class TestUserinfoFailure:
@@ -367,14 +450,16 @@ class TestWhichClaimsAreNeeded:
 
         monkeypatch.setattr(auth_router_mod.config, "MLFLOW_ENABLE_WORKSPACES", True, raising=False)
         monkeypatch.setattr(auth_router_mod.config, "OIDC_WORKSPACE_DETECTION_PLUGIN", None, raising=False)
-        assert auth_router_mod._claims_the_login_lacks(claims) == ["workspace"]
+        assert auth_router_mod._claims_the_login_lacks(claims, userinfo_groups=True) == ["workspace"]
+        # Without the opt-in the workspace claim never comes from UserInfo, so it is never "missing".
+        assert auth_router_mod._claims_the_login_lacks(claims) == []
 
         monkeypatch.setattr(auth_router_mod.config, "OIDC_WORKSPACE_DETECTION_PLUGIN", "ws.plugin", raising=False)
-        assert auth_router_mod._claims_the_login_lacks(claims) == []
+        assert auth_router_mod._claims_the_login_lacks(claims, userinfo_groups=True) == []
 
         monkeypatch.setattr(auth_router_mod.config, "MLFLOW_ENABLE_WORKSPACES", False, raising=False)
         monkeypatch.setattr(auth_router_mod.config, "OIDC_WORKSPACE_DETECTION_PLUGIN", None, raising=False)
-        assert auth_router_mod._claims_the_login_lacks(claims) == []
+        assert auth_router_mod._claims_the_login_lacks(claims, userinfo_groups=True) == []
 
 
 class TestThroughARealAuthlibClient:

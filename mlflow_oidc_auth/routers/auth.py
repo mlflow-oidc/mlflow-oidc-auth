@@ -1465,17 +1465,25 @@ _ID_TOKEN_ONLY_CLAIMS = frozenset(
 _COUPLED_CLAIMS = (("email", "email_verified"), ("phone_number", "phone_number_verified"))
 
 
-def _claims_the_login_lacks(id_claims: dict[str, Any]) -> list[str]:
-    """The claims this login reads that the validated ID token does not carry.
+def _authorization_claims() -> set[str]:
+    """The claims that decide access rather than identity: the groups and workspace claims."""
+    return {config.OIDC_GROUPS_ATTRIBUTE, config.OIDC_WORKSPACE_CLAIM_NAME}
+
+
+def _claims_the_login_lacks(id_claims: dict[str, Any], userinfo_groups: bool = False) -> list[str]:
+    """The claims this login reads that the validated ID token does not carry and UserInfo may supply.
 
     A claim counts as present when the login can use it as delivered: the username and display
     name when their extraction succeeds, the groups and workspace claims when the key is there at
-    all. The groups claim is only needed when no group detection plugin is configured, and the
-    workspace claim only when workspaces are enabled without a detection plugin — those are the
-    only paths that read them.
+    all. The groups and workspace claims count only when the provider opts in with
+    ``userinfo_groups`` (``OIDC_USERINFO_GROUPS``) — they decide access, so by default they come
+    from the ID token alone. Even then, the groups claim is only needed when no group detection
+    plugin is configured, and the workspace claim only when workspaces are enabled without a
+    detection plugin — those are the only paths that read them.
 
     Parameters:
         id_claims: The validated ID token claims.
+        userinfo_groups: Whether the provider lets UserInfo supply the groups and workspace claims.
 
     Returns:
         Short labels of the missing claims, for logging; empty when the ID token suffices.
@@ -1485,6 +1493,8 @@ def _claims_the_login_lacks(id_claims: dict[str, Any]) -> list[str]:
         missing.append("username")
     if extract_display_name(id_claims)[1]:
         missing.append("display_name")
+    if not userinfo_groups:
+        return missing
     if not config.OIDC_GROUP_DETECTION_PLUGIN and config.OIDC_GROUPS_ATTRIBUTE not in id_claims:
         missing.append("groups")
     if config.MLFLOW_ENABLE_WORKSPACES and not config.OIDC_WORKSPACE_DETECTION_PLUGIN and config.OIDC_WORKSPACE_CLAIM_NAME not in id_claims:
@@ -1492,23 +1502,26 @@ def _claims_the_login_lacks(id_claims: dict[str, Any]) -> list[str]:
     return missing
 
 
-def _merge_userinfo_claims(id_claims: dict[str, Any], userinfo_claims: dict[str, Any]) -> dict[str, Any]:
+def _merge_userinfo_claims(id_claims: dict[str, Any], userinfo_claims: dict[str, Any], userinfo_groups: bool = False) -> dict[str, Any]:
     """Fill the claims the ID token lacks from a UserInfo response already bound to its ``sub``.
 
     The ID token is signed and bound to this login attempt by its nonce, so it always wins: a
     UserInfo value is used only for a claim the ID token does not carry, never one describing the
     authentication itself (``_ID_TOKEN_ONLY_CLAIMS``), and a coupled pair only when the ID token
-    carries neither half.
+    carries neither half. The groups and workspace claims are taken only when the provider opts in.
 
     Parameters:
         id_claims: The validated ID token claims.
         userinfo_claims: The UserInfo response, whose ``sub`` the caller has checked.
+        userinfo_groups: Whether the provider lets UserInfo supply the groups and workspace claims.
 
     Returns:
         A new dict: the ID token claims plus what UserInfo was allowed to add.
     """
     merged = dict(id_claims)
     blocked = set(_ID_TOKEN_ONLY_CLAIMS)
+    if not userinfo_groups:
+        blocked.update(_authorization_claims())
     for pair in _COUPLED_CLAIMS:
         if any(claim in id_claims for claim in pair):
             blocked.update(pair)
@@ -1563,7 +1576,13 @@ async def _fetch_userinfo_claims(client, provider_id: str, token_response: dict[
     return dict(response)
 
 
-async def _claims_for_login(client, provider_id: str, token_response: dict[str, Any], id_claims: dict[str, Any]) -> tuple[Optional[dict[str, Any]], bool]:
+async def _claims_for_login(
+    client,
+    provider_id: str,
+    token_response: dict[str, Any],
+    id_claims: dict[str, Any],
+    userinfo_groups: bool = False,
+) -> tuple[Optional[dict[str, Any]], bool]:
     """The claims this login uses: the ID token's, completed from UserInfo when it lacks some.
 
     UserInfo is consulted only when a claim the login reads is missing from the ID token and the
@@ -1577,11 +1596,12 @@ async def _claims_for_login(client, provider_id: str, token_response: dict[str, 
         provider_id: The provider's registry id.
         token_response: The token response carrying the access token.
         id_claims: The validated ID token claims.
+        userinfo_groups: Whether the provider lets UserInfo supply the groups and workspace claims.
 
     Returns:
         ``(claims, True)`` to proceed with ``claims``; ``(None, False)`` when the login must be refused.
     """
-    missing = _claims_the_login_lacks(id_claims)
+    missing = _claims_the_login_lacks(id_claims, userinfo_groups)
     if not missing:
         return id_claims, True
 
@@ -1599,7 +1619,7 @@ async def _claims_for_login(client, provider_id: str, token_response: dict[str, 
         return None, False
 
     logger.debug("Completed claims %s from the UserInfo endpoint of provider '%s'", missing, provider_id)
-    return _merge_userinfo_claims(id_claims, userinfo_claims), True
+    return _merge_userinfo_claims(id_claims, userinfo_claims, userinfo_groups), True
 
 
 async def _process_oidc_callback_fastapi(request: Request, session, provider_id: Optional[str] = None) -> tuple[Optional[str], list[str]]:
@@ -1717,7 +1737,13 @@ async def _process_oidc_callback_fastapi(request: Request, session, provider_id:
             errors.append("No user information received")
             return None, errors
 
-        userinfo, proceed = await _claims_for_login(exchange_client, provider.id, token_response, dict(id_claims))
+        userinfo, proceed = await _claims_for_login(
+            exchange_client,
+            provider.id,
+            token_response,
+            dict(id_claims),
+            userinfo_groups=getattr(provider, "userinfo_groups", False) is True,
+        )
         if not proceed or userinfo is None:
             errors.append("User information from the identity provider does not match the signed-in user")
             return None, errors
