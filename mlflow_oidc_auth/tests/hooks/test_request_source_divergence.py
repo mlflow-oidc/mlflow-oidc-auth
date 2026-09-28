@@ -378,6 +378,7 @@ def test_head_on_a_proto_get_route_fails_closed():
 # ---------------------------------------------------------------------------
 
 from types import SimpleNamespace  # noqa: E402
+from mlflow.genai.review_queues import ReviewQueueType  # noqa: E402
 
 USER = "alice@example.com"
 OWN, OWN2, VICTIM = "own", "own2", "victim"
@@ -430,13 +431,15 @@ _UNION_SPECS = {
     "validate_can_create_issue": ("experiment_id", False, {"name": "n", "description": "d"}),
     "validate_can_search_issues": ("experiment_id", False, {}),
     "validate_can_read_label_schema": ("schema_id", False, {}),
-    "validate_can_update_label_schema": ("schema_id", False, {}),
-    "validate_can_delete_label_schema": ("schema_id", False, {}),
+    "validate_can_manage_label_schema": ("schema_id", False, {}),
+    "validate_can_create_review_queue": ("experiment_id", False, {"name": "q", "queue_type": "CUSTOM"}),
     "validate_can_get_or_create_user_queue": ("experiment_id", False, {"user": USER}),
-    "validate_can_read_review_queue": ("queue_id", False, {}),
+    "validate_can_view_review_queue": ("queue_id", False, {}),
+    "validate_can_view_review_queue_by_name": ("experiment_id", False, {"name": "q"}),
     "validate_can_update_review_queue": ("queue_id", False, {}),
     "validate_can_delete_review_queue": ("queue_id", False, {}),
-    "validate_can_update_review_queue_items": ("queue_id", False, {}),
+    "validate_can_add_items_to_review_queue": ("queue_id", False, {}),
+    "validate_can_remove_items_from_review_queue": ("queue_id", False, {}),
     "validate_can_set_review_queue_item_status": ("queue_id", False, {}),
 }
 
@@ -503,7 +506,11 @@ class _FakeTrackingStore:
         return SimpleNamespace(experiment_id=schema_id)
 
     def get_review_queue(self, queue_id):
-        return SimpleNamespace(experiment_id=queue_id)
+        # Alice is the owner and an assigned user, so only the experiment grant decides.
+        return SimpleNamespace(experiment_id=queue_id, created_by=USER, users=[USER], queue_type=ReviewQueueType.CUSTOM)
+
+    def get_review_queue_by_name(self, experiment_id, *, name):
+        return self.get_review_queue(experiment_id)
 
 
 @pytest.fixture

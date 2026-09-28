@@ -248,20 +248,32 @@ and as the reviewer of an item.
 | | `POST issues`, `PATCH issues/<id>` | EDIT on the experiment, plus READ on `source_run_id` if given; `created_by`, if given, must be the caller |
 | `issues/invoke`, `genai/evaluate/invoke` | start an issue-detection or evaluation job | EDIT on the experiment, READ on the experiment of every trace in `trace_ids`; for `issues/invoke`, USE on a named gateway secret (`secret_id`) or endpoint (`endpoint_name`) |
 | Label schemas (`3.0/mlflow/label-schemas/…`) | `get`, `get-by-name`, `list` | READ on the experiment |
-| | `create`, `update` | EDIT on the experiment |
-| | `delete` | MANAGE on the experiment |
+| | `create`, `update`, `delete` | MANAGE on the experiment |
 | | a schema with no experiment | readable by any authenticated user; writable by admins only |
-| Review queues (`3.0/mlflow/review-queues/…`) | `get`, `get-by-name`, `list`, `items/list` | READ on the experiment |
-| | `create`, `update`, `items/add`, `items/remove` | EDIT on the experiment |
+| Review queues (`3.0/mlflow/review-queues/…`) | `create` | EDIT on the experiment; the caller becomes the queue's owner. A custom queue's name may not be a registered username (see below); a user queue's name must be an existing, active, non-service account |
+| | `get`, `get-by-name`, `items/list` | READ on the experiment, and one of: MANAGE on the experiment, being an assigned user of the queue, or EDIT and owning the queue |
+| | `list` | READ on the experiment; a caller without EDIT sees only the queues they are assigned to |
+| | `update` | MANAGE on the experiment, or EDIT and owning the queue. A custom queue may not be renamed to a registered username |
 | | `update` with `new_owner` | MANAGE on the experiment |
-| | `delete` | MANAGE on the experiment |
+| | `delete`, `items/remove` | MANAGE on the experiment, or EDIT and owning the queue if it is a custom queue (a user queue needs MANAGE) |
+| | `items/add` | EDIT on the experiment |
 | | `get-or-create-user` | EDIT on the experiment; `user` must be an existing, active, non-service account (it may be a teammate) |
-| | `items/set-status` | EDIT on the experiment; `completed_by` must be the caller, and is required for `COMPLETE` / `DECLINED` |
+| | `items/set-status` | EDIT on the experiment and being an assigned user of the queue (MANAGE alone is not enough); `completed_by` must be the caller, and is required for `COMPLETE` / `DECLINED` |
 | UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job, or else on the experiment of the run it records; admin only if neither resolves |
 | Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment and on the scorer (`name`) |
 | | `GET online-configs` | READ on the experiment and on the scorer of every configuration returned for `scorer_ids` |
 | Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
 | Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
+
+Review queues and label schemas follow the rules of MLflow's own auth plugin. A queue's owner
+is its `created_by` and its assigned users are its `users`, both as MLflow stores them, and
+both are compared case-insensitively. A queue with no owner recorded is owned by nobody. Owning
+a queue adds to EDIT; it never stands in for it.
+
+A custom review queue may not use a registered username (a user or service account, compared
+case-insensitively) as its name, on create or on rename, because user queues are named after
+their user. This applies to administrators too. A request that breaks the rule gets `400`; a
+non-admin without the permission for the operation gets `403` first.
 
 ## Permission Cascade on Delete/Rename
 
