@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mlflow-oidc-auth"
 dynamic = ["version"]
-description = "OpenID Connect (OIDC) auth plugin for MLflow"
+description = "Authentication and access control for MLflow: SSO (OIDC, SAML), SCIM provisioning and per-resource permissions"
 readme = "README.md"
-keywords = ["mlflow", "oauth2", "oidc"]
+keywords = ["mlflow", "access-control", "authentication", "authorization", "oidc", "oauth2", "saml", "scim", "sso", "rbac"]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 

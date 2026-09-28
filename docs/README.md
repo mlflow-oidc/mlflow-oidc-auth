@@ -1,6 +1,8 @@
-# MLflow OIDC Auth
+# MLflow Access Control
 
-An authentication and authorization plugin for [MLflow](https://mlflow.org/) that adds OpenID Connect (OIDC) single sign-on, role-based access control (RBAC), and per-resource permission management to MLflow tracking servers.
+Authentication and access control for [MLflow](https://mlflow.org/) tracking servers: single sign-on through OpenID Connect or SAML 2.0, SCIM provisioning, service accounts, and role-based, per-resource permissions for users, groups and workspaces.
+
+It is distributed as the `mlflow-oidc-auth` package and enabled with `--app-name oidc-auth`; the package kept its name as it grew beyond OIDC.
 
 ## Disclaimer
 
@@ -9,17 +11,19 @@ MLflow and related marks are trademarks of their respective owners.
 
 ## Features
 
-- **OIDC single sign-on** — Authenticate users via any OpenID Connect provider (Keycloak, Okta, Auth0, Azure AD, Google, etc.)
-- **Multiple auth methods** — Session cookies (browser), JWT bearer tokens (service-to-service), and basic auth (CLI/SDK)
+- **Single sign-on** — Authenticate users through any OpenID Connect provider (Keycloak, Okta, Auth0, Azure AD, Google, etc.), confidential or PKCE public clients, or through a SAML 2.0 identity provider; several providers can be configured side by side
+- **SCIM 2.0 provisioning** — Create, update and deactivate users and groups from your directory
+- **Service accounts and Kubernetes identities** — Access tokens for automation, and native authentication of Kubernetes service-account tokens
+- **Multiple auth methods** — Server-side sessions (browser), JWT bearer tokens (service-to-service), and basic auth (CLI/SDK)
 - **User-level permissions** — Assign READ, USE, EDIT, or MANAGE permissions to individual users per resource
-- **Group-based access control** — Organize users into groups with shared permissions, synchronized from the OIDC provider
+- **Group-based access control** — Organize users into groups with shared permissions, synchronized from the identity provider or SCIM
 - **Regex pattern permissions** — Define permissions using regular expressions that match resource names (e.g., `^prod-.*` → READ for all production experiments)
 - **Workspace support** — Multi-tenant resource isolation with workspace-scoped experiments, models, webhooks, and trash (requires MLflow >=3.10)
 - **AI Gateway permissions** — Control access to MLflow AI Gateway endpoints, secrets, and model definitions
 - **Prompt and scorer permissions** — Fine-grained access control for MLflow prompts and scorers
 - **Webhook management** — Create, test, and manage workspace-scoped webhooks through the admin UI
 - **Trash management** — View, restore, and permanently delete experiments and runs from the admin UI
-- **Admin UI** — React-based management interface for permissions, users, groups, webhooks, and trash
+- **Admin UI** — React-based management interface for permissions, users, groups, service accounts, workspaces, webhooks, and trash
 - **Pluggable configuration** — Load secrets from AWS Secrets Manager, Azure Key Vault, HashiCorp Vault, Kubernetes Secrets, or environment variables
 - **Pluggable cache backend** — In-process TTL cache (default) or shared Redis for multi-replica permission invalidation
 - **JWT audience validation** — Optional `aud` claim enforcement to prevent token confusion attacks
@@ -76,7 +80,7 @@ mlflow-oidc-server --host 0.0.0.0 --port 8080
 
 ### 4. Access
 
-- **MLflow UI**: `http://localhost:8080/` — Redirects to OIDC login
+- **MLflow UI**: `http://localhost:8080/` — Redirects to sign-in
 - **Admin UI**: `http://localhost:8080/oidc/ui/` — Permission management interface
 - **Health**: `http://localhost:8080/health/ready` — Readiness probe
 
@@ -84,7 +88,7 @@ mlflow-oidc-server --host 0.0.0.0 --port 8080
 
 The plugin runs as a FastAPI application that wraps MLflow's Flask server:
 
-1. **FastAPI** handles OIDC authentication, the admin UI, permission management API, and health endpoints
+1. **FastAPI** handles authentication (OIDC, SAML, SCIM, tokens), the admin UI, permission management API, and health endpoints
 2. **Flask** (MLflow's native app) handles the core MLflow tracking API (experiments, runs, models)
 3. **Before-request hooks** intercept every MLflow API call and enforce RBAC before the request reaches MLflow
 4. **After-request hooks** auto-grant permissions on resource creation, filter search results, and cascade permission deletes
@@ -98,6 +102,9 @@ Authentication context flows from FastAPI middleware through an ASGI-to-WSGI bri
 | [Installation](installation) | Installation options and first-run setup |
 | [Configuration](configuration) | Environment variables and settings reference |
 | [Configuration Providers](configuration-providers) | AWS, Azure, Vault, K8s secret backends |
+| [SAML Authentication](saml-auth) | SAML 2.0 identity providers |
+| [SCIM Provisioning](scim) | Directory-driven users and groups |
+| [Kubernetes Service Accounts](kubernetes-auth) | Authenticating workloads with their service-account tokens |
 | [Permissions](permissions) | Permission system, hierarchy, and resolution |
 | [Workspaces](workspaces) | Multi-tenant workspace isolation |
 | [Architecture](architecture) | System design, middleware stack, hooks |
@@ -109,7 +116,7 @@ Authentication context flows from FastAPI middleware through an ASGI-to-WSGI bri
 
 - Python >=3.10 (3.12 recommended)
 - MLflow >=3.14.0, <4
-- An OIDC provider (Keycloak, Okta, Auth0, Azure AD, etc.)
+- An identity provider: OpenID Connect (Keycloak, Okta, Auth0, Azure AD, etc.) or SAML 2.0
 - Database: SQLite (default), PostgreSQL, or MySQL
 
 ## Links
