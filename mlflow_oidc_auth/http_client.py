@@ -20,6 +20,13 @@ import truststore
 from requests.adapters import HTTPAdapter
 
 
+def _system_trust_context() -> ssl.SSLContext:
+    """A client context on the operating system's trust store that refuses TLS older than 1.2."""
+    context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
 class _SystemTrustAdapter(HTTPAdapter):
     """An adapter whose connection pools verify against the operating system's trust store.
 
@@ -28,11 +35,11 @@ class _SystemTrustAdapter(HTTPAdapter):
     """
 
     def init_poolmanager(self, *args: Any, **kwargs: Any) -> None:
-        kwargs["ssl_context"] = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        kwargs["ssl_context"] = _system_trust_context()
         super().init_poolmanager(*args, **kwargs)
 
     def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any):
-        proxy_kwargs["ssl_context"] = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        proxy_kwargs["ssl_context"] = _system_trust_context()
         return super().proxy_manager_for(proxy, **proxy_kwargs)
 
 

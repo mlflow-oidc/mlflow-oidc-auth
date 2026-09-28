@@ -76,6 +76,7 @@ def private_ca_server(tmp_path_factory):
 
     server = http.server.ThreadingHTTPServer(("localhost", 0), _Handler)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(cert_file, key_file)
     server.socket = context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -94,6 +95,12 @@ def test_sessions_verify_with_the_system_trust_store():
     with http_client.system_trust_session() as session:
         adapter = session.get_adapter("https://idp.example.com/")
         assert isinstance(adapter.poolmanager.connection_pool_kw["ssl_context"], truststore.SSLContext)
+
+
+def test_sessions_refuse_protocols_older_than_tls_1_2():
+    with http_client.system_trust_session() as session:
+        context = session.get_adapter("https://idp.example.com/").poolmanager.connection_pool_kw["ssl_context"]
+    assert context.minimum_version >= ssl.TLSVersion.TLSv1_2
 
 
 def test_every_session_gets_its_own_context():
