@@ -247,7 +247,7 @@ class TestModifiedVersionTable:
             migrate(engine, "head")
 
         tables = []
-        with engine.begin() as conn:
+        with engine.begin():
             connection = f.connection().connection
             cursor = connection.cursor()
 
@@ -288,7 +288,7 @@ class TestDefaultVersionTable:
             migrate(engine, "head")
 
         tables = []
-        with engine.begin() as conn:
+        with engine.begin():
             connection = f.connection().connection
             cursor = connection.cursor()
 
