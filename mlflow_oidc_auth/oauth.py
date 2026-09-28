@@ -20,6 +20,11 @@ purpose: the registry is declarative configuration that may sit in a JSON file o
 and secrets belong in the secrets manager. Each additional provider takes its secret from
 ``OIDC_CLIENT_SECRET_<PROVIDER_ID>`` resolved through the normal config chain, so the existing
 providers (Vault, AWS, Azure) keep working.
+
+A provider may instead be declared a **public client** (``OIDC_PUBLIC_CLIENT`` for the flat
+configuration, ``"public_client": true`` on a registry entry): it is registered with no secret at
+all and PKCE authenticates its token exchange. The declaration is explicit; a missing secret alone
+never makes a client public — see ``_credentials_usable``.
 """
 
 from __future__ import annotations
@@ -133,31 +138,77 @@ def _has_required_config() -> bool:
     return bool(config.OIDC_CLIENT_ID and config.OIDC_DISCOVERY_URL)
 
 
-def _credentials_usable(provider_id: str, client_secret: Optional[str]) -> bool:
-    """Whether the provider can authenticate its token request, reporting it when it cannot.
+def _credential_hints(provider_id: str) -> tuple:
+    """The settings an operator would change for ``provider_id``: ``(secret, public-client flag)``.
 
-    A public client has no secret, and PKCE — on by default since #312 — is what binds the code
-    to the login attempt in its place. With neither, the token exchange cannot be authenticated
-    at all, so the provider is refused here and named, rather than left to surface later as the
-    provider's opaque ``invalid_client``.
+    Named literally rather than derived with ``_secret_env_key``: the derived key is tainted by the
+    secret accessor for CodeQL, and logging it is reported as clear-text exposure of a secret.
+    """
+    if provider_id != DEFAULT_PROVIDER_ID:
+        return "OIDC_CLIENT_SECRET_<PROVIDER_ID>", '"public_client": true on its registry entry'
+    if config.AUTH_PROVIDERS.source == "legacy":
+        return "OIDC_CLIENT_SECRET", "OIDC_PUBLIC_CLIENT=true"
+    return "OIDC_CLIENT_SECRET", '"public_client": true on its registry entry'
+
+
+def _credentials_usable(provider_id: str, client_secret: Optional[str], public_client: bool) -> bool:
+    """Whether the provider's client credentials are a coherent configuration, reporting it when not.
+
+    A client is either **confidential** — it has a secret — or **public**, declared explicitly with
+    ``OIDC_PUBLIC_CLIENT`` / ``"public_client": true`` and authenticated by PKCE instead (#300).
+    A missing secret is never read as "public": a secret that failed to load from a secrets
+    manager must surface as a missing secret, not quietly change how the client authenticates.
+
+    ====================  ==============  ============  ===========================================
+    public_client         secret          PKCE          outcome
+    ====================  ==============  ============  ===========================================
+    False                 set             any           confidential client (registered)
+    False                 missing         any           refused: set the secret or declare public
+    True                  missing         on            public client (registered, no secret)
+    True                  any             off           refused: a public client needs PKCE
+    True                  set             on            refused: contradictory configuration
+    ====================  ==============  ============  ===========================================
 
     Parameters:
         provider_id: Registry id of the provider, used only for the log line.
-        client_secret: The resolved secret, or None for a public client.
+        client_secret: The resolved secret, or None. Never logged.
+        public_client: Whether the provider is declared a public client.
 
     Returns:
-        True when a secret or PKCE is available.
+        True when the provider may be registered.
     """
+    secret_setting, public_setting = _credential_hints(provider_id)
 
-    if client_secret or config.OIDC_CODE_CHALLENGE:
-        return True
+    if not public_client:
+        if client_secret:
+            return True
+        logger.error(
+            "Provider '%s' has no client secret; refusing to register it. Set its client secret (%s), "
+            "or declare it a public client (%s), which PKCE then authenticates instead.",
+            provider_id,
+            secret_setting,
+            public_setting,
+        )
+        return False
 
-    logger.error(
-        "Provider '%s' has no client secret and PKCE is disabled; refusing to register it. Set its client secret, "
-        "or leave OIDC_CODE_CHALLENGE at its S256 default to register it as a public client.",
-        provider_id,
-    )
-    return False
+    if not config.OIDC_CODE_CHALLENGE:
+        logger.error(
+            "Provider '%s' is declared a public client but PKCE is disabled; refusing to register it. A public client has no "
+            "secret, so PKCE is what authenticates its token exchange: leave OIDC_CODE_CHALLENGE at its S256 default.",
+            provider_id,
+        )
+        return False
+
+    if client_secret:
+        logger.error(
+            "Provider '%s' is declared a public client but a client secret (%s) is also configured; refusing to register it "
+            "because the configuration is contradictory. Remove the secret, or stop declaring it a public client.",
+            provider_id,
+            secret_setting,
+        )
+        return False
+
+    return True
 
 
 def _secret_env_key(provider_id: str) -> str:
@@ -221,7 +272,9 @@ def _settings_dict(client_id: str, client_secret: Optional[str], discovery_url: 
 
     Authlib treats a present-but-empty ``client_secret`` as a confidential client and sends an
     empty credential to the token endpoint, which providers reject as ``invalid_client``. A
-    public client has to leave the key out entirely so PKCE is what authenticates the exchange.
+    public client has to leave the key out entirely, so authlib authenticates its token,
+    refresh and revocation requests with the ``none`` method (``client_id`` in the body) and
+    PKCE is what binds the code exchange.
     """
 
     settings: Dict[str, Optional[str]] = {"client_id": client_id, "server_metadata_url": discovery_url}
@@ -260,7 +313,7 @@ def _client_settings(provider_id: str) -> Optional[Dict[str, Optional[str]]]:
         # must not resurrect a browser login path they removed.
         if provider_id != DEFAULT_PROVIDER_ID or config.AUTH_PROVIDERS.source != "legacy" or not _has_required_config():
             return None
-        if not _credentials_usable(DEFAULT_PROVIDER_ID, config.OIDC_CLIENT_SECRET):
+        if not _credentials_usable(DEFAULT_PROVIDER_ID, config.OIDC_CLIENT_SECRET, getattr(config, "OIDC_PUBLIC_CLIENT", False) is True):
             return None
         return _settings_dict(config.OIDC_CLIENT_ID, config.OIDC_CLIENT_SECRET, config.OIDC_DISCOVERY_URL)
 
@@ -276,7 +329,7 @@ def _client_settings(provider_id: str) -> Optional[Dict[str, Optional[str]]]:
     if not (client_id and discovery_url):
         return None
 
-    if not _credentials_usable(provider_id, client_secret):
+    if not _credentials_usable(provider_id, client_secret, getattr(provider, "public_client", False) is True):
         return None
 
     return _settings_dict(client_id, client_secret, discovery_url)

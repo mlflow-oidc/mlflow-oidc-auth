@@ -120,23 +120,9 @@ class TestMultipleProviders:
 
         assert results == {"okta": True, "broken": False, "entra": True}
 
-    def test_a_provider_with_no_secret_is_skipped_when_pkce_is_off(self):
-        with (
-            with_registry(provider("okta"), provider("nosecret")),
-            with_secrets(OIDC_CLIENT_SECRET_OKTA="s1"),
-            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", None),
-        ):
-            results = oauth_mod.ensure_all_clients_registered()
-
-        assert results == {"okta": True, "nosecret": False}
-        assert oauth_mod.get_client("nosecret") is None
-
-    def test_a_provider_with_no_secret_registers_as_a_public_client(self):
-        """A secretless provider is a public client, not a broken one, once PKCE is on (#300).
-
-        PKCE is the default since #312, so this — not the skip above — is what an operator who
-        omits a client secret actually gets.
-        """
+    def test_a_provider_with_no_secret_is_skipped_not_raised(self):
+        """PKCE is on (its default), and a missing secret is still refused: a client is public only
+        when declared so (#300), never because its secret failed to load."""
         with (
             with_registry(provider("okta"), provider("nosecret")),
             with_secrets(OIDC_CLIENT_SECRET_OKTA="s1"),
@@ -144,8 +130,37 @@ class TestMultipleProviders:
         ):
             results = oauth_mod.ensure_all_clients_registered()
 
-        assert results == {"okta": True, "nosecret": True}
-        assert oauth_mod.get_client("nosecret") is not None
+        assert results == {"okta": True, "nosecret": False}
+        assert oauth_mod.get_client("nosecret") is None
+
+    def test_a_provider_declared_public_registers_without_a_secret(self):
+        with (
+            with_registry(provider("okta"), provider("public", public_client=True)),
+            with_secrets(OIDC_CLIENT_SECRET_OKTA="s1"),
+            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", "S256"),
+        ):
+            results = oauth_mod.ensure_all_clients_registered()
+
+        assert results == {"okta": True, "public": True}
+        client = oauth_mod.get_client("public")
+        assert client is not None and client.client_secret is None
+        assert oauth_mod.get_client("okta").client_secret == "s1"
+
+    def test_a_provider_declared_public_with_a_secret_is_refused(self):
+        with (
+            with_registry(provider("public", public_client=True)),
+            with_secrets(OIDC_CLIENT_SECRET_PUBLIC="s1"),
+            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", "S256"),
+        ):
+            assert oauth_mod.ensure_all_clients_registered() == {"public": False}
+
+    def test_a_provider_declared_public_without_pkce_is_refused(self):
+        with (
+            with_registry(provider("public", public_client=True)),
+            with_secrets(),
+            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", None),
+        ):
+            assert oauth_mod.ensure_all_clients_registered() == {"public": False}
 
     def test_non_oidc_providers_are_not_registered(self):
         """SAML has no authlib OAuth client, and a Kubernetes issuer is verified from its JWKS
@@ -168,8 +183,6 @@ class TestMultipleProviders:
         with (
             with_registry(provider("okta"), provider("nosecret")),
             with_secrets(OIDC_CLIENT_SECRET_OKTA="s1"),
-            # PKCE off, so "nosecret" is genuinely unregistrable rather than a public client.
-            patch.object(oauth_mod.config, "OIDC_CODE_CHALLENGE", None),
         ):
             oauth_mod.ensure_all_clients_registered()
 

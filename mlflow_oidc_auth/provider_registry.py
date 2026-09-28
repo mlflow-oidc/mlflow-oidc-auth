@@ -171,6 +171,11 @@ class ProviderConfig:
         issuer: Expected ``iss``, when known.
         discovery_url: OIDC discovery document, for ``oidc`` providers.
         client_id: OAuth client id, for ``oidc`` providers.
+        public_client: ``oidc`` only. The client was issued without a client secret, so PKCE
+            authenticates its token exchange instead (#300). Opt-in: a missing secret on a
+            provider that does not declare this is a configuration error, not a public client.
+            False by default; for the synthesised ``default`` provider it comes from
+            ``OIDC_PUBLIC_CLIENT``.
         jwks_inline: Key set written into configuration, for a cluster whose JWKS cannot be
             fetched. The only mode that needs no network at all.
         jwks_uri: Key set URL, when it is known and discovery is not readable.
@@ -218,6 +223,8 @@ class ProviderConfig:
     issuer: Optional[str] = None
     discovery_url: Optional[str] = None
     client_id: Optional[str] = None
+    # Opt-in (#300): registered without a client secret, PKCE authenticating the token exchange.
+    public_client: bool = False
     # Kubernetes service-account providers (#314). A cluster's JWKS is often not anonymously
     # readable and often unreachable from wherever MLflow runs, so the keys can come from
     # discovery, from configuration, or from the API server using the pod's own credentials.
@@ -376,6 +383,16 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         # tokens it would not — or, worse, would once that type learned to.
         errors.append(f"{label}: 'allow_tokens_without_expiry' applies only to a token provider ({', '.join(TOKEN_PROVIDER_TYPES)}), not to {provider_type!r}")
 
+    public_client = entry.get("public_client", False)
+    if not isinstance(public_client, bool):
+        # Strict rather than truthy, as for allow_tokens_without_expiry: the string "false" is
+        # truthy, and reading it as true would register a client without its secret.
+        errors.append(f"{label}: 'public_client' must be true or false, got {public_client!r}")
+    elif public_client and provider_type != "oidc":
+        # Only an OIDC provider has an OAuth client to register. Refused rather than ignored: an
+        # operator who wrote it believes it changes something.
+        errors.append(f"{label}: 'public_client' applies only to an 'oidc' provider, not to {provider_type!r}")
+
     allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
     if identity_binding == "email" and not allowed_email_domains:
         errors.append(
@@ -484,6 +501,7 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             issuer=issuer.strip() if isinstance(issuer, str) else None,
             discovery_url=discovery_url.strip() if isinstance(discovery_url, str) else None,
             client_id=client_id.strip() if isinstance(client_id, str) else None,
+            public_client=public_client is True,
             **saml_fields,
         ),
         [],
@@ -1086,6 +1104,9 @@ def _legacy_entry(app_config: Any) -> Dict[str, Any]:
         # Never true for the synthesised provider: there is no flat variable to opt in with,
         # and a token without ``exp`` is refused like any other (#356).
         "allow_tokens_without_expiry": False,
+        # OIDC_PUBLIC_CLIENT (#300). ``is True`` rather than truthiness: the config layer parses
+        # it as a boolean, and anything else must not register a client without its secret.
+        "public_client": getattr(app_config, "OIDC_PUBLIC_CLIENT", False) is True,
     }
 
 
@@ -1256,6 +1277,7 @@ def _legacy_providers(app_config: Any) -> List[ProviderConfig]:
             issuer=entry["issuer"],
             discovery_url=entry["discovery_url"],
             client_id=entry["client_id"],
+            public_client=entry["public_client"],
             allow_tokens_without_expiry=False,
         )
     ]

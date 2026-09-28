@@ -10,7 +10,8 @@ The application is configured through environment variables, `.env` files, or pl
 |----------|------|---------|-------------|
 | `OIDC_DISCOVERY_URL` | String | *Required* | OIDC discovery endpoint URL (e.g., `https://idp.example.com/.well-known/openid-configuration`) |
 | `OIDC_CLIENT_ID` | String | *Required* | Client ID registered with your OIDC provider |
-| `OIDC_CLIENT_SECRET` | String | *Required unless PKCE* | Client secret for your OIDC application. Omit it for a public client, which PKCE authenticates instead — see [PKCE](#pkce) |
+| `OIDC_CLIENT_SECRET` | String | *Required unless `OIDC_PUBLIC_CLIENT`* | Client secret for your OIDC application. Leave it unset only for a client declared public with `OIDC_PUBLIC_CLIENT=true` — see [Public clients](#public-clients). Unset without that declaration, the client is not registered and an error names it |
+| `OIDC_PUBLIC_CLIENT` | Boolean | `false` | Declare the client a **public client**: one the provider issued without a client secret. It is registered with no secret, and PKCE (`OIDC_CODE_CHALLENGE`, on by default) authenticates the token exchange instead. Requires PKCE, and refuses an `OIDC_CLIENT_SECRET` set alongside it — both are errors that leave the client unregistered. See [Public clients](#public-clients) |
 | `OIDC_REDIRECT_URI` | String | Auto-detected | Redirect URI for the OIDC callback (`/callback`). If not set, calculated dynamically from proxy headers, which works correctly behind reverse proxies |
 | `OIDC_SCOPE` | String | `openid,email,profile` | Comma-separated list of OIDC scopes to request |
 | `OIDC_AUDIENCE` | String | None | Expected JWT `aud` claim value (e.g., your client ID or API identifier). When set, bearer tokens are rejected if the `aud` claim doesn't match. Recommended for production to prevent token confusion attacks |
@@ -30,6 +31,7 @@ Per-provider fields set on an entry in `AUTH_PROVIDERS` / `AUTH_PROVIDERS_FILE` 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `public_client` | Boolean | `false` | Declare this OIDC provider a **public client**, registered without a client secret and authenticated by PKCE instead. The same rules as `OIDC_PUBLIC_CLIENT`: requires PKCE, and refuses a secret (`OIDC_CLIENT_SECRET_<PROVIDER_ID>`) configured alongside it. Without it, a provider with no secret is not registered. Accepted only on `oidc` providers; set on `saml` or `k8s` the entry is refused at load. Must be a JSON boolean (`"true"` is refused). For the synthesised `default` provider it comes from `OIDC_PUBLIC_CLIENT`. See [Public clients](#public-clients) |
 | `allow_tokens_without_expiry` | Boolean | `false` | Accept a bearer token that carries no `exp` claim. By default every provider — including the synthesised `default` one — refuses such a token, because nothing else would ever make it stop working. Accepted only on token providers (`oidc`, `k8s`); set on `saml` or any other type the entry is refused at load. Must be a JSON boolean (`"true"` is refused). Waives only a *missing* `exp`: a present `exp` in the past, the issuer, the audience and the signature are all still enforced. Setting it logs a warning at startup. Intended for legacy Kubernetes service-account tokens — see [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry) |
 
 ### SAML provider fields
@@ -332,16 +334,35 @@ a provider that genuinely offers only `plain`, set `none` so the state is explic
 ### Public clients
 
 A **public client** is one the provider issues without a client secret, because there is nowhere
-to keep one. Leave `OIDC_CLIENT_SECRET` unset and the client registers without it; PKCE is then
-what authenticates the token exchange.
+to keep one. Declare it explicitly and leave the secret unset:
 
-The secret is not merely optional in that case — it is left out of the registration entirely. An
-empty-but-present secret would make authlib send a blank credential to the token endpoint, which
-providers reject as `invalid_client`.
+```bash
+OIDC_CLIENT_ID=mlflow-public
+OIDC_PUBLIC_CLIENT=true
+# no OIDC_CLIENT_SECRET
+```
 
-The two cannot both be missing. A provider configured with neither a client secret nor PKCE has
-nothing to authenticate its token request with, so it is refused at registration with a log line
-naming it, and the other providers carry on.
+For a provider in the registry, set `"public_client": true` on its entry and leave
+`OIDC_CLIENT_SECRET_<PROVIDER_ID>` unset.
+
+The client is then registered with no secret at all. authlib authenticates its token, refresh and
+revocation requests with the `none` method — the `client_id` in the request body, no
+`Authorization` header — and PKCE is what binds the authorization code to the login attempt. The
+secret is left out of the registration rather than set blank: an empty-but-present secret would
+make authlib send a blank credential, which providers reject as `invalid_client`.
+
+The declaration is required. A missing secret on its own is never taken to mean "public client",
+because a secret that failed to load from a secrets manager must be reported as missing, not
+quietly change how the client authenticates. Registration follows these rules, and every refusal
+logs an error naming the provider (never the secret) while the other providers carry on:
+
+| Declared public | Client secret | PKCE | Result |
+|-----------------|---------------|------|--------|
+| no | set | any | Registered as a confidential client, as before |
+| no | unset | any | **Refused**: set the client secret, or declare the client public |
+| yes | unset | on | Registered as a public client |
+| yes | any | off | **Refused**: a public client needs PKCE (`OIDC_CODE_CHALLENGE`) |
+| yes | set | on | **Refused**: contradictory configuration — remove the secret or the declaration |
 
 ## Sessions
 
@@ -499,6 +520,12 @@ for deployments behind a reverse proxy.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Public clients (`OIDC_PUBLIC_CLIENT`, `public_client`).** An OIDC client can now be
+  registered without a client secret, as a public client authenticated by PKCE, when it is
+  declared so explicitly. Nothing changes for an existing deployment: a client with a secret
+  registers exactly as before, and a client without one is still not registered — the error
+  logged for it now says to set the secret or declare the client public. See
+  [Public clients](#public-clients).
 - **Outbound HTTPS trusts the operating system's certificate store.** A private or
   TLS-inspection (DLP/DPI) root CA installed system-wide is now trusted by every call to an
   identity provider, without extra configuration:
@@ -660,13 +687,14 @@ OIDC_CLIENT_SECRET=dev-secret
 SECRET_KEY=dev-not-for-production
 ```
 
-or, for a public client that has no client secret — PKCE is what authenticates the token
-exchange, and it is on by default:
+or, for a public client that has no client secret — declared with `OIDC_PUBLIC_CLIENT`, and
+authenticated by PKCE, which is on by default (see [Public clients](#public-clients)):
 
 ```bash
 # .env file
 OIDC_DISCOVERY_URL=https://your-idp.example.com/.well-known/openid-configuration
 OIDC_CLIENT_ID=mlflow-dev-public
+OIDC_PUBLIC_CLIENT=true
 SECRET_KEY=dev-not-for-production
 ```
 

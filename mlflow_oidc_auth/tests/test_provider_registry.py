@@ -693,6 +693,55 @@ class TestTwoProvidersCannotClaimOneIssuer:
         assert [provider.id for provider in result.providers] == ["first", "second"]
 
 
+class TestPublicClient:
+    """``public_client`` registers an OIDC client without a secret (#300). Opt-in, strict about its
+    type, and refused on a provider type that has no OAuth client to register."""
+
+    def test_it_defaults_to_false(self):
+        assert build([valid_entry()]).providers[0].public_client is False
+        assert ProviderConfig(id="bare").public_client is False
+
+    def test_an_oidc_provider_may_opt_in(self):
+        result = build([valid_entry(public_client=True)])
+
+        assert result.errors == []
+        assert result.providers[0].public_client is True
+
+    def test_false_is_accepted_explicitly(self):
+        assert build([valid_entry(public_client=False)]).providers[0].public_client is False
+
+    @pytest.mark.parametrize("bad_value", ["true", "false", 1, 0, None, [], {}])
+    def test_a_non_boolean_is_refused(self, bad_value):
+        """``"false"`` is truthy; reading it as true would register a client without its secret."""
+        result = build([valid_entry(public_client=bad_value)])
+
+        assert result.providers == []
+        assert any("'public_client' must be true or false" in error for error in result.errors)
+
+    def test_it_is_refused_on_a_k8s_provider(self):
+        result = build([valid_entry(type="k8s", in_cluster=True, public_client=True)])
+
+        assert result.providers == []
+        assert any("'public_client' applies only to an 'oidc' provider" in error for error in result.errors)
+
+    def test_it_is_refused_on_a_saml_provider(self, monkeypatch):
+        from mlflow_oidc_auth import provider_registry as registry_module
+
+        monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
+
+        result = build([saml_entry(public_client=True)])
+
+        assert result.providers == []
+        assert any("'public_client' applies only to an 'oidc' provider" in error for error in result.errors)
+
+    def test_the_legacy_provider_takes_it_from_oidc_public_client(self):
+        assert build(app_config=legacy_app_config(OIDC_PUBLIC_CLIENT=True)).providers[0].public_client is True
+        assert build(app_config=legacy_app_config(OIDC_PUBLIC_CLIENT=False)).providers[0].public_client is False
+        # Absent (an AppConfig from before the setting existed) and anything but a real boolean: off.
+        assert build(app_config=legacy_app_config()).providers[0].public_client is False
+        assert build(app_config=legacy_app_config(OIDC_PUBLIC_CLIENT="true")).providers[0].public_client is False
+
+
 class TestAllowTokensWithoutExpiry:
     """``allow_tokens_without_expiry`` switches off the one check that makes a token stop working
     on its own (#356). Off by default everywhere, refused where it could not mean anything, and
