@@ -528,6 +528,27 @@ for deployments behind a reverse proxy.
 - **The `[saml]` extra is optional.** SAML support (see [SAML Authentication](saml-auth)) ships
   behind `pip install "mlflow-oidc-auth[saml]"`. A deployment that does not install it or
   configure a `saml` provider is unaffected — nothing here changes its behaviour.
+- **Trash cleanup no longer hard-deletes a run whose artifacts could not be removed.**
+  `POST /oidc/trash/cleanup` used to log a warning and hard-delete the run's metadata anyway when
+  artifact deletion failed, orphaning the artifacts. It also could not resolve a run whose
+  artifact URI used the proxied `mlflow-artifacts:` scheme, which always failed on a server (the
+  process-global tracking URI there is the backend-store URI, not an HTTP endpoint) — that failure
+  is now fixed by resolving such URIs against `--artifacts-destination`, the same way MLflow's own
+  server does. When artifact deletion still fails for some other reason, the run's metadata is now
+  kept and the failure is reported in the response's `failed_runs` list instead of being silently
+  discarded. Before hard-deleting an experiment, cleanup now always confirms it owns no run at
+  all (for any reason a run was kept, not only a failed artifact deletion — hard-deleting the
+  experiment would otherwise cascade-delete that run's metadata through MLflow's own
+  experiment/run relationship); an experiment that still owns a run is kept too and reported in
+  `failed_experiments` instead. A deployment that automates cleanup and only checks the HTTP
+  status code should also check those lists; runs and experiments that fail to clean up stay in
+  the trash instead of disappearing with orphaned artifacts.
+- **Cleanup with only `run_ids` no longer sweeps every other trashed experiment.** Calling
+  `POST /oidc/trash/cleanup?run_ids=...` without `experiment_ids` used to also hard-delete every
+  experiment in the deleted lifecycle stage (and, through it, every run of those experiments too)
+  as a side effect, regardless of `older_than`. It now touches only the named runs. Calls that
+  name `experiment_ids` (with or without `run_ids`), or name neither (the "empty trash" case),
+  are unaffected. See [Trash Management](api-reference#trash-management).
 
 ## MLflow Server Environment Variables
 

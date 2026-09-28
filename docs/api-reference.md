@@ -292,6 +292,27 @@ All trash endpoints require **admin** permissions.
 
 When workspaces are enabled, trash operations are automatically scoped to the active workspace.
 
+`POST /oidc/trash/cleanup` deletes a run's artifacts before hard-deleting its metadata. A run
+whose artifact URI uses the proxied `mlflow-artifacts:` scheme (the tracking server serves the
+artifacts itself) is resolved against the server's `--artifacts-destination` root, the same way
+MLflow's own server resolves proxied artifacts. If artifact deletion fails for a run, that run's
+metadata is **not** deleted — it stays in the trash and is reported in the response's
+`failed_runs` list with the error, so a run is never hard-deleted while its artifacts are still
+known to exist. Before hard-deleting an experiment, the endpoint always checks whether it still
+owns any run — for any reason a run above was kept (a failed artifact deletion, an age or
+lifecycle-stage check, or a lookup failure), not only an artifact-deletion failure. If one does,
+the experiment is kept too (MLflow's own run/experiment relationship cascades a hard delete onto
+every run it still owns) and reported in `failed_experiments` instead, even when the experiment's
+own hard-delete would otherwise have succeeded.
+
+Query parameters interact as follows:
+- Neither `run_ids` nor `experiment_ids` (an "empty trash" call): every deleted run and every
+  deleted experiment older than `older_than` (default: all of them) is a candidate.
+- `experiment_ids` given: those experiments and all of their runs are candidates, in addition to
+  any `run_ids` also given.
+- `run_ids` given without `experiment_ids`: **only** those runs are touched. No other trashed
+  experiment, or any run other than the ones named, is read or deleted.
+
 ---
 
 ## Webhook Management
