@@ -715,6 +715,12 @@ for deployments behind a reverse proxy.
   as a side effect, regardless of `older_than`. It now touches only the named runs. Calls that
   name `experiment_ids` (with or without `run_ids`), or name neither (the "empty trash" case),
   are unaffected. See [Trash Management](api-reference#trash-management).
+- **Trash cleanup failure reasons are fixed strings.** The `error` of each `failed_runs` /
+  `failed_experiments` entry is now one of `Failed to delete artifacts`, `Failed to delete run`,
+  `Run not found`, `Could not verify no runs remain`, `Failed to delete experiment`, or one of the
+  existing lifecycle/age reasons, instead of the underlying exception text. The exception is still
+  written to the server log. Automation that matched on exception text should match on these
+  reasons instead.
 - **Redis cache URL and some MLflow settings are no longer logged.** The cache factory no longer
   writes `CACHE_REDIS_URL` (which can carry a password) to the log, and
   `configure_mlflow_environment()` / `mlflow-oidc-server` now log only the name of each MLflow
