@@ -79,9 +79,9 @@ Base path: `/api/2.0/mlflow/users`
 | DELETE | `/api/2.0/mlflow/users` | Admin | Delete a user |
 | GET | `/api/2.0/mlflow/users/current` | Authenticated | Get current user's profile |
 | GET | `/api/2.0/mlflow/users/{username}` | Admin | Get a specific user's profile |
-| GET | `/api/2.0/mlflow/users/tokens` | Authenticated | List the caller's access tokens |
-| POST | `/api/2.0/mlflow/users/tokens` | Session or IdP bearer token | Create a named access token for the caller |
-| DELETE | `/api/2.0/mlflow/users/tokens/{token_id}` | Authenticated | Delete one of the caller's access tokens |
+| GET | `/api/2.0/mlflow/users/current/tokens` | Authenticated | List the caller's access tokens |
+| POST | `/api/2.0/mlflow/users/current/tokens` | Session or IdP bearer token | Create a named access token for the caller |
+| DELETE | `/api/2.0/mlflow/users/current/tokens/{token_id}` | Authenticated | Delete one of the caller's access tokens |
 | GET | `/api/2.0/mlflow/users/{username}/tokens` | Admin | List a user's or service account's access tokens |
 | POST | `/api/2.0/mlflow/users/{username}/tokens` | Admin, session or IdP bearer token | Create a named access token for a user or service account |
 | DELETE | `/api/2.0/mlflow/users/{username}/tokens/{token_id}` | Admin | Delete one of a user's access tokens |
@@ -135,7 +135,7 @@ account, a provider configured `interactive: false`), gets `403`: a leaked or sh
 credential cannot mint a year-long replacement. Listing and deleting tokens works with
 any credential.
 
-**`GET /api/2.0/mlflow/users/tokens` response** (own tokens; `/{username}/tokens` for an admin
+**`GET /api/2.0/mlflow/users/current/tokens` response** (own tokens; `/{username}/tokens` for an admin
 listing another user's, same shape). Expired tokens are included; neither ever contains a secret:
 ```json
 {
@@ -154,7 +154,7 @@ listing another user's, same shape). Expired tokens are included; neither ever c
 }
 ```
 
-**`POST /api/2.0/mlflow/users/tokens` request** (`/{username}/tokens` for an admin issuing one for
+**`POST /api/2.0/mlflow/users/current/tokens` request** (`/{username}/tokens` for an admin issuing one for
 another user or a service account):
 ```json
 {
@@ -183,7 +183,7 @@ another user or a service account):
 20-token cap, or for a deactivated user, `422` for a missing field. Issuing a token also deletes the
 user's expired tokens, which frees their names.
 
-`DELETE /api/2.0/mlflow/users/tokens/{token_id}` (own) or `/{username}/tokens/{token_id}` (admin)
+`DELETE /api/2.0/mlflow/users/current/tokens/{token_id}` (own) or `/{username}/tokens/{token_id}` (admin)
 returns `{"deleted": 1}`; `404` if it is not that user's token — another user's token id reads
 exactly like one that does not exist. `DELETE /api/2.0/mlflow/users/{username}/tokens` (admin,
 revoke all) returns `{"revoked": <count>}`.

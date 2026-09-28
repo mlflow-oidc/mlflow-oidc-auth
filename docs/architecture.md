@@ -94,7 +94,7 @@ feature, the user's single prefix-less row), and a single password-hash check ve
 however many tokens the user holds. A live token must not be expired. On a hit, `last_used_at` is
 updated, at most once a minute per token.
 
-Issuing a new token (`POST /users/tokens`, `POST /users/{username}/tokens`, or
+Issuing a new token (`POST /users/current/tokens`, `POST /users/{username}/tokens`, or
 `PATCH /users/access-token`) is refused when the request itself was authenticated this way:
 `require_interactive_login` checks `request.state.auth_method`, set by `AuthMiddleware`, and
 requires a session or a bearer token from an interactive IdP instead. A bearer token from a

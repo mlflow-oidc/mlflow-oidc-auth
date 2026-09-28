@@ -21,7 +21,7 @@ describe("user-token-service", () => {
   it("lists the signed-in user's tokens", async () => {
     request.mockResolvedValue({ tokens: [{ id: 1 }] });
     await expect(listUserTokens(undefined)).resolves.toEqual([{ id: 1 }]);
-    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/tokens", {
+    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/current/tokens", {
       signal: undefined,
     });
   });
@@ -38,7 +38,7 @@ describe("user-token-service", () => {
   it("creates a token with name and expiration", async () => {
     const data = { name: "ci", expiration: "2027-01-01T23:59:59Z" };
     await createUserToken(undefined, data);
-    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/tokens", {
+    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/current/tokens", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -51,7 +51,7 @@ describe("user-token-service", () => {
 
   it("deletes one token", async () => {
     await deleteUserToken(undefined, 7);
-    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/tokens/7", {
+    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/current/tokens/7", {
       method: "DELETE",
     });
     await deleteUserToken("bob smith", 8);

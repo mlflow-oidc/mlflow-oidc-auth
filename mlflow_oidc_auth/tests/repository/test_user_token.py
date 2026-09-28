@@ -353,3 +353,38 @@ class TestDelete:
         listed = {r.name: r.to_json()["active"] for r in store.list_user_tokens(ALICE)}
 
         assert listed == {"old": False, "new": True}
+
+
+class TestIssueRacingADeactivationOnSqlite:
+    """SQLite's driver begins a transaction only at the first write, so the issue path must take
+    the write lock before it reads ``active`` — otherwise a deactivation that commits in between
+    is missed and the new token survives it (#415 review)."""
+
+    def test_an_issue_waits_for_an_open_deactivation_and_is_then_refused(self, store):
+        import sqlite3
+        import threading
+        import time
+
+        held = sqlite3.connect(store.engine.url.database, timeout=10, isolation_level=None)
+        held.execute("BEGIN IMMEDIATE")
+        held.execute("UPDATE users SET active = 0 WHERE username = ?", (ALICE,))
+        outcome = {}
+
+        def issue():
+            try:
+                outcome["result"] = store.create_user_token(ALICE, "raced", _in(30), created_by=ALICE)
+            except MlflowException as e:
+                outcome["error"] = e
+
+        thread = threading.Thread(target=issue)
+        thread.start()
+        try:
+            time.sleep(0.5)
+            assert thread.is_alive(), "expected the issue to wait for the open deactivation"
+        finally:
+            held.execute("COMMIT")
+            held.close()
+        thread.join(timeout=15)
+
+        assert outcome.get("error") is not None and outcome["error"].error_code == "INVALID_STATE", outcome
+        assert store.list_user_tokens(ALICE) == []

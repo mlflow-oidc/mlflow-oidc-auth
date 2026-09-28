@@ -161,7 +161,7 @@ a notebook, a quick experiment, an exploratory script. It acts as that person, w
 permissions.
 
 **Create one** from the **Tokens** tab of your **User Profile** page (`/user`) — see
-[Access token tabs](admin-ui#access-token-tabs) — or with `POST /api/2.0/mlflow/users/tokens`
+[Access token tabs](admin-ui#access-token-tabs) — or with `POST /api/2.0/mlflow/users/current/tokens`
 from a signed-in session or your own IdP bearer token ([API reference](api-reference#access-tokens)).
 The plaintext is shown **once**; copy it then.
 

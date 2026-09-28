@@ -10,7 +10,7 @@ import type {
 } from "../../../shared/types/user";
 
 /**
- * Whose tokens a call addresses. `undefined` is the signed-in user (the `/users/tokens`
+ * Whose tokens a call addresses. `undefined` is the signed-in user (the `/users/current/tokens`
  * endpoints); a username is another account, through the admin-only `/users/{username}/tokens`
  * endpoints.
  */

@@ -189,12 +189,19 @@ class UserTokenRepository:
         the same user: deactivation deletes the user's tokens, and an insert that read ``active``
         before that commit would leave a token behind; two concurrent replacements of ``default``
         would both delete the old row and then collide on the name. The lock makes each wait for
-        the other. SQLite has no row locks and ignores it; its writes are serialised anyway.
+        the other.
+
+        SQLite has no row locks and ignores ``FOR UPDATE``, and its driver begins a transaction only
+        at the first write, so a plain read would see ``active`` before a concurrent deactivation
+        commits. A no-op write to the row takes SQLite's database write lock first, and the row is
+        then re-read under it. On PostgreSQL the row is already locked and the write changes nothing.
         """
         username = normalize_username(username)
         user = session.query(SqlUser).filter(SqlUser.username == username).with_for_update().one_or_none()
         if user is None:
             raise MlflowException(f"User with username={username} not found", RESOURCE_DOES_NOT_EXIST)
+        session.query(SqlUser).filter(SqlUser.id == user.id).update({SqlUser.id: SqlUser.id}, synchronize_session=False)
+        session.refresh(user)
         return user
 
     @staticmethod

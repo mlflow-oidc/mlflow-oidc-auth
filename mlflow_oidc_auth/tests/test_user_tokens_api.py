@@ -28,7 +28,7 @@ ALICE = "alice@example.com"
 BOB = "bob@example.com"
 SERVICE = "svc-pipeline"
 LOGIN = "/login/tokens-api"
-TOKENS = "/api/2.0/mlflow/users/tokens"
+TOKENS = "/api/2.0/mlflow/users/current/tokens"
 ACCESS_TOKEN = "/api/2.0/mlflow/users/access-token"
 
 
@@ -482,3 +482,22 @@ class TestWorkloadTokensCannotMint:
         assert asyncio.run(run("k8s", interactive=False)) is True
         assert asyncio.run(run("oidc", interactive=False)) is True, "a token-only OIDC issuer is a workload too"
         assert asyncio.run(run("oidc")) is False
+
+
+class TestRoutesDoNotShadowUsernames:
+    """The caller's own tokens live under ``/users/current/``, a path already reserved, so a user
+    literally named ``tokens`` is still reachable through the per-user routes (#415 review)."""
+
+    def test_a_user_named_tokens_is_still_addressable(self, admin, store):
+        store.create_user("tokens", "A user called tokens")
+
+        profile = admin.get("/api/2.0/mlflow/users/tokens")
+        assert profile.status_code == 200
+        assert profile.json()["username"] == "tokens"
+
+        response = admin.delete("/api/2.0/mlflow/users/tokens/sessions")
+        assert response.status_code == 200
+
+        issued = admin.post(_of("tokens"), json={"name": "ci", "expiration": _expiry()})
+        assert issued.status_code == 201
+        assert [t.name for t in store.list_user_tokens("tokens")] == ["ci"]
