@@ -3,6 +3,7 @@ from flask import request
 
 from mlflow_oidc_auth.permissions import Permission, intersect_permissions
 from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values
+from mlflow_oidc_auth.validators._referenced import nested_body_values, referenced_logged_model_permission, referenced_run_permission
 
 
 def _permission_for_run(run_id: str, username: str) -> Permission:
@@ -25,6 +26,49 @@ def validate_can_read_run(username: str) -> bool:
 
 def validate_can_update_run(username: str) -> bool:
     return _get_permission_from_run_id(username).can_update
+
+
+def validate_can_log_metrics(username: str) -> bool:
+    """Authorize LogMetric / LogBatch on the run and on every logged model they write to.
+
+    Mirrors MLflow's ``validate_can_log_metric`` / ``validate_can_log_batch``: UPDATE on
+    the run, and UPDATE on each logged model named by ``model_id`` (LogMetric) or by
+    ``metrics[].model_id`` (LogBatch). Every spelling and request source is read, so the
+    same validator serves both routes. A logged model that does not exist is denied.
+
+    Parameters:
+        username: The authenticated user.
+
+    Returns:
+        True when the caller may update the run and every referenced logged model.
+    """
+    if not validate_can_update_run(username):
+        return False
+    model_ids = [*all_source_values("model_id"), *nested_body_values("metrics", "model_id")]
+    return all(referenced_logged_model_permission(model_id, username).can_update for model_id in dict.fromkeys(str(m) for m in model_ids))
+
+
+def validate_can_update_run_or_logged_model(username: str) -> bool:
+    """Authorize CreatePresignedUploadUrl on the run or logged model it uploads to.
+
+    MLflow's own auth plugin accepts either ``run_id`` or ``model_id`` here and requires
+    UPDATE on whichever is given. Every ``run_id`` / ``run_uuid`` and every ``model_id``
+    in any request source must be updatable; a request naming neither, or naming a run or
+    logged model that does not exist, is denied.
+
+    Parameters:
+        username: The authenticated user.
+
+    Returns:
+        True when the caller may update every run and logged model the request names.
+    """
+    run_ids = all_source_values("run_id", "run_uuid")
+    model_ids = all_source_values("model_id")
+    if not run_ids and not model_ids:
+        return False
+    if not all(referenced_run_permission(run_id, username).can_update for run_id in run_ids):
+        return False
+    return all(referenced_logged_model_permission(model_id, username).can_update for model_id in model_ids)
 
 
 def validate_can_delete_run(username: str) -> bool:

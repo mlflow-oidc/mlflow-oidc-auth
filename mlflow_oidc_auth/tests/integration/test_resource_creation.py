@@ -190,7 +190,7 @@ def _create_prompt(client: httpx.Client, prompt_name: str, prompt_text: str) -> 
         json={
             "name": prompt_name,
             "description": "Initial prompt version",
-            "source": "test-source",
+            "source": "dummy-source",
             "tags": [
                 {"key": "mlflow.prompt.is_prompt", "value": "true"},
                 {"key": "mlflow.prompt.text", "value": prompt_text},
@@ -207,7 +207,7 @@ def _create_prompt_version(client: httpx.Client, prompt_name: str, prompt_text: 
     payload = {
         "name": prompt_name,
         "description": "Updated prompt version",
-        "source": "test-source-v2",
+        "source": "dummy-source",
         "tags": [
             {"key": "mlflow.prompt.is_prompt", "value": "true"},
             {"key": "mlflow.prompt.text", "value": prompt_text},

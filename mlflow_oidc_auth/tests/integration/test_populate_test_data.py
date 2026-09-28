@@ -51,7 +51,7 @@ def test_admin_can_seed_reference_data(
             cookies,
             url=base_url,
             commit_message="integration prompt creation",
-            source="integration-test",
+            source="dummy-source",
         ), f"Failed to create prompt {prompt}"
 
     for experiment in experiment_names:

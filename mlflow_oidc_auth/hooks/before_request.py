@@ -194,6 +194,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_delete_experiment_artifact_proxy,
     validate_can_delete_logged_model,
     validate_can_create_registered_model,
+    validate_can_create_model_version,
     validate_can_delete_registered_model,
     validate_can_delete_run,
     validate_can_manage_experiment,
@@ -209,6 +210,8 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_logged_model,
     validate_can_update_registered_model,
     validate_can_update_run,
+    validate_can_log_metrics,
+    validate_can_update_run_or_logged_model,
     validate_can_read_experiments_from_experiment_ids,
     validate_can_update_experiment_from_experiment_id,
     validate_can_read_metric_history_bulk_interval,
@@ -236,12 +239,16 @@ from mlflow_oidc_auth.validators import (
     validate_can_invoke_scorer,
     validate_can_read_gateway_endpoint,
     validate_can_update_gateway_endpoint,
+    validate_can_create_gateway_endpoint,
+    validate_can_update_gateway_endpoint_config,
+    validate_can_attach_model_to_gateway_endpoint,
     validate_can_delete_gateway_endpoint,
     validate_can_read_gateway_secret,
     validate_can_update_gateway_secret,
     validate_can_delete_gateway_secret,
     validate_can_read_gateway_model_definition,
     validate_can_update_gateway_model_definition,
+    validate_can_create_gateway_model_definition,
     validate_can_delete_gateway_model_definition,
     validate_can_create_gateway,
     validate_can_create_workspace,
@@ -364,8 +371,9 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteRun: validate_can_delete_run,
     RestoreRun: validate_can_delete_run,
     UpdateRun: validate_can_update_run,
-    LogMetric: validate_can_update_run,
-    LogBatch: validate_can_update_run,
+    # UPDATE on the run, plus UPDATE on any logged model the metrics are written to.
+    LogMetric: validate_can_log_metrics,
+    LogBatch: validate_can_log_metrics,
     # Attach datasets / logged-model outputs to a run: a write on that run (#291).
     LogInputs: validate_can_update_run,
     LogOutputs: validate_can_update_run,
@@ -416,7 +424,9 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateRegisteredModel: validate_can_update_registered_model,
     RenameRegisteredModel: validate_can_update_registered_model,
     GetLatestVersions: validate_can_read_registered_model,
-    CreateModelVersion: validate_can_update_registered_model,
+    # UPDATE on the destination model plus READ on the run / logged model / registered
+    # model the version is created from.
+    CreateModelVersion: validate_can_create_model_version,
     GetModelVersion: validate_can_read_registered_model,
     DeleteModelVersion: validate_can_delete_registered_model,
     UpdateModelVersion: validate_can_update_registered_model,
@@ -480,9 +490,10 @@ BEFORE_REQUEST_HANDLERS = {
     ListReviewQueueItems: validate_can_view_review_queue,
     SetReviewQueueItemStatus: validate_can_set_review_queue_item_status,
     # Routes for gateway endpoints
-    CreateGatewayEndpoint: validate_can_create_gateway,
+    # Creating or reconfiguring an endpoint also needs USE on every model definition it routes to.
+    CreateGatewayEndpoint: validate_can_create_gateway_endpoint,
     GetGatewayEndpoint: validate_can_read_gateway_endpoint,
-    UpdateGatewayEndpoint: validate_can_update_gateway_endpoint,
+    UpdateGatewayEndpoint: validate_can_update_gateway_endpoint_config,
     DeleteGatewayEndpoint: validate_can_delete_gateway_endpoint,
     # Routes for gateway secrets
     CreateGatewaySecret: validate_can_create_gateway,
@@ -490,12 +501,13 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateGatewaySecret: validate_can_update_gateway_secret,
     DeleteGatewaySecret: validate_can_delete_gateway_secret,
     # Routes for gateway model definitions
-    CreateGatewayModelDefinition: validate_can_create_gateway,
+    # Creating or updating a model definition also needs USE on the secret it references.
+    CreateGatewayModelDefinition: validate_can_create_gateway_model_definition,
     GetGatewayModelDefinition: validate_can_read_gateway_model_definition,
     UpdateGatewayModelDefinition: validate_can_update_gateway_model_definition,
     DeleteGatewayModelDefinition: validate_can_delete_gateway_model_definition,
     # Routes for gateway endpoint-model mappings
-    AttachModelToGatewayEndpoint: validate_can_update_gateway_endpoint,
+    AttachModelToGatewayEndpoint: validate_can_attach_model_to_gateway_endpoint,
     DetachModelFromGatewayEndpoint: validate_can_update_gateway_endpoint,
     # Routes for gateway endpoint bindings
     CreateGatewayEndpointBinding: validate_can_update_gateway_endpoint,
@@ -512,15 +524,16 @@ for _bp in _BUDGET_POLICY_PROTOS:
     BEFORE_REQUEST_HANDLERS[_bp] = _deny_non_admin
 
 # Presigned cloud-storage URLs for a run's artifacts (issue #289). MLflow resolves the run
-# from the caller-supplied run_id and mints a URL straight to the bucket, so without a
-# check an upload URL is a cross-tenant WRITE primitive and a download URL a cross-tenant
-# read. The run validators authorize every run_id / run_uuid the request carries in any
-# source (the union rule, #285/#288). Looked up by name so an MLflow build without one of
-# these protos still imports; without the proto there is no route to guard.
+# from the caller-supplied run_id and mints a URL straight to the bucket, so an upload URL
+# needs UPDATE and a download URL READ on the run. Newer MLflow also accepts a logged
+# model's model_id for uploads, so the upload validator requires UPDATE on every run and
+# every logged model the request names, and denies a request naming neither. Every value
+# in any source is authorized (the union rule, #285/#288). Looked up by name so an MLflow
+# build without one of these protos still imports; without the proto there is no route.
 from mlflow.protos import service_pb2 as _service_pb2
 
 for _proto_name, _validator in (
-    ("CreatePresignedUploadUrl", validate_can_update_run),
+    ("CreatePresignedUploadUrl", validate_can_update_run_or_logged_model),
     ("CreatePresignedDownloadUrl", validate_can_read_run),
 ):
     if (_proto := getattr(_service_pb2, _proto_name, None)) is not None:
@@ -1140,6 +1153,7 @@ def _stash_gateway_context(validator) -> None:
     # --- Gateway endpoint: update (rename) or delete ---
     if validator in (
         validate_can_update_gateway_endpoint,
+        validate_can_update_gateway_endpoint_config,
         validate_can_delete_gateway_endpoint,
     ):
         data = request.get_json(force=True, silent=True) or {}
@@ -1147,7 +1161,7 @@ def _stash_gateway_context(validator) -> None:
         if endpoint_id:
             name = _resolve_endpoint_name_from_id(endpoint_id)
             if name:
-                if validator is validate_can_update_gateway_endpoint:
+                if validator is not validate_can_delete_gateway_endpoint:
                     g._updating_gateway_endpoint_old_name = name
                 else:
                     g._deleting_gateway_endpoint_name = name

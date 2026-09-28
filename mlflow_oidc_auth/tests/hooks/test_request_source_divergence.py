@@ -420,6 +420,12 @@ _UNION_SPECS = {
     "validate_can_read_gateway_model_definition": ("name", False, {}),
     "validate_can_delete_gateway_model_definition": ("name", False, {}),
     "validate_can_update_gateway_model_definition": ("model_definition_id", False, {}),
+    "validate_can_create_gateway_model_definition": ("secret_id", False, {"name": "md", "provider": "openai", "model_name": "gpt"}),
+    "validate_can_update_gateway_endpoint_config": ("endpoint_id", False, {}),
+    "validate_can_attach_model_to_gateway_endpoint": ("endpoint_id", False, {}),
+    "validate_can_create_model_version": ("name", False, {"source": "runs:/own/model"}),
+    "validate_can_log_metrics": ("run_id", False, {}),
+    "validate_can_update_run_or_logged_model": ("run_id", False, {"path": "model.pkl"}),
     "validate_can_read_dataset": ("dataset_id", False, {}),
     "validate_can_update_dataset": ("dataset_id", False, {}),
     "validate_can_delete_dataset": ("dataset_id", False, {}),
@@ -449,6 +455,8 @@ _UNION_EXEMPT = {
     "validate_can_create_experiment": "creation: no existing resource; name-gated only under RESTRICT_RESOURCE_CREATION",
     "validate_can_create_registered_model": "creation: no existing resource; name-gated only under RESTRICT_RESOURCE_CREATION",
     "validate_can_create_gateway": "creation: allowed for any authenticated user",
+    "validate_can_create_gateway_endpoint": "creation: the only ids are NESTED under model_configs, which the flat spec "
+    "cannot express; covered by test_referenced_resource_authz",
     "validate_can_read_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_update_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
     "validate_can_delete_prompt_optimization_job": "job_id is read from the URL path only (get_url_param)",
@@ -541,6 +549,7 @@ def union_world(store, monkeypatch):
         "mlflow_oidc_auth.validators.issue._get_tracking_store",
         "mlflow_oidc_auth.validators.review._get_tracking_store",
         "mlflow_oidc_auth.validators._experiment_scope._get_tracking_store",
+        "mlflow_oidc_auth.validators._referenced._get_tracking_store",
     ):
         monkeypatch.setattr(target, lambda: fake)
     monkeypatch.setattr("mlflow_oidc_auth.hooks.before_request.store", store)
