@@ -68,113 +68,167 @@ describe("ToastProvider", () => {
     expect(screen.queryByText("Test message")).toBeNull();
   });
 
-  describe("top layer (toasts above a modal dialog's backdrop)", () => {
-    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
-    let showPopover: ReturnType<typeof vi.fn>;
-    let hidePopover: ReturnType<typeof vi.fn>;
+  describe("modal dialogs (toasts stay usable while one is open)", () => {
+    const openDialog = (): HTMLDialogElement => {
+      const dialog = document.createElement("dialog");
+      document.body.appendChild(dialog);
+      dialog.showModal(); // stubbed in tests/setup.tsx to set `open`
+      return dialog;
+    };
 
     beforeEach(() => {
       vi.useRealTimers();
-      showPopover = vi.fn();
-      hidePopover = vi.fn();
-      proto.showPopover = showPopover;
-      proto.hidePopover = hidePopover;
     });
 
     afterEach(() => {
-      delete proto.showPopover;
-      delete proto.hidePopover;
       document.querySelectorAll("dialog").forEach((d) => d.remove());
-    });
-
-    it("renders the container as a manual popover and shows it with the first toast", () => {
-      render(
-        <ToastProvider>
-          <TestComponent />
-        </ToastProvider>,
-      );
-      const container = screen.getByTestId("toast-container");
-      expect(container).toHaveAttribute("popover", "manual");
-      expect(showPopover).not.toHaveBeenCalled();
-
-      fireEvent.click(screen.getByText("Show Toast"));
-      expect(showPopover).toHaveBeenCalledTimes(1);
-      expect(showPopover.mock.contexts[0]).toBe(container);
-    });
-
-    it("re-raises above a dialog opened while a toast is visible", async () => {
-      render(
-        <ToastProvider>
-          <TestComponent />
-        </ToastProvider>,
-      );
-      fireEvent.click(screen.getByText("Show Toast"));
-      expect(showPopover).toHaveBeenCalledTimes(1);
-
-      const dialog = document.createElement("dialog");
-      document.body.appendChild(dialog);
-      dialog.setAttribute("open", "");
-
-      await waitFor(() => expect(showPopover).toHaveBeenCalledTimes(2));
-      // Re-raising means leaving the top layer and re-entering it on top.
-      expect(hidePopover).toHaveBeenCalled();
-    });
-
-    it("re-raises for each new toast and hides once all are gone", () => {
-      render(
-        <ToastProvider>
-          <TestComponent />
-        </ToastProvider>,
-      );
-      fireEvent.click(screen.getByText("Show Toast"));
-      fireEvent.click(screen.getByText("Show Toast"));
-      expect(showPopover).toHaveBeenCalledTimes(2);
-
-      hidePopover.mockClear();
-      screen.getAllByLabelText("Close").forEach((b) => fireEvent.click(b));
-      expect(screen.queryByRole("alert")).toBeNull();
-      expect(hidePopover).toHaveBeenCalled();
-    });
-
-    it("auto-dismisses and stays announced (role=alert) while a dialog is open", () => {
-      vi.useFakeTimers();
-      const dialog = document.createElement("dialog");
-      document.body.appendChild(dialog);
-      dialog.setAttribute("open", "");
-      render(
-        <ToastProvider>
-          <TestComponent />
-        </ToastProvider>,
-      );
-      fireEvent.click(screen.getByText("Show Toast"));
-      const container = screen.getByTestId("toast-container");
-      expect(container).toHaveAttribute("popover", "manual");
-      // `hidden`: the showPopover stub never makes jsdom treat the popover as open.
-      const alert = screen.getByRole("alert", { hidden: true });
-      expect(alert).toHaveTextContent("Test message");
-      expect(container).toContainElement(alert);
-
-      act(() => {
-        vi.advanceTimersByTime(1100);
-      });
-      expect(screen.queryByRole("alert", { hidden: true })).toBeNull();
-      expect(hidePopover).toHaveBeenCalled();
       vi.useRealTimers();
     });
 
-    it("leaves the container a plain element without Popover API support", () => {
-      delete proto.showPopover;
-      delete proto.hidePopover;
+    it("renders a toast outside any dialog when none is open", () => {
       render(
         <ToastProvider>
           <TestComponent />
         </ToastProvider>,
       );
       fireEvent.click(screen.getByText("Show Toast"));
-      expect(screen.getByTestId("toast-container")).not.toHaveAttribute(
-        "popover",
+      const alert = screen.getByRole("alert");
+      expect(alert.closest("dialog")).toBeNull();
+      expect(screen.getByTestId("toast-container").parentElement).toBe(
+        document.body,
       );
-      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+
+    it("renders a toast raised while a modal is open inside it, and its close button works", () => {
+      const dialog = openDialog();
+      render(
+        <ToastProvider>
+          <TestComponent />
+        </ToastProvider>,
+      );
+      fireEvent.click(screen.getByText("Show Toast"));
+
+      const alert = screen.getByRole("alert");
+      expect(dialog).toContainElement(alert);
+      fireEvent.click(screen.getByLabelText("Close"));
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("uses the last open dialog when several are open", () => {
+      openDialog();
+      const top = openDialog();
+      render(
+        <ToastProvider>
+          <TestComponent />
+        </ToastProvider>,
+      );
+      fireEvent.click(screen.getByText("Show Toast"));
+      expect(top).toContainElement(screen.getByRole("alert"));
+    });
+
+    it("moves a visible toast into a dialog that opens and back out when it closes, without duplicating it", async () => {
+      render(
+        <ToastProvider>
+          <TestComponent />
+        </ToastProvider>,
+      );
+      fireEvent.click(screen.getByText("Show Toast"));
+      const alert = screen.getByRole("alert");
+
+      const dialog = openDialog();
+      await waitFor(() => expect(dialog).toContainElement(alert));
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+
+      dialog.close();
+      await waitFor(() => expect(alert.closest("dialog")).toBeNull());
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+      // Same node: moved, not remounted.
+      expect(screen.getByRole("alert")).toBe(alert);
+    });
+
+    it("moves a toast back out when its dialog is removed from the DOM while open", async () => {
+      const dialog = openDialog();
+      render(
+        <ToastProvider>
+          <TestComponent />
+        </ToastProvider>,
+      );
+      fireEvent.click(screen.getByText("Show Toast"));
+      expect(dialog).toContainElement(screen.getByRole("alert"));
+
+      dialog.remove();
+      await waitFor(() =>
+        expect(screen.getByTestId("toast-container").parentElement).toBe(
+          document.body,
+        ),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent("Test message");
+    });
+
+    it("keeps the auto-dismiss timer running across a move into a dialog", async () => {
+      vi.useFakeTimers();
+      render(
+        <ToastProvider>
+          <TestComponent />
+        </ToastProvider>,
+      );
+      fireEvent.click(screen.getByText("Show Toast"));
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      const dialog = openDialog();
+      // MutationObserver callbacks run as microtasks.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(dialog).toContainElement(screen.getByRole("alert"));
+
+      // 600ms + 500ms > 1000ms: dismissed on the original schedule, not restarted by the move.
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("does not restart earlier toasts' timers when another toast arrives", () => {
+      vi.useFakeTimers();
+      render(
+        <ToastProvider>
+          <TestComponent />
+        </ToastProvider>,
+      );
+      fireEvent.click(screen.getByText("Show Toast"));
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      fireEvent.click(screen.getByText("Show Toast"));
+      expect(screen.getAllByRole("alert")).toHaveLength(2);
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+    });
+
+    it("removes the container and stops observing on unmount", () => {
+      const observe = vi.spyOn(MutationObserver.prototype, "observe");
+      const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+      const { unmount } = render(
+        <ToastProvider>
+          <TestComponent />
+        </ToastProvider>,
+      );
+      expect(observe).not.toHaveBeenCalled(); // no observer without toasts
+      fireEvent.click(screen.getByText("Show Toast"));
+      expect(observe).toHaveBeenCalledTimes(1);
+
+      const container = screen.getByTestId("toast-container");
+      unmount();
+      expect(disconnect).toHaveBeenCalled();
+      expect(container.isConnected).toBe(false);
+      expect(document.querySelector('[data-testid="toast-container"]')).toBeNull();
+      observe.mockRestore();
+      disconnect.mockRestore();
     });
   });
 });

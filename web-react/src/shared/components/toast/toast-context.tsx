@@ -5,59 +5,64 @@ import React, {
   useMemo,
   useRef,
   useLayoutEffect,
-  useEffect,
 } from "react";
+import { createPortal } from "react-dom";
 import type { ToastMessage, ToastType } from "./toast-types";
 import { ToastContext } from "./toast-context-val";
 import { Toast } from "./toast";
 
+/** Whether `dialog` is modal (opened with `showModal()`); false where `:modal` is unsupported. */
+function isModal(dialog: HTMLDialogElement): boolean {
+  try {
+    return dialog.matches(":modal");
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Move the toast container to the top of the browser's top layer.
+ * The dialog toasts must live in to stay usable, or `null` when none is open.
  *
- * A modal `<dialog>` opened with `showModal()` renders in the top layer, above every z-index, so
- * an ordinary fixed-position toast ends up under its backdrop. A `popover="manual"` element is
- * also in the top layer, and the top layer paints in the order elements entered it: hiding and
- * re-showing the popover puts the toasts back above whatever dialog opened last.
- *
- * Without Popover API support (older browsers, jsdom) this is a no-op and the container keeps
- * its plain fixed positioning and z-index.
+ * A modal `<dialog>` makes everything outside itself inert: a toast rendered elsewhere is not
+ * clickable and may not be announced. Prefer the last open modal dialog (the top-most one in
+ * practice); where `:modal` is unsupported, fall back to the last `dialog[open]`.
  */
-function raiseToTopLayer(el: HTMLElement): void {
-  if (typeof el.showPopover !== "function") return;
-  try {
-    el.hidePopover();
-  } catch {
-    // Not currently showing.
-  }
-  try {
-    el.showPopover();
-  } catch {
-    // Disconnected or unsupported; the fixed-position fallback still applies.
-  }
-}
-
-/** Whether this browser has the Popover API. Checked per render so tests can stub it. */
-function supportsPopover(): boolean {
-  return (
-    typeof HTMLElement !== "undefined" &&
-    typeof HTMLElement.prototype.showPopover === "function"
+function findTopDialog(): HTMLDialogElement | null {
+  const open = Array.from(
+    document.querySelectorAll<HTMLDialogElement>("dialog[open]"),
   );
+  const modal = open.filter(isModal);
+  const candidates = modal.length > 0 ? modal : open;
+  return candidates.length > 0 ? candidates[candidates.length - 1] : null;
 }
 
-function lowerFromTopLayer(el: HTMLElement): void {
-  if (typeof el.hidePopover !== "function") return;
-  try {
-    el.hidePopover();
-  } catch {
-    // Already hidden.
-  }
+/**
+ * Put the toast host inside the top-most open dialog, or back on `document.body`.
+ *
+ * The host is a single long-lived element moved in the DOM rather than a portal whose target
+ * changes: React keeps the toasts mounted, so none is lost or duplicated and their auto-dismiss
+ * timers keep running. Its `position: fixed` resolves against the viewport inside a dialog too
+ * (the shared modal sets no transform, filter or containment), so it is not clipped by the
+ * dialog's own box or overflow.
+ */
+function placeHost(host: HTMLElement): void {
+  const parent = findTopDialog() ?? document.body;
+  if (host.parentNode !== parent) parent.appendChild(host);
 }
+
+const HOST_CLASS =
+  "fixed bottom-6 right-1/2 translate-x-1/2 z-100 flex flex-col space-y-2 pointer-events-none items-center";
 
 export const ToastProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [host] = useState(() => {
+    const el = document.createElement("div");
+    el.className = HOST_CLASS;
+    el.dataset.testid = "toast-container";
+    return el;
+  });
   const nextId = useRef(0);
 
   const showToast = useCallback(
@@ -80,54 +85,40 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({
 
   const hasToasts = toasts.length > 0;
 
-  // Re-raise on every new toast, so it lands above a dialog that opened since the last one.
+  // Attach the host for the provider's lifetime; remove it on unmount.
   useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (hasToasts) {
-      raiseToTopLayer(el);
-    } else {
-      lowerFromTopLayer(el);
-    }
-  }, [toasts, hasToasts]);
+    placeHost(host);
+    return () => host.remove();
+  }, [host]);
 
-  // A dialog opened while toasts are on screen would cover them: raise again when one opens.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || !hasToasts || typeof MutationObserver === "undefined") return;
-    const observer = new MutationObserver((mutations) => {
-      const dialogOpened = mutations.some(
-        (m) => m.target instanceof HTMLDialogElement && m.target.open,
-      );
-      if (dialogOpened) raiseToTopLayer(el);
-    });
+  // While toasts are visible, follow dialogs opening, closing, or being removed from the DOM.
+  useLayoutEffect(() => {
+    if (!hasToasts) return;
+    placeHost(host);
+    if (typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(() => placeHost(host));
     observer.observe(document.body, {
       attributes: true,
       attributeFilter: ["open"],
+      childList: true,
       subtree: true,
     });
     return () => observer.disconnect();
-  }, [hasToasts]);
+  }, [hasToasts, host]);
 
   return (
     <ToastContext value={contextValue}>
       {children}
-      <div
-        ref={containerRef}
-        // Only where the API exists: elsewhere (jsdom, older browsers) an inert `popover`
-        // attribute would hide the container from the accessibility tree.
-        popover={supportsPopover() ? "manual" : undefined}
-        data-testid="toast-container"
-        className="fixed top-auto left-auto bottom-6 right-1/2 translate-x-1/2 z-100 m-0 p-0 border-0 bg-transparent overflow-visible flex flex-col space-y-2 pointer-events-none items-center"
-      >
-        {toasts.map((toast) => (
+      {createPortal(
+        toasts.map((toast) => (
           <Toast
             key={toast.id}
             {...toast}
             onClose={() => removeToast(toast.id)}
           />
-        ))}
-      </div>
+        )),
+        host,
+      )}
     </ToastContext>
   );
 };
