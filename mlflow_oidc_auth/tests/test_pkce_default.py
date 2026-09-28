@@ -10,6 +10,7 @@ things that need holding are the default itself and the opt-out — plus the fai
 a provider that cannot do PKCE otherwise reports a bare ``invalid_grant`` naming nothing.
 """
 
+import importlib
 from types import SimpleNamespace
 
 import pytest
@@ -182,7 +183,7 @@ class TestTheRegisteredClientCarriesTheMethod:
     def test_the_challenge_method_reaches_authlib(self, monkeypatch):
         """The setting is only worth anything if it is handed to the client that builds the
         authorization request."""
-        import mlflow_oidc_auth.oauth as oauth_module
+        oauth_module = importlib.import_module("mlflow_oidc_auth.oauth")
 
         recorded = {}
 

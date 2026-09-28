@@ -1,5 +1,6 @@
 """Layer 2 of the #262 fix: opt-in, hardened auto-provisioning on bearer authentication."""
 
+import importlib
 import sys
 import types
 from types import SimpleNamespace
@@ -23,7 +24,8 @@ def provider_carries_the_configured_scoping(monkeypatch):
     meaning what it did.
     """
     import mlflow_oidc_auth.auth as auth_module
-    import mlflow_oidc_auth.middleware.auth_middleware as middleware_module
+
+    middleware_module = importlib.import_module("mlflow_oidc_auth.middleware.auth_middleware")
 
     def resolve(token):
         cfg = middleware_module.config

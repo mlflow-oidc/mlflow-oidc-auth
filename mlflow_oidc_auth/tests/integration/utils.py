@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 from urllib.parse import urljoin
 
 import httpx2 as httpx
@@ -14,7 +14,7 @@ from playwright.sync_api import Cookie
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import Page
 from urllib.parse import quote
 
 

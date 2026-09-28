@@ -508,8 +508,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug("Session check error: %s", type(e).__name__)
             return False, None, "Session error"
 
-        return False, None, "No session authentication"
-
     @staticmethod
     def _is_session_expired(tokens) -> bool:
         """Return True when the IdP-issued ``expires_at`` (minus leeway) is in the past.

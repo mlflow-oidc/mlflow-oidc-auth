@@ -97,7 +97,7 @@ class TestListUsersEndpoint:
         """Test listing service accounts only."""
         mock_store.list_usernames.return_value = ["svc@example.com"]
         with patch("mlflow_oidc_auth.store.store", mock_store):
-            result = await list_users(service=True, username="test@example.com")
+            await list_users(service=True, username="test@example.com")
 
         # Verify store was called with service account filter
         mock_store.list_usernames.assert_called_once_with(is_service_account=True)

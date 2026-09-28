@@ -11,6 +11,7 @@ own projected token becomes an MLflow user. The namespace allowlist is the whole
 these cases pin it.
 """
 
+import importlib
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -255,7 +256,7 @@ class TestProvisioningAServiceAccount:
         events = []
         payload = {"sub": "system:serviceaccount:kube-system:default"}
 
-        import mlflow_oidc_auth.middleware.auth_middleware as middleware_module
+        middleware_module = importlib.import_module("mlflow_oidc_auth.middleware.auth_middleware")
 
         middleware_module._denial_audit_seen.clear()
         with patch("mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event", lambda event, **kw: events.append((event, kw))):

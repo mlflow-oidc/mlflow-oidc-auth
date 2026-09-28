@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from urllib.parse import quote, urljoin
+from urllib.parse import quote
 
 import httpx2 as httpx
 import pytest

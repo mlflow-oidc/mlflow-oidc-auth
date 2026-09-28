@@ -122,6 +122,7 @@ class ConfigManager:
 
             providers.append(AWSSecretsManagerProvider())
         except ImportError:
+            # Optional dependency (boto3) not installed; provider is simply not offered.
             pass
 
         # AWS Parameter Store
@@ -130,6 +131,7 @@ class ConfigManager:
 
             providers.append(AWSParameterStoreProvider())
         except ImportError:
+            # Optional dependency (boto3) not installed; provider is simply not offered.
             pass
 
         # Azure Key Vault
@@ -138,6 +140,7 @@ class ConfigManager:
 
             providers.append(AzureKeyVaultProvider())
         except ImportError:
+            # Optional dependency (azure-keyvault-secrets) not installed; provider is simply not offered.
             pass
 
         # HashiCorp Vault
@@ -146,6 +149,7 @@ class ConfigManager:
 
             providers.append(HashiCorpVaultProvider())
         except ImportError:
+            # Optional dependency (hvac) not installed; provider is simply not offered.
             pass
 
         # Kubernetes Secrets
@@ -154,6 +158,7 @@ class ConfigManager:
 
             providers.append(KubernetesSecretsProvider())
         except ImportError:
+            # Provider module unavailable in this environment; provider is simply not offered.
             pass
 
         # Environment variables (always included as fallback)

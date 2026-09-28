@@ -5,7 +5,7 @@ This module tests all health check endpoints including ready, live, and startup
 with various scenarios and response validation for Kubernetes probe support.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 

@@ -188,6 +188,7 @@ class SqlAlchemyStore:
                     time.sleep(sleep_duration)
                 else:
                     raise
+        raise RuntimeError("unreachable: the last engine creation attempt re-raises its error")
 
     def ping(self) -> bool:
         """Lightweight database connectivity check for health probes.

@@ -23,18 +23,18 @@ class TestPluginSystem(unittest.TestCase):
     def test_plugin_module_import(self):
         """Test that the plugins module can be imported successfully."""
         try:
-            pass
+            module = importlib.import_module("mlflow_oidc_auth.plugins")
 
-            self.assertTrue(True, "Plugin module imported successfully")
+            self.assertIsNotNone(module, "Plugin module imported successfully")
         except ImportError as e:
             self.fail(f"Failed to import plugin module: {e}")
 
     def test_entra_plugin_import(self):
         """Test that the Microsoft Entra ID plugin can be imported successfully."""
         try:
-            pass
+            module = importlib.import_module("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id")
 
-            self.assertTrue(True, "Entra ID plugin imported successfully")
+            self.assertTrue(hasattr(module, "get_user_groups"), "Entra ID plugin imported successfully")
         except ImportError as e:
             self.fail(f"Failed to import Entra ID plugin: {e}")
 
@@ -64,9 +64,9 @@ class TestPluginSystem(unittest.TestCase):
         self.assertTrue(hasattr(group_detection_microsoft_entra_id, "http_client"))
 
         # Verify plugin doesn't pollute global namespace
-        import mlflow_oidc_auth.plugins
+        plugins_package = importlib.import_module("mlflow_oidc_auth.plugins")
 
-        plugin_attrs = dir(mlflow_oidc_auth.plugins)
+        plugin_attrs = dir(plugins_package)
 
         # Should not have plugin-specific functions in the main plugins namespace
         self.assertNotIn("get_user_groups", plugin_attrs)
@@ -74,7 +74,7 @@ class TestPluginSystem(unittest.TestCase):
 
     def test_plugin_security_imports(self):
         """Test that plugins only import necessary and safe modules."""
-        import mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id as plugin_module
+        plugin_module = importlib.import_module("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id")
 
         # Verify only expected modules are imported
         module_globals = dir(plugin_module)
@@ -145,10 +145,11 @@ class TestPluginSystem(unittest.TestCase):
     def test_plugin_module_reloading(self):
         """Test that plugins can be reloaded without system restart."""
         # Import the plugin
-        import mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id as plugin
+        plugin = importlib.import_module("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id")
 
         # Get original function reference
-        plugin.get_user_groups
+        original_function = plugin.get_user_groups
+        self.assertTrue(callable(original_function))
 
         # Reload the module
         importlib.reload(plugin)

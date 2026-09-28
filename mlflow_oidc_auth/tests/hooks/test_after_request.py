@@ -35,6 +35,12 @@ class _FakePagedList(list):
         super().__init__(items)
         self.token = token
 
+    # Compares as the list it wraps; ``token`` is pagination metadata, as in MLflow's PagedList.
+    def __eq__(self, other):
+        return list.__eq__(self, other)
+
+    __hash__ = None
+
 
 @pytest.fixture
 def mock_response():

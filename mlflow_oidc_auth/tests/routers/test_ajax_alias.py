@@ -128,8 +128,10 @@ class TestAliasFidelity:
         app.include_router(ajax_alias_router(router))
         client = TestClient(app)
 
-        assert client.delete("/api/2.0/mlflow/users/alice").json() == {"status": "ok"}
-        assert client.delete("/ajax-api/2.0/mlflow/users/alice").json() == {"status": "ok"}
+        api_response = client.delete("/api/2.0/mlflow/users/alice")
+        ajax_response = client.delete("/ajax-api/2.0/mlflow/users/alice")
+        assert api_response.json() == {"status": "ok"}
+        assert ajax_response.json() == {"status": "ok"}
 
     def test_preserves_router_level_dependencies(self):
         # Router-level dependencies are where the admin checks live; a twin

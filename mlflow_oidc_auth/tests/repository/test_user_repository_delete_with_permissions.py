@@ -1,5 +1,3 @@
-import pytest
-
 from mlflow_oidc_auth.db.models import (
     SqlExperimentPermission,
     SqlGatewayEndpointPermission,

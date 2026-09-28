@@ -4,8 +4,6 @@ Parameter order differs from the base class (``id`` comes first in
 ``update`` and ``revoke``), so those methods are overridden.
 """
 
-from typing import List
-
 from mlflow_oidc_auth.db.models import SqlScorerRegexPermission
 from mlflow_oidc_auth.entities import ScorerRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission

@@ -9,14 +9,13 @@ from typing import List, Optional
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
-from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGroup, SqlRegisteredModelGroupPermission, SqlUser, SqlUserGroup
 from mlflow_oidc_auth.entities import RegisteredModelPermission
-from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
+from mlflow_oidc_auth.permissions import compare_permissions
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
 from mlflow_oidc_auth.repository import GroupRepository
-from mlflow_oidc_auth.repository.utils import get_group, get_user, list_user_groups
+from mlflow_oidc_auth.repository.utils import get_user, list_user_groups
 
 
 class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegisteredModelGroupPermission, RegisteredModelPermission]):

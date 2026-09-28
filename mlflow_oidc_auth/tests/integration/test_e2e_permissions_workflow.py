@@ -31,7 +31,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import quote, urljoin
 
 import httpx2 as httpx

@@ -177,6 +177,7 @@ try:
         ListGatewayBudgetWindows,
     ]
 except ImportError:
+    # Budget RPCs exist only in newer MLflow releases; on older ones there is nothing to gate.
     pass
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
@@ -198,7 +199,6 @@ from mlflow_oidc_auth.validators import (
     validate_can_delete_registered_model,
     validate_can_delete_run,
     validate_can_manage_experiment,
-    validate_can_manage_registered_model,
     validate_can_read_experiment,
     validate_can_read_experiment_artifact_proxy,
     validate_can_read_experiment_by_name,
@@ -213,7 +213,6 @@ from mlflow_oidc_auth.validators import (
     validate_can_log_metrics,
     validate_can_update_run_or_logged_model,
     validate_can_read_experiments_from_experiment_ids,
-    validate_can_update_experiment_from_experiment_id,
     validate_can_read_metric_history_bulk_interval,
     validate_can_read_traces_from_experiment_ids,
     validate_can_read_traces_from_trace_ids,
@@ -224,11 +223,8 @@ from mlflow_oidc_auth.validators import (
     validate_can_delete_traces_from_experiment_id,
     validate_can_start_trace_v3,
     validate_can_delete_scorer,
-    validate_can_manage_scorer,
-    validate_can_manage_scorer_permission,
     validate_can_list_scorers,
     validate_can_read_scorer,
-    validate_can_update_scorer,
     validate_can_read_run_artifact,
     validate_can_update_run_artifact,
     validate_can_read_model_version_artifact,
@@ -1012,7 +1008,7 @@ def before_request_hook():
     the view function for the matched route is called and returns a response"""
 
     if _is_unprotected_route(request.path):
-        return
+        return None
 
     username, is_admin = _get_auth_context()
     if username is None:
@@ -1058,7 +1054,7 @@ def before_request_hook():
         # registered username as its name (a data-integrity rule, as in MLflow's own auth
         # plugin). Non-admins meet the rule inside the validator, after the permission check.
         enforce_review_queue_name_not_username(validator)
-        return
+        return None
     # Workspace creation gating (per WSAUTH-F / WSAUTH-03)
     if config.MLFLOW_ENABLE_WORKSPACES and _is_workspace_gated_creation(request.path, request.method):
         from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
@@ -1108,6 +1104,7 @@ def before_request_hook():
         # entry on the open list is refused to non-admins rather than served unchecked.
         logger.warning(f"Denying {request.method} {request.path} for {username}: route has no authorization rule")
         return responses.make_forbidden_response()
+    return None
 
 
 before_request_hook = catch_mlflow_exception(before_request_hook)

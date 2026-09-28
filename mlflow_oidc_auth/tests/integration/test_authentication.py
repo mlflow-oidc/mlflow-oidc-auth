@@ -11,7 +11,6 @@ Tests verify:
 from __future__ import annotations
 
 import base64
-import uuid
 
 import httpx2 as httpx
 import pytest

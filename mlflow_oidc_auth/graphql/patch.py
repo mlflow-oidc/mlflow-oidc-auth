@@ -117,6 +117,7 @@ def uninstall_mlflow_graphql_authorization_middleware() -> None:
         if _ORIGINAL_HANDLERS_HOOK is not None:
             setattr(mlflow_handlers, _HANDLERS_ATTR, _ORIGINAL_HANDLERS_HOOK)
     except Exception:
+        # Best-effort restore during teardown; a missing MLflow module leaves nothing to undo.
         pass
 
     try:
@@ -125,6 +126,7 @@ def uninstall_mlflow_graphql_authorization_middleware() -> None:
         if _ORIGINAL_AUTH_HOOK is not None:
             setattr(mlflow_auth, _AUTH_ATTR, _ORIGINAL_AUTH_HOOK)
     except Exception:
+        # Best-effort restore during teardown; a missing MLflow module leaves nothing to undo.
         pass
 
     _INSTALLED = False

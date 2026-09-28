@@ -5,8 +5,6 @@ simple inheritance from BaseUserPermissionRepository.  We inherit for the
 constructor and session wiring but override every data method.
 """
 
-from typing import Callable, List
-
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
     INVALID_STATE,
