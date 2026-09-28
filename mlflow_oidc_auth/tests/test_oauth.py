@@ -652,8 +652,8 @@ class TestPublicClientRegistration(unittest.TestCase):
             self.assertTrue(oauth_mod.ensure_client_registered())
 
         kwargs = mock_register.call_args.kwargs
-        # Not merely falsy: authlib reads a present-but-empty secret as a confidential client
-        # and sends a blank credential the provider rejects as invalid_client.
+        # Absent, not merely falsy: the "none" auth method must follow from there being no
+        # secret, not from how authlib reads an empty one.
         self.assertNotIn("client_secret", kwargs)
         self.assertEqual(kwargs["client_id"], "test-client-id")
         self.assertEqual(kwargs["client_kwargs"]["code_challenge_method"], "S256")

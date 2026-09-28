@@ -348,8 +348,8 @@ For a provider in the registry, set `"public_client": true` on its entry and lea
 The client is then registered with no secret at all. authlib authenticates its token, refresh and
 revocation requests with the `none` method — the `client_id` in the request body, no
 `Authorization` header — and PKCE is what binds the authorization code to the login attempt. The
-secret is left out of the registration rather than set blank: an empty-but-present secret would
-make authlib send a blank credential, which providers reject as `invalid_client`.
+secret is left out of the registration rather than set blank, so the `none` method is chosen
+because there is no secret, not because of how authlib happens to read an empty one.
 
 The declaration is required. A missing secret on its own is never taken to mean "public client",
 because a secret that failed to load from a secrets manager must be reported as missing, not

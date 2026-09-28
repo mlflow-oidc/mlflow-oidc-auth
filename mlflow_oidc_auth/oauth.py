@@ -294,11 +294,10 @@ def _build_scope() -> str:
 def _settings_dict(client_id: str, client_secret: Optional[str], discovery_url: str) -> Dict[str, Optional[str]]:
     """Authlib registration settings, omitting ``client_secret`` for a public client.
 
-    Authlib treats a present-but-empty ``client_secret`` as a confidential client and sends an
-    empty credential to the token endpoint, which providers reject as ``invalid_client``. A
-    public client has to leave the key out entirely, so authlib authenticates its token,
-    refresh and revocation requests with the ``none`` method (``client_id`` in the body) and
-    PKCE is what binds the code exchange.
+    A public client leaves the key out entirely rather than passing an empty value, so authlib
+    authenticates its token, refresh and revocation requests with the ``none`` method
+    (``client_id`` in the body) because there is no secret, not because of how it reads a falsy
+    one. PKCE is what binds the code exchange.
     """
 
     settings: Dict[str, Optional[str]] = {"client_id": client_id, "server_metadata_url": discovery_url}
