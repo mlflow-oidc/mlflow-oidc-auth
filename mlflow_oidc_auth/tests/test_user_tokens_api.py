@@ -121,7 +121,8 @@ class TestSelfService:
 
         assert anonymous.get(TOKENS, headers=_basic(ALICE, body["token"])).status_code == 200
 
-        assert alice.delete(f"{TOKENS}/{body['id']}").status_code == 200
+        response = alice.delete(f"{TOKENS}/{body['id']}")
+        assert response.status_code == 200
         assert anonymous.get(TOKENS, headers=_basic(ALICE, body["token"])).status_code == 401
 
         events = [c.args[0] for c in audit.call_args_list]
@@ -129,9 +130,11 @@ class TestSelfService:
         assert body["token"] not in repr(audit.call_args_list)
 
     def test_a_duplicate_name_is_409(self, alice):
-        assert alice.post(TOKENS, json={"name": "ci", "expiration": _expiry()}).status_code == 201
+        response = alice.post(TOKENS, json={"name": "ci", "expiration": _expiry()})
+        assert response.status_code == 201
 
-        assert alice.post(TOKENS, json={"name": "ci", "expiration": _expiry()}).status_code == 409
+        response = alice.post(TOKENS, json={"name": "ci", "expiration": _expiry()})
+        assert response.status_code == 409
 
     @pytest.mark.parametrize(
         "payload",
@@ -143,11 +146,13 @@ class TestSelfService:
         ],
     )
     def test_bad_input_is_400(self, alice, payload):
-        assert alice.post(TOKENS, json=payload).status_code == 400
+        response = alice.post(TOKENS, json=payload)
+        assert response.status_code == 400
 
     @pytest.mark.parametrize("payload", [{"name": "ci"}, {"expiration": _expiry()}])
     def test_name_and_expiration_are_both_required(self, alice, payload):
-        assert alice.post(TOKENS, json=payload).status_code == 422
+        response = alice.post(TOKENS, json=payload)
+        assert response.status_code == 422
 
     def test_the_cap_is_409(self, alice, store):
         from mlflow_oidc_auth.repository.user_token import MAX_LIVE_TOKENS_PER_USER
@@ -155,7 +160,8 @@ class TestSelfService:
         for i in range(MAX_LIVE_TOKENS_PER_USER):
             issue_token(store, ALICE, name=f"t{i}")
 
-        assert alice.post(TOKENS, json={"name": "one-more", "expiration": _expiry()}).status_code == 409
+        response = alice.post(TOKENS, json={"name": "one-more", "expiration": _expiry()})
+        assert response.status_code == 409
 
     def test_the_default_token_can_be_rotated_from_a_session(self, alice, anonymous, audit):
         first = alice.patch(ACCESS_TOKEN).json()["token"]
@@ -180,14 +186,17 @@ class TestATokenCannotMintAnother:
     def test_a_token_cannot_rotate_the_default_token(self, anonymous, store):
         headers = _basic(ALICE, issue_token(store, ALICE, name="ci"))
 
-        assert anonymous.patch(ACCESS_TOKEN, headers=headers).status_code == 403
+        response = anonymous.patch(ACCESS_TOKEN, headers=headers)
+        assert response.status_code == 403
         assert [t.name for t in store.list_user_tokens(ALICE)] == ["ci"]
 
     def test_an_admin_token_cannot_issue_one_for_someone_else(self, anonymous, store):
         headers = _basic(ADMIN, issue_token(store, ADMIN, name="ci"))
 
-        assert anonymous.post(_of(SERVICE), headers=headers, json={"name": "x", "expiration": _expiry()}).status_code == 403
-        assert anonymous.patch(ACCESS_TOKEN, headers=headers, json={"username": SERVICE}).status_code == 403
+        response = anonymous.post(_of(SERVICE), headers=headers, json={"name": "x", "expiration": _expiry()})
+        assert response.status_code == 403
+        response = anonymous.patch(ACCESS_TOKEN, headers=headers, json={"username": SERVICE})
+        assert response.status_code == 403
         assert store.list_user_tokens(SERVICE) == []
 
     def test_a_token_may_still_list_and_delete_its_owners_tokens(self, anonymous, store):
@@ -197,7 +206,8 @@ class TestATokenCannotMintAnother:
         leaked_id = next(t.id for t in store.list_user_tokens(ALICE) if t.name == "leaked")
 
         assert anonymous.get(TOKENS, headers=headers).status_code == 200
-        assert anonymous.delete(f"{TOKENS}/{leaked_id}", headers=headers).status_code == 200
+        response = anonymous.delete(f"{TOKENS}/{leaked_id}", headers=headers)
+        assert response.status_code == 200
         assert store.authenticate_user(ALICE, leaked) is False
 
     def test_the_request_state_marker_is_deny_by_default(self):
@@ -223,8 +233,10 @@ class TestIssuingRules:
     def test_a_deactivated_user_cannot_be_issued_a_token_by_an_admin(self, admin, store):
         store.update_user(BOB, active=False)
 
-        assert admin.post(_of(BOB), json={"name": "ci", "expiration": _expiry()}).status_code == 409
-        assert admin.patch(ACCESS_TOKEN, json={"username": BOB}).status_code == 409
+        response = admin.post(_of(BOB), json={"name": "ci", "expiration": _expiry()})
+        assert response.status_code == 409
+        response = admin.patch(ACCESS_TOKEN, json={"username": BOB})
+        assert response.status_code == 409
         assert store.list_user_tokens(BOB) == []
 
     def test_issuing_clears_expired_tokens_and_frees_their_names(self, alice, store):
@@ -276,8 +288,10 @@ class TestWorkloadBearerThroughTheMiddleware:
         headers = {"Authorization": "Bearer workload-token"}
 
         assert anonymous.get(TOKENS, headers=headers).status_code == 200, "precondition: it authenticates"
-        assert anonymous.post(TOKENS, headers=headers, json={"name": "x", "expiration": _expiry()}).status_code == 403
-        assert anonymous.patch(ACCESS_TOKEN, headers=headers).status_code == 403
+        response = anonymous.post(TOKENS, headers=headers, json={"name": "x", "expiration": _expiry()})
+        assert response.status_code == 403
+        response = anonymous.patch(ACCESS_TOKEN, headers=headers)
+        assert response.status_code == 403
         assert store.list_user_tokens(ALICE) == []
 
     def test_an_interactive_idp_user_token_can_issue(self, anonymous, bearer, store):
@@ -298,7 +312,8 @@ class TestIsolationBetweenUsers:
         bobs = issue_token(store, BOB, name="bobs")
         (record,) = store.list_user_tokens(BOB)
 
-        assert alice.delete(f"{TOKENS}/{record.id}").status_code == 404
+        response = alice.delete(f"{TOKENS}/{record.id}")
+        assert response.status_code == 404
         assert anonymous.get(TOKENS, headers=_basic(BOB, bobs)).status_code == 200
 
     @pytest.mark.parametrize(
@@ -320,7 +335,8 @@ class TestIsolationBetweenUsers:
         assert [t.name for t in store.list_user_tokens(BOB)] == ["bobs"]
 
     def test_a_non_admin_cannot_rotate_someone_elses_default_token(self, alice, store):
-        assert alice.patch(ACCESS_TOKEN, json={"username": BOB}).status_code == 403
+        response = alice.patch(ACCESS_TOKEN, json={"username": BOB})
+        assert response.status_code == 403
         assert store.list_user_tokens(BOB) == []
 
 
@@ -341,7 +357,8 @@ class TestAdministration:
         (record,) = store.list_user_tokens(ALICE)
 
         assert [t["name"] for t in admin.get(_of(ALICE)).json()["tokens"]] == ["ci"]
-        assert admin.delete(f"{_of(ALICE)}/{record.id}").status_code == 200
+        response = admin.delete(f"{_of(ALICE)}/{record.id}")
+        assert response.status_code == 200
         assert store.list_user_tokens(ALICE) == []
         assert audit.call_args.args[0] == "user.token_delete"
 
@@ -350,7 +367,8 @@ class TestAdministration:
         issue_token(store, BOB, name="bobs")
         (record,) = store.list_user_tokens(BOB)
 
-        assert admin.delete(f"{_of(ALICE)}/{record.id}").status_code == 404
+        response = admin.delete(f"{_of(ALICE)}/{record.id}")
+        assert response.status_code == 404
         assert [t.name for t in store.list_user_tokens(BOB)] == ["bobs"]
 
     def test_revoke_all_ends_every_token_and_is_audited(self, admin, anonymous, store, audit):
@@ -365,13 +383,16 @@ class TestAdministration:
 
     def test_an_unknown_user_is_404(self, admin):
         assert admin.get(_of("ghost@example.com")).status_code == 404
-        assert admin.post(_of("ghost@example.com"), json={"name": "x", "expiration": _expiry()}).status_code == 404
-        assert admin.delete(_of("ghost@example.com")).status_code == 404
+        response = admin.post(_of("ghost@example.com"), json={"name": "x", "expiration": _expiry()})
+        assert response.status_code == 404
+        response = admin.delete(_of("ghost@example.com"))
+        assert response.status_code == 404
 
     def test_deactivating_a_user_deletes_their_tokens(self, admin, store):
         issue_token(store, ALICE, name="ci")
 
-        assert admin.patch(f"/api/2.0/mlflow/users/{ALICE}/active", json={"active": False}).status_code == 200
+        response = admin.patch(f"/api/2.0/mlflow/users/{ALICE}/active", json={"active": False})
+        assert response.status_code == 200
 
         assert store.list_user_tokens(ALICE) == []
 
