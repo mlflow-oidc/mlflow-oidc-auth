@@ -14,6 +14,7 @@ from mlflow_oidc_auth.utils import (
     get_is_admin,
     get_username,
 )
+from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_BEARER, AUTH_METHOD_SESSION
 from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
 
@@ -59,6 +60,26 @@ async def check_admin_permission(
         )
 
     return username
+
+
+async def require_interactive_login(request: Request) -> None:
+    """Refuse a request that authenticated with one of our access tokens (issue #189).
+
+    Issuing an access token needs a sign-in through the identity provider — a browser session or
+    an IdP bearer token. Otherwise a leaked access token could mint replacements for itself that
+    outlive its own deletion. A token from a non-interactive provider — a Kubernetes service
+    account, a CI workload-identity issuer — is refused for the same reason: a short-lived
+    workload credential must not mint a year-long one. Deny by default: a request whose
+    method is unknown is refused too.
+
+    Raises:
+        HTTPException: 403 unless the request was authenticated by a session or an IdP token.
+    """
+    if getattr(request.state, "auth_method", None) not in (AUTH_METHOD_SESSION, AUTH_METHOD_BEARER):
+        raise HTTPException(
+            status_code=403,
+            detail="Access tokens can only be issued from an interactive sign-in (a signed-in session or an IdP user token)",
+        )
 
 
 async def check_experiment_manage_permission(

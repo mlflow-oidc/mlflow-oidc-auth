@@ -2,6 +2,7 @@
 - [Home](/)
 - [Installation](installation)
 - [Configuration](configuration)
+- [Programmatic Access](programmatic-access)
 - [Kubernetes Service Accounts](kubernetes-auth)
 - [SAML Authentication](saml-auth)
 - [Configuration Providers](configuration-providers)

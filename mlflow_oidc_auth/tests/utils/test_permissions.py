@@ -755,7 +755,7 @@ class TestPermissionCacheCompositeKey:
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
         monkeypatch.setattr(perms, "store", s)
-        s.create_user("bob", "pw", "Bob")
+        s.create_user("bob", "Bob")
         s.create_scorer_permission("1", "mine", "bob", "MANAGE")
         s.create_scorer_permission("1", "theirs", "bob", "NO_PERMISSIONS")
 

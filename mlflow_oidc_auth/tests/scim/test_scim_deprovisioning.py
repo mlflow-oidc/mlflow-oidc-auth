@@ -12,6 +12,8 @@ import pytest
 from mlflow_oidc_auth import orphans
 from mlflow_oidc_auth.config import config
 
+from mlflow_oidc_auth.tests.token_helpers import set_known_token
+
 from .conftest import ADMIN, LOGIN, PROTECTED, USER_PASSWORD, basic, patch_body, user_body
 
 USERS = "/scim/v2/Users"
@@ -25,7 +27,7 @@ def alice(client, scim, bound_store):
     """A SCIM-provisioned user holding a live session and a known basic-auth token."""
     response = client.post(USERS, headers=scim, json=user_body(ALICE, external_id="ext-alice"))
     assert response.status_code == 201
-    bound_store.update_user(ALICE, password=USER_PASSWORD, written_by="scim")
+    set_known_token(bound_store, ALICE, USER_PASSWORD)
     return basic(ALICE, USER_PASSWORD)
 
 
@@ -88,12 +90,15 @@ class TestReactivation:
         credential change the ownership guard would refuse on a row SCIM does not own."""
         from mlflow_oidc_auth.ownership import Enforcement
 
-        bound_store.create_user("hand@example.com", "unused-secret", "Hand Made")
+        bound_store.create_user("hand@example.com", "Hand Made")
         bound_store.update_user("hand@example.com", active=False)
+        set_known_token(bound_store, "hand@example.com", USER_PASSWORD)
         with bound_store.ManagedSessionMaker() as session:
-            from mlflow_oidc_auth.db.models import SqlUser
+            from mlflow_oidc_auth.db.models import SqlUser, SqlUserToken
 
-            before = session.query(SqlUser.password_hash).filter(SqlUser.username == "hand@example.com").scalar()
+            before = [
+                t.id for t in session.query(SqlUserToken).join(SqlUser, SqlUser.id == SqlUserToken.user_id).filter(SqlUser.username == "hand@example.com")
+            ]
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
 
         if verb == "patch":
@@ -103,7 +108,7 @@ class TestReactivation:
 
         assert response.status_code == 200, response.text
         with bound_store.ManagedSessionMaker() as session:
-            after = session.query(SqlUser.password_hash).filter(SqlUser.username == "hand@example.com").scalar()
+            after = [t.id for t in session.query(SqlUserToken).join(SqlUser, SqlUser.id == SqlUserToken.user_id).filter(SqlUser.username == "hand@example.com")]
         assert after == before
 
     def test_access_returns_and_grants_are_untouched(self, client, scim, alice, bound_store, audit_events):
@@ -136,7 +141,8 @@ class TestLastAdmin:
     def test_last_admin_is_refused_as_a_scim_error(self, client, scim, bound_store):
         """The fixture creates no other admin, so a SCIM-managed admin here is the only one."""
         client.post(USERS, headers=scim, json=user_body("boss@example.com"))
-        bound_store.update_user("boss@example.com", is_admin=True, password=USER_PASSWORD, written_by="scim")
+        bound_store.update_user("boss@example.com", is_admin=True, written_by="scim")
+        set_known_token(bound_store, "boss@example.com", USER_PASSWORD)
 
         response = client.patch(f"{USERS}/boss@example.com", headers=scim, json=DEACTIVATE)
 
@@ -153,7 +159,7 @@ class TestLastAdmin:
 
 class TestOrphans:
     def test_sole_manager_resources_are_reported(self, client, scim, alice, bound_store, audit_events):
-        bound_store.create_user("colleague@example.com", "unused-secret", "Colleague")
+        bound_store.create_user("colleague@example.com", "Colleague")
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")  # alice alone: orphaned
         bound_store.create_experiment_permission("2", ALICE, "MANAGE")  # co-managed: not orphaned
         bound_store.create_experiment_permission("2", "colleague@example.com", "MANAGE")
@@ -172,7 +178,7 @@ class TestOrphans:
         assert all(e["detail"]["user"] == ALICE and e["detail"]["source"] == "scim" for e in events(audit_events, "resource.orphaned"))
 
     def test_an_inactive_co_manager_does_not_count(self, client, scim, alice, bound_store, audit_events):
-        bound_store.create_user("gone@example.com", "unused-secret", "Gone")
+        bound_store.create_user("gone@example.com", "Gone")
         bound_store.update_user("gone@example.com", active=False)
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
         bound_store.create_experiment_permission("1", "gone@example.com", "MANAGE")
@@ -195,7 +201,7 @@ class TestOrphans:
         assert client.get(PROTECTED).status_code == 401
 
     def test_hard_delete_hands_orphans_to_the_fallback(self, client, scim, alice, bound_store, monkeypatch, audit_events):
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
         bound_store.create_experiment_permission("5", ALICE, "MANAGE")
@@ -211,7 +217,7 @@ class TestOrphans:
 
     def test_deactivation_does_not_transfer(self, client, scim, alice, bound_store, monkeypatch):
         """A deactivated user may come back; their grants stay theirs."""
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
 
@@ -227,7 +233,7 @@ class TestOrphans:
         monkeypatch.setattr(orphans, "_transfer_in_session", explode)
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
 
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         response = client.delete(f"{USERS}/{ALICE}", headers=scim)
         assert response.status_code == 204
         assert not bound_store.has_user(ALICE)
@@ -253,7 +259,7 @@ class TestOrphansThroughGroupsAndRegex:
 
     @pytest.fixture
     def colleague(self, bound_store):
-        bound_store.create_user(COLLEAGUE, "unused-secret", "Colleague")
+        bound_store.create_user(COLLEAGUE, "Colleague")
         return COLLEAGUE
 
     def deactivate(self, client, scim):
@@ -480,7 +486,7 @@ class TestOrphansThroughGroupsAndRegex:
         assert orphaned_events(audit_events) == {}
 
     def test_hard_delete_hands_a_group_only_orphan_to_the_fallback(self, client, scim, alice, bound_store, monkeypatch, audit_events):
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
         bound_store.populate_groups(["solo-team"])
         bound_store.add_user_to_group(ALICE, "solo-team")
@@ -534,7 +540,7 @@ class TestOrphansThroughGroupsAndRegex:
 
         monkeypatch.setattr(orphans, "_experiment_names", REAL_EXPERIMENT_NAMES)  # exercise the real lookup
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")  # regex-held, but unresolvable
         bound_store.create_registered_model_permission("model-z", ALICE, "MANAGE")  # nobody else: a plain orphan
@@ -573,7 +579,7 @@ class TestOrphansThroughGroupsAndRegex:
         def explode(*args, **kwargs):
             raise RuntimeError("regex resolution is down")
 
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
         monkeypatch.setattr(orphans, "_judge_all", explode)
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
@@ -591,8 +597,8 @@ class TestOrphansThroughGroupsAndRegex:
         from sqlalchemy import event
 
         monkeypatch.setattr(orphans, "_experiment_names", lambda ids: {i: f"exp-{i}" for i in ids})
-        bound_store.create_user(ALICE, "unused-secret", "Alice")
-        bound_store.create_user(COLLEAGUE, "unused-secret", "Colleague")
+        bound_store.create_user(ALICE, "Alice")
+        bound_store.create_user(COLLEAGUE, "Colleague")
         bound_store.populate_groups(["team", "solo"])
         bound_store.add_user_to_group(COLLEAGUE, "team")
         bound_store.add_user_to_group(ALICE, "solo")
@@ -624,7 +630,7 @@ class TestHandoverIsPartOfTheDelete:
         must not survive the refusal."""
         client.post(USERS, headers=scim, json=user_body("boss@example.com"))
         bound_store.update_user("boss@example.com", is_admin=True, written_by="scim")
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
         bound_store.create_experiment_permission("1", "boss@example.com", "MANAGE")
 
@@ -643,7 +649,7 @@ class TestHandoverIsPartOfTheDelete:
 
         from mlflow_oidc_auth.db.models import SqlUser
 
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
 
@@ -665,9 +671,9 @@ class TestHandoverIsPartOfTheDelete:
     def test_an_unfit_fallback_is_skipped_without_blocking(self, client, scim, alice, bound_store, monkeypatch, audit_events, kind):
         fallback = {"service_account": "svc-bot", "inactive": "gone@example.com", "missing": "nobody@example.com", "self": ALICE}[kind]
         if kind == "service_account":
-            bound_store.create_user("svc-bot", "unused-secret", "Bot", is_service_account=True)
+            bound_store.create_user("svc-bot", "Bot", is_service_account=True)
         if kind == "inactive":
-            bound_store.create_user("gone@example.com", "unused-secret", "Gone")
+            bound_store.create_user("gone@example.com", "Gone")
             bound_store.update_user("gone@example.com", active=False)
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", fallback)
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")

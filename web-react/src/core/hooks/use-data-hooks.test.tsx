@@ -12,7 +12,6 @@ import { useAllPrompts } from "./use-all-prompts";
 import { useAllUsers } from "./use-all-users";
 import { useDeletedExperiments } from "./use-deleted-experiments";
 import { useDeletedRuns } from "./use-deleted-runs";
-import { useUserDetails } from "./use-user-details";
 
 // Import fetchers to mock
 import * as userService from "../services/user-service";
@@ -50,7 +49,6 @@ describe("Core Data Hooks", () => {
         groups: [],
         id: 1,
         is_service_account: false,
-        password_expiration: null,
       };
       vi.spyOn(userService, "fetchCurrentUser").mockResolvedValue(mockUser);
 
@@ -201,37 +199,6 @@ describe("Core Data Hooks", () => {
       await waitFor(() => {
         expect(result.current.deletedRuns).toEqual(mockDeleted.deleted_runs);
       });
-    });
-  });
-
-  describe("useUserDetails", () => {
-    it("returns user details when username is provided", async () => {
-      const mockUser: CurrentUser = {
-        username: "user1",
-        is_admin: false,
-        display_name: "User 1",
-        groups: [],
-        id: 2,
-        is_service_account: false,
-        password_expiration: null,
-      };
-      vi.spyOn(userService, "fetchUserDetails").mockResolvedValue(mockUser);
-
-      const { result } = renderHook(() =>
-        useUserDetails({ username: "user1" }),
-      );
-
-      await waitFor(() => {
-        expect(result.current.user).toEqual(mockUser);
-      });
-    });
-
-    it("does not fetch when username is null", async () => {
-      const spy = vi.spyOn(userService, "fetchUserDetails");
-      renderHook(() => useUserDetails({ username: null }));
-      // Wait a tick to ensure no async actions were triggered
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(spy).not.toHaveBeenCalled();
     });
   });
 });

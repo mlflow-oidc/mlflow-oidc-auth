@@ -142,7 +142,7 @@ class TestRead:
         assert_scim_error(client.get(f"{USERS}/nobody@example.com", headers=scim), 404)
 
     def test_service_accounts_are_invisible(self, client, scim, bound_store):
-        bound_store.create_user("svc-bot", "unused-secret", "Bot", is_service_account=True)
+        bound_store.create_user("svc-bot", "Bot", is_service_account=True)
         assert_scim_error(client.get(f"{USERS}/svc-bot", headers=scim), 404)
         assert_scim_error(client.patch(f"{USERS}/svc-bot", headers=scim, json=patch_body({"op": "replace", "path": "active", "value": False})), 404)
         assert bound_store.get_user_detail("svc-bot")["active"] is True
@@ -271,7 +271,7 @@ class TestOwnershipGuard:
         assert bound_store.get_user_detail("new@example.com")["managed_by"] == "scim"
 
     def test_an_attribute_write_does_not_claim_a_manual_row(self, client, scim, bound_store):
-        bound_store.create_user("carol@example.com", "unused-secret", "Carol")
+        bound_store.create_user("carol@example.com", "Carol")
         ops = patch_body({"op": "replace", "path": "displayName", "value": "Carol D"})
         response = client.patch(f"{USERS}/carol@example.com", headers=scim, json=ops)
         assert response.status_code == 200
@@ -280,7 +280,7 @@ class TestOwnershipGuard:
 
     def test_binding_an_external_id_claims_a_manual_row(self, client, scim, bound_store, audit_events):
         """Provisioning: the directory adopts an account an admin created before SCIM existed."""
-        bound_store.create_user("carol@example.com", "unused-secret", "Carol")
+        bound_store.create_user("carol@example.com", "Carol")
         ops = patch_body({"op": "add", "path": "externalId", "value": "ext-carol"})
         response = client.patch(f"{USERS}/carol@example.com", headers=scim, json=ops)
         assert response.status_code == 200
@@ -288,14 +288,14 @@ class TestOwnershipGuard:
         assert any(e["event"] == "user.ownership_claimed" for e in audit_events)
 
     def test_a_manual_admin_is_never_claimed(self, client, scim, bound_store):
-        bound_store.create_user("root@example.com", "unused-secret", "Root", is_admin=True)
+        bound_store.create_user("root@example.com", "Root", is_admin=True)
         ops = patch_body({"op": "add", "path": "externalId", "value": "ext-root"})
         client.patch(f"{USERS}/root@example.com", headers=scim, json=ops)
         assert bound_store.get_user_detail("root@example.com")["managed_by"] == "manual"
 
     def test_enforce_refuses_a_manual_admin(self, client, scim, bound_store, monkeypatch):
-        bound_store.create_user("root@example.com", "unused-secret", "Root", is_admin=True)
-        bound_store.create_user("root2@example.com", "unused-secret", "Root 2", is_admin=True)
+        bound_store.create_user("root@example.com", "Root", is_admin=True)
+        bound_store.create_user("root2@example.com", "Root 2", is_admin=True)
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
 
         ops = patch_body({"op": "replace", "path": "displayName", "value": "Owned"})
@@ -306,7 +306,7 @@ class TestOwnershipGuard:
         assert (detail["display_name"], detail["active"], detail["managed_by"]) == ("Root", True, "manual")
 
     def test_report_applies_to_a_manual_admin_and_records_it(self, client, scim, bound_store, audit_events):
-        bound_store.create_user("root@example.com", "unused-secret", "Root", is_admin=True)
+        bound_store.create_user("root@example.com", "Root", is_admin=True)
         ops = patch_body({"op": "replace", "path": "displayName", "value": "Renamed"})
         response = client.patch(f"{USERS}/root@example.com", headers=scim, json=ops)
         assert response.status_code == 200
@@ -316,7 +316,7 @@ class TestOwnershipGuard:
         assert conflicts and conflicts[-1]["detail"]["permitted"] is True
 
     def test_enforce_refuses_a_row_another_source_owns(self, client, scim, bound_store, monkeypatch):
-        bound_store.create_user("dave@example.com", "unused-secret", "Dave")
+        bound_store.create_user("dave@example.com", "Dave")
         bound_store.update_user("dave@example.com", managed_by="oidc:default", written_by="oidc:default")
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
 
@@ -351,7 +351,7 @@ class TestSsoLoginOnADirectoryOwnedRow:
 
         create(client, scim, "alice@example.com")
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
-        for change in ({"active": False}, {"managed_by": "oidc:default"}, {"is_service_account": True}, {"password": "x"}):
+        for change in ({"active": False}, {"managed_by": "oidc:default"}, {"is_service_account": True}, {"revoke_tokens": True}):
             with pytest.raises(MlflowException):
                 bound_store.update_user("alice@example.com", written_by="oidc:default", **change)
         detail = bound_store.get_user_detail("alice@example.com")
@@ -444,7 +444,7 @@ class TestReservedCharactersInExistingNames:
     directory could never de-provision that user."""
 
     def test_a_slash_username_is_addressable_through_its_location(self, client, scim, bound_store):
-        bound_store.create_user("team/alice", "unused-secret", "Team Alice")
+        bound_store.create_user("team/alice", "Team Alice")
         listed = client.get(USERS, headers=scim, params={"filter": 'userName eq "team/alice"'}).json()["Resources"]
         location = listed[0]["meta"]["location"]
         assert location.endswith("/Users/team%2Falice")

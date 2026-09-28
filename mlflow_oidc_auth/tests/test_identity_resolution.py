@@ -70,7 +70,7 @@ class TestSubjectBinding:
         assert decision.username is None
 
     def test_a_bound_subject_matches_its_user(self, store, resolve):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("okta", "sub-1", ALICE)
 
         decision = resolve(subject_provider(), "sub-1")
@@ -81,7 +81,7 @@ class TestSubjectBinding:
     def test_the_same_subject_under_another_provider_does_not_match(self, store, resolve):
         """Subjects are only unique within a provider. Two IdPs both numbering their users
         from 1 must not collide."""
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("okta", "sub-1", ALICE)
 
         decision = resolve(subject_provider(provider_id="other-idp"), "sub-1")
@@ -92,7 +92,7 @@ class TestSubjectBinding:
     def test_a_matching_email_claim_cannot_reach_a_user(self, store, resolve):
         """The core of subject binding: email is never consulted, so asserting somebody else's
         address reaches nothing."""
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         decision = resolve(subject_provider(), "attacker-sub", verified(ALICE))
 
@@ -107,7 +107,7 @@ class TestSubjectBinding:
 
 class TestEmailBinding:
     def test_an_authorised_domain_links_to_an_existing_user(self, store, resolve):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         decision = resolve(email_provider(), "sub-1", verified(ALICE))
 
@@ -125,7 +125,7 @@ class TestEmailBinding:
         Falling through to create would hand the caller an account for a domain the operator
         never authorised this provider to speak for.
         """
-        store.create_user("victim@corp.example", "tok", "Victim")
+        store.create_user("victim@corp.example", "Victim")
 
         decision = resolve(email_provider(domains=("example.com",)), "sub-1", verified("victim@corp.example"))
 
@@ -134,7 +134,7 @@ class TestEmailBinding:
         assert "not authorised for email domain" in decision.reason
 
     def test_domain_matching_is_case_insensitive(self, store, resolve):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         decision = resolve(email_provider(domains=("EXAMPLE.COM",)), "sub-1", {"email": "Alice@Example.COM", "email_verified": True})
 
@@ -172,7 +172,7 @@ class TestCrossProviderTakeover:
         Domain authorisation says B may speak for example.com; it does not say B may take over
         an account another provider already established.
         """
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("okta", "sub-a", ALICE)
 
         decision = resolve(email_provider(provider_id="rogue"), "sub-b", verified(ALICE))
@@ -184,7 +184,7 @@ class TestCrossProviderTakeover:
     def test_the_owning_provider_may_still_link_a_second_identity(self, store, resolve):
         """The guard is about *other* providers, not about a provider adding an identity for a
         user it already owns."""
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("entra", "sub-old", ALICE)
 
         decision = resolve(email_provider(provider_id="entra"), "sub-new", verified(ALICE))
@@ -194,8 +194,8 @@ class TestCrossProviderTakeover:
 
     def test_an_existing_binding_wins_over_any_claim(self, store, resolve):
         """Once (provider, subject) names a user, no claim redirects it."""
-        store.create_user(ALICE, "tok", "Alice")
-        store.create_user(BOB, "tok", "Bob")
+        store.create_user(ALICE, "Alice")
+        store.create_user(BOB, "Bob")
         store.user_identity_repo.link("entra", "sub-1", ALICE)
 
         decision = resolve(email_provider(provider_id="entra"), "sub-1", verified(BOB))
@@ -215,7 +215,7 @@ class TestUnverifiedEmail:
 
     @pytest.mark.parametrize("claims", [{"email": ALICE}, {"email": ALICE, "email_verified": False}, {"email": ALICE, "email_verified": None}])
     def test_an_unverified_email_never_links(self, store, resolve, claims):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         decision = resolve(email_provider(), "attacker-sub", claims)
 
@@ -227,7 +227,7 @@ class TestUnverifiedEmail:
     def test_only_a_literal_true_counts_as_verified(self, store, resolve, value):
         """Truthy stand-ins are not proof. A provider emitting the string "false" would
         otherwise read as verified."""
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         decision = resolve(email_provider(), "sub-1", {"email": ALICE, "email_verified": value})
 
@@ -257,7 +257,7 @@ class TestUsernameIsNamedByTheEmail:
     def test_a_username_derived_from_other_claims_is_refused(self, store, resolve):
         """The hole this closes: presenting a verified address of one's own alongside somebody
         else's username would otherwise reach their account."""
-        store.create_user("alice", "tok", "Alice")
+        store.create_user("alice", "Alice")
 
         decision = resolve_identity(
             provider=email_provider(),
@@ -272,7 +272,7 @@ class TestUsernameIsNamedByTheEmail:
         assert "names accounts by their email address" in decision.reason
 
     def test_a_username_matching_the_email_is_accepted(self, store, resolve):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         decision = resolve_identity(
             provider=email_provider(),
@@ -287,7 +287,7 @@ class TestUsernameIsNamedByTheEmail:
         assert decision.username == ALICE
 
     def test_username_comparison_is_case_insensitive(self, store, resolve):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         decision = resolve_identity(
             provider=email_provider(),
@@ -310,7 +310,7 @@ class TestLinkEnforcesTheGuardItself:
     """
 
     def test_a_second_provider_cannot_be_bound_by_default(self, store):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("okta", "sub-a", ALICE)
 
         with pytest.raises(MlflowException, match="already bound to provider"):
@@ -319,7 +319,7 @@ class TestLinkEnforcesTheGuardItself:
         assert store.user_identity_repo.list_providers_for_username(ALICE) == ["okta"]
 
     def test_the_owning_provider_may_add_another_subject(self, store):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("okta", "sub-a", ALICE)
 
         assert store.user_identity_repo.link("okta", "sub-b", ALICE) is True
@@ -327,7 +327,7 @@ class TestLinkEnforcesTheGuardItself:
     def test_deliberate_account_linking_remains_possible(self, store):
         """A person genuinely holding identities at two IdPs is a real case — it just has to be
         an explicit decision at the call site rather than something that happens by omission."""
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("okta", "sub-a", ALICE)
 
         assert store.user_identity_repo.link("entra", "sub-b", ALICE, allow_additional_provider=True) is True
@@ -335,7 +335,7 @@ class TestLinkEnforcesTheGuardItself:
 
     def test_the_write_refuses_even_when_resolution_was_skipped(self, store):
         """The bypass itself: no call to resolve_identity anywhere in this test."""
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("entra", "sub-a", ALICE)
 
         with pytest.raises(MlflowException):
@@ -344,7 +344,7 @@ class TestLinkEnforcesTheGuardItself:
 
 class TestRepository:
     def test_linking_is_idempotent(self, store):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         assert store.user_identity_repo.link("okta", "sub-1", ALICE) is True
         assert store.user_identity_repo.link("okta", "sub-1", ALICE) is False
@@ -352,8 +352,8 @@ class TestRepository:
     def test_relinking_to_a_different_user_is_rejected(self, store):
         """The database constraint makes this impossible; the repository must not paper over it
         by re-pointing the row, which would be a takeover in one call."""
-        store.create_user(ALICE, "tok", "Alice")
-        store.create_user(BOB, "tok", "Bob")
+        store.create_user(ALICE, "Alice")
+        store.create_user(BOB, "Bob")
         store.user_identity_repo.link("okta", "sub-1", ALICE)
 
         with pytest.raises(MlflowException, match="already bound to a different user"):
@@ -368,12 +368,12 @@ class TestRepository:
     def test_backfilled_identities_are_visible(self, store):
         """#333 gave every pre-existing user an identity under provider 'default'. A user
         created after the migration does not get one — that is #316's job at login."""
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
 
         assert store.user_identity_repo.get_username_by_identity("default", ALICE) is None
 
     def test_touch_last_login_sets_a_timestamp(self, store):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("okta", "sub-1", ALICE)
 
         store.user_identity_repo.touch_last_login("okta", "sub-1")
@@ -390,7 +390,7 @@ class TestRepository:
         store.user_identity_repo.touch_last_login("okta", "nope")
 
     def test_list_providers_for_username(self, store):
-        store.create_user(ALICE, "tok", "Alice")
+        store.create_user(ALICE, "Alice")
         store.user_identity_repo.link("okta", "sub-1", ALICE)
         store.user_identity_repo.link("entra", "sub-2", ALICE, allow_additional_provider=True)
 
@@ -401,7 +401,7 @@ class TestDecisionShape:
     def test_a_refusal_never_carries_a_username(self, store, resolve):
         """A caller that ignores ``resolution`` and reads ``username`` must get nothing, not the
         account it was refused."""
-        store.create_user("victim@corp.example", "tok", "Victim")
+        store.create_user("victim@corp.example", "Victim")
 
         decision = resolve(email_provider(domains=("example.com",)), "s", verified("victim@corp.example"))
 

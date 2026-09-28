@@ -194,7 +194,7 @@ def real_store(tmp_path):
 
     s = SqlAlchemyStore()
     s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-    s.create_user("user@example.com", "unused-secret", "User")
+    s.create_user("user@example.com", "User")
     s.populate_groups(["g1", "g2", "g3"])
     yield s
     s.engine.dispose()

@@ -119,7 +119,7 @@ def permission_store(tmp_path, monkeypatch):
     monkeypatch.setattr("mlflow.server.handlers._tracking_store", _FakeTrackingStore())
 
     for user in (OWNER, READER, EDITOR, OUTSIDER, ADMIN):
-        s.create_user(user, "pw", user, is_admin=user == ADMIN)
+        s.create_user(user, user, is_admin=user == ADMIN)
     for experiment in EXPERIMENT_WORKSPACES:
         s.create_experiment_permission(experiment, OWNER, "MANAGE")
         # Explicit denials everywhere the test does not grant, so the MANAGE default never

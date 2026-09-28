@@ -230,7 +230,7 @@ class TestCreateAndRead:
         assert_scim_error(client.post(GROUPS, headers=scim, json=body), 400, "invalidValue")
 
     def test_service_accounts_are_invisible(self, client, scim, users, bound_store):
-        bound_store.create_user("svc", "unused-secret", "Service", is_service_account=True)
+        bound_store.create_user("svc", "Service", is_service_account=True)
         create_group(client, scim, "eng", [ALICE])
         bound_store.add_user_to_group("svc", "eng", written_by="manual")
 

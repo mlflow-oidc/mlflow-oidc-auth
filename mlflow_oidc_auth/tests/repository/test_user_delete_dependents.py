@@ -10,10 +10,10 @@ covered, or the delete fails at the database rather than in code anyone reads.
 """
 
 import pytest
+
+from mlflow_oidc_auth.tests.token_helpers import issue_token
 from mlflow.exceptions import MlflowException
 from sqlalchemy import inspect
-
-TOKEN = "delete-token"  # not a credential: only ever seeded into a tmp_path database
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def store(tmp_path):
     s = SqlAlchemyStore()
     s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
     # A second admin, so the last-active-admin invariant (#311) never masks a delete failure.
-    s.create_user("keeper@example.com", TOKEN, "Keeper", is_admin=True)
+    s.create_user("keeper@example.com", "Keeper", is_admin=True)
     yield s
     s.engine.dispose()
 
@@ -31,7 +31,7 @@ def store(tmp_path):
 class TestDeleteClearsDependents:
     def test_a_user_with_an_identity_can_be_deleted(self, store):
         """The regression: the #333 backfill gives every pre-existing user an identity row."""
-        store.create_user("legacy@example.com", TOKEN, "Legacy")
+        store.create_user("legacy@example.com", "Legacy")
         store.user_identity_repo.link("default", "legacy@example.com", "legacy@example.com")
 
         store.delete_user("legacy@example.com")
@@ -40,7 +40,7 @@ class TestDeleteClearsDependents:
 
     def test_the_identity_row_is_gone_too(self, store):
         """Left behind, it would collide with the next user who arrives with the same subject."""
-        store.create_user("legacy@example.com", TOKEN, "Legacy")
+        store.create_user("legacy@example.com", "Legacy")
         store.user_identity_repo.link("default", "legacy@example.com", "legacy@example.com")
 
         store.delete_user("legacy@example.com")
@@ -48,7 +48,7 @@ class TestDeleteClearsDependents:
         assert store.user_identity_repo.get_username_by_identity("default", "legacy@example.com") is None
 
     def test_a_user_with_several_identities_can_be_deleted(self, store):
-        store.create_user("multi@example.com", TOKEN, "Multi")
+        store.create_user("multi@example.com", "Multi")
         store.user_identity_repo.link("okta", "sub-1", "multi@example.com")
         store.user_identity_repo.link("entra", "sub-2", "multi@example.com", allow_additional_provider=True)
 
@@ -58,13 +58,28 @@ class TestDeleteClearsDependents:
 
     def test_a_user_with_permissions_and_an_identity_can_be_deleted(self, store):
         """The combination, since the identity delete was inserted among the existing ones."""
-        store.create_user("both@example.com", TOKEN, "Both")
+        store.create_user("both@example.com", "Both")
         store.user_identity_repo.link("default", "both@example.com", "both@example.com")
         store.create_experiment_permission("exp-1", "both@example.com", "READ")
 
         store.delete_user("both@example.com")
 
         assert store.has_user("both@example.com") is False
+
+    def test_a_user_holding_tokens_can_be_deleted_and_the_tokens_go_with_them(self, store):
+        """``user_tokens`` references ``users.id`` (#189); SQLite does not enforce the cascade."""
+        from mlflow_oidc_auth.db.models import SqlUserToken
+
+        store.create_user("tok@example.com", "Tok")
+        token = issue_token(store, "tok@example.com", name="a")
+        issue_token(store, "tok@example.com", name="b")
+
+        store.delete_user("tok@example.com")
+
+        assert store.has_user("tok@example.com") is False
+        with store.engine.connect() as conn:
+            assert conn.execute(SqlUserToken.__table__.select()).fetchall() == []
+        assert store.authenticate_user("tok@example.com", token) is False
 
     def test_deleting_an_unknown_user_still_raises(self, store):
         """The fix must not turn a missing user into a silent success."""
@@ -92,6 +107,7 @@ class TestEveryForeignKeyToUsersIsCovered:
             "user_groups",
             "user_identities",
             "auth_sessions",
+            "user_tokens",
             "experiment_permissions",
             "experiment_regex_permissions",
             "registered_model_permissions",

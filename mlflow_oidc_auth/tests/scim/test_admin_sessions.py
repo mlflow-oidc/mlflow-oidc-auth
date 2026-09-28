@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from .conftest import ADMIN, LOGIN, PROTECTED, USER_PASSWORD, basic
+from mlflow_oidc_auth.tests.token_helpers import set_known_token
 
 USERS_API = "/api/2.0/mlflow/users"
 BOB = "bob@example.com"
@@ -17,13 +18,15 @@ CAROL = "carol@example.com"
 
 @pytest.fixture
 def bob(bound_store):
-    bound_store.create_user(BOB, USER_PASSWORD, "Bob")
+    bound_store.create_user(BOB, "Bob")
+    set_known_token(bound_store, BOB, USER_PASSWORD)
     return basic(BOB, USER_PASSWORD)
 
 
 @pytest.fixture
 def carol(bound_store):
-    bound_store.create_user(CAROL, USER_PASSWORD, "Carol")
+    bound_store.create_user(CAROL, "Carol")
+    set_known_token(bound_store, CAROL, USER_PASSWORD)
     return basic(CAROL, USER_PASSWORD)
 
 

@@ -88,6 +88,19 @@ Authorization: Basic base64(username:password)
 
 Authenticates against the plugin's user database. Used by MLflow CLI/SDK (`mlflow.set_tracking_uri()` with credentials).
 
+The password is one of the user's named access tokens (issue #189): a lookup by the token's
+8-character prefix finds the one candidate row (or, for a secret carried over from before this
+feature, the user's single prefix-less row), and a single password-hash check verifies it —
+however many tokens the user holds. A live token must not be expired. On a hit, `last_used_at` is
+updated, at most once a minute per token.
+
+Issuing a new token (`POST /users/current/tokens`, `POST /users/{username}/tokens`, or
+`PATCH /users/access-token`) is refused when the request itself was authenticated this way:
+`require_interactive_login` checks `request.state.auth_method`, set by `AuthMiddleware`, and
+requires a session or a bearer token from an interactive IdP instead. A bearer token from a
+non-interactive provider (Kubernetes, `interactive: false`) is labelled `workload` and refused too.
+A leaked or short-lived credential must not be able to mint a year-long replacement.
+
 ### 2. JWT Bearer Token
 
 ```

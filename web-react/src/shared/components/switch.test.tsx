@@ -33,4 +33,26 @@ describe("Switch", () => {
     const onLabel = screen.getByText("ON");
     expect(onLabel).toHaveClass("opacity-100");
   });
+
+  it("uses the page text colour for its label by default", () => {
+    // The button-text colour is white: on a page background the label vanished.
+    render(<Switch checked={true} onChange={() => {}} label="Show inactive" />);
+    const label = screen.getByText("Show inactive");
+    expect(label).toHaveClass("text-text-primary");
+    expect(label).not.toHaveClass("text-btn-primary-text");
+  });
+
+  it("lets the caller override the label colour", () => {
+    render(
+      <Switch
+        checked={false}
+        onChange={() => {}}
+        label="Regex"
+        labelClassName="text-custom"
+      />,
+    );
+    const label = screen.getByText("Regex");
+    expect(label).toHaveClass("text-custom");
+    expect(label).not.toHaveClass("text-text-primary");
+  });
 });

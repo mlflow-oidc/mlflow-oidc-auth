@@ -66,7 +66,7 @@ def install_permission_store(tmp_path, monkeypatch, tracking_store):
     monkeypatch.setattr("mlflow.server.handlers._tracking_store", tracking_store)
 
     for user in (MANAGER, EDITOR, READER, OUTSIDER, ADMIN):
-        s.create_user(user, "pw", user, is_admin=user == ADMIN)
+        s.create_user(user, user, is_admin=user == ADMIN)
     s.create_experiment_permission(VICTIM, MANAGER, "MANAGE")
     s.create_experiment_permission(VICTIM, EDITOR, "EDIT")
     s.create_experiment_permission(VICTIM, READER, "READ")

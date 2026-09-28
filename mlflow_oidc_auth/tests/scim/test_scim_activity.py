@@ -13,6 +13,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.routers import scim as scim_module
 
 from .conftest import USER_PASSWORD, basic, user_body
+from mlflow_oidc_auth.tests.token_helpers import set_known_token
 
 USERS = "/scim/v2/Users"
 ACTIVITY = "/api/2.0/mlflow/scim/activity"
@@ -30,7 +31,8 @@ def _rows(store, **filters):
 
 @pytest.fixture
 def bob(bound_store):
-    bound_store.create_user(BOB, USER_PASSWORD, "Bob")
+    bound_store.create_user(BOB, "Bob")
+    set_known_token(bound_store, BOB, USER_PASSWORD)
     return basic(BOB, USER_PASSWORD)
 
 

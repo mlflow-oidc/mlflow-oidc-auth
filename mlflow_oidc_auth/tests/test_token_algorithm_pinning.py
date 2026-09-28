@@ -72,7 +72,7 @@ def client(signing_key, monkeypatch, tmp_path):
     _, _, public, _ = signing_key
     store = SqlAlchemyStore()
     store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-    store.create_user(USERNAME, "token", "Admin", is_admin=True)
+    store.create_user(USERNAME, "Admin", is_admin=True)
     previous = object.__getattribute__(store_module.store, "_instance")
     object.__setattr__(store_module.store, "_instance", store)
 

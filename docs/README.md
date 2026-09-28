@@ -13,7 +13,7 @@ MLflow and related marks are trademarks of their respective owners.
 
 - **Single sign-on** — Authenticate users through any OpenID Connect provider (Keycloak, Okta, Auth0, Azure AD, Google, etc.), confidential or PKCE public clients, or through a SAML 2.0 identity provider; several providers can be configured side by side
 - **SCIM 2.0 provisioning** — Create, update and deactivate users and groups from your directory
-- **Service accounts and Kubernetes identities** — Access tokens for automation, and native authentication of Kubernetes service-account tokens
+- **Workload identities and service accounts** — Native authentication of Kubernetes service-account tokens and IdP client-credentials / workload-identity tokens for automation, and personal access tokens for people using the MLflow client from a laptop or notebook (see [Programmatic access](programmatic-access))
 - **Multiple auth methods** — Server-side sessions (browser), JWT bearer tokens (service-to-service), and basic auth (CLI/SDK)
 - **User-level permissions** — Assign READ, USE, EDIT, or MANAGE permissions to individual users per resource
 - **Group-based access control** — Organize users into groups with shared permissions, synchronized from the identity provider or SCIM
@@ -104,6 +104,7 @@ Authentication context flows from FastAPI middleware through an ASGI-to-WSGI bri
 | [Configuration Providers](configuration-providers) | AWS, Azure, Vault, K8s secret backends |
 | [SAML Authentication](saml-auth) | SAML 2.0 identity providers |
 | [SCIM Provisioning](scim) | Directory-driven users and groups |
+| [Programmatic Access](programmatic-access) | Which credential to use for automation and for interactive work |
 | [Kubernetes Service Accounts](kubernetes-auth) | Authenticating workloads with their service-account tokens |
 | [Permissions](permissions) | Permission system, hierarchy, and resolution |
 | [Workspaces](workspaces) | Multi-tenant workspace isolation |

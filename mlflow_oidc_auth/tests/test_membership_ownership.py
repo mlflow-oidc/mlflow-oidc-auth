@@ -24,7 +24,6 @@ from mlflow_oidc_auth.ownership import Enforcement
 from mlflow_oidc_auth.provider_registry import ProviderConfig
 from mlflow_oidc_auth.routers._prefix import USERS_ROUTER_PREFIX
 
-PASSWORD = "membership-suite"  # not a credential: only ever seeded into a tmp_path database
 ALICE = "alice@example.com"
 KEEPER = "keeper@example.com"
 
@@ -35,7 +34,7 @@ def store(tmp_path):
 
     s = SqlAlchemyStore()
     s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-    s.create_user(KEEPER, PASSWORD, "Keeper", is_admin=True)
+    s.create_user(KEEPER, "Keeper", is_admin=True)
     s.create_scim_user(ALICE, "Alice", "ext-alice")
     s.populate_groups(["mlflow-users", "finance", "legacy", "eng"])
     previous = object.__getattribute__(store_module.store, "_instance")
@@ -420,7 +419,7 @@ class TestDeleteThenCreateCannotLaunderOwnership:
         monkeypatch.setattr(config, "MANAGED_BY_ENFORCEMENT", mode)
 
         with pytest.raises(MlflowException) as refused:
-            store.create_user(ALICE, PASSWORD, "Taken Over", written_by="oidc:default")
+            store.create_user(ALICE, "Taken Over", written_by="oidc:default")
 
         assert refused.value.error_code == "RESOURCE_ALREADY_EXISTS"
         detail = store.get_user_detail(ALICE)
@@ -430,7 +429,7 @@ class TestDeleteThenCreateCannotLaunderOwnership:
 
     def test_a_create_over_an_unowned_row_is_just_already_exists(self, store, audit_events):
         with pytest.raises(MlflowException, match="already exists"):
-            store.create_user(KEEPER, PASSWORD, "Again", written_by="oidc:default")
+            store.create_user(KEEPER, "Again", written_by="oidc:default")
 
         assert conflicts(audit_events) == []
 

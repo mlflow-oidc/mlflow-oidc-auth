@@ -384,20 +384,20 @@ single transaction:
 1. `users.active` is set to false, and the auth middleware refuses the user on every
    authentication path from their next request on.
 2. Every live server-side session for the user is revoked (`session.revoked` audit event).
-3. The user's access token (basic-auth secret) is replaced with an undisclosed, already-expired
-   value. Reactivation therefore never revives a credential issued before deprovisioning.
+3. **All of the user's access tokens are deleted.** Reactivation therefore never revives a
+   token issued before deprovisioning; the user creates new ones, or an admin issues one for a
+   service account.
 
-Sending `active: false` again for a user who is already inactive changes nothing. The
-credential is not rewritten on every sync, and the ownership guard does not see a credential
-write.
+Sending `active: false` again for a user who is already inactive changes nothing. Tokens are not
+deleted again on every sync, and the ownership guard does not see a credential write.
 
 The account row and **every permission grant are kept**. `active: true` restores access with no
 further action from an administrator. The user signs in again, or is issued a new access token
 through the normal self-service path. Each transition emits `user.deactivated` or
 `user.reactivated` with `detail.source = "scim"`.
 
-`DELETE` is a hard delete: the user's grants, group memberships, identities and sessions are
-removed. Use it for the rarer "gone for good" case.
+`DELETE` is a hard delete: the user's grants, group memberships, identities, sessions and access
+tokens are removed. Use it for the rarer "gone for good" case.
 
 ### Orphaned resources
 
@@ -499,6 +499,6 @@ For the admin UI:
 - `GET /api/2.0/mlflow/users/{username}/sessions` lists a user's live sessions, and
   `DELETE .../sessions/{pk}` and `DELETE .../sessions` revoke one or all of them
   (`session.revoked` with `detail.source = "admin"`). Revoking sessions signs the user out; it
-  does not deactivate the account or touch its access token.
+  does not deactivate the account or touch its access tokens.
 
 See the [API Reference](api-reference#scim).

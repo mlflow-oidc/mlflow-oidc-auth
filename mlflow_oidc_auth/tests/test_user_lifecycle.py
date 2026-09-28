@@ -27,8 +27,8 @@ import mlflow_oidc_auth.auth as auth_module
 import mlflow_oidc_auth.store as store_module
 from mlflow_oidc_auth.db.cli import commands
 from mlflow_oidc_auth.middleware import AuthMiddleware
+from mlflow_oidc_auth.tests.token_helpers import issue_token
 
-PASSWORD = "lifecycle-password"  # not a credential: only ever seeded into a tmp_path database
 PROTECTED = "/lifecycle/protected"
 LOGIN = "/login/lifecycle"
 
@@ -105,7 +105,7 @@ class TestInactiveUserIsDeniedOnEveryAuthPath:
     """One test per path, because each presents credentials differently and each must deny."""
 
     def test_session_path_denies_an_inactive_user(self, store, client):
-        store.create_user("s@example.com", PASSWORD, "S")
+        store.create_user("s@example.com", "S")
         client.get(LOGIN, params={"username": "s@example.com"})
         assert client.get(PROTECTED).status_code == 200, "precondition: an active user is allowed"
 
@@ -114,7 +114,7 @@ class TestInactiveUserIsDeniedOnEveryAuthPath:
         assert client.get(PROTECTED).status_code == 401
 
     def test_bearer_path_denies_an_inactive_user(self, store, client, bearer_token):
-        store.create_user("b@example.com", PASSWORD, "B")
+        store.create_user("b@example.com", "B")
         token = bearer_token("b@example.com")
         headers = {"Authorization": f"Bearer {token}"}
         assert client.get(PROTECTED, headers=headers).status_code == 200
@@ -124,8 +124,9 @@ class TestInactiveUserIsDeniedOnEveryAuthPath:
         assert client.get(PROTECTED, headers=headers).status_code == 401
 
     def test_basic_path_denies_an_inactive_user(self, store, client):
-        store.create_user("a@example.com", PASSWORD, "A")
-        credentials = base64.b64encode(f"a@example.com:{PASSWORD}".encode()).decode()
+        store.create_user("a@example.com", "A")
+        token = issue_token(store, "a@example.com")
+        credentials = base64.b64encode(f"a@example.com:{token}".encode()).decode()
         headers = {"Authorization": f"Basic {credentials}"}
         assert client.get(PROTECTED, headers=headers).status_code == 200
 
@@ -136,7 +137,7 @@ class TestInactiveUserIsDeniedOnEveryAuthPath:
     def test_a_still_valid_session_cookie_does_not_help(self, store, client):
         """The point of enforcing here: the cookie is signed, unexpired and genuine. Only the
         account state changed."""
-        store.create_user("c@example.com", PASSWORD, "C")
+        store.create_user("c@example.com", "C")
         client.get(LOGIN, params={"username": "c@example.com"})
         deactivate(store, "c@example.com")
 
@@ -146,7 +147,7 @@ class TestInactiveUserIsDeniedOnEveryAuthPath:
         assert response.json().get("username") is None
 
     def test_reactivating_restores_access(self, store, client):
-        store.create_user("r@example.com", PASSWORD, "R")
+        store.create_user("r@example.com", "R")
         client.get(LOGIN, params={"username": "r@example.com"})
         deactivate(store, "r@example.com")
         assert client.get(PROTECTED).status_code == 401
@@ -158,7 +159,7 @@ class TestInactiveUserIsDeniedOnEveryAuthPath:
     def test_an_active_user_is_unaffected(self, store, client):
         """Back-compat: every existing row is active=true after the #333 backfill, so no
         deployment changes behaviour."""
-        store.create_user("ok@example.com", PASSWORD, "OK")
+        store.create_user("ok@example.com", "OK")
         client.get(LOGIN, params={"username": "ok@example.com"})
 
         assert client.get(PROTECTED).status_code == 200
@@ -170,7 +171,7 @@ class TestInactiveDenialCostsNoExtraQuery:
         nothing and the session path is a single statement."""
         from sqlalchemy import event
 
-        store.create_user("q@example.com", PASSWORD, "Q")
+        store.create_user("q@example.com", "Q")
         client.get(LOGIN, params={"username": "q@example.com"})
         client.get(PROTECTED)
 
@@ -193,8 +194,8 @@ class TestLastActiveAdminInvariant:
     """Refusing is cheap; recovering from a full lockout needs database access."""
 
     def test_deleting_the_last_active_admin_is_refused(self, store):
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
-        store.create_user("plain@example.com", PASSWORD, "Plain")
+        store.create_user("admin@example.com", "Admin", is_admin=True)
+        store.create_user("plain@example.com", "Plain")
 
         with pytest.raises(MlflowException, match="only active administrator"):
             store.delete_user("admin@example.com")
@@ -202,7 +203,7 @@ class TestLastActiveAdminInvariant:
         assert store.get_user_profile("admin@example.com").is_admin is True
 
     def test_deactivating_the_last_active_admin_is_refused(self, store):
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
 
         with pytest.raises(MlflowException, match="only active administrator"):
             store.update_user(username="admin@example.com", active=False)
@@ -211,7 +212,7 @@ class TestLastActiveAdminInvariant:
 
     def test_demoting_the_last_active_admin_is_refused(self, store):
         """Demotion locks everyone out exactly as thoroughly as deletion."""
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
 
         with pytest.raises(MlflowException, match="only active administrator"):
             store.update_user(username="admin@example.com", is_admin=False)
@@ -220,8 +221,8 @@ class TestLastActiveAdminInvariant:
 
     @pytest.mark.parametrize("operation", ["delete", "deactivate", "demote"])
     def test_any_of_them_is_allowed_while_another_active_admin_remains(self, store, operation):
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
-        store.create_user("admin2@example.com", PASSWORD, "Admin2", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
+        store.create_user("admin2@example.com", "Admin2", is_admin=True)
 
         if operation == "delete":
             store.delete_user("admin@example.com")
@@ -235,16 +236,16 @@ class TestLastActiveAdminInvariant:
 
     def test_an_inactive_admin_does_not_count_towards_the_invariant(self, store):
         """Two admins on paper, one of them deactivated, is still one active admin."""
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
-        store.create_user("admin2@example.com", PASSWORD, "Admin2", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
+        store.create_user("admin2@example.com", "Admin2", is_admin=True)
         deactivate(store, "admin2@example.com")
 
         with pytest.raises(MlflowException, match="only active administrator"):
             store.delete_user("admin@example.com")
 
     def test_removing_a_non_admin_is_never_blocked(self, store):
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
-        store.create_user("plain@example.com", PASSWORD, "Plain")
+        store.create_user("admin@example.com", "Admin", is_admin=True)
+        store.create_user("plain@example.com", "Plain")
 
         store.delete_user("plain@example.com")
 
@@ -252,8 +253,8 @@ class TestLastActiveAdminInvariant:
 
     def test_removing_an_already_inactive_admin_is_allowed(self, store):
         """They cannot log in, so they are not the administrator anyone is relying on."""
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
-        store.create_user("old@example.com", PASSWORD, "Old", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
+        store.create_user("old@example.com", "Old", is_admin=True)
         deactivate(store, "old@example.com")
 
         store.delete_user("old@example.com")
@@ -270,7 +271,7 @@ class TestBreakGlassCli:
         return store.engine.url.render_as_string(hide_password=False)
 
     def test_it_restores_an_admin_who_cannot_log_in(self, store):
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
         with store.engine.begin() as conn:
             conn.execute(text("UPDATE users SET active = 0, managed_by = 'scim' WHERE username = 'admin@example.com'"))
 
@@ -283,7 +284,7 @@ class TestBreakGlassCli:
     def test_it_resets_managed_by(self, store):
         """Leaving the row owned by ``scim`` invites the next sync to undo the repair, and the
         #319 guard to refuse an admin's later edits to it."""
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
         with store.engine.begin() as conn:
             conn.execute(text("UPDATE users SET active = 0, managed_by = 'oidc:entra' WHERE username = 'admin@example.com'"))
 
@@ -293,7 +294,7 @@ class TestBreakGlassCli:
 
     def test_it_promotes_a_non_admin(self, store):
         """The realistic lockout is that nobody is left with admin at all."""
-        store.create_user("plain@example.com", PASSWORD, "Plain")
+        store.create_user("plain@example.com", "Plain")
 
         result = CliRunner().invoke(commands, ["restore-admin", "--url", self._url(store), "--username", "plain@example.com"])
 
@@ -302,7 +303,7 @@ class TestBreakGlassCli:
 
     def test_the_restored_admin_can_authenticate_again(self, store, client):
         """End to end: the recovery is only real if it restores access."""
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
         client.get(LOGIN, params={"username": "admin@example.com"})
         deactivate(store, "admin@example.com")
         assert client.get(PROTECTED).status_code == 401
@@ -319,7 +320,7 @@ class TestBreakGlassCli:
 
     def test_it_reports_what_it_changed(self, store):
         """An out-of-band privilege grant has to be visible afterwards."""
-        store.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
+        store.create_user("admin@example.com", "Admin", is_admin=True)
         deactivate(store, "admin@example.com")
 
         result = CliRunner().invoke(commands, ["restore-admin", "--url", self._url(store), "--username", "admin@example.com"])

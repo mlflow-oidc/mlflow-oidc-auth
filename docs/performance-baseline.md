@@ -70,7 +70,7 @@ Identical in all 72 cells (2 databases x {1, 50, 500} users x {0, 20, 200} group
 | `unprotected` | **0** | `_is_unprotected_route` returns before any store access |
 | `session` | **2** | `_get_user_admin_status` -> `get_profile`: one `load_only` select on `users`, one `selectinload` on `groups` |
 | `bearer` | **2** | same; token validation itself touches no database |
-| `basic` | **3** | one select in `authenticate_user` to load the password hash, then the 2 above |
+| `basic` | **3** | one select in `UserTokenRepository.authenticate` to load the matching token row (by prefix, or by being the user's one prefix-less carried-over token), then the 2 above |
 
 Denial paths, asserted in `test_auth_path_baseline.py`:
 
@@ -130,9 +130,10 @@ Issue #305 stated that `_get_user_admin_status` "runs on every authenticated req
   `/static-files` serves MLflow's entire React bundle, a real browser session issues many more
   0-query requests than 2-query ones. The claim is correct for every *authenticated* request;
   it is not correct for every request.
-- **Basic auth costs 3, not 2.** `store.authenticate_user` adds a select to load the password
-  hash before the admin check runs. Any downstream work that assumes a flat 2 has to account
-  for this path.
+- **Basic auth costs 3, not 2.** `UserTokenRepository.authenticate` adds a select, indexed on the
+  token's prefix, to load the matching token row before the admin check runs. Any downstream work
+  that assumes a flat 2 has to account for this path. The first use of a token in any given minute
+  adds one more statement, an `UPDATE` of `last_used_at`; steady state within that minute stays at 3.
 
 **The count is constant in both dimensions of the matrix.** Statement count does not move with
 the number of users (1 -> 500) or with group membership (0 -> 200 groups per user).
@@ -151,13 +152,15 @@ T0 a basic-auth request cost ~50 ms against both databases, of which a directly 
 noise beside it.
 
 This was fixed in #336, after the baseline was taken. Nothing in this plugin stores a
-human-chosen password: every value in `users.password_hash` comes from `generate_token()`
-(24 characters, 62-character alphabet, ~143 bits of entropy), and no endpoint accepts an
-operator-supplied one. A memory-hard KDF exists to make brute-forcing *low-entropy* passwords
-expensive, so against 143 bits it bought nothing. New hashes use
-`pbkdf2:sha256:1000` (`TOKEN_HASH_METHOD` in `repository/user.py`), taking a basic-auth request
-from **50.98 ms to 2.81 ms median** — into the same range as session and bearer — at an unchanged
-3 statements.
+human-chosen password: at the time, every value in `users.password_hash` came from
+`generate_token()` (24 characters, 62-character alphabet, ~143 bits of entropy), and no endpoint
+accepted an operator-supplied one; the same is true today of every value in `user_tokens.token_hash`
+(issue #189 moved tokens into their own table, one row per named token, in place of the single
+`users.password_hash`). A memory-hard KDF exists to make brute-forcing *low-entropy* passwords
+expensive, so against 143 bits it bought nothing. Hashes use
+`pbkdf2:sha256:1000` (`TOKEN_HASH_METHOD` in `repository/user_token.py`), taking a basic-auth
+request from **50.98 ms to 2.81 ms median** — into the same range as session and bearer — at an
+unchanged 3 statements.
 
 Hashes written before that change keep verifying under their original method and are never
 re-hashed in place, so a deployment that upgrades and rotates nothing still pays the old ~50 ms

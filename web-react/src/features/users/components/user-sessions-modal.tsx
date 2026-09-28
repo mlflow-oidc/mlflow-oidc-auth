@@ -72,7 +72,7 @@ export function UserSessionsModal({ username, onClose }: UserSessionsModalProps)
       <div className="text-ui-text dark:text-ui-text-dark">
         <p className="mb-3 text-sm opacity-80">
           Live sign-in sessions. Revoking one signs that browser out on its next
-          request; the account, its permissions and its access token are not
+          request; the account, its permissions and its access tokens are not
           affected.
         </p>
 

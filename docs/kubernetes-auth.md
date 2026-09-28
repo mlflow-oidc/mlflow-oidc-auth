@@ -5,6 +5,9 @@ stays on your OIDC provider. This is the automation half of multi-provider suppo
 can never be provisioned by SCIM — your corporate directory does not know they exist — which is
 why the policy for them is per-provider rather than global.
 
+For how a pod passes the token to the MLflow client, and how this compares with IdP workload
+identities and personal access tokens, see [Programmatic access](programmatic-access).
+
 ## What a pod presents
 
 A projected service-account token is an ordinary JWT signed by the cluster. Its `sub` is
