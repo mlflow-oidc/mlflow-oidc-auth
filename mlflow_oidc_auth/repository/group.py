@@ -264,7 +264,7 @@ class GroupRepository:
                 session.add(grp)
                 session.flush()
             except IntegrityError as e:
-                raise MlflowException(f"Group '{group_name}' exists: {e}", RESOURCE_ALREADY_EXISTS)
+                raise MlflowException(f"Group '{group_name}' exists", RESOURCE_ALREADY_EXISTS) from e
 
     def create_groups(self, group_names: List[str], written_by: Optional[str] = None) -> List[str]:
         """Create whichever of ``group_names`` do not exist yet, owned by ``written_by``.

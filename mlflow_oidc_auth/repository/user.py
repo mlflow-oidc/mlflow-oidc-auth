@@ -248,7 +248,7 @@ class UserRepository:
                 session.flush()
                 return u.to_mlflow_entity()
             except IntegrityError as e:
-                raise MlflowException(f"User '{username}' already exists: {e}", RESOURCE_ALREADY_EXISTS) from e
+                raise MlflowException(f"User '{username}' already exists", RESOURCE_ALREADY_EXISTS) from e
 
     @staticmethod
     def _refuse_create(username: str, existing, written_by: Optional[str]) -> None:
