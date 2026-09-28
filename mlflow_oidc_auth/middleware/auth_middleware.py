@@ -30,6 +30,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.group_detection import call_group_detection_plugin
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
 
 logger = get_logger()
@@ -221,12 +222,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug("Not provisioning %s here; a service account is handled on its own path", username)
             return
 
-        # Derive groups from the token, mirroring the login flow's group resolution.
+        # Derive groups from the token, mirroring the login flow's group resolution. A plugin
+        # that declares a ``token_response`` parameter also receives the validated claims under
+        # ``claims``; a plugin written against the original single-argument signature is
+        # unaffected (#250).
         try:
             if config.OIDC_GROUP_DETECTION_PLUGIN:
-                import importlib
-
-                user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token)
+                user_groups = call_group_detection_plugin(config.OIDC_GROUP_DETECTION_PLUGIN, token, {"access_token": token, "claims": payload})
             else:
                 user_groups = payload.get(config.OIDC_GROUPS_ATTRIBUTE, [])
             if isinstance(user_groups, str):

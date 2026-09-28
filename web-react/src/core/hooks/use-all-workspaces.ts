@@ -10,6 +10,11 @@ import {
 } from "../services/workspace-service";
 import { useApi } from "./use-api";
 
+type LoadedMemberCounts = {
+  source: WorkspaceListItem[];
+  counts: Record<string, WorkspaceMemberCounts>;
+};
+
 export function useAllWorkspaces() {
   const {
     data,
@@ -20,36 +25,45 @@ export function useAllWorkspaces() {
   const allWorkspaces: WorkspaceListItem[] | null =
     data?.workspaces ?? null;
 
-  const [memberCounts, setMemberCounts] = useState<Record<
-    string,
-    WorkspaceMemberCounts
-  > | null>(null);
+  const [loaded, setLoaded] = useState<LoadedMemberCounts | null>(null);
 
   useEffect(() => {
     if (!allWorkspaces?.length) {
-      setMemberCounts(null);
       return;
     }
     const controller = new AbortController();
-    Promise.all(
-      allWorkspaces.map(async (ws) => {
-        const counts = await fetchWorkspaceMemberCounts(
-          ws.name,
-          controller.signal,
+    const source = allWorkspaces;
+
+    const load = async () => {
+      try {
+        const results = await Promise.all(
+          source.map(async (ws) => {
+            const counts = await fetchWorkspaceMemberCounts(
+              ws.name,
+              controller.signal,
+            );
+            return [ws.name, counts] as const;
+          }),
         );
-        return [ws.name, counts] as const;
-      }),
-    )
-      .then((results) => {
         if (!controller.signal.aborted) {
-          setMemberCounts(Object.fromEntries(results));
+          setLoaded({ source, counts: Object.fromEntries(results) });
         }
-      })
-      .catch(() => {
-        /* ignore abort errors */
-      });
+      } catch {
+        /* ignore abort/fetch errors: memberCounts simply stays unresolved */
+      }
+    };
+
+    void load();
     return () => controller.abort();
   }, [allWorkspaces]);
+
+  // Counts are only valid for the workspace list they were fetched for, kept
+  // by reference rather than reset via an effect. This means switching lists
+  // — including empty -> non-empty with a reused name, or a slow fetch being
+  // superseded by a newer one — never shows a previous list's stale counts,
+  // not even for one render.
+  const memberCounts =
+    loaded && loaded.source === allWorkspaces ? loaded.counts : null;
 
   return { allWorkspaces, memberCounts, isLoading, error, refresh };
 }

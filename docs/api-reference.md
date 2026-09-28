@@ -239,7 +239,17 @@ Base path: `/api/2.0/mlflow/permissions/groups`
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/2.0/mlflow/permissions/groups` | Authenticated | List all groups |
+| POST | `/api/2.0/mlflow/permissions/groups` | Admin | Create a group |
 | GET | `/api/2.0/mlflow/permissions/groups/{group_name}/users` | Admin | List group members |
+
+**`POST /api/2.0/mlflow/permissions/groups` request:**
+```json
+{
+  "group_name": "data-team"
+}
+```
+
+Groups are otherwise created from the identity provider claims when a member signs in, so a group cannot be granted permissions before its first login. Creating a group up front lifts that ordering constraint for automated provisioning. The call is idempotent: it returns `201` when the group is created and `200` when it already exists — including a group a directory (SCIM) already owns, which keeps that ownership untouched. The name is validated with the same rules as a SCIM `displayName`: stripped, non-empty, at most 255 characters, no control characters, and none of `/ ? # %`.
 
 ### Group Direct Permissions
 
@@ -262,7 +272,7 @@ Same CRUD pattern as user permissions, but scoped to groups:
 | PATCH | `/{group_name}/{resource-type}-patterns/{id}` | Admin | Update pattern permission |
 | DELETE | `/{group_name}/{resource-type}-patterns/{id}` | Admin | Delete pattern permission |
 
-**Total: 69 group permission endpoints** (2 group-level + 7 resource types x ~9.5 operations each)
+**Total: 70 group permission endpoints** (3 group-level + 7 resource types x ~9.5 operations each)
 
 ---
 
@@ -281,6 +291,27 @@ All trash endpoints require **admin** permissions.
 | POST | `/oidc/trash/runs/{run_id}/restore` | Restore a deleted run |
 
 When workspaces are enabled, trash operations are automatically scoped to the active workspace.
+
+`POST /oidc/trash/cleanup` deletes a run's artifacts before hard-deleting its metadata. A run
+whose artifact URI uses the proxied `mlflow-artifacts:` scheme (the tracking server serves the
+artifacts itself) is resolved against the server's `--artifacts-destination` root, the same way
+MLflow's own server resolves proxied artifacts. If artifact deletion fails for a run, that run's
+metadata is **not** deleted — it stays in the trash and is reported in the response's
+`failed_runs` list with the error, so a run is never hard-deleted while its artifacts are still
+known to exist. Before hard-deleting an experiment, the endpoint always checks whether it still
+owns any run — for any reason a run above was kept (a failed artifact deletion, an age or
+lifecycle-stage check, or a lookup failure), not only an artifact-deletion failure. If one does,
+the experiment is kept too (MLflow's own run/experiment relationship cascades a hard delete onto
+every run it still owns) and reported in `failed_experiments` instead, even when the experiment's
+own hard-delete would otherwise have succeeded.
+
+Query parameters interact as follows:
+- Neither `run_ids` nor `experiment_ids` (an "empty trash" call): every deleted run and every
+  deleted experiment older than `older_than` (default: all of them) is a candidate.
+- `experiment_ids` given: those experiments and all of their runs are candidates, in addition to
+  any `run_ids` also given.
+- `run_ids` given without `experiment_ids`: **only** those runs are touched. No other trashed
+  experiment, or any run other than the ones named, is read or deleted.
 
 ---
 

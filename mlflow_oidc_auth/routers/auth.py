@@ -28,7 +28,7 @@ from mlflow_oidc_auth.repository.auth_session import REFRESH_GUARD_TIMEOUT_SECON
 from mlflow_oidc_auth.session.refresh_lock import local_refresh_turn
 from mlflow_oidc_auth.session.token_vault import SessionTokens, get_token_vault
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name
+from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name, call_group_detection_plugin
 
 from ._prefix import UI_ROUTER_PREFIX
 
@@ -1566,11 +1566,12 @@ async def _process_oidc_callback_fastapi(request: Request, session, provider_id:
         try:
             # Use module-level config (possibly patched in tests). User management goes through
             # the mlflow_oidc_auth.user module inside _provision_login so test monkeypatches apply.
-            import importlib
 
-            # Get user groups
+            # Get user groups. A plugin that declares a ``token_response`` parameter also
+            # receives the full authlib token response (id_token, access_token, userinfo, ...);
+            # a plugin written against the original single-argument signature is unaffected (#250).
             if config.OIDC_GROUP_DETECTION_PLUGIN:
-                user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(access_token)
+                user_groups = call_group_detection_plugin(config.OIDC_GROUP_DETECTION_PLUGIN, access_token, token_response)
             else:
                 user_groups = userinfo.get(config.OIDC_GROUPS_ATTRIBUTE, [])
 
