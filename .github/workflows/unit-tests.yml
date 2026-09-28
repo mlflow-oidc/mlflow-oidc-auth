@@ -79,8 +79,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: 3.12
-          cache: pip
-          cache-dependency-path: pyproject.toml
       - name: Run tests
         env:
           MLFLOW_OIDC_TEST_POSTGRES_URI: postgresql+psycopg2://mlflow_oidc:mlflow_oidc@localhost:5432/mlflow_oidc_test

@@ -195,6 +195,7 @@ balance, never what runs. When one shard is noticeably slower than the rest, dow
 `unit-test-shard-*` artifacts of a recent run and rebuild the weights:
 
 ```bash
+# several runs' reports may be passed together to average out runner variance
 python scripts/ci/shard_weights.py path/to/unit-test-shard-*/junit.xml
 ```
 

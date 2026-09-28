@@ -7,7 +7,8 @@ a recent "Unit tests" run and pass their ``junit.xml`` files:
     python scripts/ci/shard_weights.py shard-*/junit.xml
 
 Each file's weight is the sum of its test case times (setup + call + teardown, as pytest reports
-them), rounded to 0.1 s.
+them), rounded to 0.1 s. Pass the reports of two or more runs to smooth out runner-to-runner
+variance: times are summed across all the files given, and only their ratios matter.
 """
 
 import json
