@@ -20,6 +20,6 @@ jobs:
         uses: webiny/action-conventional-commits@7f91b1595ca1951cdb671ddc9f07a49081ec5b69 # v1.4.2
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Keep in sync with the types in pr-validate-title.yml. The action also accepts subjects
-          # git writes itself ("Merge ...", "Revert ...", "Reapply ...").
+          # Must include every type pr-validate-title.yml allows for PR titles (these are a superset).
+          # The action also accepts subjects git writes itself ("Merge ...", "Revert ...", "Reapply ...").
           allowed-commit-types: "feat,fix,chore,docs,style,ci,refactor,perf,test,build,revert"
