@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from types import SimpleNamespace
 
 import pytest
-from authlib.jose.errors import BadSignatureError
+from joserfc.errors import BadSignatureError
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
 

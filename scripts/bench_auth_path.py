@@ -186,16 +186,15 @@ def _prime_jwks() -> Callable[[str], str]:
     Signature verification is real; only the network fetch is bypassed, which is what a
     warm production process does too.
     """
-    from authlib.jose import JsonWebKey, jwt
+    from joserfc import jwt
+    from joserfc.jwk import RSAKey
 
     import mlflow_oidc_auth.auth as auth_module
 
-    key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-    private = key.as_dict(is_private=True)
-    public = key.as_dict(is_private=False)
+    key = RSAKey.generate_key(2048, private=True)
+    public = key.as_dict(private=False)
     kid = public.get("kid") or key.thumbprint()
     public["kid"] = kid
-    private["kid"] = kid
 
     with auth_module._jwks_cache_lock:
         auth_module._jwks_cache[auth_module._JWKS_CACHE_KEY] = {"keys": [public]}
@@ -203,7 +202,7 @@ def _prime_jwks() -> Callable[[str], str]:
     def mint(username: str) -> str:
         now = int(time.time())
         claims = {"email": username, "name": username, "iat": now, "exp": now + 3600}
-        return jwt.encode({"alg": "RS256", "kid": kid}, claims, private).decode("utf-8")
+        return jwt.encode({"alg": "RS256", "kid": kid}, claims, key, algorithms=["RS256"])
 
     return mint
 

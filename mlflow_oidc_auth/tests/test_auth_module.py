@@ -2,7 +2,7 @@ import types
 
 import pytest
 import requests
-from authlib.jose.errors import BadSignatureError
+from joserfc.errors import BadSignatureError
 
 from mlflow_oidc_auth import auth
 from mlflow_oidc_auth.auth import _jwks_cache
