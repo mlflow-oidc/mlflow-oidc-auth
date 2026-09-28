@@ -84,6 +84,46 @@ class TestOIDCBearerTokens(TokenAdversarySuite):
     """Every case in the base class, against the configured OIDC provider."""
 
 
+class TestTokensWithoutAnExpiry:
+    """#356. ``TokenAdversarySuite`` already refuses a token with no ``exp`` for every provider;
+    these pin the reason and the one way out."""
+
+    @staticmethod
+    def _without_exp(issuer: Issuer, **overrides) -> str:
+        claims = {k: v for k, v in issuer.claims().items() if k != "exp"}
+        claims.update(overrides)
+        return issuer.mint(claims=claims)
+
+    def test_the_refusal_is_for_the_missing_claim(self, verify, trusted):
+        """Not incidentally for something else about the token: the control below is identical
+        but for ``exp``."""
+        from authlib.jose.errors import MissingClaimError
+
+        with pytest.raises(MissingClaimError, match="exp"):
+            verify(self._without_exp(trusted))
+        assert verify(trusted.mint()) is not None
+
+    def test_an_oidc_provider_that_opts_in_accepts_it(self, trusted, monkeypatch):
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry_of(provider_for(trusted, allow_tokens_without_expiry=True)))
+        monkeypatch.setattr(auth_module, "_get_oidc_jwks", lambda force_refresh=False: trusted.jwks)
+
+        assert auth_module.validate_token(self._without_exp(trusted)) is not None
+
+    def test_opting_in_waives_nothing_else(self, trusted, foreign, monkeypatch):
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry_of(provider_for(trusted, allow_tokens_without_expiry=True)))
+        monkeypatch.setattr(auth_module, "_get_oidc_jwks", lambda force_refresh=False: trusted.jwks)
+        now = int(time.time())
+
+        for token in (
+            self._without_exp(trusted, aud="a-different-application"),
+            self._without_exp(trusted, iss="https://anyone.invalid"),
+            self._without_exp(foreign, iss=trusted.iss, aud=trusted.audience),
+            trusted.mint(iat=now - 7200, exp=now - 3600),
+        ):
+            with rejects():
+                auth_module.validate_token(token)
+
+
 class TestAudienceConfusion:
     """A token minted for another application by the *same* identity provider.
 
@@ -174,6 +214,12 @@ class TestTheUnpinnedDefault:
         with rejects():
             verify_unpinned(trusted.mint(iat=now - 7200, exp=now - 3600))
 
+    def test_a_token_with_no_expiry_is_still_refused(self, verify_unpinned, trusted):
+        """#356 applies to the synthesised provider too: nothing pinned does not mean nothing
+        required, and there is no flat variable that opts back out."""
+        with rejects():
+            verify_unpinned(trusted.mint(claims={k: v for k, v in trusted.claims().items() if k != "exp"}))
+
     def test_but_any_issuer_and_audience_are_accepted(self, verify_unpinned, trusted):
         """**The gap.** With nothing pinned, a token signed by the configured keys is accepted
         whatever it says about who it was for.
@@ -247,6 +293,15 @@ class TestEndToEndThroughTheMiddleware:
         response = self._get(client, trusted.mint(email=USERNAME, aud="a-different-application"))
 
         assert response.status_code == 401
+
+    def test_a_token_with_no_expiry_does_not(self, client, trusted):
+        """#356 end to end: an admin's genuine, correctly signed token that simply never expires."""
+        claims = {k: v for k, v in trusted.claims(email=USERNAME).items() if k != "exp"}
+
+        response = self._get(client, trusted.mint(claims=claims))
+
+        assert response.status_code == 401
+        assert response.json().get("username") is None
 
     def test_an_unsigned_token_does_not(self, client, trusted):
         response = self._get(client, unsigned_token(trusted.claims(email=USERNAME)))

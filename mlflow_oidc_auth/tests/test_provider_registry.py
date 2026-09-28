@@ -9,6 +9,7 @@ one of these checks by accident is a provider someone can authenticate through u
 the operator did not write.
 """
 
+import functools
 import importlib
 import json
 from types import SimpleNamespace
@@ -75,6 +76,52 @@ def valid_entry(**overrides) -> dict:
         # A cluster provider carries two more requirements (#314): somewhere to get keys, and a
         # namespace allowlist, since a service-account token has no groups claim to gate on.
         entry.setdefault("namespace_allowlist", ["team-a"])
+    return entry
+
+
+@functools.lru_cache(maxsize=None)
+def _test_keypair(common_name: str):
+    """A throwaway RSA key and self-signed certificate, generated per test run and never committed."""
+    from datetime import datetime, timedelta, timezone
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=1))
+        .sign(key, hashes.SHA256())
+    )
+    key_pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    return key_pem, cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+def _cert_body(pem: str) -> str:
+    return "".join(line for line in pem.splitlines() if "-----" not in line)
+
+
+def saml_entry(**overrides) -> dict:
+    """A minimal SAML entry that passes every check."""
+    _, idp_cert = _test_keypair("idp")
+    entry = {
+        "id": "corp-saml",
+        "type": "saml",
+        "entity_id": "https://mlflow.example.com/saml/sp",
+        "idp_entity_id": "https://idp.example.com/saml",
+        "idp_sso_url": "https://idp.example.com/sso",
+        "idp_x509_cert": idp_cert,
+    }
+    entry.update(overrides)
     return entry
 
 
@@ -249,8 +296,12 @@ class TestValidationRejections:
 
         assert [p.allowed_email_domains for p in result.providers] == [("example.com",)]
 
-    def test_a_saml_provider_without_the_extra_is_rejected(self):
-        result = build([valid_entry(type="saml")])
+    def test_a_saml_provider_without_the_extra_is_rejected(self, monkeypatch):
+        """Monkeypatched rather than assumed: the extra is installed in the dev environment."""
+        from mlflow_oidc_auth import provider_registry as registry_module
+
+        monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: False)
+        result = build([saml_entry()])
 
         self._assert_rejected(result, "[saml] extra")
 
@@ -603,15 +654,16 @@ class TestATokenProviderMustPinItsOwnIssuerAndKeys:
         assert result.providers == []
         assert any("discovery_url" in error for error in result.errors)
 
-    def test_a_saml_provider_needs_neither(self):
+    def test_a_saml_provider_needs_neither(self, monkeypatch):
         """The requirement is about validating bearer tokens against a key set. SAML asserts
         identity through a browser POST and never resolves a token here."""
-        entry = {"id": "corp-saml", "type": "saml", "audience": "mlflow"}
+        from mlflow_oidc_auth import provider_registry as registry_module
 
-        result = build([entry])
+        monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
+        result = build([saml_entry()])
 
-        # Rejected only if the [saml] extra is missing — never for the token-provider fields.
-        assert not any("issuer" in error or "discovery_url" in error for error in result.errors)
+        assert result.errors == []
+        assert [provider.id for provider in result.providers] == ["corp-saml"]
 
     def test_the_legacy_provider_is_unaffected(self):
         """It is synthesised from flat variables that may legitimately be unset, and it is the
@@ -639,3 +691,429 @@ class TestTwoProvidersCannotClaimOneIssuer:
         result = build([valid_entry(id="first"), valid_entry(id="second")])
 
         assert [provider.id for provider in result.providers] == ["first", "second"]
+
+
+class TestAllowTokensWithoutExpiry:
+    """``allow_tokens_without_expiry`` switches off the one check that makes a token stop working
+    on its own (#356). Off by default everywhere, refused where it could not mean anything, and
+    never inferred from a truthy value."""
+
+    def test_it_defaults_to_false_on_an_explicit_entry(self):
+        assert build([valid_entry()]).providers[0].allow_tokens_without_expiry is False
+
+    def test_the_legacy_provider_never_allows_it(self):
+        """The synthesised provider has no flat variable to opt in with."""
+        provider = build(app_config=legacy_app_config(OIDC_AUDIENCE="aud", OIDC_ISSUER="https://idp.example.com")).providers[0]
+
+        assert provider.allow_tokens_without_expiry is False
+
+    def test_the_dataclass_default_is_false(self):
+        assert ProviderConfig(id="bare").allow_tokens_without_expiry is False
+
+    @pytest.mark.parametrize("provider_type", ["oidc", "k8s"])
+    def test_a_token_provider_may_opt_in(self, provider_type):
+        result = build([valid_entry(type=provider_type, allow_tokens_without_expiry=True)])
+
+        assert result.errors == []
+        assert result.providers[0].allow_tokens_without_expiry is True
+
+    def test_it_is_refused_on_a_saml_provider(self, monkeypatch):
+        """Refused for the field itself, not incidentally for a missing [saml] extra."""
+        from mlflow_oidc_auth import provider_registry as registry_module
+
+        monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
+        entry = saml_entry(allow_tokens_without_expiry=True)
+
+        result = build([entry])
+
+        assert result.providers == []
+        assert any("'allow_tokens_without_expiry' applies only to a token provider" in error for error in result.errors)
+
+    def test_a_saml_provider_without_it_is_unaffected(self, monkeypatch):
+        from mlflow_oidc_auth import provider_registry as registry_module
+
+        monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
+
+        result = build([saml_entry()])
+
+        assert [provider.id for provider in result.providers] == ["corp-saml"]
+        assert result.providers[0].allow_tokens_without_expiry is False
+
+    def test_it_is_refused_on_an_unknown_type(self):
+        result = build([valid_entry(type="ldap", allow_tokens_without_expiry=True)])
+
+        assert result.providers == []
+        assert any("'allow_tokens_without_expiry' applies only to a token provider" in error for error in result.errors)
+
+    @pytest.mark.parametrize("bad_value", ["true", "false", 1, 0, None, [], {}])
+    def test_a_non_boolean_is_refused(self, bad_value):
+        """``"false"`` is truthy; reading it as true would disable the check the operator meant to keep."""
+        result = build([valid_entry(allow_tokens_without_expiry=bad_value)])
+
+        assert result.providers == []
+        assert any("'allow_tokens_without_expiry' must be true or false" in error for error in result.errors)
+
+    def test_opting_in_is_logged_once_per_provider_without_token_content(self, caplog):
+        entries = [
+            valid_entry(id="first", allow_tokens_without_expiry=True),
+            valid_entry(id="second"),
+            valid_entry(id="third", allow_tokens_without_expiry=True),
+        ]
+
+        with caplog.at_level("WARNING"):
+            result = build(entries)
+
+        assert [provider.id for provider in result.providers] == ["first", "second", "third"]
+        warnings = [record.getMessage() for record in caplog.records if "allow_tokens_without_expiry" in record.getMessage()]
+        assert len(warnings) == 2
+        assert any("'first'" in message for message in warnings)
+        assert any("'third'" in message for message in warnings)
+        assert not any("'second'" in message for message in warnings)
+
+
+class TestSamlProviders:
+    """SAML entries (#328, #329). What makes one safe to accept is that every assertion it can
+    produce is checked against something the operator wrote: the IdP's entity id, its
+    certificate, and this SP's entity id. Each is required, and each rejection has a test."""
+
+    @pytest.fixture(autouse=True)
+    def extra_installed(self, monkeypatch):
+        from mlflow_oidc_auth import provider_registry as registry_module
+
+        monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
+        return registry_module
+
+    def _rejected(self, result, fragment):
+        assert result.providers == [], "an invalid SAML entry must not survive into the registry"
+        assert any(fragment in error for error in result.errors), f"expected {fragment!r} in {result.errors}"
+
+    def test_a_valid_entry_is_accepted_with_safe_defaults(self):
+        _, idp_cert = _test_keypair("idp")
+
+        [provider] = build([saml_entry()]).providers
+
+        assert provider.type == "saml"
+        assert provider.interactive is True
+        assert provider.entity_id == "https://mlflow.example.com/saml/sp"
+        assert provider.idp_x509_certs == (_cert_body(idp_cert),)
+        assert provider.want_assertions_signed is True
+        assert provider.want_response_signed is False
+        assert provider.sign_requests is False
+        assert provider.clock_skew_seconds == 60
+        assert provider.attribute_username == "email"
+        assert provider.audience is None and provider.issuer is None
+
+    def test_a_bare_base64_certificate_and_a_rotation_list_are_accepted(self):
+        _, first = _test_keypair("idp")
+        _, second = _test_keypair("idp-next")
+
+        [provider] = build([saml_entry(idp_x509_cert=[_cert_body(first), second])]).providers
+
+        assert provider.idp_x509_certs == (_cert_body(first), _cert_body(second))
+
+    @pytest.mark.parametrize("field", ["entity_id", "idp_entity_id", "idp_sso_url", "idp_x509_cert"])
+    def test_each_required_field_is_enforced(self, field):
+        entry = saml_entry()
+        entry.pop(field)
+
+        self._rejected(build([entry]), f"'{field}' is required")
+
+    @pytest.mark.parametrize("field", ["idp_sso_url", "idp_slo_url", "idp_metadata_url"])
+    def test_idp_urls_must_be_https(self, field):
+        self._rejected(build([saml_entry(**{field: "http://idp.example.com/x"})]), f"'{field}' must be an https URL")
+
+    @pytest.mark.parametrize("value", ["not a certificate", "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA", 42, [], ["garbage"]])
+    def test_an_unusable_certificate_is_refused(self, value):
+        result = build([saml_entry(idp_x509_cert=value)])
+
+        assert result.providers == []
+        assert any("idp_x509_cert" in error for error in result.errors)
+
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("audience", "mlflow"),
+            ("issuer", "https://idp.example.com"),
+            ("discovery_url", "https://idp.example.com/.well-known/openid-configuration"),
+            ("client_id", "abc"),
+            ("allowed_algorithms", ["RS256"]),
+            ("jwks_uri", "https://idp.example.com/jwks"),
+            ("in_cluster", True),
+            ("namespace_allowlist", ["team-a"]),
+        ],
+    )
+    def test_token_validation_fields_are_refused_on_saml(self, field, value):
+        self._rejected(build([saml_entry(**{field: value})]), f"'{field}' does not apply to a 'saml' provider")
+
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("entity_id", "https://sp"),
+            ("idp_entity_id", "https://idp"),
+            ("idp_sso_url", "https://idp/sso"),
+            ("idp_x509_cert", "MII"),
+            ("idp_metadata_url", "https://idp/metadata"),
+            ("sp_private_key", "key"),
+            ("sp_private_key_file", "/etc/key.pem"),
+            ("want_assertions_signed", True),
+            ("sign_requests", True),
+        ],
+    )
+    @pytest.mark.parametrize("provider_type", ["oidc", "k8s"])
+    def test_saml_fields_are_refused_on_other_types(self, field, value, provider_type):
+        result = build([valid_entry(type=provider_type, **{field: value})])
+
+        assert result.providers == []
+        assert any(f"'{field}' applies only to a 'saml' provider" in error for error in result.errors)
+
+    def test_the_default_id_is_refused(self):
+        """``default`` may adopt existing accounts by name; a SAML attribute must never get that."""
+        self._rejected(build([saml_entry(id="default")]), "cannot use the id 'default'")
+
+    def test_email_binding_is_refused(self):
+        """SAML asserts no verified-email flag, so email binding could only ever be faked."""
+        self._rejected(build([saml_entry(identity_binding="email", allowed_email_domains=["example.com"])]), "identity_binding 'email'")
+
+    def test_an_entry_requiring_no_signature_at_all_is_refused(self):
+        self._rejected(build([saml_entry(want_assertions_signed=False, want_response_signed=False)]), "an unsigned assertion proves nothing")
+
+    def test_a_signed_response_alone_is_accepted(self):
+        [provider] = build([saml_entry(want_assertions_signed=False, want_response_signed=True)]).providers
+
+        assert provider.want_response_signed is True
+
+    @pytest.mark.parametrize("field", ["want_assertions_signed", "want_response_signed", "sign_requests"])
+    @pytest.mark.parametrize("value", ["false", "true", 0, 1, None])
+    def test_flags_must_be_booleans(self, field, value):
+        self._rejected(build([saml_entry(**{field: value})]), f"'{field}' must be true or false")
+
+    @pytest.mark.parametrize("value", [-1, 301, True, "60", 1.5])
+    def test_clock_skew_is_bounded(self, value):
+        self._rejected(build([saml_entry(clock_skew_seconds=value)]), "'clock_skew_seconds'")
+
+    def test_signing_needs_a_key(self):
+        self._rejected(build([saml_entry(sign_requests=True)]), "'sign_requests' needs")
+
+    def test_a_key_without_a_certificate_is_refused(self):
+        key, _ = _test_keypair("sp")
+
+        self._rejected(build([saml_entry(sp_private_key=key)]), "must be configured together")
+
+    def test_a_mismatched_certificate_and_key_are_refused(self):
+        key, _ = _test_keypair("sp")
+        _, other_cert = _test_keypair("other")
+
+        self._rejected(build([saml_entry(sp_private_key=key, sp_x509_cert=other_cert)]), "does not match")
+
+    def test_an_inline_key_and_certificate_enable_signing(self):
+        key, cert = _test_keypair("sp")
+
+        [provider] = build([saml_entry(sp_private_key=key, sp_x509_cert=cert, sign_requests=True)]).providers
+
+        assert provider.sign_requests is True
+        assert provider.sp_x509_cert == _cert_body(cert)
+        assert "PRIVATE KEY" in provider.sp_private_key
+
+    def test_a_key_file_is_read(self, tmp_path):
+        key, cert = _test_keypair("sp")
+        key_file = tmp_path / "sp.key"
+        key_file.write_text(key)
+
+        [provider] = build([saml_entry(sp_private_key_file=str(key_file), sp_x509_cert=cert, sign_requests=True)]).providers
+
+        assert provider.sp_private_key.strip() == key.strip()
+
+    def test_an_unreadable_key_file_is_refused(self, tmp_path):
+        _, cert = _test_keypair("sp")
+
+        self._rejected(build([saml_entry(sp_private_key_file=str(tmp_path / "missing.key"), sp_x509_cert=cert)]), "could not be read")
+
+    def test_both_key_sources_are_refused(self, tmp_path):
+        key, cert = _test_keypair("sp")
+
+        self._rejected(build([saml_entry(sp_private_key=key, sp_private_key_file=str(tmp_path / "k"), sp_x509_cert=cert)]), "not both")
+
+    def test_the_private_key_never_reaches_an_error_or_a_repr(self):
+        key, cert = _test_keypair("sp")
+        key_body = _cert_body(key)
+        broken = key.replace(key_body[10:40], "A" * 30)
+
+        rejected = build([saml_entry(sp_private_key=broken, sp_x509_cert=cert)])
+        [accepted] = build([saml_entry(sp_private_key=key, sp_x509_cert=cert)]).providers
+
+        assert not any(key_body[:40] in error or broken[40:80] in error for error in rejected.errors)
+        assert key_body[:40] not in repr(accepted)
+        assert "sp_private_key" not in repr(accepted)
+
+    def test_without_the_extra_the_saml_entry_is_dropped_and_the_rest_survive(self, extra_installed, monkeypatch):
+        monkeypatch.setattr(extra_installed, "_saml_extra_installed", lambda: False)
+
+        result = build([valid_entry(), saml_entry()])
+
+        assert [provider.id for provider in result.providers] == ["okta"]
+        assert any("[saml] extra" in error for error in result.errors)
+
+
+class TestSamlMetadataUrl:
+    """``idp_metadata_url`` is read once at registry build; any failure drops the provider."""
+
+    @pytest.fixture(autouse=True)
+    def extra_installed(self, monkeypatch):
+        from mlflow_oidc_auth import provider_registry as registry_module
+
+        monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
+        monkeypatch.setattr(registry_module, "_METADATA_CACHE", {})
+        return registry_module
+
+    def _entry(self, **overrides):
+        entry = saml_entry(idp_metadata_url="https://idp.example.com/metadata")
+        entry.pop("idp_x509_cert")
+        entry.pop("idp_sso_url")
+        entry.update(overrides)
+        return entry
+
+    def test_metadata_fills_what_was_left_out(self, extra_installed, monkeypatch):
+        _, cert = _test_keypair("idp")
+        calls = []
+
+        def _fetch(url, entity_id):
+            calls.append((url, entity_id))
+            return {"sso_url": "https://idp.example.com/sso", "slo_url": "https://idp.example.com/slo", "certs": [_cert_body(cert)]}
+
+        monkeypatch.setattr(extra_installed, "_fetch_idp_metadata", _fetch)
+
+        [provider] = build([self._entry()]).providers
+
+        assert calls == [("https://idp.example.com/metadata", "https://idp.example.com/saml")]
+        assert provider.idp_sso_url == "https://idp.example.com/sso"
+        assert provider.idp_slo_url == "https://idp.example.com/slo"
+        assert provider.idp_x509_certs == (_cert_body(cert),)
+
+    def test_explicit_values_win_and_skip_the_fetch(self, extra_installed, monkeypatch):
+        def _fetch(url, entity_id):
+            raise AssertionError("nothing left to fill, so nothing should be fetched")
+
+        monkeypatch.setattr(extra_installed, "_fetch_idp_metadata", _fetch)
+
+        [provider] = build([saml_entry(idp_metadata_url="https://idp.example.com/metadata", idp_slo_url="https://idp.example.com/slo")]).providers
+
+        assert provider.idp_sso_url == "https://idp.example.com/sso"
+
+    def test_a_failed_fetch_drops_the_provider_with_the_reason(self, extra_installed, monkeypatch):
+        def _fetch(url, entity_id):
+            raise ValueError("the request failed (ConnectTimeout)")
+
+        monkeypatch.setattr(extra_installed, "_fetch_idp_metadata", _fetch)
+
+        result = build([valid_entry(), self._entry()])
+
+        assert [provider.id for provider in result.providers] == ["okta"]
+        assert any("could not load IdP metadata" in error and "ConnectTimeout" in error for error in result.errors)
+
+    def test_metadata_without_a_certificate_drops_the_provider(self, extra_installed, monkeypatch):
+        monkeypatch.setattr(extra_installed, "_fetch_idp_metadata", lambda url, entity_id: {"sso_url": "https://idp/sso", "slo_url": None, "certs": []})
+
+        assert build([self._entry()]).providers == []
+
+    def test_an_entry_invalid_for_other_reasons_is_never_fetched(self, extra_installed, monkeypatch):
+        def _fetch(url, entity_id):
+            raise AssertionError("fetched for an entry that is dropped anyway")
+
+        monkeypatch.setattr(extra_installed, "_fetch_idp_metadata", _fetch)
+
+        assert build([self._entry(audience="mlflow")]).providers == []
+
+
+@pytest.mark.skipif(not importlib.import_module("mlflow_oidc_auth.provider_registry")._saml_extra_installed(), reason="the [saml] extra is not installed")
+class TestSamlMetadataFetch:
+    """The fetch itself, with ``requests`` replaced — no network."""
+
+    ENTITY = "https://idp.example.com/saml"
+
+    def _metadata(self, entity_id=ENTITY):
+        _, cert = _test_keypair("idp")
+        return (
+            '<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="' + entity_id + '">'
+            '<md:IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+            '<md:KeyDescriptor use="signing"><ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:X509Data><ds:X509Certificate>'
+            + _cert_body(cert)
+            + "</ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor>"
+            '<md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.example.com/slo"/>'
+            '<md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.example.com/sso"/>'
+            "</md:IDPSSODescriptor></md:EntityDescriptor>"
+        ).encode()
+
+    @pytest.fixture
+    def fake_get(self, monkeypatch):
+        import requests
+
+        from mlflow_oidc_auth import provider_registry as registry_module
+
+        monkeypatch.setattr(registry_module, "_METADATA_CACHE", {})
+        seen = {}
+
+        def _install(body=b"", status=200):
+            class _Raw:
+                def read(self, amount, decode_content=True):
+                    return body[:amount]
+
+            class _Response:
+                status_code = status
+                raw = _Raw()
+
+                def close(self):
+                    pass
+
+            def _get(url, **kwargs):
+                seen.update(kwargs, url=url)
+                return _Response()
+
+            monkeypatch.setattr(requests, "get", _get)
+            return seen
+
+        return _install
+
+    def test_it_reads_the_signing_certificate_and_endpoints(self, fake_get):
+        from mlflow_oidc_auth.provider_registry import _fetch_idp_metadata
+
+        seen = fake_get(self._metadata())
+
+        result = _fetch_idp_metadata("https://idp.example.com/metadata", self.ENTITY)
+
+        assert result["sso_url"] == "https://idp.example.com/sso"
+        assert result["slo_url"] == "https://idp.example.com/slo"
+        assert len(result["certs"]) == 1
+        assert seen["timeout"] == 10
+        assert seen["allow_redirects"] is False
+
+    def test_metadata_for_another_entity_is_refused(self, fake_get):
+        from mlflow_oidc_auth.provider_registry import _fetch_idp_metadata
+
+        fake_get(self._metadata(entity_id="https://someone-else.example.com"))
+
+        with pytest.raises(ValueError, match="idp_entity_id"):
+            _fetch_idp_metadata("https://idp.example.com/metadata", self.ENTITY)
+
+    def test_a_redirect_is_not_followed(self, fake_get):
+        from mlflow_oidc_auth.provider_registry import _fetch_idp_metadata
+
+        fake_get(status=302)
+
+        with pytest.raises(ValueError, match="HTTP 302"):
+            _fetch_idp_metadata("https://idp.example.com/metadata", self.ENTITY)
+
+    def test_an_oversized_document_is_refused(self, fake_get):
+        from mlflow_oidc_auth.provider_registry import _fetch_idp_metadata
+
+        fake_get(b"<" + b"a" * (1024 * 1024 + 10))
+
+        with pytest.raises(ValueError, match="1 MiB"):
+            _fetch_idp_metadata("https://idp.example.com/metadata", self.ENTITY)
+
+    def test_a_document_with_a_dtd_is_refused(self, fake_get):
+        from mlflow_oidc_auth.provider_registry import _fetch_idp_metadata
+
+        fake_get(b'<!DOCTYPE r [<!ENTITY e SYSTEM "file:///etc/passwd">]>' + self._metadata())
+
+        with pytest.raises(ValueError, match="not usable SAML metadata"):
+            _fetch_idp_metadata("https://idp.example.com/metadata", self.ENTITY)

@@ -7,7 +7,7 @@ running behind a proxy.
 """
 
 import ipaddress
-from typing import List, Optional
+from typing import Any, List, Mapping, Optional
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -16,6 +16,63 @@ from starlette.types import ASGIApp
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
+
+#: Scope key under which the original client address from a trusted proxy is recorded.
+#: ``scope["client"]`` is deliberately left as the direct connection: MLflow and the ASGI server
+#: make their own decisions on it (MLflow's assistant API treats a loopback peer as local).
+FORWARDED_CLIENT_SCOPE_KEY = "mlflow_oidc_auth.forwarded_client"
+
+_Address = ipaddress.IPv4Address | ipaddress.IPv6Address
+
+
+def _parse_address(value: str) -> Optional[_Address]:
+    """Parse one forwarded address: a bare IP, ``IPv4:port``, or ``[IPv6]`` / ``[IPv6]:port``.
+
+    IPv4-mapped IPv6 addresses are returned as their IPv4 form so they compare equal to it.
+
+    Parameters:
+        value: The address as it appears in a header.
+
+    Returns:
+        The address, or None when ``value`` is not one.
+    """
+    value = value.strip()
+    if value.startswith("["):
+        host, sep, rest = value[1:].partition("]")
+        if not sep or (rest and not (rest.startswith(":") and rest[1:].isdigit())):
+            return None
+        value = host
+    elif value.count(":") == 1:
+        host, _, port = value.partition(":")
+        if not port.isdigit():
+            return None
+        value = host
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped
+    return address
+
+
+def client_address(scope: Mapping[str, Any]) -> Optional[str]:
+    """The original client address of a request, for rate limiting and audit records.
+
+    The address a trusted proxy forwarded (see :class:`ProxyHeadersMiddleware`), otherwise the
+    direct connection's. Not for authorization decisions.
+
+    Parameters:
+        scope: ASGI connection scope.
+
+    Returns:
+        The client address, or None when the connection has none.
+    """
+    forwarded = scope.get(FORWARDED_CLIENT_SCOPE_KEY)
+    if forwarded:
+        return forwarded
+    client = scope.get("client")
+    return client[0] if client else None
 
 
 def _parse_trusted_proxies(
@@ -28,7 +85,9 @@ def _parse_trusted_proxies(
             Single IPs (e.g., "10.0.0.1") are treated as /32 (IPv4) or /128 (IPv6).
 
     Returns:
-        List of parsed network objects.
+        List of parsed network objects. An IPv4-mapped IPv6 entry (``::ffff:10.0.0.5`` or
+        ``::ffff:10.0.0.0/104``, prefix length 96 or more) is converted to its IPv4 form, since
+        connection and forwarded addresses are compared in IPv4 form (see ``_parse_address``).
     """
     networks = []
     for cidr in proxy_list:
@@ -36,10 +95,37 @@ def _parse_trusted_proxies(
         if not cidr:
             continue
         try:
-            networks.append(ipaddress.ip_network(cidr, strict=False))
+            network = ipaddress.ip_network(cidr, strict=False)
         except ValueError:
             logger.warning("Invalid CIDR in TRUSTED_PROXIES, skipping entry")
+            continue
+        mapped = _ipv4_form_of_mapped_network(network)
+        if mapped is not None:
+            logger.info("A TRUSTED_PROXIES entry is IPv4-mapped IPv6; it is matched in its IPv4 form")
+            network = mapped
+        networks.append(network)
     return networks
+
+
+_IPV4_MAPPED = ipaddress.IPv6Network("::ffff:0:0/96")
+
+
+def _ipv4_form_of_mapped_network(network: ipaddress.IPv4Network | ipaddress.IPv6Network) -> Optional[ipaddress.IPv4Network]:
+    """Return the IPv4 network an IPv4-mapped IPv6 network covers, or None if it is not one.
+
+    Parameters:
+        network: A parsed TRUSTED_PROXIES entry.
+
+    Returns:
+        The IPv4 network with prefix length ``prefixlen - 96`` when ``network`` lies within
+        ``::ffff:0:0/96``; None otherwise.
+    """
+    if not isinstance(network, ipaddress.IPv6Network) or network.prefixlen < 96 or not network.subnet_of(_IPV4_MAPPED):
+        return None
+    mapped = network.network_address.ipv4_mapped
+    if mapped is None:  # pragma: no cover - guaranteed by subnet_of above
+        return None
+    return ipaddress.IPv4Network((mapped, network.prefixlen - 96))
 
 
 class ProxyHeadersMiddleware(BaseHTTPMiddleware):
@@ -47,45 +133,54 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
     FastAPI middleware for handling proxy headers.
 
     This middleware:
-    1. Validates the connecting client IP against TRUSTED_PROXIES (if configured)
-    2. Processes X-Forwarded-* headers from reverse proxies
-    3. Updates the request scope with correct protocol, host, and path information
+    1. Validates the connecting client IP against TRUSTED_PROXIES
+    2. Processes X-Forwarded-* headers from a trusted reverse proxy
+    3. Updates the request scope with correct protocol, host, path prefix and client address
     4. Enables proper URL construction for redirects and callbacks when behind a proxy
 
-    When TRUSTED_PROXIES is empty (default), ALL proxy headers are trusted for
-    backward compatibility. When TRUSTED_PROXIES is configured, only requests
-    from IPs within the configured CIDR ranges will have their proxy headers
-    processed.
+    Forwarded headers are honoured only from a connecting client whose address is inside one of
+    the TRUSTED_PROXIES networks. When TRUSTED_PROXIES is unset or empty (the default), no client
+    is trusted and every forwarded header is ignored: the scheme, host, path and client address
+    of the direct connection are used. This middleware is the only place in the package that
+    reads these headers; everything else reads the scope it leaves behind.
 
-    Common proxy headers handled:
-    - X-Forwarded-Proto: Original protocol (http/https)
-    - X-Forwarded-Host: Original host name
-    - X-Forwarded-Port: Original port number
-    - X-Forwarded-Prefix: Path prefix added by the proxy
-    - X-Forwarded-For: Original client IP (for logging)
+    Headers handled (from a trusted proxy only):
+    - X-Forwarded-Proto: Original protocol (http/https) -> ``scope["scheme"]``
+    - X-Forwarded-Host / X-Forwarded-Port: Original host and port -> ``Host`` header, ``scope["server"]``
+    - X-Forwarded-Prefix: Path prefix added by the proxy -> ``scope["root_path"]``
+    - X-Forwarded-For / X-Real-IP: Original client IP -> ``scope[FORWARDED_CLIENT_SCOPE_KEY]``
+      (read through :func:`client_address`; ``scope["client"]`` stays the direct connection)
     """
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
         from mlflow_oidc_auth.config import config
 
-        self._trusted_networks = _parse_trusted_proxies(config.TRUSTED_PROXIES)
+        configured = [entry for entry in (config.TRUSTED_PROXIES or []) if entry and entry.strip()]
+        self._trusted_networks = _parse_trusted_proxies(configured)
+        # An unset setting and a setting whose entries are all invalid both trust no source.
+        if not configured:
+            logger.info(
+                "TRUSTED_PROXIES is not set: X-Forwarded-* headers are ignored from every client. "
+                "A deployment behind a reverse proxy must set TRUSTED_PROXIES to the proxy's address or CIDR range."
+            )
+        elif not self._trusted_networks:
+            logger.warning("TRUSTED_PROXIES contains no valid entry: X-Forwarded-* headers will be ignored from every client")
 
     def _is_trusted_proxy(self, request: Request) -> bool:
         """Check if the connecting client IP is from a trusted proxy.
 
-        When TRUSTED_PROXIES is not configured (empty list), all sources are
-        trusted for backward compatibility. When configured, only IPs within
-        the specified CIDR ranges are trusted.
+        Only IPs within the configured valid CIDR ranges are trusted. When TRUSTED_PROXIES is
+        not configured, or has no valid entry, no source is trusted.
 
         Parameters:
             request: FastAPI request object.
 
         Returns:
-            True if the request comes from a trusted proxy (or no restriction is configured).
+            True if the request comes from a trusted proxy.
         """
         if not self._trusted_networks:
-            return True
+            return False
 
         client = request.client
         if client is None:
@@ -93,15 +188,13 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
             return False
 
         client_ip_str = client.host
-        try:
-            client_ip = ipaddress.ip_address(client_ip_str)
-        except ValueError:
+        client_ip = _parse_address(client_ip_str) if client_ip_str else None
+        if client_ip is None:
             logger.warning(f"Cannot parse client IP '{client_ip_str}' — proxy headers will be ignored")
             return False
 
-        for network in self._trusted_networks:
-            if client_ip in network:
-                return True
+        if self._is_trusted_address(client_ip):
+            return True
 
         logger.debug(f"Client IP {client_ip_str} is not in TRUSTED_PROXIES — proxy headers will be ignored")
         return False
@@ -164,24 +257,52 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
             prefix = f"/{prefix}"
         return prefix.rstrip("/")
 
+    def _is_trusted_address(self, address: _Address) -> bool:
+        """Whether ``address`` is inside one of the TRUSTED_PROXIES networks.
+
+        Addresses arrive in IPv4 form when they were IPv4-mapped (see ``_parse_address``), so an
+        IPv4 address is also checked in its mapped IPv6 form: a wide IPv6 entry such as ``::/0``
+        covers the mapped range and must keep matching a dual-stack peer.
+        """
+        candidates: List[_Address] = [address]
+        if isinstance(address, ipaddress.IPv4Address):
+            candidates.append(ipaddress.IPv6Address(f"::ffff:{address}"))
+        return any(candidate in network for candidate in candidates for network in self._trusted_networks if candidate.version == network.version)
+
     def _get_real_ip(self, request: Request) -> Optional[str]:
         """
-        Get the real client IP from proxy headers.
+        Get the original client IP from proxy headers.
+
+        ``X-Forwarded-For`` is read from the right: each proxy appends the address it received
+        the request from, so the right-most entries were written by trusted proxies and anything
+        to their left came from further out. Repeated header lines are read as one list, in
+        order. The client is the right-most entry that is not a trusted proxy; if every entry is
+        a trusted proxy, the left-most one. ``X-Real-IP`` is used only when ``X-Forwarded-For``
+        is absent. When the chosen entry is not an IP address, none is used and the direct
+        connection's address is kept.
 
         Args:
             request: FastAPI request object
 
         Returns:
-            Client IP address or None if not forwarded
+            Client IP address, or None if not forwarded or not a valid address
         """
-        # Try X-Forwarded-For first (may contain multiple IPs)
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            # Take the first IP in the chain (original client)
-            return forwarded_for.split(",")[0].strip()
+        lines = request.headers.getlist("x-forwarded-for")
+        entries = [entry.strip() for line in lines for entry in line.split(",") if entry.strip()]
+        if entries:
+            addresses = []
+            for entry in reversed(entries):
+                address = _parse_address(entry)
+                if address is None:
+                    return None
+                if not self._is_trusted_address(address):
+                    return str(address)
+                addresses.append(address)
+            return str(addresses[-1])
 
-        # Fallback to X-Real-IP
-        return request.headers.get("x-real-ip")
+        real_ip = request.headers.get("x-real-ip") or ""
+        address = _parse_address(real_ip) if real_ip.strip() else None
+        return str(address) if address is not None else None
 
     async def dispatch(self, request: Request, call_next) -> Response:
         """
@@ -239,6 +360,11 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
         # Set root_path for path prefix handling
         if forwarded_prefix:
             request.scope["root_path"] = forwarded_prefix
+
+        # Record the original client address, so rate limits and audit records name the client
+        # rather than the proxy. Kept out of scope["client"]: see FORWARDED_CLIENT_SCOPE_KEY.
+        if real_ip:
+            request.scope[FORWARDED_CLIENT_SCOPE_KEY] = real_ip
 
         # Store proxy information in request state for easier access
         request.state.proxy_info = {

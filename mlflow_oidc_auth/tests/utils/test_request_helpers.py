@@ -451,3 +451,21 @@ class TestRequestHelpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_union_and_guard_share_one_camel_case_spelling():
+    """The union must look for the same camelCase key the guard and proto_request_value use.
+
+    request_helpers imports the guard's _snake_to_camel rather than keeping its own copy;
+    a double underscore is where two hand-written copies would most plausibly disagree.
+    """
+    from flask import Flask
+
+    from mlflow_oidc_auth.hooks import dual_spelling_guard as guard
+    from mlflow_oidc_auth.utils import request_helpers as rh
+
+    assert not hasattr(rh, "_snake_to_camel"), "request_helpers must not keep its own copy"
+    camel = guard._snake_to_camel("run__id")
+    assert camel == "runId"
+    with Flask(__name__).test_request_context("/plain/route", method="POST", json={camel: "X"}):
+        assert rh.all_source_values("run__id") == ["X"]

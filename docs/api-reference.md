@@ -239,7 +239,17 @@ Base path: `/api/2.0/mlflow/permissions/groups`
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/2.0/mlflow/permissions/groups` | Authenticated | List all groups |
+| POST | `/api/2.0/mlflow/permissions/groups` | Admin | Create a group |
 | GET | `/api/2.0/mlflow/permissions/groups/{group_name}/users` | Admin | List group members |
+
+**`POST /api/2.0/mlflow/permissions/groups` request:**
+```json
+{
+  "group_name": "data-team"
+}
+```
+
+Groups are otherwise created from the identity provider claims when a member signs in, so a group cannot be granted permissions before its first login. Creating a group up front lifts that ordering constraint for automated provisioning. The call is idempotent: it returns `201` when the group is created and `200` when it already exists — including a group a directory (SCIM) already owns, which keeps that ownership untouched. The name is validated with the same rules as a SCIM `displayName`: stripped, non-empty, at most 255 characters, no control characters, and none of `/ ? # %`.
 
 ### Group Direct Permissions
 
@@ -262,7 +272,7 @@ Same CRUD pattern as user permissions, but scoped to groups:
 | PATCH | `/{group_name}/{resource-type}-patterns/{id}` | Admin | Update pattern permission |
 | DELETE | `/{group_name}/{resource-type}-patterns/{id}` | Admin | Delete pattern permission |
 
-**Total: 69 group permission endpoints** (2 group-level + 7 resource types x ~9.5 operations each)
+**Total: 70 group permission endpoints** (3 group-level + 7 resource types x ~9.5 operations each)
 
 ---
 
@@ -281,6 +291,27 @@ All trash endpoints require **admin** permissions.
 | POST | `/oidc/trash/runs/{run_id}/restore` | Restore a deleted run |
 
 When workspaces are enabled, trash operations are automatically scoped to the active workspace.
+
+`POST /oidc/trash/cleanup` deletes a run's artifacts before hard-deleting its metadata. A run
+whose artifact URI uses the proxied `mlflow-artifacts:` scheme (the tracking server serves the
+artifacts itself) is resolved against the server's `--artifacts-destination` root, the same way
+MLflow's own server resolves proxied artifacts. If artifact deletion fails for a run, that run's
+metadata is **not** deleted — it stays in the trash and is reported in the response's
+`failed_runs` list with the error, so a run is never hard-deleted while its artifacts are still
+known to exist. Before hard-deleting an experiment, the endpoint always checks whether it still
+owns any run — for any reason a run above was kept (a failed artifact deletion, an age or
+lifecycle-stage check, or a lookup failure), not only an artifact-deletion failure. If one does,
+the experiment is kept too (MLflow's own run/experiment relationship cascades a hard delete onto
+every run it still owns) and reported in `failed_experiments` instead, even when the experiment's
+own hard-delete would otherwise have succeeded.
+
+Query parameters interact as follows:
+- Neither `run_ids` nor `experiment_ids` (an "empty trash" call): every deleted run and every
+  deleted experiment older than `older_than` (default: all of them) is a candidate.
+- `experiment_ids` given: those experiments and all of their runs are candidates, in addition to
+  any `run_ids` also given.
+- `run_ids` given without `experiment_ids`: **only** those runs are touched. No other trashed
+  experiment, or any run other than the ones named, is read or deleted.
 
 ---
 
@@ -364,6 +395,230 @@ Base path: `/api/3.0/mlflow/permissions/workspaces/regex`
 | GET | `.../regex/group` | List group regex workspace permissions |
 | PATCH | `.../regex/group/{id}` | Update group regex workspace permission |
 | DELETE | `.../regex/group/{id}` | Delete group regex workspace permission |
+
+---
+
+## SCIM
+
+SCIM 2.0 provisioning and the lifecycle endpoints the admin UI uses. See
+[SCIM Provisioning](scim) for behaviour.
+
+### SCIM 2.0 endpoint
+
+Base path: `/scim/v2`. It accepts **only** a SCIM bearer token (`Authorization: Bearer scim_...`).
+Sessions, user tokens and OIDC tokens are refused with `401` and `WWW-Authenticate: Bearer`.
+Repeated failures from one client IP get `429`. A write the ownership guard refuses gets
+`409 mutability`.
+Responses use `application/scim+json`, and errors use the RFC 7644 error schema.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/scim/v2/ServiceProviderConfig` | Capabilities |
+| GET | `/scim/v2/ResourceTypes`, `/scim/v2/ResourceTypes/{User,Group}` | Resource types |
+| GET | `/scim/v2/Schemas`, `/scim/v2/Schemas/{urn}` | User and Group schemas |
+| GET | `/scim/v2/Users` | List users; `filter=userName eq "..."` or `externalId eq "..."`, `startIndex`, `count` |
+| POST | `/scim/v2/Users` | Provision a user |
+| GET | `/scim/v2/Users/{id}` | Get a user (`id` is the username; an `externalId` does not resolve, use the filter) |
+| PUT | `/scim/v2/Users/{id}` | Replace a user |
+| PATCH | `/scim/v2/Users/{id}` | Modify a user; `active: false` deprovisions |
+| DELETE | `/scim/v2/Users/{id}` | Hard-delete a user |
+| GET | `/scim/v2/Groups` | List groups; `filter=displayName eq "..."` or `externalId eq "..."`, `startIndex`, `count`, `excludedAttributes=members` |
+| POST | `/scim/v2/Groups` | Provision a group, optionally with members |
+| GET | `/scim/v2/Groups/{id}` | Get a group (`id` is the group name) |
+| PUT | `/scim/v2/Groups/{id}` | Replace a group; `members` replaces SCIM's membership (Okta) |
+| PATCH | `/scim/v2/Groups/{id}` | Add/remove members, including `members[value eq "..."]` (Entra) |
+| DELETE | `/scim/v2/Groups/{id}` | Delete a group, its memberships and its grants |
+
+### SCIM token administration
+
+Base path: `/api/2.0/mlflow/scim/tokens`. All endpoints are admin-only.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/2.0/mlflow/scim/tokens` | List tokens (no hashes, no plaintexts) |
+| POST | `/api/2.0/mlflow/scim/tokens` | Issue a token. Body `{"name": str, "expires_at": ISO-8601?}`. Returns `201` with `token` (plaintext, shown once) |
+| POST | `/api/2.0/mlflow/scim/tokens/{id}/rotate` | Issue a replacement (`201`, with `token` and `replaces`); the old token expires after the overlap window |
+| DELETE | `/api/2.0/mlflow/scim/tokens/{id}` | Revoke immediately |
+
+Token object:
+
+```json
+{
+  "id": 1,
+  "name": "entra-prod",
+  "token_prefix": "3f9a0c1b",
+  "created_at": "2026-09-22T10:00:00+00:00",
+  "created_by": "admin@example.com",
+  "last_used_at": "2026-09-22T10:05:00+00:00",
+  "expires_at": null,
+  "revoked_at": null,
+  "active": true
+}
+```
+
+### Provisioning status and activity
+
+Admin-only. See [Provisioning status and activity](scim#provisioning-status-and-activity) for what
+is recorded.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/2.0/mlflow/scim/status` | Provisioning health, overall and per token |
+| GET | `/api/2.0/mlflow/scim/activity` | Recorded SCIM requests, newest first. Query: `limit` (1 to 200, default 50), `before` (an activity `id`: only older rows), `outcome` (`ok`, `client_error`, `server_error`, `auth_failed`; anything else is `400`), `token_id` |
+
+**`GET /api/2.0/mlflow/scim/status` response:**
+```json
+{
+  "provisioning_healthy": true,
+  "last_success_at": "2026-09-23T10:05:00+00:00",
+  "last_error_at": "2026-09-23T09:00:00+00:00",
+  "last_error": "uniqueness: User 'alice@example.com' already exists",
+  "requests_24h": 120,
+  "errors_24h": 2,
+  "auth_failures_24h": 1,
+  "last_auth_failure_at": "2026-09-23T08:00:00+00:00",
+  "healthy_window_seconds": 86400,
+  "retention_days": 30,
+  "tokens": [
+    {
+      "token_id": 1,
+      "name": "entra-prod",
+      "active": true,
+      "last_used_at": "2026-09-23T10:05:00+00:00",
+      "last_success_at": "2026-09-23T10:05:00+00:00",
+      "last_error_at": "2026-09-23T09:00:00+00:00",
+      "last_error": "uniqueness: User 'alice@example.com' already exists",
+      "last_error_status": 409,
+      "requests_24h": 119,
+      "errors_24h": 1
+    }
+  ]
+}
+```
+
+`provisioning_healthy` is `null` when SCIM has never been used.
+
+**`GET /api/2.0/mlflow/scim/activity` response.** `next_before` is the value to pass as `before`
+for the next page, or `null` when this page was the last:
+```json
+{
+  "activity": [
+    {
+      "id": 42,
+      "at": "2026-09-23T10:05:00+00:00",
+      "token_id": 1,
+      "token_name": "entra-prod",
+      "method": "PATCH",
+      "path": "/Users/{user_id}",
+      "resource_id": "alice@example.com",
+      "status": 200,
+      "outcome": "ok",
+      "error": null,
+      "duration_ms": 12
+    }
+  ],
+  "next_before": null
+}
+```
+
+### User and group lifecycle state
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/2.0/mlflow/users/details` | Admin | Users with lifecycle state. Optional `service=true\|false` filter; omit it for both |
+| PATCH | `/api/2.0/mlflow/users/{username}/active` | Admin | Deactivate or reactivate a user |
+| GET | `/api/2.0/mlflow/users/{username}/sessions` | Admin | The user's live sessions |
+| DELETE | `/api/2.0/mlflow/users/{username}/sessions/{pk}` | Admin | Revoke one of the user's sessions |
+| DELETE | `/api/2.0/mlflow/users/{username}/sessions` | Admin | Revoke all of the user's sessions |
+| GET | `/api/2.0/mlflow/permissions/groups/details` | Admin | Groups with external id and member count |
+
+`GET /api/2.0/mlflow/users` and `GET /api/2.0/mlflow/permissions/groups` are unchanged and still
+return `string[]`.
+
+**`GET /api/2.0/mlflow/users/details` response** (ordered by creation). `PATCH .../active`
+returns one such object:
+```json
+[
+  {
+    "username": "alice@example.com",
+    "display_name": "Alice",
+    "is_admin": false,
+    "is_service_account": false,
+    "active": true,
+    "managed_by": "scim"
+  }
+]
+```
+
+**`PATCH /api/2.0/mlflow/users/{username}/active` request:**
+```json
+{"active": false, "admin_override": false}
+```
+
+`admin_override` is the break-glass flag for a user whose row another source owns under
+`MANAGED_BY_ENFORCEMENT=enforce`. The override is always audited. Responses:
+
+- `404` if there is no such user.
+- `409` if the ownership guard refuses the change, or it would leave no active administrator.
+- `403` if the caller is not an administrator.
+
+**`DELETE /api/2.0/mlflow/users` request:**
+```json
+{"username": "alice@example.com", "admin_override": false}
+```
+
+The hard delete goes through the same ownership guard. `admin_override` is optional and
+defaults to `false`. Under `enforce`, deleting a user whose row another source owns is refused
+with `409` and audited as `user.ownership_conflict` (`detail.operation = "delete"`), unless
+`admin_override` is `true`. The override is always audited.
+
+**`GET /api/2.0/mlflow/users/{username}/sessions` response** (newest first, `Cache-Control:
+no-store`):
+```json
+{
+  "sessions": [
+    {
+      "pk": 17,
+      "session_id_prefix": "Xk3v9QpA",
+      "provider_id": "default",
+      "created_at": "2026-09-23T08:00:00+00:00",
+      "last_seen_at": null,
+      "expires_at": "2026-09-23T16:00:00+00:00"
+    }
+  ]
+}
+```
+
+The full session id is a bearer credential and is never returned. `session_id_prefix` tells
+sessions apart; `pk` addresses one for `DELETE`. `last_seen_at` is `null` unless something records
+it; the per-request authentication path deliberately does not write to the session row.
+
+Both `DELETE`s return `{"revoked": <count>}` and emit `session.revoked` with
+`detail.source = "admin"`. The session stops working on its next request. The account, its grants
+and its access token are unchanged. Responses:
+
+- `404` for an unknown user, or a `pk` that is not a live session of **this** user. Another user's
+  session reads exactly like one that does not exist, and is not revoked.
+- `403` if the caller is not an administrator.
+
+**`PATCH /api/2.0/mlflow/users/ownership` request** (admin, break glass):
+```json
+{"username": "alice@example.com", "managed_by": "manual", "memberships": false}
+```
+
+This sets the user row's `managed_by` to `manual`, `scim`, `oidc:<id>` or `saml:<id>`. With
+`"memberships": true` it also hands every group membership of the user to the new owner, in the
+same transaction: if either half fails, nothing changes, the response is `500`, and a
+`user.ownership_set` event with `status: "error"` is recorded. The response then lists the memberships that changed as
+`"memberships": [{"group": "...", "from": "..."}]`. The change is audited as `user.ownership_set`.
+See [Row ownership](configuration#group-membership).
+
+**`GET /api/2.0/mlflow/permissions/groups/details` response** (ordered by name):
+```json
+[{"group_name": "data-team", "external_id": null, "member_count": 3}]
+```
+
+Groups have no `managed_by` of their own; ownership is recorded per membership.
 
 ---
 

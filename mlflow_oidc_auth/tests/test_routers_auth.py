@@ -518,6 +518,55 @@ async def test_process_oidc_callback_fastapi_various_paths(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_process_oidc_callback_fastapi_group_detection_plugin_receives_token_response(monkeypatch):
+    """A group-detection plugin declaring ``token_response`` gets the full authlib response (#250)."""
+    import sys
+
+    req = DummyRequest()
+
+    token_response = {
+        "access_token": "a-token",
+        "id_token": "i-token",
+        "userinfo": {"email": "e@x.com", "name": "Name", "groups": ["ignored-because-plugin-runs"]},
+    }
+
+    async def fake_exchange(request):
+        return token_response
+
+    monkeypatch.setattr(auth_router_mod.oauth, "oidc", types.SimpleNamespace(), raising=False)
+    monkeypatch.setattr(auth_router_mod.oauth.oidc, "authorize_access_token", fake_exchange, raising=False)
+
+    received = {}
+
+    def get_user_groups(access_token, token_response=None):
+        received["access_token"] = access_token
+        received["token_response"] = token_response
+        return ["users"]
+
+    plugin_module = types.ModuleType("_test_group_plugin_for_callback")
+    plugin_module.get_user_groups = get_user_groups
+    monkeypatch.setitem(sys.modules, "_test_group_plugin_for_callback", plugin_module)
+    monkeypatch.setattr(config, "OIDC_GROUP_DETECTION_PLUGIN", "_test_group_plugin_for_callback")
+    monkeypatch.setattr(config, "OIDC_ADMIN_GROUP_NAME", ["admin"])
+    monkeypatch.setattr(config, "OIDC_GROUP_NAME", ["users"])
+
+    import mlflow_oidc_auth.user as user_module
+
+    monkeypatch.setattr(user_module, "create_user", lambda **kw: None, raising=False)
+    monkeypatch.setattr(user_module, "populate_groups", lambda **kw: None, raising=False)
+    monkeypatch.setattr(user_module, "update_user", lambda **kw: None, raising=False)
+
+    req.query_params = {"state": "ok", "code": "c"}
+    session = {"oauth_state": "ok"}
+    email, errors = await auth_router_mod._process_oidc_callback_fastapi(req, session)
+
+    assert errors == []
+    assert email == "e@x.com"
+    assert received["access_token"] == "a-token"
+    assert received["token_response"] is token_response
+
+
+@pytest.mark.asyncio
 async def test_refresh_oidc_jwks_load_server_metadata_and_exception(monkeypatch):
     # ensure we have an oidc client with load_server_metadata
     import types

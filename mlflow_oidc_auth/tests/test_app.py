@@ -409,6 +409,41 @@ class TestCreateApp:
             mock_get_all_routers.assert_called_once()
 
 
+class TestIncludeMlflowFastapiRouters:
+    """Test that MLflow's FastAPI-native routers reach the OIDC app.
+
+    Anything missing here falls through to the Flask WSGI mount, which has no
+    rule for it, so the UI gets a plain 404 instead of the feature.
+    """
+
+    def _paths(self):
+        from mlflow_oidc_auth.app import _include_mlflow_fastapi_routers
+
+        oidc_app = FastAPI()
+        _include_mlflow_fastapi_routers(oidc_app)
+        return set(oidc_app.openapi()["paths"])
+
+    def test_mcp_server_registry_router_included(self):
+        """Test the MCP server registry is served on both the API and UI prefix."""
+        paths = self._paths()
+        assert "/api/3.0/mlflow/mcp-servers" in paths
+        assert "/ajax-api/3.0/mlflow/mcp-servers" in paths
+
+    def test_gateway_and_assistant_routers_included(self):
+        """Test the previously registered routers are still included."""
+        paths = self._paths()
+        assert "/gateway/mlflow/v1/chat/completions" in paths
+        assert "/ajax-api/3.0/mlflow/assistant/config" in paths
+
+    def test_missing_mlflow_module_is_tolerated(self):
+        """Test an unavailable MLflow module disables its routes instead of raising."""
+        with patch.dict("sys.modules", {"mlflow.server.mcp_server_api": None}):
+            paths = self._paths()
+
+        assert "/api/3.0/mlflow/mcp-servers" not in paths
+        assert "/gateway/mlflow/v1/chat/completions" in paths
+
+
 class TestAppModuleImports:
     """Test module-level imports and dependencies."""
 

@@ -62,6 +62,49 @@ interchangeable:
   namespace from the list revokes access for service accounts that already authenticated, rather
   than leaving them with the row and group they were given.
 
+## Tokens without an expiry
+
+Every provider refuses a token that carries no `exp` claim. Without that rule such a token is
+valid **forever**: an expiry check only refuses a token that *says* it has expired, so a leaked
+token that says nothing is a permanent credential.
+
+**Bound tokens need nothing.** Projected service-account tokens — the volume above, and the
+default for pods since Kubernetes 1.22 — always carry `exp` (`expirationSeconds`, rotated by the
+kubelet), and are accepted as they are.
+
+**Legacy, non-bound tokens have no `exp`.** A token stored in a
+`kubernetes.io/service-account-token` Secret never expires. They are refused unless the provider
+opts in, deliberately and visibly:
+
+```json
+{
+  "id": "cluster",
+  "type": "k8s",
+  "audience": "mlflow-api",
+  "issuer": "https://kubernetes.default.svc",
+  "namespace_allowlist": ["team-a"],
+  "jwks_uri": "https://kubernetes.default.svc/openid/v1/jwks",
+  "in_cluster": true,
+  "allow_tokens_without_expiry": true
+}
+```
+
+This is a documented property of the deployment, not a default, and it is logged as a warning
+at every startup. What it does and does not do:
+
+- It waives only a **missing** `exp`. A token whose `exp` is in the past is still refused, and
+  `iss`, `aud`, the signature and the namespace allowlist are enforced exactly as before.
+- The compensating bound is the **Secret itself**: such a token is valid for as long as its
+  Secret exists and the cluster's signing key is unchanged. Rotating it is manual — delete and
+  recreate the Secret (or rotate the service-account signing key) — and removing the namespace
+  from `namespace_allowlist` revokes it here once MLflow restarts with the new configuration.
+- `audience` is still required. A classic Secret-based token is minted with
+  `iss: kubernetes/serviceaccount` and **no `aud` at all**, so it fails the audience check with or
+  without this field. The field therefore helps only for tokens that carry the configured `iss`
+  and `aud` but no `exp`. Prefer moving the workload to a projected token over opting in.
+
+Available on `oidc` and `k8s` providers only; on any other type the entry is refused at load.
+
 ## Getting the cluster's keys
 
 The usual failure here is not validation, it is *reachability*. `system:service-account-issuer-discovery`

@@ -83,6 +83,9 @@ class SqlAuthState(Base):
     code_verifier: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     provider_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     relay_state: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    # SHA-256 (hex) of the browser-binding nonce a SAML login set in a cookie (#374). Null for
+    # OIDC attempts and for SAML attempts started while the binding is off.
+    binding_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
     __table_args__ = (

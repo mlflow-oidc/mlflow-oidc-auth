@@ -3,6 +3,12 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, RootModel
 
 
+class CreateGroupRequest(BaseModel):
+    """Request model for creating groups."""
+
+    group_name: str = Field(..., description="Name of the group to create")
+
+
 class GroupUser(BaseModel):
     """
     User information within a group.

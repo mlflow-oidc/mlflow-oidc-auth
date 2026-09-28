@@ -325,8 +325,16 @@ def _claims_options_for(provider) -> dict | None:
     without one), so a multi-provider deployment always pins it. The synthesised ``default``
     provider may carry none, which is the pre-#313 behaviour for a deployment that never set
     ``OIDC_AUDIENCE``, preserved so upgrading changes nothing.
+
+    ``exp`` is essential for every provider (#356). authlib's expiry check is a no-op when the
+    claim is absent, so without this a token minted with no ``exp`` validates forever. The only
+    way out is a provider that sets ``allow_tokens_without_expiry`` — refused by the registry on
+    anything but a token provider, and logged at load — for legacy Kubernetes service-account
+    tokens, which carry no ``exp`` at all.
     """
     options = {}
+    if not getattr(provider, "allow_tokens_without_expiry", False):
+        options["exp"] = {"essential": True}
     if provider.audience:
         options["aud"] = {"essential": True, "value": provider.audience}
     if provider.issuer:

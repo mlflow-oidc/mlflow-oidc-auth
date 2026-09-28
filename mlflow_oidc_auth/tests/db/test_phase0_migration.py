@@ -103,12 +103,16 @@ class TestRevisionChain:
         """The invariant that put all of Phase 0 in one revision.
 
         Three parallel revisions off the same parent would give three heads and make
-        ``alembic upgrade head`` fail outright for every deployment.
+        ``alembic upgrade head`` fail outright for every deployment. Later revisions (the SCIM
+        token table, #321) chain on Phase 0, so the head moves but must stay single and must
+        descend from it.
         """
         cfg = _get_alembic_config(_sqlite_uri(tmp_path))
-        heads = ScriptDirectory.from_config(cfg).get_heads()
+        script = ScriptDirectory.from_config(cfg)
+        heads = script.get_heads()
 
-        assert heads == [PHASE0_REVISION], f"expected a single head, got {heads}"
+        assert len(heads) == 1, f"expected a single head, got {heads}"
+        assert PHASE0_REVISION in {rev.revision for rev in script.iterate_revisions(heads[0], "base")}
 
     def test_phase0_follows_the_previous_head(self, tmp_path):
         cfg = _get_alembic_config(_sqlite_uri(tmp_path))
@@ -216,7 +220,7 @@ class TestRoundTrip:
         """Migrations must be reversible on both backends."""
         _upgrade(engine, "head")
 
-        _downgrade(engine, "-1")
+        _downgrade(engine, PREVIOUS_REVISION)
 
         inspector = inspect(engine)
         tables = set(inspector.get_table_names())
@@ -236,7 +240,7 @@ class TestRoundTrip:
         _seed_legacy_data(engine)
         _upgrade(engine, "head")
 
-        _downgrade(engine, "-1")
+        _downgrade(engine, PREVIOUS_REVISION)
         _upgrade(engine, "head")
 
         with engine.connect() as conn:

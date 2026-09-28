@@ -117,16 +117,18 @@ class TestTheGuardOnTheWritePath:
     def test_a_foreign_source_is_refused_under_enforce(self, store, enforcing):
         from mlflow.exceptions import MlflowException
 
+        # A field outside the login allowance: a provider logging a user in may re-assert the admin
+        # flag its policy grants, but never reclassify the account.
         with pytest.raises(MlflowException, match="managed by"):
-            store.user_repo.update("scim-owned@example.com", is_admin=True, written_by="oidc:entra")
+            store.user_repo.update("scim-owned@example.com", is_service_account=True, written_by="oidc:entra")
 
     def test_nothing_is_written_when_it_is_refused(self, store, enforcing):
         from mlflow.exceptions import MlflowException
 
         with pytest.raises(MlflowException):
-            store.user_repo.update("scim-owned@example.com", is_admin=True, written_by="oidc:entra")
+            store.user_repo.update("scim-owned@example.com", is_service_account=True, written_by="oidc:entra")
 
-        assert store.get_user_profile("scim-owned@example.com").is_admin is False
+        assert store.get_user_profile("scim-owned@example.com").is_service_account is False
 
     def test_the_owning_source_still_writes(self, store, enforcing):
         store.user_repo.update("scim-owned@example.com", is_admin=True, written_by="scim")
@@ -154,7 +156,7 @@ class TestTheGuardOnTheWritePath:
         monkeypatch.setattr("mlflow_oidc_auth.audit.emit_audit_event", lambda event, **kwargs: events.append((event, kwargs)))
 
         monkeypatch.setattr(user_repo.config, "MANAGED_BY_ENFORCEMENT", Enforcement.REPORT)
-        store.user_repo.update("scim-owned@example.com", is_admin=True, written_by="oidc:entra")
+        store.user_repo.update("scim-owned@example.com", is_service_account=True, written_by="oidc:entra")
 
         assert [event for event, _ in events] == ["user.ownership_conflict"]
         assert events[0][1]["status"] == "success", "report mode permitted it, and says so"
@@ -341,9 +343,27 @@ class TestTheOwningSourceIsNotLockedOut:
         import mlflow_oidc_auth.user as user_module
 
         monkeypatch.setattr(user_module, "store", store)
+        # Owned by another *identity provider*. The login allowance covers directory-owned rows
+        # only (a login is not an ownership change there); one IdP writing another's row is still
+        # a foreign write.
+        store.user_repo.update("scim-owned@example.com", managed_by="oidc:other", written_by="manual", admin_override=True)
 
         with pytest.raises(MlflowException, match="managed by"):
             user_module.create_user(username="scim-owned@example.com", display_name="X", written_by="oidc:entra")
+
+    @pytest.mark.parametrize("writer", ["oidc:entra", "saml:corp"])
+    def test_a_login_on_a_directory_owned_row_is_permitted(self, store, enforcing, monkeypatch, writer):
+        """SCIM provisions, the IdP authenticates: the usual enterprise pairing. Refusing the login
+        write would lock every provisioned user out of SSO the moment ``enforce`` is turned on."""
+        import mlflow_oidc_auth.user as user_module
+
+        monkeypatch.setattr(user_module, "store", store)
+
+        created, _ = user_module.create_user(username="scim-owned@example.com", display_name="Directory User", is_admin=True, written_by=writer)
+
+        profile = store.get_user_profile("scim-owned@example.com")
+        assert created is False
+        assert (profile.is_admin, profile.managed_by) == (True, "scim")
 
     def test_an_unattributed_write_still_works_in_report_mode(self, store, monkeypatch):
         """Every caller that has not been taught to attribute itself yet — the default mode is
@@ -500,3 +520,131 @@ class TestRepairFromTheAdminApi:
         assert [event for event, _ in events] == ["user.ownership_set"]
         assert events[0][1]["actor"] == "keeper@example.com"
         assert events[0][1]["detail"] == {"from": "scim", "to": "manual"}
+
+
+class TestLoginAllowance:
+    """Rule 2 of ``evaluate_write``: a login may write a directory-owned row, narrowly."""
+
+    @pytest.mark.parametrize("writer", ["oidc:entra", "saml:corp"])
+    def test_login_writable_fields_pass_silently(self, writer):
+        for fields in (set(), {"is_admin"}):
+            decision = evaluate_write("scim", writer, enforcement=Enforcement.ENFORCE, fields=fields)
+            assert (decision.allowed, decision.conflict) == (True, False)
+
+    @pytest.mark.parametrize("field", ["active", "managed_by", "password", "is_service_account", "external_id", "display_name"])
+    def test_anything_else_is_a_foreign_write(self, field):
+        decision = evaluate_write("scim", "oidc:entra", enforcement=Enforcement.ENFORCE, fields={"is_admin", field})
+        assert decision.allowed is False
+
+    def test_unknown_fields_get_no_allowance(self):
+        """A caller that does not say what it changes is not trusted to be a login."""
+        assert evaluate_write("scim", "oidc:entra", enforcement=Enforcement.ENFORCE).allowed is False
+
+    def test_only_directory_owned_rows(self):
+        assert evaluate_write("oidc:other", "oidc:entra", enforcement=Enforcement.ENFORCE, fields=set()).allowed is False
+
+    def test_only_login_sources(self):
+        assert evaluate_write("scim", "k8s:cluster", enforcement=Enforcement.ENFORCE, fields=set()).allowed is False
+
+
+class TestTheDirectoryAndHandMadeAdmins:
+    def test_scim_may_not_write_a_manual_admin_under_enforce(self):
+        decision = evaluate_write("manual", "scim", enforcement=Enforcement.ENFORCE, target_is_admin=True)
+        assert (decision.allowed, decision.conflict, decision.owner) == (False, True, "manual")
+
+    def test_report_permits_and_records(self):
+        decision = evaluate_write("manual", "scim", enforcement=Enforcement.REPORT, target_is_admin=True)
+        assert (decision.allowed, decision.conflict) == (True, True)
+
+    def test_a_manual_non_admin_stays_writable(self):
+        decision = evaluate_write("manual", "scim", enforcement=Enforcement.ENFORCE, target_is_admin=False)
+        assert (decision.allowed, decision.conflict) == (True, False)
+
+    def test_other_sources_still_write_manual_admins(self):
+        for writer in ("manual", "oidc:entra", None):
+            assert evaluate_write("manual", writer, enforcement=Enforcement.ENFORCE, target_is_admin=True).allowed is True
+
+    def test_through_the_store(self, tmp_path, monkeypatch):
+        from mlflow.exceptions import MlflowException
+
+        import mlflow_oidc_auth.repository.user as user_repo
+        from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+
+        s = SqlAlchemyStore()
+        s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        try:
+            s.create_user("root@example.com", PASSWORD, "Root", is_admin=True)
+            s.create_user("root2@example.com", PASSWORD, "Root 2", is_admin=True)
+            monkeypatch.setattr(user_repo.config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
+            with pytest.raises(MlflowException, match="hand-made administrator"):
+                s.update_user("root@example.com", active=False, written_by="scim")
+            assert s.get_user_profile("root@example.com").active is True
+        finally:
+            s.engine.dispose()
+
+
+class TestLastAdminLock:
+    """The last-active-admin invariant under concurrency: the count is taken under a row lock."""
+
+    def test_the_admin_rows_are_read_for_update_on_postgres(self):
+        from sqlalchemy.dialects import postgresql
+        from sqlalchemy.orm import Session
+
+        import mlflow_oidc_auth.repository.user as user_repo
+
+        sql = str(user_repo.active_admin_ids_query(Session()).statement.compile(dialect=postgresql.dialect()))
+
+        assert "FOR UPDATE" in sql
+        assert "is_admin" in sql and "active" in sql
+
+    @pytest.fixture
+    def two_admins(self, tmp_path):
+        from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+
+        s = SqlAlchemyStore()
+        s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        s.create_user("a@example.com", PASSWORD, "A", is_admin=True)
+        s.create_user("b@example.com", PASSWORD, "B", is_admin=True)
+        yield s
+        s.engine.dispose()
+
+    @pytest.mark.parametrize("operation", ["deactivate", "demote", "delete"])
+    def test_every_guarded_path_takes_the_lock(self, two_admins, monkeypatch, operation):
+        import mlflow_oidc_auth.repository.user as user_repo
+
+        calls = []
+        real = user_repo.active_admin_ids_for_update
+        monkeypatch.setattr(user_repo, "active_admin_ids_for_update", lambda session: calls.append(1) or real(session))
+
+        {
+            "deactivate": lambda: two_admins.update_user("a@example.com", active=False),
+            "demote": lambda: two_admins.update_user("a@example.com", is_admin=False),
+            "delete": lambda: two_admins.delete_user("a@example.com"),
+        }[operation]()
+
+        assert calls, f"{operation} counted the remaining admins without the lock"
+
+    def test_the_race_the_lock_prevents(self, two_admins, monkeypatch):
+        """Simulate the interleaving: B's transaction reads the admin rows *after* A's
+        deactivation has committed — which is exactly what the lock forces on PostgreSQL. B must
+        then find itself alone and refuse, leaving one active admin."""
+        from mlflow.exceptions import MlflowException
+
+        import mlflow_oidc_auth.repository.user as user_repo
+
+        real = user_repo.active_admin_ids_for_update
+        state = {"raced": False}
+
+        def interleaved(session):
+            if not state["raced"]:
+                state["raced"] = True
+                # A commits first, in its own transaction, while B is inside its own.
+                two_admins.update_user("a@example.com", active=False)
+            return real(session)
+
+        monkeypatch.setattr(user_repo, "active_admin_ids_for_update", interleaved)
+
+        with pytest.raises(MlflowException, match="only active administrator"):
+            two_admins.update_user("b@example.com", active=False)
+
+        assert two_admins.get_user_profile("b@example.com").active is True

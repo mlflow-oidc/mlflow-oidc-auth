@@ -7,9 +7,11 @@ Authorization (what the user can do) is handled by RBACMiddleware.
 """
 
 from typing import Optional, Tuple
+import asyncio
 import base64
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from cachetools import TTLCache
 from fastapi import Request, Response
@@ -20,6 +22,7 @@ from starlette.types import ASGIApp
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.routers._prefix import API_PATH_PREFIXES
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
@@ -27,9 +30,23 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.auth import validate_token
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.group_detection import call_group_detection_plugin
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
 
 logger = get_logger()
+
+# Basic auth used to run synchronously on the ASGI event loop, which limited each worker to one
+# database/hash verification at a time while also blocking every unrelated request (issue #244).
+# The single-thread executor keeps that per-process concurrency bound when offloading: legacy
+# scrypt hashes are CPU-intensive, and an unauthenticated caller must not be able to fan out
+# enough concurrent verifications to exhaust the database pool.
+_BASIC_AUTH_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlflow-oidc-basic-auth")
+
+
+def _authenticate_basic_auth_sync(username: str, password: str) -> bool:
+    """Resolve the lazy store and verify one basic-auth credential in a worker thread."""
+    return store.authenticate_user(username, password)
+
 
 # Why an authenticated-looking request was turned away. Reported separately because a deleted
 # account and a deactivated one are different operational events, and an operator reading the
@@ -107,29 +124,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Check if the route is unprotected and doesn't require authentication.
 
         Args:
-            path: Request path
+            path: Routed path (``routed_path(request.scope)``), not the raw request path
 
         Returns:
             True if the route is unprotected, False otherwise
         """
-        unprotected_prefixes = (
-            "/health",
-            "/login",
-            "/callback",
-            "/oidc/static",
-            "/metrics",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
-            "/oidc/ui",
-            # MLflow's React bundle is served from /static-files/<path:path> with
-            # content-addressed (hashed) filenames and ships publicly on PyPI.
-            # Letting it load unauthenticated lets a session-expired SPA finish
-            # loading chunks instead of dying with ChunkLoadError; the next
-            # navigation will redirect through the IdP for re-auth.
-            "/static-files",
-        )
-        return path.startswith(unprotected_prefixes)
+        return is_unprotected_route(path)
 
     async def _authenticate_basic_auth(self, auth_header: str) -> Tuple[bool, Optional[str], str]:
         """
@@ -147,8 +147,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
             username, password = decoded_credentials.split(":", 1)
 
-            # Authenticate against store
-            if store.authenticate_user(username.lower(), password):
+            # Store initialization, SQLAlchemy, and password verification are synchronous. Keep
+            # them off the ASGI event loop; the dedicated executor preserves the previous
+            # one-verification-per-process bound.
+            if await asyncio.get_running_loop().run_in_executor(
+                _BASIC_AUTH_EXECUTOR,
+                _authenticate_basic_auth_sync,
+                username.lower(),
+                password,
+            ):
                 logger.debug(f"User {username} authenticated via basic auth")
                 return True, username.lower(), ""
             else:
@@ -215,12 +222,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug("Not provisioning %s here; a service account is handled on its own path", username)
             return
 
-        # Derive groups from the token, mirroring the login flow's group resolution.
+        # Derive groups from the token, mirroring the login flow's group resolution. A plugin
+        # that declares a ``token_response`` parameter also receives the validated claims under
+        # ``claims``; a plugin written against the original single-argument signature is
+        # unaffected (#250).
         try:
             if config.OIDC_GROUP_DETECTION_PLUGIN:
-                import importlib
-
-                user_groups = importlib.import_module(config.OIDC_GROUP_DETECTION_PLUGIN).get_user_groups(token)
+                user_groups = call_group_detection_plugin(config.OIDC_GROUP_DETECTION_PLUGIN, token, {"access_token": token, "claims": payload})
             else:
                 user_groups = payload.get(config.OIDC_GROUPS_ATTRIBUTE, [])
             if isinstance(user_groups, str):
@@ -251,9 +259,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         try:
             import mlflow_oidc_auth.user as user_module
 
-            user_module.create_user(username=username, display_name=display_name, is_admin=is_admin)
-            user_module.populate_groups(group_names=user_groups)
-            user_module.update_user(username=username, group_names=user_groups)
+            # Attributed like an interactive login from the same provider (#360), so the guard sees
+            # who is writing and the memberships are owned by that provider rather than ``manual``.
+            written_by = f"oidc:{provider.id}"
+            user_module.create_user(username=username, display_name=display_name, is_admin=is_admin, written_by=written_by)
+            user_module.populate_groups(group_names=user_groups, written_by=written_by)
+            user_module.update_user(username=username, group_names=user_groups, written_by=written_by)
             logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(user_groups))
         except Exception as e:
             # A concurrent first request may have inserted the row (unique constraint) — benign.
@@ -341,9 +352,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         try:
             import mlflow_oidc_auth.user as user_module
 
-            user_module.create_user(username=username, display_name=display_name, is_admin=False, is_service_account=True)
-            user_module.populate_groups(group_names=[group])
-            user_module.update_user(username=username, group_names=[group])
+            # Attributed to the Kubernetes provider (#360): the namespace group membership is its,
+            # not ``manual``, so no other source's sync can quietly remove it under ``enforce``.
+            written_by = f"oidc:{provider.id}"
+            user_module.create_user(username=username, display_name=display_name, is_admin=False, is_service_account=True, written_by=written_by)
+            user_module.populate_groups(group_names=[group], written_by=written_by)
+            user_module.update_user(username=username, group_names=[group], written_by=written_by)
             logger.info("Provisioned service account %s from namespace %s", username, account.namespace)
             emit_audit_event(
                 "user.provisioned",
@@ -399,10 +413,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """
         Authenticate using session.
 
-        Enforces the IdP-issued ``expires_at`` (set at OIDC callback) so a session
-        cannot outlive the underlying token. When ``OIDC_USE_REFRESH_TOKEN`` is
-        enabled and a refresh token is stored, an expired session is silently
-        refreshed against the IdP before being rejected.
+        Enforces the IdP-issued ``expires_at`` so a session cannot outlive the
+        underlying token. When ``OIDC_USE_REFRESH_TOKEN`` is enabled and a refresh
+        token is stored, an expired session is silently refreshed against the IdP
+        before being rejected.
+
+        Both live on the session row, encrypted, since #367 — not in the cookie.
+        They arrive with the same joined lookup that resolves the session, so
+        reading them costs no statement.
 
         Args:
             request: FastAPI request object
@@ -435,11 +453,40 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     # statement rather than two (#305 budget).
                     request.state.resolved_session = resolved
 
-                    if self._is_session_expired(session):
+                    # A cookie from before #367 may still carry token material. Its refresh token
+                    # is never used — only the session row's is — and is dropped at once.
+                    if "refresh_token" in session:
+                        session.pop("refresh_token", None)
+
+                    from mlflow_oidc_auth.session.token_vault import SessionTokens, get_token_vault
+
+                    encrypted_tokens = getattr(resolved, "encrypted_tokens", None)
+                    tokens = get_token_vault().decrypt(encrypted_tokens)
+
+                    # Its ``expires_at`` is different. A row opened by a release before #367 has
+                    # no tokens, so the (signed) cookie holds the only IdP expiry this session
+                    # has. Dropping it would let the session run to the row's lifetime with no
+                    # IdP bound at all, so it is honoured as an upper bound — and kept until it
+                    # passes or a new login replaces the session. Where the row has tokens, the
+                    # row is authoritative and the cookie value is discarded.
+                    legacy_expiry = session.get("expires_at")
+                    legacy_bound = not encrypted_tokens and isinstance(legacy_expiry, (int, float)) and not isinstance(legacy_expiry, bool)
+                    if not legacy_bound and "expires_at" in session:
+                        session.pop("expires_at", None)
+                    if legacy_bound and self._is_session_expired(SessionTokens(expires_at=int(legacy_expiry))):
+                        # Nothing on the row to refresh with: the legacy session ends here.
+                        logger.info("Legacy session expired for user %s; clearing session to force re-authentication", username)
+                        session.clear()
+                        return False, None, "Session expired"
+                    # Tokens that exist but cannot be decrypted (key rotated, row tampered with)
+                    # carry an expiry we can no longer read. Fail closed: treat the session as
+                    # expired, which — with nothing to refresh with — sends the user to log in.
+                    unreadable = bool(encrypted_tokens) and tokens is None
+                    if unreadable or self._is_session_expired(tokens):
                         # Try a silent refresh first; only force re-login if it fails.
                         from mlflow_oidc_auth.routers.auth import refresh_session_with_idp
 
-                        refreshed = await refresh_session_with_idp(session)
+                        refreshed = await refresh_session_with_idp(session_id, resolved)
                         if not refreshed:
                             logger.info(
                                 "Session expired for user %s; clearing session to force re-authentication",
@@ -464,16 +511,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return False, None, "No session authentication"
 
     @staticmethod
-    def _is_session_expired(session) -> bool:
+    def _is_session_expired(tokens) -> bool:
         """Return True when the IdP-issued ``expires_at`` (minus leeway) is in the past.
 
-        Returns False when no expiry is recorded — older sessions predating this
-        feature should keep working until the cookie TTL takes them out, instead
-        of being summarily logged out at deploy time.
+        ``tokens`` is the session's decrypted ``SessionTokens`` (or None). Returns False
+        when no expiry is recorded — the IdP gave none, or the tokens are absent or
+        unreadable — so the session's own lifetime bounds it, as before.
         """
 
-        expires_at = session.get("expires_at")
-        if not isinstance(expires_at, (int, float)):
+        expires_at = getattr(tokens, "expires_at", None) if tokens is not None else None
+        if isinstance(expires_at, bool) or not isinstance(expires_at, (int, float)):
             return False
         leeway = max(0, config.OIDC_SESSION_EXPIRY_LEEWAY_SECONDS)
         return time.time() >= float(expires_at) - leeway
@@ -606,7 +653,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             Response from the application or an authentication redirect
         """
-        path = request.url.path
+        # Decide on the path the router will dispatch, which excludes any root_path prefix
+        # recorded for the deployment. ProxyHeadersMiddleware runs outside this middleware, so a
+        # forwarded prefix from a trusted proxy is already reflected in the scope here.
+        path = routed_path(request.scope)
 
         # Skip authentication for unprotected routes
         if self._is_unprotected_route(path):

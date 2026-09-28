@@ -11,6 +11,54 @@ import unittest
 from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
 from unittest.mock import patch
+from typing import Callable
+
+
+def _force_reimport(*names: str) -> Callable[[], None]:
+    """Delete ``names`` from ``sys.modules`` so the next ``import`` re-executes them, and
+    return a callback that restores the original module objects.
+
+    These tests force a fresh import of `mlflow_oidc_auth.oauth` (and the
+    `mlflow_oidc_auth.config` it reads at import time) to pick up mocked config or
+    environment variables. Left in place, that deletion leaves a second, orphaned
+    `AppConfig`/oauth module living in the process: whichever test runs next gets whichever
+    copy happens to be in `sys.modules` at that moment, which is order-dependent under
+    pytest-randomly (#353). `unittest.TestCase` methods cannot request the `monkeypatch`
+    fixture directly, so register the returned callback with `self.addCleanup` instead —
+    it runs even if the test fails, exactly like `monkeypatch.delitem(..., raising=False)`
+    does for the plain pytest-style tests elsewhere in this suite.
+
+    Restoring the ``sys.modules`` entry is not enough on its own: when the deleted name gets
+    reimported, the import system also does ``setattr(parent_package, attr, new_module)`` on
+    the parent package object (e.g. ``setattr(mlflow_oidc_auth, "oauth", <new module>)``), and
+    a bare ``sys.modules`` restore does not touch that attribute. Code that reaches the module
+    via ``mlflow_oidc_auth.oauth`` (rather than looking it up in ``sys.modules`` again) would
+    keep seeing the duplicate. Snapshot and restore that attribute too.
+    """
+    originals = {name: sys.modules.get(name) for name in names}
+    attr_originals = {}
+    for name in names:
+        if "." not in name:
+            continue
+        parent_name, _, attr = name.rpartition(".")
+        parent = sys.modules.get(parent_name)
+        if parent is not None and hasattr(parent, attr):
+            attr_originals[(parent_name, attr)] = getattr(parent, attr)
+
+    def _restore() -> None:
+        for name, module in originals.items():
+            if module is not None:
+                sys.modules[name] = module
+            else:
+                sys.modules.pop(name, None)
+        for (parent_name, attr), value in attr_originals.items():
+            parent = sys.modules.get(parent_name)
+            if parent is not None:
+                setattr(parent, attr, value)
+
+    for name in names:
+        sys.modules.pop(name, None)
+    return _restore
 
 
 class TestOAuthModule(unittest.TestCase):
@@ -62,8 +110,7 @@ class TestOAuthModule(unittest.TestCase):
         mock_config.OIDC_CODE_CHALLENGE = None
 
         # Clear the module cache to force re-import with mocked config
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth"))
 
         # Import with mocked config
         import mlflow_oidc_auth.oauth
@@ -83,10 +130,7 @@ class TestOAuthModule(unittest.TestCase):
     def test_oauth_with_environment_variables(self):
         """Test OAuth initialization with environment variables."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with environment variables set
         import mlflow_oidc_auth.oauth
@@ -106,10 +150,7 @@ class TestOAuthModule(unittest.TestCase):
     def test_oauth_with_empty_environment_variables(self):
         """Test OAuth initialization with empty environment variables."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with empty environment variables
         import mlflow_oidc_auth.oauth
@@ -151,10 +192,7 @@ class TestOAuthModule(unittest.TestCase):
     def test_oauth_with_special_characters_in_config(self):
         """Test OAuth initialization with special characters in configuration."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with special characters in config
         import mlflow_oidc_auth.oauth
@@ -174,10 +212,7 @@ class TestOAuthModule(unittest.TestCase):
     def test_oauth_with_unicode_config(self):
         """Test OAuth initialization with Unicode characters in configuration."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with Unicode characters in config
         import mlflow_oidc_auth.oauth
@@ -201,10 +236,7 @@ class TestOAuthIntegration(unittest.TestCase):
     def test_oauth_oidc_provider_integration(self):
         """Test OAuth integration with OIDC providers."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with realistic OIDC provider configuration
         import mlflow_oidc_auth.oauth
@@ -224,10 +256,7 @@ class TestOAuthIntegration(unittest.TestCase):
     def test_oauth_microsoft_entra_id_integration(self):
         """Test OAuth integration with Microsoft Entra ID (Azure AD)."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with Microsoft Entra ID configuration
         import mlflow_oidc_auth.oauth
@@ -247,10 +276,7 @@ class TestOAuthIntegration(unittest.TestCase):
     def test_oauth_okta_integration(self):
         """Test OAuth integration with Okta."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with Okta configuration
         import mlflow_oidc_auth.oauth
@@ -280,10 +306,7 @@ class TestOAuthIntegration(unittest.TestCase):
     def test_oauth_google_integration(self):
         """Test OAuth integration with Google."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with Google configuration
         import mlflow_oidc_auth.oauth
@@ -307,10 +330,7 @@ class TestOAuthSecurity(unittest.TestCase):
     def test_oauth_security_configuration(self):
         """Test OAuth security configuration and measures."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with secure configuration
         import mlflow_oidc_auth.oauth
@@ -330,10 +350,7 @@ class TestOAuthSecurity(unittest.TestCase):
     def test_oauth_insecure_http_url_handling(self):
         """Test OAuth handling of insecure HTTP URLs."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with insecure HTTP URL (should still work)
         import mlflow_oidc_auth.oauth
@@ -353,10 +370,7 @@ class TestOAuthSecurity(unittest.TestCase):
     def test_oauth_malformed_url_handling(self):
         """Test OAuth handling of malformed URLs."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with malformed URL
         import mlflow_oidc_auth.oauth
@@ -388,10 +402,7 @@ class TestOAuthSecurity(unittest.TestCase):
     def test_oauth_scope_security(self):
         """Test OAuth scope configuration for security."""
         # Clear the module cache to force re-import with new env vars
-        if "mlflow_oidc_auth.oauth" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.oauth"]
-        if "mlflow_oidc_auth.config" in sys.modules:
-            del sys.modules["mlflow_oidc_auth.config"]
+        self.addCleanup(_force_reimport("mlflow_oidc_auth.oauth", "mlflow_oidc_auth.config"))
 
         # Import with extended scopes
         import mlflow_oidc_auth.oauth

@@ -40,14 +40,22 @@ FastAPI handles authentication, the admin UI, and the permission management API.
 Middleware is applied to every request. The execution order (outermost to innermost) is:
 
 ```
-Request → ProxyHeaders → Auth → WorkspaceContext → Session → Route Handler
+Request → ProxyHeaders → Session → WorkspaceContext → Auth → FastAPIPermission → Route Handler
 ```
+
+`ProxyHeadersMiddleware` runs first so a forwarded path prefix from a trusted proxy is recorded
+in the ASGI `root_path` before any workspace resolution or authorization decision.
+`WorkspaceContextMiddleware` resolves the workspace on the same routed path. `AuthMiddleware` and the FastAPI permission
+middleware both decide on the **routed path** — the request path with that prefix removed, which
+is the path the router dispatches on — so the unprotected-route list and the validator mapping
+always describe the endpoint that serves the request, whether or not the deployment sits under
+a prefix. The wiring lives in `add_middleware_stack()` in `app.py`.
 
 | Middleware | Purpose |
 |-----------|---------|
-| **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and client IP. When `TRUSTED_PROXIES` is configured, only applies headers from requests originating within the trusted CIDR ranges |
+| **ProxyHeadersMiddleware** | Reads `X-Forwarded-*` headers from reverse proxies. Updates the request's scheme, host, port, and path prefix (`root_path`), and records the forwarded client IP under its own scope key (`client_address()`; `request.client` is left as the connection address). Applies headers only from requests originating within the `TRUSTED_PROXIES` CIDR ranges; when it is unset, no proxy is trusted, the headers are ignored from every client and this is logged once at startup |
 | **AuthMiddleware** | Authenticates the user via basic auth, JWT bearer token, or session cookie. Sets `request.state.username`, `request.state.is_admin`, and `request.scope["mlflow_oidc_auth"]`. When `OIDC_AUDIENCE` is configured, JWT `aud` claim is validated |
-| **FastAPIPermissionMiddleware** | Enforces RBAC on MLflow's native FastAPI routers (gateway invocations, chat completions, embeddings). Extracts the gateway endpoint name from the URL path and checks USE permission before forwarding |
+| **FastAPIPermissionMiddleware** | Enforces RBAC on MLflow's native FastAPI routers (gateway invocations, chat completions, embeddings). Extracts the gateway endpoint name from the routed path and checks USE permission before forwarding. On the MCP server registry, reads are open to any authenticated user and mutations are admin-only. Fails closed: any request not dispatched to the Flask mount and not on an unprotected route must carry an authenticated user, even where no validator is mapped |
 | **WorkspaceContextMiddleware** | When workspaces are enabled, reads the `X-MLFLOW-WORKSPACE` header and sets MLflow's workspace ContextVar so tracking store operations run in the correct workspace |
 | **SessionMiddleware** | Starlette's built-in cookie-based session. Decodes/encodes the signed session cookie |
 
@@ -59,6 +67,14 @@ These paths bypass authentication:
 - `/login`, `/callback` — OIDC login flow
 - `/oidc/ui/*` — Admin UI static files (the API calls within the SPA are authenticated)
 - `/docs`, `/redoc`, `/openapi.json` — API documentation (if enabled)
+
+`/scim/v2` is a different kind of carve-out: it bypasses `AuthMiddleware`'s normal chain
+entirely rather than being unauthenticated. Every route under it — including discovery and the
+catch-all for unknown paths — requires its own bearer credential (a SCIM token issued at
+`/api/2.0/mlflow/scim/tokens`), checked independently of basic auth, JWT bearer, and the session
+cookie. None of those three ever authenticate on `/scim/v2`, and a SCIM token authenticates
+nowhere else: it names no user, so it cannot be used against any other endpoint. See [SCIM
+Provisioning](scim) for the token model and what the endpoint does.
 
 ## Authentication Methods
 
@@ -83,6 +99,18 @@ Validates the JWT against the OIDC provider's JWKS endpoint. Extracts the userna
 ### 3. Session Cookie (Fallback)
 
 No `Authorization` header → checks for a valid session cookie set during OIDC login.
+
+**Server-side session tokens.** The refresh token, ID token, and IdP-issued expiry that a
+session needs are stored encrypted (Fernet, `SESSION_TOKEN_ENCRYPTION_KEY`) on the session's
+`auth_sessions` row rather than in the cookie — the cookie carries only the opaque session id.
+When several concurrent requests find a session's IdP token expired, only one exchanges the
+refresh token: an in-process `asyncio.Lock` per session serializes requests within one worker,
+and on PostgreSQL a `SELECT ... FOR UPDATE` row lock serializes across replicas too, with the
+result re-read and adopted by every request that queued behind the refresh. This single-flight
+is what stops a rotated refresh token from being replayed by a losing concurrent request. SQLite
+has no row locks, so on SQLite the guard is process-local only — safe with a single worker
+process, not a substitute for the row lock under multiple workers or replicas. See
+[Sessions](configuration#sessions) for the operator-facing details.
 
 ### OIDC Login Flow
 
@@ -278,7 +306,7 @@ The `mlflow-oidc-server` command:
 
 `create_app()` in `mlflow_oidc_auth/app.py`:
 1. Creates the FastAPI application
-2. Configures the middleware stack (Session → Workspace → Auth → Proxy)
+2. Configures the middleware stack via `add_middleware_stack()` (outermost first: Proxy → Session → Workspace → Auth → Permission)
 3. Registers all routers
 4. Creates the MLflow Flask app
 5. Mounts Flask via `AuthAwareWSGIMiddleware`

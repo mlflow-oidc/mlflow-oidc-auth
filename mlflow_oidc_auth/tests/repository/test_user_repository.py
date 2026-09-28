@@ -30,6 +30,8 @@ def test_create_success(repo, session):
     user.to_mlflow_entity.return_value = "entity"
     session.add = MagicMock()
     session.flush = MagicMock()
+    # No existing row: create refuses one, and never re-owns it (#360).
+    session.query.return_value.filter.return_value.one_or_none.return_value = None
 
     with (
         patch("mlflow_oidc_auth.db.models.SqlUser", return_value=user),
@@ -147,6 +149,7 @@ def test_update_password_expiration(repo, session):
 
 def test_delete(repo, session):
     user = MagicMock()
+    user.is_admin = False  # not the last-admin path; that has its own tests
     session.delete = MagicMock()
     session.flush = MagicMock()
     with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user):
@@ -214,6 +217,7 @@ class TestUsernameCaseNormalization:
         """#219: an admin-created service account with capitals is stored lowercase."""
         session.add = MagicMock()
         session.flush = MagicMock()
+        session.query.return_value.filter.return_value.one_or_none.return_value = None
         with (
             patch("mlflow_oidc_auth.repository.user.SqlUser") as sql_user,
             patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="hashed"),
@@ -251,6 +255,7 @@ class TestUsernameCaseNormalization:
 
     def test_delete_normalizes_username(self, repo, session):
         user = MagicMock()
+        user.is_admin = False
         with patch("mlflow_oidc_auth.repository.user.get_user", return_value=user) as get_user_mock:
             repo.delete("Xyz_Abc")
             assert get_user_mock.call_args.args[1] == "xyz_abc"

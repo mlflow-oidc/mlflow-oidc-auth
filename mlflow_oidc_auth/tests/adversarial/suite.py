@@ -218,6 +218,17 @@ class TokenAdversarySuite:
         with rejects():
             verify(trusted.mint(iat=now - 7200, exp=now - 3600))
 
+    def test_a_token_with_no_expiry_is_rejected(self, verify, trusted):
+        """A token minted without ``exp`` would otherwise be valid forever (#356).
+
+        authlib's ``validate_exp`` is a no-op when the claim is absent, so an expiry check alone
+        refuses only tokens that *say* they have expired. A leaked token that never says so is a
+        permanent credential. Every provider requires ``exp`` unless it opts out explicitly with
+        ``allow_tokens_without_expiry`` — which no provider under this suite does.
+        """
+        with rejects():
+            verify(trusted.mint(claims={k: v for k, v in trusted.claims().items() if k != "exp"}))
+
     def test_an_attacker_supplied_key_url_is_not_honoured(self, verify, foreign, trusted, monkeypatch):
         """``jku``/``x5u`` naming the attacker's own key set.
 

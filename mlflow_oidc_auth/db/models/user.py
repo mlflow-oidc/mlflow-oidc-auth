@@ -77,6 +77,10 @@ class SqlGroup(Base):
     group_name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Phase 0 lifecycle columns (issue #333); see SqlUser for why they carry no behaviour yet.
     external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Which source created the group (#323 review): ``manual`` (administrator, CLI, or any group
+    # that predates the column), ``scim``, or ``oidc:<id>`` / ``saml:<id>`` for a group a login
+    # created. SCIM may write only groups it owns under ``enforce``.
+    managed_by: Mapped[str] = mapped_column(String(255), nullable=False, server_default="manual", default="manual")
     # Nullable at the DB level: they are added to an existing table, and SQLite refuses
     # ADD COLUMN with a non-constant default once the table has rows. The migration backfills
     # existing rows; ``default`` populates new ones.

@@ -63,12 +63,30 @@ azure = [
 vault = [
   "hvac>=2.4.0",
 ]
+# SAML 2.0 provider support (issue #327/#328). python3-saml ships pure-Python; its native
+# dependency python-xmlsec publishes binary wheels for manylinux, macOS and Windows on
+# CPython 3.10+, so no compiler or libxmlsec1 headers are needed for a wheel install.
+saml = [
+  "python3-saml>=1.16.0,<2",
+  "xmlsec>=1.3.14,<2",
+]
 # All cloud providers combined
 cloud = [
   "boto3>=1.42.26",
   "azure-identity>=1.25.1",
   "azure-keyvault-secrets>=4.10.0",
   "hvac>=2.4.0",
+]
+# Every optional runtime feature. tox installs this so no test suite skips itself for a
+# missing extra (pip ignores an unknown extra silently, which is how the SAML suite went
+# unexecuted in CI).
+full = [
+  "boto3>=1.42.26",
+  "azure-identity>=1.25.1",
+  "azure-keyvault-secrets>=4.10.0",
+  "hvac>=2.4.0",
+  "python3-saml>=1.16.0,<2",
+  "xmlsec>=1.3.14,<2",
 ]
 # Redis cache backend
 cache = [
@@ -115,6 +133,7 @@ asyncio_mode = "auto"
 testpaths = ["mlflow_oidc_auth/tests"]
 markers = [
   "integration: end-to-end tests that require a running server",
+  "e2e: identity end-to-end tests against a real Keycloak and a real app server (tox -e e2e)",
 ]
 norecursedirs = [
   "mlruns",

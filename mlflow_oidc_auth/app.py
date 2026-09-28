@@ -193,6 +193,56 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
     except ImportError:
         logger.debug("mlflow.server.assistant.api not available — Assistant endpoints disabled")
 
+    # MCP server registry: /api/3.0/mlflow/mcp-servers/* and the /ajax-api twin.
+    # The router carries no prefix of its own; MLflow mounts one copy per prefix,
+    # so we do the same rather than going through `_include_router`.
+    try:
+        from mlflow.server.mcp_server_api import get_mcp_server_api_route_prefixes, mcp_server_router
+
+        for route_prefix in get_mcp_server_api_route_prefixes():
+            oidc_app.include_router(mcp_server_router, prefix=route_prefix)
+        logger.info("Included MLflow MCP server registry router (/api/3.0/mlflow/mcp-servers)")
+    except ImportError:
+        logger.debug("mlflow.server.mcp_server_api not available — MCP registry endpoints disabled")
+
+
+def add_middleware_stack(oidc_app: FastAPI) -> None:
+    """Install the plugin's middleware on ``oidc_app`` in its required order.
+
+    Kept separate from ``create_app`` so tests exercise exactly this order.
+
+    Parameters:
+        oidc_app: The FastAPI application to configure.
+    """
+    # ---------------------------------------------------------------------------
+    # Middleware ordering (Starlette executes LAST-added as OUTERMOST):
+    #
+    #   Request → ProxyHeaders → Session → WorkspaceContext → Auth
+    #             → PermissionMiddleware → route handler
+    #
+    # ProxyHeaders MUST be OUTERMOST so the forwarded prefix it records in
+    # scope["root_path"] is known before AuthMiddleware and PermissionMiddleware
+    # decide anything: both make their decisions on the routed path (the path
+    # with root_path removed, which is what the router dispatches on).
+    #
+    # PermissionMiddleware MUST be added FIRST (innermost) so it runs AFTER
+    # AuthMiddleware has set request.state.username / is_admin.
+    #
+    # Session must wrap Auth, which reads request.session.
+    # ---------------------------------------------------------------------------
+    add_fastapi_permission_middleware(oidc_app)
+    oidc_app.add_middleware(AuthMiddleware)
+    oidc_app.add_middleware(WorkspaceContextMiddleware)
+    oidc_app.add_middleware(
+        StarletteSessionMiddleware,
+        secret_key=config.SECRET_KEY,
+        session_cookie=config.SESSION_COOKIE_NAME,
+        max_age=config.SESSION_COOKIE_MAX_AGE_SECONDS,
+        same_site=config.SESSION_COOKIE_SAMESITE,
+        https_only=config.SESSION_COOKIE_SECURE,
+    )
+    oidc_app.add_middleware(ProxyHeadersMiddleware)
+
 
 def create_app() -> FastAPI:
     """Create a FastAPI application with OIDC integration.
@@ -211,27 +261,7 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(oidc_app)
 
-    # ---------------------------------------------------------------------------
-    # Middleware ordering (Starlette executes LAST-added as OUTERMOST):
-    #
-    #   Request → Session → WorkspaceContext → Auth → ProxyHeaders
-    #             → PermissionMiddleware → route handler
-    #
-    # PermissionMiddleware MUST be added FIRST (innermost) so it runs AFTER
-    # AuthMiddleware has set request.state.username / is_admin.
-    # ---------------------------------------------------------------------------
-    add_fastapi_permission_middleware(oidc_app)
-    oidc_app.add_middleware(ProxyHeadersMiddleware)
-    oidc_app.add_middleware(AuthMiddleware)
-    oidc_app.add_middleware(WorkspaceContextMiddleware)
-    oidc_app.add_middleware(
-        StarletteSessionMiddleware,
-        secret_key=config.SECRET_KEY,
-        session_cookie=config.SESSION_COOKIE_NAME,
-        max_age=config.SESSION_COOKIE_MAX_AGE_SECONDS,
-        same_site=config.SESSION_COOKIE_SAMESITE,
-        https_only=config.SESSION_COOKIE_SECURE,
-    )
+    add_middleware_stack(oidc_app)
 
     for router in get_all_routers():
         _include_router(oidc_app, router)

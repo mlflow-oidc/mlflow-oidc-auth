@@ -324,31 +324,114 @@ def test_search_model_versions_denied_for_complex_filter(
     assert called["count"] == 0
 
 
-def test_run_model_versions_field_checks_experiment(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@dataclass
+class _FakeModelVersion:
+    name: str
+    version: str = "1"
+
+
+def _patch_model_versions_permissions(monkeypatch: pytest.MonkeyPatch, readable_experiments: set[str], readable_models: set[str], is_admin: bool = False):
     from mlflow_oidc_auth.graphql import middleware as mw_mod
 
-    monkeypatch.setattr(
-        mw_mod,
-        "_get_auth_context",
-        lambda: mw_mod._AuthContext(username="alice", is_admin=False),
-    )
+    monkeypatch.setattr(mw_mod, "_get_auth_context", lambda: mw_mod._AuthContext(username="alice", is_admin=is_admin))
     monkeypatch.setattr(
         mw_mod,
         "effective_experiment_permission",
-        lambda exp_id, _user: _FakePermissionResult(permission=_FakePermission(can_read=(exp_id == "1"))),
+        lambda exp_id, _user: _FakePermissionResult(permission=_FakePermission(can_read=exp_id in readable_experiments)),
     )
+    model_calls: list[str] = []
 
-    called = {"count": 0}
+    def fake_model_permission(name: str, _user: str) -> _FakePermissionResult:
+        model_calls.append(name)
+        if name == "broken":
+            raise RuntimeError("lookup failed")
+        return _FakePermissionResult(permission=_FakePermission(can_read=name in readable_models))
 
-    def next_(root: Any, info: Any, **kwargs: Any) -> str:
-        called["count"] += 1
-        return "ok"
+    monkeypatch.setattr(mw_mod, "effective_registered_model_permission", fake_model_permission)
+    return model_calls
 
+
+_VERSIONS = [_FakeModelVersion("readable"), _FakeModelVersion("hidden"), _FakeModelVersion("readable", "2"), _FakeModelVersion("broken")]
+
+
+def test_run_model_versions_filtered_to_readable_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _patch_model_versions_permissions(monkeypatch, {"1"}, {"readable"})
     root = _FakeRun(info=_FakeRunInfo(experiment_id="1"))
     mw = GraphQLAuthorizationMiddleware()
-    result = mw.resolve(next_, root, _FakeInfo(field_name="modelVersions"))
 
-    assert result == "ok"
-    assert called["count"] == 1
+    result = mw.resolve(lambda *_a, **_k: list(_VERSIONS), root, _FakeInfo(field_name="modelVersions"))
+
+    assert result == [_FakeModelVersion("readable"), _FakeModelVersion("readable", "2")]
+    # One lookup per distinct model name.
+    assert sorted(calls) == ["broken", "hidden", "readable"]
+
+
+def test_run_model_versions_all_hidden_without_model_grants(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_model_versions_permissions(monkeypatch, {"1"}, set())
+    root = _FakeRun(info=_FakeRunInfo(experiment_id="1"))
+
+    result = GraphQLAuthorizationMiddleware().resolve(lambda *_a, **_k: list(_VERSIONS), root, _FakeInfo(field_name="modelVersions"))
+
+    assert result == []
+
+
+def test_run_model_versions_denied_without_experiment_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_model_versions_permissions(monkeypatch, set(), {"readable"})
+    called = {"count": 0}
+
+    def next_(*_a: Any, **_k: Any) -> list:
+        called["count"] += 1
+        return list(_VERSIONS)
+
+    root = _FakeRun(info=_FakeRunInfo(experiment_id="1"))
+    result = GraphQLAuthorizationMiddleware().resolve(next_, root, _FakeInfo(field_name="modelVersions"))
+
+    assert result is None
+    assert called["count"] == 0
+
+
+def test_run_model_versions_unfiltered_for_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _patch_model_versions_permissions(monkeypatch, set(), set(), is_admin=True)
+    root = _FakeRun(info=_FakeRunInfo(experiment_id="1"))
+
+    result = GraphQLAuthorizationMiddleware().resolve(lambda *_a, **_k: list(_VERSIONS), root, _FakeInfo(field_name="modelVersions"))
+
+    assert result == _VERSIONS
+    assert calls == []
+
+
+def test_run_model_versions_filtered_through_mlflow_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``run.modelVersions`` executed through MLflow's own GraphQL schema is filtered per model."""
+    import mlflow.server.handlers as handlers
+    from mlflow.protos import model_registry_pb2, service_pb2
+    from mlflow.server.graphql.graphql_schema_extensions import schema
+
+    from mlflow_oidc_auth.graphql import middleware as mw_mod
+
+    _patch_model_versions_permissions(monkeypatch, {"1"}, {"readable"})
+    monkeypatch.setattr(mw_mod, "_get_tracking_store", lambda: _FakeTrackingStore("1"))
+
+    def fake_get_run_impl(_request):
+        response = service_pb2.GetRun.Response()
+        response.run.info.run_id = "r1"
+        response.run.info.experiment_id = "1"
+        return response
+
+    def fake_search_model_versions_impl(_request):
+        response = model_registry_pb2.SearchModelVersions.Response()
+        for name in ("readable", "hidden"):
+            mv = response.model_versions.add()
+            mv.name = name
+            mv.version = "1"
+        return response
+
+    monkeypatch.setattr(handlers, "get_run_impl", fake_get_run_impl)
+    monkeypatch.setattr(handlers, "search_model_versions_impl", fake_search_model_versions_impl)
+
+    result = schema.execute(
+        '{ mlflowGetRun(input: {runId: "r1"}) { run { modelVersions { name } } } }',
+        middleware=[GraphQLAuthorizationMiddleware()],
+    )
+
+    assert result.errors is None
+    assert result.data["mlflowGetRun"]["run"]["modelVersions"] == [{"name": "readable"}]

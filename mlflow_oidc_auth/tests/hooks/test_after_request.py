@@ -662,7 +662,7 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
 
 def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge):
     """Test _filter_search_logged_models with pagination needed"""
-    mock_response.json = {"models": []}
+    mock_response.json = {"models": [], "next_page_token": "token123"}
 
     # Mock request message with small max_results
     mock_request_message = MagicMock()
@@ -734,7 +734,7 @@ def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge)
 
 def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_bridge):
     """Test _filter_search_logged_models when no pagination is needed"""
-    mock_response.json = {"models": []}
+    mock_response.json = {"models": [{"info": {"experiment_id": "exp_1"}}], "next_page_token": "token123"}
 
     # Mock request message
     mock_request_message = MagicMock()
@@ -1479,3 +1479,116 @@ def test_filter_search_model_versions_no_pagination(mock_response, mock_bridge):
             ):
                 _filter_search_model_versions(mock_response)
                 assert mock_response_message.next_page_token == ""
+
+
+def _logged_models_body(experiment_ids, next_page_token=None):
+    """A response body shaped like the one the tracking server actually returns."""
+    body = {
+        "models": [
+            {
+                "info": {"experiment_id": exp_id, "model_id": f"m{i}", "name": f"model-{i}"},
+                "data": {"metrics": [{"key": "accuracy", "value": 1.0, "timestamp": 1, "step": 0}]},
+            }
+            for i, exp_id in enumerate(experiment_ids)
+        ]
+    }
+    if next_page_token is not None:
+        body["next_page_token"] = next_page_token
+    return body
+
+
+def _run_filter_logged_models(mock_response, *, can_read, workspaces_enabled=False, can_access_workspace=True):
+    """Run the filter and report whether it rewrote the body via the protobuf path."""
+    tracking_store = MagicMock()
+    tracking_store.search_logged_models.return_value = _FakePagedList([], token=None)
+    tracking_store.get_experiment.return_value = MagicMock(workspace="ws")
+
+    request_message = MagicMock()
+    request_message.experiment_ids = ["123"]
+    request_message.filter = None
+    request_message.order_by = []
+    request_message.max_results = 1000
+
+    with app.test_request_context(path="/api/2.0/mlflow/logged-models/search", method="POST", headers={"Content-Type": "application/json"}):
+        with (
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
+            patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_username", return_value="test_user"),
+            patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", side_effect=can_read),
+            patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=request_message),
+            patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
+            patch("mlflow_oidc_auth.hooks.after_request._can_access_workspace", return_value=can_access_workspace),
+            patch("mlflow_oidc_auth.hooks.after_request.parse_dict") as parse_dict_mock,
+            patch("mlflow_oidc_auth.hooks.after_request.message_to_json", return_value='{"models": []}') as message_to_json_mock,
+            patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config,
+        ):
+            mock_config.MLFLOW_ENABLE_WORKSPACES = workspaces_enabled
+            _filter_search_logged_models(mock_response)
+
+    return parse_dict_mock.called or message_to_json_mock.called
+
+
+def test_filter_search_logged_models_passes_through_when_all_visible(mock_response):
+    """A page the user may see in full is returned untouched.
+
+    Re-encoding it costs more than the tracking server spent producing it, and a page
+    of logged models carries every metric value of every model on it.
+    """
+    mock_response.json = _logged_models_body(["123", "123"])
+    original_data = mock_response.data
+
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: True)
+
+    assert rewrote is False
+    assert mock_response.data == original_data
+
+
+def test_filter_search_logged_models_rewrites_when_a_model_is_unreadable(mock_response):
+    """The shortcut must never hide the fact that something has to be removed."""
+    mock_response.json = _logged_models_body(["123", "456"])
+
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: exp_id == "123")
+
+    assert rewrote is True
+
+
+def test_filter_search_logged_models_rewrites_when_a_further_page_exists(mock_response):
+    """A next page token means the filter may still need to top this page up."""
+    mock_response.json = _logged_models_body(["123"], next_page_token="tok")
+
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: True)
+
+    assert rewrote is True
+
+
+def test_filter_search_logged_models_rewrites_when_workspace_denies(mock_response):
+    """Workspace denial (WSSEC-03) must also defeat the shortcut."""
+    mock_response.json = _logged_models_body(["123"])
+
+    rewrote = _run_filter_logged_models(
+        mock_response,
+        can_read=lambda exp_id, user: True,
+        workspaces_enabled=True,
+        can_access_workspace=False,
+    )
+
+    assert rewrote is True
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"models": [{"name": "no info key"}]},
+        {"models": [{"info": {"name": "no experiment_id"}}]},
+        {"models": [{"info": {"experiment_id": 123}}]},
+        {"models": "not a list"},
+        [],
+    ],
+    ids=["no-info", "no-experiment-id", "non-string-id", "models-not-a-list", "body-not-a-dict"],
+)
+def test_filter_search_logged_models_rewrites_on_unexpected_body(mock_response, body):
+    """Anything the shortcut cannot positively verify falls back to full filtering."""
+    mock_response.json = body
+
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: True)
+
+    assert rewrote is True

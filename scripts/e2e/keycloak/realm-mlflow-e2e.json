@@ -1,0 +1,251 @@
+{
+  "realm": "mlflow-e2e",
+  "displayName": "mlflow-oidc-auth end-to-end tests (test-only, not for production)",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "accessTokenLifespan": 10,
+  "accessTokenLifespanForImplicitFlow": 10,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "eventsEnabled": true,
+  "eventsExpiration": 3600,
+  "enabledEventTypes": [
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "LOGOUT_ERROR",
+    "CODE_TO_TOKEN",
+    "CODE_TO_TOKEN_ERROR",
+    "REFRESH_TOKEN",
+    "REFRESH_TOKEN_ERROR"
+  ],
+  "adminEventsEnabled": false,
+  "groups": [
+    {
+      "name": "mlflow-users"
+    },
+    {
+      "name": "mlflow-admins"
+    }
+  ],
+  "users": [
+    {
+      "username": "alice@example.com",
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Alice",
+      "lastName": "E2E",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice-e2e-not-a-secret",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-mlflow-e2e"
+      ],
+      "groups": [
+        "/mlflow-users"
+      ]
+    },
+    {
+      "username": "bob@example.com",
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Bob",
+      "lastName": "E2E",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob-e2e-not-a-secret",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-mlflow-e2e"
+      ],
+      "groups": [
+        "/mlflow-users"
+      ]
+    },
+    {
+      "username": "carol@example.com",
+      "email": "carol@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Carol",
+      "lastName": "E2E",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "carol-e2e-not-a-secret",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-mlflow-e2e"
+      ],
+      "groups": [
+        "/mlflow-users"
+      ]
+    },
+    {
+      "username": "root@example.com",
+      "email": "root@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Root",
+      "lastName": "E2E",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "root-e2e-not-a-secret",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-mlflow-e2e"
+      ],
+      "groups": [
+        "/mlflow-admins"
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "mlflow",
+      "name": "mlflow-oidc-auth (OIDC)",
+      "description": "Confidential client for the e2e suite. Redirect URIs are rewritten at test start for the app's actual port.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "mlflow-e2e-client-secret-not-a-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://127.0.0.1:5055/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://127.0.0.1:5055/*",
+        "use.refresh.tokens": "true",
+        "client_credentials.use_refresh_token": "false",
+        "revoke.refresh.token": "true",
+        "refresh.token.max.reuse": "0",
+        "access.token.lifespan": "10",
+        "frontchannel.logout.session.required": "true",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "basic",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "mlflow-saml",
+      "name": "mlflow-oidc-auth (SAML)",
+      "description": "SAML SP for the e2e suite. ACS/SLO URLs are rewritten at test start for the app's actual port. Client signatures are not required: the SP runs with sign_requests off.",
+      "enabled": true,
+      "protocol": "saml",
+      "frontchannelLogout": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [],
+      "optionalClientScopes": [],
+      "redirectUris": [
+        "http://127.0.0.1:5055/*"
+      ],
+      "attributes": {
+        "saml.assertion.signature": "true",
+        "saml.server.signature": "true",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml_signature_canonicalization_method": "http://www.w3.org/2001/10/xml-exc-c14n#",
+        "saml.client.signature": "false",
+        "saml.force.post.binding": "false",
+        "saml.encrypt": "false",
+        "saml.authnstatement": "true",
+        "saml.onetimeuse.condition": "false",
+        "saml_force_name_id_format": "true",
+        "saml_name_id_format": "email",
+        "saml_assertion_consumer_url_post": "http://127.0.0.1:5055/callback/keycloak-saml",
+        "saml_single_logout_service_url_redirect": "http://127.0.0.1:5055/slo/keycloak-saml"
+      },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "attribute.name": "email",
+            "attribute.nameformat": "Basic",
+            "friendly.name": "email"
+          }
+        },
+        {
+          "name": "displayName",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "firstName",
+            "attribute.name": "displayName",
+            "attribute.nameformat": "Basic"
+          }
+        },
+        {
+          "name": "groups",
+          "protocol": "saml",
+          "protocolMapper": "saml-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.name": "groups",
+            "attribute.nameformat": "Basic",
+            "full.path": "false",
+            "single": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -26,6 +26,14 @@ class TestAnAttemptRoundTrips:
         assert attempt.provider_id == "entra"
         assert attempt.redirect_after_login == "/oidc/ui/models"
 
+    def test_a_binding_hash_comes_back_and_defaults_to_none(self, store):
+        """The SAML browser binding (#374) stores a hash on the row; OIDC attempts carry none."""
+        bound = store.create_auth_state("saml", binding_hash="ab" * 32)
+        unbound = store.create_auth_state("entra")
+
+        assert store.consume_auth_state(bound).binding_hash == "ab" * 32
+        assert store.consume_auth_state(unbound).binding_hash is None
+
     def test_the_state_is_unguessable(self, store):
         """It is the only thing tying a callback to the attempt that started it."""
         first = store.create_auth_state("entra")

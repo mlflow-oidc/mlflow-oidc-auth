@@ -11,10 +11,11 @@ describe("sidebar-data", () => {
 
   it("returns extra links for admin", () => {
     const data = getSidebarData(true, false, false);
-    // 6 base + Trash + Webhooks = 8
-    expect(data).toHaveLength(8);
+    // 6 base + Trash + Webhooks + SCIM = 9
+    expect(data).toHaveLength(9);
     expect(data.map((item) => item.label)).toContain("Trash");
     expect(data.map((item) => item.label)).toContain("Webhooks");
+    expect(data.map((item) => item.label)).toContain("SCIM");
   });
 
   it("returns AI Gateway links when enabled", () => {
@@ -35,11 +36,12 @@ describe("sidebar-data", () => {
 
   it("returns all links when everything enabled", () => {
     const data = getSidebarData(true, true, true);
-    // 6 base + 3 AI + 1 workspace + 2 admin = 12
-    expect(data).toHaveLength(12);
+    // 6 base + 3 AI + 1 workspace + 3 admin = 13
+    expect(data).toHaveLength(13);
     expect(data.map((item) => item.label)).toContain("AI Endpoints");
     expect(data.map((item) => item.label)).toContain("Workspaces");
     expect(data.map((item) => item.label)).toContain("Trash");
     expect(data.map((item) => item.label)).toContain("Webhooks");
+    expect(data.map((item) => item.label)).toContain("SCIM");
   });
 });

@@ -61,6 +61,46 @@ TOKEN_PROVIDER_TYPES = ("oidc", "k8s")
 # ignored (#314).
 KUBERNETES_ONLY_FIELDS = ("jwks_inline", "jwks_uri", "in_cluster", "ca_bundle_path", "namespace_allowlist")
 
+# Fields that only a SAML provider may carry (#328, #329). They name the IdP, the certificate its
+# assertions are verified with, and the key this service signs with — so on any other type they
+# are refused rather than ignored, for the same reason as KUBERNETES_ONLY_FIELDS.
+SAML_ONLY_FIELDS = (
+    "entity_id",
+    "idp_entity_id",
+    "idp_sso_url",
+    "idp_slo_url",
+    "idp_x509_cert",
+    "idp_metadata_url",
+    "sp_x509_cert",
+    "sp_private_key",
+    "sp_private_key_file",
+    "name_id_format",
+    "attribute_username",
+    "attribute_groups",
+    "attribute_display_name",
+    "want_assertions_signed",
+    "want_response_signed",
+    "clock_skew_seconds",
+    "sign_requests",
+)
+
+# Fields a SAML provider refuses. Each configures bearer-token validation — an audience, an
+# issuer to pin, a key set, the algorithms a JWT may use — and SAML never validates a bearer
+# token. An operator who wrote one believes it constrains something; on a SAML entry it would
+# not. ``allow_tokens_without_expiry`` is absent only because it has its own refusal above.
+SAML_REFUSED_FIELDS = ("audience", "issuer", "discovery_url", "client_id", "allowed_algorithms") + KUBERNETES_ONLY_FIELDS
+
+DEFAULT_SAML_NAME_ID_FORMAT = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+
+# python3-saml checks ``Conditions`` against a fixed 300 s drift of its own; a configured skew is
+# enforced on top of that, so a larger one could never take effect and is refused as misleading.
+MAX_SAML_CLOCK_SKEW_SECONDS = 300
+DEFAULT_SAML_CLOCK_SKEW_SECONDS = 60
+
+# IdP metadata is fetched once, at registry build, with a bound on both time and size.
+SAML_METADATA_TIMEOUT_SECONDS = 10
+SAML_METADATA_MAX_BYTES = 1024 * 1024
+
 # "scim" is deliberately absent — see _validate_admin_source.
 ADMIN_SOURCES = ("claims", "none")
 IDENTITY_BINDINGS = ("subject", "email")
@@ -139,6 +179,28 @@ class ProviderConfig:
         namespace_allowlist: Namespaces whose service accounts may be provisioned. Empty means
             none — a service-account token carries no group claim, so nothing else narrows who
             may become a user.
+        allow_tokens_without_expiry: Accept a bearer token that carries no ``exp`` claim (#356).
+            False by default, so every such token is refused — otherwise it would be valid
+            forever. Exists for legacy (non-bound) Kubernetes service-account tokens, which have
+            no ``exp``; accepted only on a token provider type and logged at load when set.
+        entity_id: SAML only. This service's SP entity id, the audience every assertion must
+            name.
+        idp_entity_id: SAML only. The IdP's entity id; every ``Issuer`` must equal it.
+        idp_sso_url: SAML only. The IdP's HTTP-Redirect SingleSignOnService.
+        idp_slo_url: SAML only. The IdP's HTTP-Redirect SingleLogoutService, when it has one.
+        idp_x509_certs: SAML only. Certificates an IdP signature may verify against (more than
+            one during a rotation), as base64 DER.
+        idp_metadata_url: SAML only. Where the IdP's metadata was read from, when it was.
+        sp_x509_cert: SAML only. This service's signing certificate, published in its metadata.
+        sp_private_key: SAML only. The key for ``sp_x509_cert``. Never in a repr or a log line.
+        name_id_format: SAML only. The ``NameIDPolicy`` format requested.
+        attribute_username: SAML only. Attribute naming the local account.
+        attribute_groups: SAML only. Attribute carrying group names.
+        attribute_display_name: SAML only. Attribute carrying the display name.
+        want_assertions_signed: SAML only. Require the assertion itself to be signed.
+        want_response_signed: SAML only. Require the enclosing Response to be signed.
+        clock_skew_seconds: SAML only. Allowance applied to assertion validity windows.
+        sign_requests: SAML only. Sign AuthnRequests, LogoutRequests and LogoutResponses.
     """
 
     id: str
@@ -164,6 +226,25 @@ class ProviderConfig:
     ca_bundle_path: Optional[str] = None
     in_cluster: bool = False
     namespace_allowlist: Tuple[str, ...] = ()
+    # Deny by default (#356): a token without ``exp`` is refused unless the operator opts in.
+    allow_tokens_without_expiry: bool = False
+    # SAML 2.0 service provider (#328, #329). Unset on every other type — _validate refuses them.
+    entity_id: Optional[str] = None
+    idp_entity_id: Optional[str] = None
+    idp_sso_url: Optional[str] = None
+    idp_slo_url: Optional[str] = None
+    idp_x509_certs: Tuple[str, ...] = ()
+    idp_metadata_url: Optional[str] = None
+    sp_x509_cert: Optional[str] = None
+    sp_private_key: Optional[str] = field(default=None, repr=False)
+    name_id_format: str = DEFAULT_SAML_NAME_ID_FORMAT
+    attribute_username: str = "email"
+    attribute_groups: str = "groups"
+    attribute_display_name: str = "displayName"
+    want_assertions_signed: bool = True
+    want_response_signed: bool = False
+    clock_skew_seconds: int = DEFAULT_SAML_CLOCK_SKEW_SECONDS
+    sign_requests: bool = False
 
     def has_own_key_source(self) -> bool:
         """Whether this entry names its own JWKS source rather than inheriting the flat one.
@@ -284,6 +365,17 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             f"{label}: type {provider_type!r} has no browser login flow, so 'interactive' cannot be true; "
             "its credentials are presented directly as bearer tokens"
         )
+    allow_tokens_without_expiry = entry.get("allow_tokens_without_expiry", False)
+    if not isinstance(allow_tokens_without_expiry, bool):
+        # Strict rather than truthy: the string "false" is truthy, and reading it as true would
+        # switch an expiry check off for an operator who wrote the opposite.
+        errors.append(f"{label}: 'allow_tokens_without_expiry' must be true or false, got {allow_tokens_without_expiry!r}")
+    elif allow_tokens_without_expiry and provider_type not in TOKEN_PROVIDER_TYPES:
+        # Refused rather than ignored, for the same reason as KUBERNETES_ONLY_FIELDS: an operator
+        # who wrote it believes it does something, and on a type that does not verify bearer
+        # tokens it would not — or, worse, would once that type learned to.
+        errors.append(f"{label}: 'allow_tokens_without_expiry' applies only to a token provider ({', '.join(TOKEN_PROVIDER_TYPES)}), not to {provider_type!r}")
+
     allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
     if identity_binding == "email" and not allowed_email_domains:
         errors.append(
@@ -299,7 +391,9 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
     discovery_url = entry.get("discovery_url")
     client_id = entry.get("client_id")
 
-    if not isinstance(audience, str) or not audience.strip():
+    # Not on a SAML entry, which refuses it (SAML_REFUSED_FIELDS): an assertion's audience is the
+    # SP's ``entity_id``, checked against the signed AudienceRestriction instead.
+    if provider_type != "saml" and (not isinstance(audience, str) or not audience.strip()):
         errors.append(f"{label}: 'audience' is required; a token validated with no audience check is valid for every relying party of that issuer")
 
     if provider_type in TOKEN_PROVIDER_TYPES:
@@ -342,8 +436,19 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
                 "deployment-wide key cache with every other provider that omits one"
             )
 
-    if provider_type == "saml" and not _saml_extra_installed():
-        errors.append(f"{label}: type 'saml' requires the [saml] extra to be installed")
+    saml_fields: Dict[str, Any] = {}
+    if provider_type == "saml":
+        extra_installed = _saml_extra_installed()
+        if not extra_installed:
+            errors.append(f"{label}: type 'saml' requires the [saml] extra to be installed")
+        # Metadata is fetched only for an entry that is otherwise valid: a network round trip at
+        # startup for an entry that is dropped anyway would only slow the drop down.
+        saml_fields, saml_errors = _validate_saml(entry, label, fetch_metadata=extra_installed and not errors)
+        errors.extend(saml_errors)
+    else:
+        for field_name in SAML_ONLY_FIELDS:
+            if _is_set(entry.get(field_name)):
+                errors.append(f"{label}: '{field_name}' applies only to a 'saml' provider, not to '{provider_type}'")
 
     if errors:
         return None, errors
@@ -365,17 +470,21 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             interactive=bool(interactive),
             allowed_email_domains=allowed_email_domains,
             allowed_algorithms=allowed_algorithms,
-            audience=audience.strip(),
+            audience=audience.strip() if isinstance(audience, str) and audience.strip() else None,
             jwks_inline=entry.get("jwks_inline") if isinstance(entry.get("jwks_inline"), (str, dict)) else None,
             jwks_uri=entry.get("jwks_uri").strip() if isinstance(entry.get("jwks_uri"), str) and entry.get("jwks_uri").strip() else None,
             ca_bundle_path=(
                 entry.get("ca_bundle_path").strip() if isinstance(entry.get("ca_bundle_path"), str) and entry.get("ca_bundle_path").strip() else None
             ),
-            in_cluster=bool(entry.get("in_cluster", False)),
+            # ``is True``, never truthiness: validated as a real boolean above for a k8s entry,
+            # and refused as a k8s-only field on any other type.
+            in_cluster=entry.get("in_cluster", False) is True,
             namespace_allowlist=_as_tuple(entry.get("namespace_allowlist")),
+            allow_tokens_without_expiry=allow_tokens_without_expiry,
             issuer=issuer.strip() if isinstance(issuer, str) else None,
             discovery_url=discovery_url.strip() if isinstance(discovery_url, str) else None,
             client_id=client_id.strip() if isinstance(client_id, str) else None,
+            **saml_fields,
         ),
         [],
     )
@@ -501,11 +610,18 @@ def _validate_kubernetes(entry: Dict[str, Any], label: str) -> List[str]:
     """
     errors: List[str] = []
 
+    in_cluster = entry.get("in_cluster", False)
+    if not isinstance(in_cluster, bool):
+        # Strict, as for allow_tokens_without_expiry: the string "false" is truthy, and reading it
+        # as true would attach the pod's service-account token to key fetches against whatever
+        # external 'jwks_uri' the entry names.
+        errors.append(f"{label}: 'in_cluster' must be true or false, got {in_cluster!r}")
+
     sources = [
         bool(entry.get("discovery_url")),
         bool(entry.get("jwks_inline")),
         bool(entry.get("jwks_uri")),
-        bool(entry.get("in_cluster")),
+        in_cluster is True,
     ]
     if not any(sources):
         errors.append(
@@ -558,29 +674,338 @@ def _validate_admin_source(admin_source: Any, label: str) -> List[str]:
     return []
 
 
-# Candidate imports for the optional SAML dependency. Which library ships as the ``[saml]``
-# extra is decided by the packaging spike (#327) and is not settled here — this lists the
-# realistic candidates so the check works whichever is chosen, and so whoever closes #327 has an
-# obvious place to pin it down.
+# The ``[saml]`` extra is python3-saml (#327). Detected by actually importing it rather than by
+# ``find_spec``: python3-saml imports ``xmlsec``, a native extension, at module load, so a package
+# that is present but whose native library cannot load is as unusable as one that is absent — and
+# accepting the provider would leave a login button that fails on every click.
 #
-# Until that extra exists, no import succeeds and every ``type: saml`` provider is rejected.
-# That is the correct answer rather than a gap: SAML cannot be configured before SAML is
-# implemented, and silently accepting the entry would leave a provider in the registry that
-# nothing can authenticate against.
-_SAML_MODULE_CANDIDATES = ("onelogin.saml2", "saml2")
+# Without the extra every ``type: saml`` entry is dropped with a reason, and the plugin starts.
+_SAML_MODULE = "onelogin.saml2.auth"
+_saml_import_result: Optional[bool] = None
 
 
 def _saml_extra_installed() -> bool:
-    """Whether a SAML implementation is importable."""
-    import importlib.util
+    """Whether python3-saml (and its native ``xmlsec``) can be imported. Cached after the first try."""
+    global _saml_import_result
+    if _saml_import_result is None:
+        import importlib
 
-    for module in _SAML_MODULE_CANDIDATES:
         try:
-            if importlib.util.find_spec(module) is not None:
-                return True
-        except (ImportError, ValueError):
-            continue
-    return False
+            importlib.import_module(_SAML_MODULE)
+            _saml_import_result = True
+        except Exception as exc:  # ImportError, or the native library failing to load
+            logger.debug("SAML support unavailable: %s", type(exc).__name__)
+            _saml_import_result = False
+    return _saml_import_result
+
+
+def _is_set(value: Any) -> bool:
+    """Whether a field was given a value that could mean something. ``False`` and blanks do not."""
+    if value is None or value is False:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, dict)):
+        return bool(value)
+    return True
+
+
+def _https_url(value: Any) -> bool:
+    """Whether ``value`` is an absolute ``https`` URL with a host."""
+    from urllib.parse import urlparse
+
+    if not isinstance(value, str) or not value.strip():
+        return False
+    parsed = urlparse(value.strip())
+    return parsed.scheme == "https" and bool(parsed.netloc)
+
+
+def _certificate_body(value: Any) -> Optional[str]:
+    """Normalise one X.509 certificate to its base64 DER body, or None if it is not one.
+
+    Accepts PEM with or without the armour lines, which is how IdPs hand certificates out: a
+    ``.pem`` download, or the bare base64 from their metadata. Parsed, not pattern-matched, so a
+    truncated paste is refused here rather than at the first login.
+    """
+    import base64
+    import re
+
+    from cryptography import x509
+
+    if not isinstance(value, str):
+        return None
+    body = "".join(re.sub(r"-----(BEGIN|END) CERTIFICATE-----", "", value).split())
+    if not body:
+        return None
+    try:
+        x509.load_der_x509_certificate(base64.b64decode(body, validate=True))
+    except Exception:
+        return None
+    return body
+
+
+def _load_sp_private_key(value: str) -> Tuple[Optional[str], Any]:
+    """Parse this service's RSA signing key. Returns ``(pem, key)``, or ``(None, None)``.
+
+    Accepts PEM, or the bare base64 of a DER key; either way the key is re-serialised as
+    unencrypted PKCS#8 PEM, the one form python3-saml reads. Nothing about the value is ever
+    echoed: a caller reporting the failure names the field only.
+    """
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    text = value.strip()
+    try:
+        if "-----BEGIN" in text:
+            key = serialization.load_pem_private_key(text.encode(), password=None)
+        else:
+            key = serialization.load_der_private_key(base64.b64decode("".join(text.split()), validate=True), password=None)
+    except Exception:
+        return None, None
+    if not isinstance(key, rsa.RSAPrivateKey):
+        return None, None
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    return pem, key
+
+
+# Metadata fetched this process, by (url, entity id). Registry builds are rare, but a test suite or
+# a config reload can run several, and the IdP should not be fetched for each.
+_METADATA_CACHE: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+
+def _fetch_idp_metadata(url: str, idp_entity_id: str) -> Dict[str, Any]:
+    """Fetch the IdP's metadata and return what it says about ``idp_entity_id``.
+
+    Bounded: a 10 s timeout, 1 MiB, no redirects (a redirect could leave ``https``, and the
+    certificate read here is what every assertion is verified against). Parsed with python3-saml's
+    own parser, which refuses DTDs and entities.
+
+    Returns:
+        ``{"sso_url", "slo_url", "certs"}``.
+
+    Raises:
+        ValueError: With a reason safe to log, when anything about it fails.
+    """
+    key = (url, idp_entity_id)
+    if key in _METADATA_CACHE:
+        return _METADATA_CACHE[key]
+
+    import requests
+    from onelogin.saml2.idp_metadata_parser import OneLogin_Saml2_IdPMetadataParser
+
+    try:
+        response = requests.get(url, timeout=SAML_METADATA_TIMEOUT_SECONDS, allow_redirects=False, stream=True)
+    except requests.RequestException as exc:
+        raise ValueError(f"the request failed ({type(exc).__name__})")
+    try:
+        if response.status_code != 200:
+            raise ValueError(f"the server answered HTTP {response.status_code}")
+        body = response.raw.read(SAML_METADATA_MAX_BYTES + 1, decode_content=True)
+    finally:
+        response.close()
+    if len(body) > SAML_METADATA_MAX_BYTES:
+        raise ValueError("the document is larger than 1 MiB")
+
+    try:
+        parsed = OneLogin_Saml2_IdPMetadataParser.parse(body, entity_id=idp_entity_id)
+    except Exception as exc:
+        raise ValueError(f"the document is not usable SAML metadata ({type(exc).__name__})")
+    idp = parsed.get("idp") or {}
+    if idp.get("entityId") != idp_entity_id:
+        raise ValueError("it does not describe the configured 'idp_entity_id'")
+
+    certs = idp.get("x509cert") or (idp.get("x509certMulti") or {}).get("signing") or []
+    result = {
+        "sso_url": (idp.get("singleSignOnService") or {}).get("url"),
+        "slo_url": (idp.get("singleLogoutService") or {}).get("url"),
+        "certs": [certs] if isinstance(certs, str) else list(certs),
+    }
+    _METADATA_CACHE[key] = result
+    return result
+
+
+def _validate_saml(entry: Dict[str, Any], label: str, fetch_metadata: bool) -> Tuple[Dict[str, Any], List[str]]:
+    """Checks that only apply to a SAML provider (#328, #329).
+
+    What makes a SAML provider safe to accept is that every assertion it can produce is verified
+    against something the operator wrote down: the IdP's entity id (``Issuer``), its certificate
+    (the signature), and this service's entity id (the audience). All three are required; the
+    certificate may come from ``idp_metadata_url`` instead, fetched once, here.
+
+    Returns:
+        ``(fields, errors)``. ``fields`` are ``ProviderConfig`` keyword arguments.
+    """
+    errors: List[str] = []
+
+    for field_name in SAML_REFUSED_FIELDS:
+        if _is_set(entry.get(field_name)):
+            errors.append(f"{label}: '{field_name}' does not apply to a 'saml' provider; SAML identity arrives in a signed assertion, never in a bearer token")
+
+    if isinstance(entry.get("id"), str) and entry["id"].strip() == DEFAULT_PROVIDER_ID:
+        # ``default`` is the synthesised legacy OIDC provider's id, and provisioning treats it
+        # specially: it may adopt existing unbound accounts by name, confers admin from claims by
+        # default, and its groups are not namespaced. On a SAML entry that would let an assertion
+        # attribute the user can influence name — and take over — an existing account.
+        errors.append(f"{label}: a 'saml' provider cannot use the id '{DEFAULT_PROVIDER_ID}', which is reserved for the legacy OIDC provider")
+
+    if entry.get("identity_binding", "subject") == "email":
+        # Email binding links to an existing account only on a verified address. SAML has no
+        # equivalent of ``email_verified``, so the binding could never succeed — and faking the
+        # assertion would let any IdP that lets users edit their own mail attribute claim an account.
+        errors.append(f"{label}: identity_binding 'email' is not supported for a 'saml' provider; SAML asserts no verified-email flag")
+
+    def _string(name: str, default: Optional[str] = None) -> Optional[str]:
+        value = entry.get(name, default)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{label}: '{name}' must be a non-empty string")
+            return None
+        return value.strip()
+
+    def _flag(name: str, default: bool) -> bool:
+        value = entry.get(name, default)
+        if not isinstance(value, bool):
+            # Strict, as for allow_tokens_without_expiry: the string "false" is truthy.
+            errors.append(f"{label}: '{name}' must be true or false, got {type(value).__name__}")
+            return default
+        return value
+
+    entity_id = _string("entity_id")
+    idp_entity_id = _string("idp_entity_id")
+    if entry.get("entity_id") is None:
+        errors.append(f"{label}: 'entity_id' is required for a 'saml' provider; it is the audience every assertion must name")
+    if entry.get("idp_entity_id") is None:
+        errors.append(f"{label}: 'idp_entity_id' is required for a 'saml' provider; an assertion from any other entity is refused")
+
+    metadata_url = _string("idp_metadata_url")
+    if metadata_url is not None and not _https_url(metadata_url):
+        errors.append(f"{label}: 'idp_metadata_url' must be an https URL; the IdP certificate is read from it")
+
+    sso_url = _string("idp_sso_url")
+    if sso_url is not None and not _https_url(sso_url):
+        errors.append(f"{label}: 'idp_sso_url' must be an https URL")
+    elif entry.get("idp_sso_url") is None and metadata_url is None:
+        errors.append(f"{label}: 'idp_sso_url' is required for a 'saml' provider unless 'idp_metadata_url' supplies it")
+
+    slo_url = _string("idp_slo_url")
+    if slo_url is not None and not _https_url(slo_url):
+        errors.append(f"{label}: 'idp_slo_url' must be an https URL")
+
+    raw_certs = entry.get("idp_x509_cert")
+    certs: List[str] = []
+    if raw_certs is not None:
+        for index, value in enumerate([raw_certs] if isinstance(raw_certs, str) else raw_certs if isinstance(raw_certs, list) else [None]):
+            body = _certificate_body(value)
+            if body is None:
+                errors.append(f"{label}: 'idp_x509_cert' entry {index} is not an X.509 certificate")
+            else:
+                certs.append(body)
+        if raw_certs == []:
+            errors.append(f"{label}: 'idp_x509_cert' lists no certificate")
+    elif metadata_url is None:
+        errors.append(
+            f"{label}: 'idp_x509_cert' is required for a 'saml' provider unless 'idp_metadata_url' supplies it; without it no signature can be verified"
+        )
+
+    errors_before_sp = len(errors)
+    sp_cert = None
+    if entry.get("sp_x509_cert") is not None:
+        sp_cert = _certificate_body(entry.get("sp_x509_cert"))
+        if sp_cert is None:
+            errors.append(f"{label}: 'sp_x509_cert' is not an X.509 certificate")
+
+    sp_key_pem, sp_key = None, None
+    inline_key, key_file = entry.get("sp_private_key"), entry.get("sp_private_key_file")
+    if inline_key is not None and key_file is not None:
+        errors.append(f"{label}: set 'sp_private_key' or 'sp_private_key_file', not both")
+    elif inline_key is not None:
+        if isinstance(inline_key, str):
+            sp_key_pem, sp_key = _load_sp_private_key(inline_key)
+        if sp_key is None:
+            errors.append(f"{label}: 'sp_private_key' is not an unencrypted RSA private key in PEM form")
+    elif key_file is not None:
+        try:
+            with open(os.path.expanduser(str(key_file).strip()), "r", encoding="utf-8") as handle:
+                sp_key_pem, sp_key = _load_sp_private_key(handle.read())
+        except OSError as exc:
+            errors.append(f"{label}: 'sp_private_key_file' could not be read ({type(exc).__name__})")
+        else:
+            if sp_key is None:
+                errors.append(f"{label}: 'sp_private_key_file' does not hold an unencrypted RSA private key in PEM form")
+
+    sp_errors = len(errors) > errors_before_sp
+    if (sp_cert is None) != (sp_key is None) and not sp_errors:
+        errors.append(f"{label}: 'sp_x509_cert' and a private key must be configured together")
+    elif sp_cert is not None and sp_key is not None:
+        import base64
+
+        from cryptography import x509
+
+        certificate = x509.load_der_x509_certificate(base64.b64decode(sp_cert))
+        if certificate.public_key().public_numbers() != sp_key.public_key().public_numbers():
+            errors.append(f"{label}: 'sp_x509_cert' does not match the configured private key")
+
+    sign_requests = _flag("sign_requests", False)
+    if sign_requests and sp_key is None and not sp_errors:
+        errors.append(f"{label}: 'sign_requests' needs 'sp_x509_cert' and 'sp_private_key' (or 'sp_private_key_file')")
+
+    want_assertions_signed = _flag("want_assertions_signed", True)
+    want_response_signed = _flag("want_response_signed", False)
+    if not want_assertions_signed and not want_response_signed:
+        errors.append(f"{label}: at least one of 'want_assertions_signed' and 'want_response_signed' must be true; an unsigned assertion proves nothing")
+
+    skew = entry.get("clock_skew_seconds", DEFAULT_SAML_CLOCK_SKEW_SECONDS)
+    if isinstance(skew, bool) or not isinstance(skew, int) or not 0 <= skew <= MAX_SAML_CLOCK_SKEW_SECONDS:
+        errors.append(f"{label}: 'clock_skew_seconds' must be a whole number from 0 to {MAX_SAML_CLOCK_SKEW_SECONDS}")
+        skew = DEFAULT_SAML_CLOCK_SKEW_SECONDS
+
+    name_id_format = _string("name_id_format", DEFAULT_SAML_NAME_ID_FORMAT)
+    attribute_username = _string("attribute_username", "email")
+    attribute_groups = _string("attribute_groups", "groups")
+    attribute_display_name = _string("attribute_display_name", "displayName")
+
+    if fetch_metadata and not errors and metadata_url is not None and (not certs or sso_url is None or slo_url is None):
+        # Explicit configuration wins; metadata fills only what was left out.
+        try:
+            metadata = _fetch_idp_metadata(metadata_url, idp_entity_id)
+        except ValueError as exc:
+            errors.append(f"{label}: could not load IdP metadata from 'idp_metadata_url': {exc}")
+        else:
+            if not certs:
+                certs = [body for body in (_certificate_body(value) for value in metadata["certs"]) if body]
+                if not certs:
+                    errors.append(f"{label}: the IdP metadata carries no usable signing certificate")
+            if sso_url is None:
+                sso_url = metadata["sso_url"]
+                if not _https_url(sso_url):
+                    errors.append(f"{label}: the IdP metadata names no https HTTP-Redirect SingleSignOnService")
+            if slo_url is None and _https_url(metadata["slo_url"]):
+                slo_url = metadata["slo_url"]
+
+    return (
+        {
+            "entity_id": entity_id,
+            "idp_entity_id": idp_entity_id,
+            "idp_sso_url": sso_url,
+            "idp_slo_url": slo_url,
+            "idp_x509_certs": tuple(certs),
+            "idp_metadata_url": metadata_url,
+            "sp_x509_cert": sp_cert,
+            "sp_private_key": sp_key_pem,
+            "name_id_format": name_id_format or DEFAULT_SAML_NAME_ID_FORMAT,
+            "attribute_username": attribute_username or "email",
+            "attribute_groups": attribute_groups or "groups",
+            "attribute_display_name": attribute_display_name or "displayName",
+            "want_assertions_signed": want_assertions_signed,
+            "want_response_signed": want_response_signed,
+            "clock_skew_seconds": skew,
+            "sign_requests": sign_requests,
+        },
+        errors,
+    )
 
 
 def _is_present(value: Any) -> bool:
@@ -654,6 +1079,9 @@ def _legacy_entry(app_config: Any) -> Dict[str, Any]:
         "issuer": getattr(app_config, "OIDC_ISSUER", None),
         "discovery_url": getattr(app_config, "OIDC_DISCOVERY_URL", None),
         "client_id": getattr(app_config, "OIDC_CLIENT_ID", None),
+        # Never true for the synthesised provider: there is no flat variable to opt in with,
+        # and a token without ``exp`` is refused like any other (#356).
+        "allow_tokens_without_expiry": False,
     }
 
 
@@ -767,6 +1195,12 @@ def build_provider_registry(config_manager: Any, app_config: Any) -> RegistryLoa
             continue
         seen_ids.add(provider.id)
         providers.append(provider)
+        if provider.allow_tokens_without_expiry:
+            logger.warning(
+                "Provider '%s' accepts bearer tokens with no 'exp' claim (allow_tokens_without_expiry); such a token "
+                "stays valid until its signing key is rotated or its credential revoked",
+                provider.id,
+            )
 
     providers, issuer_errors = _reject_duplicate_issuers(providers)
     errors.extend(issuer_errors)
@@ -818,5 +1252,6 @@ def _legacy_providers(app_config: Any) -> List[ProviderConfig]:
             issuer=entry["issuer"],
             discovery_url=entry["discovery_url"],
             client_id=entry["client_id"],
+            allow_tokens_without_expiry=False,
         )
     ]

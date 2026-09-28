@@ -13,6 +13,33 @@ export type CurrentUser = {
   username: string;
 };
 
+/**
+ * managed_by values: "manual", "scim", or "oidc:<provider_id>".
+ */
+export type ManagedBy = string;
+
+export type UserDetails = {
+  username: string;
+  display_name: string;
+  is_admin: boolean;
+  is_service_account: boolean;
+  active: boolean;
+  managed_by: ManagedBy;
+};
+
+/**
+ * A live server-side session as the admin API lists it. Never the full session id: that is a
+ * bearer credential. `pk` addresses the session for revocation.
+ */
+export type UserSession = {
+  pk: number;
+  session_id_prefix: string;
+  provider_id: string | null;
+  created_at: string | null;
+  last_seen_at: string | null;
+  expires_at: string | null;
+};
+
 export interface UserContextType {
   currentUser: CurrentUser | null;
   setCurrentUser: (user: CurrentUser | null) => void;
