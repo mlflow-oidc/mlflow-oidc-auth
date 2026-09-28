@@ -33,7 +33,7 @@ WEIGHTS_FILE = Path(__file__).with_name("shard_weights.json")
 DEFAULT_SECONDS_PER_TEST = 0.1
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
+def add_shard_options(parser: pytest.Parser) -> None:
     """Register the sharding options.
 
     Parameters:
@@ -88,8 +88,7 @@ def assign_files(file_tests: "OrderedDict[str, int]", weights: Dict[str, float],
     return [sorted(shard) for shard in shards]
 
 
-@pytest.hookimpl(trylast=True)
-def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: List[pytest.Item]) -> None:
+def select_shard(session: pytest.Session, config: pytest.Config, items: List[pytest.Item]) -> None:
     """Keep only the tests in this shard's files; runs after marker/keyword deselection.
 
     Parameters:

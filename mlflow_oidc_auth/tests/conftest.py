@@ -32,8 +32,18 @@ import mlflow_oidc_auth
 import mlflow_oidc_auth.config as _config_module
 import mlflow_oidc_auth.oauth as _oauth_module
 
+from mlflow_oidc_auth.tests import _sharding
+
+
 # Opt-in CI sharding (``--shard-count``/``--shard-index``); a no-op without those options.
-from mlflow_oidc_auth.tests._sharding import pytest_addoption, pytest_collection_modifyitems  # noqa: E402,F401
+def pytest_addoption(parser: pytest.Parser) -> None:
+    _sharding.add_shard_options(parser)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list) -> None:
+    # trylast: select after marker deselection (-m) has already run.
+    _sharding.select_shard(session, config, items)
 
 
 @pytest.fixture(autouse=True)
