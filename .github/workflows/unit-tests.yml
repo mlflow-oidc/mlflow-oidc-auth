@@ -1,43 +1,39 @@
 name: Unit tests
 on:
   pull_request:
+    # Not "edited": a title or description change does not change the code under test.
     types:
       - opened
-      - edited
       - reopened
       - synchronize
   push:
     branches:
       - main
+  workflow_dispatch:
+
+# A newer push to the same PR supersedes the running suite. Runs on main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Nothing here needs more than a read of the repository: no job uses a token, a secret, or
+# writes back to the PR.
+permissions:
+  contents: read
+
+env:
+  # Python shards. Every shard collects the whole suite and runs the test files assigned to it
+  # (mlflow_oidc_auth/tests/_sharding.py); "Run Unit testing" checks that the shards together ran
+  # every collected test exactly once. Keep in step with the matrix below.
+  SHARD_COUNT: 4
+
 jobs:
-  unit-tests:
-    name: Run Unit testing
+  frontend:
+    name: Frontend (lint, vitest)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    services:
-      # Migrations must be verified on PostgreSQL as well as SQLite (#333). Without a server
-      # here those tests skip, and "tested on both backends" quietly stops being true.
-      # Local to the runner, trust auth, no secrets involved.
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_USER: mlflow_oidc
-          POSTGRES_PASSWORD: mlflow_oidc
-          POSTGRES_DB: mlflow_oidc_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -54,6 +50,36 @@ jobs:
         run: |
           yarn test:coverage
         working-directory: web-react
+
+  python:
+    name: Python (shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Let every shard finish so one failure does not hide another.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    services:
+      # Migrations must be verified on PostgreSQL as well as SQLite (#333). Without a server
+      # here those tests skip, and "tested on both backends" quietly stops being true.
+      # Each shard job gets its own container (the migration tests reset its public schema, so
+      # shards must never share one). Local to the runner, trust auth, no secrets involved.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: mlflow_oidc
+          POSTGRES_PASSWORD: mlflow_oidc
+          POSTGRES_DB: mlflow_oidc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mlflow_oidc -d mlflow_oidc_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -64,4 +90,45 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install tox
-          tox -e py
+          tox -e py -- --shard-count=${SHARD_COUNT} --shard-index=${{ matrix.shard }} --shard-report=shard-report.json --junitxml=junit.xml
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-shard-${{ matrix.shard }}
+          path: |
+            shard-report.json
+            junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The check name other workflows and branch protection gate on. It passes only when the
+  # frontend job and every Python shard passed, and the shards together ran the whole suite.
+  unit-tests:
+    name: Run Unit testing
+    runs-on: ubuntu-latest
+    needs: [frontend, python]
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Download shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: unit-test-shard-*
+          path: shards
+      - name: Check that the shards ran every test exactly once
+        run: |
+          reports=(shards/*/shard-report.json)
+          if [ "${#reports[@]}" -ne "${SHARD_COUNT}" ] || [ ! -f "${reports[0]}" ]; then
+            echo "expected ${SHARD_COUNT} shard reports, found: ${reports[*]}"
+            exit 1
+          fi
+          python3 scripts/ci/check_shards.py "${reports[@]}"
+      - name: Require every job to pass
+        env:
+          FRONTEND: ${{ needs.frontend.result }}
+          PYTHON: ${{ needs.python.result }}
+        run: |
+          echo "frontend: ${FRONTEND}, python shards: ${PYTHON}"
+          [ "${FRONTEND}" = success ] && [ "${PYTHON}" = success ]
