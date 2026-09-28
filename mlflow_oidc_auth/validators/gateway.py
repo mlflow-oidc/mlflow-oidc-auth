@@ -6,8 +6,6 @@ in the Flask before-request hook.
 
 from __future__ import annotations
 
-from flask import request
-
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils import all_source_values, get_request_param
 from mlflow_oidc_auth.utils.permissions import (

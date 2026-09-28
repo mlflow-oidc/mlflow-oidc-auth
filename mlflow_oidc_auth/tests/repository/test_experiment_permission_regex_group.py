@@ -127,10 +127,6 @@ def test_list_permissions_for_user_groups(repo, session):
             "mlflow_oidc_auth.repository._base.get_user",
             return_value=user,
         ),
-        patch(
-            "mlflow_oidc_auth.repository._base.list_user_groups",
-            return_value=[group1, group2],
-        ),
     ):
         result = repo.list_permissions_for_user_groups("user")
         assert result == ["entity"]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 from mlflow.exceptions import MlflowException
 from mlflow.server.handlers import _get_tracking_store

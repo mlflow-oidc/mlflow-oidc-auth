@@ -86,7 +86,7 @@ def validate_regex(regex: str) -> None:
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         try:
-            compiled = re.compile(regex)
+            re.compile(regex)
         except re.error as e:
             raise MlflowException(f"Invalid regex pattern: {regex}. Error: {e}", INVALID_STATE)
         for warning in w:
@@ -103,9 +103,6 @@ def validate_regex(regex: str) -> None:
     # themselves contain quantifiers.
     _check_redos_patterns(regex)
 
-
-# Quantifier characters/patterns that follow an atom
-_QUANTIFIER_CHARS = set("+*?")
 
 # Pattern matching a group that contains a quantifier, followed by a repeating quantifier.
 # This catches constructs like (a+)+, (?:a+)*, (a+){2,} etc.

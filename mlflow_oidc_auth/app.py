@@ -6,7 +6,7 @@ to the default MLflow server when OIDC authentication is required.
 """
 
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
 from fastapi import APIRouter, FastAPI
 from mlflow.server import app

@@ -22,7 +22,6 @@ from mlflow_oidc_auth.logger import get_logger
 # validate a token. Two copies could disagree, and the dangerous direction is silent — a type
 # routed here but never required there is a provider with no ``iss`` check.
 from mlflow_oidc_auth.provider_registry import ASYMMETRIC_ALGORITHMS, TOKEN_PROVIDER_TYPES
-from mlflow_oidc_auth.user import create_user, populate_groups, update_user
 
 logger = get_logger()
 

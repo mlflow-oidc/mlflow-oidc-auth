@@ -23,7 +23,6 @@ from mlflow_oidc_auth.permissions import _validate_permission, compare_permissio
 from mlflow_oidc_auth.repository.utils import (
     get_group,
     get_user,
-    list_user_groups,
     validate_regex,
 )
 

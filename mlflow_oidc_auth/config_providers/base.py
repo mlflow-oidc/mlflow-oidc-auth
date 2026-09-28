@@ -67,7 +67,6 @@ class ConfigProvider(ABC):
         Returns:
             A string name like 'aws-secrets-manager', 'azure-keyvault', 'env'.
         """
-        ...
 
     @property
     def priority(self) -> int:
@@ -89,7 +88,6 @@ class ConfigProvider(ABC):
         Returns:
             True if the provider can be used, False otherwise.
         """
-        ...
 
     @abstractmethod
     def get(self, key: str, default: Any = None) -> Any:
@@ -102,7 +100,6 @@ class ConfigProvider(ABC):
         Returns:
             The configuration value, or default if not found.
         """
-        ...
 
     def get_many(self, keys: list[str]) -> dict[str, Any]:
         """Retrieve multiple configuration values at once.

@@ -5,7 +5,6 @@ This router handles OIDC authentication flows including login, logout, and callb
 """
 
 import asyncio
-import secrets
 import time
 from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
@@ -594,9 +593,6 @@ async def _begin_login(request: Request, provider_id: str):
                 status_code=500,
                 detail="OIDC authentication not available - configuration error",
             )
-
-        # Get session for storing OAuth state (using Starlette's built-in session)
-        session = request.session
 
         # Capture an optional ?next= return target so the callback can return the user to where
         # they were before the session expired. Validated to be a same-origin relative path;
