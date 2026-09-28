@@ -715,6 +715,11 @@ for deployments behind a reverse proxy.
   as a side effect, regardless of `older_than`. It now touches only the named runs. Calls that
   name `experiment_ids` (with or without `run_ids`), or name neither (the "empty trash" case),
   are unaffected. See [Trash Management](api-reference#trash-management).
+- **Redis cache URL and some MLflow settings are no longer logged.** The cache factory no longer
+  writes `CACHE_REDIS_URL` (which can carry a password) to the log, and
+  `configure_mlflow_environment()` / `mlflow-oidc-server` now log only the name of each MLflow
+  variable it sets, not its value. `mlflow-oidc-server --show-config` and `--dry-run` still print
+  values, but mask the password of any `scheme://user:password@` URI in them.
 
 ## MLflow Server Environment Variables
 

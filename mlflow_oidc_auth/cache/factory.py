@@ -56,10 +56,10 @@ def get_cache_backend(namespace: str, maxsize: int, ttl: int) -> CacheBackend:
         key_prefix = getattr(config, "CACHE_KEY_PREFIX", "mlflow_oidc_auth:")
         full_prefix = f"{key_prefix}{namespace}:"
 
+        # The URL is not logged: it can carry the Redis password.
         logger.info(
-            "Using Redis cache backend for '%s' (url=%s, prefix=%s, ttl=%ds)",
+            "Using Redis cache backend for '%s' (prefix=%s, ttl=%ds)",
             namespace,
-            redis_url,
             full_prefix,
             ttl,
         )

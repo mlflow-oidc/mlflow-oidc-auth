@@ -23,6 +23,7 @@ Usage Options:
 """
 
 import os
+import re
 from typing import Any
 
 from mlflow_oidc_auth.config_providers import config_manager
@@ -102,13 +103,28 @@ def configure_mlflow_environment(
         if value is not None:
             os.environ[env_var] = str(value)
             configured[env_var] = value
-            # Log without showing secret values
-            if SECRET_CLASSIFICATION.get(config_key) in (SecretLevel.SECRET, SecretLevel.SENSITIVE):
-                logger.info(f"Configured {env_var} from provider (value hidden)")
-            else:
-                logger.info(f"Configured {env_var}={value}")
+            # Log the variable name only. Values are never logged: besides the classified secrets,
+            # artifact locations and server options can embed credentials (e.g. an FTP artifact
+            # root with user:password in the URI).
+            logger.info("Configured %s from provider", env_var)
 
     return configured
+
+
+# ``scheme://user:password@`` - the password part of a URI's userinfo.
+_URI_PASSWORD = re.compile(r"(?P<prefix>[A-Za-z][A-Za-z0-9+.\-]*://[^/?#@:\s]*):[^/?#@\s]*@")
+
+
+def redact_uri_passwords(value: str) -> str:
+    """Mask the password in every ``scheme://user:password@`` occurrence in a string.
+
+    Parameters:
+        value: A single URI, or free text such as command-line options that may contain URIs.
+
+    Returns:
+        The same text with each userinfo password replaced by ``********``.
+    """
+    return _URI_PASSWORD.sub(r"\g<prefix>:********@", value)
 
 
 def get_mlflow_config_summary() -> dict[str, str]:
@@ -124,5 +140,7 @@ def get_mlflow_config_summary() -> dict[str, str]:
             if SECRET_CLASSIFICATION.get(config_key) in (SecretLevel.SECRET, SecretLevel.SENSITIVE):
                 summary[env_var] = "********"
             else:
-                summary[env_var] = value
+                # Unclassified values (artifact roots, server options) can still embed
+                # credentials in a URI, e.g. an FTP artifact root.
+                summary[env_var] = redact_uri_passwords(value)
     return summary
