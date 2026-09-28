@@ -39,7 +39,7 @@ These pages appear when `OIDC_GEN_AI_GATEWAY_ENABLED=true` (default):
 | Page | Path | Description |
 |------|------|-------------|
 | Users | `/users` | List all users. Click a user to view/edit their experiment, model, prompt, and gateway permissions. Admins see lifecycle state and can deactivate/reactivate (see [User and group lifecycle](#user-and-group-lifecycle)) |
-| Groups | `/groups` | List all groups. Click a group to view/edit permissions for experiments, models, prompts, and gateways. Admins see member count and directory source |
+| Groups | `/groups` | List all groups. Click a group to view/edit permissions for experiments, models, prompts, and gateways. Admins see member count and directory source, and can create a group by name up front (see below) |
 | Service Accounts | `/service-accounts` | Manage service accounts and their permissions |
 
 ### Workspaces
@@ -119,6 +119,13 @@ Provisioning](scim#admin-api-for-lifecycle-state) for the API this UI calls.
 **Groups** (`/groups`): each row shows a **Members** count and a **Source** badge (SCIM when the
 group carries a directory `external_id`, Manual otherwise). Groups have no deactivate action —
 membership and permissions are managed the same way regardless of source.
+
+A group otherwise exists only after one of its members has signed in, which blocks granting it a
+permission ahead of time. The **+ Create group** button opens a dialog for a name and creates the
+group immediately (issues #64, #201, #63) — click **Manage permissions** on the new row afterwards
+to grant it access. The action is admin-only and idempotent: creating a name that already exists
+(including one a directory already owns) succeeds without changing anything, so there is no way
+to accidentally take over a SCIM-managed group's ownership from here.
 
 ## SCIM Page
 

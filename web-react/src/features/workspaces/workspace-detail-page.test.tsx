@@ -44,7 +44,7 @@ const mockUseWorkspaceGroups: Mock<
   }
 > = vi.fn();
 
-const mockRequest = vi.fn();
+const mockRequest = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 
 let mockParams: Record<string, string> = { workspaceName: "test-workspace" };
 

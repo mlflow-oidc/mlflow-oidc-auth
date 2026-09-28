@@ -74,6 +74,11 @@ from .oidc_field_extraction import (
 from .group_detection import (
     call_group_detection_plugin,
 )
+from .group_name import (
+    MAX_GROUP_NAME_LENGTH,
+    GROUP_NAME_RESERVED_CHARS,
+    validate_group_name_chars,
+)
 
 # Export everything for backward compatibility
 __all__ = [
@@ -130,4 +135,8 @@ __all__ = [
     "extract_display_name",
     # Group detection plugins
     "call_group_detection_plugin",
+    # Group name validation
+    "MAX_GROUP_NAME_LENGTH",
+    "GROUP_NAME_RESERVED_CHARS",
+    "validate_group_name_chars",
 ]

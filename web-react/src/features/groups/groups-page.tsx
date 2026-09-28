@@ -1,14 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
+import { Button } from "../../shared/components/button";
 import { useSearch } from "../../core/hooks/use-search";
 import { useAllGroups } from "../../core/hooks/use-all-groups";
 import { useAllGroupDetails } from "../../core/hooks/use-all-group-details";
 import { useUser } from "../../core/hooks/use-user";
 import { RowActionButton } from "../../shared/components/row-action-button";
 import { LifecycleBadge } from "../../shared/components/lifecycle-badge";
+import { CreateGroupModal } from "./components/create-group-modal";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { GroupDetails } from "../../shared/types/entity";
 
@@ -114,6 +116,8 @@ function AdminGroupsView() {
 
   const { groups, isLoading, error, refresh } = useAllGroupDetails();
 
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
   const filteredGroups = useMemo(
     () =>
       groups.filter((group) =>
@@ -169,7 +173,7 @@ function AdminGroupsView() {
 
       {!isLoading && !error && (
         <>
-          <div className="mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2">
             <SearchInput
               value={searchTerm}
               onInputChange={handleInputChange}
@@ -177,6 +181,13 @@ function AdminGroupsView() {
               onClear={handleClearSearch}
               placeholder="Search groups..."
             />
+            <Button
+              variant="secondary"
+              onClick={() => setIsCreateModalOpen(true)}
+              title="Create a group without waiting for a member to sign in"
+            >
+              + Create group
+            </Button>
           </div>
 
           <EntityListTable
@@ -185,6 +196,17 @@ function AdminGroupsView() {
             columns={columns}
           />
         </>
+      )}
+
+      {isCreateModalOpen && (
+        <CreateGroupModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreated={() => {
+            setIsCreateModalOpen(false);
+            refresh();
+          }}
+        />
       )}
     </PageContainer>
   );

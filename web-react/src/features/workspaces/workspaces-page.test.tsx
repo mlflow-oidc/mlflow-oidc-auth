@@ -116,14 +116,15 @@ vi.mock("../../shared/components/entity-list-table", () => ({
   }: {
     data: WorkspaceListItem[];
     columns: {
+      header: string;
       render: (item: WorkspaceListItem) => React.ReactNode;
     }[];
   }) => (
     <div data-testid="entity-list">
       {data.map((item) => (
         <div key={item.name}>
-          {columns.map((col, i) => (
-            <span key={i}>{col.render(item)}</span>
+          {columns.map((col) => (
+            <span key={col.header}>{col.render(item)}</span>
           ))}
         </div>
       ))}
