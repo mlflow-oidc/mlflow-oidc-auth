@@ -70,7 +70,6 @@ describe("Sidebar", () => {
             groups: [],
             id: 1,
             is_service_account: false,
-            password_expiration: null,
           }}
           isOpen={true}
           toggleSidebar={() => {}}
@@ -94,7 +93,6 @@ describe("Sidebar", () => {
             groups: [],
             id: 2,
             is_service_account: false,
-            password_expiration: null,
           }}
           isOpen={true}
           toggleSidebar={() => {}}

@@ -14,7 +14,6 @@ describe("UserDetailsCard", () => {
       { id: 1, group_name: "group1" },
       { id: 2, group_name: "group2" },
     ],
-    password_expiration: null,
   };
 
   it("renders user details and groups", () => {
@@ -34,7 +33,6 @@ describe("UserDetailsCard", () => {
       is_admin: false,
       is_service_account: false,
       groups: [],
-      password_expiration: null,
     };
     const { getByText, queryByText } = render(
       <UserDetailsCard currentUser={minimalUser} />,

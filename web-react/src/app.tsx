@@ -305,6 +305,14 @@ export default function App() {
           </ProtectedLayoutRoute>
         }
       />
+      <Route
+        path="/service-accounts/:username/tokens"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <ServiceAccountPermissionPage type="tokens" />
+          </ProtectedLayoutRoute>
+        }
+      />
 
       <Route
         path="/workspaces"
@@ -392,6 +400,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <UserPermissionsPage type="ai-models" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/tokens"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <UserPermissionsPage type="tokens" />
           </ProtectedLayoutRoute>
         }
       />

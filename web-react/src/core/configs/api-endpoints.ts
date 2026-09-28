@@ -14,10 +14,11 @@ export const STATIC_API_ENDPOINTS = {
   ALL_WORKSPACES: "/api/3.0/mlflow/workspaces",
 
   // User management
-  CREATE_ACCESS_TOKEN: "/api/2.0/mlflow/users/access-token",
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
   USERS_RESOURCE: "/api/2.0/mlflow/users",
   USERS_DETAILS: "/api/2.0/mlflow/users/details",
+  // The signed-in user's own API tokens
+  CURRENT_USER_TOKENS: "/api/2.0/mlflow/users/tokens",
 
   // Trash management
   TRASH_EXPERIMENTS: "/oidc/trash/experiments",
@@ -44,6 +45,13 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions`,
   USER_SESSION: (userName: string, sessionPk: number | string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions/${encodeURIComponent(String(sessionPk))}`,
+  CURRENT_USER_TOKEN: (tokenId: number | string) =>
+    `/api/2.0/mlflow/users/tokens/${encodeURIComponent(String(tokenId))}`,
+  // Admin: another user's (or service account's) API tokens
+  USER_TOKENS: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/tokens`,
+  USER_TOKEN: (userName: string, tokenId: number | string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/tokens/${encodeURIComponent(String(tokenId))}`,
   USER_EXPERIMENT_PERMISSIONS: (userName: string) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/experiments`,
   USER_EXPERIMENT_PERMISSION: (userName: string, experimentId: string) =>

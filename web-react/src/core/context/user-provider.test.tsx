@@ -16,7 +16,6 @@ describe("UserProvider", () => {
         groups: [],
         id: 1,
         is_service_account: false,
-        password_expiration: null,
       } as CurrentUser,
       isLoading: false,
       error: null,

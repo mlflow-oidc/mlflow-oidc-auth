@@ -80,7 +80,6 @@ vi.mock("../../core/hooks/use-user", () => ({
       groups: mockUserGroups,
       id: 1,
       is_service_account: false,
-      password_expiration: null,
     },
     isLoading: false,
     error: null,
