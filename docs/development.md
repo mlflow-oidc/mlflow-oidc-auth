@@ -151,7 +151,7 @@ mlflow-oidc-auth/
 pytest mlflow_oidc_auth/tests
 
 # Run with coverage
-coverage run -m pytest -s -m "not integration" mlflow_oidc_auth/tests
+coverage run -m pytest -m "not integration" mlflow_oidc_auth/tests
 coverage xml
 
 # Run a specific test file

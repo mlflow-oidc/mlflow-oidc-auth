@@ -1,15 +1,20 @@
 name: Unit tests
 on:
   pull_request:
+    # Not "edited": a title or description change does not change the code under test.
     types:
       - opened
-      - edited
       - reopened
       - synchronize
   push:
     branches:
       - main
   workflow_dispatch:
+
+# A newer push to the same PR supersedes the running suite. Runs on main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Nothing here needs more than a read of the repository: no job uses a token, a secret, or
 # writes back to the PR.
