@@ -31,7 +31,8 @@ dependencies = [
   "flask<4",
   "gunicorn<24; platform_system != 'Windows'",
   "alembic<2,!=1.18.4",
-  "authlib<2",
+  # 1.8 is the first release whose httpx integration works on httpx2 alone (httpx is no longer a dependency).
+  "authlib>=1.8,<2",
   "joserfc>=1.7,<2",
   "uvicorn>=0.41.0",
   "fastapi>=0.132.0",
@@ -144,10 +145,12 @@ filterwarnings = [
   # SAML-Toolkits/python3-saml#420, not yet released.
   "ignore:datetime.datetime.utcnow\\(\\) is deprecated:DeprecationWarning:onelogin",
   "ignore:datetime.datetime.utcfromtimestamp\\(\\) is deprecated:DeprecationWarning:onelogin",
-  # MLflow's own tracking store uses the deprecated noload loader strategy.
-  "ignore:The ``noload`` loader strategy is deprecated:DeprecationWarning",
+  # MLflow's own tracking store uses the deprecated noload loader strategy. Scoped to MLflow's
+  # modules ("mlflow\\." — a bare "mlflow" would also match mlflow_oidc_auth), so a noload
+  # reintroduced in this package still fails.
+  "ignore:The ``noload`` loader strategy is deprecated:DeprecationWarning:mlflow\\.",
   # MLflow's fastapi_app imports starlette.middleware.wsgi (mlflow/mlflow#24074).
-  "ignore:starlette.middleware.wsgi is deprecated:UserWarning:mlflow",
+  "ignore:starlette.middleware.wsgi is deprecated:UserWarning:mlflow\\.",
 ]
 markers = [
   "integration: end-to-end tests that require a running server",
