@@ -5,6 +5,7 @@ import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 import { LoadingSpinner } from "./shared/components/loading-spinner";
 import MainLayout from "./core/components/main-layout";
 import ForbiddenPage from "./features/forbidden/forbidden-page";
+import { useDocumentTitle } from "./core/hooks/use-document-title";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const AiEndpointsPage = React.lazy(
@@ -84,6 +85,8 @@ const ProtectedLayoutRoute = ({
 );
 
 export default function App() {
+  useDocumentTitle();
+
   return (
     <Routes>
       <Route
