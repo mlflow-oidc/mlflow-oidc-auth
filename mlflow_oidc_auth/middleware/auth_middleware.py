@@ -11,6 +11,7 @@ import asyncio
 import base64
 import threading
 import time
+from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
 
 from cachetools import TTLCache
@@ -20,7 +21,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
+from mlflow_oidc_auth.entities.auth_context import (
+    AUTH_CONTEXT_KEY,
+    AUTH_METHOD_BASIC,
+    AUTH_METHOD_BEARER,
+    AUTH_METHOD_KUBERNETES,
+    AUTH_METHOD_SESSION,
+    AuthContext,
+)
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.routers._prefix import API_PATH_PREFIXES
@@ -46,6 +54,23 @@ _BASIC_AUTH_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlf
 def _authenticate_basic_auth_sync(username: str, password: str) -> bool:
     """Resolve the lazy store and verify one basic-auth credential in a worker thread."""
     return store.authenticate_user(username, password)
+
+
+#: Set while authenticating when a bearer token was a Kubernetes service-account token. Such a
+#: token is a workload's credential, not a person signing in, so it is labelled apart from an IdP
+#: token and may not issue access tokens (issue #189).
+_KUBERNETES_BEARER: ContextVar[bool] = ContextVar("mlflow_oidc_auth_kubernetes_bearer", default=False)
+
+
+def _auth_method(request: Request, kubernetes_bearer: bool = False) -> str:
+    """The credential :meth:`AuthMiddleware._authenticate_user` tried, in the order it tries them."""
+    auth_header = request.headers.get("authorization") or ""
+    # Must stay in step with the scheme checks in ``_authenticate_user``.
+    if auth_header.startswith("Basic "):
+        return AUTH_METHOD_BASIC
+    if auth_header.startswith("Bearer "):
+        return AUTH_METHOD_KUBERNETES if kubernetes_bearer else AUTH_METHOD_BEARER
+    return AUTH_METHOD_SESSION
 
 
 # Why an authenticated-looking request was turned away. Reported separately because a deleted
@@ -393,6 +418,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # identity is derived here rather than from OIDC_USERNAME_FIELD: a global field
                 # list that had to include ``sub`` to make this work would also change how every
                 # other provider's tokens are named.
+                _KUBERNETES_BEARER.set(True)
                 return self._authenticate_service_account(token, payload, provider)
 
             # Extract username from configured fields. extract_username guarantees a
@@ -661,7 +687,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Attempt authentication
-        is_authenticated, username, error_msg = await self._authenticate_user(request)
+        kubernetes_marker = _KUBERNETES_BEARER.set(False)
+        try:
+            is_authenticated, username, error_msg = await self._authenticate_user(request)
+            kubernetes_bearer = _KUBERNETES_BEARER.get()
+        finally:
+            _KUBERNETES_BEARER.reset(kubernetes_marker)
 
         if is_authenticated and username:
             resolved = getattr(request.state, "resolved_session", None)
@@ -692,6 +723,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Set user context in request state for downstream middleware/handlers
             request.state.username = username
             request.state.is_admin = is_admin
+            # Which credential authenticated this request. Token issuance refuses a request that
+            # authenticated with an access token (issue #189); see ``require_interactive_login``.
+            request.state.auth_method = _auth_method(request, kubernetes_bearer=kubernetes_bearer)
 
             # ROBUST: Store user info in ASGI scope for WSGI compatibility
             # This ensures Flask RBAC middleware can access user information reliably

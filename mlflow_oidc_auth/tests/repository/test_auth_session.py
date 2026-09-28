@@ -15,7 +15,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from mlflow.exceptions import MlflowException
 
-TOKEN = "session-token"  # not a credential: only ever seeded into a tmp_path database
 # An opaque stand-in for ciphertext. The repository never interprets the column.
 BLOB = "opaque-encrypted-blob"
 # The refresh-guard tests also run on PostgreSQL, where the row lock is real, when this is set.
@@ -33,8 +32,8 @@ def store(tmp_path):
     s = SqlAlchemyStore()
     s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
     # A second admin, so the last-active-admin invariant (#311) never masks a failure here.
-    s.create_user("keeper@example.com", TOKEN, "Keeper", is_admin=True)
-    s.create_user("alice@example.com", TOKEN, "Alice")
+    s.create_user("keeper@example.com", "Keeper", is_admin=True)
+    s.create_user("alice@example.com", "Alice")
     yield s
     s.engine.dispose()
 
@@ -309,8 +308,8 @@ def guard_store(request, tmp_path):
     s.init_db(uri)
     if request.param == "sqlite-row-lock-path":
         s.auth_session_repo._row_locks = True
-    s.create_user("keeper@example.com", TOKEN, "Keeper", is_admin=True)
-    s.create_user("alice@example.com", TOKEN, "Alice")
+    s.create_user("keeper@example.com", "Keeper", is_admin=True)
+    s.create_user("alice@example.com", "Alice")
     yield s
     s.engine.dispose()
 

@@ -259,8 +259,8 @@ class TestExternalIdUniqueness:
         with engine.begin() as conn:
             for name in ["u1@example.com", "u2@example.com"]:
                 conn.execute(
-                    text("INSERT INTO users (username, display_name, password_hash, active, managed_by) VALUES (:u, :u, :h, :a, 'manual')"),
-                    {"u": name, "h": "not-a-real-hash", "a": True},
+                    text("INSERT INTO users (username, display_name, active, managed_by) VALUES (:u, :u, :a, 'manual')"),
+                    {"u": name, "a": True},
                 )
 
         with engine.connect() as conn:
@@ -275,20 +275,19 @@ class TestExternalIdUniqueness:
         with engine.begin() as conn:
             conn.execute(
                 text(
-                    "INSERT INTO users (username, display_name, password_hash, active, managed_by, external_id) "
-                    "VALUES ('e1@example.com', 'e1', :h, :a, 'manual', 'shared-id')"
+                    "INSERT INTO users (username, display_name, active, managed_by, external_id) " "VALUES ('e1@example.com', 'e1', :a, 'manual', 'shared-id')"
                 ),
-                {"h": "not-a-real-hash", "a": True},
+                {"a": True},
             )
 
         with pytest.raises(IntegrityError):
             with engine.begin() as conn:
                 conn.execute(
                     text(
-                        "INSERT INTO users (username, display_name, password_hash, active, managed_by, external_id) "
-                        "VALUES ('e2@example.com', 'e2', :h, :a, 'manual', 'shared-id')"
+                        "INSERT INTO users (username, display_name, active, managed_by, external_id) "
+                        "VALUES ('e2@example.com', 'e2', :a, 'manual', 'shared-id')"
                     ),
-                    {"h": "not-a-real-hash", "a": True},
+                    {"a": True},
                 )
 
 

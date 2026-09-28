@@ -85,11 +85,11 @@ def permission_store(tmp_path, monkeypatch):
     from mlflow_oidc_auth.utils.permissions import flush_permission_cache
 
     s = install_permission_store(tmp_path, monkeypatch, _FakeTrackingStore())
-    s.create_user(INACTIVE, "pw", INACTIVE)
+    s.create_user(INACTIVE, INACTIVE)
     s.update_user(INACTIVE, active=False)
-    s.create_user(ROBOT, "pw", ROBOT, is_service_account=True)
-    s.create_user(EDITOR2, "pw", EDITOR2)
-    s.create_user(READER2, "pw", READER2)
+    s.create_user(ROBOT, ROBOT, is_service_account=True)
+    s.create_user(EDITOR2, EDITOR2)
+    s.create_user(READER2, READER2)
     s.create_experiment_permission(VICTIM, EDITOR2, "EDIT")
     s.create_experiment_permission(VICTIM, READER2, "READ")
     flush_permission_cache()

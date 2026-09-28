@@ -20,8 +20,6 @@ from mlflow_oidc_auth.routers._prefix import USERS_ROUTER_PREFIX
 
 OWNERSHIP_ROUTE = f"{USERS_ROUTER_PREFIX}/ownership"
 
-PASSWORD = "ownership-token"  # not a credential: only ever seeded into a tmp_path database
-
 
 class TestTheEnforcementModes:
     def test_it_defaults_to_report(self):
@@ -102,8 +100,8 @@ class TestTheGuardOnTheWritePath:
 
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-        s.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
-        s.create_user("scim-owned@example.com", PASSWORD, "Directory User")
+        s.create_user("keeper@example.com", "Keeper", is_admin=True)
+        s.create_user("scim-owned@example.com", "Directory User")
         s.user_repo.update("scim-owned@example.com", managed_by="scim")
         yield s
         s.engine.dispose()
@@ -172,8 +170,8 @@ class TestLockout:
 
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-        s.create_user("admin@example.com", PASSWORD, "Admin", is_admin=True)
-        s.create_user("second-admin@example.com", PASSWORD, "Second", is_admin=True)
+        s.create_user("admin@example.com", "Admin", is_admin=True)
+        s.create_user("second-admin@example.com", "Second", is_admin=True)
         yield s
         s.engine.dispose()
 
@@ -212,9 +210,9 @@ class TestReconcileOwnership:
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
         for name in ("a@example.com", "b@example.com"):
-            s.create_user(name, PASSWORD, name)
+            s.create_user(name, name)
             s.user_repo.update(name, managed_by="scim")
-        s.create_user("manual@example.com", PASSWORD, "Manual")
+        s.create_user("manual@example.com", "Manual")
         yield s
         s.engine.dispose()
 
@@ -300,8 +298,8 @@ class TestTheOwningSourceIsNotLockedOut:
 
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-        s.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
-        s.create_user("scim-owned@example.com", PASSWORD, "Directory User")
+        s.create_user("keeper@example.com", "Keeper", is_admin=True)
+        s.create_user("scim-owned@example.com", "Directory User")
         s.user_repo.update("scim-owned@example.com", managed_by="scim")
         yield s
         s.engine.dispose()
@@ -384,7 +382,7 @@ class TestTheReconcileCommandRefusesFootguns:
 
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-        s.create_user("a@example.com", PASSWORD, "A")
+        s.create_user("a@example.com", "A")
         s.user_repo.update("a@example.com", managed_by="scim")
         yield s
         s.engine.dispose()
@@ -461,8 +459,8 @@ class TestRepairFromTheAdminApi:
 
         store = SqlAlchemyStore()
         store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
-        store.create_user("locked@example.com", PASSWORD, "Locked Out", is_admin=True)
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
+        store.create_user("locked@example.com", "Locked Out", is_admin=True)
         store.user_repo.update("locked@example.com", managed_by="scim")
 
         monkeypatch.setattr(users_router, "store", store)
@@ -573,8 +571,8 @@ class TestTheDirectoryAndHandMadeAdmins:
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
         try:
-            s.create_user("root@example.com", PASSWORD, "Root", is_admin=True)
-            s.create_user("root2@example.com", PASSWORD, "Root 2", is_admin=True)
+            s.create_user("root@example.com", "Root", is_admin=True)
+            s.create_user("root2@example.com", "Root 2", is_admin=True)
             monkeypatch.setattr(user_repo.config, "MANAGED_BY_ENFORCEMENT", Enforcement.ENFORCE)
             with pytest.raises(MlflowException, match="hand-made administrator"):
                 s.update_user("root@example.com", active=False, written_by="scim")
@@ -603,8 +601,8 @@ class TestLastAdminLock:
 
         s = SqlAlchemyStore()
         s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-        s.create_user("a@example.com", PASSWORD, "A", is_admin=True)
-        s.create_user("b@example.com", PASSWORD, "B", is_admin=True)
+        s.create_user("a@example.com", "A", is_admin=True)
+        s.create_user("b@example.com", "B", is_admin=True)
         yield s
         s.engine.dispose()
 

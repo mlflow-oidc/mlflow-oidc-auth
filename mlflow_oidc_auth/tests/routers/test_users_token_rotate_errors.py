@@ -8,8 +8,8 @@ Two paths returned an opaque 500 for conditions that have a correct status code:
   returning ``None``, so the 404 branch was unreachable.
 
 The first mattered beyond tidiness: an operator who hits an unexplained 500 naturally retries
-with the ``expiration`` field dropped, and since #338 that issues a token which never expires.
-A wrong status code turned into an accidental permanent credential.
+with the ``expiration`` field dropped. Since #189 that issues a token expiring in a year rather
+than one that never expires, but a wrong status code is still the wrong answer.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -23,12 +23,21 @@ from mlflow_oidc_auth.models import CreateAccessTokenRequest
 from mlflow_oidc_auth.routers.users import create_access_token
 
 
-def _store(expiration=None):
+def _store():
+    from mlflow_oidc_auth.repository.user_token import UserTokenRecord
+
     store = MagicMock()
     user = MagicMock()
-    user.password_expiration = expiration
+    user.username = "admin@example.com"
     store.get_user_profile.return_value = user
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    record = UserTokenRecord(id=1, name="default", token_prefix="ab12cd34", created_at=now, created_by=None, expires_at=now, last_used_at=None)
+    store.replace_user_token.return_value = (record, "mlf_ab12cd34_secret", True)
     return store
+
+
+def _stored_expiration(store):
+    return store.replace_user_token.call_args.args[2]
 
 
 async def _rotate(store, expiration_str=None, username=None, is_admin=True):
@@ -65,7 +74,7 @@ class TestNaiveExpirationIsAccepted:
         result = await _rotate(store, expiration_str=expiration_str)
 
         assert result.status_code == 200
-        stored = store.update_user.call_args[1]["password_expiration"]
+        stored = _stored_expiration(store)
         assert stored is not None
         assert stored.tzinfo is not None, "expiration must be normalized to an aware datetime"
 
@@ -76,19 +85,21 @@ class TestNaiveExpirationIsAccepted:
 
         await _rotate(store, expiration_str=naive.isoformat())
 
-        stored = store.update_user.call_args[1]["password_expiration"]
+        stored = _stored_expiration(store)
         assert stored == naive.replace(tzinfo=timezone.utc)
 
     @pytest.mark.asyncio
     async def test_an_offset_is_still_respected(self):
-        """Normalizing the naive case must not trample an explicit offset."""
+        """Normalizing the naive case must not trample an explicit offset: the instant is kept,
+        expressed in UTC — the store keeps naive UTC, so an offset left on would be dropped there
+        and shift the expiry by up to 14 hours."""
         store = _store()
         aware = self._soon().astimezone(timezone(timedelta(hours=5))).replace(microsecond=0)
 
         await _rotate(store, expiration_str=aware.isoformat())
 
-        stored = store.update_user.call_args[1]["password_expiration"]
-        assert stored.utcoffset() == timedelta(hours=5)
+        stored = _stored_expiration(store)
+        assert stored.utcoffset() == timedelta(0)
         assert stored == aware
 
     @pytest.mark.asyncio
@@ -148,4 +159,4 @@ class TestUnknownUserIsNotFound:
         with pytest.raises(HTTPException):
             await _rotate(store, username="ghost@example.com")
 
-        store.update_user.assert_not_called()
+        store.replace_user_token.assert_not_called()

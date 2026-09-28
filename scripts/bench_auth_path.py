@@ -143,8 +143,11 @@ def _seed(store, n_users: int, n_groups: int, hash_method: Optional[str] = None)
     """Bulk-insert ``n_users`` users each belonging to ``n_groups`` groups.
 
     Uses Core inserts rather than the store API: seeding 500 users x 200 groups through
-    the ORM takes minutes and none of it is what we are measuring. The password hash is
-    computed once and reused, so the basic-auth scenario still verifies a real hash.
+    the ORM takes minutes and none of it is what we are measuring. Each user gets one
+    access token (issue #189) whose hash is computed once and reused, so the basic-auth
+    scenario still verifies a real hash. It is seeded as a prefix-less ``default`` token —
+    the row the migration writes for a pre-#189 secret — which is looked up by the same
+    single indexed statement as a prefixed one.
 
     ``hash_method`` defaults to the repository's ``TOKEN_HASH_METHOD`` so the seeded rows
     match what the plugin actually writes. Passing an older method (for example
@@ -157,8 +160,10 @@ def _seed(store, n_users: int, n_groups: int, hash_method: Optional[str] = None)
     from sqlalchemy import insert
     from werkzeug.security import generate_password_hash
 
-    from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
-    from mlflow_oidc_auth.repository.user import TOKEN_HASH_METHOD
+    from datetime import datetime, timedelta, timezone
+
+    from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup, SqlUserToken
+    from mlflow_oidc_auth.repository.user_token import TOKEN_HASH_METHOD
 
     pwhash = generate_password_hash(BENCH_PASSWORD, method=hash_method or TOKEN_HASH_METHOD)
     usernames = [f"bench{i}@example.com" for i in range(n_users)]
@@ -167,7 +172,16 @@ def _seed(store, n_users: int, n_groups: int, hash_method: Optional[str] = None)
     with store.engine.begin() as conn:
         conn.execute(
             insert(SqlUser),
-            [{"username": u, "display_name": u, "password_hash": pwhash, "is_admin": False, "is_service_account": False} for u in usernames],
+            [{"username": u, "display_name": u, "is_admin": False, "is_service_account": False} for u in usernames],
+        )
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        seeded_ids = [r[0] for r in conn.exec_driver_sql("SELECT id FROM users ORDER BY id").fetchall()]
+        conn.execute(
+            insert(SqlUserToken),
+            [
+                {"user_id": uid, "name": "default", "token_prefix": None, "token_hash": pwhash, "created_at": now, "expires_at": now + timedelta(days=30)}
+                for uid in seeded_ids
+            ],
         )
         if group_names:
             conn.execute(insert(SqlGroup), [{"group_name": g} for g in group_names])

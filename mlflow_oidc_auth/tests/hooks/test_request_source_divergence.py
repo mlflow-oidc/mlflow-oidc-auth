@@ -301,7 +301,7 @@ def test_attacker_cannot_authorize_with_a_query_string_while_mlflow_mutates_the_
     """
     from mlflow_oidc_auth.validators.experiment import validate_can_update_experiment
 
-    store.create_user("alice@example.com", "pw", "Alice")
+    store.create_user("alice@example.com", "Alice")
     store.create_experiment_permission("1", "alice@example.com", "MANAGE")
     store.create_experiment_permission("2", "alice@example.com", "READ")
 
@@ -530,7 +530,7 @@ def union_world(store, monkeypatch):
     The denial is explicit rather than absent, so the assertions cannot pass merely
     because DEFAULT_MLFLOW_PERMISSION happens to be restrictive.
     """
-    store.create_user(USER, "pw", "Alice")
+    store.create_user(USER, "Alice")
     for token, level in ((OWN, "MANAGE"), (OWN2, "MANAGE"), (VICTIM, "NO_PERMISSIONS")):
         store.create_experiment_permission(token, USER, level)
         store.create_registered_model_permission(token, USER, level)

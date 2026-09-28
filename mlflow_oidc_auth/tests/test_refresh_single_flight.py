@@ -28,7 +28,6 @@ import mlflow_oidc_auth.store as store_module
 from mlflow_oidc_auth.middleware import AuthMiddleware
 from mlflow_oidc_auth.session.token_vault import SessionTokens, get_token_vault
 
-PASSWORD = "single-flight-password"  # not a credential: only ever seeded into a tmp_path database
 USERNAME = "single-flight@example.com"
 PROTECTED = "/sf/protected"
 LOGIN = "/login/sf"
@@ -90,8 +89,8 @@ def store(tmp_path):
 
     s = SqlAlchemyStore()
     s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-    s.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
-    s.create_user(USERNAME, PASSWORD, "Single Flight")
+    s.create_user("keeper@example.com", "Keeper", is_admin=True)
+    s.create_user(USERNAME, "Single Flight")
     yield s
     s.engine.dispose()
 

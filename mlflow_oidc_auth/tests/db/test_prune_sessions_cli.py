@@ -13,8 +13,6 @@ from click.testing import CliRunner
 
 from mlflow_oidc_auth.db.cli import commands
 
-PASSWORD = "prune-password"  # not a credential: only ever seeded into a tmp_path database
-
 
 def _in(seconds: int) -> datetime:
     return datetime.now(timezone.utc) + timedelta(seconds=seconds)
@@ -27,7 +25,7 @@ def db(tmp_path):
     url = f"sqlite:///{tmp_path / 'auth.db'}"
     store = SqlAlchemyStore()
     store.init_db(url)
-    store.create_user("alice@example.com", PASSWORD, "Alice")
+    store.create_user("alice@example.com", "Alice")
     yield store, url
     store.engine.dispose()
 

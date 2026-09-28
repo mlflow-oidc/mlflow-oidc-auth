@@ -61,7 +61,7 @@ from mlflow_oidc_auth.models.responses import (
     StatusMessageResponse,
     StatusOnlyResponse,
 )
-from mlflow_oidc_auth.models.user import CreateAccessTokenRequest, CreateUserRequest
+from mlflow_oidc_auth.models.user import CreateAccessTokenRequest, CreateUserRequest, CreateUserTokenRequest
 from mlflow_oidc_auth.models.workspace import (
     WorkspaceGroupPermissionRequest,
     WorkspaceGroupPermissionResponse,
@@ -132,6 +132,7 @@ __all__ = [
     "ScorerRegexPermissionRecord",
     "ScorerRegexPermissionResponse",
     "CreateAccessTokenRequest",
+    "CreateUserTokenRequest",
     "CreateUserRequest",
     "WorkspaceUserPermissionRequest",
     "WorkspaceGroupPermissionRequest",

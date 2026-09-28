@@ -62,7 +62,7 @@ def permission_store(tmp_path, monkeypatch):
     monkeypatch.setattr("mlflow.server.handlers._tracking_store", _FakeTrackingStore())
 
     for user, level in ((READER, "READ"), (OUTSIDER, "NO_PERMISSIONS")):
-        s.create_user(user, "pw", user)
+        s.create_user(user, user)
         s.create_experiment_permission(EXPERIMENT_ID, user, level)
         s.create_registered_model_permission(MODEL_NAME, user, level)
 

@@ -32,7 +32,6 @@ import mlflow_oidc_auth.middleware.auth_middleware as auth_middleware_module
 import mlflow_oidc_auth.store as store_module
 from mlflow_oidc_auth.middleware import AuthAwareWSGIMiddleware, AuthMiddleware
 
-PASSWORD = "session-password"  # not a credential: only ever seeded into a tmp_path database
 LOGIN = "/login/probe"
 
 # The three surfaces. Paths are chosen to reach each one: /oidc/* is FastAPI, /api/* and
@@ -114,7 +113,7 @@ class TestSurfacesAreReachableWhileTheUserExists:
 
     @pytest.mark.parametrize("path", ALL_SURFACES)
     def test_a_live_user_reaches_every_surface(self, store, client, path):
-        store.create_user("live@example.com", PASSWORD, "Live")
+        store.create_user("live@example.com", "Live")
         client.get(LOGIN, params={"username": "live@example.com"})
 
         response = client.get(path)
@@ -127,8 +126,8 @@ class TestDeletedUserIsDeniedOnEverySurface:
 
     @pytest.mark.parametrize("path", ALL_SURFACES)
     def test_a_deleted_user_is_denied(self, store, client, path):
-        store.create_user("gone@example.com", PASSWORD, "Gone")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("gone@example.com", "Gone")
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         client.get(LOGIN, params={"username": "gone@example.com"})
         assert client.get(path).status_code == 200, "precondition: the surface is reachable first"
 
@@ -143,8 +142,8 @@ class TestDeletedUserIsDeniedOnEverySurface:
         would be exposed to a deleted user, and the fix would be one forgotten validator away
         from failing.
         """
-        store.create_user("gone@example.com", PASSWORD, "Gone")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("gone@example.com", "Gone")
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         client.get(LOGIN, params={"username": "gone@example.com"})
         store.delete_user("gone@example.com")
 
@@ -156,8 +155,8 @@ class TestDeletedUserIsDeniedOnEverySurface:
     def test_the_deleted_user_is_not_merely_downgraded(self, store, client):
         """The behaviour the issue described: authenticated, but non-admin. That would let a
         deleted account keep whatever access a non-admin has."""
-        store.create_user("gone@example.com", PASSWORD, "Gone", is_admin=True)
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("gone@example.com", "Gone", is_admin=True)
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         client.get(LOGIN, params={"username": "gone@example.com"})
         store.delete_user("gone@example.com")
 
@@ -174,13 +173,13 @@ class TestDeletedUserIsDeniedOnEverySurface:
         session that belonged to the deleted one. The session is now a row, deleted with its
         user, and the cookie names something that no longer exists.
         """
-        store.create_user("gone@example.com", PASSWORD, "Gone")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("gone@example.com", "Gone")
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         client.get(LOGIN, params={"username": "gone@example.com"})
         store.delete_user("gone@example.com")
         assert client.get(FASTAPI_ROUTE).status_code == 401
 
-        store.create_user("gone@example.com", PASSWORD, "Gone Again")
+        store.create_user("gone@example.com", "Gone Again")
 
         assert client.get(FASTAPI_ROUTE).status_code == 401
 
@@ -214,8 +213,8 @@ class TestDenialAuditIsThrottled:
         return events
 
     def test_repeated_denials_audit_once(self, store, client, monkeypatch):
-        store.create_user("gone@example.com", PASSWORD, "Gone")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("gone@example.com", "Gone")
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
 
         events = self._deny_repeatedly(store, client, monkeypatch, "gone@example.com", times=25)
 
@@ -223,8 +222,8 @@ class TestDenialAuditIsThrottled:
 
     def test_every_request_is_still_denied(self, store, client, monkeypatch):
         """Throttling the record must never throttle the decision."""
-        store.create_user("gone@example.com", PASSWORD, "Gone")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("gone@example.com", "Gone")
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         self._deny_repeatedly(store, client, monkeypatch, "gone@example.com", times=5)
 
         assert client.get(FASTAPI_ROUTE).status_code == 401
@@ -237,8 +236,8 @@ class TestDenialAuditIsThrottled:
             lambda event, **kwargs: events.append((event, kwargs)),
         )
         for name in ("a@example.com", "b@example.com"):
-            store.create_user(name, PASSWORD, name)
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+            store.create_user(name, name)
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
 
         from sqlalchemy import text
 
@@ -260,8 +259,8 @@ class TestDenialAuditIsThrottled:
             "mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event",
             lambda event, **kwargs: events.append(event),
         )
-        store.create_user("x@example.com", PASSWORD, "X")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("x@example.com", "X")
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         client.get(LOGIN, params={"username": "x@example.com"})
 
         with store.engine.begin() as conn:
@@ -285,8 +284,8 @@ class TestAdminStatusShim:
         from sqlalchemy import text
 
         middleware = AuthMiddleware.__new__(AuthMiddleware)
-        store.create_user("adm@example.com", PASSWORD, "Adm", is_admin=True)
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("adm@example.com", "Adm", is_admin=True)
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         assert middleware._get_user_admin_status("adm@example.com") is True
 
         with store.engine.begin() as conn:
@@ -296,8 +295,8 @@ class TestAdminStatusShim:
 
     def test_a_deleted_admin_is_not_reported_as_admin(self, store):
         middleware = AuthMiddleware.__new__(AuthMiddleware)
-        store.create_user("adm@example.com", PASSWORD, "Adm", is_admin=True)
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("adm@example.com", "Adm", is_admin=True)
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
 
         store.delete_user("adm@example.com")
 
@@ -324,8 +323,8 @@ class TestDenialIsReportedAsDeletion:
             "mlflow_oidc_auth.audit.emit_audit_event",
             lambda event, **kwargs: events.append((event, kwargs)),
         )
-        store.create_user("gone@example.com", PASSWORD, "Gone")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("gone@example.com", "Gone")
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         client.get(LOGIN, params={"username": "gone@example.com"})
 
         store.delete_user("gone@example.com")
@@ -345,7 +344,7 @@ class TestDenialIsReportedAsDeletion:
         )
         from sqlalchemy import text
 
-        store.create_user("off@example.com", PASSWORD, "Off")
+        store.create_user("off@example.com", "Off")
         client.get(LOGIN, params={"username": "off@example.com"})
         with store.engine.begin() as conn:
             conn.execute(text("UPDATE users SET active = 0 WHERE username = 'off@example.com'"))
@@ -366,7 +365,7 @@ class TestDenialIsReportedAsDeletion:
             "mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event",
             lambda event, **kwargs: events.append((event, kwargs)),
         )
-        store.create_user("off@example.com", PASSWORD, "Off")
+        store.create_user("off@example.com", "Off")
         client.get(LOGIN, params={"username": "off@example.com"})
         with store.engine.begin() as conn:
             conn.execute(text("UPDATE users SET active = 0 WHERE username = 'off@example.com'"))
@@ -382,8 +381,8 @@ class TestDenialIsReportedAsDeletion:
         """
         import logging
 
-        store.create_user("gone@example.com", PASSWORD, "Gone")
-        store.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
+        store.create_user("gone@example.com", "Gone")
+        store.create_user("keeper@example.com", "Keeper", is_admin=True)
         client.get(LOGIN, params={"username": "gone@example.com"})
         store.delete_user("gone@example.com")
 

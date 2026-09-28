@@ -81,8 +81,6 @@ def mock_store():
     admin_user = User(
         id_=1,
         username="admin@example.com",
-        password_hash="admin_token_hash",
-        password_expiration=None,
         is_admin=True,
         is_service_account=False,
         display_name="Admin User",
@@ -91,8 +89,6 @@ def mock_store():
     regular_user = User(
         id_=2,
         username="user@example.com",
-        password_hash="user_token_hash",
-        password_expiration=None,
         is_admin=False,
         is_service_account=False,
         display_name="Regular User",
@@ -101,8 +97,6 @@ def mock_store():
     service_user = User(
         id_=3,
         username="service@example.com",
-        password_hash="service_token_hash",
-        password_expiration=None,
         is_admin=False,
         is_service_account=True,
         display_name="Service Account",

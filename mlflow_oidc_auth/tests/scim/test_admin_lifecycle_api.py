@@ -6,6 +6,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.ownership import Enforcement
 
 from .conftest import ADMIN, LOGIN, PROTECTED, USER_PASSWORD, basic, user_body
+from mlflow_oidc_auth.tests.token_helpers import set_known_token
 
 USERS_API = "/api/2.0/mlflow/users"
 GROUPS_API = "/api/2.0/mlflow/permissions/groups"
@@ -14,13 +15,14 @@ BOB = "bob@example.com"
 
 @pytest.fixture
 def bob(bound_store):
-    bound_store.create_user(BOB, USER_PASSWORD, "Bob")
+    bound_store.create_user(BOB, "Bob")
+    set_known_token(bound_store, BOB, USER_PASSWORD)
     return basic(BOB, USER_PASSWORD)
 
 
 class TestUserDetails:
     def test_shape(self, client, admin, bob, bound_store):
-        bound_store.create_user("svc-bot", "unused-secret", "Bot", is_service_account=True)
+        bound_store.create_user("svc-bot", "Bot", is_service_account=True)
         response = client.get(f"{USERS_API}/details", headers=admin)
         assert response.status_code == 200
         rows = {row["username"]: row for row in response.json()}
@@ -36,7 +38,7 @@ class TestUserDetails:
         assert rows["svc-bot"]["is_service_account"] is True
 
     def test_service_filter(self, client, admin, bob, bound_store):
-        bound_store.create_user("svc-bot", "unused-secret", "Bot", is_service_account=True)
+        bound_store.create_user("svc-bot", "Bot", is_service_account=True)
         assert [r["username"] for r in client.get(f"{USERS_API}/details", headers=admin, params={"service": True}).json()] == ["svc-bot"]
         assert "svc-bot" not in [r["username"] for r in client.get(f"{USERS_API}/details", headers=admin, params={"service": False}).json()]
 
@@ -66,7 +68,7 @@ class TestGroupDetails:
 
 class TestSetActive:
     def test_non_admin_is_forbidden(self, client, admin, bob, bound_store):
-        bound_store.create_user("carol@example.com", "unused-secret", "Carol")
+        bound_store.create_user("carol@example.com", "Carol")
         response = client.patch(f"{USERS_API}/carol@example.com/active", headers=bob, json={"active": False})
         assert response.status_code == 403
         assert bound_store.get_user_detail("carol@example.com")["active"] is True
@@ -135,7 +137,7 @@ class TestAdminDeleteReportsOrphans:
         assert [(e["resource_type"], e["resource_id"], e["detail"]["source"]) for e in orphaned] == [("experiment", "7", "admin")]
 
     def test_refused_last_admin_delete_hands_nothing_over(self, client, admin, bound_store, monkeypatch, audit_events):
-        bound_store.create_user("steward@example.com", "unused-secret", "Steward")
+        bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
         bound_store.create_experiment_permission("9", ADMIN, "MANAGE")
 

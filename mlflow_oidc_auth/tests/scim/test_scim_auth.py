@@ -9,6 +9,8 @@ from sqlalchemy import text
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.repository.scim_token import parse_prefix
 
+from mlflow_oidc_auth.tests.token_helpers import set_known_token
+
 from .conftest import ADMIN, LOGIN, PROTECTED, USER_PASSWORD, basic
 
 SPC = "/scim/v2/ServiceProviderConfig"
@@ -114,7 +116,7 @@ class TestUserCredentialsDoNotAuthenticateScim:
         assert_scim_401(client.post(USERS, json={"userName": "x@example.com"}))
 
     def test_user_token_as_bearer_is_refused(self, client, bound_store):
-        bound_store.create_user("u@example.com", USER_PASSWORD, "U")
+        bound_store.create_user("u@example.com", "U")
         assert_scim_401(client.get(USERS, headers=bearer(USER_PASSWORD)))
 
 
@@ -197,7 +199,8 @@ class TestRotation:
 
 class TestTokenAdminApi:
     def test_non_admin_is_forbidden(self, client, bound_store, admin):
-        bound_store.create_user("u@example.com", USER_PASSWORD, "U")
+        bound_store.create_user("u@example.com", "U")
+        set_known_token(bound_store, "u@example.com", USER_PASSWORD)
         user = basic("u@example.com", USER_PASSWORD)
         assert client.get(TOKENS, headers=user).status_code == 403
         response = client.post(TOKENS, headers=user, json={"name": "x"})

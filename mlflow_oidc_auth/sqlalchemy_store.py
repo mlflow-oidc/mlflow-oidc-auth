@@ -62,6 +62,7 @@ from mlflow_oidc_auth.repository import (
     GatewayModelDefinitionGroupPermissionRepository,
     GatewayModelDefinitionPermissionGroupRegexRepository,
     UserRepository,
+    UserTokenRepository,
     UserIdentityRepository,
     AuthSessionRepository,
     AuthStateRepository,
@@ -86,6 +87,7 @@ class SqlAlchemyStore:
         SessionMaker = sessionmaker(bind=self.engine)
         self.ManagedSessionMaker = _get_managed_session_maker(SessionMaker, self.db_type)
         self.user_repo = UserRepository(self.ManagedSessionMaker)
+        self.user_token_repo = UserTokenRepository(self.ManagedSessionMaker)
         self.user_identity_repo = UserIdentityRepository(self.ManagedSessionMaker)
         self.auth_session_repo = AuthSessionRepository(self.ManagedSessionMaker, row_locks=self.db_type != "sqlite")
         self.auth_state_repo = AuthStateRepository(self.ManagedSessionMaker)
@@ -320,12 +322,32 @@ class SqlAlchemyStore:
         return self.scorer_group_regex_repo.revoke(id=id, group_name=group_name)
 
     def authenticate_user(self, username: str, password: str) -> bool:
-        return self.user_repo.authenticate(username, password)
+        """Whether ``password`` is a live access token of ``username`` (issue #189)."""
+        return self.user_token_repo.authenticate(username, password)
+
+    def create_user_token(self, username: str, name: str, expires_at: datetime, created_by: Optional[str]):
+        """Issue a named access token. Returns ``(record, plaintext)``; the plaintext is not stored."""
+        return self.user_token_repo.create(username, name, expires_at, created_by)
+
+    def replace_user_token(self, username: str, name: str, expires_at: datetime, created_by: Optional[str]):
+        """Issue a token named ``name``, replacing any of that name. Returns ``(record, plaintext, replaced)``."""
+        return self.user_token_repo.replace(username, name, expires_at, created_by)
+
+    def list_user_tokens(self, username: str):
+        """Every access token of ``username``, expired ones included. Records carry no hash."""
+        return self.user_token_repo.list(username)
+
+    def delete_user_token(self, username: str, token_id: int):
+        """Delete one access token of ``username``. Returns the deleted record."""
+        return self.user_token_repo.delete(username, token_id)
+
+    def delete_user_tokens(self, username: str) -> int:
+        """Delete every access token of ``username``. Returns how many were deleted."""
+        return self.user_token_repo.delete_all(username)
 
     def create_user(
         self,
         username: str,
-        password: str,
         display_name: str,
         is_admin: bool = False,
         is_service_account=False,
@@ -333,7 +355,7 @@ class SqlAlchemyStore:
         written_by: Optional[str] = None,
     ):
         """Create a ``manual`` user row. Refused, and never re-owned, if the username exists (#360)."""
-        return self.user_repo.create(username, password, display_name, is_admin, is_service_account, written_by=written_by)
+        return self.user_repo.create(username, display_name, is_admin, is_service_account, written_by=written_by)
 
     def create_auth_session(self, username: str, expires_at, provider_id: Optional[str] = None, encrypted_tokens: Optional[str] = None) -> str:
         """Open a server-side session and return its opaque id (issue #310).
@@ -422,39 +444,28 @@ class SqlAlchemyStore:
     def update_user(
         self,
         username: str,
-        password: Optional[str] = None,
-        password_expiration: Optional[datetime] = None,
         is_admin: Optional[bool] = None,
         is_service_account: Optional[bool] = None,
         active: Optional[bool] = None,
         managed_by: Optional[str] = None,
         written_by: Optional[str] = None,
         admin_override: bool = False,
+        revoke_tokens: bool = False,
     ) -> User:
         """Update the supplied fields of a user, leaving omitted ones untouched.
 
-        ``None`` means "not supplied" for every parameter but one: the corresponding column is
-        left as it is.
-
-        The exception is ``password_expiration``, because expiry is a property of the *secret*
-        rather than of the user. **Supplying a ``password`` also replaces the expiration** with
-        exactly the value passed in, and ``None`` there means "does not expire" rather than
-        "leave it alone" — a rotated secret never inherits the previous one's lifetime. When no
-        ``password`` is supplied, the expiry changes only if one was passed.
-
-        The practical consequence, which the signature alone does not convey: calling
-        ``update_user(username=u, password=new_secret)`` on a user whose token currently expires
-        will leave them with one that never expires. Pass the expiration explicitly to keep one.
-
-        See :meth:`mlflow_oidc_auth.repository.user.UserRepository.update` for the reasoning
-        (issue #338).
+        ``None`` means "not supplied": the corresponding column is left as it is. See
+        :meth:`mlflow_oidc_auth.repository.user.UserRepository.update` (issue #338).
 
         Parameters:
             username: Identity key of the user to update.
-            password: New secret. Also resets the expiration, per above.
-            password_expiration: Expiry for the stored secret. See the semantics above.
             is_admin: New administrator flag.
             is_service_account: New service-account flag.
+            active: Whether the account may authenticate.
+            managed_by: Which source owns this row.
+            written_by: Which source is performing this write, for the ownership guard.
+            admin_override: Break glass for a row another source owns.
+            revoke_tokens: Delete every access token of the user in the same transaction.
 
         Returns:
             User: The updated user entity.
@@ -464,14 +475,13 @@ class SqlAlchemyStore:
         """
         return self.user_repo.update(
             username=username,
-            password=password,
-            password_expiration=password_expiration,
             is_admin=is_admin,
             is_service_account=is_service_account,
             active=active,
             managed_by=managed_by,
             written_by=written_by,
             admin_override=admin_override,
+            revoke_tokens=revoke_tokens,
         )
 
     def delete_user(self, username: str, *, written_by: Optional[str] = None, admin_override: bool = False, actor: Optional[str] = None):
@@ -1331,9 +1341,9 @@ class SqlAlchemyStore:
         """Create a directory-provisioned user in one transaction.
 
         The row is born ``managed_by='scim'``, never an administrator and never a service
-        account: a directory decides who exists, not who is privileged. Its basic-auth secret is
-        a fresh random value that nobody is told — the user signs in through their IdP, or is
-        issued a token later through the normal self-service path.
+        account: a directory decides who exists, not who is privileged. It holds no access token —
+        the user signs in through their IdP, or is issued a token later through the normal
+        self-service path.
 
         Raises:
             MlflowException: ``RESOURCE_ALREADY_EXISTS`` if the username or external id is taken.
@@ -1342,11 +1352,9 @@ class SqlAlchemyStore:
         from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS
         from mlflow.utils.validation import _validate_username
         from sqlalchemy.exc import IntegrityError
-        from werkzeug.security import generate_password_hash
 
         from mlflow_oidc_auth.db.models import SqlUser
-        from mlflow_oidc_auth.repository.user import TOKEN_HASH_METHOD, normalize_username
-        from mlflow_oidc_auth.user import generate_token
+        from mlflow_oidc_auth.repository.user import normalize_username
 
         username = normalize_username(username)
         _validate_username(username)
@@ -1354,7 +1362,6 @@ class SqlAlchemyStore:
             row = SqlUser(
                 username=username,
                 display_name=display_name or username,
-                password_hash=generate_password_hash(generate_token(), method=TOKEN_HASH_METHOD),
                 is_admin=False,
                 is_service_account=False,
                 active=bool(active),
@@ -1392,15 +1399,12 @@ class SqlAlchemyStore:
             external_id: New external id (None clears) — only written when ``set_external_id``.
             set_external_id: Whether ``external_id`` was supplied at all.
             claim: Mark the row ``managed_by='scim'``. Provisioning only: the caller decides.
-            revoke_credential: Replace the basic-auth secret with an undisclosed, expired one.
+            revoke_credential: Delete every access token of the user.
 
         Returns:
             The user as a plain dict (see :meth:`list_user_details`).
         """
-        from datetime import timezone
-
         from mlflow_oidc_auth.repository.user import UNSET
-        from mlflow_oidc_auth.user import generate_token
 
         kwargs = {"written_by": "scim", "active": active, "display_name": display_name}
         if set_external_id:
@@ -1410,8 +1414,7 @@ class SqlAlchemyStore:
         if claim:
             kwargs["managed_by"] = "scim"
         if revoke_credential:
-            kwargs["password"] = generate_token()
-            kwargs["password_expiration"] = datetime.now(timezone.utc)
+            kwargs["revoke_tokens"] = True
         self.user_repo.update(username, **kwargs)
         return self.get_user_detail(username)
 

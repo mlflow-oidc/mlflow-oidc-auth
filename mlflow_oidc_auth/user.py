@@ -1,18 +1,9 @@
-import secrets
-import string
-
 from typing import Optional
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 
 from mlflow_oidc_auth.store import store
-
-
-def generate_token() -> str:
-    alphabet = string.ascii_letters + string.digits
-    new_password = "".join(secrets.choice(alphabet) for _ in range(24))
-    return new_password
 
 
 def create_user(
@@ -48,10 +39,10 @@ def create_user(
         # message, so rewording an exception cannot quietly restore that.
         if exc.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
             raise
-        password = generate_token()
+        # No access token is issued here: a person signs in through their identity provider and
+        # creates tokens themselves, and a service account is issued one by an administrator.
         user = store.create_user(
             username=username,
-            password=password,
             display_name=display_name,
             is_admin=is_admin,
             is_service_account=is_service_account,

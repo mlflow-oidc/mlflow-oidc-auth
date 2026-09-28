@@ -21,6 +21,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import scim_auth_failure_audit, scim_auth_failure_limiter, scim_rate_limiter
 from mlflow_oidc_auth.middleware import AuthMiddleware
 from mlflow_oidc_auth.ownership import Enforcement
+from mlflow_oidc_auth.tests.token_helpers import set_known_token
 
 ADMIN = "root-admin@example.com"
 ADMIN_PASSWORD = "scim-suite-admin"  # not a credential: only ever seeded into a tmp_path database
@@ -123,7 +124,8 @@ def basic(username: str, password: str) -> dict:
 
 @pytest.fixture
 def admin(bound_store):
-    bound_store.create_user(ADMIN, ADMIN_PASSWORD, "Root Admin", is_admin=True)
+    bound_store.create_user(ADMIN, "Root Admin", is_admin=True)
+    set_known_token(bound_store, ADMIN, ADMIN_PASSWORD)
     return basic(ADMIN, ADMIN_PASSWORD)
 
 

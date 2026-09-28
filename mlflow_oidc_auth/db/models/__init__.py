@@ -26,6 +26,7 @@ from mlflow_oidc_auth.db.models.identity import SqlAuthSession, SqlAuthState, Sq
 from mlflow_oidc_auth.db.models.scim import SqlScimActivity, SqlScimToken
 from mlflow_oidc_auth.db.models.saml import SqlSamlAssertion
 from mlflow_oidc_auth.db.models.user import SqlUser, SqlGroup, SqlUserGroup
+from mlflow_oidc_auth.db.models.user_token import SqlUserToken
 from mlflow_oidc_auth.db.models.registered_model import (
     SqlRegisteredModelGroupPermission,
     SqlRegisteredModelGroupRegexPermission,
@@ -49,6 +50,7 @@ __all__ = [
     "SqlUser",
     "SqlGroup",
     "SqlUserGroup",
+    "SqlUserToken",
     "SqlUserIdentity",
     "SqlAuthSession",
     "SqlAuthState",

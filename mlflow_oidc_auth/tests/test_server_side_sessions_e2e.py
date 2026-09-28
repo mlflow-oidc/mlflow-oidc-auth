@@ -21,6 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import mlflow_oidc_auth.store as store_module
 from mlflow_oidc_auth.middleware import AuthMiddleware
+from mlflow_oidc_auth.tests.token_helpers import set_known_token
 
 PASSWORD = "session-e2e-password"  # not a credential: only ever seeded into a tmp_path database
 PROTECTED = "/e2e/protected"
@@ -57,8 +58,9 @@ def store(tmp_path):
 
     s = SqlAlchemyStore()
     s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-    s.create_user("keeper@example.com", PASSWORD, "Keeper", is_admin=True)
-    s.create_user(USERNAME, PASSWORD, "Session E2E")
+    s.create_user("keeper@example.com", "Keeper", is_admin=True)
+    s.create_user(USERNAME, "Session E2E")
+    set_known_token(s, USERNAME, PASSWORD)
     yield s
     s.engine.dispose()
 
@@ -184,6 +186,12 @@ class TestForcedReLogin:
         assert client.get(PROTECTED).status_code == 200
 
 
+def _rotate(store) -> str:
+    """Replace the user's ``default`` token, as ``PATCH /users/access-token`` does."""
+    _, plaintext, _ = store.replace_user_token(USERNAME, "default", datetime.now(timezone.utc) + timedelta(days=30), created_by=USERNAME)
+    return plaintext
+
+
 class TestUserTokensAreIndependentOfSessions:
     """Sessions moved server-side; user tokens did not.
 
@@ -211,17 +219,17 @@ class TestUserTokensAreIndependentOfSessions:
         assert client.get(PROTECTED, headers=_basic(USERNAME, PASSWORD)).status_code == 200
 
     def test_rotating_the_token_does_not_end_the_browser_session(self, store, client):
-        """The session is a row of its own; it does not hang off the password hash."""
+        """The session is a row of its own; it does not hang off the user's tokens."""
         client.get(LOGIN)
-        store.update_user(USERNAME, password="rotated-token", password_expiration=None)
+        _rotate(store)
 
         assert client.get(PROTECTED).status_code == 200
 
     def test_rotating_the_token_invalidates_the_old_one(self, client, store):
-        store.update_user(USERNAME, password="rotated-token", password_expiration=None)
+        rotated = _rotate(store)
 
         assert client.get(PROTECTED, headers=_basic(USERNAME, PASSWORD)).status_code == 401
-        assert client.get(PROTECTED, headers=_basic(USERNAME, "rotated-token")).status_code == 200
+        assert client.get(PROTECTED, headers=_basic(USERNAME, rotated)).status_code == 200
 
     def test_a_cookie_is_ignored_when_a_token_is_presented(self, client, store):
         """The Authorization header wins outright, so a revoked session cannot leak its stale
@@ -252,7 +260,7 @@ class TestUserTokensAreIndependentOfSessions:
     def test_an_expired_token_is_refused_while_the_session_still_works(self, client, store):
         """Token expiry and session expiry are separate clocks, and neither drives the other."""
         client.get(LOGIN)
-        store.update_user(USERNAME, password=PASSWORD, password_expiration=datetime.now(timezone.utc) - timedelta(seconds=1))
+        set_known_token(store, USERNAME, PASSWORD, expires_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1))
 
         assert client.get(PROTECTED, headers=_basic(USERNAME, PASSWORD)).status_code == 401
         assert client.get(PROTECTED).status_code == 200

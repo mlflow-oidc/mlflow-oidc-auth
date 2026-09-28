@@ -244,7 +244,7 @@ class TestEndToEndThroughTheMiddleware:
 
         store = SqlAlchemyStore()
         store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
-        store.create_user(USERNAME, "token", "Adversary Suite", is_admin=True)
+        store.create_user(USERNAME, "Adversary Suite", is_admin=True)
         previous = object.__getattribute__(store_module.store, "_instance")
         object.__setattr__(store_module.store, "_instance", store)
 

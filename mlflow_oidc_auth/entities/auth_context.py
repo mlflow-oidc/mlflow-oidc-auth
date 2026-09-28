@@ -12,6 +12,14 @@ from dataclasses import dataclass
 #: to environ[AUTH_CONTEXT_KEY], and bridge functions read from environ[AUTH_CONTEXT_KEY].
 AUTH_CONTEXT_KEY = "mlflow_oidc_auth"
 
+#: How AuthMiddleware authenticated a request, on ``request.state.auth_method`` (issue #189): a
+#: server-side browser session, an IdP-issued bearer token, a Kubernetes service-account token, or
+#: HTTP basic auth with one of our own access tokens. ``require_interactive_login`` reads it.
+AUTH_METHOD_SESSION = "session"
+AUTH_METHOD_BEARER = "bearer"
+AUTH_METHOD_KUBERNETES = "kubernetes"
+AUTH_METHOD_BASIC = "basic"
+
 
 @dataclass(frozen=True)
 class AuthContext:
