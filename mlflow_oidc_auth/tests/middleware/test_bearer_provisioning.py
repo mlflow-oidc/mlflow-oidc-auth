@@ -1,5 +1,7 @@
 """Layer 2 of the #262 fix: opt-in, hardened auto-provisioning on bearer authentication."""
 
+import sys
+import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -7,6 +9,7 @@ import pytest
 
 from mlflow_oidc_auth.config import config as real_config
 from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
+from mlflow_oidc_auth.utils.group_detection import _accepts_token_response
 
 
 @pytest.fixture(autouse=True)
@@ -117,6 +120,72 @@ class TestAuthorizationGate:
             create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False, written_by="oidc:default")
             populate_groups.assert_called_once_with(group_names=["mlflow-users"], written_by="oidc:default")
             update_user.assert_called_once_with(username="a@x.com", group_names=["mlflow-users"], written_by="oidc:default")
+
+
+class TestGroupDetectionPlugin:
+    """#250: the bearer path calls ``OIDC_GROUP_DETECTION_PLUGIN`` with the token and, when the
+    plugin declares it, a ``token_response`` dict carrying the token plus the validated claims.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_signature_cache(self):
+        _accepts_token_response.cache_clear()
+        yield
+        _accepts_token_response.cache_clear()
+
+    def _install_plugin(self, monkeypatch, name, get_user_groups):
+        module = types.ModuleType(name)
+        module.get_user_groups = get_user_groups
+        monkeypatch.setitem(sys.modules, name, module)
+
+    def test_old_single_argument_plugin_still_works(self, monkeypatch):
+        calls = []
+
+        def get_user_groups(access_token):
+            calls.append(access_token)
+            return ["mlflow-users"]
+
+        self._install_plugin(monkeypatch, "_test_bearer_plugin_old_sig", get_user_groups)
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+        ):
+            _cfg(cfg, OIDC_GROUP_DETECTION_PLUGIN="_test_bearer_plugin_old_sig")
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok-old", {"name": "Alice"})
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False, written_by="oidc:default")
+
+        assert calls == ["tok-old"]
+
+    def test_plugin_declaring_token_response_receives_token_and_claims(self, monkeypatch):
+        received = {}
+
+        def get_user_groups(access_token, token_response=None):
+            received["access_token"] = access_token
+            received["token_response"] = token_response
+            return ["mlflow-users"]
+
+        self._install_plugin(monkeypatch, "_test_bearer_plugin_token_response", get_user_groups)
+
+        payload = {"name": "Alice", "sub": "alice-sub"}
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups"),
+            patch("mlflow_oidc_auth.user.update_user"),
+        ):
+            _cfg(cfg, OIDC_GROUP_DETECTION_PLUGIN="_test_bearer_plugin_token_response")
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok-new", payload)
+            create_user.assert_called_once_with(username="a@x.com", display_name="Alice", is_admin=False, written_by="oidc:default")
+
+        assert received["access_token"] == "tok-new"
+        assert received["token_response"] == {"access_token": "tok-new", "claims": payload}
 
 
 class TestAdminElevation:

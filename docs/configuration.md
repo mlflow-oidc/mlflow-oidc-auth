@@ -62,7 +62,7 @@ Fields for an entry with `"type": "saml"` (requires the `[saml]` extra). They ar
 |----------|------|---------|-------------|
 | `OIDC_GROUP_NAME` | String | `mlflow` | Comma-separated list of allowed groups. Users must belong to at least one of these groups (or an admin group) to log in. **Note:** leaving this effectively empty logs a startup warning — no user could ever be recognized as a member of an allowed group |
 | `OIDC_ADMIN_GROUP_NAME` | String | `mlflow-admin` | Comma-separated list of admin groups. Members have full admin privileges and bypass all permission checks. **Note:** leaving this effectively empty logs a startup warning — no user could ever be granted admin access via group membership |
-| `OIDC_GROUP_DETECTION_PLUGIN` | String | None | Python module path for a custom group detection plugin. When set, groups are extracted from the access token using this plugin instead of the ID token's groups attribute |
+| `OIDC_GROUP_DETECTION_PLUGIN` | String | None | Python module path for a custom group detection plugin. When set, groups are extracted from the access token using this plugin instead of the ID token's groups attribute. The plugin must expose `get_user_groups(access_token)`. If its signature also declares a `token_response` parameter (or accepts `**kwargs`), it is additionally called with `token_response=` — on interactive login this is the full authlib token response (`id_token`, `access_token`, `userinfo`, etc.); on the bearer-token path it is `{"access_token": <token>, "claims": <validated JWT claims>}`. Detected once per plugin via `inspect.signature` and cached, so a plugin written against the original single-argument signature keeps working unchanged (issue #250) |
 
 ### Permissions
 
