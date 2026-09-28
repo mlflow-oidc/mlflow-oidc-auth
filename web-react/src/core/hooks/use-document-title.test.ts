@@ -2,14 +2,15 @@ import { renderHook } from "@testing-library/react";
 import React from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
-import { APP_NAME, pageTitleFor, useDocumentTitle } from "./use-document-title";
+import { pageTitleFor, useDocumentTitle } from "./use-document-title";
 
 describe("pageTitleFor", () => {
   it.each([
-    ["/", APP_NAME],
+    ["/", "Not found · MLflow Access Control"],
     ["/users", "Users · MLflow Access Control"],
-    ["/users/alice%40example.com/experiments", "alice@example.com · Users · MLflow Access Control"],
-    ["/groups/data-science/models", "data-science · Groups · MLflow Access Control"],
+    ["/users/alice%40example.com/experiments", "alice@example.com · Experiments · Users · MLflow Access Control"],
+    ["/groups/data-science/models", "data-science · Models · Groups · MLflow Access Control"],
+    ["/service-accounts/ci-bot/ai-secrets", "ci-bot · AI secrets · Service accounts · MLflow Access Control"],
     ["/service-accounts", "Service accounts · MLflow Access Control"],
     ["/workspaces/team-a", "team-a · Workspaces · MLflow Access Control"],
     ["/experiments/42", "42 · Experiments · MLflow Access Control"],

@@ -72,7 +72,8 @@ body {
 }
 
 .sidebar ul li.active > a {
-  color: var(--mac-primary);
+  /* The stronger blue keeps the active item above 4.5:1 on its tinted background. */
+  color: var(--mac-primary-hover);
   border-right: 2px solid var(--mac-primary);
   background: var(--mac-primary-soft);
   font-weight: 600;
