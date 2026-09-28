@@ -64,7 +64,7 @@ class TestPluginSystem(unittest.TestCase):
         self.assertTrue(hasattr(group_detection_microsoft_entra_id, "http_client"))
 
         # Verify plugin doesn't pollute global namespace
-        from mlflow_oidc_auth import plugins as plugins_package
+        plugins_package = importlib.import_module("mlflow_oidc_auth.plugins")
 
         plugin_attrs = dir(plugins_package)
 
@@ -74,7 +74,7 @@ class TestPluginSystem(unittest.TestCase):
 
     def test_plugin_security_imports(self):
         """Test that plugins only import necessary and safe modules."""
-        from mlflow_oidc_auth.plugins import group_detection_microsoft_entra_id as plugin_module
+        plugin_module = importlib.import_module("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id")
 
         # Verify only expected modules are imported
         module_globals = dir(plugin_module)
@@ -145,7 +145,7 @@ class TestPluginSystem(unittest.TestCase):
     def test_plugin_module_reloading(self):
         """Test that plugins can be reloaded without system restart."""
         # Import the plugin
-        from mlflow_oidc_auth.plugins import group_detection_microsoft_entra_id as plugin
+        plugin = importlib.import_module("mlflow_oidc_auth.plugins.group_detection_microsoft_entra_id")
 
         # Get original function reference
         original_function = plugin.get_user_groups

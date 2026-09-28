@@ -1,5 +1,6 @@
 """Tests for workspace permission cache module."""
 
+import importlib
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -15,7 +16,7 @@ class TestGetWorkspacePermissionCached:
     @pytest.fixture(autouse=True)
     def reset_cache(self):
         """Reset module-level cache between tests."""
-        from mlflow_oidc_auth.utils import workspace_cache as wc
+        wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
 
         wc._cache = None
         yield
@@ -149,7 +150,7 @@ class TestLookupWorkspacePermission:
     @pytest.fixture(autouse=True)
     def reset_cache(self):
         """Reset module-level cache between tests."""
-        from mlflow_oidc_auth.utils import workspace_cache as wc
+        wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
 
         wc._cache = None
         yield
@@ -226,7 +227,7 @@ class TestFlushWorkspaceCache:
     @pytest.fixture(autouse=True)
     def reset_cache(self):
         """Reset module-level cache between tests."""
-        from mlflow_oidc_auth.utils import workspace_cache as wc
+        wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
 
         wc._cache = None
         yield
@@ -451,7 +452,7 @@ class TestLookupWithRegexSources:
     @pytest.fixture(autouse=True)
     def reset_cache(self):
         """Reset module-level cache between tests."""
-        from mlflow_oidc_auth.utils import workspace_cache as wc
+        wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
 
         wc._cache = None
         yield

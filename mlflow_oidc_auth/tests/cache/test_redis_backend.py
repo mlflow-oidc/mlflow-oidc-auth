@@ -1,5 +1,6 @@
 """Tests for the Redis cache backend (using mocked redis)."""
 
+import importlib
 import pickle
 from unittest.mock import MagicMock, patch
 
@@ -87,9 +88,7 @@ class TestRedisCacheBackend:
         """Constructor raises ImportError when redis package is missing."""
         with patch.dict("sys.modules", {"redis": None}):
             # Need to reimport to trigger the ImportError check
-            import importlib
-
-            from mlflow_oidc_auth.cache import redis_backend as rb_module
+            rb_module = importlib.import_module("mlflow_oidc_auth.cache.redis_backend")
 
             importlib.reload(rb_module)
 

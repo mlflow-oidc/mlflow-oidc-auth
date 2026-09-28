@@ -5,6 +5,7 @@ This module contains comprehensive tests for the get_logger function
 to achieve 100% test coverage.
 """
 
+import importlib
 import logging
 import os
 from unittest.mock import Mock, patch
@@ -31,7 +32,7 @@ class TestGetLogger:
         """Reset the global logger instance before each test."""
 
         # Reset the global _logger to None
-        from mlflow_oidc_auth import logger as logger_module
+        logger_module = importlib.import_module("mlflow_oidc_auth.logger")
 
         logger_module._logger = None
 
@@ -43,7 +44,7 @@ class TestGetLogger:
     def teardown_method(self):
         """Clean up after each test."""
         # Reset the global _logger
-        from mlflow_oidc_auth import logger as logger_module
+        logger_module = importlib.import_module("mlflow_oidc_auth.logger")
 
         logger_module._logger = None
         # Clear environment variables
