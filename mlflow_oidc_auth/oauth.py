@@ -57,6 +57,11 @@ oauth: OAuth = OAuth()
 # registered, provider B failed", which is the state that matters once there is more than one.
 _registered: Dict[str, bool] = {}
 
+# Credential refusals already logged, by (provider id, rule). A refused provider is re-checked on
+# every ``is_oidc_configured`` call — the readiness probe, each login attempt — and the error is
+# worth one line per process, not one per probe.
+_refusals_logged: set = set()
+
 
 def get_oauth() -> OAuth:
     """Return the module-level OAuth instance."""
@@ -151,6 +156,22 @@ def _credential_hints(provider_id: str) -> tuple:
     return "OIDC_CLIENT_SECRET", '"public_client": true on its registry entry'
 
 
+def _log_refusal(rule: str, message: str, provider_id: str, *args: str) -> None:
+    """Log a credential refusal once per provider and rule, at ERROR.
+
+    Parameters:
+        rule: Which rule refused the provider; part of the de-duplication key.
+        message: The %-format message; its first placeholder is the provider id.
+        provider_id: The refused provider.
+        args: Further format arguments. Never a secret.
+    """
+    key = (provider_id, rule)
+    if key in _refusals_logged:
+        return
+    _refusals_logged.add(key)
+    logger.error(message, provider_id, *args)
+
+
 def _credentials_usable(provider_id: str, client_secret: Optional[str], public_client: bool) -> bool:
     """Whether the provider's client credentials are a coherent configuration, reporting it when not.
 
@@ -182,7 +203,8 @@ def _credentials_usable(provider_id: str, client_secret: Optional[str], public_c
     if not public_client:
         if client_secret:
             return True
-        logger.error(
+        _log_refusal(
+            "no_secret",
             "Provider '%s' has no client secret; refusing to register it. Set its client secret (%s), "
             "or declare it a public client (%s), which PKCE then authenticates instead.",
             provider_id,
@@ -192,7 +214,8 @@ def _credentials_usable(provider_id: str, client_secret: Optional[str], public_c
         return False
 
     if not config.OIDC_CODE_CHALLENGE:
-        logger.error(
+        _log_refusal(
+            "no_pkce",
             "Provider '%s' is declared a public client but PKCE is disabled; refusing to register it. A public client has no "
             "secret, so PKCE is what authenticates its token exchange: leave OIDC_CODE_CHALLENGE at its S256 default.",
             provider_id,
@@ -200,7 +223,8 @@ def _credentials_usable(provider_id: str, client_secret: Optional[str], public_c
         return False
 
     if client_secret:
-        logger.error(
+        _log_refusal(
+            "contradictory",
             "Provider '%s' is declared a public client but a client secret (%s) is also configured; refusing to register it "
             "because the configuration is contradictory. Remove the secret, or stop declaring it a public client.",
             provider_id,
@@ -419,3 +443,4 @@ def reset_oauth() -> None:
     global oauth
     oauth = OAuth()
     _registered.clear()
+    _refusals_logged.clear()

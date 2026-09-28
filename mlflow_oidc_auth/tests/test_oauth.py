@@ -529,6 +529,7 @@ def _patch_config(oauth_mod, **kwargs):
         for key, value in defaults.items():
             stack.enter_context(patch.object(oauth_mod.config, key, value, create=True))
         stack.enter_context(patch.object(oauth_mod, "_registered", {}))
+        stack.enter_context(patch.object(oauth_mod, "_refusals_logged", set()))
         yield
 
 
@@ -656,6 +657,15 @@ class TestPublicClientRegistration(unittest.TestCase):
         self.assertNotIn("client_secret", kwargs)
         self.assertEqual(kwargs["client_id"], "test-client-id")
         self.assertEqual(kwargs["client_kwargs"]["code_challenge_method"], "S256")
+
+    def test_a_refusal_is_logged_once_per_provider_not_per_check(self):
+        """The readiness probe re-checks a refused provider every few seconds; one line is enough."""
+        from mlflow_oidc_auth import oauth as oauth_mod
+
+        with _patch_config(oauth_mod, OIDC_CLIENT_SECRET=None), self.assertLogs(oauth_mod.logger, level="ERROR") as captured:
+            for _ in range(3):
+                self.assertFalse(oauth_mod.is_oidc_configured())
+        self.assertEqual(len([line for line in captured.output if "has no client secret" in line]), 1)
 
     def test_registration_does_not_happen_for_a_refused_provider(self):
         from mlflow_oidc_auth import oauth as oauth_mod

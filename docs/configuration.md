@@ -364,6 +364,12 @@ logs an error naming the provider (never the secret) while the other providers c
 | yes | any | off | **Refused**: a public client needs PKCE (`OIDC_CODE_CHALLENGE`) |
 | yes | set | on | **Refused**: contradictory configuration — remove the secret or the declaration |
 
+Each refusal is logged once per provider per process, not on every readiness probe.
+
+A public client's refresh token (with `OIDC_USE_REFRESH_TOKEN`) is redeemable with the
+`client_id` alone. It is kept encrypted on the server-side session row either way; if your
+provider offers refresh-token rotation, enable it for a public client.
+
 ## Sessions
 
 Browser sessions are **server-side**: a row in the `auth_sessions` table of the auth database.
