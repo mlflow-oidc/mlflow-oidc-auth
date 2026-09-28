@@ -99,6 +99,27 @@
       ]
     },
     {
+      "username": "dave@example.com",
+      "email": "dave@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Dave",
+      "lastName": "E2E",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dave-e2e-not-a-secret",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-mlflow-e2e"
+      ],
+      "groups": [
+        "/mlflow-users"
+      ]
+    },
+    {
       "username": "root@example.com",
       "email": "root@example.com",
       "emailVerified": true,
@@ -133,6 +154,64 @@
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://127.0.0.1:5055/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://127.0.0.1:5055/*",
+        "use.refresh.tokens": "true",
+        "client_credentials.use_refresh_token": "false",
+        "revoke.refresh.token": "true",
+        "refresh.token.max.reuse": "0",
+        "access.token.lifespan": "10",
+        "frontchannel.logout.session.required": "true",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "basic",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "mlflow-public",
+      "name": "mlflow-oidc-auth (OIDC, public client)",
+      "description": "Public client for the e2e suite: no client secret, PKCE S256 required. Reached through its own Keycloak listener port so its issuer differs from the other OIDC providers'. Redirect URIs are rewritten at test start for the app's actual port.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "frontchannelLogout": true,
       "redirectUris": [

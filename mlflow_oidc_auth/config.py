@@ -165,6 +165,12 @@ class AppConfig:
         # login, and the secure direction is the safe one to fall back to.
         _code_challenge = config_manager.get("OIDC_CODE_CHALLENGE", "S256")
         self.OIDC_CODE_CHALLENGE = self._parse_code_challenge(_code_challenge)
+        # Declares the flat-configured client a *public* client: one the provider issued without a
+        # client secret, whose token exchange PKCE authenticates instead. Opt-in rather than
+        # inferred from a missing OIDC_CLIENT_SECRET, so a secret that failed to load from a
+        # secrets manager is reported as missing instead of silently turning the deployment into a
+        # public client. Requires PKCE, and refuses a client secret configured alongside it.
+        self.OIDC_PUBLIC_CLIENT = config_manager.get_bool("OIDC_PUBLIC_CLIENT", default=False)
 
         # Permission cache settings
         # Whether a write from one source may overwrite a row another source owns (#319).

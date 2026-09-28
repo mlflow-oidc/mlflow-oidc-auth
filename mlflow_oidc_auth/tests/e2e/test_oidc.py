@@ -5,7 +5,8 @@ group sync on every login, admin from the ``mlflow-admins`` claim). Keycloak iss
 access tokens, rotates refresh tokens and detects their reuse, so a second exchange of the same
 refresh token would end the session at the IdP — which is exactly what the race test watches for.
 One test logs in through a *named* OIDC entry over the same realm, to check that logout goes to
-the provider that opened the session.
+the provider that opened the session, and one through a *public* client (#300) — no client secret,
+PKCE required by Keycloak — to check that login, refresh and logout all work without a secret.
 """
 
 from __future__ import annotations
@@ -21,7 +22,13 @@ import pytest
 
 from mlflow_oidc_auth.session.token_vault import SessionTokens, TokenVault
 from mlflow_oidc_auth.tests.e2e import flows
-from mlflow_oidc_auth.tests.e2e.harness import ACCESS_TOKEN_LIFESPAN_SECONDS, NAMED_OIDC_PROVIDER_ID, OIDC_PROVIDER_ID
+from mlflow_oidc_auth.tests.e2e.harness import (
+    ACCESS_TOKEN_LIFESPAN_SECONDS,
+    NAMED_OIDC_PROVIDER_ID,
+    OIDC_PROVIDER_ID,
+    PUBLIC_OIDC_CLIENT_ID,
+    PUBLIC_OIDC_PROVIDER_ID,
+)
 
 pytestmark = pytest.mark.e2e
 
@@ -29,6 +36,8 @@ ALICE = "alice@example.com"
 ROOT = "root@example.com"
 # Bound to the named provider on first login; an account bound to one provider refuses another.
 CAROL = "carol@example.com"
+# Bound to the public-client provider on first login.
+DAVE = "dave@example.com"
 CONCURRENT_REQUESTS = 8
 # Refresh-token material or identity must never ride in the cookie (#310, #367).
 FORBIDDEN_COOKIE_KEYS = {"username", "refresh_token", "access_token", "id_token", "expires_at", "token", "userinfo"}
@@ -294,3 +303,53 @@ class TestNamedProviderLogout:
         again = browser.follow(browser.get(f"{app_server.url}/login/{NAMED_OIDC_PROVIDER_ID}"))
         assert urlparse(str(again.url)).hostname == urlparse(keycloak.named_issuer).hostname
         assert "kc-form-login" in again.text
+
+
+class TestPublicClient:
+    """A provider declared ``"public_client": true`` with no secret configured (#300).
+
+    Keycloak holds ``mlflow-public`` as a public client that requires PKCE S256, so it refuses a
+    code exchange without a valid ``code_verifier`` and authenticates nothing else: every step
+    below succeeding is the evidence that the plugin sends ``client_id`` and PKCE, and no secret.
+    """
+
+    def test_a_public_client_logs_in_refreshes_and_logs_out_without_a_secret(self, app_server, public_keycloak):
+        keycloak = public_keycloak
+        keycloak.logout_everywhere(DAVE)
+        before = keycloak.offline_session_count(DAVE, client_id=PUBLIC_OIDC_CLIENT_ID)
+
+        browser = flows.login(app_server, DAVE, provider=PUBLIC_OIDC_PROVIDER_ID)
+        cookie = flows.session_cookie(browser)
+        status = flows.auth_status(app_server, cookie)
+        assert status["authenticated"] is True and status["username"] == DAVE
+        assert status["provider"] == "Keycloak (public client)"
+        session_id = _cookie_payload(cookie)["session_id"]
+        rows = app_server.db.query("SELECT provider_id FROM auth_sessions WHERE session_id = :sid", sid=session_id)
+        assert rows[0]["provider_id"] == PUBLIC_OIDC_PROVIDER_ID
+        assert keycloak.offline_session_count(DAVE, client_id=PUBLIC_OIDC_CLIENT_ID) == before + 1
+        exchanges = _settled_events(keycloak, "CODE_TO_TOKEN", username=DAVE, client_id=PUBLIC_OIDC_CLIENT_ID)
+        assert exchanges, "Keycloak recorded no code exchange for the public client"
+
+        # A refresh through the public client, at its own issuer, with no secret to present.
+        _wait_until_access_token_expired()
+        assert flows.api_get(app_server, flows.CURRENT_USER, cookie).status_code == 200
+        refreshes = _settled_events(keycloak, "REFRESH_TOKEN", username=DAVE, client_id=PUBLIC_OIDC_CLIENT_ID)
+        assert refreshes, "the expired session was not refreshed through the public client"
+        assert keycloak.events("REFRESH_TOKEN_ERROR", session_id=refreshes[0]["sessionId"]) == []
+        tokens = _stored_tokens(app_server, cookie)
+
+        leaving = browser.get(f"{app_server.url}/logout")
+        assert leaving.status_code == 302
+        location = leaving.headers["location"]
+        assert location.startswith(f"{keycloak.public_issuer}/protocol/openid-connect/logout?"), location
+        assert parse_qs(urlparse(location).query)["client_id"] == [PUBLIC_OIDC_CLIENT_ID]
+        assert flows.api_get(app_server, flows.CURRENT_USER, cookie).status_code == 401
+
+        # The (rotated) refresh token was revoked at the public client's issuer, again with no secret.
+        refused = keycloak.refresh(tokens.refresh_token, issuer=keycloak.public_issuer, client_id=PUBLIC_OIDC_CLIENT_ID, client_secret=None)
+        assert refused.status_code == 400 and refused.json()["error"] == "invalid_grant", refused.text
+        assert keycloak.offline_session_count(DAVE, client_id=PUBLIC_OIDC_CLIENT_ID) == before
+        assert not app_server.audit_events("auth.token_revocation_failed")
+
+        landing = flows.drive_to_app(browser, leaving, app_server)
+        assert urlparse(flows.landing_url(landing)).path == "/oidc/ui/auth"

@@ -84,15 +84,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if failed:
         logger.warning(
             "OIDC client registration failed at startup for: %s. "
-            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL, "
-            "or OIDC_CLIENT_SECRET_<PROVIDER_ID> for an additional provider). "
+            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_DISCOVERY_URL, and a client secret: "
+            "OIDC_CLIENT_SECRET, or OIDC_CLIENT_SECRET_<PROVIDER_ID> for an additional provider). A provider without a "
+            'secret must be declared a public client (OIDC_PUBLIC_CLIENT=true, or "public_client": true on its registry '
+            "entry), which also requires PKCE (OIDC_CODE_CHALLENGE) and no secret. An error logged for each such provider names the setting to change. "
             "Those providers will not be available until configuration is corrected.",
             ", ".join(sorted(failed)),
         )
     if not results:
         logger.warning(
             "No OIDC client was registered at startup. "
-            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_DISCOVERY_URL). "
+            "This may indicate missing configuration (OIDC_CLIENT_ID, OIDC_DISCOVERY_URL, and either OIDC_CLIENT_SECRET "
+            "or OIDC_PUBLIC_CLIENT=true for a public client). "
             "OIDC authentication will not be available until configuration is corrected."
         )
 
