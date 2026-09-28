@@ -6,9 +6,10 @@ plugin's own calls (bearer-token discovery and JWKS, SAML metadata, the bundled 
 plugin) would trust a different set of CAs than the login flow. An enterprise that intercepts
 TLS (DLP/DPI) installs its root CA in the operating system's store; certifi never sees it.
 
-``REQUESTS_CA_BUNDLE`` / ``CURL_CA_BUNDLE`` still work: that bundle is trusted in addition to
-the system store. An explicit ``verify=<path>`` (the Kubernetes provider's cluster CA) keeps its
-exact meaning: that bundle only, never the system store.
+With the default ``verify=True``, ``requests`` still loads its CA bundle into the context (certifi's,
+or ``REQUESTS_CA_BUNDLE`` / ``CURL_CA_BUNDLE`` when set), so these calls trust the system store in
+addition to that bundle. An explicit ``verify=<path>`` (the Kubernetes provider's cluster CA)
+keeps its exact meaning: that bundle only, never the system store.
 """
 
 import ssl
@@ -54,7 +55,7 @@ def get(url: str, *, verify: Any = True, **kwargs: Any) -> requests.Response:
 
     Parameters:
         url: The URL to fetch.
-        verify: ``True`` (system store, plus ``REQUESTS_CA_BUNDLE`` when set), a CA bundle path
+        verify: ``True`` (system store, plus certifi or ``REQUESTS_CA_BUNDLE``), a CA bundle path
             (that bundle only, as ``requests`` does, so a pinned CA is never widened to the system
             store), or ``False`` (no verification; only for explicitly configured insecure providers).
         **kwargs: Passed to ``requests.Session.get``.
