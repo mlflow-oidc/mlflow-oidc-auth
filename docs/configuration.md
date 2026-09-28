@@ -16,10 +16,10 @@ The application is configured through environment variables, `.env` files, or pl
 | `OIDC_SCOPE` | String | `openid,email,profile` | Comma-separated list of OIDC scopes to request |
 | `OIDC_AUDIENCE` | String | None | Expected JWT `aud` claim value (e.g., your client ID or API identifier). When set, bearer tokens are rejected if the `aud` claim doesn't match. Recommended for production to prevent token confusion attacks |
 | `OIDC_ISSUER` | String | None | Expected JWT `iss` claim value. When set, tokens whose issuer does not match are rejected. Also a required precondition for `OIDC_PROVISION_ON_BEARER_AUTH` |
-| `OIDC_PROVISION_ON_BEARER_AUTH` | Boolean | `false` | Auto-create a permission record on first bearer-token authentication for API-first users who never logged in via the browser (fixes ownerless resources, issue #262). Requires **both** `OIDC_AUDIENCE` and `OIDC_ISSUER` set. Provisioned users are **non-admin** and must pass the same group-authorization gate as interactive login. **Note:** unlike browser login (which reads groups from the userinfo endpoint), the bearer path resolves groups from the token itself — the access token must carry the groups claim (or `OIDC_GROUP_DETECTION_PLUGIN` must accept the presented JWT), otherwise the user fails the group gate and is not provisioned (they continue to be denied creation, never silently over-granted) |
+| `OIDC_PROVISION_ON_BEARER_AUTH` | Boolean | `false` | Auto-create a permission record on first bearer-token authentication for API-first users who never logged in via the browser (fixes ownerless resources, issue #262). Requires **both** `OIDC_AUDIENCE` and `OIDC_ISSUER` set. Provisioned users are **non-admin** and must pass the same group-authorization gate as interactive login. **Note:** unlike browser login (which reads groups from the ID token, completed from the UserInfo endpoint — see [Claims and the UserInfo endpoint](#claims-and-the-userinfo-endpoint)), the bearer path resolves groups from the token itself — the access token must carry the groups claim (or `OIDC_GROUP_DETECTION_PLUGIN` must accept the presented JWT), otherwise the user fails the group gate and is not provisioned (they continue to be denied creation, never silently over-granted) |
 | `OIDC_TRUST_BEARER_GROUP_CLAIMS` | Boolean | `false` | Whether a bearer token may confer **admin** (via `OIDC_ADMIN_GROUP_NAME` membership in its group claim). Default false: admin is never granted from a token. Only enable if the IdP — not the token subject — controls the groups claim on audience-restricted tokens |
 | `OIDC_PROVIDER_DISPLAY_NAME` | String | `Login with OIDC` | Display name shown on the login page button |
-| `OIDC_GROUPS_ATTRIBUTE` | String | `groups` | Attribute name in the ID token that contains the user's group memberships |
+| `OIDC_GROUPS_ATTRIBUTE` | String | `groups` | Claim that contains the user's group memberships, read from the ID token or, when the ID token lacks it, the UserInfo response (see [Claims and the UserInfo endpoint](#claims-and-the-userinfo-endpoint)) |
 | `OIDC_USERNAME_FIELD` | String | `email,preferred_username` | Comma-separated list of userinfo/token claim names tried in order to resolve the login identity. The first non-empty string field wins and is lowercased. Use this when your IdP shouldn't be identified by email (e.g. it may be reassigned) or when you want a stable claim like `sub` instead. **Note:** leaving this effectively empty logs a startup warning — no login or bearer-token authentication could ever resolve a username |
 | `OIDC_DISPLAY_NAME_FIELD` | String | `name` | Comma-separated list of userinfo/token claim names tried in order to resolve the human-readable display name shown in the UI. The first non-empty string field wins. **Note:** leaving this effectively empty logs a startup warning — no login could ever resolve a display name |
 | `OIDC_SESSION_EXPIRY_LEEWAY_SECONDS` | Integer | `30` | Clock-skew leeway applied to the IdP-issued token expiry. Sessions are rejected once `now >= expires_at - leeway`, forcing the user back through the OIDC login flow so IdP-side changes (deactivation, group changes, MFA enrollment) take effect within the token's lifetime instead of waiting for the cookie TTL |
@@ -370,6 +370,37 @@ A public client's refresh token (with `OIDC_USE_REFRESH_TOKEN`) is redeemable wi
 `client_id` alone. It is kept encrypted on the server-side session row either way; if your
 provider offers refresh-token rotation, enable it for a public client.
 
+### Claims and the UserInfo endpoint
+
+A browser login reads its claims — the username (`OIDC_USERNAME_FIELD`), the display name
+(`OIDC_DISPLAY_NAME_FIELD`), the groups (`OIDC_GROUPS_ATTRIBUTE`) and, with workspaces enabled,
+the workspace claim (`OIDC_WORKSPACE_CLAIM_NAME`) — from the **ID token**, after it has been
+validated (signature, issuer, audience, expiry, nonce).
+
+Some providers, many academic and eduGAIN ones among them, release email, name or groups only
+from the **UserInfo endpoint**. When a claim the login reads is missing from the ID token and the
+provider's discovery document advertises a `userinfo_endpoint`, the callback calls that endpoint
+once with the login's access token, through the same provider's client (same TLS settings and
+timeouts). The groups claim is not needed when `OIDC_GROUP_DETECTION_PLUGIN` is set, nor the
+workspace claim when `OIDC_WORKSPACE_DETECTION_PLUGIN` is.
+
+- **Subject binding.** The UserInfo `sub` must equal the ID token's `sub` (OpenID Connect Core
+  5.3.2). A response with no `sub` or another one refuses the login. An ID token without a `sub`
+  has nothing to bind a response to, so UserInfo is not used for it.
+- **Precedence.** The ID token always wins. UserInfo only fills claims the ID token does not
+  carry, never replaces one, and never supplies claims describing the authentication itself
+  (`iss`, `aud`, `exp`, `iat`, `nbf`, `nonce`, `azp`, `at_hash`, `sid`, `auth_time`, `acr`, `amr`
+  and similar). `email_verified` is taken from UserInfo only together with `email`.
+- **Username stability.** When the ID token yields a username, that username is used even if
+  UserInfo carries a higher-priority `OIDC_USERNAME_FIELD` claim, so completing other claims never
+  moves a user to a different account.
+- **Failure.** If the call fails — network error, non-2xx status, or a body that is not a JSON
+  object (a signed or encrypted `application/jwt` response is not accepted) — the login continues
+  with the ID token's claims, and fails as before if those are not enough.
+
+Bearer-token authentication does not call the UserInfo endpoint; it reads the claims of the
+presented token.
+
 ## Sessions
 
 Browser sessions are **server-side**: a row in the `auth_sessions` table of the auth database.
@@ -526,6 +557,17 @@ for deployments behind a reverse proxy.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Claims missing from the ID token are read from the UserInfo endpoint.** A browser login
+  whose ID token lacks the username, display name, groups or workspace claim now asks the
+  provider's UserInfo endpoint for them, with the login's access token. The ID token's claims
+  still take precedence, and the username an ID token already yields does not change. Groups
+  found only in UserInfo now count for the group gate, for `OIDC_ADMIN_GROUP_NAME` (on a provider
+  with `admin_source: claims`) and for workspace assignment, so users whose ID token carried no
+  groups claim — refused before — can now sign in. A login whose UserInfo response carries a
+  different or no `sub` is refused, including one that previously succeeded without UserInfo
+  (for example, with only the display name missing). Deployments whose ID tokens carry every
+  claim make no extra request. See
+  [Claims and the UserInfo endpoint](#claims-and-the-userinfo-endpoint).
 - **Public clients (`OIDC_PUBLIC_CLIENT`, `public_client`).** An OIDC client can now be
   registered without a client secret, as a public client authenticated by PKCE, when it is
   declared so explicitly. Nothing changes for an existing deployment: a client with a secret

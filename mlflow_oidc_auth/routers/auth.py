@@ -787,7 +787,7 @@ async def _provider_metadata(client) -> dict:
             if isinstance(loaded, dict):
                 return loaded
         except Exception as exc:
-            logger.debug("Could not load provider metadata for logout: %s", type(exc).__name__)
+            logger.debug("Could not load provider metadata: %s", type(exc).__name__)
     metadata = getattr(client, "server_metadata", None)
     return metadata if isinstance(metadata, dict) else {}
 
@@ -1434,6 +1434,174 @@ def _provision_login(
     return username, []
 
 
+# Claims that describe the authentication event rather than the user. They are only meaningful in
+# the signed, nonce-bound ID token, so a UserInfo response never supplies them — even when the ID
+# token happens to lack one. ``sub`` is here too: it is compared, never copied.
+_ID_TOKEN_ONLY_CLAIMS = frozenset(
+    {
+        "iss",
+        "sub",
+        "aud",
+        "exp",
+        "iat",
+        "nbf",
+        "nonce",
+        "azp",
+        "at_hash",
+        "c_hash",
+        "s_hash",
+        "sid",
+        "auth_time",
+        "acr",
+        "amr",
+        "jti",
+        "cnf",
+    }
+)
+
+# Claims that only mean something together. ``email_verified`` from UserInfo next to an ``email``
+# from the ID token would vouch for an address the provider may not have verified, so a pair is
+# taken from UserInfo whole or not at all.
+_COUPLED_CLAIMS = (("email", "email_verified"), ("phone_number", "phone_number_verified"))
+
+
+def _claims_the_login_lacks(id_claims: dict[str, Any]) -> list[str]:
+    """The claims this login reads that the validated ID token does not carry.
+
+    A claim counts as present when the login can use it as delivered: the username and display
+    name when their extraction succeeds, the groups and workspace claims when the key is there at
+    all. The groups claim is only needed when no group detection plugin is configured, and the
+    workspace claim only when workspaces are enabled without a detection plugin — those are the
+    only paths that read them.
+
+    Parameters:
+        id_claims: The validated ID token claims.
+
+    Returns:
+        Short labels of the missing claims, for logging; empty when the ID token suffices.
+    """
+    missing: list[str] = []
+    if extract_username(id_claims)[1]:
+        missing.append("username")
+    if extract_display_name(id_claims)[1]:
+        missing.append("display_name")
+    if not config.OIDC_GROUP_DETECTION_PLUGIN and config.OIDC_GROUPS_ATTRIBUTE not in id_claims:
+        missing.append("groups")
+    if config.MLFLOW_ENABLE_WORKSPACES and not config.OIDC_WORKSPACE_DETECTION_PLUGIN and config.OIDC_WORKSPACE_CLAIM_NAME not in id_claims:
+        missing.append("workspace")
+    return missing
+
+
+def _merge_userinfo_claims(id_claims: dict[str, Any], userinfo_claims: dict[str, Any]) -> dict[str, Any]:
+    """Fill the claims the ID token lacks from a UserInfo response already bound to its ``sub``.
+
+    The ID token is signed and bound to this login attempt by its nonce, so it always wins: a
+    UserInfo value is used only for a claim the ID token does not carry, never one describing the
+    authentication itself (``_ID_TOKEN_ONLY_CLAIMS``), and a coupled pair only when the ID token
+    carries neither half.
+
+    Parameters:
+        id_claims: The validated ID token claims.
+        userinfo_claims: The UserInfo response, whose ``sub`` the caller has checked.
+
+    Returns:
+        A new dict: the ID token claims plus what UserInfo was allowed to add.
+    """
+    merged = dict(id_claims)
+    blocked = set(_ID_TOKEN_ONLY_CLAIMS)
+    for pair in _COUPLED_CLAIMS:
+        if any(claim in id_claims for claim in pair):
+            blocked.update(pair)
+    for claim, value in userinfo_claims.items():
+        if not isinstance(claim, str) or claim in blocked or claim in merged:
+            continue
+        merged[claim] = value
+    return merged
+
+
+async def _fetch_userinfo_claims(client, provider_id: str, token_response: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Call the provider's UserInfo endpoint with this login's access token.
+
+    The request goes through the provider's own authlib client, so it uses that client's HTTP
+    stack, TLS settings and timeouts. Only a plain JSON object is accepted: authlib parses the
+    body as JSON, so a signed or encrypted (``application/jwt``) response fails to parse and is
+    treated like any other failure rather than decoded without verification.
+
+    The client is handed the access token alone — no refresh token, no expiry. authlib refreshes a
+    token it considers about to expire (within 60 seconds) before sending the request, and would
+    discard the result: with a provider that rotates refresh tokens, that spends the refresh token
+    this session is about to store, and the session's first real refresh is then refused as a
+    reuse. A just-issued access token that the provider rejects is simply a failed call.
+
+    Parameters:
+        client: The authlib client the authorization code was exchanged with.
+        provider_id: The provider's registry id, for logging.
+        token_response: The token response carrying the access token.
+
+    Returns:
+        The response claims, or None when the endpoint is not advertised or the call failed.
+    """
+    metadata = await _provider_metadata(client)
+    endpoint = metadata.get("userinfo_endpoint")
+    if not isinstance(endpoint, str) or not endpoint:
+        logger.debug("Provider '%s' advertises no userinfo_endpoint; using the ID token claims alone", provider_id)
+        return None
+    access_token = token_response.get("access_token")
+    if not isinstance(access_token, str) or not access_token or not callable(getattr(client, "userinfo", None)):
+        logger.debug("Cannot call the UserInfo endpoint of provider '%s'; using the ID token claims alone", provider_id)
+        return None
+    token_type = token_response.get("token_type")
+    bearer_only = {"access_token": access_token, "token_type": token_type if isinstance(token_type, str) and token_type else "Bearer"}
+    try:
+        response = await _maybe_await(client.userinfo(token=bearer_only))
+    except Exception as exc:
+        logger.warning("UserInfo request to provider '%s' failed (%s); using the ID token claims alone", provider_id, type(exc).__name__)
+        return None
+    if not isinstance(response, dict):
+        logger.warning("UserInfo response from provider '%s' is not a JSON object; using the ID token claims alone", provider_id)
+        return None
+    return dict(response)
+
+
+async def _claims_for_login(client, provider_id: str, token_response: dict[str, Any], id_claims: dict[str, Any]) -> tuple[Optional[dict[str, Any]], bool]:
+    """The claims this login uses: the ID token's, completed from UserInfo when it lacks some.
+
+    UserInfo is consulted only when a claim the login reads is missing from the ID token and the
+    provider advertises a ``userinfo_endpoint``. OpenID Connect Core 5.3.2 requires the response's
+    ``sub`` to equal the ID token's; a response without one, or with another, refuses the login —
+    it describes some other user. Without an ID token ``sub`` there is nothing to bind a response
+    to, so UserInfo is not used at all.
+
+    Parameters:
+        client: The authlib client the authorization code was exchanged with.
+        provider_id: The provider's registry id.
+        token_response: The token response carrying the access token.
+        id_claims: The validated ID token claims.
+
+    Returns:
+        ``(claims, True)`` to proceed with ``claims``; ``(None, False)`` when the login must be refused.
+    """
+    missing = _claims_the_login_lacks(id_claims)
+    if not missing:
+        return id_claims, True
+
+    id_subject = id_claims.get("sub")
+    if not isinstance(id_subject, str) or not id_subject:
+        logger.info("ID token from provider '%s' has no subject to bind a UserInfo response to; using the ID token claims alone", provider_id)
+        return id_claims, True
+
+    userinfo_claims = await _fetch_userinfo_claims(client, provider_id, token_response)
+    if userinfo_claims is None:
+        return id_claims, True
+
+    if userinfo_claims.get("sub") != id_subject:
+        logger.warning("UserInfo response from provider '%s' does not carry the ID token's subject; refusing the login", provider_id)
+        return None, False
+
+    logger.debug("Completed claims %s from the UserInfo endpoint of provider '%s'", missing, provider_id)
+    return _merge_userinfo_claims(id_claims, userinfo_claims), True
+
+
 async def _process_oidc_callback_fastapi(request: Request, session, provider_id: Optional[str] = None) -> tuple[Optional[str], list[str]]:
     """
     Process the OIDC callback logic using FastAPI-native implementation.
@@ -1540,24 +1708,35 @@ async def _process_oidc_callback_fastapi(request: Request, session, provider_id:
             errors.append("Failed to exchange authorization code")
             return None, errors
 
-        # Validate the token and get user info
+        # authlib puts the validated ID token's claims under ``userinfo`` — it does not call the
+        # UserInfo endpoint. Those claims are the base; the endpoint only fills what they lack.
         access_token = token_response.get("access_token")
-        id_token = token_response.get("id_token")
-        userinfo = token_response.get("userinfo")
+        id_claims = token_response.get("userinfo")
 
-        if not userinfo:
+        if not id_claims:
             errors.append("No user information received")
             return None, errors
 
-        # Extract user details using utility functions
-        username, username_error = extract_username(userinfo)
+        userinfo, proceed = await _claims_for_login(exchange_client, provider.id, token_response, dict(id_claims))
+        if not proceed or userinfo is None:
+            errors.append("User information from the identity provider does not match the signed-in user")
+            return None, errors
+
+        # Extract user details using utility functions. The username and display name come from
+        # the ID token whenever it yields them, so completing other claims from UserInfo can never
+        # change which configured field — and so which account — a login resolves to.
+        username, username_error = extract_username(id_claims)
+        if username_error:
+            username, username_error = extract_username(userinfo)
         if username_error:
             errors.append(username_error)
             return None, errors
 
         # A missing display name doesn't block login — fall back to the username,
         # matching the bearer-token provisioning path (auth_middleware.py).
-        display_name, display_name_error = extract_display_name(userinfo)
+        display_name, display_name_error = extract_display_name(id_claims)
+        if display_name_error:
+            display_name, display_name_error = extract_display_name(userinfo)
         if display_name_error:
             logger.debug("Falling back to username as display name for %s: %s", username, display_name_error)
             display_name = username

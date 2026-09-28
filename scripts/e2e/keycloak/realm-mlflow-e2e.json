@@ -23,7 +23,8 @@
     "CODE_TO_TOKEN",
     "CODE_TO_TOKEN_ERROR",
     "REFRESH_TOKEN",
-    "REFRESH_TOKEN_ERROR"
+    "REFRESH_TOKEN_ERROR",
+    "USER_INFO_REQUEST"
   ],
   "adminEventsEnabled": false,
   "groups": [
@@ -205,7 +206,7 @@
     {
       "clientId": "mlflow-public",
       "name": "mlflow-oidc-auth (OIDC, public client)",
-      "description": "Public client for the e2e suite: no client secret, PKCE S256 required. Reached through its own Keycloak listener port so its issuer differs from the other OIDC providers'. Redirect URIs are rewritten at test start for the app's actual port.",
+      "description": "Public client for the e2e suite: no secret, PKCE S256 required, own listener port so its issuer is distinct. Its groups claim comes from UserInfo only, not the ID token. Redirect URIs are rewritten at test start for the app's port.",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": true,
@@ -252,7 +253,7 @@
           "config": {
             "claim.name": "groups",
             "full.path": "false",
-            "id.token.claim": "true",
+            "id.token.claim": "false",
             "access.token.claim": "true",
             "userinfo.token.claim": "true",
             "introspection.token.claim": "true"
