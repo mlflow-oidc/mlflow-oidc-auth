@@ -12,8 +12,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils.permissions import (
     _build_scorer_sources,
     _match_regex_permission,

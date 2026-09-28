@@ -239,6 +239,7 @@ class TestCLIArgumentParsing:
                 mock_engine.return_value = MagicMock()
 
                 result = self.runner.invoke(upgrade, ["--url", "sqlite:///test.db", "--revision", revision])
+                assert result.exit_code == 0, result.output
 
                 mock_migrate.assert_called_once()
                 args, kwargs = mock_migrate.call_args
@@ -440,6 +441,7 @@ class TestCLISecurity:
                 mock_engine.return_value = MagicMock()
 
                 result = self.runner.invoke(upgrade, ["--url", "sqlite:///test.db", "--revision", revision])
+                assert result.exit_code == 0, result.output
 
                 # The revision should be passed as-is to the migration function
                 # The migration function should handle sanitization
@@ -655,6 +657,7 @@ class TestCLIEdgeCases:
 
             for revision in revisions:
                 result = self.runner.invoke(upgrade, ["--url", "sqlite:///test.db", "--revision", revision])
+                assert result.exit_code == 0, result.output
 
                 mock_migrate.assert_called()
                 args, kwargs = mock_migrate.call_args

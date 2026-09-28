@@ -9,7 +9,6 @@ for Create/Search (which carry experiment_id).
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 from flask import Flask, request
 from mlflow.protos.service_pb2 import (
     CreatePromptOptimizationJob,

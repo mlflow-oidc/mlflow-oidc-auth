@@ -255,7 +255,7 @@ class TestProvisioningAServiceAccount:
         events = []
         payload = {"sub": "system:serviceaccount:kube-system:default"}
 
-        import mlflow_oidc_auth.middleware.auth_middleware as middleware_module
+        from mlflow_oidc_auth.middleware import auth_middleware as middleware_module
 
         middleware_module._denial_audit_seen.clear()
         with patch("mlflow_oidc_auth.middleware.auth_middleware.emit_audit_event", lambda event, **kw: events.append((event, kw))):

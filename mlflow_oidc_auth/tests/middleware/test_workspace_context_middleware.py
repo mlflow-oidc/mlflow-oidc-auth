@@ -7,7 +7,7 @@ downstream tracking-store operations run within the correct workspace scope.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 from fastapi import Response
 
@@ -61,9 +61,6 @@ class TestWorkspaceContextMiddleware:
             path="/api/2.0/mlflow/experiments/list",
             headers={"x-mlflow-workspace": "my-workspace"},
         )
-
-        workspace_set_value = None
-        workspace_cleared = False
 
         async def mock_call_next(req):
             return Response(content="OK", status_code=200)

@@ -227,6 +227,7 @@ def _patch_router_stores(mock_store):
         try:
             p.start()
         except Exception:
+            # Best effort: a target missing in this environment simply stays unpatched.
             pass
 
     yield
@@ -235,4 +236,5 @@ def _patch_router_stores(mock_store):
         try:
             p.stop()
         except Exception:
+            # Teardown is best effort: a patch that never started cannot be stopped.
             pass

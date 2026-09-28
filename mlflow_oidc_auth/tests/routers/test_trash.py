@@ -84,7 +84,6 @@ class TestListDeletedExperimentsEndpoint:
         # Verify response
         assert result.status_code == 200
         # Access the JSON content from the JSONResponse
-        import json
 
         response_data = json.loads(result.body)
         assert "deleted_experiments" in response_data
@@ -106,7 +105,6 @@ class TestListDeletedExperimentsEndpoint:
 
         # Verify response
         assert result.status_code == 200
-        import json
 
         response_data = json.loads(result.body)
         assert "deleted_experiments" in response_data
@@ -193,7 +191,6 @@ class TestListDeletedRunsEndpoint:
 
         backend_store._get_deleted_runs.assert_called_once()
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == [
@@ -358,7 +355,6 @@ class TestAdditionalTrashBehaviour:
 
         result = await list_deleted_experiments(admin_username="admin@example.com")
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_experiments"][0]["tags"] == {}
@@ -381,7 +377,6 @@ class TestAdditionalTrashBehaviour:
 
         result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == []
@@ -396,7 +391,6 @@ class TestAdditionalTrashBehaviour:
 
         result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == []
@@ -412,7 +406,6 @@ class TestAdditionalTrashBehaviour:
 
         result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None)
         assert result.status_code == 400
-        import json
 
         payload = json.loads(result.body)
         assert "Backend store does not support permanent deletion of runs" in payload["error"]
@@ -433,7 +426,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 404
-        import json
 
         payload = json.loads(result.body)
         assert "Experiment nope not found" in payload["error"]
@@ -458,7 +450,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 400
-        import json
 
         payload = json.loads(result.body)
         assert "are not in deleted lifecycle stage" in payload["error"]
@@ -509,7 +500,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == ["run-1"]
@@ -544,7 +534,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         # run should not be deleted and should appear in failed_runs
@@ -581,7 +570,6 @@ class TestAdditionalTrashBehaviour:
 
         result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids="exp-1", older_than=None)
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == [
@@ -673,7 +661,6 @@ class TestAdditionalTrashBehaviour:
             experiment_ids=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == ["r1"]
@@ -733,7 +720,6 @@ class TestAdditionalTrashBehaviour:
 
             result = await list_deleted_runs(admin_username="admin@example.com", experiment_ids=None, older_than=None)
             assert result.status_code == 200
-            import json
 
             payload = json.loads(result.body)
             assert len(payload["deleted_runs"]) == 2
@@ -767,7 +753,6 @@ class TestAdditionalTrashBehaviour:
             experiment_ids=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert any(f["run_id"] == "r1" for f in payload.get("failed_runs", []))
@@ -798,7 +783,6 @@ class TestAdditionalTrashBehaviour:
             experiment_ids="eX",
         )
         assert result.status_code == 400
-        import json
 
         payload = json.loads(result.body)
         assert "not older than" in payload["error"]
@@ -881,7 +865,6 @@ class TestAdditionalTrashBehaviour:
             experiment_ids=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert set(payload["deleted_experiments"]) == {"e1", "e2"}
@@ -902,7 +885,6 @@ class TestAdditionalTrashBehaviour:
             experiment_ids=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == []
@@ -982,7 +964,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == []
@@ -1020,7 +1001,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert any(f["run_id"] == "r1" and f["error"] == "Failed to delete run" for f in payload.get("failed_runs", []))
@@ -1108,7 +1088,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == ["r1"]
@@ -1150,7 +1129,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == []
@@ -1189,7 +1167,6 @@ class TestAdditionalTrashBehaviour:
                 experiment_ids=None,
             )
             assert result.status_code == 200
-            import json
 
             payload = json.loads(result.body)
             assert payload["deleted_runs"] == []
@@ -1315,7 +1292,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == []
@@ -1367,7 +1343,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_experiments"] == ["exp-unrelated"]
@@ -1435,7 +1410,6 @@ class TestAdditionalTrashBehaviour:
             older_than="1d",
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == ["r-old"]
@@ -1475,7 +1449,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_experiments"] == []
@@ -1514,7 +1487,6 @@ class TestAdditionalTrashBehaviour:
             older_than=None,
         )
         assert result.status_code == 200
-        import json
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == ["ra"]

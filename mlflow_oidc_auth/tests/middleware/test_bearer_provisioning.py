@@ -23,7 +23,7 @@ def provider_carries_the_configured_scoping(monkeypatch):
     meaning what it did.
     """
     import mlflow_oidc_auth.auth as auth_module
-    import mlflow_oidc_auth.middleware.auth_middleware as middleware_module
+    from mlflow_oidc_auth.middleware import auth_middleware as middleware_module
 
     def resolve(token):
         cfg = middleware_module.config

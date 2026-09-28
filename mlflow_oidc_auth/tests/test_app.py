@@ -7,7 +7,7 @@ error handler registration, and application startup/shutdown procedures.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.sessions import SessionMiddleware as StarletteSessionMiddleware
 

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
-from mlflow_oidc_auth.permissions import EDIT, MANAGE, READ, USE, get_permission
+from mlflow_oidc_auth.permissions import EDIT, MANAGE, READ, USE
 
 
 class TestGetWorkspacePermissionCached:
@@ -15,7 +15,7 @@ class TestGetWorkspacePermissionCached:
     @pytest.fixture(autouse=True)
     def reset_cache(self):
         """Reset module-level cache between tests."""
-        import mlflow_oidc_auth.utils.workspace_cache as wc
+        from mlflow_oidc_auth.utils import workspace_cache as wc
 
         wc._cache = None
         yield
@@ -149,7 +149,7 @@ class TestLookupWorkspacePermission:
     @pytest.fixture(autouse=True)
     def reset_cache(self):
         """Reset module-level cache between tests."""
-        import mlflow_oidc_auth.utils.workspace_cache as wc
+        from mlflow_oidc_auth.utils import workspace_cache as wc
 
         wc._cache = None
         yield
@@ -226,7 +226,7 @@ class TestFlushWorkspaceCache:
     @pytest.fixture(autouse=True)
     def reset_cache(self):
         """Reset module-level cache between tests."""
-        import mlflow_oidc_auth.utils.workspace_cache as wc
+        from mlflow_oidc_auth.utils import workspace_cache as wc
 
         wc._cache = None
         yield
@@ -451,7 +451,7 @@ class TestLookupWithRegexSources:
     @pytest.fixture(autouse=True)
     def reset_cache(self):
         """Reset module-level cache between tests."""
-        import mlflow_oidc_auth.utils.workspace_cache as wc
+        from mlflow_oidc_auth.utils import workspace_cache as wc
 
         wc._cache = None
         yield

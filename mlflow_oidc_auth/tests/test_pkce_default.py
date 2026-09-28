@@ -182,7 +182,7 @@ class TestTheRegisteredClientCarriesTheMethod:
     def test_the_challenge_method_reaches_authlib(self, monkeypatch):
         """The setting is only worth anything if it is handed to the client that builds the
         authorization request."""
-        import mlflow_oidc_auth.oauth as oauth_module
+        from mlflow_oidc_auth import oauth as oauth_module
 
         recorded = {}
 

@@ -9,7 +9,6 @@ Tests _can_access_workspace helper and workspace filtering in:
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 from flask import Flask
 
 app = Flask(__name__)

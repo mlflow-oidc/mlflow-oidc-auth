@@ -17,7 +17,7 @@ import pytest
 if TYPE_CHECKING:
     from playwright.sync_api import Page, BrowserContext
 
-from .users import get_admin_users, get_mlflow_users
+from .users import get_admin_users
 
 
 def _should_require_server() -> bool:

@@ -181,7 +181,7 @@ class TestWorkspaceCreationGating:
     @pytest.fixture(autouse=True)
     def _reset_creation_paths_cache(self):
         """Reset the lazy-cached creation paths set between tests."""
-        import mlflow_oidc_auth.hooks.before_request as br_module
+        from mlflow_oidc_auth.hooks import before_request as br_module
 
         br_module._WORKSPACE_GATED_CREATION_PATHS = None
         yield

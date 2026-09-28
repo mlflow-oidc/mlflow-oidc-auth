@@ -89,7 +89,7 @@ class TestRedisCacheBackend:
             # Need to reimport to trigger the ImportError check
             import importlib
 
-            import mlflow_oidc_auth.cache.redis_backend as rb_module
+            from mlflow_oidc_auth.cache import redis_backend as rb_module
 
             importlib.reload(rb_module)
 

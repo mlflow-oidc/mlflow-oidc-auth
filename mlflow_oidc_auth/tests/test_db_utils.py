@@ -248,8 +248,6 @@ class TestModifiedVersionTable:
 
         tables = []
         with engine.begin() as conn:
-            connection = conn.connection
-
             connection = f.connection().connection
             cursor = connection.cursor()
 
@@ -291,8 +289,6 @@ class TestDefaultVersionTable:
 
         tables = []
         with engine.begin() as conn:
-            connection = conn.connection
-
             connection = f.connection().connection
             cursor = connection.cursor()
 

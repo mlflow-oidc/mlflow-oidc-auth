@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from flask import Flask
 
 from mlflow_oidc_auth.entities.auth_context import AuthContext

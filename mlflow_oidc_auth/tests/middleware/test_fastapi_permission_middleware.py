@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from starlette.responses import PlainTextResponse
 
 # ---------------------------------------------------------------------------
 # Unit tests: _extract_gateway_endpoint_name

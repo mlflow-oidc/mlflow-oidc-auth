@@ -442,6 +442,7 @@ def _patch_router_stores(mock_store):
         try:
             p.stop()
         except Exception:
+            # Teardown is best effort: a patch that never started cannot be stopped.
             pass
 
 
@@ -615,6 +616,7 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
     try:
         from mlflow_oidc_auth.middleware import auth_middleware  # noqa: F401
     except Exception:
+        # Only makes the submodule resolvable for patch targets; absent is fine.
         pass
 
     patches = [

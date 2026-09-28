@@ -1012,10 +1012,9 @@ class TestAuthMiddleware:
 
         # Create a request that raises exception when accessing hasattr
         class BadRequest:
-            def __getattribute__(self, name):
-                if name == "session":
-                    raise RuntimeError("Outer exception")
-                return super().__getattribute__(name)
+            @property
+            def session(self):
+                raise RuntimeError("Outer exception")
 
         request = BadRequest()
 

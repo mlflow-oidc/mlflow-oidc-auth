@@ -13,7 +13,6 @@ pg_stat seq_scan counters do not. Nothing here should be read as a claim about
 Postgres planner behaviour.
 """
 
-import tempfile
 from pathlib import Path
 
 import pytest
