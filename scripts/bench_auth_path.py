@@ -16,7 +16,8 @@ Four scenarios are driven end to end through a real ``AuthMiddleware``:
     A path matching the middleware's unprotected prefixes. Establishes the floor: the
     auth path is skipped entirely.
 ``session``
-    The browser path — a signed session cookie, as set by the OIDC callback.
+    The browser path — a signed cookie carrying a server-side session id, as set by the
+    OIDC callback.
 ``bearer``
     The API path — an RS256 JWT validated against a locally primed JWKS cache. The JWKS
     fetch itself is excluded, matching steady state in production where it is cached for
@@ -130,8 +131,11 @@ def _build_app(store) -> Any:
     @app.get(LOGIN_PATH)
     async def login(request: Request, username: str):
         # Under the "/login" unprotected prefix, so it runs without authentication and
-        # mints the same session the OIDC callback would.
-        request.session["username"] = username
+        # mints the same server-side session the OIDC callback does (#310): the cookie holds
+        # only the opaque session id.
+        from datetime import datetime, timedelta, timezone
+
+        request.session["session_id"] = store.create_auth_session(username, expires_at=datetime.now(timezone.utc) + timedelta(hours=8))
         return {"ok": True}
 
     app.add_middleware(AuthMiddleware)
@@ -210,8 +214,13 @@ def _prime_jwks() -> Callable[[str], str]:
     kid = public.get("kid") or key.thumbprint()
     public["kid"] = kid
 
+    jwks = {"keys": [public]}
     with auth_module._jwks_cache_lock:
-        auth_module._jwks_cache[auth_module._JWKS_CACHE_KEY] = {"keys": [public]}
+        auth_module._jwks_cache[auth_module._JWKS_CACHE_KEY] = jwks
+    # With OIDC_DISCOVERY_URL set, the synthesised default provider carries it and reads its keys
+    # from the per-provider cache (#313), keyed on (provider id, discovery URL).
+    with auth_module._provider_jwks_lock:
+        auth_module._provider_jwks_cache[("default", os.environ["OIDC_DISCOVERY_URL"])] = jwks
 
     def mint(username: str) -> str:
         now = int(time.time())

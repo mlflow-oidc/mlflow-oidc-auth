@@ -110,7 +110,14 @@ def mock_store():
     }.get(username)
 
     def _get_user_profile(username: str):
-        return store_mock.get_user(username)
+        # Like the real store: an unknown user raises rather than returning None.
+        user = store_mock.get_user(username)
+        if user is None:
+            from mlflow.exceptions import MlflowException
+            from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+
+            raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
+        return user
 
     store_mock.get_user_profile.side_effect = _get_user_profile
 
@@ -137,7 +144,10 @@ def mock_store():
         "user@example.com",
         "service@example.com",
     ]
-    store_mock.create_user.return_value = True
+    # Like the real store: the created user comes back as an entity.
+    store_mock.create_user.side_effect = lambda username, display_name, is_admin=False, is_service_account=False, **_: User(
+        id_=99, username=username, display_name=display_name, is_admin=is_admin, is_service_account=is_service_account
+    )
     store_mock.update_user.return_value = None
     store_mock.delete_user.return_value = None
 
@@ -380,6 +390,8 @@ def _patch_router_stores(mock_store):
     """
     patches = [
         patch("mlflow_oidc_auth.store.store", mock_store),
+        # user.py binds the store at import; without this the router falls through to the real one.
+        patch("mlflow_oidc_auth.user.store", mock_store),
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
         # The auth router binds ``store`` at import, so patching the singleton does not reach it.
         # Without this the OIDC callback opens a *real* session row against whatever database
@@ -542,6 +554,8 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
         # Patch the module-level 'store' used by request helper functions
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),
         patch("mlflow_oidc_auth.store.store", mock_store),
+        # user.py binds the store at import; without this the router falls through to the real one.
+        patch("mlflow_oidc_auth.user.store", mock_store),
     ]
 
     # Start all patches before building the test FastAPI app so middleware/routers pick up mocks
@@ -615,6 +629,8 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
 
     patches = [
         patch("mlflow_oidc_auth.store.store", mock_store),
+        # user.py binds the store at import; without this the router falls through to the real one.
+        patch("mlflow_oidc_auth.user.store", mock_store),
         patch("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store),
         patch("mlflow_oidc_auth.oauth.oauth", mock_oauth),
         patch("mlflow_oidc_auth.config.config", mock_config),
