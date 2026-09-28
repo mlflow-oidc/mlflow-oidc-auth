@@ -98,7 +98,7 @@ def main(ctx: click.Context, show_config: bool, dry_run: bool) -> NoReturn | Non
             click.echo(f"  {key}={value}")
         return
 
-    logger.info(f"Starting MLflow server: {' '.join(mlflow_args)}")
+    logger.info("Starting MLflow server: %s", redact_uri_passwords(" ".join(mlflow_args)))
 
     # Use execvp to replace current process with mlflow
     # This is the standard container entrypoint pattern - no subprocess overhead

@@ -112,19 +112,52 @@ def configure_mlflow_environment(
 
 
 # ``scheme://user:password@`` - the password part of a URI's userinfo.
-_URI_PASSWORD = re.compile(r"(?P<prefix>[A-Za-z][A-Za-z0-9+.\-]*://[^/?#@:\s]*):[^/?#@\s]*@")
+# A URI anywhere in free text (e.g. a command line): scheme, "://", then up to whitespace.
+_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://\S+")
+# Query parameters that carry credentials (SQLAlchemy/psycopg2 accept ``?password=``).
+_SECRET_QUERY_PARAM = re.compile(
+    r"(?P<key>[?&;](?:password|passwd|pwd|secret|client_secret|token|access_token|sslpassword|api_key|apikey)=)[^&;#\s]*",
+    re.IGNORECASE,
+)
+_MASK = "********"
+
+
+def _redact_uri(uri: str) -> str:
+    """Mask the userinfo password and credential query values of one URI.
+
+    The authority ends at the first ``/``, ``?`` or ``#`` after ``://``, and userinfo ends at the
+    *last* ``@`` in it, as ``urllib.parse`` splits it: so a username that is an e-mail address,
+    or a password with an unencoded ``@``, is still masked in full.
+    """
+    scheme, rest = uri.split("://", 1)
+    end = len(rest)
+    for delimiter in "/?#":
+        index = rest.find(delimiter)
+        if index != -1:
+            end = min(end, index)
+    authority, tail = rest[:end], rest[end:]
+    if "@" in authority:
+        userinfo, host = authority.rsplit("@", 1)
+        if ":" in userinfo:
+            user = userinfo.split(":", 1)[0]
+            authority = f"{user}:{_MASK}@{host}"
+    tail = _SECRET_QUERY_PARAM.sub(lambda m: m.group("key") + _MASK, tail)
+    return f"{scheme}://{authority}{tail}"
 
 
 def redact_uri_passwords(value: str) -> str:
-    """Mask the password in every ``scheme://user:password@`` occurrence in a string.
+    """Mask the credentials of every URI in a string.
+
+    Masks the password in ``scheme://user:password@host`` and the values of credential query
+    parameters such as ``?password=``.
 
     Parameters:
         value: A single URI, or free text such as command-line options that may contain URIs.
 
     Returns:
-        The same text with each userinfo password replaced by ``********``.
+        The same text with each such credential replaced by ``********``.
     """
-    return _URI_PASSWORD.sub(r"\g<prefix>:********@", value)
+    return _URI.sub(lambda m: _redact_uri(m.group(0)), value)
 
 
 def get_mlflow_config_summary() -> dict[str, str]:

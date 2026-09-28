@@ -3,6 +3,8 @@
 import logging
 from unittest.mock import patch
 
+import pytest
+
 from mlflow_oidc_auth.config_providers import mlflow_env
 
 FTP_ROOT = "ftp://svc:ftp-s3cr3t@files.example.com/artifacts"
@@ -60,3 +62,40 @@ def test_cli_dry_run_masks_uri_passwords(monkeypatch):
     assert result.exit_code == 0, result.output
     assert "postgresql://svc:********@db.example.com/mlflow" in result.output
     assert "db-s3cr3t" not in result.output
+
+
+def test_cli_start_log_masks_uri_passwords(monkeypatch, caplog):
+    """The log line written on a real start masks URI passwords, like --dry-run does."""
+    from click.testing import CliRunner
+
+    from mlflow_oidc_auth import cli
+
+    monkeypatch.setattr(cli, "configure_mlflow_environment", lambda: {})
+    executed = {}
+    monkeypatch.setattr(cli.os, "execvp", lambda file, args: executed.update(args=args))
+    with caplog.at_level(logging.INFO):
+        result = CliRunner().invoke(cli.main, ["--backend-store-uri", DB_URI])
+
+    assert result.exit_code == 0, result.output
+    assert "db-s3cr3t" not in caplog.text
+    assert "postgresql://svc:********@db.example.com/mlflow" in caplog.text
+    # The real process still receives the real URI.
+    assert DB_URI in executed["args"]
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("redis://user:p@ss@host:6379/0", "redis://user:********@host:6379/0"),
+        ("ftp://alice@corp.com:pw@host/root", "ftp://alice@corp.com:********@host/root"),
+        ("postgresql://u:a%40b@[::1]:5432/db", "postgresql://u:********@[::1]:5432/db"),
+        (
+            "postgresql://db/mlflow?user=u&password=hunter2&sslmode=require",
+            "postgresql://db/mlflow?user=u&password=********&sslmode=require",
+        ),
+        ("https://h/cb?code=1&Token=abc#frag", "https://h/cb?code=1&Token=********#frag"),
+        ("--default-artifact-root=ftp://a:b@h/r", "--default-artifact-root=ftp://a:********@h/r"),
+    ],
+)
+def test_redact_uri_passwords_edge_cases(value, expected):
+    assert mlflow_env.redact_uri_passwords(value) == expected

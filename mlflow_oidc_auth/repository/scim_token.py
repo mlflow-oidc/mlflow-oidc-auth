@@ -146,7 +146,7 @@ class ScimTokenRepository:
             try:
                 session.flush()
             except IntegrityError as e:
-                raise MlflowException(f"could not issue SCIM token '{name}': {e.orig}", RESOURCE_ALREADY_EXISTS) from e
+                raise MlflowException(f"could not issue SCIM token '{name}'", RESOURCE_ALREADY_EXISTS) from e
             return row, plaintext
         raise MlflowException("could not allocate a unique SCIM token prefix", INVALID_STATE)
 
