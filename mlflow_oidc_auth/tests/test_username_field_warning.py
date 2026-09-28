@@ -17,6 +17,8 @@ reasoning and precedent.
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mlflow_oidc_auth import config as config_module
 
 
@@ -46,9 +48,9 @@ def _warn_for(username_field, display_name_field):
     return [call.args[0] for call in logger.warning.call_args_list]
 
 
-def _warn_for_groups(group_name, admin_group_name):
+def _warn_for_groups(group_name, admin_group_name, group_name_pattern=()):
     """Run the group-name check in isolation, returning the warnings issued."""
-    stub = _stub_config(OIDC_GROUP_NAME=group_name, OIDC_ADMIN_GROUP_NAME=admin_group_name)
+    stub = _stub_config(OIDC_GROUP_NAME=group_name, OIDC_ADMIN_GROUP_NAME=admin_group_name, OIDC_GROUP_NAME_PATTERN=list(group_name_pattern))
 
     with patch.object(config_module, "logger") as logger:
         config_module.AppConfig._warn_if_group_name_unusable(stub)
@@ -112,7 +114,7 @@ class TestUnusableGroupNamesWarn:
     def test_empty_group_name_warns(self):
         """An empty OIDC_GROUP_NAME list must warn."""
         warnings = _warn_for_groups(group_name=[], admin_group_name=["mlflow-admin"])
-        assert any("OIDC_GROUP_NAME is empty" in w for w in warnings)
+        assert any("OIDC_GROUP_NAME and OIDC_GROUP_NAME_PATTERN are empty" in w for w in warnings)
 
     def test_empty_admin_group_name_warns(self):
         """An empty OIDC_ADMIN_GROUP_NAME list must warn."""
@@ -127,12 +129,12 @@ class TestUnusableGroupNamesWarn:
     def test_blank_string_only_group_name_warns(self):
         """OIDC_GROUP_NAME="" becomes [""] via get_list, not []; that must still warn."""
         warnings = _warn_for_groups(group_name=[""], admin_group_name=["mlflow-admin"])
-        assert any("OIDC_GROUP_NAME is empty" in w for w in warnings)
+        assert any("OIDC_GROUP_NAME and OIDC_GROUP_NAME_PATTERN are empty" in w for w in warnings)
 
     def test_non_string_entry_is_treated_as_unusable_not_a_crash(self):
         """A non-string entry (e.g. from malformed secret-provider JSON) must warn, not raise."""
         warnings = _warn_for_groups(group_name=["", None, 123], admin_group_name=["mlflow-admin"])
-        assert any("OIDC_GROUP_NAME is empty" in w for w in warnings)
+        assert any("OIDC_GROUP_NAME and OIDC_GROUP_NAME_PATTERN are empty" in w for w in warnings)
 
 
 class TestUsableGroupNamesAreSilent:
@@ -173,3 +175,19 @@ def test_real_construction_with_empty_username_field_does_not_raise():
     """
     with patch.dict(os.environ, {"OIDC_USERNAME_FIELD": "", "OIDC_DISPLAY_NAME_FIELD": ""}):
         config_module.AppConfig()  # must not raise
+
+
+class TestGroupNamePatternWarnings:
+    """OIDC_GROUP_NAME_PATTERN (issue #78) counts as an allowed-group rule, and a pattern that
+    admits everyone is called out."""
+
+    def test_patterns_alone_are_enough(self):
+        assert _warn_for_groups(group_name=[], admin_group_name=["mlflow-admin"], group_name_pattern=["mlflow-*"]) == []
+
+    @pytest.mark.parametrize("pattern", ["*", "**"])
+    def test_a_match_everything_pattern_warns(self, pattern):
+        warnings = _warn_for_groups(group_name=["mlflow"], admin_group_name=["mlflow-admin"], group_name_pattern=[pattern])
+        assert any("admits every user" in w for w in warnings)
+
+    def test_a_scoped_pattern_is_silent(self):
+        assert _warn_for_groups(group_name=["mlflow"], admin_group_name=["mlflow-admin"], group_name_pattern=["mlflow-*"]) == []

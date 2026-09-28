@@ -684,7 +684,7 @@ class TestProcessOIDCCallbackFastAPI:
             },
         }
         mock_config.OIDC_ADMIN_GROUP_NAME = ["mlflow-admin"]
-        mock_config.OIDC_GROUP_NAME = ["*"]
+        mock_config.OIDC_GROUP_NAME_PATTERN = ["*"]
 
         with (
             patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
@@ -717,7 +717,7 @@ class TestProcessOIDCCallbackFastAPI:
             },
         }
         mock_config.OIDC_ADMIN_GROUP_NAME = ["mlflow-admin"]
-        mock_config.OIDC_GROUP_NAME = ["mlflow-*"]
+        mock_config.OIDC_GROUP_NAME_PATTERN = ["mlflow-*"]
 
         with (
             patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth),
@@ -727,8 +727,8 @@ class TestProcessOIDCCallbackFastAPI:
 
         assert email == "new-user@example.com"
         assert errors == []
-        mock_user_management["populate_groups"].assert_called_once_with(group_names=claimed_groups)
-        mock_user_management["update_user"].assert_called_once_with(username="new-user@example.com", group_names=claimed_groups)
+        mock_user_management["populate_groups"].assert_called_once_with(group_names=claimed_groups, written_by="oidc:default")
+        assert mock_user_management["update_user"].call_args.kwargs["group_names"] == claimed_groups
 
     @pytest.mark.asyncio
     async def test_process_callback_user_management_error(self, mock_request_with_session, mock_oauth, mock_config):

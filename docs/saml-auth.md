@@ -311,7 +311,7 @@ SAML logins provision through the same policy as OIDC ones:
 - **Display name.** `attribute_display_name` (default `displayName`), falling back to the
   username.
 - **Groups.** `attribute_groups` (default `groups`). The login gate is the same as for OIDC: the
-  user must be in `OIDC_GROUP_NAME` or, where `admin_source` allows it, `OIDC_ADMIN_GROUP_NAME`.
+  user must be in `OIDC_GROUP_NAME`, match `OIDC_GROUP_NAME_PATTERN`, or, where `admin_source` allows it, `OIDC_ADMIN_GROUP_NAME`.
   Groups from any provider other than `default` are stored namespaced as `<id>:<group>`, and
   `group_sync` / `group_sync_mode` apply as for any provider.
 - **Administrators.** Only when the entry sets `admin_source: claims`; the default for any

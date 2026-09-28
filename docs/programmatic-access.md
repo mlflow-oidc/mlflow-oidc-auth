@@ -107,7 +107,7 @@ short-lived token and send it as a bearer token. For such a token to authenticat
    - **let the first request create it** with `OIDC_PROVISION_ON_BEARER_AUTH=true`. The account
      is created only when the validating provider pins both audience and issuer and the token's
      own groups claim (`OIDC_GROUPS_ATTRIBUTE`, or `OIDC_GROUP_DETECTION_PLUGIN`) passes the same
-     `OIDC_GROUP_NAME` / `OIDC_ADMIN_GROUP_NAME` gate as a browser login. It is never an admin
+     `OIDC_GROUP_NAME` / `OIDC_GROUP_NAME_PATTERN` / `OIDC_ADMIN_GROUP_NAME` gate as a browser login. It is never an admin
      unless `OIDC_TRUST_BEARER_GROUP_CLAIMS` is set. See the
      [configuration reference](configuration#oidc-authentication).
 4. **Interactive or not is set per issuer.** A client-credentials token from the IdP people sign
