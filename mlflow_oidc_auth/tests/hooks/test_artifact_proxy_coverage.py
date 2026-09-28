@@ -218,7 +218,7 @@ class TestDoubleEncodedPathCannotBypass:
     """MLflow decodes the artifact path REPEATEDLY; werkzeug decodes a URL once.
 
     Parsing the once-decoded value let a double-encoded path miss the experiment-id
-    match, fall back to DEFAULT_MLFLOW_PERMISSION (shipped default MANAGE = allow), and
+    match, fall back to DEFAULT_MLFLOW_PERMISSION (then shipped as MANAGE = allow), and
     still be served by MLflow — a fail-open on both the list and download routes.
     """
 
@@ -251,7 +251,7 @@ class TestScopedReviewBypasses:
     @pytest.mark.parametrize("prefix", ["", "./", "%2e/", "%252e/", ".//"])
     def test_dot_prefix_cannot_defeat_the_anchored_patterns(self, prefix):
         """Both id patterns anchor at position 0, so a leading "./" made them miss and
-        resolution fell back to DEFAULT_MLFLOW_PERMISSION — allow on the shipped default —
+        resolution fell back to DEFAULT_MLFLOW_PERMISSION — allow on the then-shipped MANAGE —
         while MLflow normalises the same path and serves the experiment."""
         import posixpath
 
@@ -329,7 +329,7 @@ class TestExperimentRootPathsResolve:
         """These name no experiment, and "no experiment" now means DENY (issue #289).
 
         The parser returns None for them. That used to send the caller to
-        DEFAULT_MLFLOW_PERMISSION, which ships as MANAGE, so under the shipped default
+        DEFAULT_MLFLOW_PERMISSION, which then shipped as MANAGE, so under that default
         these shapes were ALLOWED — ``DELETE .../artifacts/.`` emptied every experiment's
         artifacts. Asserted under a MANAGE default so the deny can only come from the code.
         """

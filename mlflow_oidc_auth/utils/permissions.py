@@ -384,10 +384,10 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
     GRANTS, because then access is being handed out by configuration rather than by an
     explicit permission record, and nothing in the system says who intended it.
 
-    The shipped default is ``MANAGE``, so on a fresh install this is the granting case for
-    every resource, which is exactly the exposure operators should be able to see before
-    the default changes (issue #293). Only the granting case warns; both cases are counted
-    and logged at debug.
+    The default is ``NO_PERMISSIONS`` (since v7.6.0, issue #293), so a granting fallback only
+    happens where an operator has set a permissive ``DEFAULT_MLFLOW_PERMISSION`` — typically
+    to keep pre-7.6 behaviour while migrating. That is the exposure operators should be able
+    to see. Only the granting case warns; both cases are counted and logged at debug.
 
     Warnings are throttled by occurrence count rather than suppressed, so a long-running
     process keeps reporting at a decreasing rate instead of going quiet after startup.
@@ -419,7 +419,7 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
             f"because no explicit permission exists ({count} such grants for {resource_type} so far). "
             "Access is coming from configuration rather than a permission record. "
             "Call get_permission_fallback_samples() for the affected resource ids, or enable DEBUG logging. "
-            "See issue #293: this default is changing to NO_PERMISSIONS in a future major version."
+            "The shipped default is NO_PERMISSIONS (issue #293); see docs/permissions.md 'Migrating to deny-by-default'."
         )
 
 

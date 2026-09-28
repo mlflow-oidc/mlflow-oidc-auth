@@ -508,13 +508,13 @@ DEFAULT_MLFLOW_PERMISSION=READ
 
 ## Migrating to deny-by-default
 
-> **The shipped `DEFAULT_MLFLOW_PERMISSION` changes from `MANAGE` to `NO_PERMISSIONS` in the next major version** ([#293](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/293)).
+> **Since v7.6.0 the shipped `DEFAULT_MLFLOW_PERMISSION` is `NO_PERMISSIONS`; it was `MANAGE` before** ([#293](https://github.com/mlflow-oidc/mlflow-oidc-auth/issues/293)). This section is for deployments upgrading from an earlier version.
 
-### What changes, and for whom
+### What changed, and for whom
 
-`DEFAULT_MLFLOW_PERMISSION` decides access when a resource has **no** user, group, regex or group-regex grant. Today it ships as `MANAGE`, so a fresh install is open by default: every authenticated user can read, edit and delete every experiment and registered model until grants exist.
+`DEFAULT_MLFLOW_PERMISSION` decides access when a resource has **no** user, group, regex or group-regex grant. Before v7.6.0 it shipped as `MANAGE`, so a fresh install was open by default: every authenticated user could read, edit and delete every experiment and registered model until grants existed.
 
-You are affected only if **all** of the following hold:
+Upgrading from an earlier version affects you only if **all** of the following hold:
 
 - you do **not** set `DEFAULT_MLFLOW_PERMISSION` explicitly, **and**
 - workspaces are disabled (`MLFLOW_ENABLE_WORKSPACES=false`), **and**
@@ -522,15 +522,15 @@ You are affected only if **all** of the following hold:
 
 With workspaces enabled the global default is not used as a resource fallback at all — workspace permissions take that role — so workspace deployments are unaffected.
 
-### Pinning current behaviour
+### Keeping the previous behaviour
 
-If you want no change at all, set the value explicitly before upgrading:
+If you want no change at all, set the old value explicitly:
 
 ```bash
 DEFAULT_MLFLOW_PERMISSION=MANAGE
 ```
 
-This is supported and will keep working. The change is to the *default*, not to the option.
+This is supported and keeps working — the change was to the *default*, not to the option — and a startup warning keeps the open default visible.
 
 ### Migrating properly (recommended)
 
