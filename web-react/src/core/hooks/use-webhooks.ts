@@ -16,7 +16,7 @@ export function useWebhooks() {
 
   const [localOverrides, setLocalOverrides] = useState<
     Map<string, Partial<Webhook>>
-  >(new Map());
+  >(() => new Map());
 
   const webhooks = (response?.webhooks ?? []).map((w) => {
     const overrides = localOverrides.get(w.webhook_id);

@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import {
-  WorkspaceProvider,
-  getActiveWorkspace,
-  setActiveWorkspace,
-} from "./workspace-context";
+import { WorkspaceProvider } from "./workspace-context";
+import { getActiveWorkspace, setActiveWorkspace } from "./active-workspace";
 import { useWorkspace } from "./use-workspace";
 
 // Create a proper localStorage mock since jsdom doesn't provide one

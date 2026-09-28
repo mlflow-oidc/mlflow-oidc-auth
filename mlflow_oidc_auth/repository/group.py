@@ -266,23 +266,38 @@ class GroupRepository:
             except IntegrityError as e:
                 raise MlflowException(f"Group '{group_name}' exists: {e}", RESOURCE_ALREADY_EXISTS)
 
-    def create_groups(self, group_names: List[str], written_by: Optional[str] = None) -> None:
+    def create_groups(self, group_names: List[str], written_by: Optional[str] = None) -> List[str]:
         """Create whichever of ``group_names`` do not exist yet, owned by ``written_by``.
 
         An existing group keeps its owner. A login passes its source (``oidc:<id>`` /
         ``saml:<id>``), so the groups its claims bring into existence are the provider's and a SCIM
         token may not write them under ``enforce``.
 
+        Each insert runs in its own SAVEPOINT, so a concurrent writer creating the same name at the
+        same time (e.g. two members of a not-yet-existing group logging in together, or a login
+        racing an admin's create-group call) loses that one name's insert to a unique-constraint
+        violation without failing the rest of the batch or this call: the loser sees the winner's
+        row already there, same as if the existence check below had found it first.
+
         :param group_names: A list of group names to be created.
         :param written_by: The creating source; None means ``manual``.
+        :return: The subset of ``group_names`` this call actually inserted, in no particular order.
+            A name that already existed, or that lost a concurrent insert race, is not included —
+            callers that need to tell "already existed" apart from "lost the race" do not need to:
+            both mean the row is there now, owned by whoever created it first.
         """
+        created: List[str] = []
         with self._Session(read_only=False) as session:
             for group_name in group_names:
-                group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).first()
-                if group is None:
-                    group = SqlGroup(group_name=group_name, managed_by=written_by or MANUAL)
-                    session.add(group)
-            session.flush()
+                if session.query(SqlGroup.id).filter(SqlGroup.group_name == group_name).first() is not None:
+                    continue
+                try:
+                    with session.begin_nested():
+                        session.add(SqlGroup(group_name=group_name, managed_by=written_by or MANUAL))
+                except IntegrityError:
+                    continue
+                created.append(group_name)
+        return created
 
     def list_groups(self) -> List[str]:
         """

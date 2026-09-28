@@ -71,6 +71,7 @@ from mlflow_oidc_auth.ownership import MANUAL
 from mlflow_oidc_auth.repository.group import UnknownMember
 from mlflow_oidc_auth.repository.scim_activity import MAX_PAGE_SIZE as MAX_ACTIVITY_PAGE_SIZE, OUTCOMES, outcome_for
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
 
 from ._prefix import SCIM_ADMIN_ROUTER_PREFIX, SCIM_ROUTER_PREFIX, SCIM_TOKENS_ROUTER_PREFIX
 
@@ -959,30 +960,21 @@ def _require_group(group_id: str, *, with_members: bool = True) -> Dict[str, Any
     return detail
 
 
-MAX_GROUP_NAME_LENGTH = 255
-
-
 def _group_name(value: Any, scim_type: str = "invalidValue") -> str:
-    """Validate a ``displayName`` for a new group.
+    """Validate a ``displayName`` for a group.
 
     Group names are case-sensitive — they are compared with IdP claims as they are — so, unlike a
     ``userName``, they are not folded. Stripped, non-empty, at most 255 characters, no control or
-    non-printing characters, and none of ``/ ? # %``: the name becomes a ``/Groups/{id}`` segment.
+    non-printing characters, and valid Unicode — the shared rule in
+    :func:`mlflow_oidc_auth.utils.group_name.validate_group_name_chars`, which the admin
+    create-group API (``routers/group_permissions.py``) holds a new group name to as well. Does
+    not check for the path-segment reserved characters; ``scim_create_group`` checks those
+    separately, since the other two call sites here only re-validate an existing name.
     """
-    if not isinstance(value, str):
-        raise ScimHTTPError(400, "displayName must be a string", scim_type)
-    name = value.strip()
-    if not name:
-        raise ScimHTTPError(400, "displayName must not be empty", scim_type)
-    if len(name) > MAX_GROUP_NAME_LENGTH:
-        raise ScimHTTPError(400, f"displayName must be at most {MAX_GROUP_NAME_LENGTH} characters", scim_type)
-    if any(unicodedata.category(ch).startswith("C") for ch in name):
-        raise ScimHTTPError(400, "displayName must not contain control or non-printing characters", scim_type)
     try:
-        name.encode("utf-8")
-    except UnicodeError:
-        raise ScimHTTPError(400, "displayName is not valid Unicode", scim_type)
-    return name
+        return validate_group_name_chars(value)
+    except ValueError as e:
+        raise ScimHTTPError(400, f"displayName {e}", scim_type)
 
 
 def _member_ids(value: Any) -> list:
@@ -1134,7 +1126,7 @@ async def scim_create_group(request: Request) -> JSONResponse:
     except ValidationError:
         raise ScimHTTPError(400, "displayName is required", "invalidValue")
     name = _group_name(payload.display_name)
-    if any(ch in _URL_RESERVED for ch in name):
+    if any(ch in GROUP_NAME_RESERVED_CHARS for ch in name):
         raise ScimHTTPError(400, "displayName must not contain '/', '?', '#' or '%'", "invalidValue")
     external_id = _optional_str(payload.external_id, "externalId")
     members = _member_ids(payload.members)
