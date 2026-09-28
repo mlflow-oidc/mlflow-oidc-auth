@@ -32,6 +32,9 @@ import mlflow_oidc_auth
 import mlflow_oidc_auth.config as _config_module
 import mlflow_oidc_auth.oauth as _oauth_module
 
+# Opt-in CI sharding (``--shard-count``/``--shard-index``); a no-op without those options.
+from mlflow_oidc_auth.tests._sharding import pytest_addoption, pytest_collection_modifyitems  # noqa: E402,F401
+
 
 @pytest.fixture(autouse=True)
 def _config_module_guard():

@@ -171,6 +171,33 @@ Test configuration is in `pyproject.toml` under `[tool.pytest.ini_options]`:
 - Tests marked `e2e` need Keycloak; the default tox env deselects them (see [End-to-end identity tests](#end-to-end-identity-tests))
 - Directories like `mlruns`, `htmlcov`, `__pycache__` are excluded from test discovery
 
+#### How CI runs the suite: shards
+
+The "Unit tests" workflow runs the Python suite as four parallel jobs. Each shard collects the
+whole suite and runs only the test files assigned to it (`mlflow_oidc_auth/tests/_sharding.py`);
+a file is never split across shards. To reproduce one shard locally:
+
+```bash
+tox -e py -- --shard-count=4 --shard-index=2
+# or: pytest -m "not integration and not e2e" --shard-count=4 --shard-index=2 mlflow_oidc_auth/tests
+```
+
+Use the `--opt=value` form: pytest registers these options from the test suite's `conftest.py`.
+Plain `tox -e py` (and plain `pytest`) still runs everything in one process.
+
+The final "Run Unit testing" job — the check name to gate on — passes only if the frontend job
+and every shard passed, and runs `scripts/ci/check_shards.py` to confirm the shards collected the
+same suite and together ran every collected test exactly once.
+
+Files are balanced by the per-file durations in `mlflow_oidc_auth/tests/shard_weights.json`. A
+new test file with no entry is still assigned (weighted by its test count); the weights affect
+balance, never what runs. When one shard is noticeably slower than the rest, download the
+`unit-test-shard-*` artifacts of a recent run and rebuild the weights:
+
+```bash
+python scripts/ci/shard_weights.py path/to/unit-test-shard-*/junit.xml
+```
+
 ### Frontend Tests (Vitest)
 
 ```bash
