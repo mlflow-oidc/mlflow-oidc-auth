@@ -27,7 +27,8 @@ from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_
 
 TRUSTED = {"trusted_proxies": ["10.0.0.0/8"], "client": ("10.0.0.5", 40000)}
 USER_BASIC = "Basic " + base64.b64encode(b"user@example.com:user_pass").decode()
-JOBS = "/ajax-api/3.0/jobs"
+# A FastAPI route open to any authenticated user (the assistant family needs no grant).
+ASSISTANT = "/ajax-api/3.0/mlflow/assistant/status"
 GATEWAY = "/gateway/my-ep/mlflow/invocations"
 FLASK_API = "/api/2.0/mlflow/experiments/search"
 
@@ -63,9 +64,9 @@ def _build_app() -> FastAPI:
     async def login():
         return {"login": True}
 
-    @app.get(JOBS)
-    async def jobs():
-        return {"jobs": []}
+    @app.get(ASSISTANT)
+    async def assistant():
+        return {"assistant": "ok"}
 
     @app.get("/gateway/{endpoint_name}/mlflow/invocations")
     async def gateway(endpoint_name: str):
@@ -125,12 +126,12 @@ class TestForwardedPrefixWithoutTrustedProxies:
         return stack(client=request.param)
 
     def test_prefix_does_not_change_the_routed_path(self, client):
-        # Routed as-is: /health/ajax-api/... is no FastAPI route, so it never reaches the jobs
+        # Routed as-is: /health/ajax-api/... is no FastAPI route, so it never reaches the assistant
         # handler; it falls through to the Flask mount and is denied there.
         for headers in ({"X-Forwarded-Prefix": "/health"}, {"X-Forwarded-Prefix": "/health", "Authorization": USER_BASIC}):
-            response = client.get(f"/health{JOBS}", headers=headers)
+            response = client.get(f"/health{ASSISTANT}", headers=headers)
             assert response.status_code == 401
-            assert "jobs" not in response.json()
+            assert "assistant" not in response.json()
 
     def test_prefixed_unprotected_route_is_not_stripped(self, client):
         response = client.get("/mlflow/health", headers={"X-Forwarded-Prefix": "/mlflow"})
@@ -138,10 +139,10 @@ class TestForwardedPrefixWithoutTrustedProxies:
 
     def test_unprefixed_routes_unchanged(self, client):
         assert client.get("/health", headers={"X-Forwarded-Prefix": "/mlflow"}).json() == {"status": "ok"}
-        assert client.get(JOBS, headers={"X-Forwarded-Prefix": "/mlflow"}).status_code == 401
-        response = client.get(JOBS, headers={"X-Forwarded-Prefix": "/mlflow", "Authorization": USER_BASIC})
+        assert client.get(ASSISTANT, headers={"X-Forwarded-Prefix": "/mlflow"}).status_code == 401
+        response = client.get(ASSISTANT, headers={"X-Forwarded-Prefix": "/mlflow", "Authorization": USER_BASIC})
         assert response.status_code == 200
-        assert response.json() == {"jobs": []}
+        assert response.json() == {"assistant": "ok"}
 
     def test_login_redirect_uses_no_prefix(self, client):
         headers = {"Accept": "text/html", "Sec-Fetch-Dest": "document", "X-Forwarded-Prefix": "/mlflow"}
@@ -155,14 +156,14 @@ class TestForwardedPrefixFromTrustedProxy:
 
     def test_protected_fastapi_route_under_unprotected_prefix_requires_credentials(self, stack):
         client = stack(**TRUSTED)
-        response = client.get(f"/health{JOBS}", headers={"X-Forwarded-Prefix": "/health"})
+        response = client.get(f"/health{ASSISTANT}", headers={"X-Forwarded-Prefix": "/health"})
         assert response.status_code == 401
 
     def test_protected_fastapi_route_under_unprotected_prefix_serves_authenticated_user(self, stack):
         client = stack(**TRUSTED)
-        response = client.get(f"/health{JOBS}", headers={"X-Forwarded-Prefix": "/health", "Authorization": USER_BASIC})
+        response = client.get(f"/health{ASSISTANT}", headers={"X-Forwarded-Prefix": "/health", "Authorization": USER_BASIC})
         assert response.status_code == 200
-        assert response.json() == {"jobs": []}
+        assert response.json() == {"assistant": "ok"}
 
     @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint", return_value=False)
     def test_validator_applied_on_routed_path_denies(self, mock_can_use, stack):
@@ -210,7 +211,7 @@ class TestForwardedPrefixFromTrustedProxy:
 
     def test_protected_route_without_prefix_requires_credentials(self, stack):
         client = stack(**TRUSTED)
-        assert client.get(JOBS).status_code == 401
+        assert client.get(ASSISTANT).status_code == 401
         assert client.get(FLASK_API).status_code == 401
 
 
@@ -227,17 +228,17 @@ class TestMountedDeploymentBehindTrustedProxy:
         assert response.status_code == 200
         assert response.json() == {"login": True}
 
-    @pytest.mark.parametrize("path", [f"/mlflow{JOBS}", JOBS])
+    @pytest.mark.parametrize("path", [f"/mlflow{ASSISTANT}", ASSISTANT])
     def test_protected_fastapi_route_requires_credentials(self, stack, path):
         client = stack(trusted_proxies=["10.0.0.0/8"], client=self.PROXY)
         assert client.get(path, headers=self.PREFIX).status_code == 401
 
-    @pytest.mark.parametrize("path", [f"/mlflow{JOBS}", JOBS])
+    @pytest.mark.parametrize("path", [f"/mlflow{ASSISTANT}", ASSISTANT])
     def test_protected_fastapi_route_serves_authenticated_user(self, stack, path):
         client = stack(trusted_proxies=["10.0.0.0/8"], client=self.PROXY)
         response = client.get(path, headers={**self.PREFIX, "Authorization": USER_BASIC})
         assert response.status_code == 200
-        assert response.json() == {"jobs": []}
+        assert response.json() == {"assistant": "ok"}
 
     @pytest.mark.parametrize("path", [f"/mlflow{FLASK_API}", FLASK_API])
     def test_flask_route_under_prefix(self, stack, path):
@@ -249,7 +250,7 @@ class TestMountedDeploymentBehindTrustedProxy:
 
     def test_prefix_from_untrusted_client_is_ignored(self, stack):
         client = stack(trusted_proxies=["10.0.0.0/8"], client=("192.0.2.10", 40000))
-        response = client.get(f"/health{JOBS}", headers={"X-Forwarded-Prefix": "/health"})
+        response = client.get(f"/health{ASSISTANT}", headers={"X-Forwarded-Prefix": "/health"})
         # Without a recorded prefix the request is routed as-is; it reaches no FastAPI route,
         # falls through to the Flask mount and is denied there for lack of an AuthContext.
         assert response.status_code == 401

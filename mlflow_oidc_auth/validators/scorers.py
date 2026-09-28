@@ -26,6 +26,25 @@ def _get_permission_from_scorer_permission_request(username: str) -> Permission:
     return _scorer_permission(username, "scorer_name")
 
 
+def validate_can_list_scorers(username: str) -> bool:
+    """READ on the experiment when ``ListScorers`` names one; otherwise any authenticated user.
+
+    ``ListScorers`` takes an optional ``experiment_id``. Without one MLflow lists the scorers
+    of every active experiment, and the after-request filter removes each scorer the caller
+    cannot read, so the request itself is allowed. When an experiment id is present in any
+    request source, READ is required on every experiment named, as before.
+
+    Parameters:
+        username: The caller.
+
+    Returns:
+        True if the request may proceed.
+    """
+    if not all_source_values("experiment_id"):
+        return True
+    return permission_on_all_experiments(get_request_param_values("experiment_id"), username).can_read
+
+
 def validate_can_read_scorer(username: str) -> bool:
     return _get_permission_from_scorer_name(username).can_read
 

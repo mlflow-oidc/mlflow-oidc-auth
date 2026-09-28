@@ -153,13 +153,13 @@ class TestBeforeRequestHandlerMappings:
         handler = BEFORE_REQUEST_HANDLERS[CancelPromptOptimizationJob]
         assert handler.__name__ == "validate_can_update_prompt_optimization_job"
 
-    def test_create_prompt_optimization_job_still_uses_experiment_validator(self):
-        """CreatePromptOptimizationJob should still use validate_can_update_experiment (carries experiment_id, no job yet)."""
+    def test_create_prompt_optimization_job_uses_create_validator(self):
+        """CreatePromptOptimizationJob checks the experiment, the source prompt and the dataset."""
         from mlflow.protos.service_pb2 import CreatePromptOptimizationJob
         from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_HANDLERS
 
         handler = BEFORE_REQUEST_HANDLERS[CreatePromptOptimizationJob]
-        assert handler.__name__ == "validate_can_update_experiment"
+        assert handler.__name__ == "validate_can_create_prompt_optimization_job"
 
     def test_search_prompt_optimization_jobs_still_uses_experiment_validator(self):
         """SearchPromptOptimizationJobs should still use validate_can_read_experiment (searches by experiment_id)."""
@@ -168,3 +168,37 @@ class TestBeforeRequestHandlerMappings:
 
         handler = BEFORE_REQUEST_HANDLERS[SearchPromptOptimizationJobs]
         assert handler.__name__ == "validate_can_read_experiment"
+
+
+class TestCanUpdatePromptUri:
+    """The prompt authorized is the one MLflow's own URI parser resolves."""
+
+    @staticmethod
+    def _permission_by_name(names_with_update):
+        def lookup(name, username):
+            result = MagicMock()
+            result.permission.can_update = name in names_with_update
+            return result
+
+        return lookup
+
+    @pytest.mark.parametrize("uri", ["prompts:/team-a-prompt/1", "prompts:/team-a-prompt@prod"])
+    def test_allows_well_formed_uri_on_updatable_prompt(self, uri):
+        with patch.object(prompt_optimization_job, "effective_prompt_permission", side_effect=self._permission_by_name({"team-a-prompt"})):
+            assert prompt_optimization_job.can_update_prompt_uri(uri, "bob") is True
+
+    @pytest.mark.parametrize(
+        "uri",
+        ["prompts:/vic\ttim/1", "prompts:/vic\ntim@prod", "prompts:/victim\r/1", "prompts:/vic\rtim/1"],
+    )
+    def test_refuses_names_mlflow_would_parse_differently(self, uri):
+        # Every name except "victim" is updatable; "victim" itself is not. MLflow's parser drops
+        # tab/CR/LF, so these URIs load "victim" and must not be authorized as another name.
+        lookup = MagicMock(side_effect=lambda name, username: MagicMock(permission=MagicMock(can_update=name != "victim")))
+        with patch.object(prompt_optimization_job, "effective_prompt_permission", lookup):
+            assert prompt_optimization_job.can_update_prompt_uri(uri, "bob") is False
+
+    @pytest.mark.parametrize("uri", ["prompts:/", "prompts:/name", "prompts://name/1", "models:/name/1", "prompts:/a/b/c", None, 3])
+    def test_refuses_malformed_uris(self, uri):
+        with patch.object(prompt_optimization_job, "effective_prompt_permission", side_effect=self._permission_by_name({"name", "a"})):
+            assert prompt_optimization_job.can_update_prompt_uri(uri, "bob") is False

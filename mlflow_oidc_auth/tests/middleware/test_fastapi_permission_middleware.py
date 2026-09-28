@@ -520,12 +520,12 @@ class TestFastapiPermissionMiddlewareIntegration:
         response = TestClient(app).get("/api/2.0/mlflow/not-a-route")
         assert response.status_code == 401
 
-    def test_authenticated_user_jobs_passes(self):
-        """Test that any authenticated user passes jobs check."""
+    def test_authenticated_user_other_method_on_jobs_prefix_is_denied(self):
+        """Only POST (submit) is served on the job API prefix; other methods are refused."""
         app = _create_app_with_auth(username="user@example.com", is_admin=False)
         client = TestClient(app)
         response = client.get("/ajax-api/3.0/jobs")
-        assert response.status_code == 200
+        assert response.status_code == 403
 
     def test_authenticated_user_assistant_passes(self):
         """Test that any authenticated user passes assistant check."""
@@ -741,3 +741,170 @@ class TestWorkspaceFallbackEndToEnd:
             response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
 
         assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Job API: ownership on get/cancel, search narrowed to the caller's jobs
+# ---------------------------------------------------------------------------
+
+_GET_JOB = "mlflow.server.jobs.get_job"
+
+
+def _job(creator):
+    job = MagicMock()
+    job.creator = creator
+    return job
+
+
+def _create_jobs_app(username, is_admin=False, jobs=None):
+    """App serving stand-ins for MLflow's job API routes behind the permission middleware."""
+    from mlflow_oidc_auth.middleware.fastapi_permission_middleware import add_fastapi_permission_middleware
+
+    app = FastAPI()
+
+    @app.post("/ajax-api/3.0/jobs/")
+    async def submit_job(request: Request):
+        # Echo the body so tests can see it still reaches the handler after authorization.
+        return {"job_id": "new", "received": await request.json()}
+
+    @app.post("/ajax-api/3.0/jobs/search")
+    async def search_jobs():
+        return {"jobs": jobs if jobs is not None else []}
+
+    @app.patch("/ajax-api/3.0/jobs/cancel/{job_id}")
+    async def cancel_job(job_id: str):
+        return {"job_id": job_id, "status": "CANCELED"}
+
+    @app.get("/ajax-api/3.0/jobs/{job_id}")
+    async def get_job(job_id: str):
+        return {"job_id": job_id}
+
+    add_fastapi_permission_middleware(app)
+
+    @app.middleware("http")
+    async def inject_user(request: Request, call_next):
+        request.state.username = username
+        request.state.is_admin = is_admin
+        return await call_next(request)
+
+    return TestClient(app)
+
+
+class TestJobIdFromPath:
+    def _id(self, path):
+        from mlflow_oidc_auth.middleware.fastapi_permission_middleware import _job_id_from_path
+
+        return _job_id_from_path(path)
+
+    def test_submit_and_search_carry_no_id(self):
+        assert self._id("/ajax-api/3.0/jobs") is None
+        assert self._id("/ajax-api/3.0/jobs/") is None
+        assert self._id("/ajax-api/3.0/jobs/search") is None
+
+    def test_get_and_cancel_carry_the_id(self):
+        assert self._id("/ajax-api/3.0/jobs/j1") == "j1"
+        assert self._id("/ajax-api/3.0/jobs/cancel/j1") == "j1"
+
+
+class TestJobOwnership:
+    def test_creator_can_get_job(self):
+        with patch(_GET_JOB, return_value=_job("alice@example.com")):
+            response = _create_jobs_app("alice@example.com").get("/ajax-api/3.0/jobs/j1")
+        assert response.status_code == 200
+
+    def test_other_user_cannot_get_job(self):
+        with patch(_GET_JOB, return_value=_job("alice@example.com")):
+            response = _create_jobs_app("bob@example.com").get("/ajax-api/3.0/jobs/j1")
+        assert response.status_code == 403
+
+    def test_creator_can_cancel_job(self):
+        with patch(_GET_JOB, return_value=_job("alice@example.com")):
+            response = _create_jobs_app("alice@example.com").patch("/ajax-api/3.0/jobs/cancel/j1")
+        assert response.status_code == 200
+
+    def test_other_user_cannot_cancel_job(self):
+        with patch(_GET_JOB, return_value=_job("alice@example.com")):
+            response = _create_jobs_app("bob@example.com").patch("/ajax-api/3.0/jobs/cancel/j1")
+        assert response.status_code == 403
+
+    def test_job_without_creator_is_denied(self):
+        with patch(_GET_JOB, return_value=_job(None)):
+            response = _create_jobs_app("alice@example.com").get("/ajax-api/3.0/jobs/j1")
+        assert response.status_code == 403
+
+    def test_unknown_job_is_denied(self):
+        with patch(_GET_JOB, side_effect=Exception("not found")):
+            response = _create_jobs_app("alice@example.com").get("/ajax-api/3.0/jobs/missing")
+        assert response.status_code == 403
+
+    def test_admin_can_get_any_job(self):
+        with patch(_GET_JOB, return_value=_job("alice@example.com")) as get_job:
+            response = _create_jobs_app("root@example.com", is_admin=True).get("/ajax-api/3.0/jobs/j1")
+        assert response.status_code == 200
+        get_job.assert_not_called()
+
+    def test_submit_allowed_when_payload_is_authorized(self):
+        payload = {"job_name": "invoke_scorer", "params": {"experiment_id": "1", "serialized_scorer": "{}", "trace_ids": []}}
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_submit_job", return_value=True) as check:
+            response = _create_jobs_app("bob@example.com").post("/ajax-api/3.0/jobs/", json=payload)
+        assert response.status_code == 200
+        assert response.json()["received"] == payload
+        check.assert_called_once_with(payload, "bob@example.com")
+
+    def test_submit_denied_when_payload_is_not_authorized(self):
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_submit_job", return_value=False):
+            response = _create_jobs_app("bob@example.com").post("/ajax-api/3.0/jobs/", json={"job_name": "invoke_scorer", "params": {}})
+        assert response.status_code == 403
+
+    def test_submit_with_unparseable_body_is_denied(self):
+        response = _create_jobs_app("bob@example.com").post("/ajax-api/3.0/jobs/", content=b"not json", headers={"content-type": "application/json"})
+        assert response.status_code == 403
+
+    def test_admin_submit_is_not_checked(self):
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_submit_job", return_value=False) as check:
+            response = _create_jobs_app("root@example.com", is_admin=True).post("/ajax-api/3.0/jobs/", json={"job_name": "x", "params": {}})
+        assert response.status_code == 200
+        check.assert_not_called()
+
+    def test_search_path_with_other_method_is_denied(self):
+        response = _create_jobs_app("bob@example.com").get("/ajax-api/3.0/jobs/search")
+        assert response.status_code == 403
+
+
+class TestJobSearchFiltering:
+    _JOBS = [
+        {"job_id": "a1", "creator": "alice@example.com"},
+        {"job_id": "b1", "creator": "bob@example.com"},
+        {"job_id": "n1", "creator": None},
+    ]
+
+    def test_non_admin_sees_only_own_jobs(self):
+        client = _create_jobs_app("alice@example.com", jobs=self._JOBS)
+        response = client.post("/ajax-api/3.0/jobs/search", json={})
+        assert response.status_code == 200
+        assert [j["job_id"] for j in response.json()["jobs"]] == ["a1"]
+
+    def test_admin_sees_all_jobs(self):
+        client = _create_jobs_app("root@example.com", is_admin=True, jobs=self._JOBS)
+        response = client.post("/ajax-api/3.0/jobs/search", json={})
+        assert [j["job_id"] for j in response.json()["jobs"]] == ["a1", "b1", "n1"]
+
+    def test_creator_looked_up_when_response_omits_it(self):
+        jobs = [{"job_id": "a1"}, {"job_id": "b1"}, {"job_id": "gone"}]
+        creators = {"a1": "alice@example.com", "b1": "bob@example.com"}
+
+        def fake_get_job(job_id):
+            if job_id not in creators:
+                raise Exception("not found")
+            return _job(creators[job_id])
+
+        client = _create_jobs_app("alice@example.com", jobs=jobs)
+        with patch(_GET_JOB, side_effect=fake_get_job):
+            response = client.post("/ajax-api/3.0/jobs/search", json={})
+        assert [j["job_id"] for j in response.json()["jobs"]] == ["a1"]
+
+    def test_unparseable_response_is_not_returned(self):
+        from mlflow_oidc_auth.middleware.fastapi_permission_middleware import _filter_job_search_response
+
+        with pytest.raises(ValueError):
+            _filter_job_search_response("alice@example.com", b'{"unexpected": true}')

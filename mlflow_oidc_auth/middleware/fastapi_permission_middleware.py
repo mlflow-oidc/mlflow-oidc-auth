@@ -12,12 +12,13 @@ It mirrors the upstream ``add_fastapi_permission_middleware`` from
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
-from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Match, Mount
 
 from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
@@ -26,6 +27,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
 from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
+from mlflow_oidc_auth.validators.job_submission import can_submit_job
 
 logger = get_logger()
 
@@ -50,6 +52,10 @@ _GEMINI_STREAM = re.compile(r"^/gateway/gemini/v1beta/models/([^/:]+):streamGene
 
 # Pattern: /gateway/{endpoint_name}/mlflow/invocations
 _INVOCATIONS_RE = re.compile(r"^/gateway/([^/]+)/mlflow/invocations$")
+
+# MLflow's FastAPI job API (mlflow.server.job_api.job_api_router)
+_JOBS_PREFIX = "/ajax-api/3.0/jobs"
+_JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
 
 # MCP server registry, mounted by MLflow under both the API and the UI prefix
 # (mlflow.server.mcp_server_api.get_mcp_server_api_route_prefixes)
@@ -151,6 +157,135 @@ def _get_require_authentication_validator() -> Callable[[str, Request], Awaitabl
     return validator
 
 
+def _job_id_from_path(path: str) -> str | None:
+    """Return the job id a job API path addresses, or None for the submit and search routes.
+
+    ``GET /jobs/{job_id}`` and ``PATCH /jobs/cancel/{job_id}`` carry a job id. ``POST /jobs/``
+    (submit) and ``POST /jobs/search`` do not. Any other path under the prefix is treated as
+    addressing a job, so it goes through the ownership check and fails closed.
+
+    Parameters:
+        path: Routed request path, starting with the job API prefix.
+
+    Returns:
+        The job id, or None when the path addresses no single job.
+    """
+    tail = path[len(_JOBS_PREFIX) :].strip("/")
+    if not tail or tail == "search":
+        return None
+    if tail.startswith("cancel/"):
+        return tail[len("cancel/") :]
+    return tail
+
+
+def _job_creator(job_id: str) -> str | None:
+    """Return the username recorded as the creator of a job, or None if it cannot be resolved.
+
+    Parameters:
+        job_id: The job id.
+
+    Returns:
+        The creator's username; None if the job does not exist, has no recorded creator, or the
+        lookup fails.
+    """
+    try:
+        from mlflow.server.jobs import get_job
+
+        creator = getattr(get_job(job_id), "creator", None)
+    except Exception:
+        logger.debug("Could not resolve job creator for authorization")
+        return None
+    return creator if isinstance(creator, str) and creator else None
+
+
+def _is_job_search(path: str, request: Request) -> bool:
+    """True when the request is a job search, whose response is narrowed to the caller's jobs."""
+    return request.method == "POST" and path.rstrip("/") == _JOBS_SEARCH_PATH
+
+
+def _get_job_validator(path: str) -> Callable[[str, Request], Awaitable[bool]]:
+    """Return a validator for MLflow's FastAPI job API.
+
+    Jobs carry no experiment scope on this API, so the recorded creator is the boundary, as in
+    MLflow's own auth plugin: fetching or cancelling a job by id requires being its creator
+    (admins never reach the validator). A job that does not exist or has no recorded creator is
+    denied. Searching jobs needs only authentication; the results are narrowed to the caller's
+    own jobs after the handler runs. Submitting a job (``POST`` on the prefix) is authorized
+    against the resources its params name (see ``validators.job_submission``). Any other method
+    on the prefix is refused.
+    """
+    job_id = _job_id_from_path(path)
+
+    async def validator(username: str, request: Request) -> bool:
+        if job_id is None:
+            if path[len(_JOBS_PREFIX) :].strip("/") == "search":
+                return _is_job_search(path, request)
+            if request.method != "POST":
+                return False
+            try:
+                payload = await request.json()
+            except Exception:
+                return False
+            return can_submit_job(payload, username)
+        creator = _job_creator(job_id)
+        return creator is not None and creator == username
+
+    return validator
+
+
+def _filter_job_search_response(username: str, body: bytes) -> bytes:
+    """Keep only the jobs created by ``username`` in a job search response body.
+
+    The creator is taken from each job's ``creator`` field when MLflow includes it, otherwise
+    looked up in the job store. A job whose creator cannot be resolved is dropped.
+
+    Parameters:
+        username: The caller.
+        body: The JSON body returned by the search handler.
+
+    Returns:
+        The filtered JSON body.
+
+    Raises:
+        ValueError: If the body is not a job search response.
+    """
+    data = json.loads(body)
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, list):
+        raise ValueError("unexpected job search response")
+    kept = []
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        if "creator" in job:
+            creator = job.get("creator")
+        else:
+            job_id = job.get("job_id")
+            creator = _job_creator(str(job_id)) if job_id else None
+        if creator is not None and creator == username:
+            kept.append(job)
+    data["jobs"] = kept
+    return json.dumps(data).encode()
+
+
+async def _filtered_job_search_response(username: str, response: Response) -> Response:
+    """Buffer a job search response and return it narrowed to the caller's jobs.
+
+    Non-2xx responses carry no job list and are returned unchanged. If the body cannot be
+    filtered, an error is returned instead of the unfiltered list.
+    """
+    if not 200 <= response.status_code < 300:
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    try:
+        filtered = _filter_job_search_response(username, body)
+    except Exception:
+        logger.error("Failed to filter job search response")
+        return JSONResponse(status_code=500, content={"detail": "Failed to filter response"})
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    return Response(content=filtered, status_code=response.status_code, headers=headers, media_type=response.media_type)
+
+
 def _get_mcp_server_registry_validator() -> Callable[[str, Request], Awaitable[bool]]:
     """Return a validator for the MCP server registry routes.
 
@@ -186,8 +321,8 @@ def _find_fastapi_validator(
     if path.startswith("/v1/traces"):
         return _get_otel_validator(path)
 
-    if path.startswith("/ajax-api/3.0/jobs"):
-        return _get_require_authentication_validator()
+    if path.startswith(_JOBS_PREFIX):
+        return _get_job_validator(path)
 
     if path.startswith("/ajax-api/3.0/mlflow/assistant"):
         return _get_require_authentication_validator()
@@ -298,4 +433,7 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             if auth_context_token is not None:
                 clear_auth_context(auth_context_token)
 
-        return await call_next(request)
+        response = await call_next(request)
+        if _is_job_search(path, request):
+            return await _filtered_job_search_response(username, response)
+        return response

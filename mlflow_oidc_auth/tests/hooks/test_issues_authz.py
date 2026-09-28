@@ -189,6 +189,17 @@ def test_issue_detection_needs_use_on_a_named_gateway_endpoint(permission_store)
     assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], endpoint_name="shared-endpoint")))
 
 
+@pytest.mark.parametrize("endpoint_name", ["/shared-endpoint", "//shared-endpoint"])
+def test_issue_detection_checks_the_endpoint_mlflow_calls(permission_store, endpoint_name):
+    """MLflow calls ``gateway:/<endpoint_name>`` with leading slashes stripped from the name."""
+    from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+    permission_store.create_gateway_endpoint_permission("shared-endpoint", OUTSIDER, "NO_PERMISSIONS")
+    flush_permission_cache()
+    assert denied(hook(ISSUE_INVOKE, "POST", OUTSIDER, body=_detection(OWN, ["tr-own"], endpoint_name=endpoint_name)))
+    assert allowed(hook(ISSUE_INVOKE, "POST", OUTSIDER, body=_detection(OWN, ["tr-own"], endpoint_name="/open-endpoint")))
+
+
 @pytest.mark.parametrize("prefix", PREFIXES)
 def test_search_issues_scope_only_in_the_query_string_does_not_count(prefix):
     """MLflow reads the POST body only; with no experiment there it searches every experiment."""

@@ -28,8 +28,9 @@ The permission system covers these MLflow resource types:
 | Registered Models | Per model name | Includes model versions |
 | Prompts | Per prompt name | Uses the model permission infrastructure |
 | Scorers | Per experiment + scorer name | Compound key |
-| Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions |
+| Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions. Creating a job needs EDIT on the experiment and on the prompt in `source_prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`; the job registers a new version of it), and READ on every experiment linked to `config.dataset_id` when one is given |
 | Evaluation datasets, issues, label schemas, review queues, UI jobs | Per linked experiment | See [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes) |
+| Job API jobs (`ajax-api/3.0/jobs/…`) | Per job creator | See [Job API](#job-api) |
 | Gateway Endpoints | Per endpoint name | AI Gateway routes |
 | Gateway Secrets | Per secret name | AI Gateway secrets |
 | Gateway Model Definitions | Per model definition name | AI Gateway model configs |
@@ -306,6 +307,8 @@ and as the reviewer of an item.
 | UI jobs (`ajax-api/3.0/mlflow/jobs/<id>`, `jobs/cancel/<id>`) | read / cancel | READ / EDIT on the experiment recorded in the job, or else on the experiment of the run it records; admin only if neither resolves |
 | Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment and on the scorer (`name`) |
 | | `GET online-configs` | READ on the experiment and on the scorer of every configuration returned for `scorer_ids` |
+| Scorer list (`3.0/mlflow/scorers/list`) | with `experiment_id` | READ on the experiment; the result then omits every scorer the caller holds `NO_PERMISSIONS` on |
+| | without `experiment_id` (all active experiments) | any authenticated user; each scorer is listed only with READ on its experiment and, when the scorer has a grant of its own, READ on the scorer. A scorer whose permission cannot be resolved is omitted |
 | Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
 | Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
 
@@ -318,6 +321,36 @@ A custom review queue may not use a registered username (a user or service accou
 case-insensitively) as its name, on create or on rename, because user queues are named after
 their user. This applies to administrators too. A request that breaks the rule gets `400`; a
 non-admin without the permission for the operation gets `403` first.
+
+## Job API
+
+MLflow's FastAPI job API (`/ajax-api/3.0/jobs/…`) records the user who submitted a job as its
+creator. Jobs on this API carry no experiment, so the creator is the boundary, as in MLflow's own
+auth plugin. Admins are not restricted.
+
+| Route | Permission required |
+|---|---|
+| `POST jobs/` (submit) | depends on the job function in `job_name`, see below; the caller is recorded as the creator |
+| `GET jobs/<job_id>`, `PATCH jobs/cancel/<job_id>` | the caller is the job's creator; a job that does not exist or has no recorded creator is refused |
+| `POST jobs/search` | any authenticated user; the results contain only the jobs the caller created |
+
+A submission is authorized against the resources its `params` name. Every experiment the job
+acts on needs EDIT, whether named directly or through a run or trace in the params. A trace,
+run or dataset that cannot be resolved is refused.
+
+| `job_name` | Permission required |
+|---|---|
+| `invoke_scorer` | EDIT on `experiment_id` and on the experiment of every trace in `trace_ids`; `username`, if given, must be the caller |
+| `run_online_trace_scorer`, `run_online_session_scorer` | EDIT on `experiment_id` and on every scorer named in `online_scorers` |
+| `invoke_issue_detection` | EDIT on `experiment_id`, on the experiment of `run_id` and of every trace in `trace_ids`; USE on the endpoint when `model` is a gateway model (`gateway:/<endpoint>`; leading slashes in the name are ignored, as MLflow ignores them); a malformed `model` is refused |
+| `invoke_genai_evaluate` | EDIT on the experiment of `run_id`, of every trace in `trace_ids`, and on `experiment_id` if given; `username`, if given, must be the caller |
+| `optimize_prompts` | EDIT on `experiment_id` and on the experiment of `run_id`; EDIT on the prompt in `prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`), which the job registers a new version of; READ on every experiment linked to `dataset_id`, if given |
+| any other job function | admin only |
+
+A parameter the job function does not declare, or a value of the wrong type, is refused.
+
+The UI jobs under `ajax-api/3.0/mlflow/jobs/…` are a separate family, authorized through their
+experiment (see [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes)).
 
 ## Permission Cascade on Delete/Rename
 
@@ -369,6 +402,7 @@ The plugin enforces permissions on MLflow's GraphQL API (`/graphql`) through a c
 
 - **Protected operations**: `mlflowGetExperiment`, `mlflowGetRun`, `mlflowListArtifacts`, `mlflowSearchRuns`, `mlflowSearchDatasets`, `mlflowSearchModelVersions`, and related fields
 - **Behavior**: Returns `null` for unauthorized fields (does not raise errors)
+- **Nested model versions**: `modelVersions` on a run (and on a model-version search response) lists only the versions whose registered model the caller can READ. The run's experiment must also be readable. A version whose model permission cannot be resolved is left out
 - **Admin users**: Bypass all GraphQL authorization checks
 
 ## Workspace Permissions

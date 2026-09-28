@@ -21,7 +21,7 @@ from mlflow.protos.service_pb2 import (
 
 from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_HANDLERS
 from mlflow_oidc_auth.validators import (
-    validate_can_update_experiment,
+    validate_can_create_prompt_optimization_job,
     validate_can_read_experiment,
     validate_can_read_prompt_optimization_job,
     validate_can_delete_prompt_optimization_job,
@@ -35,9 +35,9 @@ app = Flask(__name__)
 class TestPromptOptimizationJobHandlers:
     """Verify PromptOptimizationJob proto handlers are registered correctly (ENTITY-01)."""
 
-    def test_create_maps_to_update_experiment(self):
-        """CreatePromptOptimizationJob requires EDIT on experiment (same as CreateRun)."""
-        assert BEFORE_REQUEST_HANDLERS[CreatePromptOptimizationJob] is validate_can_update_experiment
+    def test_create_maps_to_create_validator(self):
+        """CreatePromptOptimizationJob requires EDIT on the experiment and the source prompt, READ on the dataset."""
+        assert BEFORE_REQUEST_HANDLERS[CreatePromptOptimizationJob] is validate_can_create_prompt_optimization_job
 
     def test_get_maps_to_read_prompt_optimization_job(self):
         """GetPromptOptimizationJob resolves job_id to experiment and requires READ."""

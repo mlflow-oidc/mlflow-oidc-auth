@@ -543,6 +543,27 @@ for deployments behind a reverse proxy.
   experiment (an unscoped dataset or issue search, a dataset linked to no experiment, a job with
   no recorded experiment) are admin-only. Gateway budget reads (`gateway/budgets/get`, `list`,
   `windows`) and demo-data generation are admin-only.
+- **Job API jobs belong to their creator.** On MLflow's FastAPI job API
+  (`/ajax-api/3.0/jobs/…`), fetching or cancelling a job by id now requires being the user who
+  submitted it, and `jobs/search` returns only the caller's own jobs. Previously any
+  authenticated user could do both for every job. Jobs with no recorded creator (submitted
+  before MLflow recorded one, or on an MLflow release that does not) are visible to admins only.
+  Submitting a job (`POST /ajax-api/3.0/jobs/`) now requires the permissions its parameters
+  call for: EDIT on every experiment the job acts on, directly or through a run or trace. A job
+  function the plugin does not classify is admin-only. Previously any authenticated user could
+  submit any allowed job with any parameters. MLflow's own UI starts these jobs through
+  experiment-scoped routes, which are unchanged.
+  Admins are unaffected. See [Job API](permissions#job-api).
+- **Creating a prompt optimization job checks the prompt and dataset.**
+  `POST 3.0/mlflow/prompt-optimization/jobs` now needs EDIT on the source prompt, which the job
+  registers a new version of, and READ on the experiments of the training dataset, in addition
+  to EDIT on the experiment. A `source_prompt_uri` that is not a `prompts:/` URI, or a dataset
+  that cannot be resolved, is refused. Admins are unaffected.
+- **`ListScorers` is filtered per scorer.** Listing scorers without an `experiment_id`, which
+  MLflow answers with the scorers of every active experiment, is now allowed for any
+  authenticated user instead of being refused, and both forms of the request omit scorers the
+  caller cannot read: a scorer needs READ on its experiment, and a `NO_PERMISSIONS` grant on the
+  scorer itself hides it. Admins are unaffected.
 - **Review queues and label schemas follow MLflow's own authorization rules.** Creating,
   updating or deleting a label schema needs MANAGE on the experiment (before: EDIT to create or
   update). Opening a review queue (`get`, `get-by-name`, `items/list`) needs, besides READ,
