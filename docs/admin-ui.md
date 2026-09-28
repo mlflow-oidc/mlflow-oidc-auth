@@ -95,11 +95,16 @@ Your own **User Profile** page (`/user`) has a **Tokens** tab: a table of your a
 (name, prefix — shown as "Carried over" for a secret from before this feature — created,
 expires, last used, and status), a **+ Create token** button next to the search box, and a delete
 action with a confirmation. Creating a token shows its plaintext **once** in a dedicated
-dialog — copy it immediately, since it cannot be retrieved again.
+dialog — copy it immediately, since it cannot be retrieved again. Tokens are meant for your own
+interactive work (the MLflow client on a laptop or in a notebook): create one per device or
+purpose, give it a short expiry, and delete it when you are done. For CI/CD, scheduled jobs and
+services use a workload identity instead — see [Programmatic access](programmatic-access).
 
 Admins see the same **Tokens** tab on a user's permission page and on a service account's
 permission page, with the same table plus create, delete, and a **Revoke all tokens** action for
-the leaked-token case. This replaces the older single "access token" block and its rotate modal,
+the leaked-token case. Issuing a token for a service account is the exception, for a tool that
+can only send basic auth — see
+[When an admin-issued token for a service account is acceptable](programmatic-access#when-an-admin-issued-token-for-a-service-account-is-acceptable). This replaces the older single "access token" block and its rotate modal,
 which are gone.
 
 ## User and Group Lifecycle

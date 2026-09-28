@@ -15,7 +15,7 @@ Maintained by Kharkevich Engineering Lab.
 
 ### Features
 - **Single sign-on** for the MLflow UI and API through any OpenID Connect provider (confidential or PKCE public clients) or SAML 2.0 identity provider, with several providers side by side
-- **Programmatic access** with bearer tokens (JWT), Kubernetes service-account tokens, per-user access tokens and service accounts; works with the MLflow client (basic auth)
+- **Programmatic access**: automation authenticates with short-lived workload identities — Kubernetes service-account tokens or IdP client-credentials / workload-identity tokens (JWT bearer); people using the MLflow client from a laptop or notebook use named personal access tokens (basic auth). See [Programmatic access](docs/programmatic-access.md)
 - **SCIM 2.0 provisioning** of users and groups from your directory
 - **Permissions** (READ, USE, EDIT, MANAGE) on experiments, registered models, prompts, scorers and AI Gateway resources, granted to users, groups or regex patterns, with deny by default
 - **Workspaces** for multi-tenant isolation on a shared MLflow server

@@ -114,6 +114,11 @@ Base path: `/api/2.0/mlflow/users`
 
 ### Access tokens
 
+Access tokens are for people using the MLflow client outside the browser — a laptop, a notebook,
+an exploratory script. Automation should authenticate with a workload identity (a Kubernetes
+service-account token or an IdP client-credentials / workload-identity token) instead; see
+[Programmatic access](programmatic-access) for which credential fits which use.
+
 Each user (and service account) can hold up to 20 unexpired named access tokens. A token is used
 as the password of HTTP basic auth (`username:token`) — for example `MLFLOW_TRACKING_USERNAME` /
 `MLFLOW_TRACKING_PASSWORD`. A token looks like `mlf_3f9a0c1b_<secret>`: the `mlf_<prefix>_` part is

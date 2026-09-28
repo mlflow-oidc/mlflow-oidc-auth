@@ -8,7 +8,8 @@ IdP posts back, and opens the same server-side session an OIDC login would.
 **SAML is browser-only.** It has no bearer token: an assertion is posted once, by a browser, and
 consumed. Anything that is not a browser — the MLflow Python SDK, the CLI, a CI job, a pod — keeps
 authenticating the way it does today: an OIDC bearer token, a [Kubernetes service-account
-token](kubernetes-auth), or a username and access token. A SAML provider never validates an
+token](kubernetes-auth), or a username and personal access token — see
+[Programmatic access](programmatic-access) for which fits automation and which fits a person. A SAML provider never validates an
 `Authorization` header, and nothing about it changes how those are checked.
 
 ## Installing
