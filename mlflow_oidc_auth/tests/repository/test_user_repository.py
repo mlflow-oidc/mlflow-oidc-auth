@@ -64,6 +64,24 @@ def test_create_integrity_error(repo, session):
         assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
 
 
+def test_create_integrity_error_message_carries_no_sql_or_parameters(repo, session):
+    """The message reaches API clients, so the driver's SQL and bound parameters (which include
+    the new user's password hash) must stay out of it."""
+    # No existing row, so the insert itself is what collides (a concurrent create).
+    session.query.return_value.filter.return_value.one_or_none.return_value = None
+    session.add = MagicMock()
+    session.flush = MagicMock(side_effect=IntegrityError("INSERT INTO users (password_hash) VALUES (?)", ("pbkdf2:sha256:secret-hash",), Exception("UNIQUE")))
+    with (
+        patch("mlflow_oidc_auth.db.models.SqlUser", return_value=MagicMock()),
+        patch("mlflow_oidc_auth.repository.user.generate_password_hash", return_value="pbkdf2:sha256:secret-hash"),
+        patch("mlflow_oidc_auth.repository.user._validate_username"),
+    ):
+        with pytest.raises(MlflowException) as exc:
+            repo.create("user", "pw", "disp")
+    message = str(exc.value)
+    assert "secret-hash" not in message and "INSERT" not in message
+
+
 def test_get_found(repo, session):
     user = MagicMock()
     user.to_mlflow_entity.return_value = "entity"

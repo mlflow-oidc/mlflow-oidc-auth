@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from mlflow.entities import ViewType
 
 from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.routers.trash import (
     _parse_time_delta,
@@ -985,7 +986,9 @@ class TestAdditionalTrashBehaviour:
 
         payload = json.loads(result.body)
         assert payload["deleted_runs"] == []
-        assert any(f["run_id"] == "r1" and "boom-artifact" in f["error"] for f in payload.get("failed_runs", []))
+        assert any(f["run_id"] == "r1" and f["error"] == "Failed to delete artifacts" for f in payload.get("failed_runs", []))
+        # The exception text stays in the server log; it never reaches the client.
+        assert "boom-artifact" not in result.body.decode()
         backend_store._hard_delete_run.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1020,7 +1023,53 @@ class TestAdditionalTrashBehaviour:
         import json
 
         payload = json.loads(result.body)
-        assert any(f["run_id"] == "r1" and "boom-delete" in f["error"] for f in payload.get("failed_runs", []))
+        assert any(f["run_id"] == "r1" and f["error"] == "Failed to delete run" for f in payload.get("failed_runs", []))
+        assert "boom-delete" not in result.body.decode()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_hard_delete_experiment_failure_reports_generic_error(self, mock_get_store):
+        """A failed experiment hard delete is reported without the store's exception text."""
+        backend_store = MagicMock()
+        exp = MagicMock()
+        exp.experiment_id = "e2"
+        exp.lifecycle_stage = "deleted"
+        backend_store.get_experiment.return_value = exp
+        backend_store.search_runs.return_value = []
+        backend_store._hard_delete_experiment.side_effect = Exception("postgresql://svc:hunter2@db/mlflow refused")
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids=None,
+            experiment_ids="e2",
+            older_than=None,
+        )
+        assert result.status_code == 200
+        payload = json.loads(result.body)
+        assert payload["failed_experiments"] == [{"experiment_id": "e2", "error": "Failed to delete experiment"}]
+        assert "hunter2" not in result.body.decode()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_missing_run_reports_generic_not_found(self, mock_get_store, mock_get_artifact_repo):
+        """A run the store cannot find is reported as not found, without the store's message."""
+        backend_store = MagicMock()
+        backend_store.get_run.side_effect = MlflowException("Run 'r1' not found in /var/secret/store.db", error_code=RESOURCE_DOES_NOT_EXIST)
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids="r1",
+            experiment_ids=None,
+            older_than=None,
+        )
+        assert result.status_code == 200
+        payload = json.loads(result.body)
+        assert payload["failed_runs"] == [{"run_id": "r1", "error": "Run not found"}]
+        assert "/var/secret/store.db" not in result.body.decode()
+        backend_store._hard_delete_run.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
@@ -1432,7 +1481,8 @@ class TestAdditionalTrashBehaviour:
         assert payload["deleted_experiments"] == []
         failed_exp = next((f for f in payload.get("failed_experiments", []) if f["experiment_id"] == "exp-1"), None)
         assert failed_exp is not None
-        assert "db unavailable" in failed_exp["error"]
+        assert failed_exp["error"] == "Could not verify no runs remain"
+        assert "db unavailable" not in result.body.decode()
         backend_store._hard_delete_experiment.assert_not_called()
 
     @pytest.mark.asyncio

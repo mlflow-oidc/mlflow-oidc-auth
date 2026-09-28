@@ -48,12 +48,14 @@ class RedisCacheBackend:
         self._prefix = prefix
         self._ttl = ttl
 
-        # Verify connectivity at init time so misconfig fails fast
+        # Verify connectivity at init time so misconfig fails fast. Neither the log line nor the
+        # raised message names the URL, which can carry the Redis password; the chained redis
+        # exception still says what went wrong (refused, timeout, authentication).
         try:
             self._client.ping()
-            logger.info("Redis cache backend connected to %s", url)
+            logger.info("Redis cache backend connected")
         except redis.ConnectionError as e:
-            raise ConnectionError(f"Cannot connect to Redis at {url}: {e}") from e
+            raise ConnectionError(f"Cannot connect to Redis cache backend ({type(e).__name__})") from e
 
     def _make_key(self, key: str) -> str:
         return f"{self._prefix}{key}"

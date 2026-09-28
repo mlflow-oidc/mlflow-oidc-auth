@@ -69,6 +69,32 @@ class TestGetCacheBackend:
             assert hasattr(backend, "_prefix")
             assert backend._prefix == "mlflow_oidc_auth:permissions:"
 
+    def test_redis_url_not_logged(self, caplog):
+        """The Redis URL, which can carry a password, is not written to the log."""
+        import logging
+
+        mock_config = MagicMock()
+        mock_config.CACHE_BACKEND = "redis"
+        mock_config.CACHE_REDIS_URL = "redis://user:r3dis-s3cr3t@cache.example.com:6379/0"
+        mock_config.CACHE_KEY_PREFIX = "mlflow_oidc_auth:"
+
+        mock_redis_module = MagicMock()
+        mock_redis_module.Redis.from_url.return_value.ping.return_value = True
+        mock_redis_module.ConnectionError = ConnectionError
+
+        with (
+            patch("mlflow_oidc_auth.config.config", mock_config),
+            patch.dict("sys.modules", {"redis": mock_redis_module}),
+            caplog.at_level(logging.DEBUG),
+        ):
+            from mlflow_oidc_auth.cache.factory import get_cache_backend
+
+            get_cache_backend("permissions", maxsize=100, ttl=30)
+
+        assert "Using Redis cache backend for 'permissions'" in caplog.text
+        assert "r3dis-s3cr3t" not in caplog.text
+        assert "cache.example.com" not in caplog.text
+
     def test_redis_backend_uses_default_prefix(self):
         """Redis backend uses default prefix when CACHE_KEY_PREFIX is not set."""
         mock_config = MagicMock(spec=[])

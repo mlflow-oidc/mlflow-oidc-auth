@@ -398,7 +398,7 @@ async def permanently_delete_all_trashed_entities(
                     # Fail safe by keeping the run's metadata and reporting the failure instead
                     # of hard-deleting a run whose artifacts were not actually removed.
                     logger.error(f"Error deleting artifacts for run {run_id}: {str(e)}")
-                    failed_runs.append({"run_id": run_id, "error": f"Failed to delete artifacts: {str(e)}"})
+                    failed_runs.append({"run_id": run_id, "error": "Failed to delete artifacts"})
                     continue
 
                 # Hard delete the run
@@ -408,7 +408,10 @@ async def permanently_delete_all_trashed_entities(
 
             except Exception as e:
                 logger.error(f"Error deleting run {run_id}: {str(e)}")
-                failed_runs.append({"run_id": run_id, "error": str(e)})
+                # The client gets a fixed, classified message; the exception text stays in the
+                # server log above because it can carry store or storage internals.
+                not_found = isinstance(e, MlflowException) and e.error_code == "RESOURCE_DOES_NOT_EXIST"
+                failed_runs.append({"run_id": run_id, "error": "Run not found" if not_found else "Failed to delete run"})
 
         # Delete experiments
         deleted_experiments = []
@@ -435,7 +438,7 @@ async def permanently_delete_all_trashed_entities(
                     # Can't confirm the experiment has no runs left - fail safe and skip it
                     # rather than risk cascading a hard delete onto a run we never checked.
                     logger.error(f"Could not verify experiment {experiment_id} has no remaining runs: {str(e)}")
-                    failed_experiments.append({"experiment_id": experiment_id, "error": f"Could not verify no runs remain: {str(e)}"})
+                    failed_experiments.append({"experiment_id": experiment_id, "error": "Could not verify no runs remain"})
                     continue
 
                 if remaining_runs:
@@ -449,7 +452,7 @@ async def permanently_delete_all_trashed_entities(
                     logger.info(f"Permanently deleted experiment {experiment_id}")
                 except Exception as e:
                     logger.error(f"Error deleting experiment {experiment_id}: {str(e)}")
-                    failed_experiments.append({"experiment_id": experiment_id, "error": str(e)})
+                    failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
 
         # Prepare response
         response_data = {

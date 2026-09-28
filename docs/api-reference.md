@@ -297,7 +297,8 @@ whose artifact URI uses the proxied `mlflow-artifacts:` scheme (the tracking ser
 artifacts itself) is resolved against the server's `--artifacts-destination` root, the same way
 MLflow's own server resolves proxied artifacts. If artifact deletion fails for a run, that run's
 metadata is **not** deleted — it stays in the trash and is reported in the response's
-`failed_runs` list with the error, so a run is never hard-deleted while its artifacts are still
+`failed_runs` list with a short, fixed reason (the underlying exception is written to the
+server log, not returned), so a run is never hard-deleted while its artifacts are still
 known to exist. Before hard-deleting an experiment, the endpoint always checks whether it still
 owns any run — for any reason a run above was kept (a failed artifact deletion, an age or
 lifecycle-stage check, or a lookup failure), not only an artifact-deletion failure. If one does,

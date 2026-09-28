@@ -253,7 +253,7 @@ describe("TrashPage", () => {
       total_deleted_runs: 0,
       total_deleted_experiments: 0,
       failed_runs: [
-        { run_id: "run1", error: "Failed to delete artifacts: boom" },
+        { run_id: "run1", error: "Failed to delete artifacts" },
       ],
     });
     renderWithRouter("/trash/runs");
@@ -272,7 +272,7 @@ describe("TrashPage", () => {
       });
     });
     expect(mockShowToast).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to delete artifacts: boom"),
+      expect.stringContaining("Failed to delete artifacts"),
       "error",
     );
   });
