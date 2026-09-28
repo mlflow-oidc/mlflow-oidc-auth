@@ -20,10 +20,11 @@ are for people.
 ## Automation: OIDC service accounts
 
 A workload identity is short-lived, rotated by the platform that issues it, revocable at the
-source (the IdP or the cluster), and nothing long-lived has to be stored in the pipeline. It also
-cannot be turned into a longer-lived credential: a bearer token from a Kubernetes provider or from
-a provider configured `interactive: false` gets `403` from every endpoint that issues an access
-token (see [Security notes](#security-notes)).
+source (the IdP or the cluster), and nothing long-lived has to be stored in the pipeline. Tokens
+from a Kubernetes provider or from a provider configured `interactive: false` cannot be turned
+into a longer-lived credential: they get `403` from every endpoint that issues an access token.
+A client-credentials token from the IdP people sign in with is treated like any IdP token and
+may issue access tokens for its own account (see [Security notes](#security-notes)).
 
 ### Kubernetes service-account tokens
 
@@ -109,12 +110,11 @@ short-lived token and send it as a bearer token. For such a token to authenticat
      `OIDC_GROUP_NAME` / `OIDC_ADMIN_GROUP_NAME` gate as a browser login. It is never an admin
      unless `OIDC_TRUST_BEARER_GROUP_CLAIMS` is set. See the
      [configuration reference](configuration#oidc-authentication).
-4. **For the token-issuance refusal, the issuer must be non-interactive.** A provider is
-   interactive or not per issuer, and a token from an interactive provider is treated as a
-   person's IdP token — it may create access tokens for its own account. To have workload tokens
-   refused there, issue them from a separate issuer (a dedicated realm or tenant, or a CI
-   platform's OIDC issuer) and register it with `"interactive": false`, which also keeps it off
-   the login page:
+4. **Interactive or not is set per issuer.** A client-credentials token from the IdP people sign
+   in with may issue access tokens for its own account — that is intended. A token-only issuer
+   (a CI platform's OIDC issuer, a dedicated realm or tenant for workloads) is registered with
+   `"interactive": false`: it is kept off the login page, and its tokens cannot issue access
+   tokens:
 
    ```json
    {
@@ -212,10 +212,11 @@ Accept the caveats that come with it:
 
 ## Security notes
 
-- **Who can mint tokens.** Your own tokens: you, from a signed-in session or your own IdP bearer
-  token. Another user's or a service account's: an admin, also from an interactive sign-in.
-- **Credentials that cannot mint.** A request authenticated with an access token, or with a
-  bearer token from a non-interactive provider (a Kubernetes service account, a provider
+- **Who can mint tokens.** Your own tokens: you, from a signed-in session or a bearer token from
+  an interactive IdP — including that IdP's client-credentials tokens, for their own account.
+  Another user's or a service account's: an admin, from the same kinds of sign-in.
+- **Credentials that cannot mint.** A request authenticated with a personal access token, or
+  with a bearer token from a non-interactive account (a Kubernetes service account, a provider
   configured `interactive: false`), gets `403` from every issuing endpoint. A leaked or
   short-lived credential cannot produce a year-long replacement for itself. Listing and deleting
   tokens works with any credential.

@@ -128,8 +128,9 @@ and the plaintext is returned exactly once, at creation. Every token must expire
 stored).
 
 Issuing a token — any endpoint that returns a new one, including `PATCH /access-token` — requires
-a signed-in session or a user's bearer token from an interactive IdP. A request authenticated with
-an access token, or with a bearer token from a non-interactive provider (a Kubernetes service
+a signed-in session or a bearer token from an interactive IdP (a client-credentials token from
+that IdP included). A request authenticated with a personal access token, or with a bearer token
+from a non-interactive provider (a Kubernetes service
 account, a provider configured `interactive: false`), gets `403`: a leaked or short-lived
 credential cannot mint a year-long replacement. Listing and deleting tokens works with
 any credential.
