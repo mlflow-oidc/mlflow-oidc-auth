@@ -57,7 +57,12 @@ export const EditWorkspaceModal: React.FC<EditWorkspaceModalProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Edit Workspace">
-      <form onSubmit={handleSubmit} role="form">
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(e);
+        }}
+        role="form"
+      >
         <Input
           id="workspace-name"
           label="Name"

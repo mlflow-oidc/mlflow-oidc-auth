@@ -116,6 +116,103 @@ class TestListGroups:
 
 
 # ========================================================================================
+# GROUP CREATION
+# ========================================================================================
+
+
+@pytest.mark.usefixtures("authenticated_session", "override_admin")
+class TestCreateGroup:
+    """Tests for create_group endpoint."""
+
+    def test_create_group_success(self, authenticated_client, mock_store):
+        """Test creating a group that does not exist yet."""
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.return_value = ["analysts"]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 201
+        assert resp.json()["message"] == "Group analysts successfully created"
+        mock_store.get_group_detail.assert_called_once_with("analysts", with_members=False)
+        mock_store.populate_groups.assert_called_once_with(["analysts"], written_by="manual")
+
+    def test_create_group_already_exists(self, authenticated_client, mock_store):
+        """Test creating a group that already exists leaves it untouched."""
+        mock_store.get_group_detail.return_value = {"group_name": "devs", "external_id": None, "managed_by": "manual"}
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "devs"})
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "Group devs already exists"
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_lost_concurrent_insert_race(self, authenticated_client, mock_store):
+        """A concurrent writer (e.g. a member's first login) creating the same group first is not
+        an error: the request still succeeds, as 200 rather than 201.
+
+        ``store.get_group_detail`` sees nothing at the initial check (nobody had created the group
+        yet), but ``populate_groups`` — which tolerates the resulting IntegrityError internally —
+        reports back that this call did not win the race, exactly as if the initial check had
+        found the group.
+        """
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.return_value = []  # Lost the race; nothing created by this call.
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 200
+        assert resp.json()["message"] == "Group analysts already exists"
+        mock_store.populate_groups.assert_called_once_with(["analysts"], written_by="manual")
+
+    def test_create_group_strips_surrounding_whitespace(self, authenticated_client, mock_store):
+        """Test the group name is trimmed before it reaches the store."""
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.return_value = ["analysts"]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "  analysts  "})
+        assert resp.status_code == 201
+        mock_store.get_group_detail.assert_called_once_with("analysts", with_members=False)
+        mock_store.populate_groups.assert_called_once_with(["analysts"], written_by="manual")
+
+    def test_create_group_blank_name(self, authenticated_client, mock_store):
+        """Test rejecting a group name that is empty once trimmed."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "   "})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_error(self, authenticated_client, mock_store):
+        """Test error handling when group creation fails."""
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.side_effect = Exception("DB error")
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 500
+
+    def test_create_group_name_too_long(self, authenticated_client, mock_store):
+        """Test rejecting a group name over the shared SCIM/admin-API length bound."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "a" * 256})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_reserved_character(self, authenticated_client, mock_store):
+        """Test rejecting a name that would collide with the path-segment reserved characters."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "devs/prod"})
+        assert resp.status_code == 400
+        mock_store.populate_groups.assert_not_called()
+
+    def test_create_group_does_not_reown_scim_managed_group(self, authenticated_client, mock_store):
+        """Creating a group that already exists (e.g. SCIM-managed) must not touch its ownership."""
+        mock_store.get_group_detail.return_value = {"group_name": "directory-team", "external_id": "okta-1", "managed_by": "scim"}
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "directory-team"})
+        assert resp.status_code == 200
+        # No write at all reaches the store, so a group another source owns keeps that owner.
+        mock_store.populate_groups.assert_not_called()
+
+
+@pytest.mark.usefixtures("authenticated_session")
+class TestCreateGroupDenied:
+    """Non-admins cannot create groups."""
+
+    def test_create_group_denied_for_non_admin(self, authenticated_client, mock_store):
+        """Test that a non-admin user cannot create a group."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "analysts"})
+        assert resp.status_code == 403
+        mock_store.populate_groups.assert_not_called()
+
+
+# ========================================================================================
 # GROUP USERS
 # ========================================================================================
 
