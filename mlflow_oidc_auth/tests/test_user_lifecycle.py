@@ -15,7 +15,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from authlib.jose import JsonWebKey, jwt
+from mlflow_oidc_auth.tests.jose_helpers import encode_jwt, generate_rsa_key
 from click.testing import CliRunner
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -55,8 +55,8 @@ def bound_store(store):
 @pytest.fixture
 def bearer_token(monkeypatch):
     """Prime the JWKS cache with a local key and return a token minter."""
-    key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-    private, public = key.as_dict(is_private=True), key.as_dict(is_private=False)
+    key = generate_rsa_key()
+    private, public = key.as_dict(private=True), key.as_dict(private=False)
     kid = public.get("kid") or key.thumbprint()
     public["kid"] = private["kid"] = kid
     monkeypatch.setattr(auth_module.config, "OIDC_DISCOVERY_URL", "https://test.invalid/.well-known/openid-configuration")
@@ -64,7 +64,7 @@ def bearer_token(monkeypatch):
 
     def mint(username: str) -> str:
         now = int(time.time())
-        return jwt.encode({"alg": "RS256", "kid": kid}, {"email": username, "name": username, "iat": now, "exp": now + 3600}, private).decode("utf-8")
+        return encode_jwt({"alg": "RS256", "kid": kid}, {"email": username, "name": username, "iat": now, "exp": now + 3600}, private)
 
     return mint
 

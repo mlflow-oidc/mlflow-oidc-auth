@@ -151,7 +151,7 @@ class TestKeyRotationIsPerIssuer:
         monkeypatch.setattr(auth_module, "_get_provider_jwks", fetch)
 
         # A token for Entra whose signature does not verify — the rotation-shaped failure, and
-        # the one authlib reports as BadSignatureError, which is what the retry is keyed on.
+        # the one the decoder reports as BadSignatureError, which is what the retry is keyed on.
         header, payload, _ = entra.mint().split(".")
         unverifiable = f"{header}.{payload}.{b64(b'not-the-signature').decode()}"
 

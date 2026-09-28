@@ -439,7 +439,7 @@ class TestTokensWithoutAnExpiry:
         assert verify_with()(cluster.mint(sub=self.SUBJECT))["sub"] == self.SUBJECT
 
     def test_a_token_without_an_expiry_is_refused_by_default(self, verify_with, cluster):
-        from authlib.jose.errors import MissingClaimError
+        from joserfc.errors import MissingClaimError
 
         with pytest.raises(MissingClaimError):
             verify_with()(self._without_exp(cluster))

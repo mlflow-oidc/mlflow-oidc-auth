@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from authlib.jose.errors import BadSignatureError
+from joserfc.errors import BadSignatureError
 
 from mlflow_oidc_auth.auth import (
     _claims_options_for,

@@ -97,7 +97,7 @@ class TestTokensWithoutAnExpiry:
     def test_the_refusal_is_for_the_missing_claim(self, verify, trusted):
         """Not incidentally for something else about the token: the control below is identical
         but for ``exp``."""
-        from authlib.jose.errors import MissingClaimError
+        from joserfc.errors import MissingClaimError
 
         with pytest.raises(MissingClaimError, match="exp"):
             verify(self._without_exp(trusted))

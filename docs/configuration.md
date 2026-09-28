@@ -485,6 +485,14 @@ for deployments behind a reverse proxy.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Bearer tokens are verified with `joserfc`.** Token validation moved from the deprecated
+  `authlib.jose` module to `joserfc`, which is now a direct dependency. Accepted algorithms, the
+  `iss`, `aud`, `exp`, `nbf` and `iat` checks, `kid` selection and the key refresh on a failed
+  signature are unchanged. A few malformed tokens that were accepted before are now refused: one
+  signed with a key whose JWKS entry names a different `alg` than the token's header, one whose
+  registered header parameters have the wrong type or form (a non-string `kid` or `typ`, a
+  `jku` that is not an http(s) URL, a non-boolean `b64`), and one whose signature segment
+  carries base64 padding. Standards-conforming identity providers issue none of these.
 - **Artifact paths that name no experiment are denied.** The artifact proxy used to authorize a
   path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. That setting ships as
   `MANAGE`, so on a default deployment any authenticated user could download, upload to or
