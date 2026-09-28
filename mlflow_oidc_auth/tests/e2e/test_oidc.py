@@ -311,6 +311,11 @@ class TestPublicClient:
     Keycloak holds ``mlflow-public`` as a public client that requires PKCE S256, so it refuses a
     code exchange without a valid ``code_verifier`` and authenticates nothing else: every step
     below succeeding is the evidence that the plugin sends ``client_id`` and PKCE, and no secret.
+
+    The same client releases its ``groups`` claim from the UserInfo endpoint only, not in the ID
+    token, as many academic IdPs do with email, name or groups: a login through it passes the
+    group gate only if the callback completes its claims from UserInfo, which the provider allows
+    with ``"userinfo_groups": true``.
     """
 
     def test_a_public_client_logs_in_refreshes_and_logs_out_without_a_secret(self, app_server, public_keycloak):
@@ -353,3 +358,23 @@ class TestPublicClient:
 
         landing = flows.drive_to_app(browser, leaving, app_server)
         assert urlparse(flows.landing_url(landing)).path == "/oidc/ui/auth"
+
+    def test_groups_released_only_by_userinfo_complete_the_login(self, app_server, public_keycloak):
+        keycloak = public_keycloak
+        keycloak.logout_everywhere(DAVE)
+        before = len(_settled_events(keycloak, "USER_INFO_REQUEST", username=DAVE, client_id=PUBLIC_OIDC_CLIENT_ID))
+
+        browser = flows.login(app_server, DAVE, provider=PUBLIC_OIDC_PROVIDER_ID)
+        cookie = flows.session_cookie(browser)
+        status = flows.auth_status(app_server, cookie)
+
+        # The group gate passed, so the groups claim reached the login...
+        assert status["authenticated"] is True and status["username"] == DAVE
+        assert flows.api_get(app_server, flows.CURRENT_USER, cookie).status_code == 200
+        # ...although the ID token did not carry it: it came from the UserInfo endpoint.
+        id_token = _stored_tokens(app_server, cookie).id_token
+        payload = id_token.split(".")[1]
+        id_claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        assert "groups" not in id_claims
+        requests = _settled_events(keycloak, "USER_INFO_REQUEST", username=DAVE, client_id=PUBLIC_OIDC_CLIENT_ID)
+        assert len(requests) == before + 1, "the login did not ask the public client's UserInfo endpoint for the missing claim"

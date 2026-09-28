@@ -392,6 +392,9 @@ def server_env(*, app_url: str, secret_key: str, db_uri: str, keycloak: Keycloak
             "discovery_url": f"{keycloak.public_issuer}/.well-known/openid-configuration",
             "client_id": PUBLIC_OIDC_CLIENT_ID,
             "public_client": True,
+            # Keycloak releases this client's groups claim from UserInfo only, so its logins pass
+            # the group gate only with the opt-in that lets UserInfo supply groups.
+            "userinfo_groups": True,
             "issuer": keycloak.public_issuer,
             "audience": PUBLIC_OIDC_CLIENT_ID,
             "identity_binding": "email",

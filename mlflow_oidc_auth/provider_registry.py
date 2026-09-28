@@ -176,6 +176,11 @@ class ProviderConfig:
             provider that does not declare this is a configuration error, not a public client.
             False by default; for the synthesised ``default`` provider it comes from
             ``OIDC_PUBLIC_CLIENT``.
+        userinfo_groups: ``oidc`` only. Whether the groups and workspace claims may be read from
+            the provider's UserInfo endpoint when the ID token lacks them. They decide access,
+            administrator status and workspace membership, so this is opt-in: by default only
+            identity claims (username, email, display name) are completed from UserInfo. False by
+            default; for the synthesised ``default`` provider it comes from ``OIDC_USERINFO_GROUPS``.
         jwks_inline: Key set written into configuration, for a cluster whose JWKS cannot be
             fetched. The only mode that needs no network at all.
         jwks_uri: Key set URL, when it is known and discovery is not readable.
@@ -225,6 +230,8 @@ class ProviderConfig:
     client_id: Optional[str] = None
     # Opt-in (#300): registered without a client secret, PKCE authenticating the token exchange.
     public_client: bool = False
+    # Opt-in: groups and workspace claims may come from UserInfo when the ID token lacks them.
+    userinfo_groups: bool = False
     # Kubernetes service-account providers (#314). A cluster's JWKS is often not anonymously
     # readable and often unreachable from wherever MLflow runs, so the keys can come from
     # discovery, from configuration, or from the API server using the pod's own credentials.
@@ -393,6 +400,16 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         # operator who wrote it believes it changes something.
         errors.append(f"{label}: 'public_client' applies only to an 'oidc' provider, not to {provider_type!r}")
 
+    userinfo_groups = entry.get("userinfo_groups", False)
+    if not isinstance(userinfo_groups, bool):
+        # Strict rather than truthy: the string "false" is truthy, and reading it as true would let
+        # UserInfo decide group membership and administrator status.
+        errors.append(f"{label}: 'userinfo_groups' must be true or false, got {userinfo_groups!r}")
+    elif userinfo_groups and provider_type != "oidc":
+        # Only an OIDC provider has a UserInfo endpoint. Refused rather than ignored: an operator
+        # who wrote it believes it changes something.
+        errors.append(f"{label}: 'userinfo_groups' applies only to an 'oidc' provider, not to {provider_type!r}")
+
     allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
     if identity_binding == "email" and not allowed_email_domains:
         errors.append(
@@ -502,6 +519,7 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             discovery_url=discovery_url.strip() if isinstance(discovery_url, str) else None,
             client_id=client_id.strip() if isinstance(client_id, str) else None,
             public_client=public_client is True,
+            userinfo_groups=userinfo_groups is True,
             **saml_fields,
         ),
         [],
@@ -1107,6 +1125,9 @@ def _legacy_entry(app_config: Any) -> Dict[str, Any]:
         # OIDC_PUBLIC_CLIENT (#300). ``is True`` rather than truthiness: the config layer parses
         # it as a boolean, and anything else must not register a client without its secret.
         "public_client": getattr(app_config, "OIDC_PUBLIC_CLIENT", False) is True,
+        # OIDC_USERINFO_GROUPS. ``is True`` for the same reason: anything but a real boolean must
+        # not let UserInfo decide group membership.
+        "userinfo_groups": getattr(app_config, "OIDC_USERINFO_GROUPS", False) is True,
     }
 
 
@@ -1278,6 +1299,7 @@ def _legacy_providers(app_config: Any) -> List[ProviderConfig]:
             discovery_url=entry["discovery_url"],
             client_id=entry["client_id"],
             public_client=entry["public_client"],
+            userinfo_groups=entry["userinfo_groups"],
             allow_tokens_without_expiry=False,
         )
     ]
