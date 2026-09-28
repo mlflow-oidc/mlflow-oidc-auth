@@ -24,8 +24,12 @@ providers (Vault, AWS, Azure) keep working.
 
 from __future__ import annotations
 
+import os
 import re
-from typing import Dict, Optional
+import ssl
+from typing import Dict, Optional, Union
+
+import certifi
 
 from authlib.integrations.starlette_client import OAuth
 
@@ -260,7 +264,7 @@ def ensure_client_registered(provider_id: str = DEFAULT_PROVIDER_ID) -> bool:
             name=client_name(provider_id),
             client_kwargs={
                 "scope": _build_scope(),
-                "verify": config.OIDC_VERIFY_SSL,
+                "verify": _tls_verify(),
                 "code_challenge_method": config.OIDC_CODE_CHALLENGE,
             },
             **settings,
@@ -270,6 +274,24 @@ def ensure_client_registered(provider_id: str = DEFAULT_PROVIDER_ID) -> bool:
     except Exception as exc:
         logger.warning(f"Failed to register OIDC client for provider '{provider_id}': {exc}")
         return False
+
+
+def _tls_verify() -> Union[bool, ssl.SSLContext]:
+    """TLS verification for the OIDC client's calls to the provider.
+
+    Trusts the same CAs as before the move to ``httpx2``, and as the ``requests`` calls that fetch
+    bearer-token signing keys: certifi's bundle, or ``SSL_CERT_FILE`` / ``SSL_CERT_DIR`` when set.
+    ``httpx2`` would otherwise trust the operating system's store, so the two paths could disagree.
+
+    Returns:
+        False when ``OIDC_VERIFY_SSL`` is off; True when ``SSL_CERT_FILE`` or ``SSL_CERT_DIR`` is
+        set (``httpx2`` builds the context from them); otherwise an ``SSLContext`` on certifi's bundle.
+    """
+    if not config.OIDC_VERIFY_SSL:
+        return False
+    if os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
+        return True
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 def ensure_all_clients_registered() -> Dict[str, bool]:

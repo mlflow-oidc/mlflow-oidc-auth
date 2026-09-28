@@ -523,3 +523,68 @@ class TestOidcClientRegistrationKwargs(unittest.TestCase):
             assert kwargs["scope"] == "openid email"
             assert kwargs["verify"] is False
             assert kwargs["code_challenge_method"] == "S256"
+
+
+class TestOidcClientTlsTrust:
+    """The OIDC client trusts the same CAs as the requests-based key fetches (certifi)."""
+
+    def test_verify_off_disables_verification(self, monkeypatch):
+        import mlflow_oidc_auth.oauth as oauth_mod
+
+        monkeypatch.setattr(oauth_mod.config, "OIDC_VERIFY_SSL", False)
+        assert oauth_mod._tls_verify() is False
+
+    def test_default_trusts_certifi_bundle(self, monkeypatch):
+        import ssl
+
+        import certifi
+
+        import mlflow_oidc_auth.oauth as oauth_mod
+
+        monkeypatch.setattr(oauth_mod.config, "OIDC_VERIFY_SSL", True)
+        monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+        monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+        created = {}
+        real = ssl.create_default_context
+
+        def spy(*args, **kwargs):
+            created.update(kwargs)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(oauth_mod.ssl, "create_default_context", spy)
+        ctx = oauth_mod._tls_verify()
+        assert isinstance(ctx, ssl.SSLContext)
+        assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname
+        assert created == {"cafile": certifi.where()}
+
+    def test_ssl_cert_file_is_left_to_the_http_client(self, monkeypatch, tmp_path):
+        import mlflow_oidc_auth.oauth as oauth_mod
+
+        monkeypatch.setattr(oauth_mod.config, "OIDC_VERIFY_SSL", True)
+        monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "ca.pem"))
+        assert oauth_mod._tls_verify() is True
+
+    def test_registered_client_uses_the_certifi_context(self, monkeypatch):
+        import ssl
+        from unittest.mock import patch
+
+        from authlib.integrations.starlette_client import OAuth
+
+        import mlflow_oidc_auth.oauth as oauth_mod
+
+        monkeypatch.setattr(oauth_mod.config, "OIDC_VERIFY_SSL", True)
+        monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+        monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+        fresh = OAuth()
+        with (
+            patch.object(oauth_mod, "oauth", fresh),
+            patch.object(oauth_mod, "_registered", {}),
+            patch.object(
+                oauth_mod, "_client_settings", return_value={"client_id": "id", "client_secret": "s", "server_metadata_url": "https://idp/.well-known"}
+            ),
+            patch.object(oauth_mod, "_build_scope", return_value="openid"),
+        ):
+            assert oauth_mod.ensure_oidc_client_registered() is True
+            client = fresh.create_client(oauth_mod.client_name(oauth_mod.DEFAULT_PROVIDER_ID))
+            assert isinstance(client.client_kwargs["verify"], ssl.SSLContext)
+            assert type(client.client_kwargs["verify"]).__module__ == "ssl"
