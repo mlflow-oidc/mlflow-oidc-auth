@@ -160,7 +160,7 @@ class TestRequestHelpers(unittest.TestCase):
     def test_get_url_param(self):
         """Test URL parameter extraction from view arguments."""
         with self.app.test_request_context("/user/123"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock to avoid AsyncMock coroutines
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = {"param": "value"}
@@ -168,7 +168,7 @@ class TestRequestHelpers(unittest.TestCase):
 
         # Missing parameter
         with self.app.test_request_context("/"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
@@ -178,7 +178,7 @@ class TestRequestHelpers(unittest.TestCase):
 
         # No view_args at all
         with self.app.test_request_context("/"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = None
@@ -189,7 +189,7 @@ class TestRequestHelpers(unittest.TestCase):
     def test_get_optional_url_param(self):
         """Test optional URL parameter extraction."""
         with self.app.test_request_context("/user/123"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = {"param": "value"}
@@ -197,7 +197,7 @@ class TestRequestHelpers(unittest.TestCase):
 
         # Missing parameter (note: function doesn't support default, just returns None)
         with self.app.test_request_context("/"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
@@ -205,7 +205,7 @@ class TestRequestHelpers(unittest.TestCase):
 
         # Missing parameter without default
         with self.app.test_request_context("/"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
@@ -213,7 +213,7 @@ class TestRequestHelpers(unittest.TestCase):
 
         # No view_args at all
         with self.app.test_request_context("/"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 mock_request.view_args = None
                 self.assertIsNone(get_optional_url_param("missing_param"))
 
@@ -221,7 +221,7 @@ class TestRequestHelpers(unittest.TestCase):
         """Test model name extraction from request parameters."""
         # View args
         with self.app.test_request_context("/model/test_model"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = {"name": "test_model"}
@@ -244,7 +244,7 @@ class TestRequestHelpers(unittest.TestCase):
 
         # Missing name
         with self.app.test_request_context("/", method="GET"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
@@ -310,7 +310,7 @@ class TestRequestHelpers(unittest.TestCase):
     def test_get_experiment_id_view_args(self):
         """Test experiment ID extraction from view arguments."""
         with self.app.test_request_context("/experiment/123"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 mock_request.view_args = {"experiment_id": "123"}
                 mock_request.args = {}
                 mock_request.json = None
@@ -324,7 +324,7 @@ class TestRequestHelpers(unittest.TestCase):
         mock_tracking_store.return_value.get_experiment_by_name.return_value = mock_experiment
 
         with self.app.test_request_context("/experiment/test_exp"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 mock_request.view_args = {"experiment_name": "test_exp"}
                 mock_request.args = {}
                 mock_request.json = None
@@ -351,7 +351,7 @@ class TestRequestHelpers(unittest.TestCase):
         """Test model ID extraction from request parameters."""
         # View args
         with self.app.test_request_context("/model/123"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 mock_request.view_args = {"model_id": "123"}
                 mock_request.args = {}
                 mock_request.json = None
@@ -372,7 +372,7 @@ class TestRequestHelpers(unittest.TestCase):
 
         # Missing model_id
         with self.app.test_request_context("/", method="GET"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = None
@@ -385,7 +385,7 @@ class TestRequestHelpers(unittest.TestCase):
 
         # Empty view_args, but model_id in args
         with self.app.test_request_context("/?model_id=args_id", method="GET"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 mock_request.view_args = {}
                 mock_request.args = {"model_id": "args_id"}
                 mock_request.json = None
@@ -398,7 +398,7 @@ class TestRequestHelpers(unittest.TestCase):
             json={"model_id": "json_id"},
             content_type="application/json",
         ):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = {}
@@ -409,7 +409,7 @@ class TestRequestHelpers(unittest.TestCase):
     def test_get_model_id_json_exception(self):
         """Test model ID extraction when JSON parsing raises exception."""
         with self.app.test_request_context("/", method="POST"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = None
@@ -423,7 +423,7 @@ class TestRequestHelpers(unittest.TestCase):
     def test_get_model_name_json_exception(self):
         """Test model name extraction when JSON parsing raises exception."""
         with self.app.test_request_context("/", method="POST"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = None
@@ -437,7 +437,7 @@ class TestRequestHelpers(unittest.TestCase):
     def test_get_experiment_id_json_exception(self):
         """Test experiment ID extraction when JSON parsing raises exception."""
         with self.app.test_request_context("/", method="POST"):
-            with patch("mlflow_oidc_auth.utils.request_helpers.request") as mock_request:
+            with patch("mlflow_oidc_auth.utils.request_helpers.request", new_callable=MagicMock) as mock_request:
                 # Ensure get_json is a synchronous MagicMock
                 mock_request.get_json = MagicMock()
                 mock_request.view_args = None

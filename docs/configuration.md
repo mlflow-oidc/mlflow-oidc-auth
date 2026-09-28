@@ -111,7 +111,7 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 |----------|------|---------|-------------|
 | `OIDC_JWKS_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for the JWKS key set cache. The OIDC provider's signing keys are fetched once and cached for this duration. This is always a local in-process cache (not affected by `CACHE_BACKEND`) because JWKS data is identical across replicas |
 | `OIDC_HTTP_TIMEOUT_SECONDS` | Integer | `10` | Timeout (seconds) applied to OIDC discovery and JWKS HTTP fetches. Set lower for faster failover when the IdP is unreachable; without a timeout a hung IdP can block request threads until the OS-level TCP timeout (~2 minutes), causing cascading auth failures |
-| `OIDC_VERIFY_SSL` | Boolean | `true` | Verify the OIDC provider's TLS certificate on discovery, JWKS, and token requests. Only set to `false` for providers using self-signed certificates in a trusted network |
+| `OIDC_VERIFY_SSL` | Boolean | `true` | Verify the OIDC provider's TLS certificate on discovery, JWKS, and token requests. Only set to `false` for providers using self-signed certificates in a trusted network. Certificates are checked against the operating system's trust store, so a private or TLS-inspection root CA installed system-wide is trusted (see *Outbound HTTPS trusts the operating system's certificate store* under Upgrading) |
 | `OIDC_CODE_CHALLENGE` | String | `S256` | PKCE code-challenge method for the authorization-code flow. `S256` (or `true`/`yes`/`on`/`1`), or `none`/`off`/`false`/`no`/`0` to disable. An unrecognised value warns and falls back to `S256`. See [PKCE](#pkce) |
 | `MANAGED_BY_ENFORCEMENT` | String | `report` | What happens when one source writes a row another owns: `off`, `report` (audit only) or `enforce`. See [Row ownership](#row-ownership) |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
@@ -485,6 +485,25 @@ for deployments behind a reverse proxy.
   `allow_tokens_without_expiry: true` on that provider's registry entry before upgrading, or those
   callers start getting `401`. See [Provider registry fields](#provider-registry-fields) and
   [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry).
+- **Outbound HTTPS trusts the operating system's certificate store.** A private or
+  TLS-inspection (DLP/DPI) root CA installed system-wide is now trusted by every call to an
+  identity provider, without extra configuration:
+  - OIDC discovery, token and userinfo requests (via `httpx2`) verify against the operating
+    system's store.
+  - Bearer-token discovery and JWKS fetches, SAML metadata, and the bundled Entra group plugin
+    verify against the operating system's store *in addition to* certifi's bundled list, or to
+    `REQUESTS_CA_BUNDLE` when it is set, as before.
+  - The Kubernetes provider's cluster CA is still trusted on its own, never combined with either.
+  If your private root is only in `REQUESTS_CA_BUNDLE`, also install it system-wide (or set
+  `SSL_CERT_FILE`) so the login flow trusts it too.
+- **Bearer tokens are verified with `joserfc`.** Token validation moved from the deprecated
+  `authlib.jose` module to `joserfc`, which is now a direct dependency. Accepted algorithms, the
+  `iss`, `aud`, `exp`, `nbf` and `iat` checks, `kid` selection and the key refresh on a failed
+  signature are unchanged. A few malformed tokens that were accepted before are now refused: one
+  signed with a key whose JWKS entry names a different `alg` than the token's header, one whose
+  registered header parameters have the wrong type or form (a non-string `kid` or `typ`, a
+  `jku` that is not an http(s) URL, a non-boolean `b64`), and one whose signature segment
+  carries base64 padding. Standards-conforming identity providers issue none of these.
 - **Artifact paths that name no experiment are denied.** The artifact proxy used to authorize a
   path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. That setting ships as
   `MANAGE`, so on a default deployment any authenticated user could download, upload to or

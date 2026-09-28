@@ -151,7 +151,7 @@ class TestKeyRotationIsPerIssuer:
         monkeypatch.setattr(auth_module, "_get_provider_jwks", fetch)
 
         # A token for Entra whose signature does not verify — the rotation-shaped failure, and
-        # the one authlib reports as BadSignatureError, which is what the retry is keyed on.
+        # the one the decoder reports as BadSignatureError, which is what the retry is keyed on.
         header, payload, _ = entra.mint().split(".")
         unverifiable = f"{header}.{payload}.{b64(b'not-the-signature').decode()}"
 
@@ -177,7 +177,7 @@ class TestKeyRotationIsPerIssuer:
 
             return Response()
 
-        monkeypatch.setattr(auth_module.requests, "get", fake_get)
+        monkeypatch.setattr(auth_module.http_client, "get", fake_get)
 
         entra_provider = provider_for(entra, provider_id="entra", discovery_url="https://entra.invalid/.well-known/openid-configuration")
         k8s_provider = provider_for(kubernetes, provider_id="k8s", discovery_url="https://k8s.invalid/.well-known/openid-configuration")
@@ -195,7 +195,7 @@ class TestKeyRotationIsPerIssuer:
         auth_module._provider_jwks_cache["entra"] = entra.jwks
         auth_module._provider_jwks_cache["k8s"] = kubernetes.jwks
 
-        monkeypatch.setattr(auth_module.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("k8s keys were refetched")))
+        monkeypatch.setattr(auth_module.http_client, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("k8s keys were refetched")))
         entra_provider = provider_for(entra, provider_id="entra", discovery_url="https://entra.invalid/.well-known/openid-configuration")
 
         with pytest.raises(Exception):
@@ -303,7 +303,7 @@ class TestTheSingleProviderDeploymentFetchesKeysTheSameWay:
 
             return Response()
 
-        monkeypatch.setattr(auth_module.requests, "get", fake_get)
+        monkeypatch.setattr(auth_module.http_client, "get", fake_get)
         entra_provider = provider_for(entra, provider_id="entra", discovery_url="https://entra.invalid/.well-known/openid-configuration")
 
         auth_module._get_provider_jwks(entra_provider, force_refresh=True)
@@ -332,7 +332,7 @@ class TestAClusterProviderValidatesLikeAnyOther:
         monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry)
         monkeypatch.setattr(auth_module, "_get_oidc_jwks", lambda force_refresh=False: entra.jwks)
         monkeypatch.setattr(
-            auth_module.requests,
+            auth_module.http_client,
             "get",
             lambda *a, **k: (_ for _ in ()).throw(AssertionError("inline keys must not be fetched")),
         )
@@ -373,7 +373,7 @@ class TestAClusterProviderValidatesLikeAnyOther:
             fetched.append(url)
             return SimpleNamespace(json=lambda: cluster.jwks)
 
-        monkeypatch.setattr(auth_module.requests, "get", fake_get)
+        monkeypatch.setattr(auth_module.http_client, "get", fake_get)
 
         assert auth_module.validate_token(cluster.mint())["iss"] == cluster.iss
         assert fetched == ["https://api.cluster.invalid/openid/v1/jwks"], "the key-set URL must not be treated as a discovery document"
@@ -411,7 +411,7 @@ class TestAClusterProviderValidatesLikeAnyOther:
             seen["headers"] = kwargs.get("headers")
             return SimpleNamespace(json=lambda: cluster.jwks)
 
-        monkeypatch.setattr(auth_module.requests, "get", fake_get)
+        monkeypatch.setattr(auth_module.http_client, "get", fake_get)
 
         assert auth_module.validate_token(cluster.mint())["iss"] == cluster.iss
         assert seen["headers"] == {"Authorization": "Bearer pod-service-account-token"}

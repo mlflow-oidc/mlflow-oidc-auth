@@ -1064,11 +1064,12 @@ class TestSamlMetadataFetch:
                 def close(self):
                     pass
 
-            def _get(url, **kwargs):
-                seen.update(kwargs, url=url)
+            def _get(session, url, **kwargs):
+                seen.update(kwargs, url=url, session=session)
                 return _Response()
 
-            monkeypatch.setattr(requests, "get", _get)
+            # The fetch goes through the system-trust session (mlflow_oidc_auth/http_client.py).
+            monkeypatch.setattr(requests.Session, "get", _get)
             return seen
 
         return _install

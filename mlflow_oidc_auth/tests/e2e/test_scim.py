@@ -22,7 +22,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from mlflow_oidc_auth.tests.e2e import flows

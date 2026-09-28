@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlencode, urlparse
 
-from authlib.jose.errors import BadSignatureError
+from joserfc.errors import BadSignatureError
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 

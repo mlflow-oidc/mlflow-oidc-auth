@@ -312,7 +312,7 @@ class TestNothingReachesTheMount:
 
     @pytest.fixture
     def mounted(self, app):
-        from starlette.middleware.wsgi import WSGIMiddleware
+        from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
 
         calls = []
 
@@ -321,7 +321,9 @@ class TestNothingReachesTheMount:
             start_response("200 OK", [("Content-Type", "text/plain")])
             return [b"reached the mount"]
 
-        app.mount("/", WSGIMiddleware(flask_stand_in))
+        # Same adapter app.py mounts Flask through (asgiref's WsgiToAsgi), so this test
+        # exercises the real mount path rather than a separate, deprecated one.
+        app.mount("/", AuthAwareWSGIMiddleware(flask_stand_in))
         return calls
 
     @pytest.mark.parametrize("with_token", [False, True])

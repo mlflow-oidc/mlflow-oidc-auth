@@ -27,19 +27,19 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # Provide the JRE ourselves so the scanner does not auto-provision one from
       # api.sonarcloud.io/analysis/jres, which was returning HTTP 403 and failing
       # the whole job before analysis even started (skipJreProvisioning below).
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Generate JS coverage
@@ -48,7 +48,7 @@ jobs:
           yarn test:coverage
         working-directory: web-react
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: 3.12
       - name: Generate Python coverage
@@ -59,7 +59,7 @@ jobs:
       - name: Override coverage source path for Sonar
         run: sed -i "s@<source>/home/runner/work/mlflow-oidc-auth/mlflow-oidc-auth</source>@<source>/github/workspace</source>@g" "${GITHUB_WORKSPACE}/coverage.xml"
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v7.0.0
+        uses: SonarSource/sonarqube-scan-action@v8.2.2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io

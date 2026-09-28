@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from authlib.jose.errors import BadSignatureError
+from joserfc.errors import BadSignatureError
 
 from mlflow_oidc_auth.auth import (
     _claims_options_for,
@@ -22,7 +22,7 @@ def clear_jwks_cache():
 class TestGetOidcJwks:
     """Test _get_oidc_jwks with caching behavior."""
 
-    @patch("mlflow_oidc_auth.auth.requests")
+    @patch("mlflow_oidc_auth.auth.http_client")
     @patch("mlflow_oidc_auth.auth.config")
     def test_get_oidc_jwks_success(self, mock_config, mock_requests):
         """Test successful JWKS retrieval from OIDC provider"""
@@ -44,7 +44,7 @@ class TestGetOidcJwks:
         mock_requests.get.assert_any_call("https://example.com/jwks", timeout=10, verify=True, allow_redirects=False)
         assert result == {"keys": [{"kty": "RSA", "kid": "test"}]}
 
-    @patch("mlflow_oidc_auth.auth.requests")
+    @patch("mlflow_oidc_auth.auth.http_client")
     @patch("mlflow_oidc_auth.auth.config")
     def test_get_oidc_jwks_uses_configured_timeout(self, mock_config, mock_requests):
         """Test that OIDC_HTTP_TIMEOUT_SECONDS overrides the default timeout"""
@@ -63,7 +63,7 @@ class TestGetOidcJwks:
         for call in mock_requests.get.call_args_list:
             assert call.kwargs.get("timeout") == 3
 
-    @patch("mlflow_oidc_auth.auth.requests")
+    @patch("mlflow_oidc_auth.auth.http_client")
     @patch("mlflow_oidc_auth.auth.config")
     def test_get_oidc_jwks_returns_cached(self, mock_config, mock_requests):
         """Test that second call returns cached JWKS without HTTP requests"""
@@ -85,7 +85,7 @@ class TestGetOidcJwks:
         assert mock_requests.get.call_count == 2  # Still 2, not 4
         assert result1 == result2
 
-    @patch("mlflow_oidc_auth.auth.requests")
+    @patch("mlflow_oidc_auth.auth.http_client")
     @patch("mlflow_oidc_auth.auth.config")
     def test_get_oidc_jwks_force_refresh_bypasses_cache(self, mock_config, mock_requests):
         """Test that force_refresh=True fetches fresh JWKS"""

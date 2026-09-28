@@ -2,9 +2,9 @@ import types
 
 import pytest
 import requests
-from authlib.jose.errors import BadSignatureError
+from joserfc.errors import BadSignatureError
 
-from mlflow_oidc_auth import auth
+from mlflow_oidc_auth import auth, http_client
 from mlflow_oidc_auth.auth import _jwks_cache
 from mlflow_oidc_auth.config import config
 
@@ -49,7 +49,7 @@ def test_get_oidc_jwks_missing_jwks_uri(monkeypatch):
     def fake_get(url, **kwargs):
         return DummyResponse({})
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(http_client, "get", fake_get)
 
     with pytest.raises(ValueError):
         auth._get_oidc_jwks()
@@ -68,7 +68,7 @@ def test_get_oidc_jwks_success(monkeypatch):
             return DummyResponse({"keys": []})
         raise RuntimeError("unexpected url")
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(http_client, "get", fake_get)
 
     jwks = auth._get_oidc_jwks()
     assert jwks == {"keys": []}
@@ -81,7 +81,7 @@ def test_get_oidc_jwks_request_exception(monkeypatch):
     def fake_get(url, **kwargs):
         raise requests.exceptions.RequestException("boom")
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(http_client, "get", fake_get)
 
     with pytest.raises(requests.exceptions.RequestException):
         auth._get_oidc_jwks()

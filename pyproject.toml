@@ -27,15 +27,20 @@ dependencies = [
   "mlflow<4,>=3.14.0",
   "python-dotenv<2",
   "requests<3,>=2.32.5",
+  # Our requests calls verify TLS against the operating system's store, as httpx2 does for the
+  # OIDC client (mlflow_oidc_auth/http_client.py).
+  "truststore>=0.10",
   "sqlalchemy<3,>=2.0.46",
   "flask<4",
   "gunicorn<24; platform_system != 'Windows'",
   "alembic<2,!=1.18.4",
-  "authlib<2",
+  # 1.8 is the first release whose httpx integration works on httpx2 alone (httpx is no longer a dependency).
+  "authlib>=1.8,<2",
+  "joserfc>=1.7,<2",
   "uvicorn>=0.41.0",
   "fastapi>=0.132.0",
   "asgiref>=3.11.1",
-  "httpx>=0.28.1",
+  "httpx2>=2.0.0",
   "cachetools>=5.5.0"
 ]
 
@@ -50,7 +55,7 @@ test = [
   "pytest<9,>=8.3.2",
   "pytest-cov<6,>=5.0.0",
   "pytest-asyncio<2",
-  "httpx<1,>=0.28.1",
+  "httpx2<3,>=2.0.0",
 ]
 # Cloud provider optional dependencies for pluggable config
 aws = [
@@ -131,6 +136,25 @@ line-length = 160
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["mlflow_oidc_auth/tests"]
+# A deprecation (or an un-awaited coroutine) raised from this package fails the suite, so new
+# ones are fixed when introduced instead of piling up in the warnings summary (#407). Known
+# third-party warnings we cannot fix here are ignored by message; drop each filter once a
+# release within our supported range fixes it.
+filterwarnings = [
+  "error::DeprecationWarning:mlflow_oidc_auth",
+  "error::PendingDeprecationWarning:mlflow_oidc_auth",
+  "error::RuntimeWarning:mlflow_oidc_auth",
+  # python3-saml 1.16.0: datetime.utcnow()/utcfromtimestamp(); fixed upstream in
+  # SAML-Toolkits/python3-saml#420, not yet released.
+  "ignore:datetime.datetime.utcnow\\(\\) is deprecated:DeprecationWarning:onelogin",
+  "ignore:datetime.datetime.utcfromtimestamp\\(\\) is deprecated:DeprecationWarning:onelogin",
+  # MLflow's own tracking store uses the deprecated noload loader strategy. Scoped to MLflow's
+  # modules ("mlflow\\." — a bare "mlflow" would also match mlflow_oidc_auth), so a noload
+  # reintroduced in this package still fails.
+  "ignore:The ``noload`` loader strategy is deprecated:DeprecationWarning:mlflow\\.",
+  # MLflow's fastapi_app imports starlette.middleware.wsgi (mlflow/mlflow#24074).
+  "ignore:starlette.middleware.wsgi is deprecated:UserWarning:mlflow\\.",
+]
 markers = [
   "integration: end-to-end tests that require a running server",
   "e2e: identity end-to-end tests against a real Keycloak and a real app server (tox -e e2e)",

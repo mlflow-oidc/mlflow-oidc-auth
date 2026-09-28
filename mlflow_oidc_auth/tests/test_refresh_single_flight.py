@@ -18,7 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-import httpx
+import httpx2 as httpx
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient

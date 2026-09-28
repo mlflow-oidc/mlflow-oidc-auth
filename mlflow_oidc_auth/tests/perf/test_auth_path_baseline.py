@@ -37,7 +37,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 
 import pytest
-from authlib.jose import JsonWebKey, jwt
+from mlflow_oidc_auth.tests.jose_helpers import encode_jwt, generate_rsa_key
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from starlette.middleware.sessions import SessionMiddleware
@@ -87,9 +87,9 @@ def bearer_token(monkeypatch):
     what a warm production process does too, since JWKS is cached for
     ``OIDC_JWKS_CACHE_TTL_SECONDS``.
     """
-    key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-    private = key.as_dict(is_private=True)
-    public = key.as_dict(is_private=False)
+    key = generate_rsa_key()
+    private = key.as_dict(private=True)
+    public = key.as_dict(private=False)
     kid = public.get("kid") or key.thumbprint()
     public["kid"] = kid
     private["kid"] = kid
@@ -100,7 +100,7 @@ def bearer_token(monkeypatch):
     def mint(username: str) -> str:
         now = int(time.time())
         claims = {"email": username, "name": username, "iat": now, "exp": now + 3600}
-        return jwt.encode({"alg": "RS256", "kid": kid}, claims, private).decode("utf-8")
+        return encode_jwt({"alg": "RS256", "kid": kid}, claims, private)
 
     return mint
 
