@@ -113,7 +113,7 @@ def configure_mlflow_environment(
 
 # ``scheme://user:password@`` - the password part of a URI's userinfo.
 # A URI anywhere in free text (e.g. a command line): scheme, "://", then up to whitespace.
-_URI = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://\S+")
+_URI = re.compile(r"(?<![A-Za-z0-9+.\-])[A-Za-z][A-Za-z0-9+.\-]*://\S+")
 # Query parameters that carry credentials (SQLAlchemy/psycopg2 accept ``?password=``).
 _SECRET_QUERY_PARAM = re.compile(
     r"(?P<key>[?&;](?:password|passwd|pwd|secret|client_secret|token|access_token|sslpassword|api_key|apikey)=)[^&;#\s]*",
@@ -125,24 +125,18 @@ _MASK = "********"
 def _redact_uri(uri: str) -> str:
     """Mask the userinfo password and credential query values of one URI.
 
-    The authority ends at the first ``/``, ``?`` or ``#`` after ``://``, and userinfo ends at the
-    *last* ``@`` in it, as ``urllib.parse`` splits it: so a username that is an e-mail address,
-    or a password with an unencoded ``@``, is still masked in full.
+    Userinfo ends at the *last* ``@`` of the whitespace-free token, and the password starts at the
+    first ``:`` after ``://``. That covers a username that is an e-mail address and a password with
+    an unencoded ``@``, ``/``, ``?`` or ``#`` (SQLAlchemy accepts all of these). It can over-mask a
+    URI whose path or query holds both ``:`` and ``@``, which is the safe direction for display.
     """
     scheme, rest = uri.split("://", 1)
-    end = len(rest)
-    for delimiter in "/?#":
-        index = rest.find(delimiter)
-        if index != -1:
-            end = min(end, index)
-    authority, tail = rest[:end], rest[end:]
-    if "@" in authority:
-        userinfo, host = authority.rsplit("@", 1)
-        if ":" in userinfo:
-            user = userinfo.split(":", 1)[0]
-            authority = f"{user}:{_MASK}@{host}"
-    tail = _SECRET_QUERY_PARAM.sub(lambda m: m.group("key") + _MASK, tail)
-    return f"{scheme}://{authority}{tail}"
+    at = rest.rfind("@")
+    if at != -1 and ":" in rest[:at]:
+        user = rest[:at].split(":", 1)[0]
+        rest = f"{user}:{_MASK}@{rest[at + 1:]}"
+    rest = _SECRET_QUERY_PARAM.sub(lambda m: m.group("key") + _MASK, rest)
+    return f"{scheme}://{rest}"
 
 
 def redact_uri_passwords(value: str) -> str:

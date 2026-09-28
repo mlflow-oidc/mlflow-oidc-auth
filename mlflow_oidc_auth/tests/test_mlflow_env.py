@@ -95,7 +95,21 @@ def test_cli_start_log_masks_uri_passwords(monkeypatch, caplog):
         ),
         ("https://h/cb?code=1&Token=abc#frag", "https://h/cb?code=1&Token=********#frag"),
         ("--default-artifact-root=ftp://a:b@h/r", "--default-artifact-root=ftp://a:********@h/r"),
+        ("postgresql://u:pa/ss@h/db", "postgresql://u:********@h/db"),
+        ("postgresql://u:pa?ss@h/db", "postgresql://u:********@h/db"),
+        ("postgresql://u:pa#ss@h/db", "postgresql://u:********@h/db"),
+        ("mysql+pymysql://u:ab/cd+ef@h:3306/db", "mysql+pymysql://u:********@h:3306/db"),
+        ('run "postgresql://u:x@db/m", then', 'run "postgresql://u:********@db/m", then'),
     ],
 )
 def test_redact_uri_passwords_edge_cases(value, expected):
     assert mlflow_env.redact_uri_passwords(value) == expected
+
+
+def test_redact_uri_passwords_is_linear_on_long_input():
+    """No quadratic backtracking on a long run of scheme characters without '://'."""
+    import time
+
+    started = time.monotonic()
+    mlflow_env.redact_uri_passwords("a" * 200_000)
+    assert time.monotonic() - started < 1.0
