@@ -5,8 +5,10 @@ truth; `CLAUDE.md` and `.github/copilot-instructions.md` point here. Nested `AGE
 `mlflow_oidc_auth/` and `web-react/` add subsystem detail and win over this one for files beneath
 them.
 
-**What this project is:** an MLflow authentication and authorization plugin. It adds OIDC login,
-RBAC over users/groups, and per-resource permissions to an MLflow tracking server. Almost every
+**What this project is:** MLflow Access Control (package `mlflow-oidc-auth`), an MLflow
+authentication and authorization plugin. It adds single sign-on (OIDC, SAML 2.0), SCIM
+provisioning, service accounts, RBAC over users/groups, and per-resource permissions to an MLflow
+tracking server. Almost every
 change here is a change to a security boundary — treat it accordingly.
 
 ---
