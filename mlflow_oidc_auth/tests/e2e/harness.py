@@ -29,6 +29,7 @@ PASSWORDS = {
     "alice@example.com": "alice-e2e-not-a-secret",
     "bob@example.com": "bob-e2e-not-a-secret",
     "carol@example.com": "carol-e2e-not-a-secret",
+    "dave@example.com": "dave-e2e-not-a-secret",
     "root@example.com": "root-e2e-not-a-secret",
 }
 
@@ -37,12 +38,18 @@ OIDC_PROVIDER_ID = "default"
 # loopback name (see ``Keycloak.named_issuer``), so Keycloak gives it a distinct issuer and the
 # registry accepts it next to ``default``.
 NAMED_OIDC_PROVIDER_ID = "keycloak-named"
+# A public OIDC client (#300): no client secret, PKCE S256 required by Keycloak, declared with
+# ``"public_client": true``. Reached through Keycloak's second published http port (see
+# ``Keycloak.public_url``) for an issuer of its own, which the registry requires.
+PUBLIC_OIDC_PROVIDER_ID = "keycloak-public"
+PUBLIC_OIDC_CLIENT_ID = "mlflow-public"
 SAML_PROVIDER_ID = "keycloak-saml"
 SAML_CLIENT_ID = "mlflow-saml"
 ACCESS_TOKEN_LIFESPAN_SECONDS = 10
 
 DEFAULT_KEYCLOAK_URL = "http://localhost:8080"
 DEFAULT_KEYCLOAK_HTTPS_URL = "https://localhost:8443"
+DEFAULT_KEYCLOAK_PUBLIC_CLIENT_URL = "http://localhost:8081"
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 _MD = "{urn:oasis:names:tc:SAML:2.0:metadata}"
@@ -79,9 +86,13 @@ def keycloak_verify() -> Any:
 class Keycloak:
     """The realm under test, and the parts of Keycloak's admin REST API the suite reads."""
 
-    def __init__(self, url: str, https_url: str, admin_user: str, admin_password: str) -> None:
+    def __init__(self, url: str, https_url: str, admin_user: str, admin_password: str, public_url: str = DEFAULT_KEYCLOAK_PUBLIC_CLIENT_URL) -> None:
         self.url = url.rstrip("/")
         self.https_url = https_url.rstrip("/")
+        # Keycloak's http listener under a second published port. Dev mode derives the issuer from
+        # the request's host *and port*, so this is the same realm with a third ``iss`` — the one
+        # the public-client provider claims.
+        self.public_url = public_url.rstrip("/")
         self._admin_user = admin_user
         self._admin_password = admin_password
         self._token: Optional[str] = None
@@ -117,6 +128,16 @@ class Keycloak:
         return f"{self.named_url}/realms/{REALM}"
 
     @property
+    def public_issuer(self) -> str:
+        return f"{self.public_url}/realms/{REALM}"
+
+    def public_listener_reachable(self) -> bool:
+        try:
+            return self._http.get(self.public_issuer, timeout=5.0).status_code == 200
+        except httpx.HTTPError:
+            return False
+
+    @property
     def token_endpoint(self) -> str:
         return f"{self.issuer}/protocol/openid-connect/token"
 
@@ -148,8 +169,8 @@ class Keycloak:
     def user_sessions(self, username: str) -> List[Dict[str, Any]]:
         return self.admin("GET", f"/users/{self.user_id(username)}/sessions").json()
 
-    def offline_session_count(self, username: str) -> int:
-        client = self._client(OIDC_CLIENT_ID)
+    def offline_session_count(self, username: str, client_id: str = OIDC_CLIENT_ID) -> int:
+        client = self._client(client_id)
         return len(self.admin("GET", f"/users/{self.user_id(username)}/offline-sessions/{client['id']}").json())
 
     def logout_everywhere(self, username: str) -> None:
@@ -158,7 +179,7 @@ class Keycloak:
     def clear_events(self) -> None:
         self.admin("DELETE", "/events")
 
-    def events(self, *types: str, username: Optional[str] = None, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def events(self, *types: str, username: Optional[str] = None, session_id: Optional[str] = None, client_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Realm events of ``types``, optionally narrowed to a user and a Keycloak session.
 
         Filtered here rather than with the ``user`` query parameter: error events such as
@@ -171,6 +192,8 @@ class Keycloak:
             events = [event for event in events if event.get("userId") == user_id]
         if session_id is not None:
             events = [event for event in events if event.get("sessionId") == session_id]
+        if client_id is not None:
+            events = [event for event in events if event.get("clientId") == client_id]
         return events
 
     def _client(self, client_id: str) -> Dict[str, Any]:
@@ -179,15 +202,16 @@ class Keycloak:
         return clients[0]
 
     def point_clients_at(self, app_url: str) -> None:
-        """Rewrite both clients' redirect, ACS and SLO URLs for the app's actual port.
+        """Rewrite every client's redirect, ACS and SLO URLs for the app's actual port.
 
         The realm JSON carries a placeholder port; Keycloak does not accept a wildcard port in a
         redirect URI, and the app runs on whichever loopback port was free.
         """
-        oidc = self._client(OIDC_CLIENT_ID)
-        oidc["redirectUris"] = [f"{app_url}/*"]
-        oidc.setdefault("attributes", {})["post.logout.redirect.uris"] = f"{app_url}/*"
-        self.admin("PUT", f"/clients/{oidc['id']}", json=oidc)
+        for client_id in (OIDC_CLIENT_ID, PUBLIC_OIDC_CLIENT_ID):
+            oidc = self._client(client_id)
+            oidc["redirectUris"] = [f"{app_url}/*"]
+            oidc.setdefault("attributes", {})["post.logout.redirect.uris"] = f"{app_url}/*"
+            self.admin("PUT", f"/clients/{oidc['id']}", json=oidc)
 
         saml = self._client(SAML_CLIENT_ID)
         saml["redirectUris"] = [f"{app_url}/*"]
@@ -241,16 +265,19 @@ class Keycloak:
         response.raise_for_status()
         return response.json()
 
-    def refresh(self, refresh_token: str, issuer: Optional[str] = None) -> httpx.Response:
+    def refresh(
+        self, refresh_token: str, issuer: Optional[str] = None, client_id: str = OIDC_CLIENT_ID, client_secret: Optional[str] = OIDC_CLIENT_SECRET
+    ) -> httpx.Response:
         """A refresh-token grant at ``issuer``'s token endpoint (default: the http issuer).
 
         Keycloak checks a refresh token's ``iss`` against the endpoint it is presented to, so a
-        token minted through ``named_issuer`` must be refreshed there.
+        token minted through ``named_issuer`` must be refreshed there. ``client_secret=None`` sends
+        the grant as a public client would: ``client_id`` alone.
         """
-        return self._http.post(
-            f"{issuer or self.issuer}/protocol/openid-connect/token",
-            data={"grant_type": "refresh_token", "client_id": OIDC_CLIENT_ID, "client_secret": OIDC_CLIENT_SECRET, "refresh_token": refresh_token},
-        )
+        data = {"grant_type": "refresh_token", "client_id": client_id, "refresh_token": refresh_token}
+        if client_secret is not None:
+            data["client_secret"] = client_secret
+        return self._http.post(f"{issuer or self.issuer}/protocol/openid-connect/token", data=data)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -349,6 +376,24 @@ def server_env(*, app_url: str, secret_key: str, db_uri: str, keycloak: Keycloak
             "client_id": OIDC_CLIENT_ID,
             "issuer": keycloak.named_issuer,
             "audience": OIDC_CLIENT_ID,
+            "identity_binding": "email",
+            "allowed_email_domains": ["example.com"],
+            "provisioning": "jit",
+            "group_sync": "every_login",
+            "admin_source": "claims",
+        },
+        {
+            # A public client (#300): no OIDC_CLIENT_SECRET_KEYCLOAK_PUBLIC is set below, so this
+            # registers only because it is declared public, and PKCE (on by default) authenticates
+            # its token exchange.
+            "id": PUBLIC_OIDC_PROVIDER_ID,
+            "type": "oidc",
+            "display_name": "Keycloak (public client)",
+            "discovery_url": f"{keycloak.public_issuer}/.well-known/openid-configuration",
+            "client_id": PUBLIC_OIDC_CLIENT_ID,
+            "public_client": True,
+            "issuer": keycloak.public_issuer,
+            "audience": PUBLIC_OIDC_CLIENT_ID,
             "identity_binding": "email",
             "allowed_email_domains": ["example.com"],
             "provisioning": "jit",

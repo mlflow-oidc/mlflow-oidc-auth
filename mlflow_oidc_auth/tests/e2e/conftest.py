@@ -14,6 +14,10 @@ Environment:
     ``https://localhost:8443``. Its certificate is the runtime-generated one Keycloak was started
     with; pass it as ``MLFLOW_OIDC_E2E_KEYCLOAK_CA`` to verify it, otherwise verification is off
     for this loopback IdP only.
+``MLFLOW_OIDC_E2E_KEYCLOAK_PUBLIC_CLIENT_URL``
+    Keycloak's http listener under a second published port, for the public-client provider, which
+    needs an issuer of its own. Default ``http://localhost:8081``. Unreachable, only the
+    public-client test skips (or fails under ``MLFLOW_OIDC_E2E_REQUIRE``).
 ``MLFLOW_OIDC_E2E_REQUIRE``
     ``1`` (CI) makes an unreachable Keycloak a failure. Unset, the suite skips.
 ``MLFLOW_OIDC_E2E_DB_URI``
@@ -43,6 +47,7 @@ import pytest
 
 from mlflow_oidc_auth.tests.e2e.harness import (
     DEFAULT_KEYCLOAK_HTTPS_URL,
+    DEFAULT_KEYCLOAK_PUBLIC_CLIENT_URL,
     DEFAULT_KEYCLOAK_URL,
     REALM,
     AppServer,
@@ -81,9 +86,22 @@ def keycloak() -> Iterator[Keycloak]:
         https_url,
         os.environ.get("MLFLOW_OIDC_E2E_KEYCLOAK_ADMIN", "admin"),
         os.environ.get("MLFLOW_OIDC_E2E_KEYCLOAK_ADMIN_PASSWORD", "admin"),
+        public_url=os.environ.get("MLFLOW_OIDC_E2E_KEYCLOAK_PUBLIC_CLIENT_URL", DEFAULT_KEYCLOAK_PUBLIC_CLIENT_URL),
     )
     yield kc
     kc._http.close()
+
+
+@pytest.fixture(scope="session")
+def public_keycloak(keycloak: Keycloak) -> Keycloak:
+    """``keycloak``, once its second listener port — the public-client provider's issuer — answers."""
+    if not keycloak.public_listener_reachable():
+        _unavailable(
+            f"Keycloak realm '{REALM}' is not reachable at {keycloak.public_url}, the public-client provider's listener. "
+            "Publish Keycloak's http port a second time (docker run ... -p 127.0.0.1:8081:8080) — see docs/development.md, "
+            '"End-to-end identity tests".'
+        )
+    return keycloak
 
 
 @pytest.fixture(scope="session")

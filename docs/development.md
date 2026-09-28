@@ -247,11 +247,19 @@ form itself, with no browser engine. CI runs it on every pull request as the req
 PostgreSQL.
 
 The realm is code: `scripts/e2e/keycloak/realm-mlflow-e2e.json` (realm `mlflow-e2e`, users
-`alice@example.com` / `bob@example.com` / `carol@example.com` in `mlflow-users` and
-`root@example.com` in `mlflow-admins`, an OIDC client `mlflow` and a SAML client `mlflow-saml`). It contains no keys —
+`alice@example.com` / `bob@example.com` / `carol@example.com` / `dave@example.com` in `mlflow-users` and
+`root@example.com` in `mlflow-admins`, a confidential OIDC client `mlflow`, a public OIDC client
+`mlflow-public` with PKCE S256 required, and a SAML client `mlflow-saml`). It contains no keys —
 Keycloak generates the realm keys on import — and its passwords and client secret are test
-literals. At start-up the suite rewrites both clients' redirect, ACS and SLO URLs for the port
+literals. At start-up the suite rewrites every client's redirect, ACS and SLO URLs for the port
 the app actually got.
+
+Keycloak's http listener is published on a **second port, 8081**, as well. Keycloak in dev mode
+derives the issuer from the request's host and port, and the public-client provider
+(`keycloak-public`, `"public_client": true`, no secret) needs an issuer of its own: the registry
+refuses two providers claiming one. Without the second port only the public-client test skips (or
+fails under `MLFLOW_OIDC_E2E_REQUIRE=1`). The Keycloak zip serves one http port, so that test does
+not run against it.
 
 Keycloak must serve **https** as well as http: the plugin refuses a SAML IdP whose SSO/SLO URLs
 are not https. Give it a throwaway certificate:
@@ -267,7 +275,7 @@ chmod 0644 /tmp/kc-tls/tls.key   # the container runs as a non-root user
 Start Keycloak with Docker:
 
 ```bash
-docker run --rm -d --name keycloak -p 127.0.0.1:8080:8080 -p 127.0.0.1:8443:8443 \
+docker run --rm -d --name keycloak -p 127.0.0.1:8080:8080 -p 127.0.0.1:8081:8080 -p 127.0.0.1:8443:8443 \
   -v "$PWD/scripts/e2e/keycloak:/opt/keycloak/data/import:ro" \
   -v /tmp/kc-tls:/opt/keycloak/conf/tls:ro \
   -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
@@ -302,6 +310,7 @@ The default `tox` environment deselects the `e2e` marker. Without Keycloak the s
 |---|---|---|
 | `MLFLOW_OIDC_E2E_KEYCLOAK_URL` | `http://localhost:8080` | Keycloak over http: OIDC and the admin REST API |
 | `MLFLOW_OIDC_E2E_KEYCLOAK_HTTPS_URL` | `https://localhost:8443` | Keycloak over https: SAML |
+| `MLFLOW_OIDC_E2E_KEYCLOAK_PUBLIC_CLIENT_URL` | `http://localhost:8081` | Keycloak's http listener on its second published port: the public-client provider's issuer |
 | `MLFLOW_OIDC_E2E_KEYCLOAK_CA` | unset | The certificate above; verifies the https leg. Unset, verification is off — allowed only when the https URL is loopback |
 | `MLFLOW_OIDC_E2E_KEYCLOAK_ADMIN` / `_PASSWORD` | `admin` / `admin` | Keycloak bootstrap admin, for the admin REST API |
 | `MLFLOW_OIDC_E2E_REQUIRE` | unset | `1`: fail instead of skip when Keycloak is unreachable |
