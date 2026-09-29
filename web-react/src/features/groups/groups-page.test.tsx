@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import GroupsPage from "./groups-page";
 import type { GroupDetails } from "../../shared/types/entity";
 import {
