@@ -499,12 +499,12 @@ class AppConfig:
             )
         from mlflow_oidc_auth.group_patterns import matches_everything
 
-        everything = [p for p in self.OIDC_GROUP_NAME_PATTERN if isinstance(p, str) and matches_everything(p)]
-        if everything:
+        # The offending pattern is not echoed: configuration values can come from a secret store,
+        # and the operator can find a match-everything entry in their own setting.
+        if any(isinstance(p, str) and matches_everything(p) for p in self.OIDC_GROUP_NAME_PATTERN):
             logger.warning(
-                "OIDC_GROUP_NAME_PATTERN contains %r, which admits every user whose token carries any group at all. "
-                "Prefer a scoped pattern such as 'mlflow-*'.",
-                everything[0],
+                "OIDC_GROUP_NAME_PATTERN contains a pattern such as '*', which admits every user whose token carries any group at all. "
+                "Prefer a scoped pattern such as 'mlflow-*'."
             )
         if not self._has_usable_entry(self.OIDC_ADMIN_GROUP_NAME):
             logger.warning("OIDC_ADMIN_GROUP_NAME is empty; no user will ever be granted admin access via group membership.")

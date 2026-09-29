@@ -30,7 +30,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import NO_PERMISSIONS, get_permission
+from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, get_permission
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -407,7 +407,12 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
     if len(samples) < _FALLBACK_SAMPLE_LIMIT and resource_id not in samples:
         samples.append(resource_id)
 
-    logger.debug("Permission fallback: %s granted %s to %s (occurrence %d)", resource_type, permission.name, username, count)
+    # The level is logged by its name from ALL_PERMISSIONS, not read off ``permission``: for a
+    # gateway secret the value flows from the secret-permission store, and static analysis
+    # cannot tell that only its level, never the secret, reaches the log.
+    level = next((name for name, known in ALL_PERMISSIONS.items() if known == permission), "UNKNOWN")
+
+    logger.debug("Permission fallback: %s granted %s to %s (occurrence %d)", resource_type, level, username, count)
 
     if not permission.can_read:
         # A fallback that grants nothing is the safe, expected shape.
@@ -415,7 +420,7 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
 
     if count in _FALLBACK_WARN_AT or count % _FALLBACK_WARN_EVERY == 0:
         logger.warning(
-            f"DEFAULT_MLFLOW_PERMISSION granted {permission.name} on a {resource_type} to {username} "
+            f"DEFAULT_MLFLOW_PERMISSION granted {level} on a {resource_type} to {username} "
             f"because no explicit permission exists ({count} such grants for {resource_type} so far). "
             "Access is coming from configuration rather than a permission record. "
             "Call get_permission_fallback_samples() for the affected resource ids, or enable DEBUG logging. "
